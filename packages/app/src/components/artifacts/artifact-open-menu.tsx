@@ -134,7 +134,7 @@ export function ArtifactOpenMenu({
       <>
         <ContextMenu open={open} onOpenChange={onOpenChange}>
           {hideTrigger ? null : <ArtifactSheetTriggerButton />}
-          <ContextMenuContent mobileMode="sheet" testID="workspace-open-artifact-sheet">
+          <ContextMenuContent testID="workspace-open-artifact-sheet">
             {projectArtifacts.length > 0 ? (
               <>
                 <ContextMenuLabel>Artifacts</ContextMenuLabel>

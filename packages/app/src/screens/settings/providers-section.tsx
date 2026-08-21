@@ -37,6 +37,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 // Otto renders its own Material-styled set rather than lucide directly; all
 // three exist there, and mixing sets inside one row shows.
 import { ChevronRight, MoreHorizontal, Trash2 } from "@/components/icons/material-icons";
+import { filterSelectableModels } from "@/provider-selection/model-catalog";
 
 type ProviderDefinition = ReturnType<typeof buildProviderDefinitions>[number];
 type ProviderEntry = NonNullable<ReturnType<typeof useProvidersSnapshot>["entries"]>[number];
@@ -190,7 +191,7 @@ function ProviderRow({
     entry.error.trim().length > 0
       ? entry.error.trim()
       : null;
-  const modelCount = entry.models?.length ?? 0;
+  const modelCount = filterSelectableModels(entry.models ?? null)?.length ?? 0;
   const providerStatus = getProviderStatus(entry.status, enabled, modelCount, t);
 
   const handlePress = useCallback(() => {

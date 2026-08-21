@@ -179,6 +179,7 @@ export function OpenProjectScreen() {
         {webScrollbar.overlay}
       </View>
       <PairDeviceModal
+        serverId={localServerId ?? ""}
         visible={isPairDeviceOpen}
         onClose={handleClosePairDevice}
         testID="open-project-pair-device-modal"

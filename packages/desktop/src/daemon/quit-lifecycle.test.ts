@@ -5,6 +5,7 @@ import {
   createQuitLifecycle,
   isAppQuitting,
   markAppQuitting,
+  registerExternalQuitSignals,
   shouldStopDesktopManagedDaemonOnQuit,
   stopDesktopManagedDaemonOnQuitIfNeeded,
 } from "./quit-lifecycle";
@@ -28,6 +29,25 @@ const SETTINGS_STOP_ON_QUIT = {
 };
 
 describe("quit-lifecycle", () => {
+  it("turns external termination signals into one Electron quit", () => {
+    const listeners = new Map<NodeJS.Signals, () => void>();
+    const quits: string[] = [];
+
+    registerExternalQuitSignals({
+      signals: {
+        on: (signal, listener) => {
+          listeners.set(signal, listener);
+        },
+      },
+      quit: () => quits.push("quit"),
+    });
+
+    expect(Array.from(listeners.keys())).toEqual(["SIGHUP", "SIGINT", "SIGTERM"]);
+    listeners.get("SIGTERM")?.();
+    listeners.get("SIGHUP")?.();
+    expect(quits).toEqual(["quit"]);
+  });
+
   it("stops the daemon unless the user opted into keeping it running", () => {
     expect(shouldStopDesktopManagedDaemonOnQuit(SETTINGS_STOP_ON_QUIT)).toBe(true);
     expect(shouldStopDesktopManagedDaemonOnQuit(SETTINGS_KEEP_RUNNING)).toBe(false);

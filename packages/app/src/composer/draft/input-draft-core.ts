@@ -1,7 +1,6 @@
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { UseAgentFormStateResult } from "@/hooks/use-agent-form-state";
-import type { RolePersonality } from "@/provider-selection/role-model-personality";
 
 export interface DraftKeyContext {
   selectedServerId: string | null;
@@ -23,14 +22,13 @@ export function buildDraftAgentControls(input: {
   formState: UseAgentFormStateResult;
   features?: DraftAgentControlsProps["features"];
   onSetFeature?: DraftAgentControlsProps["onSetFeature"];
+  onApplyAgentProfile: DraftAgentControlsProps["onApplyAgentProfile"];
   onDropdownClose?: DraftAgentControlsProps["onDropdownClose"];
-  personality?: RolePersonality | null;
 }): DraftAgentControlsProps {
-  const { formState, features, onSetFeature, onDropdownClose, personality } = input;
+  const { formState, features, onSetFeature, onApplyAgentProfile, onDropdownClose } = input;
   return {
     providerDefinitions: formState.providerDefinitions,
     selectedProvider: formState.selectedProvider,
-    onSelectProvider: formState.setProviderFromUser,
     modeOptions: formState.modeOptions,
     selectedMode: formState.selectedMode,
     onSelectMode: formState.setModeFromUser,
@@ -44,6 +42,7 @@ export function buildDraftAgentControls(input: {
     thinkingOptions: formState.availableThinkingOptions,
     selectedThinkingOptionId: formState.selectedThinkingOptionId,
     onSelectThinkingOption: formState.setThinkingOptionFromUser,
+    onApplyAgentProfile,
     features,
     onSetFeature,
     onDropdownClose,
@@ -51,7 +50,6 @@ export function buildDraftAgentControls(input: {
     onRetryModelProvider: formState.refreshProviderModels,
     isRetryingModelProvider: formState.isProviderModelsRefreshing,
     modelSelectorServerId: formState.selectedServerId,
-    personality: personality ?? null,
   };
 }
 

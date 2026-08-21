@@ -11,6 +11,7 @@ import {
   type ProviderPreferences,
 } from "@/hooks/use-form-preferences";
 import { coerceModeForModel, findModelDefinition } from "./mode-support";
+import { findModelByReference } from "./model-catalog";
 
 export interface FormInitialValues {
   serverId?: string | null;
@@ -95,6 +96,16 @@ export type AgentFormAction =
       providerModels: AgentModelDefinition[] | null;
       providerPrefs?: ProviderPrefs | undefined;
     }
+  | {
+      type: "APPLY_PROFILE_FROM_USER";
+      provider: AgentProvider;
+      modelId: string;
+      modeId: string;
+      thinkingOptionId: string;
+      providerDef: AgentProviderDefinition | undefined;
+      providerModels: AgentModelDefinition[] | null;
+      providerPrefs?: ProviderPrefs | undefined;
+    }
   | { type: "SET_MODE_FROM_USER"; modeId: string }
   | {
       type: "SET_MODEL_FROM_USER";
@@ -110,6 +121,7 @@ export type AgentFormAction =
   | { type: "RESET" };
 
 type CompleteResolutionAction = Extract<AgentFormAction, { type: "COMPLETE_RESOLUTION" }>;
+type ApplyProfileAction = Extract<AgentFormAction, { type: "APPLY_PROFILE_FROM_USER" }>;
 
 export function normalizeSelectedModelId(modelId: string | null | undefined): string {
   return typeof modelId === "string" ? modelId.trim() : "";
@@ -124,6 +136,15 @@ export function resolveDefaultModel(
 
 export function resolveDefaultModelId(availableModels: AgentModelDefinition[] | null): string {
   return resolveDefaultModel(availableModels)?.id ?? "";
+}
+
+function resolveCanonicalModelId(
+  availableModels: AgentModelDefinition[] | null,
+  modelId: string,
+): string {
+  const normalizedModelId = normalizeSelectedModelId(modelId);
+  if (!normalizedModelId || !availableModels) return normalizedModelId;
+  return findModelByReference(availableModels, normalizedModelId)?.id ?? "";
 }
 
 export function resolveEffectiveModel(
@@ -570,6 +591,41 @@ function completeResolution(
   return { ...nextState, form: resolved };
 }
 
+function applyProfile(state: AgentFormReducerState, action: ApplyProfileAction) {
+  const preferredModelId = action.modelId || action.providerPrefs?.model || "";
+  const normalizedModelId = resolveCanonicalModelId(action.providerModels, preferredModelId);
+  const nextModelId = normalizedModelId || resolveDefaultModelId(action.providerModels);
+  const availableModeIds = new Set(action.providerDef?.modes.map((mode) => mode.id) ?? []);
+  const preferredModeId = action.modeId || action.providerPrefs?.mode || "";
+  const defaultModeId = action.providerDef?.defaultModeId ?? "";
+  let nextModeId = "";
+  if (availableModeIds.has(preferredModeId)) nextModeId = preferredModeId;
+  else if (availableModeIds.has(defaultModeId)) nextModeId = defaultModeId;
+  const nextThinkingOptionId = resolveThinkingOptionId({
+    availableModels: action.providerModels,
+    modelId: nextModelId,
+    requestedThinkingOptionId:
+      action.thinkingOptionId || action.providerPrefs?.thinkingByModel?.[nextModelId]?.trim() || "",
+  });
+  return {
+    ...state,
+    form: {
+      ...state.form,
+      provider: action.provider,
+      model: nextModelId,
+      modeId: nextModeId,
+      thinkingOptionId: nextThinkingOptionId,
+    },
+    userModified: {
+      ...state.userModified,
+      provider: true,
+      model: true,
+      modeId: true,
+      thinkingOptionId: true,
+    },
+  };
+}
+
 // oxlint-disable-next-line complexity
 export function resolveAgentForm(
   state: AgentFormReducerState,
@@ -661,6 +717,9 @@ export function resolveAgentForm(
         userModified: { ...state.userModified, provider: true, model: true },
       };
     }
+
+    case "APPLY_PROFILE_FROM_USER":
+      return applyProfile(state, action);
 
     case "SET_MODE_FROM_USER":
       return {

@@ -104,8 +104,8 @@ describe("workspace source of truth consumption", () => {
     ).toEqual({
       kind: "ready",
       title: "feat/workspace-sot",
-      subtitle: "otto-code-ai/otto-code",
-      shouldShowSubtitle: true,
+      subtitle: "Draek2077/otto-code",
+      isSubtitleDistinct: true,
       isGitCheckout: false,
       currentBranchName: null,
     });
@@ -126,7 +126,7 @@ describe("workspace source of truth consumption", () => {
       kind: "ready",
       title: "notes",
       subtitle: "Local folders",
-      shouldShowSubtitle: true,
+      isSubtitleDistinct: true,
       isGitCheckout: false,
       currentBranchName: null,
     });
@@ -144,8 +144,8 @@ describe("workspace source of truth consumption", () => {
     ).toEqual({
       kind: "ready",
       title: "feat/workspace-sot",
-      subtitle: "otto-code-ai/otto-code",
-      shouldShowSubtitle: true,
+      subtitle: "Draek2077/otto-code",
+      isSubtitleDistinct: true,
       isGitCheckout: true,
       currentBranchName: "feat/workspace-sot",
     });
@@ -169,7 +169,7 @@ describe("workspace source of truth consumption", () => {
       kind: "ready",
       title: "notes",
       subtitle: "notes",
-      shouldShowSubtitle: false,
+      isSubtitleDistinct: false,
       isGitCheckout: false,
       currentBranchName: null,
     });
@@ -184,8 +184,8 @@ describe("workspace source of truth consumption", () => {
     ).toEqual({
       kind: "ready",
       title: "feat/workspace-sot",
-      subtitle: "otto-code-ai/otto-code",
-      shouldShowSubtitle: true,
+      subtitle: "Draek2077/otto-code",
+      isSubtitleDistinct: true,
       isGitCheckout: false,
       currentBranchName: null,
     });

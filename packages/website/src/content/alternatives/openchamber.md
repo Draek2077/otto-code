@@ -60,7 +60,7 @@ otto send <agent-id> "add tests"
 otto schedule create --cron "0 9 * * 1" "audit the codebase"
 ```
 
-`otto run --host` connects to a remote daemon. `otto schedule` runs an agent on a cron. `otto loop` retries an agent until a verification command passes.
+`otto run --host` connects to a remote daemon. `otto schedule` runs an agent on a cron.
 
 OpenChamber does not have a CLI.
 

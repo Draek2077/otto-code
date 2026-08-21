@@ -81,6 +81,7 @@ describe("desktop-settings", () => {
 
     expect(settings).toEqual({
       releaseChannel: "stable",
+      notifications: { playSound: true },
       daemon: {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
@@ -110,6 +111,7 @@ describe("desktop-settings", () => {
 
     expect(next).toEqual({
       releaseChannel: "beta",
+      notifications: { playSound: true },
       daemon: {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
@@ -124,6 +126,45 @@ describe("desktop-settings", () => {
       },
     });
     expect(files).toEqual(["desktop-settings.json"]);
+  });
+
+  it("defaults notification sounds on for existing settings documents", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    await writeFile(
+      settingsFilePath(userDataPath),
+      JSON.stringify({
+        version: 1,
+        settings: {
+          releaseChannel: "stable",
+          daemon: {
+            manageBuiltInDaemon: true,
+            keepRunningAfterQuit: false,
+          },
+        },
+        migrations: {
+          legacyRendererSettingsImported: true,
+          daemonStopOnQuitDefaultApplied: true,
+        },
+      }),
+    );
+
+    const settings = await createDesktopSettingsStore({ userDataPath }).get();
+
+    expect(settings.notifications.playSound).toBe(true);
+  });
+
+  it("keeps an explicit notification sound choice across restarts", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+
+    await createDesktopSettingsStore({ userDataPath }).patch({
+      notifications: { playSound: false },
+    });
+
+    const settings = await createDesktopSettingsStore({ userDataPath }).get();
+
+    expect(settings.notifications.playSound).toBe(false);
   });
 
   it("does not let stale legacy renderer settings override an explicit desktop patch", async () => {
@@ -245,6 +286,7 @@ describe("desktop-settings", () => {
 
     expect(migrated).toEqual({
       releaseChannel: "beta",
+      notifications: { playSound: true },
       daemon: {
         manageBuiltInDaemon: false,
         keepRunningAfterQuit: false,

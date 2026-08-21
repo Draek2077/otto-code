@@ -1,4 +1,4 @@
-import { scoreMatch } from "./score-match";
+import { scoreMatch } from "@otto-code/protocol/search/text-match";
 
 export interface BuildWorkingDirectorySuggestionsInput {
   recommendedPaths: string[];

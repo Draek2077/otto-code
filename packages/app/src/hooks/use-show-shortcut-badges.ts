@@ -1,6 +1,11 @@
+import { useMemo } from "react";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getIsElectronRuntime } from "@/constants/layout";
-import { getWorkspaceIndexJumpModifierKey } from "@/keyboard/keyboard-shortcuts";
+import {
+  buildEffectiveBindings,
+  getWorkspaceIndexJumpModifierKey,
+} from "@/keyboard/keyboard-shortcuts";
+import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import { useAppSettingValue, type AppSettings } from "@/hooks/use-settings";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 
@@ -14,7 +19,9 @@ export function useShortcutOverlayMode() {
 export function useShowShortcutBadges(): boolean {
   const isDesktop = getIsElectronRuntime();
   const isMac = getShortcutOs() === "mac";
-  const workspaceModifier = getWorkspaceIndexJumpModifierKey({ isDesktop, isMac });
+  const { overrides } = useKeyboardShortcutOverrides();
+  const bindings = useMemo(() => buildEffectiveBindings(overrides), [overrides]);
+  const workspaceModifier = getWorkspaceIndexJumpModifierKey({ isDesktop, isMac }, bindings);
   const mode = useShortcutOverlayMode();
   const revealEnabled = mode === "workspaces" || mode === "full";
 
@@ -29,6 +36,8 @@ export function useShowShortcutBadges(): boolean {
         return state.shortcutDiscoveryModifiers.ctrl;
       case "Meta":
         return state.shortcutDiscoveryModifiers.meta;
+      default:
+        return false;
     }
   });
 }

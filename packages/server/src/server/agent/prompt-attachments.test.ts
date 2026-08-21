@@ -20,7 +20,7 @@ describe("prompt attachments", () => {
       mimeType: "application/github-issue",
       number: 55,
       title: "Issue",
-      url: "https://github.com/getpaseo/paseo/issues/55",
+      url: "https://github.com/Draek2077/otto-code/issues/55",
     };
 
     expect(
@@ -56,13 +56,13 @@ describe("prompt attachments", () => {
     expect(
       renderPromptAttachmentAsText({
         type: "forge_change_request",
-        mimeType: "application/paseo-forge-change-request",
+        mimeType: "application/otto-forge-change-request",
         forge: "gitlab",
         number: 123,
         title: "Fix race in worktree setup",
-        url: "https://gitlab.com/getpaseo/paseo/-/merge_requests/123",
+        url: "https://gitlab.com/Draek2077/otto-code/-/merge_requests/123",
         body: "MR body",
-        projectPath: "getpaseo/paseo",
+        projectPath: "Draek2077/otto-code",
         baseRefName: "main",
         headRefName: "fix/worktree-race",
       }),

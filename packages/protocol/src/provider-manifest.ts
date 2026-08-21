@@ -200,6 +200,13 @@ const MOCK_LOAD_TEST_MODES: AgentProviderModeDefinition[] = [
     isUnattended: true,
     userSelectable: false,
   },
+  {
+    id: "approval-test",
+    label: "Approval Test",
+    description: "Alternate development-only permission mode for preference tests",
+    icon: "ShieldCheck",
+    colorTier: "safe",
+  },
 ];
 
 const MOCK_SLOW_MODES: AgentProviderModeDefinition[] = [

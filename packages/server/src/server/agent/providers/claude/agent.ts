@@ -140,6 +140,12 @@ import { withTimeout } from "../../../../utils/promise-timeout.js";
 import { terminateWithTreeKill } from "../../../../utils/tree-kill.js";
 import { execCommand } from "../../../../utils/spawn.js";
 import { composeSystemPromptParts } from "../../system-prompt.js";
+import { readClaudeWorkflowResultFile } from "./subagents/workflow-output.js";
+import {
+  observeReplayWorkflows,
+  parseClaudeWorkflowRun,
+} from "./subagents/workflow-replay-source.js";
+import { foldSubagentObservations } from "./subagents/observation.js";
 
 const fsPromises = promises;
 const CLAUDE_SETTING_SOURCES: NonNullable<ClaudeOptions["settingSources"]> = [
@@ -2201,6 +2207,36 @@ function readObservedSubagentText(value: unknown): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function toProviderSubagentStatus(status: string): "running" | "completed" | "failed" | "canceled" {
+  if (status === "completed" || status === "idle") return "completed";
+  if (status === "failed" || status === "error") return "failed";
+  if (status === "stopped" || status === "canceled" || status === "closed") return "canceled";
+  return "running";
+}
+
+function toObservedSubagentStatus(
+  status: "running" | "completed" | "failed" | "canceled",
+): "running" | "idle" | "error" | "closed" {
+  if (status === "completed") return "idle";
+  if (status === "failed") return "error";
+  if (status === "canceled") return "closed";
+  return "running";
+}
+
+function readPersistedAssistantEntries(filePath: string): Record<string, unknown>[] {
+  return fs
+    .readFileSync(filePath, "utf8")
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      try {
+        const entry = toObjectRecord(JSON.parse(line));
+        return entry?.type === "assistant" ? [entry] : [];
+      } catch {
+        return [];
+      }
+    });
+}
+
 function readClaudeParentToolUseId(message: SDKMessage): string | null {
   if (!("parent_tool_use_id" in message)) {
     return null;
@@ -2429,6 +2465,7 @@ class ClaudeAgentSession implements AgentSession {
   // cannot outlive the turn that spawned it (a lost/garbled task_notification
   // otherwise left the row running forever).
   private readonly settledObservedSubagents = new Set<string>();
+  private readonly backgroundedProviderSubagents = new Set<string>();
   // Workflow runs are backgrounded (they legitimately outlive the turn) -
   // exempt from the turn-end sweep; they settle via their own task_notification.
   private readonly workflowObservedKeys = new Set<string>();
@@ -2474,6 +2511,9 @@ class ClaudeAgentSession implements AgentSession {
   private readonly announcedBackgroundShellTasks = new Set<string>();
   private readonly backgroundShellKeyByTaskId = new Map<string, string>();
   private persistedHistory: PersistedTimelineEntry[] = [];
+  private persistedProviderSubagentEvents: Array<
+    Extract<AgentStreamEvent, { type: "provider_subagent" }>
+  > = [];
   private historyPending = false;
   /** Open Task/Agent tool call while replaying history; see replayHistorySubagentRow. */
   private historySidechainParent: {
@@ -2731,12 +2771,18 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
-    if (!this.historyPending || this.persistedHistory.length === 0) {
+    if (
+      !this.historyPending ||
+      (this.persistedHistory.length === 0 && this.persistedProviderSubagentEvents.length === 0)
+    ) {
       return;
     }
     const history = this.persistedHistory;
+    const providerSubagents = this.persistedProviderSubagentEvents;
     this.persistedHistory = [];
+    this.persistedProviderSubagentEvents = [];
     this.historyPending = false;
+    for (const event of providerSubagents) yield event;
     for (const entry of history) {
       // Sidechain items belong to a Task row, not the parent transcript. Routing
       // them here mirrors the live path, so a resumed session shows the same
@@ -3571,6 +3617,11 @@ class ClaudeAgentSession implements AgentSession {
       this.query = null;
       this.input = null;
       this.queryPumpPromise = null;
+      // This process is being retired deliberately. Detach it before ending
+      // input so its exit handler cannot report a crash between turns.
+      const retiredChild = this.childProcess;
+      this.childProcess = null;
+      if (retiredChild) this.failRunningRuntimeTasks();
       oldInput?.end();
       oldQuery.close?.();
       try {
@@ -3581,14 +3632,13 @@ class ClaudeAgentSession implements AgentSession {
       // Tree-kill the old process tree now that the SDK has cleaned up.
       // If we skip this, MCP children of the previous claude process can
       // survive as orphans when the session spawns a replacement query.
-      if (this.childProcess) {
-        await terminateWithTreeKill(this.childProcess, {
+      if (retiredChild) {
+        await terminateWithTreeKill(retiredChild, {
           gracefulTimeoutMs: 2_000,
           forceTimeoutMs: 2_000,
         }).catch(() => {
           /* process may already be dead */
         });
-        this.childProcess = null;
       }
     }
 
@@ -3608,6 +3658,7 @@ class ClaudeAgentSession implements AgentSession {
         queryFactory: this.queryFactory,
         onChildProcess: (child) => {
           this.childProcess = child;
+          child.once("exit", (code, signal) => this.handleRuntimeExit(child, code, signal));
         },
       },
     );
@@ -4232,6 +4283,67 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
+  // Background shells, monitors and workflows live inside the Claude process.
+  // If it exits between turns, the query pump is idle and cannot report either
+  // the crash or the work that died with it.
+  private handleRuntimeExit(
+    child: ChildProcess,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+  ): void {
+    if (this.closed || this.childProcess !== child) return;
+    this.childProcess = null;
+    this.logger.warn(
+      { agentId: this.agentId, pid: child.pid, code, signal },
+      "Claude runtime exited unexpectedly",
+    );
+    this.failRunningRuntimeTasks();
+    if (this.activeForegroundTurnId || this.autonomousTurn) {
+      // The active pump will preserve the CLI's richer stderr-backed failure.
+      return;
+    }
+    this.query = null;
+    this.input = null;
+    this.dispatchEvents([
+      this.buildTurnFailedEvent(
+        `Claude stopped unexpectedly (${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}). Any background shells, monitors or other work it had running were terminated with it.`,
+      ),
+    ]);
+  }
+
+  private failRunningRuntimeTasks(): void {
+    const events: AgentStreamEvent[] = [];
+    for (const watcher of this.workflowWatchers.values()) watcher.disarm("error");
+    this.workflowWatchers.clear();
+    this.pendingWorkflowArms.clear();
+
+    for (const key of this.announcedObservedSubagents) {
+      if (this.settledObservedSubagents.has(key)) continue;
+      this.settledObservedSubagents.add(key);
+      this.taskTranscriptWatcher.markSettled(key, "error");
+      events.push(
+        {
+          type: "provider_subagent",
+          provider: "claude",
+          event: { type: "upsert", id: key, status: "failed" },
+        },
+        {
+          type: "observed_subagent_updated",
+          provider: "claude",
+          update: { key, status: "error", requiresAttention: true },
+        },
+      );
+    }
+    for (const key of this.announcedBackgroundShellTasks) {
+      events.push({
+        type: "background_shell_task_updated",
+        provider: "claude",
+        update: { key, status: "error", requiresAttention: true },
+      });
+    }
+    this.dispatchEvents(events);
+  }
+
   private startQueryPump(): void {
     if (this.closed || this.queryPumpPromise) {
       return;
@@ -4517,11 +4629,24 @@ class ClaudeAgentSession implements AgentSession {
     );
 
     this.failActiveTurns(staleResumeError);
+    // The stale query is intentionally retired; detach before ending its input
+    // so the process exit is not surfaced as a second failure.
+    const retiredChild = this.childProcess;
+    this.childProcess = null;
+    if (retiredChild) this.failRunningRuntimeTasks();
     this.input?.end();
     await this.awaitWithTimeout(
       activeQuery.return?.(),
       "query pump return on missing resumed conversation",
     );
+    if (retiredChild) {
+      await terminateWithTreeKill(retiredChild, {
+        gracefulTimeoutMs: 2_000,
+        forceTimeoutMs: 2_000,
+      }).catch(() => {
+        /* process may already be dead */
+      });
+    }
     if (this.query === activeQuery) {
       this.query = null;
       this.input = null;
@@ -4609,7 +4734,17 @@ class ClaudeAgentSession implements AgentSession {
   ): AgentStreamEvent[] {
     const parentToolUseId = this.readObservedSubagentSidechainParent(message);
     if (parentToolUseId) {
-      const sidechainEvents = this.sidechainTracker.handleMessage(message, parentToolUseId);
+      const sidechainEvents = this.sidechainTracker
+        .handleMessage(message, parentToolUseId)
+        .filter(
+          (event) =>
+            !(
+              this.workflowObservedKeys.has(parentToolUseId) &&
+              event.type === "timeline" &&
+              event.item.type === "tool_call" &&
+              event.item.callId === parentToolUseId
+            ),
+        );
       this.appendObservedSubagentSidechainEvents(message, parentToolUseId, sidechainEvents);
       return sidechainEvents;
     }
@@ -4953,6 +5088,40 @@ class ClaudeAgentSession implements AgentSession {
       this.appendTaskStartedEvents(message, events);
       return;
     }
+    if (message.subtype === "task_updated") {
+      this.appendTaskUpdatedEvents(message, events);
+    }
+  }
+
+  private appendTaskUpdatedEvents(
+    message: Extract<SDKMessage, { type: "system"; subtype: "task_updated" }>,
+    events: AgentStreamEvent[],
+  ): void {
+    const raw = toObjectRecord(message);
+    const taskId = readObservedSubagentText(raw?.task_id);
+    const patch = toObjectRecord(raw?.patch);
+    const status = readObservedSubagentText(patch?.status);
+    const key = taskId ? this.observedKeyByTaskId.get(taskId) : undefined;
+    if (key && patch?.is_backgrounded === true) {
+      this.backgroundedProviderSubagents.add(key);
+    }
+    if (!key || !status) return;
+    const providerStatus = toProviderSubagentStatus(status);
+    if (providerStatus !== "running") {
+      this.settledObservedSubagents.add(key);
+    }
+    events.push(
+      {
+        type: "provider_subagent",
+        provider: "claude",
+        event: { type: "upsert", id: key, status: providerStatus },
+      },
+      {
+        type: "observed_subagent_updated",
+        provider: "claude",
+        update: { key, status: toObservedSubagentStatus(providerStatus) },
+      },
+    );
   }
 
   private appendTaskProgressEvents(
@@ -4988,6 +5157,8 @@ class ClaudeAgentSession implements AgentSession {
     });
   }
 
+  // The provider payload has several independent classification signals.
+  // eslint-disable-next-line complexity
   private appendTaskStartedEvents(
     message: Extract<SDKMessage, { type: "system"; subtype: "task_started" }>,
     events: AgentStreamEvent[],
@@ -5037,6 +5208,32 @@ class ClaudeAgentSession implements AgentSession {
       status: "running",
       classifiedAsSubagent: isWorkflowStart || isSubagentStart,
     });
+    const prompt = readObservedSubagentText(message.prompt);
+    const key = message.tool_use_id ?? this.observedKeyByTaskId.get(message.task_id);
+    if (prompt && key) {
+      events.push({
+        type: "provider_subagent",
+        provider: "claude",
+        event: {
+          type: "timeline",
+          id: key,
+          item: { type: "user_message", text: prompt },
+        },
+      });
+    }
+    if (isSubagentStart && !isWorkflowStart && key) {
+      const card = mapClaudeRunningToolCall({
+        name: cachedTool?.name ?? "Task",
+        callId: key,
+        input: {
+          subagent_type: message.subagent_type,
+          description: message.description,
+          prompt: message.prompt,
+        },
+        output: null,
+      });
+      if (card) events.push({ type: "timeline", provider: "claude", item: card });
+    }
   }
 
   /**
@@ -5241,6 +5438,8 @@ class ClaudeAgentSession implements AgentSession {
    * subagent tasks qualify - shell/monitor/workflow background tasks are
    * ignored. See projects/observed-subagents/observed-subagents.md.
    */
+  // Builds the two provider-neutral projections from one provider lifecycle update.
+  // eslint-disable-next-line complexity
   private appendObservedSubagentTaskEvent(
     message: Extract<SDKMessage, { type: "system" }>,
     events: AgentStreamEvent[],
@@ -5277,6 +5476,23 @@ class ClaudeAgentSession implements AgentSession {
       this.taskTranscriptWatcher.markSettled(key, input.status);
     }
     const parentKey = this.observedParentKeyByToolUseId.get(key);
+    const cachedTool = this.toolUseCache.get(key);
+    const providerStatus = toProviderSubagentStatus(input.status);
+    const providerTitle = isClaudeWorkflowToolName(cachedTool?.name)
+      ? "Workflow"
+      : (readObservedSubagentText(input.subAgentType) ?? "Agent");
+    events.push({
+      type: "provider_subagent",
+      provider: "claude",
+      event: {
+        type: "upsert",
+        id: key,
+        title: providerTitle,
+        description: readObservedSubagentText(input.description) ?? null,
+        status: providerStatus,
+        toolCallId: key,
+      },
+    });
     events.push({
       type: "observed_subagent_updated",
       provider: "claude",
@@ -5353,6 +5569,8 @@ class ClaudeAgentSession implements AgentSession {
     });
   }
 
+  // Routes terminal updates between shell tasks, subagents, and workflows.
+  // eslint-disable-next-line complexity
   private appendTaskNotificationEvents(
     message: Extract<SDKMessage, { type: "system"; subtype: "task_notification" }>,
     events: AgentStreamEvent[],
@@ -5410,6 +5628,20 @@ class ClaudeAgentSession implements AgentSession {
         // the projection drops it on a terminal row anyway.
         toolUseCount: message.usage?.tool_uses,
       });
+      const outputFile = readObservedSubagentText(toObjectRecord(message)?.output_file);
+      const workflowResult = outputFile ? readClaudeWorkflowResultFile(outputFile) : undefined;
+      const workflowKey = taskUseId ?? this.observedKeyByTaskId.get(message.task_id);
+      if (workflowKey && workflowResult) {
+        events.push({
+          type: "provider_subagent",
+          provider: "claude",
+          event: {
+            type: "timeline",
+            id: workflowKey,
+            item: { type: "assistant_message", text: workflowResult },
+          },
+        });
+      }
       // A workflow run settling here is also where its watcher tears down: do a
       // final transcript tail + run-state reconcile and settle the child rows.
       this.disarmWorkflowWatcher(
@@ -5892,6 +6124,22 @@ class ClaudeAgentSession implements AgentSession {
         }
       }
     }
+    for (const id of this.announcedObservedSubagents) {
+      if (this.settledObservedSubagents.has(id) || this.backgroundedProviderSubagents.has(id)) {
+        continue;
+      }
+      this.settledObservedSubagents.add(id);
+      this.pushEvent({
+        type: "provider_subagent",
+        provider: "claude",
+        event: { type: "upsert", id, status: "canceled" },
+      });
+      this.pushEvent({
+        type: "observed_subagent_updated",
+        provider: "claude",
+        update: { key: id, status: "closed" },
+      });
+    }
     this.toolUseCache.clear();
     this.toolUseInputEmitState.clear();
     this.sidechainTracker.clear();
@@ -5974,8 +6222,121 @@ class ClaudeAgentSession implements AgentSession {
         return;
       }
       this.ingestPersistedHistory(fs.readFileSync(historyPath, "utf8"));
+      this.ingestPersistedSubagentFiles(historyPath);
+      this.ingestPersistedWorkflowFiles(historyPath);
     } catch {
       // ignore history load failures
+    }
+  }
+
+  private ingestPersistedWorkflowFiles(historyPath: string): void {
+    const sessionRoot = historyPath.slice(0, -path.extname(historyPath).length);
+    const workflowsDir = path.join(sessionRoot, "workflows");
+    if (!fs.existsSync(workflowsDir)) return;
+    try {
+      const parentEntries = fs
+        .readFileSync(historyPath, "utf8")
+        .split(/\r?\n/)
+        .flatMap((line) => {
+          try {
+            const entry = toObjectRecord(JSON.parse(line));
+            return entry ? [entry] : [];
+          } catch {
+            return [];
+          }
+        });
+      const workflows = fs
+        .readdirSync(workflowsDir)
+        .filter((name) => name.endsWith(".json"))
+        .map((name) =>
+          parseClaudeWorkflowRun(fs.readFileSync(path.join(workflowsDir, name), "utf8")),
+        )
+        .filter((workflow) => workflow !== null);
+      const entriesByRunId = new Map<string, Record<string, unknown>[]>();
+      for (const workflow of workflows) {
+        const runDir = path.join(sessionRoot, "subagents", "workflows", workflow.runId);
+        if (!fs.existsSync(runDir)) continue;
+        const entries: Record<string, unknown>[] = [];
+        for (const name of fs.readdirSync(runDir).filter((file) => file.endsWith(".jsonl"))) {
+          entries.push(...readPersistedAssistantEntries(path.join(runDir, name)));
+        }
+        entriesByRunId.set(workflow.runId, entries);
+      }
+      const observations = observeReplayWorkflows({
+        workflows,
+        parentEntries,
+        entriesByRunId,
+        convertEntry: (entry) => this.convertHistoryEntry(entry),
+      });
+      if (observations.length > 0) {
+        this.persistedHistory = this.persistedHistory.filter(
+          (entry) => !(entry.item?.type === "tool_call" && entry.item.name === "task_notification"),
+        );
+      }
+      this.persistedProviderSubagentEvents.push(
+        ...foldSubagentObservations(observations).map((event) => ({
+          type: "provider_subagent" as const,
+          provider: "claude" as const,
+          event,
+        })),
+      );
+      this.historyPending ||= observations.length > 0;
+    } catch {
+      // Undocumented provider files fail soft; the parent transcript remains usable.
+    }
+  }
+
+  private ingestPersistedSubagentFiles(historyPath: string): void {
+    const subagentsDir = path.join(
+      historyPath.slice(0, -path.extname(historyPath).length),
+      "subagents",
+    );
+    if (!fs.existsSync(subagentsDir)) return;
+    const declared = new Map(
+      this.persistedHistory
+        .filter((entry) => entry.subagentToolUseId && entry.subagentUpsert)
+        .map((entry) => [entry.subagentToolUseId!, entry.subagentUpsert!] as const),
+    );
+    for (const metaName of fs
+      .readdirSync(subagentsDir)
+      .filter((name) => name.endsWith(".meta.json"))) {
+      try {
+        const meta = toObjectRecord(
+          JSON.parse(fs.readFileSync(path.join(subagentsDir, metaName), "utf8")),
+        );
+        const toolUseId = readObservedSubagentText(meta?.toolUseId);
+        if (!toolUseId || !declared.has(toolUseId)) continue;
+        if (typeof meta?.spawnDepth === "number" && meta.spawnDepth > 1) continue;
+        const agentId = metaName.slice("agent-".length, -".meta.json".length);
+        const transcriptPath = path.join(subagentsDir, `agent-${agentId}.jsonl`);
+        if (!fs.existsSync(transcriptPath)) continue;
+        let completed = false;
+        for (const line of fs.readFileSync(transcriptPath, "utf8").split(/\r?\n/)) {
+          if (!line.trim()) continue;
+          const entry = toObjectRecord(JSON.parse(line));
+          if (!entry) continue;
+          const timestamp = normalizeProviderReplayTimestamp(entry.timestamp);
+          for (const item of this.convertHistoryEntry(entry)) {
+            this.persistedHistory.push({
+              item,
+              timestamp: timestamp ?? undefined,
+              subagentToolUseId: toolUseId,
+            });
+          }
+          const message = toObjectRecord(entry.message);
+          completed ||= entry.type === "assistant" && message?.stop_reason === "end_turn";
+        }
+        if (completed) {
+          const identity = declared.get(toolUseId)!;
+          this.persistedHistory.push({
+            subagentToolUseId: toolUseId,
+            subagentUpsert: { ...identity, status: "completed" },
+          });
+        }
+        this.historyPending = true;
+      } catch {
+        // Undocumented provider files fail soft; the parent transcript remains usable.
+      }
     }
   }
 
@@ -6028,6 +6389,17 @@ class ClaudeAgentSession implements AgentSession {
           item,
           timestamp: sidechainTimestamp ?? undefined,
           subagentToolUseId: openRow.toolUseId,
+        });
+      }
+      const sidechainMessage = toObjectRecord(entry.message);
+      if (entry.type === "assistant" && sidechainMessage?.stop_reason === "end_turn") {
+        timeline.push({
+          subagentToolUseId: openRow.toolUseId,
+          subagentUpsert: {
+            title: openRow.title,
+            description: openRow.description,
+            status: "completed",
+          },
         });
       }
       return;

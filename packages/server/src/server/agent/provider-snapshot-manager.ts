@@ -6,15 +6,20 @@ import type { Logger } from "pino";
 
 import { expandTilde } from "../../utils/path.js";
 import { withTimeout } from "../../utils/promise-timeout.js";
-import type {
-  AgentClient,
-  AgentCreateConfigParent,
-  AgentMode,
-  AgentModelDefinition,
-  AgentProvider,
-  FetchCatalogOptions,
-  ProviderSnapshotEntry,
+import {
+  filterSelectableAgentModels,
+  type AgentClient,
+  type AgentCreateConfigParent,
+  type AgentMode,
+  type AgentModelDefinition,
+  type AgentProvider,
+  type FetchCatalogOptions,
+  type ProviderSnapshotEntry,
 } from "./agent-sdk-types.js";
+import {
+  raceProviderRefreshAbort,
+  runProviderRefreshWithDeadline,
+} from "./provider-refresh-deadline.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { WorkspaceGitService } from "../workspace-git-service.js";
 import type { ManagedProcessRegistry } from "../managed-processes/managed-processes.js";
@@ -43,8 +48,14 @@ import {
   formatProviderDiagnosticError,
 } from "./providers/diagnostic-utils.js";
 import type { MutableDaemonConfig } from "../daemon-config-store.js";
+import type { HubExecutionAgentValidationIssue } from "@otto-code/protocol/messages";
+import {
+  type AgentConfigurationValidationInput,
+  validateAgentConfigurationAgainstProvider,
+} from "./agent-configuration-validator.js";
 
-const DEFAULT_REFRESH_TIMEOUT_MS = 60_000;
+const DEFAULT_REFRESH_TIMEOUT_MS = 120_000;
+const MAX_REFRESH_TIMEOUT_MS = 2_147_483_647;
 const DEFAULT_DIAGNOSTIC_TIMEOUT_MS = 120_000;
 const REFRESH_TIMEOUT_ENV_VAR = "OTTO_PROVIDER_REFRESH_TIMEOUT_MS";
 export const GLOBAL_PROVIDER_SNAPSHOT_KEY = "otto:global";
@@ -70,14 +81,19 @@ const PROVIDER_PROBE_RETRY_AFTER_MS = 30_000;
 // `copilot --acp` invocation, OpenCode workspace probes with many MCP servers).
 // Allow operators to bump the ceiling via env var without rebuilding.
 function resolveRefreshTimeoutMs(option: number | undefined): number {
-  if (typeof option === "number" && Number.isFinite(option) && option > 0) {
+  if (
+    typeof option === "number" &&
+    Number.isSafeInteger(option) &&
+    option > 0 &&
+    option <= MAX_REFRESH_TIMEOUT_MS
+  ) {
     return option;
   }
   const fromEnv = process.env[REFRESH_TIMEOUT_ENV_VAR];
   if (fromEnv) {
     // Number() handles scientific notation (e.g. "6e4") which parseInt would silently truncate.
     const parsed = Number(fromEnv);
-    if (Number.isFinite(parsed) && parsed > 0) {
+    if (Number.isSafeInteger(parsed) && parsed > 0 && parsed <= MAX_REFRESH_TIMEOUT_MS) {
       return parsed;
     }
   }
@@ -229,7 +245,7 @@ export interface AgentManagerProviderState {
          * edits without a restart. null = resolved as unset (disabled).
          */
         actionBreaker: ProviderActionBreakerConfig | null;
-      }
+      } & Pick<ProviderDefinition, "validateOptions" | "applyOptions" | "applyToolPolicy">
     >
   >;
   clients: Partial<Record<AgentProvider, AgentClient>>;
@@ -394,6 +410,9 @@ export class ProviderSnapshotManager {
         compaction: this.providerOverrides?.[provider]?.compaction ?? null,
         maxToolRounds: this.providerOverrides?.[provider]?.maxToolRounds ?? null,
         actionBreaker: this.providerOverrides?.[provider]?.actionBreaker ?? null,
+        validateOptions: definition.validateOptions,
+        applyOptions: definition.applyOptions,
+        applyToolPolicy: definition.applyToolPolicy,
       };
       if (definition.enabled) {
         clients[provider] = this.ensureClient(provider, definition);
@@ -437,9 +456,48 @@ export class ProviderSnapshotManager {
     return entry;
   }
 
+  async validateAgentConfiguration(
+    input: AgentConfigurationValidationInput,
+  ): Promise<HubExecutionAgentValidationIssue[]> {
+    if (!this.hasProvider(input.provider)) {
+      return [
+        {
+          path: ["provider"],
+          message: `Provider '${input.provider}' is not configured`,
+        },
+      ];
+    }
+
+    const provider = await this.getProvider({
+      provider: input.provider,
+      wait: true,
+    });
+    if (!provider.enabled) {
+      return [{ path: ["provider"], message: `Provider '${input.provider}' is disabled` }];
+    }
+    if (provider.status !== "ready") {
+      return [
+        {
+          path: ["provider"],
+          message:
+            provider.status === "error" && provider.error
+              ? provider.error
+              : `Provider '${input.provider}' is not available`,
+        },
+      ];
+    }
+
+    const definition = this.requireProvider(input.provider);
+    return validateAgentConfigurationAgainstProvider({
+      input,
+      provider,
+      validateOptions: definition.validateOptions,
+    });
+  }
+
   async listModels(input: ProviderSnapshotProviderOptions): Promise<AgentModelDefinition[]> {
     const entry = await this.getReadyProvider(input);
-    return entry.models ?? [];
+    return filterSelectableAgentModels(entry.models);
   }
 
   async listModes(input: ProviderSnapshotProviderOptions): Promise<AgentMode[]> {
@@ -686,7 +744,7 @@ export class ProviderSnapshotManager {
           client.resolveCreateConfig?.bind(client) ?? definition.resolveCreateConfig,
         isCreateConfigUnattended:
           client.isCreateConfigUnattended?.bind(client) ?? definition.isCreateConfigUnattended,
-        fetchCatalog: client.fetchCatalog.bind(client),
+        fetchCatalog: (options, _client, context) => client.fetchCatalog(options, context),
       };
     }
 
@@ -1074,12 +1132,22 @@ export class ProviderSnapshotManager {
       }
 
       const client = this.ensureClient(provider, definition);
-      const available = await withTimeout(
-        client.isAvailable(),
-        this.refreshTimeoutMs,
-        `Timed out checking ${definition.label} availability after ${this.refreshTimeoutMs}ms`,
-      );
-      if (!available) {
+      const catalog = await runProviderRefreshWithDeadline({
+        label: definition.label,
+        timeoutMs: this.refreshTimeoutMs,
+        operation: async (context) => {
+          const available = await context.runActivity("availability", () =>
+            raceProviderRefreshAbort(context.signal, client.isAvailable(context.signal)),
+          );
+          if (!available) {
+            return null;
+          }
+
+          const catalogOptions = createFetchCatalogOptions(catalogScope, force);
+          return await definition.fetchCatalog(catalogOptions, client, context);
+        },
+      });
+      if (!catalog) {
         if (setEntry({ ...base, status: "unavailable", enabled: true })) {
           this.recordProbeFailure(snapshotCwd, provider);
           // This transition used to be silent, which is why a frozen provider
@@ -1091,13 +1159,6 @@ export class ProviderSnapshotManager {
         }
         return;
       }
-
-      const catalogOptions = createFetchCatalogOptions(catalogScope, force);
-      const catalog = await withTimeout(
-        definition.fetchCatalog({ ...catalogOptions, timeoutMs: this.refreshTimeoutMs }, client),
-        this.refreshTimeoutMs,
-        `Timed out refreshing ${definition.label} after ${this.refreshTimeoutMs}ms`,
-      );
 
       const emitted = setEntry({
         ...base,

@@ -13,6 +13,9 @@ const DESKTOP_SETTINGS_QUERY_KEY = ["desktop-settings"] as const;
 
 export interface DesktopSettings {
   releaseChannel: ReleaseChannel;
+  notifications: {
+    playSound: boolean;
+  };
   daemon: {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
@@ -29,6 +32,7 @@ export interface DesktopSettings {
 
 export interface DesktopSettingsPatch {
   releaseChannel?: ReleaseChannel;
+  notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
   tray?: Partial<DesktopSettings["tray"]>;
   quit?: Partial<DesktopSettings["quit"]>;
@@ -36,6 +40,9 @@ export interface DesktopSettingsPatch {
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   releaseChannel: "stable",
+  notifications: {
+    playSound: true,
+  },
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
@@ -162,12 +169,19 @@ export async function migrateLegacyDesktopSettings(input: {
 
 function parseDesktopSettings(raw: unknown): DesktopSettings {
   const record = isRecord(raw) ? raw : {};
+  const notifications = isRecord(record.notifications) ? record.notifications : {};
   const daemon = isRecord(record.daemon) ? record.daemon : {};
   const tray = isRecord(record.tray) ? record.tray : {};
   const quit = isRecord(record.quit) ? record.quit : {};
 
   return {
     releaseChannel: record.releaseChannel === "beta" ? "beta" : "stable",
+    notifications: {
+      playSound:
+        typeof notifications.playSound === "boolean"
+          ? notifications.playSound
+          : DEFAULT_DESKTOP_SETTINGS.notifications.playSound,
+    },
     daemon: {
       manageBuiltInDaemon:
         typeof daemon.manageBuiltInDaemon === "boolean"
@@ -207,6 +221,10 @@ function mergeDesktopSettings(
 ): DesktopSettings {
   return {
     releaseChannel: updates.releaseChannel ?? current.releaseChannel,
+    notifications: {
+      ...current.notifications,
+      ...updates.notifications,
+    },
     daemon: {
       ...current.daemon,
       ...updates.daemon,
@@ -225,6 +243,7 @@ function mergeDesktopSettings(
 function normalizePatch(updates: DesktopSettingsPatch): Record<string, unknown> {
   return {
     ...(updates.releaseChannel ? { releaseChannel: updates.releaseChannel } : {}),
+    ...(updates.notifications ? { notifications: updates.notifications } : {}),
     ...(updates.daemon ? { daemon: updates.daemon } : {}),
     ...(updates.tray ? { tray: updates.tray } : {}),
     ...(updates.quit ? { quit: updates.quit } : {}),

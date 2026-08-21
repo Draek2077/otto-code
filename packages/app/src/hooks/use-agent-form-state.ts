@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 import type {
   AgentMode,
@@ -9,6 +9,8 @@ import type {
 import { useHosts } from "@/runtime/host-runtime";
 import { buildProviderDefinitions } from "@/utils/provider-definitions";
 import { filterModesForModel, findModelDefinition } from "@/provider-selection/mode-support";
+import { applyAgentProfilePreferences } from "@/create-agent-preferences/preferences";
+import type { MaterializedAgentProfile } from "@/agent-profiles";
 import {
   buildSelectableProviderSelectorProviders,
   type ProviderSelectorProvider,
@@ -41,6 +43,8 @@ export type { FormInitialValues } from "@/provider-selection/resolve-agent-form"
 
 export interface UseAgentFormStateOptions {
   initialServerId?: string | null;
+  /** Canonical profile id inherited by a forked draft through the personality wire bridge. */
+  initialAgentProfileId?: string | null;
   initialValues?: FormInitialValues;
   isVisible?: boolean;
   isCreateFlow?: boolean;
@@ -49,6 +53,8 @@ export interface UseAgentFormStateOptions {
 }
 
 export interface UseAgentFormStateResult {
+  selectedAgentProfileId: string | null;
+  selectedAgentProfile: MaterializedAgentProfile | null;
   selectedServerId: string | null;
   setSelectedServerId: (value: string | null) => void;
   setSelectedServerIdFromUser: (value: string | null) => void;
@@ -79,6 +85,7 @@ export interface UseAgentFormStateResult {
   refreshProviderModels: (provider?: AgentProvider) => void;
   refetchProviderModelsIfStale: () => void;
   setProviderAndModelFromUser: (provider: AgentProvider, modelId: string) => void;
+  applyProfileFromUser: (profile: MaterializedAgentProfile) => void;
   /**
    * Apply a personality's (or the active team's holder's) resolved values. Same
    * form effect as picking the provider/model/mode/effort by hand, minus the
@@ -127,6 +134,34 @@ function resolutionIntentKeyPart(value: string | null | undefined): string {
   if (value === undefined) return "undefined";
   if (value === null) return "null";
   return value;
+}
+
+function normalizeAgentProfileId(value: string | null | undefined): string | null {
+  const normalized = value?.trim() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+function resolveAgentProfileSelection(profile: MaterializedAgentProfile): {
+  id: string | null;
+  profile: MaterializedAgentProfile | null;
+} {
+  const id = normalizeAgentProfileId(profile.id);
+  return id ? { id, profile } : { id: null, profile: null };
+}
+
+function resolveProviderModeIds(
+  provider: AgentProvider | null,
+  definitions: Map<AgentProvider, AgentProviderDefinition>,
+): string[] {
+  if (!provider) return [];
+  return definitions.get(provider)?.modes.map((mode) => mode.id) ?? [];
+}
+
+function resolveAgentDefinition(
+  provider: AgentProvider | null,
+  definitions: Map<AgentProvider, AgentProviderDefinition>,
+): AgentProviderDefinition | undefined {
+  return provider ? definitions.get(provider) : undefined;
 }
 
 function buildResolutionIntentKey(initialValues: FormInitialValues | undefined): string {
@@ -216,6 +251,7 @@ async function persistProviderPreferences(input: {
 export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAgentFormStateResult {
   const {
     initialServerId = null,
+    initialAgentProfileId = null,
     initialValues,
     isVisible = true,
     isCreateFlow = true,
@@ -223,38 +259,47 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     onlineServerIds = [],
   } = options;
 
+  const [selectedAgentProfileId, setSelectedAgentProfileId] = useState<string | null>(
+    normalizeAgentProfileId(initialAgentProfileId),
+  );
+  const [selectedAgentProfile, setSelectedAgentProfile] = useState<MaterializedAgentProfile | null>(
+    null,
+  );
+
+  const clearAgentProfileSelection = useCallback(() => {
+    setSelectedAgentProfileId(null);
+    setSelectedAgentProfile(null);
+  }, []);
+
   const { preferences, isLoading: isPreferencesLoading, updatePreferences } = useFormPreferences();
 
   const daemons = useHosts();
 
   const validServerIds = useMemo(() => new Set(daemons.map((d) => d.serverId)), [daemons]);
 
-  const [{ form: formState, userModified }, dispatch] = useReducer(
-    resolveAgentForm,
-    initialServerId,
-    (serverId) => ({
-      form: {
-        serverId,
-        provider: null,
-        modeId: "",
-        model: "",
-        thinkingOptionId: "",
-        workingDir: "",
-      },
-      userModified: INITIAL_USER_MODIFIED,
-      resolution: INITIAL_AGENT_FORM_RESOLUTION,
-    }),
-  );
+  const [reducerState, dispatch] = useReducer(resolveAgentForm, initialServerId, (serverId) => ({
+    form: {
+      serverId,
+      provider: null,
+      modeId: "",
+      model: "",
+      thinkingOptionId: "",
+      workingDir: "",
+    },
+    userModified: INITIAL_USER_MODIFIED,
+    resolution: INITIAL_AGENT_FORM_RESOLUTION,
+  }));
+  const { form: formState, userModified } = reducerState;
 
   // True while the form's model/mode/effort came from a personality or the
   // active team rather than from the user. Gates every preference write for the
   // same reason applyPersonalityValues doesn't persist - see there.
   const appliedFromPersonalityRef = useRef(false);
 
-  const reducerStateRef = useRef({ form: formState, userModified });
+  const reducerStateRef = useRef(reducerState);
   useEffect(() => {
-    reducerStateRef.current = { form: formState, userModified };
-  }, [formState, userModified]);
+    reducerStateRef.current = reducerState;
+  }, [reducerState]);
 
   useEffect(() => {
     if (!isVisible) {
@@ -421,9 +466,13 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     validServerIds,
   ]);
 
-  const setSelectedServerIdFromUser = useCallback((value: string | null) => {
-    dispatch({ type: "SET_SERVER_ID_FROM_USER", value });
-  }, []);
+  const setSelectedServerIdFromUser = useCallback(
+    (value: string | null) => {
+      clearAgentProfileSelection();
+      dispatch({ type: "SET_SERVER_ID_FROM_USER", value });
+    },
+    [clearAgentProfileSelection],
+  );
 
   const setProviderFromUser = useCallback(
     (provider: AgentProvider) => {
@@ -435,6 +484,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       const providerPrefs = preferences?.providerPreferences?.[provider];
 
       appliedFromPersonalityRef.current = false;
+      clearAgentProfileSelection();
       dispatch({
         type: "SET_PROVIDER_FROM_USER",
         provider,
@@ -446,6 +496,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     },
     [
       allProviderModels,
+      clearAgentProfileSelection,
       preferences?.providerPreferences,
       selectableProviderDefinitionMap,
       updatePreferences,
@@ -464,6 +515,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       const nextModelId = normalizedModelId || resolveDefaultModelId(providerModels);
 
       appliedFromPersonalityRef.current = false;
+      clearAgentProfileSelection();
       dispatch({
         type: "SET_PROVIDER_AND_MODEL_FROM_USER",
         provider,
@@ -484,6 +536,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     },
     [
       allProviderModels,
+      clearAgentProfileSelection,
       preferences?.providerPreferences,
       selectableProviderDefinitionMap,
       updatePreferences,
@@ -497,6 +550,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         return;
       }
       appliedFromPersonalityRef.current = true;
+      clearAgentProfileSelection();
       dispatch({
         type: "SET_PROVIDER_AND_MODEL_FROM_USER",
         provider,
@@ -513,12 +567,68 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         thinkingOptionId: values.thinkingOptionId,
       });
     },
-    [allProviderModels, preferences?.providerPreferences, selectableProviderDefinitionMap],
+    [
+      allProviderModels,
+      clearAgentProfileSelection,
+      preferences?.providerPreferences,
+      selectableProviderDefinitionMap,
+    ],
+  );
+
+  const applyProfileFromUser = useCallback(
+    (profile: MaterializedAgentProfile) => {
+      const provider = profile.provider as AgentProvider;
+      if (!selectableProviderDefinitionMap.has(provider)) {
+        return;
+      }
+      appliedFromPersonalityRef.current = false;
+      const previousProvider = reducerStateRef.current.form.provider;
+      const action = {
+        type: "APPLY_PROFILE_FROM_USER" as const,
+        provider,
+        modelId: profile.modelId,
+        modeId: profile.modeId,
+        thinkingOptionId: profile.thinkingOptionId,
+        providerDef: selectableProviderDefinitionMap.get(provider),
+        providerModels: allProviderModels.get(provider) ?? null,
+        providerPrefs: preferences?.providerPreferences?.[provider],
+      };
+      const nextState = resolveAgentForm(reducerStateRef.current, action);
+      const previousProviderModeIds = resolveProviderModeIds(
+        previousProvider,
+        providerDefinitionMap,
+      );
+
+      const selectedProfile = resolveAgentProfileSelection(profile);
+      setSelectedAgentProfileId(selectedProfile.id);
+      setSelectedAgentProfile(selectedProfile.profile);
+      dispatch(action);
+      void updatePreferences((current) =>
+        applyAgentProfilePreferences({
+          preferences: current,
+          previousProvider,
+          previousProviderModeIds,
+          provider,
+          modelId: nextState.form.model,
+          modeId: nextState.form.modeId,
+          thinkingOptionId: nextState.form.thinkingOptionId,
+          featureValues: profile.featureValues,
+        }),
+      );
+    },
+    [
+      allProviderModels,
+      preferences?.providerPreferences,
+      providerDefinitionMap,
+      selectableProviderDefinitionMap,
+      updatePreferences,
+    ],
   );
 
   const clearProviderSelectionFromUser = useCallback(() => {
+    clearAgentProfileSelection();
     dispatch({ type: "CLEAR_PROVIDER_SELECTION_FROM_USER" });
-  }, []);
+  }, [clearAgentProfileSelection]);
 
   const setModeFromUser = useCallback(
     (modeId: string) => {
@@ -544,6 +654,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   const setModelFromUser = useCallback(
     (modelId: string) => {
       appliedFromPersonalityRef.current = false;
+      clearAgentProfileSelection();
       const provider = reducerStateRef.current.form.provider;
       const normalizedModelId = normalizeSelectedModelId(modelId);
       const preferredThinkingOptionId = provider
@@ -568,7 +679,12 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         );
       }
     },
-    [availableModels, preferences?.providerPreferences, updatePreferences],
+    [
+      availableModels,
+      clearAgentProfileSelection,
+      preferences?.providerPreferences,
+      updatePreferences,
+    ],
   );
 
   const setThinkingOptionFromUser = useCallback(
@@ -634,9 +750,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     });
   }, [availableModels, formState, updatePreferences]);
 
-  const agentDefinition = formState.provider
-    ? providerDefinitionMap.get(formState.provider)
-    : undefined;
+  const agentDefinition = resolveAgentDefinition(formState.provider, providerDefinitionMap);
   const effectiveModel = resolveEffectiveModel(availableModels, formState.model);
   const availableThinkingOptionsRaw = effectiveModel?.thinkingOptions;
   const availableThinkingOptions = useMemo(
@@ -650,6 +764,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
 
   return useMemo(
     () => ({
+      selectedAgentProfileId,
+      selectedAgentProfile,
       selectedServerId: formState.serverId,
       setSelectedServerId,
       setSelectedServerIdFromUser,
@@ -680,12 +796,15 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       refreshProviderModels,
       refetchProviderModelsIfStale,
       setProviderAndModelFromUser,
+      applyProfileFromUser,
       applyPersonalityValues,
       clearProviderSelectionFromUser,
       workingDirIsEmpty,
       persistFormPreferences,
     }),
     [
+      selectedAgentProfileId,
+      selectedAgentProfile,
       formState.serverId,
       formState.provider,
       formState.modeId,
@@ -716,6 +835,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       refreshProviderModels,
       refetchProviderModelsIfStale,
       setProviderAndModelFromUser,
+      applyProfileFromUser,
       applyPersonalityValues,
       clearProviderSelectionFromUser,
       workingDirIsEmpty,

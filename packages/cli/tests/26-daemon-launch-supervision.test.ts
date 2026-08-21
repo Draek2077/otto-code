@@ -11,7 +11,13 @@ import { join } from "node:path";
 
 const repoRoot = join(import.meta.dirname, "../../..");
 const serverPackagePath = join(repoRoot, "packages/server/package.json");
-const appGlobalSetupPath = join(repoRoot, "packages/app/e2e/global-setup.ts");
+// Two app-side daemon launchers: the per-worker e2e host, and the whole-run
+// demo-capture setup that still owns its own daemon.
+const appWorkerDaemonPath = join(
+  repoRoot,
+  "packages/app/e2e/support/helpers/isolated-host-daemon.ts",
+);
+const appDemoGlobalSetupPath = join(repoRoot, "packages/app/e2e/global-setup.ts");
 const serverConnectionOfferE2ePath = join(
   repoRoot,
   "packages/server/src/server/daemon-e2e/connection-offer.e2e.test.ts",
@@ -64,13 +70,18 @@ assert(devTsxScript.includes("scripts/dev-runner.ts"), devTsxScript);
 assertNoDirectWorkerLaunch("server dev:tsx script", devTsxScript);
 console.log("✓ server package scripts enter supervisor\n");
 
-console.log("Test 2: app e2e global setup launches supervisor-entrypoint in dev mode");
-const appGlobalSetup = await readFile(appGlobalSetupPath, "utf-8");
-assert(
-  appGlobalSetup.includes('[tsxCli, "scripts/supervisor-entrypoint.ts", "--dev"]'),
-  "app e2e setup should spawn supervisor-entrypoint.ts with --dev",
-);
-assertNoSpawnedWorkerEntrypoint("app e2e global setup", appGlobalSetup);
+console.log("Test 2: app e2e daemon launchers use supervisor-entrypoint in dev mode");
+for (const [label, sourcePath] of [
+  ["app e2e worker daemon", appWorkerDaemonPath],
+  ["app demo-capture global setup", appDemoGlobalSetupPath],
+] as const) {
+  const source = await readFile(sourcePath, "utf-8");
+  assert(
+    source.includes('[tsxCli, "scripts/supervisor-entrypoint.ts", "--dev"]'),
+    `${label} should spawn supervisor-entrypoint.ts with --dev`,
+  );
+  assertNoSpawnedWorkerEntrypoint(label, source);
+}
 console.log("✓ app e2e setup enters supervisor\n");
 
 console.log("Test 3: server daemon e2e process launch enters supervisor");

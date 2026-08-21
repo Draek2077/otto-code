@@ -53,6 +53,16 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
     thinkingOptionId: z.string().nullable().optional(),
     featureValues: z.record(z.string(), z.unknown()).nullable().optional(),
     extra: z.record(z.string(), z.any()).nullable().optional(),
+    providerOptions: z.record(z.string(), z.json()).nullable().optional(),
+    toolPolicy: z
+      .object({
+        preapproved: z.array(
+          z.object({ kind: z.literal("mcp"), server: z.string(), tool: z.string() }).strict(),
+        ),
+      })
+      .strict()
+      .nullable()
+      .optional(),
     systemPrompt: z.string().nullable().optional(),
     mcpServers: z.record(z.string(), z.any()).nullable().optional(),
     personalitySnapshot: PERSONALITY_SNAPSHOT_STORAGE_SCHEMA,
@@ -120,6 +130,8 @@ export type SerializableAgentConfig = Pick<
   | "thinkingOptionId"
   | "featureValues"
   | "extra"
+  | "providerOptions"
+  | "toolPolicy"
   | "systemPrompt"
   | "mcpServers"
   | "personalitySnapshot"
@@ -236,6 +248,24 @@ export class AgentStorage {
     } catch {
       return 0;
     }
+  }
+
+  async listByProviderSession(
+    provider: string,
+    providerHandleId: string,
+  ): Promise<StoredAgentRecord[]> {
+    await this.load();
+    return Array.from(this.cache.values()).filter(
+      (record) =>
+        record.persistence?.provider === provider &&
+        (record.persistence.sessionId === providerHandleId ||
+          record.persistence.nativeHandle === providerHandleId),
+    );
+  }
+
+  async listByWorkspace(workspaceId: string): Promise<StoredAgentRecord[]> {
+    await this.load();
+    return Array.from(this.cache.values()).filter((record) => record.workspaceId === workspaceId);
   }
 
   async findByDaemonExecution(owner: DaemonAgentOwner): Promise<StoredAgentRecord | null> {

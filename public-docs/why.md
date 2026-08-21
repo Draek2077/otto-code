@@ -39,7 +39,7 @@ The mission: bring frontier-model tooling to every provider equally. Browser-ver
 ## Automation
 
 - The CLI exposes the same surface as the app. Anything in the UI is scriptable.
-- MCP server. Agents can drive Otto themselves: create worktrees, spawn other agents, open terminals, send prompts.
+- [Otto tools](/docs/orchestration). Agents can drive Otto themselves: create isolated workspaces, spawn subagents, open terminals, and send prompts.
 
 ## What it isn't
 

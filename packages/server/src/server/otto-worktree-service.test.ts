@@ -147,7 +147,7 @@ test("registers a new worktree in the existing root project after the main check
 
 // POSIX-only: Windows git worktree paths need separate canonicalization coverage.
 test.skipIf(isPlatform("win32"))(
-  "reuses an existing worktree and still upserts the workspace",
+  "creates a suffixed worktree when the preferred slug is occupied",
   async () => {
     const { repoDir, tempDir } = createGitRepo();
     cleanupPaths.push(tempDir);
@@ -179,11 +179,10 @@ test.skipIf(isPlatform("win32"))(
       deps,
     );
 
-    expect(second.created).toBe(false);
-    expect(second.worktree.worktreePath).toBe(first.worktree.worktreePath);
+    expect(second.created).toBe(true);
+    expect(second.worktree.worktreePath).not.toBe(first.worktree.worktreePath);
+    expect(path.basename(second.worktree.worktreePath)).toBe("reuse-me-1");
     expect(events).toContain(`workspace:${second.workspace.workspaceId}`);
-    // Creation never dedupes by directory: the same worktree path yields a
-    // distinct workspace record on the second call.
     expect(second.workspace.workspaceId).not.toBe(first.workspace.workspaceId);
   },
 );
@@ -724,6 +723,7 @@ test.skipIf(isPlatform("win32"))(
 
     // Recreating without pruning fails with the stale registration pinning the
     // branch - this is the case restore must heal.
+    // path — this is the case restore must heal.
     await expect(
       createWorktree({
         cwd: repoDir,
@@ -732,7 +732,7 @@ test.skipIf(isPlatform("win32"))(
         runSetup: false,
         ottoHome,
       }),
-    ).rejects.toMatchObject({ name: "BranchAlreadyCheckedOutError" });
+    ).rejects.toThrow("missing but already registered worktree");
 
     // The restore-side prune frees the stale registration; recreate then succeeds.
     execFileSync("git", ["worktree", "prune"], { cwd: repoDir, stdio: "pipe" });
@@ -777,7 +777,7 @@ test.skipIf(isPlatform("win32"))(
 );
 
 test.skipIf(isPlatform("win32"))(
-  "rejects with BranchAlreadyCheckedOutError when the kept branch is checked out elsewhere",
+  "creates a suffixed branch when the requested branch is checked out elsewhere",
   async () => {
     const { repoDir, tempDir } = createGitRepo();
     cleanupPaths.push(tempDir);
@@ -793,15 +793,16 @@ test.skipIf(isPlatform("win32"))(
     });
     expect(existsSync(first.worktreePath)).toBe(true);
 
-    await expect(
-      createWorktree({
-        cwd: repoDir,
-        worktreeSlug: "busy-branch-again",
-        source: { kind: "checkout-branch", branchName: "busy-branch" },
-        runSetup: false,
-        ottoHome,
-      }),
-    ).rejects.toMatchObject({ name: "BranchAlreadyCheckedOutError" });
+    const second = await createWorktree({
+      cwd: repoDir,
+      worktreeSlug: "busy-branch-again",
+      source: { kind: "checkout-branch", branchName: "busy-branch" },
+      runSetup: false,
+      ottoHome,
+    });
+
+    expect(second.branchName).toBe("busy-branch-1");
+    expect(existsSync(second.worktreePath)).toBe(true);
   },
 );
 

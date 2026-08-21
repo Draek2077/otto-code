@@ -18,6 +18,7 @@ function todoList(id: string, entries: TodoEntry[]): TodoListStreamItem {
     timestamp: new Date("2025-01-01T00:00:00Z"),
     provider: "claude",
     items: entries,
+    activity: { type: "created", count: entries.length },
   };
 }
 

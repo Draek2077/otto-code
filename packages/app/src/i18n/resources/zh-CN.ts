@@ -60,19 +60,37 @@ export const zhCN: TranslationResources = {
       close: "关闭菜单",
     },
     commandCenter: {
-      placeholder: "输入命令或搜索 Agent...",
+      placeholder: "搜索命令、文件、工作区和 Agent...",
+      filePlaceholder: "搜索文件...",
+      searchingFiles: "正在搜索文件...",
       noMatches: "没有匹配项",
       actions: "操作",
+      files: "文件",
+      workspaces: "工作区",
       agents: "智能体",
       newAgent: "新建对话",
       openProject: "打开项目",
       home: "首页",
-      workspaces: "工作区",
       addProject: "添加 project",
+      groupByProject: "按项目分组",
+      groupByStatus: "按状态分组",
       modelGroupLabel: "模型",
       modelSearchKeywords: "切换模型 更改模型 设置模型 选择模型",
+      thinkingGroupLabel: "思考",
+      thinkingSearchKeywords: "推理 努力 思考",
+      modeGroupLabel: "模式",
+      modeSearchKeywords: "访问 权限 批准 模式",
+      planModeGroupLabel: "计划模式",
+      planModeSearchKeywords: "计划 规划 计划模式",
+      fastModeGroupLabel: "快速",
+      fastModeSearchKeywords: "快速 速度 低延迟",
+      settingOn: "开",
+      settingOff: "关",
     },
   },
+  // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
+  // context-window occupancy - see docs/glossary.md; the two must not be
+  // described with each other's words anywhere in this block.
   chatMetrics: {
     tokensIn: "输入 token（含缓存读取）",
     tokensOut: "输出 token",
@@ -83,7 +101,6 @@ export const zhCN: TranslationResources = {
     subagentsHint: "此对话中的子智能体（运行中 / 总数）。",
     toolCallsHint: "此对话的子智能体发起的工具调用次数。",
   },
-
   composer: {
     followSuggestion: {
       active: "正在采用助手建议的提示词。已发送 {{sent}} / {{max}} 条。",
@@ -112,9 +129,11 @@ export const zhCN: TranslationResources = {
       desktop: "给 Agent 发消息，标记 @files，或使用 /commands 和 /skills",
       mobile: "发消息，@files，/commands",
       fallback: "输入消息...",
+      terminal: "Prompt",
     },
     input: {
       accessibilityLabel: "给 Agent 发消息...",
+      terminalAccessibilityLabel: "Terminal prompt",
       focusHint: "{{shortcut}} 聚焦",
       addAttachment: "添加附件",
       interruptAgent: "中断 Agent",
@@ -146,6 +165,7 @@ export const zhCN: TranslationResources = {
     },
     attachments: {
       addImage: "上传图片",
+      pasteImage: "粘贴图片",
       addFile: "上传文件",
       addFolder: "添加文件夹",
       addIssueOrPr: "添加 issue 或 PR",
@@ -182,17 +202,13 @@ export const zhCN: TranslationResources = {
       initialPromptRequired: "初始 prompt 必填",
       alreadyLoading: "正在加载",
       uploadFailed: "文件上传失败",
+      noClipboardImage: "剪贴板中没有图片",
+      pasteImageFailed: "无法粘贴图片",
       fileTooLarge: "{{fileName}} 太大（上限 {{size}}）",
     },
     clientCommands: {
       archiveAgent: "归档当前 Agent",
       freshDraft: "归档此 Agent 并开始新的草稿",
-    },
-    folder: {
-      searching: "正在搜索...",
-      noResults: "没有找到文件夹。",
-      searchPlaceholder: "搜索文件夹...",
-      title: "附加文件夹",
     },
     github: {
       searching: "正在搜索...",
@@ -201,6 +217,12 @@ export const zhCN: TranslationResources = {
       title: "附加 issue 或 PR",
       searchPlaceholder_mr: "搜索 issues 和 MRs...",
       title_mr: "附加 issue 或 MR",
+    },
+    folder: {
+      searching: "正在搜索...",
+      noResults: "没有找到文件夹。",
+      searchPlaceholder: "搜索文件夹...",
+      title: "附加文件夹",
     },
     interruptSubagentsWarning: {
       title: "中断正在运行的子智能体？",
@@ -227,6 +249,8 @@ export const zhCN: TranslationResources = {
       lessons_one: "已记住 {{count}} 条经验",
       lessons_other: "已记住 {{count}} 条经验",
     },
+    // What one personality has learned, and the exact text injected because of
+    // it. See docs/agent-personalities.md § Memory.
     memory: {
       noPersonality:
         "在上方选择一个人格，即可看到它学到了什么，以及这些内容会为它的每次请求增加什么。",
@@ -251,6 +275,10 @@ export const zhCN: TranslationResources = {
       scope: {
         global: "所有地方",
         project: "此项目",
+        // A project-scoped lesson recorded somewhere else, and one bound to no
+        // project at all. Both are stored and listed but reach nothing here, so
+        // the row has to say so - otherwise an empty brief above a list of
+        // lessons looks broken.
         elsewhere: "其他项目",
         unattached: "未绑定项目-永不发送",
         change: "范围：{{scope}}。点按可更改。",
@@ -330,6 +358,8 @@ export const zhCN: TranslationResources = {
     category: {
       contextFiles: "上下文文件",
       memoryIndex: "记忆索引",
+      // Covers subagent definitions too: both are advertised to the model as a
+      // name plus a description, and both are trimmed the same way.
       skillsRoster: "技能与子代理",
       mcpTools: "MCP 工具",
       ottoInjected: "Otto 提示词",
@@ -421,6 +451,7 @@ export const zhCN: TranslationResources = {
         usedTools: "使用了 {{count}} 个工具",
       },
     },
+    historyLoadFailed: "无法加载智能体历史记录",
     permission: {
       plan: "计划",
       required: "需要权限",
@@ -479,11 +510,20 @@ export const zhCN: TranslationResources = {
       lastActive: "Last active",
       size: "Size",
     },
+    noMatches: "没有匹配的会话",
+    tooManyMatches: "匹配过多：请缩小搜索范围",
+    hostLoadFailed: "{{host}}：无法加载历史",
     actions: {
       loadMore: "加载更多",
       clearArchived: "清空归档",
       clearingArchived: "正在清空…",
+      clearSearch: "清除搜索",
     },
+    // The destructive-delete copy. It says the same two things everywhere and has
+    // to: deleting in Otto removes *Otto's record*, never the agent provider's own
+    // transcript on the host. Consent to an irreversible action you were told the
+    // wrong shape of is not consent, so this is translated like any other
+    // confirmation text - see history/delete-dialogs.ts.
     dialogs: {
       deleteAgent: {
         title: "删除此对话？",
@@ -552,6 +592,14 @@ export const zhCN: TranslationResources = {
     },
   },
   message: {
+    diagram: {
+      diagram: "图表",
+      zoomIn: "放大",
+      zoomOut: "缩小",
+      resetZoom: "重置视图",
+      viewSource: "查看源码",
+      viewDiagram: "查看图表",
+    },
     actions: {
       copyCode: "复制代码",
       copyTurn: "复制回合",
@@ -570,7 +618,10 @@ export const zhCN: TranslationResources = {
       navigateToFolder: "导航到文件夹",
       copied: "已复制",
     },
-    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
+    expandCollapse: {
+      expandAll: "Expand all",
+      collapseAll: "Collapse all",
+    },
     attachments: {
       dismissImage: "关闭图片",
       closeImage: "关闭图片",
@@ -614,6 +665,15 @@ export const zhCN: TranslationResources = {
       empty: "还没有任务。",
       progress: "{{completed}}/{{total}}",
       dismiss: "关闭",
+      tasksProgress: "{{completed}}/{{total}} 项任务",
+      tasksProgressCurrent: "{{completed}}/{{total}} 项任务 · {{task}}",
+      activity: {
+        created: "已创建 {{count}} 项任务",
+        added: "已添加",
+        started: "已开始",
+        completed: "已完成",
+        reopened: "已重新打开",
+      },
     },
     compaction: {
       loading: "正在压缩...",
@@ -695,6 +755,8 @@ export const zhCN: TranslationResources = {
       copyBranchName: "复制分支名称",
       copied: "已复制",
     },
+    // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
+    // appear on screen at once. See docs/glossary.md.
     solution: {
       lens: {
         files: "文件",
@@ -776,6 +838,15 @@ export const zhCN: TranslationResources = {
         failedToListDirectory: "列出目录失败",
         alreadyExists: "“{{name}}”已存在。",
         noLongerExists: "该项目已不在磁盘上。",
+        createFailed: "创建条目失败",
+        renameFailed: "重命名条目失败",
+        duplicateFailed: "复制条目失败",
+        revealFailed: "显示条目失败",
+        deleteFailed: "删除条目失败",
+      },
+      draft: {
+        filePlaceholder: "文件名",
+        folderPlaceholder: "文件夹名称",
       },
     },
     setup: {
@@ -870,6 +941,7 @@ export const zhCN: TranslationResources = {
     },
     terminal: {
       hostDisconnected: "Host 未连接",
+      updateHost: "请更新主机以使用原生终端渲染器。",
       unableToSubscribe: "无法订阅 Terminal",
     },
     visualizer: {
@@ -977,6 +1049,7 @@ export const zhCN: TranslationResources = {
         reloadedAgent: "已重新加载 Agent",
         failedToReloadAgent: "重新加载 Agent 失败",
         terminalIdCopiedLabel: "Terminal ID",
+        failedToCloseAgent: "关闭 Agent 失败",
       },
       confirmations: {
         close: "关闭",
@@ -1399,6 +1472,14 @@ export const zhCN: TranslationResources = {
           viewPullRequest: "查看",
           openOn: "在 {{brand}} 上打开",
         },
+        checksSummary: {
+          passedLabel: "通过",
+          failedLabel: "失败",
+          runningLabel: "运行中",
+          passedAccessible: "检查通过",
+          failedAccessible: "检查失败",
+          runningAccessible: "检查运行中",
+        },
         sections: {
           checks: "检查",
           reviews: "评审",
@@ -1449,12 +1530,67 @@ export const zhCN: TranslationResources = {
       navigateToFile: "导航到文件",
       navigateToChanges: "导航到更改",
       copyPath: "复制路径",
+      copyRelativePath: "复制相对路径",
+      revealIn: "在 {{target}} 中显示",
       download: "下载",
-      addToChat: "添加到聊天…",
+      addToChat: "添加到聊天",
       moreActions: "更多操作",
+      newFile: "新建文件",
+      newFolder: "新建文件夹",
+      collapseFolder: "折叠文件夹",
+      rename: "重命名",
+      duplicate: "复制",
+      revert: "放弃更改",
+      delete: "删除",
+      confirmDelete: {
+        fileTitle: "删除文件？",
+        folderTitle: "删除文件夹？",
+        message: "“{{name}}”将被永久删除。",
+        confirm: "删除",
+        cancel: "取消",
+      },
+      confirmRevert: {
+        title: "放弃更改？",
+        message: "对“{{name}}”的更改将被永久放弃。",
+        confirm: "放弃",
+        cancel: "取消",
+        failed: "放弃更改失败",
+      },
     },
   },
   sidebar: {
+    display: {
+      trigger: "显示偏好",
+      heading: "显示",
+      grouping: {
+        label: "分组",
+        project: "项目",
+        status: "状态",
+      },
+      titleSource: {
+        label: "标题",
+        title: "标题",
+        branch: "分支名称",
+      },
+      show: {
+        label: "显示",
+        host: "主机",
+        changeRequest: "拉取请求",
+        checks: "检查",
+        services: "服务",
+        diff: "差异统计",
+        timestamp: "最近活动",
+      },
+      checks: {
+        iconAndText: "图标和文字",
+        icon: "仅图标",
+        none: "隐藏",
+      },
+      hostFilter: {
+        label: "主机",
+        all: "所有主机",
+      },
+    },
     host: {
       noHost: "没有 Host",
       switchTitle: "切换 Host",
@@ -1507,7 +1643,8 @@ export const zhCN: TranslationResources = {
     },
     workspace: {
       status: {
-        scriptsAvailable: "有可用 scripts",
+        serviceRunning: "服务 {{name}} 运行中",
+        serviceUnhealthy: "服务 {{name}} 异常",
         creating: "正在创建...",
       },
       actions: {
@@ -1570,7 +1707,7 @@ export const zhCN: TranslationResources = {
       discord: "Discord",
       github: "创建 GitHub Issue",
       whatsNew: "新功能",
-      version: "Otto {{version}}",
+      appName: "Otto",
     },
   },
   newProject: {
@@ -1669,8 +1806,8 @@ export const zhCN: TranslationResources = {
       scaffold_unsupported: "请更新主机以创建项目。",
     },
     errors: {
-      alreadyAdded: "该文件夹已经是一个项目：{{path}}",
       failed: "无法创建项目。",
+      alreadyAdded: "该文件夹已经是一个项目：{{path}}",
     },
     actions: {
       open: "打开项目",
@@ -1704,9 +1841,15 @@ export const zhCN: TranslationResources = {
       openExisting: "打开",
       createWorktree: "创建 worktree",
     },
+    tooltips: {
+      project: "Choose the project",
+      host: "Choose the host",
+      isolation: "Choose the isolation level",
+      startingRef: "选择起始位置",
+      launch: "Choose what to launch",
+    },
     refPicker: {
       startingRef: "起始 ref",
-      chooseStart: "选择起始位置",
       checkoutHint: "检出 PR #{{number}}？",
       checkoutPr: "检出 PR #{{number}}",
       dismissCheckoutHint: "忽略检出 PR #{{number}} 的提示",
@@ -1715,6 +1858,15 @@ export const zhCN: TranslationResources = {
       noMatchingRefs: "没有匹配的 refs。",
       searchPlaceholder: "搜索分支和 PR",
       title: "起始位置",
+    },
+    launch: {
+      title: "What to launch",
+      chat: "Chat",
+      terminal: "Terminal",
+      manageProfiles: "Manage profiles",
+      submit: "Launch",
+      promptPlaceholder: "Prompt {{name}}",
+      commandPlaceholder: "Run a command, or leave empty for a blank terminal",
     },
   },
   desktop: {
@@ -1898,11 +2050,11 @@ export const zhCN: TranslationResources = {
         installFailed: "无法安装编排 skills。",
         updateFailed: "无法更新编排 skills。",
         uninstallFailed: "无法卸载编排 skills。",
+        saveSelectionFailed: "无法保存编排 skills 的选择。",
       },
     },
   },
   rootError: {
-    kicker: "出现问题",
     title: "Otto 遇到了问题。",
     body: "请重试以重新加载应用。如果问题持续发生，请在报告时附上下面的详细信息。",
     details: "详情",
@@ -2170,6 +2322,11 @@ export const zhCN: TranslationResources = {
       settings: "设置",
     },
   },
+  // The first-run setup wizard. The blueprint names below are also the names the
+  // generated teams are saved under, so the card and the installed team always
+  // agree. What stays English is what the model reads, not what the user does:
+  // the team prompts, functional cores and persona names in
+  // screens/setup-wizard/presets/ are agent input.
   setupWizard: {
     chrome: {
       skip: "跳过设置",
@@ -2293,11 +2450,18 @@ export const zhCN: TranslationResources = {
     favorites: "收藏",
     favoriteModel: "收藏模型",
     unfavoriteModel: "取消收藏模型",
+    profiles: "配置文件",
+    providers: "提供方",
+    editProfiles: "编辑",
+    editProfilesLabel: "编辑智能体配置文件",
+    createProfile: "创建配置文件",
     modelCount: "{{count}} 个模型",
     modelCountPlural: "{{count}} 个模型",
     retry: "重试",
     retrying: "正在重试...",
     noMatches: "没有匹配的模型",
+    noMatchesForQuery: "没有与“{{query}}”匹配的模型",
+    searchAllPlaceholder: "搜索所有模型...",
     searchPlaceholder: "搜索模型...",
     openProviderSettings: "打开 {{provider}} 设置",
   },
@@ -2426,9 +2590,20 @@ export const zhCN: TranslationResources = {
       loadingOffer: "正在加载配对 offer...",
       failedToLoadOffer: "加载配对 offer 失败。",
       relayDisabled: "Relay 未启用。启用 relay 后才能配对设备。",
+      enableTitle: "启用中继？",
+      enableDescription: "中继让此设备可以从任何地方连接。配对流量采用端到端加密。",
+      relayDocs: "中继如何工作",
+      relayDocsAccessibility: "阅读 Otto 中继的工作原理",
+      enableRelay: "启用中继",
+      enablingRelay: "正在启用...",
+      notNow: "暂不",
+      directConnectionHint:
+        "不使用中继时，请通过 TCP、Tailscale 或其他 VPN 直接连接。不会生成二维码。",
+      updateRequired: "请更新主机，以便从 Otto Desktop 启用中继。",
       unavailable: "配对 offer 不可用。",
       hint: "用手机上的 Otto 扫描此二维码，或复制下方链接。",
       qrUnavailable: "二维码不可用。",
+      qrAccessibility: "配对二维码",
       retry: "重试",
       copy: "复制",
       copied: "已复制",
@@ -2473,6 +2648,45 @@ export const zhCN: TranslationResources = {
   },
   menu: {
     backdrop: "菜单背景",
+  },
+  subagents: {
+    detachAction: "分离 {{label}}",
+    detachTooltip: "分离 subagent",
+    archiveAction: "归档 {{label}}",
+    archiveTooltip: "归档 subagent",
+    stopAction: "停止 {{label}}",
+    stopTooltip: "停止 subagent",
+    completedGroup: "已完成 ({{count}})",
+    clearCompleted: "全部清除",
+    clearCompletedTooltip: "归档所有已完成的 subagent",
+    stopNothingRunning: "子代理未在运行，没有可停止的任务。",
+    daemonUnavailable: "守护进程不可用",
+    dialogs: {
+      subjectFallback: "此子 Agent",
+      subjectFallbackCapitalized: "此子 Agent",
+      archive: {
+        titleRunning: "归档正在运行的子 Agent？",
+        title: "归档子 Agent？",
+        messageRunning: "{{subject}}仍在运行。归档它会停止该子 Agent 并将其从轨道中移除。",
+        message: "把{{subject}}从轨道中移除。该子 Agent 将被归档。",
+        confirm: "归档",
+      },
+      detach: {
+        title: "分离子 Agent？",
+        message: "{{subject}}将离开此轨道，并作为独立 Agent 继续运行。",
+        confirm: "分离",
+      },
+      clearCompleted: {
+        titleOne: "清理已完成的子 Agent？",
+        titleMany: "清理 {{count}} 个已完成的子 Agent？",
+        messageOne: "归档 1 个已完成的子 Agent 并将其从轨道中移除。正在运行的子 Agent 不受影响。",
+        messageMany:
+          "归档 {{count}} 个已完成的子 Agent 并将它们从轨道中移除。正在运行的子 Agent 不受影响。",
+        confirm: "清理",
+      },
+    },
+    archiveFinishedAction: "归档已完成的 subagent",
+    archiveFinishedTooltip: "归档已完成项",
   },
   observedSubagents: {
     readOnlyTitle: "受观察的子智能体 · 只读",
@@ -2625,6 +2839,10 @@ export const zhCN: TranslationResources = {
     saveFirst: "请先保存或还原你的更改-润色基于磁盘上的文件进行。",
     compactOpen: "用 AI 压缩",
     unsupported: "升级 Host 后即可使用润色。",
+    // The job the tab presents itself as: a tab opened from "Compact with AI"
+    // must not call itself "Refine". Used as the tab title, the run button and
+    // inside the idle note, so it has to be a standalone noun/verb in every
+    // locale.
     job: {
       refine: "润色",
       compact: "压缩",
@@ -2797,45 +3015,6 @@ export const zhCN: TranslationResources = {
     removeLineFromContext: "从对话中移除第 {{line}} 行",
     error: "搜索失败",
   },
-  subagents: {
-    detachAction: "分离 {{label}}",
-    detachTooltip: "分离 subagent",
-    archiveAction: "归档 {{label}}",
-    archiveTooltip: "归档 subagent",
-    stopAction: "停止 {{label}}",
-    stopTooltip: "停止 subagent",
-    completedGroup: "已完成 ({{count}})",
-    clearCompleted: "全部清除",
-    clearCompletedTooltip: "归档所有已完成的 subagent",
-    stopNothingRunning: "子代理未在运行，没有可停止的任务。",
-    daemonUnavailable: "守护进程不可用",
-    dialogs: {
-      subjectFallback: "此子 Agent",
-      subjectFallbackCapitalized: "此子 Agent",
-      archive: {
-        titleRunning: "归档正在运行的子 Agent？",
-        title: "归档子 Agent？",
-        messageRunning: "{{subject}}仍在运行。归档它会停止该子 Agent 并将其从轨道中移除。",
-        message: "把{{subject}}从轨道中移除。该子 Agent 将被归档。",
-        confirm: "归档",
-      },
-      detach: {
-        title: "分离子 Agent？",
-        message: "{{subject}}将离开此轨道，并作为独立 Agent 继续运行。",
-        confirm: "分离",
-      },
-      clearCompleted: {
-        titleOne: "清理已完成的子 Agent？",
-        titleMany: "清理 {{count}} 个已完成的子 Agent？",
-        messageOne: "归档 1 个已完成的子 Agent 并将其从轨道中移除。正在运行的子 Agent 不受影响。",
-        messageMany:
-          "归档 {{count}} 个已完成的子 Agent 并将它们从轨道中移除。正在运行的子 Agent 不受影响。",
-        confirm: "清理",
-      },
-    },
-    archiveFinishedAction: "归档已完成的 subagent",
-    archiveFinishedTooltip: "归档已完成项",
-  },
   panels: {
     draft: {
       newAgent: "新建对话",
@@ -2870,7 +3049,9 @@ export const zhCN: TranslationResources = {
         cursor: "第 {{line}} 行，第 {{column}} 列",
         preview: "预览",
         source: "源代码",
-        unavailableTitle: "磁盘上的文件不可用",
+        deletedTitle: "文件已从磁盘删除",
+        checkFailedTitle: "无法检查磁盘上的文件",
+        preservedDescription: "打开的副本已保留。",
         conflictDescription: "本地内容已保留。请选择要保留的版本。",
         overwrite: "覆盖",
         reload: "重新加载",
@@ -2897,8 +3078,6 @@ export const zhCN: TranslationResources = {
     input: "输入",
     output: "输出",
   },
-  // Tool-call group summaries are literal English pending the pre-release i18n
-  // sweep, like the Refine tab strings above.
   toolCallGroup: {
     editedFiles: {
       one: "edited {{count}} file",
@@ -2999,18 +3178,36 @@ export const zhCN: TranslationResources = {
       appearance: "外观",
       shortcuts: "快捷键",
       integrations: "集成",
+      notifications: "通知",
       permissions: "权限",
       diagnostics: "诊断",
       about: "关于",
       editor: "编辑器",
     },
+    notifications: {
+      title: "通知",
+      permission: "通知权限",
+      refreshAccessibility: "刷新通知权限",
+      playSound: "播放声音",
+      playSoundHint: "收到桌面通知时播放声音",
+      test: "测试通知",
+      testHint: "使用当前设置发送测试通知",
+      permissionRequired: "测试前请允许访问通知",
+      send: "发送",
+      sending: "正在发送...",
+      sentTitle: "测试通知已发送",
+      sentDescription: "Otto 已将通知交给操作系统。",
+      sendFailedTitle: "无法发送测试通知",
+    },
     hostSections: {
+      projects: "项目",
       connections: "连接",
       agents: "智能体",
       teams: "团队",
       tools: "工具",
       code: "代码",
       brain: "大脑",
+      metadata: "元数据",
       workspaces: "Workspaces",
       gitProviders: "Git 提供商",
       providers: "提供方",
@@ -3018,6 +3215,19 @@ export const zhCN: TranslationResources = {
       storage: "存储",
       terminals: "终端",
       host: "概览",
+    },
+    metadataGeneration: {
+      title: "元数据生成",
+      description: "选择 Otto 用于工作区标题、分支名称、提交消息和拉取请求草稿的模型",
+      selection: "模型选择",
+      automatic: "自动",
+      preferred: "手动",
+      automaticHint: "Otto 会选择一个可用的快速模型",
+      preferredHint: "选择 Otto 使用的模型",
+      model: "模型",
+      fallbackHint: "如果不可用，Otto 会改用其他可用模型",
+      docs: "文档",
+      saveError: "无法更新元数据生成设置",
     },
     general: {
       title: "通用",
@@ -3030,6 +3240,15 @@ export const zhCN: TranslationResources = {
         options: {
           interrupt: "中断",
           queue: "排队",
+        },
+      },
+      toolCallDetail: {
+        label: "工具调用显示",
+        description: "工具调用在时间线中的显示方式",
+        accessibilityLabel: "选择工具调用显示方式（{{value}}）",
+        options: {
+          overview: "摘要",
+          detailed: "完整详情",
         },
       },
       interfaceMode: {
@@ -3108,6 +3327,7 @@ export const zhCN: TranslationResources = {
           es: "Español",
           fr: "Français",
           ja: "日本語",
+          ko: "한국어",
           ptBR: "Português brasileiro",
           ru: "Русский",
           zhCN: "简体中文",
@@ -3128,15 +3348,6 @@ export const zhCN: TranslationResources = {
         label: "始终展开推理过程",
         description: "默认情况下完全展开 AI 的思考和推理过程",
       },
-      toolCallDetail: {
-        label: "工具调用显示",
-        description: "工具调用在时间线中的显示方式",
-        accessibilityLabel: "选择工具调用显示方式（{{value}}）",
-        options: {
-          overview: "摘要",
-          detailed: "完整详情",
-        },
-      },
     },
     preview: {
       title: "预览",
@@ -3148,6 +3359,11 @@ export const zhCN: TranslationResources = {
     },
     diagnostics: {
       title: "诊断",
+      legacyTerminalRenderer: {
+        label: "使用旧版终端渲染器",
+        description: "重新打开终端后使用之前的 WebView 终端",
+        accessibilityLabel: "使用旧版终端渲染器",
+      },
       testAudio: "测试音频",
       playTest: "播放测试",
       playing: "正在播放...",
@@ -3233,6 +3449,7 @@ export const zhCN: TranslationResources = {
           horizon: "地平线",
           powder: "粉霜",
           light: "Light",
+          pureBlack: "纯黑",
           auto: "系统",
         },
       },
@@ -3347,6 +3564,10 @@ export const zhCN: TranslationResources = {
           accessibilityLabel: "成本浮层",
         },
       },
+      chatOutline: {
+        title: "聊天大纲",
+        description: "显示用于在提示词之间跳转的大纲",
+      },
       fonts: {
         title: "字体",
         systemDefault: "系统默认",
@@ -3378,20 +3599,26 @@ export const zhCN: TranslationResources = {
       dialogTitle: "快捷键",
       unavailableOnMobile: "键盘快捷键仅在桌面端可用",
       capturePrompt: "按下快捷键...",
+      unassigned: "未设置",
       actions: {
+        menu: "{{name}} 的操作",
         done: "完成",
         cancel: "取消",
+        bind: "绑定",
         rebind: "重新绑定",
-        reset: "重置",
+        clear: "清除",
+        reset: "重置为默认",
         resetAll: "全部重置",
       },
       sections: {
-        navigation: "导航",
+        general: "通用",
+        workspaces: "项目和工作区",
         tabsPanes: "标签和窗格",
         projects: "项目",
         panels: "面板",
         editor: "文件编辑器",
         markdownEditor: "Markdown 编辑器",
+        layout: "布局",
         agentInput: "Agent 输入",
       },
       help: {
@@ -3419,6 +3646,7 @@ export const zhCN: TranslationResources = {
         moveTabDown: "向下移动标签",
         closePane: "关闭窗格",
         newTerminal: "新建终端",
+        searchFiles: "搜索文件",
         toggleCommandCenter: "切换命令中心",
         showKeyboardShortcuts: "显示键盘快捷键",
         toggleLeftSidebar: "切换左侧边栏",
@@ -3460,7 +3688,6 @@ export const zhCN: TranslationResources = {
         showKeyboardShortcuts: "焦点不在文本输入框或终端内时可用。",
       },
       searchPlaceholder: "搜索快捷键",
-      // Literal English pending the pre-release i18n sweep.
       searchEmpty: "No shortcuts match that search",
     },
     integrations: {
@@ -3483,6 +3710,15 @@ export const zhCN: TranslationResources = {
         updateFallback: "将内置 skills 同步到你的机器。",
         uninstallTitle: "卸载 Otto skills？",
         uninstallMessage: "会从 ~/.agents、~/.claude、~/.codex 移除所有 Otto 编排 skills。",
+        choose: "选择 skills",
+        chooseAll: "全部 skills",
+        chooseAllHint: "保持安装所有内置 skills，包括以后新增的。",
+        chooseList: "内置 skills",
+        chooseEmpty: "此版本未内置 skills。",
+        removeTitle: "移除取消勾选的 skills？",
+        removeMessage:
+          "将从 ~/.agents、~/.claude、~/.codex 中删除 {{skills}}。你在这些 skill 文件夹里添加的内容也会一并删除。",
+        saveFailed: "无法保存你的 skills 选择。",
       },
       actions: {
         install: "安装",
@@ -3490,7 +3726,10 @@ export const zhCN: TranslationResources = {
         installed: "已安装",
         update: "更新",
         working: "处理中...",
+        remove: "移除",
         uninstall: "卸载",
+        save: "保存",
+        saving: "正在保存...",
       },
       operations: {
         add: "添加 skill",
@@ -3500,20 +3739,52 @@ export const zhCN: TranslationResources = {
     },
     permissions: {
       title: "权限",
-      notifications: "通知",
       microphone: "麦克风",
       refresh: "刷新",
       refreshing: "正在刷新...",
       refreshAccessibility: "刷新桌面端权限",
-      test: "测试",
       actions: {
         granted: "已授权",
         request: "请求",
         requesting: "正在请求...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {
+      appearance: {
+        title: "外观",
+        name: {
+          label: "名称",
+        },
+        color: {
+          label: "颜色",
+          accessibilityLabel: "颜色，{{value}}",
+          options: {
+            none: "默认",
+            violet: "紫罗兰",
+            sky: "天蓝",
+            emerald: "翠绿",
+            orange: "橙色",
+            pink: "粉色",
+            indigo: "靛蓝",
+            teal: "青色",
+            red: "红色",
+            amber: "琥珀",
+            blue: "蓝色",
+          },
+        },
+        badge: {
+          label: "侧边栏徽章",
+          accessibilityLabel: "侧边栏徽章，{{value}}",
+          options: {
+            name: "名称",
+            icon: "仅图标",
+            hidden: "隐藏",
+          },
+        },
+        preview: {
+          workspaceName: "my-workspace",
+        },
+      },
       notFound: "Host 未找到",
       badges: {
         relay: "中继",
@@ -3736,6 +4007,42 @@ export const zhCN: TranslationResources = {
         save: "保存",
         emptyState: "尚无配置。添加一个即可用指定命令启动终端。",
       },
+      agentProfiles: {
+        sectionTitle: "Agent 配置",
+        unavailable: "连接到这个 Host 以管理 Agent 配置",
+        unsupported: "此 Host 运行的 Daemon 尚不支持 Agent 配置",
+        emptyState: "还没有配置。添加一个以便使用保存的 Provider 和 Model 启动 Agent。",
+        addProfileTitle: "添加 Agent 配置",
+        newProfile: "新建配置",
+        editProfile: "编辑配置",
+        editProfileTitle: "编辑 Agent 配置",
+        nameLabel: "名称",
+        namePlaceholder: "UI 工作",
+        iconLabel: "图标",
+        noIcon: "无",
+        providerLabel: "Provider",
+        providerPlaceholder: "选择一个 Provider",
+        noProviders: "此 Host 上没有可用的 Provider",
+        modelLabel: "Model",
+        noModels: "此 Provider 没有可选择的 Model",
+        modeLabel: "Mode",
+        noModes: "此 Provider 没有可选择的 Mode",
+        thinkingLabel: "Thinking",
+        noThinkingOptions: "此 Model 没有 Thinking 级别",
+        featuresLabel: "Features",
+        featureCount: "{{count}} 个 Feature",
+        featureCountOne: "{{count}} 个 Feature",
+        notesLabel: "给 Agent 的说明",
+        notesPlaceholder: "用于 UI 工作：组件、布局和设计 token。",
+        notesHint: "由 list_profiles MCP 工具返回。请将其写成给另一个 Agent 的指令。",
+        save: "保存",
+        saving: "保存中...",
+        remove: "移除",
+        removeConfirmTitle: "移除配置？",
+        removeConfirmMessage: "移除「{{name}}」？",
+        moveUp: "上移",
+        moveDown: "下移",
+      },
       daemon: {
         rename: {
           editLabel: "编辑标签",
@@ -3815,24 +4122,6 @@ export const zhCN: TranslationResources = {
         notInstalled: "未安装",
         requiresBase: "需要 {{name}}",
       },
-      tools: {
-        title: "Otto 工具",
-        description: "此模型可使用的工具组。取消选中某个组即可对模型隐藏。",
-        globallyDisabled: "已在全局设置中禁用",
-        saved: "工具设置已保存",
-        saveFailed: "无法保存工具设置",
-        groups: {
-          preview: "预览服务器",
-          browser: "浏览器控制",
-          web: "网页搜索",
-          agents: "代理管理",
-          terminals: "终端",
-          schedules: "计划任务",
-          artifacts: "产物",
-          widgets: "小组件",
-          workspace: "工作区",
-        },
-      },
       tabs: {
         models: "模型",
         connection: "连接",
@@ -3879,6 +4168,24 @@ export const zhCN: TranslationResources = {
         savedNoKey: "已保存的端点 · 无 API 密钥",
         forget: "忘记此端点",
         forgot: "已忘记该端点",
+      },
+      tools: {
+        title: "Otto 工具",
+        description: "此模型可使用的工具组。取消选中某个组即可对模型隐藏。",
+        globallyDisabled: "已在全局设置中禁用",
+        saved: "工具设置已保存",
+        saveFailed: "无法保存工具设置",
+        groups: {
+          preview: "预览服务器",
+          browser: "浏览器控制",
+          web: "网页搜索",
+          agents: "代理管理",
+          terminals: "终端",
+          schedules: "计划任务",
+          artifacts: "产物",
+          widgets: "小组件",
+          workspace: "工作区",
+        },
       },
       remove: {
         button: "移除 Provider",
@@ -3934,7 +4241,7 @@ export const zhCN: TranslationResources = {
       },
     },
     project: {
-      noEditableTarget: "任何已连接 Host 上都没有这个 Project 的可编辑副本。",
+      noEditableTarget: "此项目无法在这个 Host 上编辑。",
       backToProjects: "返回 Projects",
       switchHost: "切换 Host",
       rename: {
@@ -3946,6 +4253,17 @@ export const zhCN: TranslationResources = {
         saveLabel: "保存 Project 名称",
         cancelLabel: "取消重命名",
         reset: "重置",
+      },
+      edit: {
+        title: "编辑 Project",
+        name: "名称",
+        nameLabel: "Project 名称",
+        icon: "图标",
+        chooseImage: "选择图片",
+        useAutomatic: "使用自动",
+        imageUrl: "图片或网站 URL",
+        save: "保存更改",
+        savedToast: "Project 已更新",
       },
       links: {
         title: "关联的项目",
@@ -3975,7 +4293,6 @@ export const zhCN: TranslationResources = {
         invalidTitle: "无法解析 otto.json",
         invalidDescription: "修复磁盘上的文件，然后重新加载。",
         missingTitle: "这个 Host 没有这个 Project",
-        missingWithHosts: "切换到上方其他 Host，或重新加载。",
         missingSingleHost: "所选 Host 没有这个 Project 的记录。",
         transportTitle: "无法加载 otto.json",
         transportFallback: "Host 没有响应。",
@@ -3989,6 +4306,8 @@ export const zhCN: TranslationResources = {
         docsTooltip: "查看命令可用的环境变量和更多细节",
         setup: "设置",
         setupAccessibility: "Worktree setup 命令",
+        uncommittedTitle: "提交 otto.json 更改",
+        uncommittedDescription: "新工作树使用所选基础分支中的设置脚本。",
         teardown: "清理",
         teardownAccessibility: "Worktree teardown 命令",
       },

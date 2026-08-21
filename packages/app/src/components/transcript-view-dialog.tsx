@@ -17,7 +17,7 @@ import {
   createSetAgentInitializing,
   ensureAgentIsInitialized,
 } from "@/hooks/use-agent-initialization";
-import { useSessionStore } from "@/stores/session-store";
+import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import type { Theme } from "@/styles/theme";
@@ -115,6 +115,9 @@ function TranscriptViewDialogContent({
   const hasAppliedAuthoritativeHistory = useSessionStore(
     (state) => state.sessions[serverId]?.agentAuthoritativeHistoryApplied?.get(agentId) === true,
   );
+  const turnPresentation = useSessionStore(
+    useShallow((state) => selectAgentTurnPresentation(state.sessions[serverId], agentId)),
+  );
 
   const { api: toast, toast: toastState, dismiss } = useToastHost();
 
@@ -205,6 +208,7 @@ function TranscriptViewDialogContent({
         streamItems={streamItems}
         pendingPermissions={EMPTY_PENDING_PERMISSIONS}
         isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
+        turnPresentation={turnPresentation}
         toast={toast}
       />
       <ToastViewport toast={toastState} onDismiss={dismiss} placement="panel" />

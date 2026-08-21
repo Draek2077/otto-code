@@ -236,6 +236,7 @@ interface SelectorContentProps {
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
   personalities?: SelectorPersonality[];
+  personalitySectionLabel?: string;
   personalityGroups?: SelectorPersonalityGroupSection[];
   selectedPersonalityId?: string | null;
   onSelectPersonality?: (id: string) => void;
@@ -649,11 +650,13 @@ function PersonalityRow({
 }
 export function PersonalitiesSection({
   personalities,
+  label = "Personalities",
   selectedPersonalityId,
   onSelectPersonality,
   onClearPersonality,
 }: {
   personalities?: SelectorPersonality[];
+  label?: string;
   selectedPersonalityId?: string | null;
   onSelectPersonality?: (id: string) => void;
   onClearPersonality?: () => void;
@@ -666,7 +669,7 @@ export function PersonalitiesSection({
     <View style={styles.personalitiesContainer}>
       <View style={styles.sectionHeading}>
         {/* i18n: English-only pending the agent-personalities translation pass. */}
-        <Text style={styles.sectionHeadingText}>Personalities</Text>
+        <Text style={styles.sectionHeadingText}>{label}</Text>
       </View>
       {personalities.map((personality) => (
         <PersonalityRow
@@ -881,6 +884,7 @@ export function SelectorContent({
   onRetryProvider,
   isRetryingProvider,
   personalities,
+  personalitySectionLabel,
   personalityGroups,
   selectedPersonalityId,
   onSelectPersonality,
@@ -938,6 +942,7 @@ export function SelectorContent({
     const familyPersonalitiesNode = (
       <PersonalitiesSection
         personalities={familyPersonalities}
+        label={personalitySectionLabel}
         selectedPersonalityId={selectedPersonalityId}
         onSelectPersonality={onSelectPersonality}
         onClearPersonality={onClearPersonality}
@@ -1011,6 +1016,7 @@ export function SelectorContent({
       onDrillDown={onDrillDown}
       onDrillDownPersonalityGroup={onDrillDownPersonalityGroup}
       personalities={personalities}
+      personalitySectionLabel={personalitySectionLabel}
       personalityGroups={personalityGroups}
       selectedPersonalityId={selectedPersonalityId}
       onSelectPersonality={onSelectPersonality}
@@ -1034,6 +1040,7 @@ function AllViewContent({
   onDrillDown,
   onDrillDownPersonalityGroup,
   personalities,
+  personalitySectionLabel,
   personalityGroups,
   selectedPersonalityId,
   onSelectPersonality,
@@ -1048,6 +1055,7 @@ function AllViewContent({
   onDrillDown: (providerId: string, providerLabel: string) => void;
   onDrillDownPersonalityGroup: (sectionKey: string, sectionLabel: string) => void;
   personalities?: SelectorPersonality[];
+  personalitySectionLabel?: string;
   personalityGroups?: SelectorPersonalityGroupSection[];
   selectedPersonalityId?: string | null;
   onSelectPersonality?: (id: string) => void;
@@ -1067,6 +1075,7 @@ function AllViewContent({
     <View>
       <PersonalitiesSection
         personalities={personalities}
+        label={personalitySectionLabel}
         selectedPersonalityId={selectedPersonalityId}
         onSelectPersonality={onSelectPersonality}
         onClearPersonality={onClearPersonality}

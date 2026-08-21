@@ -396,7 +396,12 @@ export class WorkspaceReconciliationService {
         });
         if (!update) return;
 
-        await this.workspaceRegistry.upsert(update.workspace);
+        const updated = await this.workspaceRegistry.update(workspace.workspaceId, (record) => ({
+          ...record,
+          ...update.fields,
+          updatedAt: timestamp,
+        }));
+        if (!updated) return;
         changes.push({
           kind: "workspace_updated",
           workspaceId: current.workspaceId,

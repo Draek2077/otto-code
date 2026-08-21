@@ -737,6 +737,7 @@ describe("GitHubService", () => {
         reason: "self-heal-github",
       }),
     ]);
+    await vi.advanceTimersByTimeAsync(0);
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
 
     subscription?.unsubscribe();
@@ -773,6 +774,7 @@ describe("GitHubService", () => {
 
     now = EXPECTED_GITHUB_SLOW_POLL_MS;
     await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_SLOW_POLL_MS - EXPECTED_GITHUB_FAST_POLL_MS);
+    await vi.advanceTimersByTimeAsync(0);
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(2);
     expect(reads.map((read) => read.reason)).toEqual([undefined, "self-heal-github"]);
 

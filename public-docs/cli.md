@@ -23,6 +23,18 @@ otto logs <id>                      # View agent timeline
 otto stop <id>                      # Stop an agent
 ```
 
+## Provider diagnostics
+
+Ask the daemon to inspect the provider environment it actually uses:
+
+```bash
+otto provider diagnostic claude
+otto provider diagnostic codex --json
+otto provider diagnostic opencode --host devbox:6868
+```
+
+The diagnostic includes the configured command, daemon `PATH` and shell, matching binaries, resolved path, version, model count, and provider status. Use `--host` for a remote daemon. This is the same diagnostic shown under **Settings → your host → Providers → provider → Diagnostic**.
+
 ## Running agents
 
 Use `otto run` to start a new agent with a task:
@@ -30,17 +42,73 @@ Use `otto run` to start a new agent with a task:
 ```bash
 otto run "implement user authentication"
 otto run --provider codex "refactor the API layer"
-otto run --detach "run the full test suite"  # background
-otto run --worktree feature-x "implement feature X"
+otto run --background "run the focused test suite"
+otto run --new-workspace worktree --worktree-mode branch-off --new-branch feature/x --base origin/main "implement feature X"
+otto run --workspace <workspace-id> "review the current diff"
 otto run --output-schema schema.json "extract release notes"
 otto run --output-schema '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}' "summarize release notes"
 ```
 
-The `--worktree` flag creates the agent in an isolated git worktree, useful for parallel feature development.
+When an existing Otto agent runs the same command, Otto recognizes it through `OTTO_AGENT_ID`. Without explicit placement, the new agent becomes its subagent in the same workspace. `--workspace` can place that subagent elsewhere without changing its parent.
 
-Use `--output-schema` to return only matching JSON output. You can pass a schema file path or an inline JSON schema object. This mode cannot be used with `--detach`.
+Use `--output-schema` to return only matching JSON output. You can pass a schema file path or an inline JSON schema object. This mode cannot be used with `--background`.
 
-By default, `otto run` waits for completion. Use `--detach` to run in the background.
+By default, `otto run` waits for completion. Use `--background` to return immediately while the agent keeps running.
+
+## Workspaces
+
+Create a workspace independently when you want to prepare its files before starting an agent:
+
+```bash
+otto workspace create --isolation local --path ~/dev/my-app --title main
+
+otto workspace create \
+  --isolation worktree \
+  --path ~/dev/my-app \
+  --mode branch-off \
+  --new-branch feature/auth \
+  --worktree-slug feature-auth \
+  --base origin/main
+
+otto workspace create \
+  --isolation worktree \
+  --path ~/dev/my-app \
+  --mode checkout-branch \
+  --branch feature/existing \
+  --worktree-slug existing-copy
+
+otto workspace create \
+  --isolation worktree \
+  --path ~/dev/my-app \
+  --mode checkout-pr \
+  --pr-number 2186
+```
+
+Then list, use, rename, or archive it:
+
+```bash
+otto workspace ls
+otto run --workspace <workspace-id> "implement authentication"
+otto workspace rename <workspace-id> "Auth rework"
+otto workspace rename <workspace-id> --reset   # back to the branch or directory name
+otto workspace archive <workspace-id>
+```
+
+Add `--forge <name>` to PR checkout when Otto cannot infer the forge from the source checkout. See [Git worktrees](/docs/worktrees) for setup hooks and services.
+
+## Workspace scripts
+
+List, start, and stop the scripts configured in a workspace's `otto.json`:
+
+```bash
+otto script ls
+otto script start web
+otto script stop web
+```
+
+By default, Otto selects the workspace whose directory is the current directory. Pass `--cwd <path>` to select a different directory, or `--workspace <workspace-id>` when a directory has multiple workspaces. These commands also accept `--host` and the standard output options such as `--json`.
+
+The output includes each script's lifecycle and supervised terminal ID. Services also include their assigned port, proxy URL, and health. See [Git worktrees](/docs/worktrees#scripts-and-services) for `otto.json` configuration.
 
 ## Listing agents
 
@@ -139,8 +207,12 @@ Use `OTTO_HOME` to run multiple isolated daemon instances.
 Get an offer URL from the daemon you want to control:
 
 ```bash
-otto daemon pair --json   # prints { url, qr, ... }
+otto daemon pair          # asks before enabling relay, then prints the QR and link
+otto daemon pair --relay  # enables relay without prompting
+otto daemon pair --json   # structured output; never prompts
 ```
+
+Relay is off for new installations. In non-interactive or JSON mode, a disabled relay returns a `RELAY_DISABLED` error; pass `--relay` to provide explicit consent. Relay pairing is end-to-end encrypted. See [Security](/docs/security).
 
 Use it from anywhere:
 
@@ -157,7 +229,7 @@ The CLI is designed to be used by agents themselves. You can instruct an agent t
 
 ```bash
 # Agent A spawns Agent B and waits for it
-otto run --detach "implement the API" --name api-agent
+otto run --background "implement the API" --name api-agent
 otto wait api-agent
 otto logs api-agent --tail 5
 ```

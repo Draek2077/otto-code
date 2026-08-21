@@ -2,12 +2,15 @@ import net from "node:net";
 import path from "node:path";
 import { mkdir } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
-import { captureWindowWithChrome, launchDesktopElectron } from "../../e2e/helpers/electron-app";
-import { connectDaemonClient } from "../../e2e/helpers/daemon-client-loader";
-import { resizePngToTarget } from "../../e2e/helpers/image";
-import type { SeedDaemonClient } from "../../e2e/helpers/seed-client";
-import { createTempGitRepo } from "../../e2e/helpers/workspace";
-import { getE2EDaemonPort } from "../../e2e/helpers/daemon-port";
+import {
+  captureWindowWithChrome,
+  launchDesktopElectron,
+} from "../../e2e/support/helpers/electron-app";
+import { connectDaemonClient } from "../../e2e/support/helpers/daemon-client-loader";
+import { resizePngToTarget } from "../../e2e/support/helpers/image";
+import type { SeedDaemonClient } from "../../e2e/support/helpers/seed-client";
+import { createTempGitRepo } from "../../e2e/support/helpers/workspace";
+import { getE2EDaemonPort } from "../../e2e/support/helpers/daemon-port";
 import { buildHostAgentDetailRoute } from "../../src/utils/host-routes";
 import { DESKTOP_CAPTURE_RESOLUTION, DESKTOP_LAYOUT_VIEWPORT } from "../helpers/resolution";
 

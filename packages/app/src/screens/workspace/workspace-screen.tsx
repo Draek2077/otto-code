@@ -1,4 +1,5 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop, react/jsx-max-depth -- notification cards bind their own explicit conversation and acknowledgement identities. */
+import { getOpenAgentTabLabel } from "@otto-code/protocol/agent-labels";
 import {
   memo,
   useCallback,
@@ -12,15 +13,7 @@ import {
 } from "react";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useIsFocused } from "@react-navigation/native";
-import {
-  ActivityIndicator,
-  BackHandler,
-  InteractionManager,
-  Keyboard,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, BackHandler, Keyboard, Pressable, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
@@ -30,28 +23,20 @@ import {
 } from "@/workspace-recovery/use-workspace-recovery";
 import { useTranslation } from "react-i18next";
 import {
-  ArrowLeftToLine,
-  ArrowRightToLine,
   BookOpen,
   ContextualToken,
   ChevronDown,
   Copy,
-  CopyX,
   Ellipsis,
-  EllipsisVertical,
   FileText,
-  FolderOpen,
   Globe,
   Import as ImportIcon,
   PanelRight,
   PanelRightClose,
-  Pencil,
   Play,
-  RotateCw,
   Settings,
   SquarePen,
   SquareTerminal,
-  X,
 } from "@/components/icons/material-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -67,6 +52,8 @@ import {
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { ScreenTitle } from "@/components/headers/screen-title";
+import { HostBadge } from "@/hosts/host-badge";
+import { useHostBadges } from "@/hosts/use-host-badges";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import {
@@ -116,7 +103,9 @@ import {
   usePanelStore,
   type ExplorerTab,
 } from "@/stores/panel-store";
+import { getOrCreateClientId } from "@/utils/client-id";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
+import { traceInstant } from "@/performance/native-trace";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
   collectAllTabs,
@@ -151,12 +140,13 @@ import {
   useHostRuntimeSnapshot,
   useHosts,
 } from "@/runtime/host-runtime";
-import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { prefetchProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { shouldShowWorkspaceSetup, useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { getPanelRegistration } from "@/panels/panel-registry";
+import { getPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 import { confirmCloseChat } from "@/components/archive-chat-warning";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
@@ -167,8 +157,8 @@ import {
   resolveHistoryDeleteUnsupportedDialog,
 } from "@/history/delete-dialogs";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { removeResidentBrowserWebview } from "@/components/browser-webview-resident";
-import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
+import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
+import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
 import { getDesktopHost } from "@/desktop/host";
 import {
   buildAgentWorkspaceAttachmentScopeKey,
@@ -177,6 +167,7 @@ import {
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
 import { resolveWorkspaceRouteId } from "@/utils/workspace-identity";
+import { useOpenAgentTabLabels } from "@/subagents/use-open-agent-tab-labels";
 import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
@@ -188,18 +179,18 @@ import {
   WorkspaceTabRenameModal,
 } from "@/screens/workspace/use-workspace-tab-rename";
 import { type WorkspaceDesktopTabRowItem } from "@/screens/workspace/workspace-desktop-tabs-row";
+import { MobileTabTrailingAccessory } from "@/screens/workspace/workspace-tab-trailing-accessory";
 import {
   buildWorkspaceTabMenuEntries,
-  type WorkspaceTabMenuEntry,
   type WorkspaceTabMenuLabels,
 } from "@/screens/workspace/workspace-tab-menu";
 import { useMoveChatMenu } from "@/workspace/use-move-chat-menu";
 import { MoveChatToWorkspaceHost } from "@/components/move-chat-to-workspace-host";
-import { useDesktopBrowserNewTabRequests } from "@/browser/new-tab-requests";
 import { registerInAppLinkOpener } from "@/utils/open-link";
 import { ArtifactOpenMenu } from "@/components/artifacts/artifact-open-menu";
 import { useHostFeature } from "@/runtime/host-features";
 import { useGeneratingArtifactAgentIds } from "@/artifacts/use-artifacts";
+import { useDesktopBrowserNewTabRequests } from "@/desktop/browser/new-tab-requests";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
   resolveWorkspaceHeaderRenderState,
@@ -256,6 +247,7 @@ import {
 } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import {
+  resolveTerminalProfileLaunch,
   getTerminalProfileIcon,
   resolveTerminalProfiles,
 } from "@otto-code/protocol/terminal-profiles";
@@ -338,16 +330,8 @@ function buildWorkspaceFileLocation(
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedEllipsis = withUnistyles(Ellipsis);
-const ThemedEllipsisVertical = withUnistyles(EllipsisVertical);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedCopy = withUnistyles(Copy);
-const ThemedRotateCw = withUnistyles(RotateCw);
-const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
-const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
-const ThemedCopyX = withUnistyles(CopyX);
-const ThemedPencil = withUnistyles(Pencil);
-const ThemedFolderOpen = withUnistyles(FolderOpen);
-const ThemedX = withUnistyles(X);
 const ThemedFileText = withUnistyles(FileText);
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
@@ -380,10 +364,6 @@ const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright
 // Size-folding variants: `uniProps` mappings read the live theme, so folding
 // `theme.iconSize.*` into the mapping keeps these icons reactive to the compact
 // (mobile) icon-doubling patch - a plain `size={16}` prop is a frozen literal.
-const mutedSmMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
-});
 const foregroundMdMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
   size: theme.iconSize.md,
@@ -597,10 +577,12 @@ function MobileActiveTabTrigger({
   activeTab,
   normalizedServerId,
   normalizedWorkspaceId,
+  backdrop,
 }: {
   activeTab: WorkspaceTabDescriptor | null;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
+  backdrop: "surface0" | "surface1";
 }) {
   if (!activeTab) {
     return null;
@@ -611,6 +593,7 @@ function MobileActiveTabTrigger({
       activeTab={activeTab}
       normalizedServerId={normalizedServerId}
       normalizedWorkspaceId={normalizedWorkspaceId}
+      backdrop={backdrop}
     />
   );
 }
@@ -619,10 +602,12 @@ function ResolvedMobileActiveTabTrigger({
   activeTab,
   normalizedServerId,
   normalizedWorkspaceId,
+  backdrop,
 }: {
   activeTab: WorkspaceTabDescriptor;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
+  backdrop: "surface0" | "surface1";
 }) {
   const { t } = useTranslation();
   return (
@@ -634,7 +619,7 @@ function ResolvedMobileActiveTabTrigger({
       {(presentation) => (
         <>
           <View style={styles.switcherTriggerIcon} testID="workspace-active-tab-icon">
-            <WorkspaceTabIcon presentation={presentation} active />
+            <WorkspaceTabIcon presentation={presentation} active backdrop={backdrop} />
           </View>
 
           <Text style={styles.switcherTriggerText} numberOfLines={1}>
@@ -670,95 +655,8 @@ function WorkspaceDocumentTitleEffect({
   return null;
 }
 
-function mobileTabMenuTriggerStyle({ open, pressed }: { open?: boolean; pressed?: boolean }) {
-  return [
-    styles.mobileTabMenuTrigger,
-    (Boolean(open) || Boolean(pressed)) && styles.mobileTabMenuTriggerActive,
-  ];
-}
-
 function switcherTriggerStyle({ pressed }: { pressed?: boolean }) {
   return [styles.switcherTrigger, Boolean(pressed) && styles.switcherTriggerPressed];
-}
-
-function MobileTabTrailingAccessory({
-  menuTestIDBase,
-  presentationLabel,
-  menuEntries,
-}: {
-  menuTestIDBase: string;
-  presentationLabel: string;
-  menuEntries: WorkspaceTabMenuEntry[];
-}) {
-  const { t } = useTranslation();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        testID={`${menuTestIDBase}-trigger`}
-        accessibilityRole="button"
-        accessibilityLabel={t("workspace.tabs.menu.openFor", { label: presentationLabel })}
-        hitSlop={8}
-        style={mobileTabMenuTriggerStyle}
-      >
-        <ThemedEllipsis uniProps={mutedSmMapping} />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align="end" width={220} testID={menuTestIDBase}>
-        {menuEntries.map((entry) =>
-          entry.kind === "separator" ? (
-            <DropdownMenuSeparator key={entry.key} />
-          ) : (
-            <MobileTabDropdownMenuItem key={entry.key} entry={entry} />
-          ),
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function MobileTabDropdownMenuItem({
-  entry,
-}: {
-  entry: Extract<WorkspaceTabMenuEntry, { kind: "item" }>;
-}) {
-  const leading = useMemo(() => {
-    switch (entry.icon) {
-      case "copy":
-        return <ThemedCopy uniProps={mutedMdMapping} />;
-      case "rotate-cw":
-        return <ThemedRotateCw uniProps={mutedMdMapping} />;
-      case "arrow-left-to-line":
-        return <ThemedArrowLeftToLine uniProps={mutedMdMapping} />;
-      case "arrow-right-to-line":
-        return <ThemedArrowRightToLine uniProps={mutedMdMapping} />;
-      case "copy-x":
-        return <ThemedCopyX uniProps={mutedMdMapping} />;
-      case "pencil":
-        return <ThemedPencil uniProps={mutedMdMapping} />;
-      case "folder-open":
-        return <ThemedFolderOpen uniProps={mutedMdMapping} />;
-      case "x":
-        return <ThemedX uniProps={mutedMdMapping} />;
-      default:
-        return undefined;
-    }
-  }, [entry.icon]);
-  const trailing = useMemo(
-    () => (entry.hint ? <Text style={styles.menuItemHint}>{entry.hint}</Text> : undefined),
-    [entry.hint],
-  );
-  return (
-    <DropdownMenuItem
-      testID={entry.testID}
-      disabled={entry.disabled}
-      destructive={entry.destructive}
-      onSelect={entry.onSelect}
-      tooltip={entry.tooltip}
-      leading={leading}
-      trailing={trailing}
-    >
-      {entry.label}
-    </DropdownMenuItem>
-  );
 }
 
 function MobileWorkspaceTabOption({
@@ -1025,14 +923,19 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
         style={switcherTriggerStyle}
         onPress={handleOpenSwitcher}
       >
-        <View style={styles.switcherTriggerLeft}>
-          <MobileActiveTabTrigger
-            activeTab={activeTab}
-            normalizedServerId={normalizedServerId}
-            normalizedWorkspaceId={normalizedWorkspaceId}
-          />
-        </View>
-        <ThemedChevronDown uniProps={mutedSmMapping} />
+        {({ pressed }) => (
+          <>
+            <View style={styles.switcherTriggerLeft}>
+              <MobileActiveTabTrigger
+                activeTab={activeTab}
+                normalizedServerId={normalizedServerId}
+                normalizedWorkspaceId={normalizedWorkspaceId}
+                backdrop={pressed ? "surface1" : "surface0"}
+              />
+            </View>
+            <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
+          </>
+        )}
       </Pressable>
 
       <Combobox
@@ -1150,6 +1053,12 @@ export const WorkspaceScreen = memo(function WorkspaceScreen({
   isRouteFocused,
 }: WorkspaceScreenProps) {
   const navigationFocused = useIsFocused();
+  useEffect(() => {
+    traceInstant("otto.workspace.mount", { serverId, workspaceId });
+    return () => {
+      traceInstant("otto.workspace.unmount", { serverId, workspaceId });
+    };
+  }, [serverId, workspaceId]);
   return (
     <WorkspaceScreenContent
       serverId={serverId}
@@ -1164,15 +1073,16 @@ interface UseCloseTabsResult {
   closeTab: (tabId: string, action: () => Promise<void>) => Promise<void>;
 }
 
-/** Gate that stays false until initial interactions settle, so deferred
- * warm-up work does not compete with the mount that scheduled it. */
-function useEnabledAfterInteractions(enabled: boolean): boolean {
-  const [interactionsSettled, setInteractionsSettled] = useState(false);
+function usePrefetchWorkspaceProvidersSnapshot(input: {
+  serverId: string;
+  client: Parameters<typeof prefetchProvidersSnapshot>[1] | null;
+  cwd: string | null;
+  enabled: boolean;
+}): void {
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => setInteractionsSettled(true));
-    return () => task.cancel();
-  }, []);
-  return enabled && interactionsSettled;
+    if (!input.enabled || !input.client || !input.cwd) return;
+    prefetchProvidersSnapshot(input.serverId, input.client, { cwd: input.cwd });
+  }, [input.client, input.cwd, input.enabled, input.serverId]);
 }
 
 function isDictationTab(target: WorkspaceTabTarget | undefined): boolean {
@@ -1268,11 +1178,7 @@ function HeaderMenuProfileItem({
   onCreateTerminalWithProfile,
 }: HeaderMenuProfileItemProps) {
   const handleSelect = useCallback(() => {
-    onCreateTerminalWithProfile({
-      name: profile.name,
-      command: profile.command,
-      args: profile.args,
-    });
+    onCreateTerminalWithProfile(resolveTerminalProfileLaunch(profile, ""));
   }, [onCreateTerminalWithProfile, profile]);
 
   const icon = getTerminalProfileIcon(profile);
@@ -1299,22 +1205,13 @@ function HeaderMenuProfileItem({
   );
 }
 
-// The "..." trigger sits beside the diff toggle in the mobile header, both using
-// the menu button's auto-sized chrome - a 2x icon would overflow that chrome, so
-// this scales at 1.5x instead of the usual compact doubling (see `useIconSize`).
-function WorkspaceHeaderMenuTriggerIcon({
-  hovered,
-  open,
-  isMobile,
-}: {
-  hovered: boolean;
-  open: boolean;
-  isMobile: boolean;
-}) {
-  const Icon = isMobile ? ThemedEllipsisVertical : ThemedEllipsis;
+// Compact header buttons sit flush together, so their touch slop grows vertically only.
+const COMPACT_HEADER_BUTTON_HIT_SLOP = { top: 8, bottom: 8 } as const;
+
+function WorkspaceHeaderMenuTriggerIcon({ hovered, open }: { hovered: boolean; open: boolean }) {
   const iconSize = useIconSize(1.5);
   const colorMapping = hovered || open ? foregroundColorMapping : mutedColorMapping;
-  return <Icon size={iconSize.md} uniProps={colorMapping} />;
+  return <ThemedEllipsis size={iconSize.md} uniProps={colorMapping} />;
 }
 
 function WorkspaceHeaderMenu({
@@ -1386,19 +1283,20 @@ function WorkspaceHeaderMenu({
 
   const renderTriggerIcon = useCallback(
     ({ hovered, open }: { hovered: boolean; open: boolean }) => (
-      <WorkspaceHeaderMenuTriggerIcon hovered={hovered} open={open} isMobile={isMobile} />
+      <WorkspaceHeaderMenuTriggerIcon hovered={hovered} open={open} />
     ),
-    [isMobile],
+    [],
   );
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu compactMode="sheet">
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild triggerRefProp="triggerRef">
             <DropdownMenuTrigger
               testID="workspace-header-menu-trigger"
               style={isMobile ? compactHeaderActionTriggerStyle : headerActionTriggerStyle}
+              hitSlop={isMobile ? COMPACT_HEADER_BUTTON_HIT_SLOP : undefined}
               accessibilityRole="button"
               accessibilityLabel={t("workspace.header.actions.workspaceActions")}
             >
@@ -1416,7 +1314,12 @@ function WorkspaceHeaderMenu({
             </Text>
           </TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="start" width={220} testID="workspace-header-menu">
+        <DropdownMenuContent
+          align="start"
+          width={220}
+          testID="workspace-header-menu"
+          sheetTitle={t("workspace.header.actions.workspaceActions")}
+        >
           <DropdownMenuItem
             testID="workspace-header-new-agent"
             leading={menuNewAgentIcon}
@@ -1608,11 +1511,52 @@ function WorkspaceHeaderMenu({
   );
 }
 
+/**
+ * Which project the workspace belongs to, and which machine it runs on.
+ *
+ * Compact gets both, on their own line under the workspace name: this header is the only thing on
+ * screen that says where the workspace lives, because the sidebar that normally carries the host
+ * badge is closed. It still follows the host's own badge setting, so a purely local setup stays
+ * quiet. A project name that only repeats the workspace name is dropped on wide, where the two sit
+ * side by side, and kept on compact, where the line exists for the host anyway.
+ */
+function WorkspaceHeaderProjectRow({
+  subtitle,
+  isSubtitleDistinct,
+  serverId,
+}: {
+  subtitle: string;
+  isSubtitleDistinct: boolean;
+  serverId: string;
+}) {
+  const isCompact = useIsCompactFormFactor();
+  const hostBadge = useHostBadges({ enabled: isCompact }).get(serverId) ?? null;
+  const showProject = isSubtitleDistinct || isCompact;
+  if (!showProject && !hostBadge) {
+    return null;
+  }
+  return (
+    <View style={styles.headerProjectRow}>
+      {showProject ? (
+        <Text
+          testID="workspace-header-subtitle"
+          style={styles.headerProjectTitle}
+          numberOfLines={1}
+        >
+          {subtitle}
+        </Text>
+      ) : null}
+      {showProject && hostBadge ? <Text style={styles.headerProjectSeparator}>·</Text> : null}
+      {hostBadge ? <HostBadge badge={hostBadge} /> : null}
+    </View>
+  );
+}
+
 interface WorkspaceHeaderTitleBarProps {
   isLoading: boolean;
   title: string;
   subtitle: string;
-  showSubtitle: boolean;
+  isSubtitleDistinct: boolean;
   currentBranchName: string | null;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
@@ -1683,7 +1627,7 @@ function WorkspaceHeaderTitleBar({
   isLoading,
   title,
   subtitle,
-  showSubtitle,
+  isSubtitleDistinct,
   currentBranchName,
   normalizedServerId,
   normalizedWorkspaceId,
@@ -1743,16 +1687,14 @@ function WorkspaceHeaderTitleBar({
           </View>
         ) : (
           <View style={styles.headerTitleTextGroup}>
-            <ScreenTitle testID="workspace-header-title">{title}</ScreenTitle>
-            {showSubtitle ? (
-              <Text
-                testID="workspace-header-subtitle"
-                style={styles.headerProjectTitle}
-                numberOfLines={1}
-              >
-                {subtitle}
-              </Text>
-            ) : null}
+            <ScreenTitle testID="workspace-header-title" style={styles.headerTitle}>
+              {title}
+            </ScreenTitle>
+            <WorkspaceHeaderProjectRow
+              subtitle={subtitle}
+              isSubtitleDistinct={isSubtitleDistinct}
+              serverId={normalizedServerId}
+            />
           </View>
         )}
         <WorkspaceHeaderMenu
@@ -1923,7 +1865,7 @@ interface WorkspaceHeaderFields {
   isWorkspaceHeaderLoading: boolean;
   workspaceHeaderTitle: string;
   workspaceHeaderSubtitle: string;
-  shouldShowWorkspaceHeaderSubtitle: boolean;
+  isWorkspaceHeaderSubtitleDistinct: boolean;
   isGitCheckout: boolean;
   currentBranchName: string | null;
 }
@@ -1958,7 +1900,7 @@ function deriveWorkspaceHeaderFields(input: {
       isWorkspaceHeaderLoading: true,
       workspaceHeaderTitle: "",
       workspaceHeaderSubtitle: "",
-      shouldShowWorkspaceHeaderSubtitle: false,
+      isWorkspaceHeaderSubtitleDistinct: false,
       isGitCheckout: false,
       currentBranchName: null,
     };
@@ -1967,7 +1909,7 @@ function deriveWorkspaceHeaderFields(input: {
     isWorkspaceHeaderLoading: false,
     workspaceHeaderTitle: renderState.title,
     workspaceHeaderSubtitle: renderState.subtitle,
-    shouldShowWorkspaceHeaderSubtitle: renderState.shouldShowSubtitle,
+    isWorkspaceHeaderSubtitleDistinct: renderState.isSubtitleDistinct,
     isGitCheckout: renderState.isGitCheckout,
     currentBranchName: renderState.currentBranchName,
   };
@@ -2214,6 +2156,7 @@ function useWorkspaceTerminalTabActions({
 // the tab retention limit changes and on nothing else in settings.
 const selectMountedTabLimit = (settings: AppSettings) => settings.mountedTabLimit;
 
+// eslint-disable-next-line complexity -- this retained workspace coordinator owns the route, tab, and special-panel lifecycles.
 function WorkspaceScreenContent({
   serverId,
   workspaceId,
@@ -2271,6 +2214,9 @@ function WorkspaceScreenContent({
 
   const client = useHostRuntimeClient(normalizedServerId);
   const isConnected = useHostRuntimeIsConnected(normalizedServerId);
+  const supportsProvidersSnapshot = useSessionStore(
+    (state) => state.sessions[normalizedServerId]?.serverInfo?.features?.providersSnapshot === true,
+  );
   const workspaceDirectory = workspaceDescriptor?.workspaceDirectory || null;
   const isMissingWorkspaceDirectory = Boolean(workspaceDescriptor) && !workspaceDirectory;
   const [isImportSheetVisible, setIsImportSheetVisible] = useState(false);
@@ -2287,12 +2233,11 @@ function WorkspaceScreenContent({
     setIsImportSheetVisible(false);
   }, []);
 
-  // Warm the workspace-scoped provider snapshot so the model picker is ready
-  // when opened. Deferred past initial interactions so the warm-up fetch does
-  // not compete with the workspace switch itself.
-  useProvidersSnapshot(normalizedServerId, {
+  usePrefetchWorkspaceProvidersSnapshot({
+    serverId: normalizedServerId,
+    client,
     cwd: workspaceDirectory,
-    enabled: useEnabledAfterInteractions(isRouteFocused),
+    enabled: isRouteFocused && isConnected && supportsProvidersSnapshot,
   });
 
   const persistenceKey = useMemo(
@@ -2444,7 +2389,7 @@ function WorkspaceScreenContent({
     isWorkspaceHeaderLoading,
     workspaceHeaderTitle,
     workspaceHeaderSubtitle,
-    shouldShowWorkspaceHeaderSubtitle,
+    isWorkspaceHeaderSubtitleDistinct,
     isGitCheckout,
     currentBranchName,
   } = deriveWorkspaceHeaderFields({
@@ -2590,6 +2535,12 @@ function WorkspaceScreenContent({
       }),
     [visibleUiTabs, workspaceLayout],
   );
+  useOpenAgentTabLabels({
+    client,
+    serverId: normalizedServerId,
+    tabs: uiTabs,
+    enabled: hasHydratedWorkspaceLayoutStore,
+  });
   useSyncWorkspaceActiveBrowser({
     workspaceLayout,
     isRouteFocused,
@@ -3543,6 +3494,7 @@ function WorkspaceScreenContent({
   const handleCloseAgentTab = useCallback(
     async (input: { tabId: string; agentId: string }) => {
       const { tabId, agentId } = input;
+      // eslint-disable-next-line complexity -- close policy intentionally converges archive, delete, and layout-only cleanup.
       await closeTab(tabId, async () => {
         if (!normalizedServerId) {
           return;
@@ -3555,7 +3507,7 @@ function WorkspaceScreenContent({
         // only meant to close. See docs/agent-lifecycle.md (Item 5).
         const session = useSessionStore.getState().sessions[normalizedServerId];
         const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null;
-        const closePolicy = resolveCloseAgentTabPolicy(agent);
+        let closePolicy = resolveCloseAgentTabPolicy(agent);
         const isRunning = agent?.status === "running";
 
         if (closePolicy.kind === "archive-on-close") {
@@ -3586,6 +3538,30 @@ function WorkspaceScreenContent({
           }
         }
 
+        if (closePolicy.kind === "layout-only") {
+          const sessionClient = useSessionStore.getState().sessions[normalizedServerId]?.client;
+          if (!sessionClient) {
+            toast.error(t("common.errors.daemonClientUnavailable"));
+            return;
+          }
+          try {
+            const clientId = await getOrCreateClientId();
+            await sessionClient.updateAgent(agentId, {
+              labels: { [getOpenAgentTabLabel(clientId)]: "false" },
+            });
+            const latestSession = useSessionStore.getState().sessions[normalizedServerId];
+            const latestAgent =
+              latestSession?.agents?.get(agentId) ??
+              latestSession?.agentDetails?.get(agentId) ??
+              null;
+            closePolicy = resolveCloseAgentTabPolicy(latestAgent);
+          } catch (error) {
+            console.error("[WorkspaceScreen] Failed to close subagent tab", { error, agentId });
+            toast.error(t("workspace.tabs.toasts.failedToCloseAgent"));
+            return;
+          }
+        }
+
         setHoveredCloseTabKey((current) => (current === tabId ? null : current));
         if (persistenceKey) {
           closeWorkspaceTabWithCleanup({
@@ -3609,6 +3585,8 @@ function WorkspaceScreenContent({
       deleteAgent,
       normalizedServerId,
       persistenceKey,
+      t,
+      toast,
     ],
   );
 
@@ -3841,10 +3819,26 @@ function WorkspaceScreenContent({
         return;
       }
 
-      const groups = classifyBulkClosableTabs(tabsToClose);
+      const groups = classifyBulkClosableTabs(tabsToClose, (agentId) => {
+        const session = useSessionStore.getState().sessions[normalizedServerId];
+        const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId);
+        return resolveCloseAgentTabPolicy(agent).kind === "layout-only" ? "layout-only" : "archive";
+      });
+      const modifiedCount = tabsToClose.filter(
+        (tab) =>
+          getPanelInstanceAttributes({
+            serverId: normalizedServerId,
+            workspaceId: normalizedWorkspaceId,
+            tabId: tab.tabId,
+          }).modified,
+      ).length;
+      const bulkMessage = buildBulkCloseConfirmationMessage(groups, bulkCloseConfirmationLabels);
       const confirmed = await confirmDialog({
         title,
-        message: buildBulkCloseConfirmationMessage(groups, bulkCloseConfirmationLabels),
+        message:
+          modifiedCount > 0
+            ? `${bulkMessage}\n\n${t("workspace.tabs.confirmations.bulkUnsaved", { count: modifiedCount })}`
+            : bulkMessage,
         confirmLabel: t("workspace.tabs.confirmations.close"),
         cancelLabel: t("workspace.tabs.confirmations.cancel"),
         destructive: true,
@@ -3857,6 +3851,23 @@ function WorkspaceScreenContent({
         client,
         groups,
         closeTab,
+        closeLayoutOnlyAgent: async (agentId) => {
+          if (!client) {
+            throw new Error(t("common.errors.daemonClientUnavailable"));
+          }
+          const clientId = await getOrCreateClientId();
+          await client.updateAgent(agentId, {
+            labels: { [getOpenAgentTabLabel(clientId)]: "false" },
+          });
+          const latestSession = useSessionStore.getState().sessions[normalizedServerId];
+          const latestAgent =
+            latestSession?.agents?.get(agentId) ??
+            latestSession?.agentDetails?.get(agentId) ??
+            null;
+          if (resolveCloseAgentTabPolicy(latestAgent).kind === "archive-on-close") {
+            await archiveAgent({ serverId: normalizedServerId, agentId });
+          }
+        },
         closeWorkspaceTabWithCleanup: (cleanupInput) => {
           if (!persistenceKey) {
             return;
@@ -3873,10 +3884,13 @@ function WorkspaceScreenContent({
       setHoveredCloseTabKey((current) => (current && closedKeys.has(current) ? null : current));
     },
     [
+      archiveAgent,
       bulkCloseConfirmationLabels,
       client,
       closeTab,
       closeWorkspaceTabWithCleanup,
+      normalizedServerId,
+      normalizedWorkspaceId,
       persistenceKey,
       t,
     ],
@@ -3975,6 +3989,9 @@ function WorkspaceScreenContent({
         case "workspace.terminal.new":
           handleCreateTerminal();
           return true;
+        case "workspace.browser.new":
+          handleCreateBrowserTab();
+          return true;
         case "workspace.tab.close-current":
           if (activeTabId) {
             void handleCloseTabById(activeTabId);
@@ -4007,6 +4024,7 @@ function WorkspaceScreenContent({
       activeTabId,
       handleCloseTabById,
       handleCreateDraftTab,
+      handleCreateBrowserTab,
       handleCreateTerminal,
       navigateToTabId,
       tabs,
@@ -4128,6 +4146,7 @@ function WorkspaceScreenContent({
       "workspace.tab.navigate-index",
       "workspace.tab.navigate-relative",
       "workspace.terminal.new",
+      "workspace.browser.new",
     ] as const,
     enabled: Boolean(isRouteFocused && normalizedServerId && normalizedWorkspaceId),
     priority: 100,
@@ -4751,7 +4770,7 @@ function WorkspaceScreenContent({
                 isLoading={isWorkspaceHeaderLoading}
                 title={workspaceHeaderTitle}
                 subtitle={workspaceHeaderSubtitle}
-                showSubtitle={shouldShowWorkspaceHeaderSubtitle}
+                isSubtitleDistinct={isWorkspaceHeaderSubtitleDistinct}
                 currentBranchName={currentBranchName}
                 normalizedServerId={normalizedServerId}
                 normalizedWorkspaceId={normalizedWorkspaceId}
@@ -4910,7 +4929,7 @@ function WorkspaceScreenContent({
               ) : null}
             </View>
             <ImportSessionSheet
-              visible={isImportSheetVisible}
+              visible={isRouteFocused && isImportSheetVisible}
               client={client}
               serverId={normalizedServerId}
               cwd={workspaceDirectory}
@@ -4919,7 +4938,7 @@ function WorkspaceScreenContent({
               onImportedAgent={handleImportedAgent}
             />
             <WorkspaceTabRenameModal
-              renamingTab={renamingTab}
+              renamingTab={isRouteFocused ? renamingTab : null}
               onSubmit={handleRenameModalSubmit}
               onClose={handleRenameModalClose}
             />
@@ -4949,14 +4968,14 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
   },
+  // Compact steps the whole header down one rung of the scale. The title and the project line
+  // stack there, so at the shared size they read as two headings rather than a subject and its
+  // caption, and they cost two full lines of a header that has none to spare.
   headerTitle: {
-    fontSize: theme.fontSize.base,
-    fontWeight: {
-      xs: "400",
-      md: "300",
+    fontSize: {
+      xs: theme.fontSize.sm,
+      md: theme.fontSize.base,
     },
-    color: theme.colors.foreground,
-    flexShrink: 1,
   },
   headerTitleContainer: {
     flex: 1,
@@ -5010,14 +5029,29 @@ const styles = StyleSheet.create((theme) => ({
       md: theme.spacing[2],
     },
   },
+  // No width cap. A percentage cap resolves against the title group, whose own width comes from
+  // this row's content, so it clips the project name while there is still room beside it.
+  // `flexShrink` on both this row and the title already gives up space only when there is none.
+  headerProjectRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1.5],
+    minWidth: 0,
+    flexShrink: 1,
+  },
   headerProjectTitle: {
     color: theme.colors.foregroundMuted,
     fontSize: {
-      xs: theme.fontSize.sm,
+      xs: theme.fontSize.xs,
       md: theme.fontSize.base,
     },
     flexShrink: 1,
     minWidth: 0,
+  },
+  headerProjectSeparator: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    flexShrink: 0,
   },
   headerTitleSkeleton: {
     width: 220,
@@ -5155,20 +5189,6 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.fontSize.sm + 2,
       md: theme.fontSize.sm,
     },
-  },
-  mobileTabMenuTrigger: {
-    width: 28,
-    height: 28,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  mobileTabMenuTriggerActive: {
-    backgroundColor: theme.colors.surface2,
-  },
-  menuItemHint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
   },
   headerMenuProfileIconWrapper: {
     width: compactUp(16),

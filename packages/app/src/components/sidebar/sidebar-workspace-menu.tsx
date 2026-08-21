@@ -1,20 +1,31 @@
-import { useCallback, useMemo, type PropsWithChildren, type ReactElement } from "react";
+import {
+  useCallback,
+  useMemo,
+  type ComponentProps,
+  type PropsWithChildren,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   Archive,
   BookOpen,
-  ContextualToken,
   CircleCheck,
+  ContextualToken,
   Copy,
   FolderOpen,
   MoreVertical,
   Pencil,
+  Pin,
+  PinOff,
 } from "@/components/icons/material-icons";
-import { isNative, isWeb } from "@/constants/platform";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { openProjectKnowledgeTab } from "@/project-knowledge/open-project-knowledge-tab";
+import { isWeb } from "@/constants/platform";
+import { getForgePresentation, normalizeForge } from "@/git/forge";
+import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+import { useAppSettings } from "@/hooks/use-settings";
 import { compactUp, type Theme } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import {
@@ -23,25 +34,35 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Shortcut } from "@/components/ui/shortcut";
+import { OpenInFileManagerMenuItem } from "@/workspace/open-in-file-manager/menu-item";
+import { resolveSidebarWorkspaceAccessibilityLabel } from "@/components/sidebar/sidebar-workspace-title";
+import {
+  workspaceServiceLabelKey,
+  type WorkspaceServiceSummary,
+} from "@/components/sidebar/workspace-meta-row";
 
-const foregroundColorMapping = (theme: Theme) => ({
-  color: theme.colors.foreground,
-  size: theme.iconSize.sm,
-});
+const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
 });
 
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedArchive = withUnistyles(Archive);
+const ThemedPencil = withUnistyles(Pencil);
+const ThemedCircleCheck = withUnistyles(CircleCheck);
+const ThemedPin = withUnistyles(Pin);
+const ThemedPinOff = withUnistyles(PinOff);
 const ThemedBookOpen = withUnistyles(BookOpen);
 const ThemedContextualToken = withUnistyles(ContextualToken);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
-const ThemedPencil = withUnistyles(Pencil);
-const ThemedCircleCheck = withUnistyles(CircleCheck);
 
 const copyLeadingIcon = <ThemedCopy size={14} uniProps={foregroundMutedColorMapping} />;
 const renameLeadingIcon = <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />;
@@ -49,21 +70,26 @@ const markAsReadLeadingIcon = (
   <ThemedCircleCheck size={14} uniProps={foregroundMutedColorMapping} />
 );
 const archiveLeadingIcon = <ThemedArchive size={14} uniProps={foregroundMutedColorMapping} />;
+const pinLeadingIcon = <ThemedPin size={14} uniProps={foregroundMutedColorMapping} />;
+const unpinLeadingIcon = <ThemedPinOff size={14} uniProps={foregroundMutedColorMapping} />;
 const contextLeadingIcon = (
   <ThemedContextualToken size={14} uniProps={foregroundMutedColorMapping} />
 );
 const knowledgeLeadingIcon = <ThemedBookOpen size={14} uniProps={foregroundMutedColorMapping} />;
-const openBaseCheckoutLeadingIcon = (
+const openBaseWorkspaceLeadingIcon = (
   <ThemedFolderOpen size={14} uniProps={foregroundMutedColorMapping} />
 );
 
 function renderTriggerIcon({ hovered }: { hovered?: boolean }) {
   return (
-    <ThemedMoreVertical uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping} />
+    <ThemedMoreVertical
+      size={14}
+      uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
+    />
   );
 }
 
-interface SidebarWorkspaceMenuProps {
+export interface SidebarWorkspaceMenuProps {
   workspaceKey: string;
   onCopyPath?: () => void;
   onCopyBranchName?: () => void;
@@ -77,41 +103,41 @@ interface SidebarWorkspaceMenuProps {
   archiveStatus?: "idle" | "pending" | "success";
   archivePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
+  openInFileManagerPath?: string | null;
+  /**
+   * Lifted so the row that reveals the kebab can keep it mounted while its menu is up. See
+   * `useOpenKebabMenuVisibility`.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-/** Common shape shared by `DropdownMenuItem` and `ContextMenuItem` - lets the
- * kebab dropdown and the right-click context menu render identical items from
- * one source instead of maintaining two copies that can drift apart. */
-export type WorkspaceMenuItemComponent = (
-  props: PropsWithChildren<{
-    testID?: string;
-    leading?: ReactElement | null;
-    trailing?: ReactElement | null;
-    onSelect?: () => void;
-    status?: "idle" | "pending" | "success";
-    pendingLabel?: string;
-  }>,
-) => ReactElement;
-
-export interface WorkspaceMenuItemsProps {
-  ItemComponent: WorkspaceMenuItemComponent;
-  workspaceKey: string;
-  onCopyPath?: () => void;
-  onCopyBranchName?: () => void;
-  onRename?: () => void;
-  onMarkAsRead?: () => void;
-  onOpenBaseCheckout?: () => void;
-  serverId?: string;
-  workspaceId?: string;
-  onArchive: () => void;
-  archiveLabel?: string;
-  archiveStatus?: "idle" | "pending" | "success";
-  archivePendingLabel?: string;
-  archiveShortcutKeys?: ShortcutKey[][] | null;
+interface SidebarWorkspaceMenuItemsProps extends Omit<
+  SidebarWorkspaceMenuProps,
+  "onArchive" | "open" | "onOpenChange"
+> {
+  onArchive?: () => void;
 }
 
-export function WorkspaceMenuItems({
-  ItemComponent: Item,
+type MenuSurface = "context" | "dropdown";
+
+function WorkspaceMenuItem({
+  surface,
+  children,
+  ...props
+}: PropsWithChildren<
+  Omit<ComponentProps<typeof DropdownMenuItem>, "children"> & { surface: MenuSurface }
+>) {
+  if (surface === "context") {
+    return <ContextMenuItem {...props}>{children}</ContextMenuItem>;
+  }
+  return <DropdownMenuItem {...props}>{children}</DropdownMenuItem>;
+}
+
+function SidebarWorkspaceMenuItems({
+  surface,
   workspaceKey,
   onCopyPath,
   onCopyBranchName,
@@ -125,15 +151,15 @@ export function WorkspaceMenuItems({
   archiveStatus,
   archivePendingLabel,
   archiveShortcutKeys,
-}: WorkspaceMenuItemsProps) {
+  isPinned,
+  onTogglePin,
+  openInFileManagerPath,
+}: SidebarWorkspaceMenuItemsProps & { surface: MenuSurface }): ReactNode {
   const { t } = useTranslation();
   const archiveTrailing = useMemo(
-    () => (archiveShortcutKeys && !isNative ? <Shortcut chord={archiveShortcutKeys} /> : null),
+    () => (archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null),
     [archiveShortcutKeys],
   );
-  // Owned here rather than passed in: this menu has five render sites, and a
-  // per-site callback meant every one of them had to remember to wire it. The
-  // row already knows its ids, so handing those over is enough.
   const handleManageContext = useCallback(() => {
     if (!serverId || !workspaceId) return;
     openContextManagementTab({ serverId, workspaceId, navigate: true });
@@ -142,77 +168,106 @@ export function WorkspaceMenuItems({
     if (!serverId || !workspaceId) return;
     openProjectKnowledgeTab({ serverId, workspaceId, navigate: true });
   }, [serverId, workspaceId]);
+
   return (
     <>
       {onCopyPath ? (
-        <Item
+        <WorkspaceMenuItem
+          surface={surface}
           testID={`sidebar-workspace-menu-copy-path-${workspaceKey}`}
           leading={copyLeadingIcon}
           onSelect={onCopyPath}
         >
           {t("sidebar.workspace.actions.copyPath")}
-        </Item>
+        </WorkspaceMenuItem>
       ) : null}
       {onCopyBranchName ? (
-        <Item
+        <WorkspaceMenuItem
+          surface={surface}
           testID={`sidebar-workspace-menu-copy-branch-name-${workspaceKey}`}
           leading={copyLeadingIcon}
           onSelect={onCopyBranchName}
         >
           {t("sidebar.workspace.actions.copyBranchName")}
-        </Item>
+        </WorkspaceMenuItem>
       ) : null}
       {onRename ? (
-        <Item
+        <WorkspaceMenuItem
+          surface={surface}
           testID={`sidebar-workspace-menu-rename-${workspaceKey}`}
           leading={renameLeadingIcon}
           onSelect={onRename}
         >
           {t("sidebar.workspace.actions.rename")}
-        </Item>
+        </WorkspaceMenuItem>
       ) : null}
       {onMarkAsRead ? (
-        <Item
+        <WorkspaceMenuItem
+          surface={surface}
           testID={`sidebar-workspace-menu-mark-as-read-${workspaceKey}`}
           leading={markAsReadLeadingIcon}
           onSelect={onMarkAsRead}
         >
           Mark as read
-        </Item>
+        </WorkspaceMenuItem>
       ) : null}
       {serverId && workspaceId ? (
-        <Item
+        <WorkspaceMenuItem
+          surface={surface}
           testID={`sidebar-workspace-menu-context-management-${workspaceKey}`}
           leading={contextLeadingIcon}
           onSelect={handleManageContext}
         >
           {t("workspace.contextManagement.openAction")}
-        </Item>
+        </WorkspaceMenuItem>
       ) : null}
       {serverId && workspaceId ? (
-        <Item leading={knowledgeLeadingIcon} onSelect={handleManageKnowledge}>
+        <WorkspaceMenuItem
+          surface={surface}
+          leading={knowledgeLeadingIcon}
+          onSelect={handleManageKnowledge}
+        >
           Manage knowledge
-        </Item>
+        </WorkspaceMenuItem>
       ) : null}
       {onOpenBaseCheckout ? (
-        <Item
+        <WorkspaceMenuItem
+          surface={surface}
           testID={`sidebar-workspace-menu-open-base-checkout-${workspaceKey}`}
-          leading={openBaseCheckoutLeadingIcon}
+          leading={openBaseWorkspaceLeadingIcon}
           onSelect={onOpenBaseCheckout}
         >
           {t("sidebar.workspace.actions.openBaseCheckout")}
-        </Item>
+        </WorkspaceMenuItem>
       ) : null}
-      <Item
-        testID={`sidebar-workspace-menu-archive-${workspaceKey}`}
-        leading={archiveLeadingIcon}
-        trailing={archiveTrailing}
-        status={archiveStatus}
-        pendingLabel={archivePendingLabel}
-        onSelect={onArchive}
-      >
-        {archiveLabel ?? t("sidebar.workspace.actions.archive")}
-      </Item>
+      {onTogglePin ? (
+        <WorkspaceMenuItem
+          surface={surface}
+          testID={`sidebar-workspace-menu-pin-${workspaceKey}`}
+          leading={isPinned ? unpinLeadingIcon : pinLeadingIcon}
+          onSelect={onTogglePin}
+        >
+          {isPinned ? t("sidebar.workspace.actions.unpin") : t("sidebar.workspace.actions.pin")}
+        </WorkspaceMenuItem>
+      ) : null}
+      <OpenInFileManagerMenuItem
+        surface={surface}
+        path={openInFileManagerPath}
+        testID={`sidebar-workspace-menu-open-folder-${workspaceKey}`}
+      />
+      {onArchive ? (
+        <WorkspaceMenuItem
+          surface={surface}
+          testID={`sidebar-workspace-menu-archive-${workspaceKey}`}
+          leading={archiveLeadingIcon}
+          trailing={archiveTrailing}
+          status={archiveStatus}
+          pendingLabel={archivePendingLabel}
+          onSelect={onArchive}
+        >
+          {archiveLabel ?? t("sidebar.workspace.actions.archive")}
+        </WorkspaceMenuItem>
+      ) : null}
     </>
   );
 }
@@ -231,11 +286,15 @@ export function SidebarWorkspaceMenu({
   archiveStatus,
   archivePendingLabel,
   archiveShortcutKeys,
+  isPinned,
+  onTogglePin,
+  openInFileManagerPath,
+  open,
+  onOpenChange,
 }: SidebarWorkspaceMenuProps) {
   const { t } = useTranslation();
-
   return (
-    <DropdownMenu>
+    <DropdownMenu compactMode="sheet" open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
         hitSlop={8}
         style={triggerStyle}
@@ -245,9 +304,9 @@ export function SidebarWorkspaceMenu({
       >
         {renderTriggerIcon}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" width={260}>
-        <WorkspaceMenuItems
-          ItemComponent={DropdownMenuItem}
+      <DropdownMenuContent align="end" width={260} sheetTitle={t("sidebar.workspace.actions.menu")}>
+        <SidebarWorkspaceMenuItems
+          surface="dropdown"
           workspaceKey={workspaceKey}
           onCopyPath={onCopyPath}
           onCopyBranchName={onCopyBranchName}
@@ -261,9 +320,116 @@ export function SidebarWorkspaceMenu({
           archiveStatus={archiveStatus}
           archivePendingLabel={archivePendingLabel}
           archiveShortcutKeys={archiveShortcutKeys}
+          isPinned={isPinned}
+          onTogglePin={onTogglePin}
+          openInFileManagerPath={openInFileManagerPath}
         />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+type ContextTriggerProps = Omit<
+  ComponentProps<typeof ContextMenuTrigger>,
+  "children" | "enabledOnMobile" | "highlightStyle"
+>;
+
+export function SidebarWorkspaceContextMenu({
+  children,
+  contextMenuOpen,
+  onContextMenuOpenChange,
+  workspace,
+  leadingProjectName,
+  hostBadgeLabel,
+  serviceSummary,
+  workspaceKey,
+  onCopyPath,
+  onCopyBranchName,
+  onRename,
+  onMarkAsRead,
+  onOpenBaseCheckout,
+  serverId,
+  workspaceId,
+  onArchive,
+  archiveLabel,
+  archiveStatus,
+  archivePendingLabel,
+  archiveShortcutKeys,
+  isPinned,
+  onTogglePin,
+  openInFileManagerPath,
+  accessibilityLabel,
+  highlightStyle,
+  ...triggerProps
+}: PropsWithChildren<
+  SidebarWorkspaceMenuItemsProps &
+    ContextTriggerProps & {
+      contextMenuOpen: boolean;
+      onContextMenuOpenChange: (open: boolean) => void;
+      workspace: SidebarWorkspaceEntry;
+      leadingProjectName?: string | null;
+      hostBadgeLabel?: string | null;
+      serviceSummary?: WorkspaceServiceSummary | null;
+      highlightStyle: ComponentProps<typeof ContextMenuTrigger>["highlightStyle"];
+    }
+>) {
+  const {
+    settings: { workspaceTitleSource },
+  } = useAppSettings();
+  const { t } = useTranslation();
+  const pullRequestLabel = workspace.prHint
+    ? t("workspace.git.pr.accessibility.pullRequest", {
+        number: workspace.prHint.number,
+        context: getForgePresentation(normalizeForge(workspace.prHint.forge)).changeRequestContext,
+      })
+    : null;
+  const rowAccessibilityLabel = resolveSidebarWorkspaceAccessibilityLabel({
+    workspace,
+    workspaceTitleSource,
+    leadingProjectName,
+    hostBadgeLabel,
+    pullRequestLabel,
+    serviceLabel: serviceSummary
+      ? t(workspaceServiceLabelKey(serviceSummary), { name: serviceSummary.name })
+      : null,
+  });
+
+  return (
+    <ContextMenu open={contextMenuOpen} onOpenChange={onContextMenuOpenChange}>
+      <ContextMenuTrigger
+        {...triggerProps}
+        enabledOnMobile={false}
+        accessibilityLabel={accessibilityLabel ?? rowAccessibilityLabel}
+        highlightStyle={highlightStyle}
+      >
+        {children}
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        align="start"
+        width={260}
+        testID={`sidebar-workspace-context-menu-${workspaceKey}`}
+      >
+        <SidebarWorkspaceMenuItems
+          surface="context"
+          workspaceKey={workspaceKey}
+          onCopyPath={onCopyPath}
+          onCopyBranchName={onCopyBranchName}
+          onRename={onRename}
+          onMarkAsRead={onMarkAsRead}
+          onOpenBaseCheckout={onOpenBaseCheckout}
+          serverId={serverId}
+          workspaceId={workspaceId}
+          onArchive={onArchive}
+          archiveLabel={archiveLabel}
+          archiveStatus={archiveStatus}
+          archivePendingLabel={archivePendingLabel}
+          archiveShortcutKeys={archiveShortcutKeys}
+          isPinned={isPinned}
+          onTogglePin={onTogglePin}
+          openInFileManagerPath={openInFileManagerPath}
+        />
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -273,9 +439,6 @@ function triggerStyle({ hovered = false }: PressableStateCallbackType & { hovere
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    // Match the project-row kebab exactly. The glyph itself scales on compact
-    // layouts, so the control needs the same explicit responsive square rather
-    // than merely padding whatever size the icon happens to be.
     width: compactUp(24),
     height: compactUp(24),
     borderRadius: theme.borderRadius.md,

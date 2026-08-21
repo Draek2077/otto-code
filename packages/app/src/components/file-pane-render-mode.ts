@@ -1,10 +1,11 @@
 import type { FileViewMode } from "@/stores/file-view-store";
 
+export type FilePreviewRenderKind = "markdown" | "html";
+
 export function isRenderedMarkdownFile(filePath: string): boolean {
   const normalizedPath = filePath.trim().toLowerCase();
   return normalizedPath.endsWith(".md") || normalizedPath.endsWith(".markdown");
 }
-
 /** A standalone mermaid diagram: rendered as a diagram, not as its source. */
 export function isRenderedMermaidFile(filePath: string): boolean {
   const normalizedPath = filePath.trim().toLowerCase();
@@ -39,6 +40,11 @@ export function renderedDocumentKind(filePath: string): RenderedDocumentKind | n
   if (isRenderedAsciiDocFile(filePath)) return "asciidoc";
   if (isRenderedHtmlFile(filePath)) return "html";
   return null;
+}
+
+export function filePreviewRenderKind(filePath: string): FilePreviewRenderKind | null {
+  const kind = renderedDocumentKind(filePath);
+  return kind === "markdown" || kind === "html" ? kind : null;
 }
 
 /**

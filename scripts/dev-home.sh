@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 default_dev_otto_root() {
   git rev-parse --show-toplevel 2>/dev/null || pwd

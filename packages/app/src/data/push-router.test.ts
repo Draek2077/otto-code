@@ -10,6 +10,7 @@ import { checkoutDiffQueryKey, checkoutStatusQueryKey } from "@/git/query-keys";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { brainStatusQueryKey } from "@/data/brain-status";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
+import { daemonPairingOfferQueryKey } from "@/data/daemon-pairing";
 import { providersSnapshotQueryKey } from "@/data/providers-snapshot";
 import {
   CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS,
@@ -62,6 +63,7 @@ type RouterHandler = (message: RouterMessage) => void;
 type RouterClient = Parameters<typeof mountServerDataPushRouter>[0]["client"];
 
 const daemonConfig: MutableDaemonConfig = {
+  relay: { enabled: false },
   mcp: { injectIntoAgents: true },
   browserTools: { enabled: false },
   lsp: {
@@ -237,6 +239,8 @@ describe("server data push router", () => {
     const queryClient = new QueryClient();
     const fake = createFakeClient();
     const serverId = "server-1";
+    const pairingOfferKey = daemonPairingOfferQueryKey(serverId);
+    queryClient.setQueryData(pairingOfferKey, { relayEnabled: true, url: "https://pairing" });
     const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
 
     fake.emit(providerUpdate("2026-01-01T00:00:00.000Z"));
@@ -251,6 +255,7 @@ describe("server data push router", () => {
       requestId: "providers_snapshot_update",
     });
     expect(queryClient.getQueryData(daemonConfigQueryKey(serverId))).toEqual(daemonConfig);
+    expect(queryClient.getQueryState(pairingOfferKey)?.isInvalidated).toBe(true);
 
     unmount();
     fake.emit(providerUpdate("2026-01-01T00:00:01.000Z"));
@@ -869,6 +874,7 @@ describe("server data push router", () => {
     const otherServerId = "server-2";
     const providerKey = providersSnapshotQueryKey(serverId);
     const daemonConfigKey = daemonConfigQueryKey(serverId);
+    const pairingOfferKey = daemonPairingOfferQueryKey(serverId);
     const diffKey = checkoutDiffQueryKey(serverId, "/repo", "uncommitted", undefined, false);
     const terminalKey = buildTerminalsQueryKey(serverId, "/repo", "workspace-a");
     const brainKey = brainStatusQueryKey(serverId, false);
@@ -879,6 +885,7 @@ describe("server data push router", () => {
     queryClient.setQueryData(brainResourcesKey, { running: true, reachable: true, state: "ready" });
     queryClient.setQueryData(providerKey, { entries: [], generatedAt: "now", requestId: "p" });
     queryClient.setQueryData(daemonConfigKey, daemonConfig);
+    queryClient.setQueryData(pairingOfferKey, { relayEnabled: false, url: "" });
     queryClient.setQueryData(diffKey, { cwd: "/repo", files: [], error: null, requestId: "d" });
     queryClient.setQueryData(terminalKey, { cwd: "/repo", terminals: [], requestId: "t" });
     queryClient.setQueryData(otherProviderKey, {
@@ -891,6 +898,7 @@ describe("server data push router", () => {
 
     expect(queryClient.getQueryState(providerKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(daemonConfigKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(pairingOfferKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(diffKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
     // One fresh cheap read repairs the gap the dropped subscription left. The

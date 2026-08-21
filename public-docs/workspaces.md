@@ -37,7 +37,12 @@ In Otto, the workspace is the stable container. The sessions are what you run in
 
 ## Creating a workspace
 
-When you create a new workspace, Otto creates a working directory for it. If you are using git, this is an isolated git worktree on its own branch, so agents can work in parallel without touching your main checkout. Otto names the branch from your first prompt.
+You can create a workspace in the app or from the CLI:
+
+```bash
+otto workspace create --isolation local --path ~/dev/my-app --title main
+otto workspace create --isolation worktree --path ~/dev/my-app --base origin/main
+```
 
 You can also create a workspace without starting an agent right away. The workspace is still there with its working directory ready; you can open terminals, run services, or browse files, then start an agent later.
 

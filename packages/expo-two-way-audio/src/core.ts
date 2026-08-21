@@ -28,6 +28,20 @@ export function isRecording(): boolean {
   return ExpoTwoWayAudioModule.isRecording();
 }
 
+/**
+ * Hand the OS audio session / audio focus back once nothing is being captured or played,
+ * so other apps' audio can resume. Safe to call when already released.
+ */
+export function releaseAudioSession() {
+  // COMPAT(releaseAudioSession): added in v0.8.12 on 2026-08-21; remove after 2027-02-21
+  // once the native binary floor is >= v0.8.12. An OTA JS update can land on an older binary
+  // whose native module lacks this function, so probe the native object rather than this wrapper.
+  if (typeof ExpoTwoWayAudioModule.releaseAudioSession !== "function") {
+    return;
+  }
+  return ExpoTwoWayAudioModule.releaseAudioSession();
+}
+
 export function tearDown() {
   return ExpoTwoWayAudioModule.tearDown();
 }

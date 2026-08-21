@@ -5,19 +5,17 @@ import { describe, expect, test } from "vitest";
 import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
 import {
   type AgentSnapshotPayload,
-  AgentSnapshotPayloadSchema,
   AgentTimelineItemPayloadSchema,
   FetchAgentTimelineResponseMessageSchema,
-  ServerInfoStatusPayloadSchema,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
   type SessionOutboundMessage,
-  WSHelloMessageSchema,
 } from "@otto-code/protocol/messages";
 import { Session, type SessionOptions } from "./session.js";
 import { toObservedSubagentPayload } from "./agent/agent-projections.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 import type { AgentTimelineRow } from "./agent/agent-manager.js";
+import type { AgentTimelineFetchOptions } from "./agent/agent-timeline-store-types.js";
 import { handleCreateOttoWorktreeRequest } from "./worktree-session.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
 
@@ -42,41 +40,6 @@ const LegacyFetchAgentTimelineResponseMessageSchema = z.object({
   payload: FetchAgentTimelineResponseMessageSchema.shape.payload.extend({
     entries: z.array(LegacyTimelineEntryPayloadSchema),
   }),
-});
-
-const LegacySubAgentToolCallSchema = z.object({
-  type: z.literal("tool_call"),
-  callId: z.string(),
-  name: z.string(),
-  status: z.enum(["running", "completed", "failed", "canceled"]),
-  error: z.unknown().nullable(),
-  detail: z.object({
-    type: z.literal("sub_agent"),
-    subAgentType: z.string().optional(),
-    description: z.string().optional(),
-    log: z.string(),
-    // Copied from v0.1.65-beta.3: actions was required even though the UI ignored it.
-    actions: z.array(
-      z.object({
-        index: z.number().int().positive(),
-        toolName: z.string(),
-        summary: z.string().optional(),
-      }),
-    ),
-  }),
-});
-
-const LegacyAgentCapabilityFlagsSchema = z.object({
-  supportsStreaming: z.boolean(),
-  supportsSessionPersistence: z.boolean(),
-  supportsDynamicModes: z.boolean(),
-  supportsMcpServers: z.boolean(),
-  supportsReasoningStream: z.boolean(),
-  supportsToolInvocations: z.boolean(),
-});
-
-const LegacyAgentSnapshotPayloadSchema = AgentSnapshotPayloadSchema.extend({
-  capabilities: LegacyAgentCapabilityFlagsSchema,
 });
 
 interface SessionInternals {
@@ -146,17 +109,8 @@ class InMemoryAgentManager {
     };
   }
 
-  fetchTimeline() {
-    return {
-      epoch: "epoch-1",
-      reset: false,
-      staleCursor: false,
-      gap: false,
-      window: { minSeq: 1, maxSeq: 3, nextSeq: 4 },
-      rows: this.rows,
-      hasOlder: false,
-      hasNewer: false,
-    };
+  fetchTimeline(_agentId: string, options?: AgentTimelineFetchOptions) {
+    return this.timeline.fetch("agent-1", options);
   }
 
   getObservedSubagentPayload(id: string) {
@@ -281,7 +235,7 @@ function createSessionForWireCompatTest(options?: {
     onMessage: (message) => messages.push(message),
     logger: pino({ level: "silent" }),
     downloadTokenStore: {} as SessionOptions["downloadTokenStore"],
-    pushTokenStore: {} as SessionOptions["pushTokenStore"],
+    pushNotifications: {} as SessionOptions["pushNotifications"],
     ottoHome: "/tmp/otto-home",
     agentManager: new InMemoryAgentManager(
       rows,
@@ -291,9 +245,7 @@ function createSessionForWireCompatTest(options?: {
     projectRegistry: new EmptyProjectRegistry() as unknown as SessionOptions["projectRegistry"],
     workspaceRegistry:
       new EmptyWorkspaceRegistry() as unknown as SessionOptions["workspaceRegistry"],
-    chatService: {} as SessionOptions["chatService"],
     scheduleService: {} as SessionOptions["scheduleService"],
-    loopService: {} as SessionOptions["loopService"],
     checkoutDiffManager: {
       scheduleRefreshForCwd() {},
       onWorkspaceStateMayHaveChanged() {},
@@ -347,11 +299,19 @@ function createSessionForWireCompatTest(options?: {
   return session;
 }
 
-async function emitTimelineResponse(
-  clientCapabilities?: Record<string, unknown> | null,
-): Promise<Extract<SessionOutboundMessage, { type: "fetch_agent_timeline_response" }>> {
+async function emitTimelineResponse(options?: {
+  clientCapabilities?: Record<string, unknown> | null;
+  rows?: AgentTimelineRow[];
+  request?: Partial<
+    Extract<z.infer<typeof SessionInboundMessageSchema>, { type: "fetch_agent_timeline_request" }>
+  >;
+}): Promise<Extract<SessionOutboundMessage, { type: "fetch_agent_timeline_response" }>> {
   const messages: SessionOutboundMessage[] = [];
-  const session = createSessionForWireCompatTest({ clientCapabilities, messages });
+  const session = createSessionForWireCompatTest({
+    clientCapabilities: options?.clientCapabilities,
+    rows: options?.rows,
+    messages,
+  });
   const internals = session as unknown as SessionInternals;
 
   await internals.handleFetchAgentTimelineRequest({
@@ -359,6 +319,7 @@ async function emitTimelineResponse(
     requestId: "req-timeline",
     agentId: "agent-1",
     projection: "projected",
+    ...options?.request,
   });
 
   const response = messages[0];
@@ -403,6 +364,7 @@ describe("wire compatibility", () => {
             projectId: "project-1",
             projectDisplayName: "Favorite project",
             projectCustomName: "Favorite project",
+            projectCustomIconRevision: null,
             projectRootPath: "/tmp/project",
             projectKind: "git",
             // COMPAT(projectKanbanTarget): emitted as null for legacy project records.
@@ -417,77 +379,6 @@ describe("wire compatibility", () => {
     ]);
   });
 
-  test("hello parses with and without the project update capability", () => {
-    const legacy = WSHelloMessageSchema.parse({
-      type: "hello",
-      clientId: "legacy-client",
-      clientType: "mobile",
-      protocolVersion: 1,
-    });
-    const capable = WSHelloMessageSchema.parse({
-      type: "hello",
-      clientId: "capable-client",
-      clientType: "mobile",
-      protocolVersion: 1,
-      capabilities: { [CLIENT_CAPS.projectUpdates]: true },
-    });
-
-    expect([legacy, capable]).toEqual([
-      {
-        type: "hello",
-        clientId: "legacy-client",
-        clientType: "mobile",
-        protocolVersion: 1,
-      },
-      {
-        type: "hello",
-        clientId: "capable-client",
-        clientType: "mobile",
-        protocolVersion: 1,
-        capabilities: { project_updates: true },
-      },
-    ]);
-  });
-
-  test("server info accepts legacy feature payloads without stable project identity", () => {
-    const parsed = ServerInfoStatusPayloadSchema.parse({
-      status: "server_info",
-      serverId: "legacy-server",
-      features: { workspaceGithubClone: true },
-    });
-
-    expect(parsed).toEqual({
-      status: "server_info",
-      serverId: "legacy-server",
-      hostname: null,
-      version: null,
-      features: {},
-    });
-  });
-
-  test("assistant timeline message ids are optional on the wire", () => {
-    expect(
-      AgentTimelineItemPayloadSchema.parse({
-        type: "assistant_message",
-        text: "old daemon shape",
-      }),
-    ).toEqual({
-      type: "assistant_message",
-      text: "old daemon shape",
-    });
-    expect(
-      AgentTimelineItemPayloadSchema.parse({
-        type: "assistant_message",
-        text: "new daemon shape",
-        messageId: "msg-1",
-      }),
-    ).toEqual({
-      type: "assistant_message",
-      text: "new daemon shape",
-      messageId: "msg-1",
-    });
-  });
-
   test("downgrades reasoning_merge for clients that do not declare the capability", async () => {
     const response = await emitTimelineResponse();
 
@@ -500,105 +391,11 @@ describe("wire compatibility", () => {
 
   test("preserves reasoning_merge for clients that declare the capability", async () => {
     const response = await emitTimelineResponse({
-      [CLIENT_CAPS.reasoningMergeEnum]: true,
+      clientCapabilities: { [CLIENT_CAPS.reasoningMergeEnum]: true },
     });
 
     const currentParsed = FetchAgentTimelineResponseMessageSchema.parse(response);
     expect(currentParsed.payload.entries[0]?.collapsed).toContain("reasoning_merge");
-  });
-
-  test("sub_agent tool-call payload still parses against the v0.1.65-beta.3 schema", () => {
-    const parsed = LegacySubAgentToolCallSchema.parse({
-      type: "tool_call",
-      callId: "call-sub-agent-1",
-      name: "Task",
-      status: "completed",
-      error: null,
-      detail: {
-        type: "sub_agent",
-        subAgentType: "Explore",
-        description: "Inspect repository structure",
-        childSessionId: "child-session-1",
-        log: "[Read] README.md",
-        actions: [],
-      },
-    });
-
-    expect(parsed.detail.actions).toEqual([]);
-  });
-
-  test("old clients parse agent snapshots with rewind capabilities", () => {
-    const parsed = LegacyAgentSnapshotPayloadSchema.parse({
-      id: "agent-1",
-      provider: "claude",
-      cwd: "/tmp/project",
-      model: null,
-      thinkingOptionId: null,
-      effectiveThinkingOptionId: null,
-      createdAt: "2026-05-23T00:00:00.000Z",
-      updatedAt: "2026-05-23T00:00:00.000Z",
-      lastUserMessageAt: null,
-      status: "idle",
-      capabilities: {
-        supportsStreaming: true,
-        supportsSessionPersistence: true,
-        supportsDynamicModes: true,
-        supportsMcpServers: true,
-        supportsReasoningStream: true,
-        supportsToolInvocations: true,
-        supportsRewindConversation: true,
-        supportsRewindFiles: true,
-        supportsRewindBoth: true,
-      },
-      currentModeId: null,
-      availableModes: [],
-      pendingPermissions: [],
-      persistence: null,
-      title: null,
-      labels: {},
-    });
-
-    expect(parsed.capabilities).toEqual({
-      supportsStreaming: true,
-      supportsSessionPersistence: true,
-      supportsDynamicModes: true,
-      supportsMcpServers: true,
-      supportsReasoningStream: true,
-      supportsToolInvocations: true,
-    });
-  });
-
-  test("new clients parse agent snapshots without rewind capabilities", () => {
-    const parsed = AgentSnapshotPayloadSchema.parse({
-      id: "agent-1",
-      provider: "claude",
-      cwd: "/tmp/project",
-      model: null,
-      thinkingOptionId: null,
-      effectiveThinkingOptionId: null,
-      createdAt: "2026-05-23T00:00:00.000Z",
-      updatedAt: "2026-05-23T00:00:00.000Z",
-      lastUserMessageAt: null,
-      status: "idle",
-      capabilities: {
-        supportsStreaming: true,
-        supportsSessionPersistence: true,
-        supportsDynamicModes: true,
-        supportsMcpServers: true,
-        supportsReasoningStream: true,
-        supportsToolInvocations: true,
-      },
-      currentModeId: null,
-      availableModes: [],
-      pendingPermissions: [],
-      persistence: null,
-      title: null,
-      labels: {},
-    });
-
-    expect(parsed.capabilities.supportsRewindConversation).toBe(false);
-    expect(parsed.capabilities.supportsRewindFiles).toBe(false);
-    expect(parsed.capabilities.supportsRewindBoth).toBe(false);
   });
 
   test("legacy worktree request shape normalizes to the same internal input as the new shape", async () => {

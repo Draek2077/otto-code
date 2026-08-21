@@ -1,5 +1,5 @@
-import { expect, test } from "../../e2e/fixtures";
-import { getServerId } from "../../e2e/helpers/server-id";
+import { expect, test } from "../../e2e/support/fixtures";
+import { getServerId } from "../../e2e/support/helpers/server-id";
 import { buildHostAgentDetailRoute } from "../../src/utils/host-routes";
 import { applyDemoAppearance } from "../helpers/appearance";
 import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";

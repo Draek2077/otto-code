@@ -18,6 +18,7 @@ import {
   neutralDarkColors,
   nightfallDarkColors,
   powderColors,
+  pureBlackDarkColors,
   sherbetColors,
   slateDarkColors,
   terracottaColors,
@@ -39,6 +40,7 @@ import type { ThemeVariantName } from "./theme-palettes";
 
 export const SPACING = {
   0: 0,
+  0.5: 2,
   1: 4,
   1.5: 6,
   2: 8,
@@ -214,6 +216,7 @@ export const darkMidnightTheme = buildDarkTheme(nightfallDarkColors);
 export const darkClaudeTheme = buildDarkTheme(emberDarkColors);
 export const darkGhosttyTheme = buildDarkTheme(slateDarkColors);
 export const darkCyberpunkTheme = buildDarkTheme(neotokyoDarkColors);
+export const darkPureBlackTheme = buildDarkTheme(pureBlackDarkColors);
 
 export const daylightTheme = buildLightTheme(daylightColors);
 export const pastelTheme = buildLightTheme(sherbetColors);
@@ -232,13 +235,21 @@ export const blackTheme: typeof darkTheme = {
   colors: { ...darkTheme.colors, ...BLACK_VARIANT_OVERRIDES.dark },
 };
 
+// Unistyles registers only the adaptive light/dark mirrors plus the scoped
+// black chat surface. Named palette variants repaint these keys at runtime.
+export const REGISTERED_THEMES = {
+  light: daylightTheme,
+  dark: darkTheme,
+  black: blackTheme,
+} as const;
+
 // Keep compatibility with existing code
 export const theme = darkTheme;
 
 // Export a union type that works for both themes
 export type Theme = typeof darkTheme | typeof daylightTheme;
 
-// Only two Unistyles theme keys are ever registered (`light`/`dark`, see
+// Only the adaptive Unistyles theme keys (`light`/`dark`, see
 // `styles/unistyles.ts`) - Unistyles' adaptive-theme mechanism hardcodes
 // switching between those two literal keys and cannot be pointed at an
 // arbitrary named theme. Every variant below (including the neutral
@@ -262,6 +273,28 @@ export const THEME_SWATCHES: Record<ThemeVariantName, string> = {
   ghostty: "#6ba6ff",
   cyberpunk: "#ff5ad1",
 };
+
+// Compatibility catalog for upstream's theme shortcut and picker contract.
+// Otto's richer per-spectrum variant catalogs remain canonical for Appearance;
+// these entries preserve the upstream option ordering without replacing them.
+export const THEME_OPTIONS = [
+  { name: "light", group: "primary", theme: daylightTheme, swatch: "#ffffff" },
+  { name: "dark", group: "primary", theme: darkTheme, swatch: "#3f3f46" },
+  { name: "auto", group: "primary" },
+  { name: "zinc", group: "variant", theme: darkZincTheme, swatch: "#808080" },
+  { name: "midnight", group: "variant", theme: darkMidnightTheme, swatch: "#3d7fe0" },
+  { name: "claude", group: "variant", theme: darkClaudeTheme, swatch: "#f2662f" },
+  { name: "ghostty", group: "variant", theme: darkGhosttyTheme, swatch: "#6ba6ff" },
+  { name: "pureBlack", group: "variant", theme: darkPureBlackTheme, swatch: "#000000" },
+] as const;
+
+export type ThemePreference = (typeof THEME_OPTIONS)[number]["name"];
+
+export function getNextThemePreference(current: ThemePreference): ThemePreference {
+  const currentIndex = THEME_OPTIONS.findIndex((option) => option.name === current);
+  const nextIndex = (currentIndex + 1) % THEME_OPTIONS.length;
+  return THEME_OPTIONS[nextIndex]?.name ?? THEME_OPTIONS[0].name;
+}
 
 // The palette layer lives in theme-palettes.ts; this file stays the import
 // surface its consumers use.

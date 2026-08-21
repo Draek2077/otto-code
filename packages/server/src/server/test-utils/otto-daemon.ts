@@ -11,7 +11,8 @@ import {
 } from "../bootstrap.js";
 import type { AgentClient, AgentProvider } from "../agent/agent-sdk-types.js";
 import { createTestAgentClients } from "./fake-agent-client.js";
-import type { PushNotificationSender } from "../push/notifications.js";
+import type { PushNotificationSender } from "../push/index.js";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 
 interface TestOttoDaemonOptions {
   downloadTokenTtlMs?: number;
@@ -27,6 +28,8 @@ interface TestOttoDaemonOptions {
   relayEndpoint?: string;
   relayUseTls?: boolean;
   relayPublicUseTls?: boolean;
+  daemonStatusRpcCapability?: boolean;
+  relayConfigCapability?: boolean;
   agentClients?: Partial<Record<AgentProvider, AgentClient>>;
   providerOverrides?: OttoDaemonConfig["providerOverrides"];
   ottoHomeRoot?: string;
@@ -43,6 +46,7 @@ interface TestOttoDaemonOptions {
   serviceProxy?: OttoDaemonConfig["serviceProxy"];
   webUi?: OttoDaemonConfig["webUi"];
   trustedProxies?: OttoDaemonConfig["trustedProxies"];
+  agentProfiles?: AgentProfile[];
 }
 
 export interface TestOttoDaemon {
@@ -92,7 +96,12 @@ export async function createTestOttoDaemon(
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const { config, ottoHomeRoot, ottoHome, staticDir } = await prepareTestDaemonConfig(options);
     const logger = options.logger ?? pino({ level: "silent" });
-    const daemon = await createOttoDaemon(config, logger);
+    const daemon = await createOttoDaemon(config, logger, {
+      serverFeatureOverrides: {
+        daemonStatusRpc: options.daemonStatusRpcCapability,
+        relayConfig: options.relayConfigCapability,
+      },
+    });
     try {
       await startDaemonWithTimeout(daemon, TEST_DAEMON_START_TIMEOUT_MS);
       const listenTarget = daemon.getListenTarget();
@@ -186,6 +195,7 @@ async function prepareTestDaemonConfig(
     voiceLlmModel: options.voiceLlmModel ?? null,
     dictationFinalTimeoutMs: options.dictationFinalTimeoutMs,
     downloadTokenTtlMs: options.downloadTokenTtlMs,
+    agentProfiles: options.agentProfiles,
   };
   return { config, ottoHomeRoot, ottoHome, staticDir };
 }

@@ -26,6 +26,7 @@ export interface StreamLayoutItem {
   isLastInUserGroup: boolean;
   isLastInToolSequence: boolean;
   frameOrder: StreamFrameChildOrder;
+  phase: "streaming" | "complete";
 }
 
 export interface StreamLayout {
@@ -36,7 +37,7 @@ export interface StreamLayout {
 
 export interface StreamLayoutInput {
   strategy: StreamStrategy;
-  agentStatus: string;
+  isTurnActive: boolean;
   history: StreamItem[];
   liveHead: StreamItem[];
   timingByAssistantId: Map<string, TurnTiming>;
@@ -53,6 +54,7 @@ interface LayoutSegmentInput {
   boundaryBelowItem: StreamItem | null;
   boundaryAboveItems: StreamItem[] | null;
   boundaryAboveIndex: number | null;
+  phase: "streaming" | "complete";
 }
 
 interface AssistantFooterSource {
@@ -117,7 +119,7 @@ function findLatestAssistantInTurn(input: {
 }
 
 function resolveAuxiliaryTurnFooter(input: StreamLayoutInput): TurnFooterHost | null {
-  if (input.agentStatus === "running") {
+  if (input.isTurnActive) {
     return null;
   }
 
@@ -278,6 +280,7 @@ function layoutSegment(input: LayoutSegmentInput): StreamLayoutItem[] {
       isLastInUserGroup: item.kind === "user_message" && belowItem?.kind !== "user_message",
       isLastInToolSequence: isToolSequenceItem(item) && !isToolSequenceItem(belowItem),
       frameOrder: input.frameOrder,
+      phase: input.phase,
     };
   });
 }
@@ -329,6 +332,7 @@ export function layoutStream(input: StreamLayoutInput): StreamLayout {
         boundaryBelowItem: liveHeadBoundaryItem,
         boundaryAboveItems: null,
         boundaryAboveIndex: null,
+        phase: "complete",
       });
       byKey.set(historyCacheKey, history);
     }
@@ -347,6 +351,7 @@ export function layoutStream(input: StreamLayoutInput): StreamLayout {
     boundaryBelowItem: null,
     boundaryAboveItems: input.history,
     boundaryAboveIndex: historyBoundaryIndex,
+    phase: input.isTurnActive ? "streaming" : "complete",
   });
 
   return {

@@ -2,9 +2,12 @@
 import { existsSync as fsExistsSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { registerDevRunnerShutdownSignals, resolveChildKillTarget } from "./dev-runner-config.mjs";
+
+import { resolveDevElectronArgs } from "./dev-runner-args.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(scriptDir, "..");
@@ -20,11 +23,15 @@ if (!Number.isInteger(expoPort) || expoPort <= 0) {
 }
 
 const expoDevUrl = process.env.EXPO_DEV_URL || `http://localhost:${expoPort}`;
-const electronArgs = process.argv.slice(2);
+const electronArgs = resolveDevElectronArgs(process.platform, process.argv.slice(2));
 const colorEnv = {
   FORCE_COLOR: process.env.FORCE_COLOR || "1",
   npm_config_color: process.env.npm_config_color || "always",
 };
+const devBuildLabel = execFileSync("git", ["branch", "--show-current"], {
+  cwd: rootDir,
+  encoding: "utf8",
+}).trim();
 
 const children = new Map();
 let stopping = false;
@@ -59,7 +66,11 @@ function spawnChild(name, command, args, options = {}) {
     ...options,
   });
 
-  children.set(name, child);
+  const managedChild = {
+    process: child,
+    detached: options.detached === true,
+  };
+  children.set(name, managedChild);
   prefixStream(name, child.stdout, process.stdout);
   prefixStream(name, child.stderr, process.stderr);
 
@@ -92,14 +103,13 @@ function spawnChild(name, command, args, options = {}) {
 const isWindows = process.platform === "win32";
 const terminated = new WeakSet();
 
-function killChild(child, signal) {
-  if (!child.pid || child.killed || terminated.has(child)) {
+function killChild({ process: child, detached }, signal) {
+  if (!child.pid || child.killed || (isWindows && terminated.has(child))) {
     return;
   }
 
-  terminated.add(child);
-
   if (isWindows) {
+    terminated.add(child);
     // /T walks the tree (cmd.exe -> npx -> node), /F is the escalation the
     // POSIX side gets from the SIGKILL timer, so there is nothing to retry.
     try {
@@ -125,11 +135,7 @@ function killChild(child, signal) {
   }
 
   try {
-    if (child.detached) {
-      process.kill(-child.pid, signal);
-    } else {
-      child.kill(signal);
-    }
+    process.kill(resolveChildKillTarget(child.pid, detached), signal);
   } catch {
     // The child may have exited between the liveness check and the signal.
   }
@@ -280,8 +286,7 @@ function canConnect(port, host) {
   });
 }
 
-process.on("SIGINT", () => stopAll("SIGTERM"));
-process.on("SIGTERM", () => stopAll("SIGTERM"));
+registerDevRunnerShutdownSignals({ signalSource: process, stop: stopAll });
 
 // Bump Metro's Node heap to 8 GB. Long edit-while-live sessions grow Metro's
 // in-memory module graph + transform cache until it walks into V8's ~4 GB default
@@ -314,6 +319,7 @@ spawnChild("metro", "npx", ["expo", "start", "--port", String(expoPort)], {
     ...colorEnv,
     BROWSER: "none",
     APP_VARIANT: "development",
+    EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL: devBuildLabel,
     OTTO_WEB_PLATFORM: "electron",
     NODE_OPTIONS: metroNodeOptions,
   },

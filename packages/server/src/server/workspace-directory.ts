@@ -19,6 +19,7 @@ import {
   deriveTerminalActivityStatusBucket,
   type TerminalActivity,
 } from "@otto-code/protocol/terminal-activity";
+import type { ProviderSubagentDescriptor } from "./agent/provider-subagents/store.js";
 
 /**
  * Rebuild cost for the workspace descriptor map, aggregated process-wide and
@@ -81,6 +82,11 @@ interface WorkspaceBucketHistoryEntry {
   enteredAt: string;
 }
 
+interface WorkspaceBucketTimestampEntry {
+  bucket: WorkspaceStateBucket;
+  changedAtIso: string;
+}
+
 type FetchWorkspacesRequestMessage = Extract<
   SessionInboundMessage,
   { type: "fetch_workspaces_request" }
@@ -96,6 +102,11 @@ type FetchWorkspacesResponsePageInfo = FetchWorkspacesResponsePayload["pageInfo"
 type WorkspaceProjectDescriptor = FetchWorkspacesResponsePayload["emptyProjects"][number];
 
 export type WorkspaceUpdatesFilter = FetchWorkspacesRequestFilter;
+
+export type ProviderSubagentWorkspaceActivity = Pick<
+  ProviderSubagentDescriptor,
+  "parentAgentId" | "status" | "updatedAt"
+>;
 
 export interface WorkspaceDirectoryDeps {
   logger: pino.Logger;
@@ -115,6 +126,7 @@ export interface WorkspaceDirectoryDeps {
     workspaceIds?: ReadonlySet<string>;
     agentIds?: ReadonlySet<string>;
   }): Promise<AgentSnapshotPayload[]>;
+  listProviderSubagentActivity(): Promise<ProviderSubagentWorkspaceActivity[]>;
   listTerminalActivityContributions(): Promise<
     Array<{ cwd: string; workspaceId?: string; activity: TerminalActivity | null }>
   >;
@@ -287,13 +299,19 @@ export class WorkspaceDirectory {
   }): Promise<Map<string, WorkspaceDescriptorPayload>> {
     const scopedWorkspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
     const finishTiming = beginDescriptorMapTiming();
-    const [agents, persistedWorkspaces, persistedProjects, terminalContributions] =
-      await Promise.all([
-        this.listAgentPayloadsForScope(scopedWorkspaceIds),
-        this.deps.workspaceRegistry.list(),
-        this.deps.projectRegistry.list(),
-        this.deps.listTerminalActivityContributions(),
-      ]);
+    const [
+      agents,
+      providerSubagentActivity,
+      persistedWorkspaces,
+      persistedProjects,
+      terminalContributions,
+    ] = await Promise.all([
+      this.listAgentPayloadsForScope(scopedWorkspaceIds),
+      this.deps.listProviderSubagentActivity(),
+      this.deps.workspaceRegistry.list(),
+      this.deps.projectRegistry.list(),
+      this.deps.listTerminalActivityContributions(),
+    ]);
 
     const activeProjects = new Map(
       persistedProjects
@@ -346,10 +364,16 @@ export class WorkspaceDirectory {
     });
 
     // Terminal activity contributions: working terminal → running bucket.
-    const terminalEntriesByWorkspaceId = this.applyTerminalContributions(
+    const activityEntriesByWorkspaceId = this.applyTerminalContributions(
       terminalContributions,
       descriptorsByWorkspaceId,
     );
+    this.applyProviderSubagentContributions({
+      activeAgents,
+      providerSubagentActivity,
+      descriptorsByWorkspaceId,
+      activityEntriesByWorkspaceId,
+    });
 
     const contributingAgentsByWorkspaceId = groupAgentsByWorkspaceId(
       activeAgents,
@@ -361,12 +385,12 @@ export class WorkspaceDirectory {
     const nowIso = (this.deps.now?.() ?? new Date()).toISOString();
     for (const [workspaceId, descriptor] of descriptorsByWorkspaceId) {
       const contributingAgents = contributingAgentsByWorkspaceId.get(workspaceId) ?? [];
-      const terminalEntries = terminalEntriesByWorkspaceId.get(workspaceId) ?? [];
+      const activityEntries = activityEntriesByWorkspaceId.get(workspaceId) ?? [];
       const result = this.resolveStatusEnteredAt({
         workspaceId,
         winningBucket: descriptor.status,
         contributingAgents,
-        terminalEntries,
+        activityEntries,
         previous: this.bucketHistoryByWorkspaceId.get(workspaceId) ?? null,
         workspaceCreatedAt: activeRecordsByWorkspaceId.get(workspaceId)?.createdAt ?? null,
         nowIso,
@@ -384,6 +408,49 @@ export class WorkspaceDirectory {
       recordsScanned: agents.length + persistedWorkspaces.length + terminalContributions.length,
     });
     return descriptorsByWorkspaceId;
+  }
+
+  private applyProviderSubagentContributions(params: {
+    activeAgents: AgentSnapshotPayload[];
+    providerSubagentActivity: ProviderSubagentWorkspaceActivity[];
+    descriptorsByWorkspaceId: Map<string, WorkspaceDescriptorPayload>;
+    activityEntriesByWorkspaceId: Map<string, WorkspaceBucketTimestampEntry[]>;
+  }): void {
+    const {
+      activeAgents,
+      providerSubagentActivity,
+      descriptorsByWorkspaceId,
+      activityEntriesByWorkspaceId,
+    } = params;
+    const activeAgentsById = new Map(activeAgents.map((agent) => [agent.id, agent] as const));
+
+    for (const subagent of providerSubagentActivity) {
+      if (subagent.status !== "running") {
+        continue;
+      }
+      const parent = activeAgentsById.get(subagent.parentAgentId);
+      if (!parent) {
+        continue;
+      }
+      const workspaceAgent = resolveWorkspaceRootAgent(parent, activeAgentsById);
+      const workspaceId = workspaceAgent?.workspaceId;
+      if (!workspaceId) {
+        continue;
+      }
+      const descriptor = descriptorsByWorkspaceId.get(workspaceId);
+      if (!descriptor) {
+        continue;
+      }
+      if (
+        getWorkspaceStateBucketPriority("running") <
+        getWorkspaceStateBucketPriority(descriptor.status)
+      ) {
+        descriptor.status = "running";
+      }
+      const entries = activityEntriesByWorkspaceId.get(workspaceId) ?? [];
+      entries.push({ bucket: "running", changedAtIso: subagent.updatedAt });
+      activityEntriesByWorkspaceId.set(workspaceId, entries);
+    }
   }
 
   // Aggregate each agent's state bucket into its owning workspace descriptor,
@@ -432,8 +499,8 @@ export class WorkspaceDirectory {
     }
   }
 
-  // Apply working terminal contributions to descriptor statuses and build a map
-  // of terminal timestamp entries per workspace for use in `resolveStatusEnteredAt`.
+  // Apply working terminal contributions to descriptor statuses and seed the
+  // activity timestamp entries used by `resolveStatusEnteredAt`.
   // A terminal contributes only to the workspace it carries; same-cwd siblings
   // are untouched.
   private applyTerminalContributions(
@@ -443,11 +510,8 @@ export class WorkspaceDirectory {
       activity: TerminalActivity | null;
     }>,
     descriptorsByWorkspaceId: Map<string, WorkspaceDescriptorPayload>,
-  ): Map<string, Array<{ bucket: WorkspaceStateBucket; changedAtIso: string }>> {
-    const terminalEntriesByWorkspaceId = new Map<
-      string,
-      Array<{ bucket: WorkspaceStateBucket; changedAtIso: string }>
-    >();
+  ): Map<string, WorkspaceBucketTimestampEntry[]> {
+    const activityEntriesByWorkspaceId = new Map<string, WorkspaceBucketTimestampEntry[]>();
     for (const { workspaceId, activity } of terminalContributions) {
       if (!activity || !workspaceId) {
         continue;
@@ -463,21 +527,21 @@ export class WorkspaceDirectory {
       ) {
         existing.status = bucket;
       }
-      const entries = terminalEntriesByWorkspaceId.get(workspaceId) ?? [];
+      const entries = activityEntriesByWorkspaceId.get(workspaceId) ?? [];
       entries.push({ bucket, changedAtIso: new Date(activity.changedAt).toISOString() });
-      terminalEntriesByWorkspaceId.set(workspaceId, entries);
+      activityEntriesByWorkspaceId.set(workspaceId, entries);
     }
-    return terminalEntriesByWorkspaceId;
+    return activityEntriesByWorkspaceId;
   }
 
-  // Aggregate the workspace-level `statusEnteredAt` from its contributing
-  // agents and terminals. Aggregate semantics:
-  //   - winning bucket = highest-priority across contributing agents and terminals;
-  //   - entry time = best-effort timestamp from agents/terminals in the winning bucket;
+  // Aggregate the workspace-level `statusEnteredAt` from its activity sources.
+  // Aggregate semantics:
+  //   - winning bucket = highest-priority across contributing activity;
+  //   - entry time = best-effort timestamp from sources in the winning bucket;
   //   - priority unmasking: when the winning bucket transitions (e.g. a
   //     higher-priority bucket cleared), the new entry time is "now";
   //   - same-bucket emits reuse the previous entered-at;
-  //   - empty workspaces that never had contributing agents or terminals use
+  //   - empty workspaces that never had contributing activity use
   //     their workspace creation time as their initial `done` entry time.
   //   - when archived agents leave a previously active workspace empty, keep
   //     the previous done timestamp or stamp the transition to done now.
@@ -485,7 +549,7 @@ export class WorkspaceDirectory {
     workspaceId: string;
     winningBucket: WorkspaceStateBucket;
     contributingAgents: AgentSnapshotPayload[];
-    terminalEntries: Array<{ bucket: WorkspaceStateBucket; changedAtIso: string }>;
+    activityEntries: WorkspaceBucketTimestampEntry[];
     previous: WorkspaceBucketHistoryEntry | null;
     workspaceCreatedAt: string | null;
     nowIso: string;
@@ -497,13 +561,13 @@ export class WorkspaceDirectory {
     const {
       winningBucket,
       contributingAgents,
-      terminalEntries,
+      activityEntries,
       previous,
       workspaceCreatedAt,
       nowIso,
     } = params;
 
-    if (contributingAgents.length === 0 && terminalEntries.length === 0) {
+    if (contributingAgents.length === 0 && activityEntries.length === 0) {
       if (!previous) {
         if (!workspaceCreatedAt) {
           return { statusEnteredAt: null };
@@ -525,7 +589,7 @@ export class WorkspaceDirectory {
     if (!previous) {
       const newestInWinningBucket = this.findNewestTimestampInBucket(
         contributingAgents,
-        terminalEntries,
+        activityEntries,
         winningBucket,
       );
       const enteredAt = newestInWinningBucket ?? nowIso;
@@ -548,14 +612,14 @@ export class WorkspaceDirectory {
     };
   }
 
-  // Best-effort newest timestamp across contributing agents and terminal entries
+  // Best-effort newest timestamp across contributing agents and other activity
   // whose bucket matches `winningBucket`. For agents, uses:
   //   - `attentionTimestamp` when attention is set (covers attention/failed)
   //   - `updatedAt` as a general fallback for any bucket
   // Returns `null` if no matching contributor has a parseable timestamp.
   private findNewestTimestampInBucket(
     contributingAgents: AgentSnapshotPayload[],
-    terminalEntries: Array<{ bucket: WorkspaceStateBucket; changedAtIso: string }>,
+    activityEntries: WorkspaceBucketTimestampEntry[],
     winningBucket: WorkspaceStateBucket,
   ): string | null {
     const agentTimestamps = contributingAgents
@@ -579,11 +643,11 @@ export class WorkspaceDirectory {
       })
       .filter((value): value is string => typeof value === "string" && value.length > 0);
 
-    const terminalTimestamps = terminalEntries
+    const activityTimestamps = activityEntries
       .filter((entry) => entry.bucket === winningBucket)
       .map((entry) => entry.changedAtIso);
 
-    const candidates = [...agentTimestamps, ...terminalTimestamps].sort();
+    const candidates = [...agentTimestamps, ...activityTimestamps].sort();
     return candidates.at(-1) ?? null;
   }
 
@@ -615,6 +679,7 @@ export class WorkspaceDirectory {
         projectKey: project.projectKey ?? undefined,
         projectDisplayName: resolveProjectDisplayName(project),
         projectCustomName: project.customName ?? null,
+        projectCustomIconRevision: project.customIconRevision ?? null,
         projectRootPath: project.rootPath,
         projectKind: project.kind,
       }));

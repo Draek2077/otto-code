@@ -113,6 +113,139 @@ describe("MockLoadTestAgentClient", () => {
     });
   });
 
+  test("rejects the configured number of prompts before starting a retry", async () => {
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+      featureValues: { mockPromptRejections: 1 },
+    });
+
+    await expect(session.startTurn("Reject this prompt.")).rejects.toThrow(
+      "Requested mock prompt rejection",
+    );
+
+    await expect(session.startTurn("Accept this retry.")).resolves.toEqual({
+      turnId: expect.any(String),
+    });
+    await session.interrupt();
+  });
+
+  test("streams a configured assistant response through the normal timeline", async () => {
+    vi.useFakeTimers();
+    const response = [
+      "```mermaid",
+      "flowchart LR",
+      "  Start --> Middle",
+      '  Middle --> End["<i>Done</i>"]',
+      "```",
+    ].join("\n");
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+      featureValues: {
+        mockStreamingAssistantResponse: response,
+        mockStreamingAssistantIntervalMs: 20,
+      },
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    const resultPromise = session.run("Render a diagram while streaming.");
+    await vi.runAllTimersAsync();
+
+    await expect(resultPromise).resolves.toMatchObject({ finalText: response, canceled: false });
+    const streamedText = events
+      .flatMap((event) =>
+        event.type === "timeline" && event.item.type === "assistant_message"
+          ? [event.item.text]
+          : [],
+      )
+      .join("");
+    expect(streamedText).toBe(response);
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "assistant_message")
+        .length,
+    ).toBeGreaterThan(5);
+    expect(events.at(-1)).toMatchObject({ type: "turn_completed", provider: "mock" });
+  });
+
+  test("can withhold the provider user-message echo until an immediate interrupt", async () => {
+    vi.useFakeTimers();
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.startTurn("Withhold synthetic user message until interrupted.", {
+      clientMessageId: "client-message-1",
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(events.some((event) => event.type === "timeline")).toBe(false);
+
+    await session.interrupt();
+    expect(events.map((event) => event.type)).toEqual(["turn_canceled"]);
+  });
+
+  test("can emit the provider user-message echo before accepting the turn", async () => {
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.startTurn("Emit synthetic user message before accepting turn.", {
+      clientMessageId: "client-message-1",
+    });
+
+    expect(events).toContainEqual({
+      type: "timeline",
+      provider: "mock",
+      turnId: expect.any(String),
+      item: {
+        type: "user_message",
+        text: "Emit synthetic user message before accepting turn.",
+        messageId: expect.any(String),
+        clientMessageId: "client-message-1",
+      },
+    });
+    await session.interrupt();
+  });
+
+  test("can place the provider echo beyond a bounded timeline tail", async () => {
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Emit 205 assistant messages before synthetic user message.", {
+      clientMessageId: "client-message-1",
+    });
+
+    const timelineItems = events.flatMap((event) =>
+      event.type === "timeline" ? [event.item] : [],
+    );
+    expect(timelineItems.filter((item) => item.type === "assistant_message")).toHaveLength(205);
+    expect(timelineItems.at(-1)).toMatchObject({
+      type: "user_message",
+      clientMessageId: "client-message-1",
+    });
+  });
+
   test("returns schema-shaped JSON for structured branch-name generation", async () => {
     vi.useFakeTimers();
     const client = new MockLoadTestAgentClient();
@@ -275,6 +408,32 @@ describe("MockLoadTestAgentClient", () => {
     });
   });
 
+  test("emits turn_started before the submitted user message", async () => {
+    vi.useFakeTimers();
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const events: AgentStreamEvent[] = [];
+    const unsubscribe = session.subscribe((event) => events.push(event));
+
+    await session.startTurn("Order the submitted prompt.", {
+      clientMessageId: "client-message-1",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    unsubscribe();
+
+    expect(
+      events
+        .slice(0, 2)
+        .map((event) =>
+          event.type === "timeline" ? `${event.type}:${event.item.type}` : event.type,
+        ),
+    ).toEqual(["turn_started", "timeline:user_message"]);
+  });
+
   test("emits the free-write question scenario selected by prompt", async () => {
     vi.useFakeTimers();
     const client = new MockLoadTestAgentClient();
@@ -324,6 +483,39 @@ describe("MockLoadTestAgentClient", () => {
     await expect(resultPromise).resolves.toMatchObject({
       sessionId: session.id,
       finalText: "Synthetic questions resolved",
+      canceled: false,
+    });
+    unsubscribe();
+  });
+
+  test("emits a settled assistant Markdown image path selected by prompt", async () => {
+    vi.useFakeTimers();
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+    const events: AgentStreamEvent[] = [];
+    const unsubscribe = session.subscribe((event) => events.push(event));
+    const markdown = "![Fixture image](screenshots/fixture.png)";
+
+    const resultPromise = session.run(`Emit settled assistant image Markdown: ${markdown}`);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(
+      events.flatMap((event): AgentTimelineItem[] =>
+        event.type === "timeline" && event.item.type === "assistant_message" ? [event.item] : [],
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "assistant_message",
+        text: markdown,
+      }),
+    ]);
+    await expect(resultPromise).resolves.toMatchObject({
+      sessionId: session.id,
+      finalText: markdown,
       canceled: false,
     });
     unsubscribe();

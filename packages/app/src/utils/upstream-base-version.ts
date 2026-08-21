@@ -20,4 +20,4 @@
  * this path is on that doc's audit exclusion list.
  */
 export const UPSTREAM_BASE_NAME = "Paseo";
-export const UPSTREAM_BASE_VERSION = "0.2.5";
+export const UPSTREAM_BASE_VERSION = "0.4.0";

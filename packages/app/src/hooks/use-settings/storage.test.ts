@@ -69,6 +69,54 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.language).toBe("system");
   });
 
+  it("loads the legacy terminal renderer preference", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ useLegacyTerminalRenderer: true }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).useLegacyTerminalRenderer).toBe(true);
+  });
+
+  it("validates sidebar row display preferences", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          sidebarRowItems: { host: false, changeRequest: "invalid", scripts: false },
+          sidebarChecksDisplay: "icon",
+        }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+    expect(result.sidebarRowItems).toEqual({
+      host: false,
+      changeRequest: true,
+      services: false,
+    });
+    expect(result.sidebarChecksDisplay).toBe("icon");
+  });
+
+  it("migrates a hidden legacy checks row without overriding an explicit display", async () => {
+    const hidden = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ sidebarRowItems: { checks: false } }),
+      }),
+    });
+    const explicit = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          sidebarRowItems: { checks: false },
+          sidebarChecksDisplay: "iconAndText",
+        }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(hidden)).sidebarChecksDisplay).toBe("none");
+    expect((await loadAppSettingsFromStorage(explicit)).sidebarChecksDisplay).toBe("iconAndText");
+  });
+
   it("normalizes persisted Vim mappings and preserves the legacy Vim toggle", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -702,6 +750,7 @@ describe("loadSettingsFromStorage", () => {
       isElectron: true,
       settings: {
         releaseChannel: "beta",
+        notifications: { playSound: true },
         daemon: { manageBuiltInDaemon: false, keepRunningAfterQuit: true },
         tray: { minimizeOnClose: true, startMinimized: false },
         quit: { warnBeforeQuit: false, onlyWarnForActiveAgents: false },

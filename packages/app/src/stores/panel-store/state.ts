@@ -5,6 +5,7 @@ import {
   type ExplorerTab,
 } from "../explorer-tab-memory";
 import { type ExplorerCheckoutContext } from "../explorer-checkout-context";
+import { z } from "zod";
 
 export type MobilePanelView = "agent" | "agent-list" | "file-explorer";
 
@@ -212,7 +213,42 @@ export function buildToggleFileExplorerPatch(
   return { desktop: { ...state.desktop, fileExplorerOpen: false } };
 }
 
-type MigratablePanelState = Record<string, unknown>;
+const ExplorerTabSchema = z.enum(["changes", "files", "search", "pr"]);
+const ExplorerViewModeSchema = z.enum(["files", "solution"]);
+const DesktopSidebarStorageSchema = z.strictObject({
+  agentListOpen: z.boolean().optional(),
+  fileExplorerOpen: z.boolean().optional(),
+  focusModeEnabled: z.boolean().optional(),
+  zoomed: z.boolean().optional(),
+  focused: z.boolean().optional(),
+});
+
+export const PanelPersistedStateSchema = z.strictObject({
+  mobileView: z.enum(["agent", "agent-list", "file-explorer"]).optional(),
+  mobilePanel: z
+    .strictObject({
+      target: z.enum(["agent", "agent-list", "file-explorer"]),
+      revision: z.number().int().nonnegative(),
+    })
+    .optional(),
+  desktop: DesktopSidebarStorageSchema.optional(),
+  explorerTab: ExplorerTabSchema.optional(),
+  explorerTabByCheckout: z.record(z.string(), ExplorerTabSchema).optional(),
+  explorerViewModeByCheckout: z.record(z.string(), ExplorerViewModeSchema).optional(),
+  explorerSolutionByCheckout: z.record(z.string(), z.string()).optional(),
+  expandedPathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
+  diffExpandedPathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
+  diffCollapsedFoldersByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
+  sidebarWidth: z.number().optional(),
+  explorerWidth: z.number().optional(),
+  contextSidebarWidth: z.number().optional(),
+  projectKnowledgeSidebarWidth: z.number().optional(),
+  explorerSortOption: z.enum(["name", "modified", "size"]).optional(),
+  explorerShowHiddenFiles: z.boolean().optional(),
+  explorerFilesSplitRatio: z.number().optional(),
+});
+
+type MigratablePanelState = z.infer<typeof PanelPersistedStateSchema>;
 
 function migratePanelV2Explorer(state: MigratablePanelState, isWeb: boolean): void {
   if (isWeb && typeof state.explorerWidth === "number" && state.explorerWidth === 400) {
@@ -244,7 +280,7 @@ function migratePanelExplorerTabByCheckout(state: MigratablePanelState, version:
     state.explorerTabByCheckout = {};
     return;
   }
-  const entries = Object.entries(state.explorerTabByCheckout as Record<string, unknown>);
+  const entries = Object.entries(state.explorerTabByCheckout);
   const next: Record<string, ExplorerTab> = {};
   for (const [key, value] of entries) {
     if (!isExplorerTab(value)) {
@@ -272,7 +308,7 @@ function migrateExplorerViewModeByCheckout(state: MigratablePanelState): void {
 }
 
 function migratePanelDesktopFocusMode(state: MigratablePanelState): void {
-  const desktop = state.desktop as Record<string, unknown> | undefined;
+  const desktop = state.desktop;
   if (!desktop) {
     return;
   }
@@ -294,7 +330,8 @@ export function migratePanelState(
   version: number,
   options: { isWeb: boolean },
 ): MigratablePanelState {
-  const state = (persistedState ?? {}) as MigratablePanelState;
+  const result = PanelPersistedStateSchema.safeParse(persistedState);
+  const state: MigratablePanelState = result.success ? result.data : {};
   const { isWeb } = options;
 
   if (version < 2) {

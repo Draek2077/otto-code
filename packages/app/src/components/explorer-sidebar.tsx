@@ -10,7 +10,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Gesture } from "react-native-gesture-handler";
+import { scheduleOnRN } from "react-native-worklets";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { DocumentSearch, Files, X } from "@/components/icons/material-icons";
 import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
@@ -49,10 +50,15 @@ import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import { useSidebarSlide } from "@/hooks/use-sidebar-slide";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
-import { isWeb } from "@/constants/platform";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import { useIconSize } from "@/styles/theme";
 import type { KeyboardActionId } from "@/keyboard/actions";
+import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
+import { resolveDesktopExplorerWidth } from "@/components/desktop-sidebar-layout";
+import {
+  SIDEBAR_RESIZE_ACTIVATION_OFFSET,
+  SIDEBAR_RESIZE_FAIL_OFFSET,
+} from "@/components/sidebar-resize-handle-layout";
 
 const MIN_CHAT_WIDTH = 400;
 // Files / Search / Changes / PR pill height, trimmed 2px below what
@@ -181,8 +187,15 @@ export function ExplorerSidebar({
     isGit,
   });
   const { width: viewportWidth } = useWindowDimensions();
-  const startWidthRef = useRef(explorerWidth);
-  const resizeWidth = useSharedValue(explorerWidth);
+  const visibleExplorerWidth = resolveDesktopExplorerWidth({
+    requestedWidth: explorerWidth,
+    viewportWidth,
+  });
+  const startWidthRef = useRef(visibleExplorerWidth);
+  const resizeWidth = useSharedValue(visibleExplorerWidth);
+  const [resizePressed, setResizePressed] = useState(false);
+  const showResizeGrip = useCallback(() => setResizePressed(true), []);
+  const hideResizeGrip = useCallback(() => setResizePressed(false), []);
 
   useEffect(() => {
     const maxWidth = Math.max(
@@ -210,9 +223,16 @@ export function ExplorerSidebar({
         // slop turns a 1px divider into a dead zone plus a catch-up jump.
         .minDistance(0)
         .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
-        .onStart(() => {
-          startWidthRef.current = explorerWidth;
-          resizeWidth.value = explorerWidth;
+        .onBegin(() => {
+          scheduleOnRN(showResizeGrip);
+        })
+        // See the left sidebar's gesture: horizontal intent only, with the start
+        // width anchored to the activation translation so the threshold is free.
+        .activeOffsetX([-SIDEBAR_RESIZE_ACTIVATION_OFFSET, SIDEBAR_RESIZE_ACTIVATION_OFFSET])
+        .failOffsetY([-SIDEBAR_RESIZE_FAIL_OFFSET, SIDEBAR_RESIZE_FAIL_OFFSET])
+        .onStart((event) => {
+          startWidthRef.current = visibleExplorerWidth + event.translationX;
+          resizeWidth.value = visibleExplorerWidth;
         })
         .onUpdate((event) => {
           const newWidth = startWidthRef.current - event.translationX;
@@ -225,8 +245,18 @@ export function ExplorerSidebar({
         })
         .onEnd(() => {
           runOnJS(setExplorerWidth)(resizeWidth.value);
+        })
+        .onFinalize(() => {
+          scheduleOnRN(hideResizeGrip);
         }),
-    [explorerWidth, resizeWidth, setExplorerWidth, viewportWidth],
+    [
+      hideResizeGrip,
+      resizeWidth,
+      setExplorerWidth,
+      showResizeGrip,
+      viewportWidth,
+      visibleExplorerWidth,
+    ],
   );
 
   // Double-tapping the resize handle closes the sidebar, same as the toggle.
@@ -260,10 +290,13 @@ export function ExplorerSidebar({
 
   return (
     <Animated.View style={desktopSidebarStyle}>
-      <View style={DESKTOP_SIDEBAR_BORDER_STYLE}>
-        <GestureDetector gesture={resizeHandleGesture}>
-          <View style={RESIZE_HANDLE_STYLE} />
-        </GestureDetector>
+      <View style={[styles.desktopSidebarBorder, { flex: 1 }]}>
+        <SidebarResizeHandle
+          edge="left"
+          gesture={resizeHandleGesture}
+          pressed={resizePressed}
+          testID="explorer-sidebar-resize-handle"
+        />
 
         <ExplorerSidebarContent
           activeTab={explorerTab}
@@ -744,14 +777,6 @@ const styles = StyleSheet.create((theme) => ({
     borderLeftColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,
   },
-  resizeHandle: {
-    position: "absolute",
-    left: -5,
-    top: 0,
-    bottom: 0,
-    width: 10,
-    zIndex: 10,
-  },
   sidebarContent: {
     flex: 1,
     minHeight: 0,
@@ -836,6 +861,3 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
 }));
-
-const DESKTOP_SIDEBAR_BORDER_STYLE = [styles.desktopSidebarBorder, { flex: 1 }];
-const RESIZE_HANDLE_STYLE = [styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)];

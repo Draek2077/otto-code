@@ -7,7 +7,7 @@ import type {
 } from "../../messages.js";
 import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { StoredAgentRecord } from "../../agent/agent-storage.js";
-import { resolveEffectiveThinkingOptionId } from "../../agent/agent-projections.js";
+import { resolveEffectiveThinkingOptionId, toAgentPayload } from "../../agent/agent-projections.js";
 
 type AgentUpdatePayload = Extract<SessionOutboundMessage, { type: "agent_update" }>["payload"];
 type AgentUpdatesFilter = NonNullable<
@@ -66,7 +66,7 @@ export interface AgentUpdatesService {
    */
   forwardLiveAgentPayload(payload: AgentSnapshotPayload): Promise<void>;
   emitStoredRecord(record: StoredAgentRecord): Promise<AgentSnapshotPayload>;
-  removeAgent(agentId: string): void;
+  removeAgent(agentId: string): Promise<void>;
   /**
    * Run every workspace update still waiting inside its coalescing window, now.
    * `dispose` calls this so a session teardown never strands the tail of a burst;
@@ -78,7 +78,7 @@ export interface AgentUpdatesService {
 
 export interface AgentUpdatesServiceDeps {
   emit(message: SessionOutboundMessage): void;
-  buildAgentPayload(agent: ManagedAgent): Promise<AgentSnapshotPayload>;
+  enrichAgentPayload(payload: AgentSnapshotPayload): Promise<AgentSnapshotPayload>;
   buildStoredAgentPayload(record: StoredAgentRecord): AgentSnapshotPayload;
   isProviderVisibleToClient(provider: string): boolean;
   buildProjectPlacementForWorkspaceId(workspaceId: string): Promise<ProjectPlacementPayload | null>;
@@ -177,6 +177,7 @@ function agentUpdateTargetId(update: AgentUpdatePayload): string {
 export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentUpdatesService {
   let subscription: AgentUpdatesSubscriptionState | null = null;
   const pendingWorkspaceUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const liveAgentUpdateTails = new Map<string, Promise<void>>();
 
   async function runWorkspaceUpdate(workspaceId: string): Promise<void> {
     try {
@@ -252,7 +253,7 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
         const snapshotUpdatedAt = options?.snapshotUpdatedAtByAgentId?.get(payload.agent.id);
         if (typeof snapshotUpdatedAt === "number") {
           const updateUpdatedAt = Date.parse(payload.agent.updatedAt);
-          if (!Number.isNaN(updateUpdatedAt) && updateUpdatedAt <= snapshotUpdatedAt) {
+          if (!Number.isNaN(updateUpdatedAt) && updateUpdatedAt < snapshotUpdatedAt) {
             continue;
           }
         }
@@ -273,13 +274,6 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
 
   function hasSubscription(): boolean {
     return subscription !== null;
-  }
-
-  function removeAgent(agentId: string): void {
-    if (!subscription) {
-      return;
-    }
-    bufferOrEmit(subscription, { kind: "remove", agentId });
   }
 
   async function emitStoredRecord(record: StoredAgentRecord): Promise<AgentSnapshotPayload> {
@@ -321,25 +315,17 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
     return payload;
   }
 
-  async function forwardAgentPayload(payload: AgentSnapshotPayload): Promise<void> {
-    const sub = subscription;
-    if (sub) {
-      const project = payload.workspaceId
-        ? await deps.buildProjectPlacementForWorkspaceId(payload.workspaceId)
-        : null;
-      if (!project) {
-        bufferOrEmit(sub, {
-          kind: "remove",
-          agentId: payload.id,
-        });
-      } else {
-        const matches = matchesAgentUpdatesFilter({
-          agent: payload,
-          project,
-          filter: sub.filter,
-        });
-
-        if (matches) {
+  async function emitLiveAgentUpdate(payload: AgentSnapshotPayload): Promise<void> {
+    try {
+      payload = await deps.enrichAgentPayload(payload);
+      const sub = subscription;
+      if (sub) {
+        const project = payload.workspaceId
+          ? await deps.buildProjectPlacementForWorkspaceId(payload.workspaceId)
+          : null;
+        if (!project) {
+          bufferOrEmit(sub, { kind: "remove", agentId: payload.id });
+        } else if (matchesAgentUpdatesFilter({ agent: payload, project, filter: sub.filter })) {
           bufferOrEmit(sub, {
             kind: "upsert",
             agent: payload,
@@ -352,6 +338,8 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
           });
         }
       }
+    } catch (error) {
+      deps.logger.error({ err: error, agentId: payload.id }, "Failed to emit agent update");
     }
 
     // A lifecycle change updates exactly the agent's owning workspace, never
@@ -362,21 +350,36 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
     }
   }
 
-  async function forwardLiveAgent(agent: ManagedAgent): Promise<void> {
-    try {
-      const payload = await deps.buildAgentPayload(agent);
-      await forwardAgentPayload(payload);
-    } catch (error) {
-      deps.logger.error({ err: error }, "Failed to emit agent update");
-    }
+  function enqueueAgentUpdate(
+    agentId: string,
+    emitUpdate: () => void | Promise<void>,
+  ): Promise<void> {
+    const previous = liveAgentUpdateTails.get(agentId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(emitUpdate);
+    liveAgentUpdateTails.set(agentId, next);
+    void next.finally(() => {
+      if (liveAgentUpdateTails.get(agentId) === next) {
+        liveAgentUpdateTails.delete(agentId);
+      }
+    });
+    return next;
   }
 
-  async function forwardLiveAgentPayload(payload: AgentSnapshotPayload): Promise<void> {
-    try {
-      await forwardAgentPayload(payload);
-    } catch (error) {
-      deps.logger.error({ err: error }, "Failed to emit observed subagent update");
-    }
+  function forwardLiveAgent(agent: ManagedAgent): Promise<void> {
+    const payload = toAgentPayload(agent);
+    return enqueueAgentUpdate(payload.id, () => emitLiveAgentUpdate(payload));
+  }
+
+  function forwardLiveAgentPayload(payload: AgentSnapshotPayload): Promise<void> {
+    return enqueueAgentUpdate(payload.id, () => emitLiveAgentUpdate(payload));
+  }
+
+  function removeAgent(agentId: string): Promise<void> {
+    return enqueueAgentUpdate(agentId, () => {
+      if (subscription) {
+        bufferOrEmit(subscription, { kind: "remove", agentId });
+      }
+    });
   }
 
   function dispose(): void {

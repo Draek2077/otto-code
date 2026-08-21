@@ -2,7 +2,11 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { ToastApi } from "@/components/toast-host";
 import { i18n } from "@/i18n/i18next";
-import { useSessionStore, type AgentTimelineCursorState } from "@/stores/session-store";
+import {
+  selectAgentTimelineState,
+  useSessionStore,
+  type AgentTimelineCursorState,
+} from "@/stores/session-store";
 import { planTimelineOlderFetch } from "@/timeline/timeline-sync-plan";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 
@@ -91,15 +95,17 @@ export function useLoadOlderAgentHistory({
   toast?: ToastApi | null;
 }) {
   const { t } = useTranslation();
-  const hasOlder =
-    useSessionStore((state) => state.sessions[serverId]?.agentTimelineHasOlder.get(agentId)) ===
-    true;
+  const hasOlder = useSessionStore((state) => {
+    const timeline = selectAgentTimelineState(state.sessions[serverId], agentId);
+    return timeline.status === "synced" && timeline.older === "available";
+  });
   const isLoadingOlder =
     useSessionStore((state) =>
       state.sessions[serverId]?.agentTimelineOlderFetchInFlight.get(agentId),
     ) === true;
   const progressKey = useSessionStore((state) => {
-    const cursor = state.sessions[serverId]?.agentTimelineCursor.get(agentId);
+    const timeline = selectAgentTimelineState(state.sessions[serverId], agentId);
+    const cursor = timeline.status === "synced" ? timeline.range : null;
     return cursor ? `${cursor.epoch}:${cursor.startSeq}` : null;
   });
   const setOlderFetchInFlight = useSessionStore(
@@ -122,6 +128,7 @@ export function useLoadOlderAgentHistory({
 
   const loadOlder = useCallback(async (): Promise<boolean> => {
     const session = useSessionStore.getState().sessions[serverId];
+    const timeline = selectAgentTimelineState(session, agentId);
     return await loadOlderAgentHistory(agentId, {
       client: session?.client
         ? {
@@ -129,8 +136,8 @@ export function useLoadOlderAgentHistory({
               getHostRuntimeStore().fetchAgentTimeline(serverId, timelineAgentId, request),
           }
         : null,
-      cursor: session?.agentTimelineCursor.get(agentId),
-      hasOlder: session?.agentTimelineHasOlder.get(agentId) === true,
+      cursor: timeline.status === "synced" ? (timeline.range ?? undefined) : undefined,
+      hasOlder: timeline.status === "synced" && timeline.older === "available",
       isLoadingOlder: session?.agentTimelineOlderFetchInFlight.get(agentId) === true,
       setInFlight,
       toast,

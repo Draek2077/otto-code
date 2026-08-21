@@ -12,7 +12,6 @@ export type AssistantImageLoadState =
   | { status: "loading" }
   | { status: "ready"; aspectRatio: number; width: number }
   | { status: "error" };
-
 const assistantImageMetadataCache = new Map<string, AssistantImageMetadata>();
 const assistantImageParseCache = new Map<string, { sources: string[]; hasNonImageText: boolean }>();
 const ASSISTANT_IMAGE_METADATA_CACHE_LIMIT = 500;
@@ -139,7 +138,6 @@ export function getAssistantImageLoadStateFromMetadata(
   }
   return { status: "ready", aspectRatio: metadata.aspectRatio, width: metadata.width };
 }
-
 export function setAssistantImageMetadata(
   input: {
     source: string;

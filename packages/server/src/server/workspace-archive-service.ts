@@ -16,7 +16,12 @@ import { createRealpathAwarePathMatcher } from "../utils/path.js";
 import { deleteLocalBranch as deleteLocalBranchImpl } from "./workspace-archive-branch.js";
 import { gitOperationLog } from "./git-operation-log.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
-import type { PersistedWorkspaceRecord, WorkspaceRegistry } from "./workspace-registry.js";
+import type {
+  PersistedWorkspaceRecord,
+  WorkspaceArchiveContext,
+  WorkspaceRegistry,
+} from "./workspace-registry.js";
+import { runWithGitCommandPriority } from "../utils/run-git-command.js";
 
 export interface ActiveWorkspaceRef {
   workspaceId: string;
@@ -69,12 +74,13 @@ export interface ArchiveDependencies {
   // Detach archived records before their Otto-owned backing directory is removed.
   // Shared directories keep their remaining workspace observers.
   removeWorkspaceObserverForWorkspaceId?: (workspaceId: string) => void;
-  agentManager: Pick<AgentManager, "listAgents" | "archiveAgent" | "archiveSnapshot">;
-  agentStorage: Pick<AgentStorage, "list">;
+  agentManager: Pick<AgentManager, "listAgents" | "getAgent" | "archiveAgent" | "archiveSnapshot">;
+  agentStorage: Pick<AgentStorage, "listByWorkspace">;
   // Resolves the worktree at a path to its workspaceId for archive-by-path. The
   // path uniquely identifies a worktree workspace; this is a directory lookup for
   // the archive target, not status/ownership.
   findWorkspaceIdForCwd: (cwd: string) => Promise<string | null>;
+  getWorkspace?: (workspaceId: string) => Promise<PersistedWorkspaceRecord | null>;
   // Active (non-archived) workspaces, used to decide whether the workspace being
   // archived is the last reference to its backing worktree directory, and to
   // break a same-cwd tie in favor of the worktree-kind record when archiving by
@@ -98,6 +104,7 @@ export interface ArchiveDependencies {
     repoRoot: string;
     branchName: string;
   }) => Promise<{ deleted: boolean }>;
+  stopWorkspaceSetup?: (workspaceId: string) => Promise<void>;
   sessionLogger?: Logger;
 }
 
@@ -149,6 +156,20 @@ export async function requireActiveWorkspaceForArchive(
   return workspace;
 }
 
+interface BackingDirectory {
+  path: string;
+  isOttoOwnedWorktree: boolean;
+  mainRepoRoot: string | null;
+  ottoWorktreesRoot: string | null;
+}
+
+interface ArchiveTarget {
+  backing: BackingDirectory | null;
+  teardownTargets: Array<{ workspaceId: string | null; cwd: string }>;
+  setupWorkspaceIds: string[];
+  workspaceIds: string[];
+}
+
 export async function resolveWorkspaceIdAtPath(
   dependencies: Pick<ArchiveDependencies, "findWorkspaceIdForCwd" | "listActiveWorkspaces">,
   targetPath: string,
@@ -170,6 +191,13 @@ export async function archiveByScope(
   dependencies: ArchiveDependencies,
   request: ArchiveByScopeRequest,
 ): Promise<ArchiveResult> {
+  return runWithGitCommandPriority("high", () => archiveByScopeWithPriority(dependencies, request));
+}
+
+async function archiveByScopeWithPriority(
+  dependencies: ArchiveDependencies,
+  request: ArchiveByScopeRequest,
+): Promise<ArchiveResult> {
   const backingDependencies: BackingResolutionDependencies = {
     ottoHome: dependencies.ottoHome,
     ottoWorktreesBaseRoot: request.ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
@@ -187,6 +215,8 @@ export async function archiveByScope(
     target.backing?.mainRepoRoot ??
     null;
   const resolvedRequest = repoRoot ? { ...request, repoRoot } : request;
+
+  await stopWorkspaceSetups(dependencies, target.setupWorkspaceIds, request.requestId);
 
   if (targetWorkspaceIds.length > 0) {
     dependencies.markWorkspaceArchiving(targetWorkspaceIds, new Date().toISOString());
@@ -307,18 +337,22 @@ async function resolveArchiveTarget(
 
   if (scope.kind === "workspace") {
     const workspaceId = scope.workspaceId;
-    const record = activeWorkspaces.find((workspace) => workspace.workspaceId === workspaceId);
+    const record =
+      (await dependencies.getWorkspace?.(workspaceId)) ??
+      activeWorkspaces.find((workspace) => workspace.workspaceId === workspaceId);
     if (!record) {
       dependencies.sessionLogger?.warn(
         { workspaceId },
         "Workspace not found for archive-by-scope; skipping",
       );
-      return { backing: null, teardownTargets: [], workspaceIds: [] };
+      return { backing: null, teardownTargets: [], setupWorkspaceIds: [], workspaceIds: [] };
     }
+    const isArchived = "archivedAt" in record && Boolean(record.archivedAt);
     return {
       backing: await resolveWorkspaceBackingDirectory(record, backingDependencies),
-      teardownTargets: [{ workspaceId, cwd: record.cwd }],
-      workspaceIds: [workspaceId],
+      teardownTargets: isArchived ? [] : [{ workspaceId, cwd: record.cwd }],
+      setupWorkspaceIds: [workspaceId],
+      workspaceIds: isArchived ? [] : [workspaceId],
     };
   }
 
@@ -353,8 +387,30 @@ async function resolveArchiveTarget(
             cwd: workspace.cwd,
           }))
         : [{ workspaceId: null, cwd: scope.targetPath }],
+    setupWorkspaceIds: targetWorkspaces.map((workspace) => workspace.workspaceId),
     workspaceIds: targetWorkspaces.map((workspace) => workspace.workspaceId),
   };
+}
+
+async function stopWorkspaceSetups(
+  dependencies: ArchiveDependencies,
+  workspaceIds: string[],
+  requestId: string,
+): Promise<void> {
+  if (!dependencies.stopWorkspaceSetup) {
+    return;
+  }
+  const results = await Promise.allSettled(
+    workspaceIds.map((workspaceId) => dependencies.stopWorkspaceSetup!(workspaceId)),
+  );
+  for (const [index, result] of results.entries()) {
+    if (result?.status === "rejected") {
+      dependencies.sessionLogger?.warn(
+        { err: result.reason, workspaceId: workspaceIds[index], requestId },
+        "Failed to stop workspace setup during archive; continuing",
+      );
+    }
+  }
 }
 
 async function resolveWorkspaceBackingDirectory(
@@ -631,27 +687,29 @@ export async function archiveWorkspaceContents(
 
   let storedRecords: StoredAgentRecord[] = [];
   try {
-    storedRecords = await dependencies.agentStorage.list();
+    storedRecords = await dependencies.agentStorage.listByWorkspace(workspaceId);
   } catch (error) {
     dependencies.sessionLogger?.warn(
       { err: error, workspaceId },
       "Failed to list stored agents during workspace archive; continuing",
     );
   }
-  const liveAgentIds = new Set(liveAgents.map((agent) => agent.id));
-  const matchingStoredRecords = storedRecords.filter(
-    (record) => record.workspaceId === workspaceId,
-  );
+  const matchingStoredRecords = storedRecords;
   for (const record of matchingStoredRecords) {
     archivedAgents.add(record.id);
   }
 
   const archivedAt = new Date().toISOString();
+  const agentIdsToArchive = new Set([
+    ...liveAgents.map((agent) => agent.id),
+    ...matchingStoredRecords.filter((record) => !record.archivedAt).map((record) => record.id),
+  ]);
   const archiveResults = await Promise.allSettled([
-    ...liveAgents.map((agent) => dependencies.agentManager.archiveAgent(agent.id)),
-    ...matchingStoredRecords
-      .filter((record) => !liveAgentIds.has(record.id) && !record.archivedAt)
-      .map((record) => dependencies.agentManager.archiveSnapshot(record.id, archivedAt)),
+    ...[...agentIdsToArchive].map((agentId) =>
+      dependencies.agentManager.getAgent(agentId)
+        ? dependencies.agentManager.archiveAgent(agentId)
+        : dependencies.agentManager.archiveSnapshot(agentId, archivedAt),
+    ),
     dependencies.killTerminalsForWorkspace(workspaceId),
   ]);
 
@@ -818,6 +876,7 @@ export async function archivePersistedWorkspaceRecord(input: {
   workspaceId: string;
   workspaceRegistry: Pick<WorkspaceRegistry, "get" | "archive">;
   archivedAt?: string;
+  context?: WorkspaceArchiveContext;
 }): Promise<PersistedWorkspaceRecord | null> {
   const existingWorkspace = await input.workspaceRegistry.get(input.workspaceId);
   if (!existingWorkspace) {
@@ -829,7 +888,7 @@ export async function archivePersistedWorkspaceRecord(input: {
   }
 
   const archivedAt = input.archivedAt ?? new Date().toISOString();
-  await input.workspaceRegistry.archive(input.workspaceId, archivedAt);
+  await input.workspaceRegistry.archive(input.workspaceId, archivedAt, input.context);
 
   return existingWorkspace;
 }

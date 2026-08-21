@@ -9,7 +9,7 @@ import {
   type E2EAgentPersonality,
   type E2EAgentTeam,
   type PersonalitiesDaemonClient,
-} from "../../e2e/helpers/personalities";
+} from "../../e2e/support/helpers/personalities";
 
 /**
  * The shared demo cast: seven named personalities with distinct roles, colors,

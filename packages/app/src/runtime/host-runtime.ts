@@ -14,6 +14,7 @@ import {
   type HostConnection,
   type HostProfile,
 } from "@/types/host-connection";
+import { defaultHostAppearance, type HostBadgeDisplay, type HostColor } from "@/hosts/appearance";
 import {
   buildDaemonWebSocketUrl,
   buildRelayWebSocketUrl,
@@ -47,7 +48,7 @@ import {
   invalidateServerDataQueriesAfterReconnect,
   mountServerDataPushRouter,
 } from "@/data/push-router";
-import { mountBrowserAutomationDaemonClientHandler } from "@/browser-automation/handler";
+import { mountBrowserAutomationDaemonClientHandler } from "@/desktop/browser/automation/handler";
 import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
 import { invalidateHostAggregateQueries } from "@/data/host-aggregate-query-keys";
 import { DESKTOP_DAEMON_SERVER_ID_QUERY_KEY } from "@/hooks/use-is-local-daemon";
@@ -163,6 +164,7 @@ export interface HostRuntimeControllerDeps {
 export interface HostRuntimeStorage {
   getItem: (key: string) => Promise<string | null>;
   setItem: (key: string, value: string) => Promise<void>;
+  removeItem: (key: string) => Promise<void>;
 }
 
 export interface HostRuntimeStartOptions {
@@ -1231,6 +1233,9 @@ export class HostRuntimeController {
       if (!this.isCurrentSwitchRequest(requestVersion) || this.activeClient !== client) {
         return;
       }
+      if (state.status !== "connected") {
+        useSessionStore.getState().clearAgentTurnLiveness(this.host.serverId);
+      }
       this.applyConnectionEvent({
         type: "client_state",
         state,
@@ -1362,6 +1367,7 @@ export class HostRuntimeStore {
   private hostRegistryStatus: HostRegistryStatus = "loading";
   private deps: HostRuntimeControllerDeps;
   private lastConnectionStatusByServer = new Map<string, HostRuntimeConnectionStatus>();
+  private connectionStatusStartedAtByServer = new Map<string, number>();
   private directoryBootstrapInFlight = new Map<string, Promise<void>>();
   private queuedAgentDrainInFlight = new Set<string>();
   private directorySyncByServer = new Map<string, DirectorySync>();
@@ -1596,12 +1602,13 @@ export class HostRuntimeStore {
 
     rekeyMap(this.controllers, oldServerId, newServerId);
     rekeyMap(this.lastConnectionStatusByServer, oldServerId, newServerId);
+    rekeyMap(this.connectionStatusStartedAtByServer, oldServerId, newServerId);
     rekeyMap(this.directoryBootstrapInFlight, oldServerId, newServerId);
     this.replicaCache.reconcileServerId(oldServerId, newServerId);
     this.directorySyncByServer.get(oldServerId)?.dispose();
     this.directorySyncByServer.delete(oldServerId);
     const directory = new DirectorySync(newServerId, {
-      drainQueuedAgentMessage: (agentId) => this.drainQueuedAgentMessage(newServerId, agentId),
+      onAgentStoppedRunning: (agentId) => this.drainQueuedAgentMessage(newServerId, agentId),
       markAgentLoading: () => controller.markAgentDirectorySyncLoading(),
       markAgentReady: () => controller.markAgentDirectorySyncReady(),
       markAgentError: (error) => controller.markAgentDirectorySyncError(error),
@@ -1675,6 +1682,7 @@ export class HostRuntimeStore {
     const probeHost: HostProfile = {
       serverId: "",
       label: input.label ?? input.connection.id,
+      appearance: defaultHostAppearance(),
       lifecycle: {},
       connections: [input.connection],
       preferredConnectionId: input.connection.id,
@@ -1801,6 +1809,34 @@ export class HostRuntimeStore {
     await this.persistHosts();
   }
 
+  async setHostColor(serverId: string, color: HostColor): Promise<void> {
+    const next = this.hosts.map((host) =>
+      host.serverId === serverId
+        ? {
+            ...host,
+            appearance: { ...host.appearance, color },
+            updatedAt: new Date().toISOString(),
+          }
+        : host,
+    );
+    this.setHostsAndSync(next);
+    await this.persistHosts();
+  }
+
+  async setHostBadgeDisplay(serverId: string, badgeDisplay: HostBadgeDisplay): Promise<void> {
+    const next = this.hosts.map((host) =>
+      host.serverId === serverId
+        ? {
+            ...host,
+            appearance: { ...host.appearance, badgeDisplay },
+            updatedAt: new Date().toISOString(),
+          }
+        : host,
+    );
+    this.setHostsAndSync(next);
+    await this.persistHosts();
+  }
+
   async removeHost(serverId: string): Promise<void> {
     const remaining = this.hosts.filter((daemon) => daemon.serverId !== serverId);
     this.setHostsAndSync(remaining);
@@ -1909,6 +1945,7 @@ export class HostRuntimeStore {
       }
       this.controllers.delete(serverId);
       this.lastConnectionStatusByServer.delete(serverId);
+      this.connectionStatusStartedAtByServer.delete(serverId);
       this.directoryBootstrapInFlight.delete(serverId);
       this.directorySyncByServer.get(serverId)?.dispose();
       this.directorySyncByServer.delete(serverId);
@@ -1938,17 +1975,15 @@ export class HostRuntimeStore {
       this.directorySyncByServer.set(
         host.serverId,
         new DirectorySync(host.serverId, {
-          drainQueuedAgentMessage: (agentId) =>
-            this.drainQueuedAgentMessage(host.serverId, agentId),
+          onAgentStoppedRunning: (agentId) => this.drainQueuedAgentMessage(host.serverId, agentId),
           markAgentLoading: () => controller.markAgentDirectorySyncLoading(),
           markAgentReady: () => controller.markAgentDirectorySyncReady(),
           markAgentError: (error) => controller.markAgentDirectorySyncError(error),
         }),
       );
-      this.lastConnectionStatusByServer.set(
-        host.serverId,
-        controller.getSnapshot().connectionStatus,
-      );
+      const initialSnapshot = controller.getSnapshot();
+      this.lastConnectionStatusByServer.set(host.serverId, initialSnapshot.connectionStatus);
+      this.connectionStatusStartedAtByServer.set(host.serverId, Date.now());
       controller.subscribe(() => {
         const snapshot = controller.getSnapshot();
         this.syncSessionReplica(snapshot.serverId, snapshot);
@@ -1989,6 +2024,7 @@ export class HostRuntimeStore {
     const controller = this.controllers.get(serverId);
     if (!controller) {
       this.lastConnectionStatusByServer.delete(serverId);
+      this.connectionStatusStartedAtByServer.delete(serverId);
       this.directoryBootstrapInFlight.delete(serverId);
       return;
     }
@@ -2002,8 +2038,10 @@ export class HostRuntimeStore {
           connectionEpoch: snapshot.connectionEpoch,
         },
       }) ?? false;
-    const previousStatus = this.lastConnectionStatusByServer.get(serverId);
-    this.lastConnectionStatusByServer.set(serverId, snapshot.connectionStatus);
+    const previousStatus = this.recordConnectionStatusTransition(
+      serverId,
+      snapshot.connectionStatus,
+    );
     const didTransitionOnline =
       snapshot.connectionStatus === "online" && previousStatus !== "online";
     if (didTransitionOnline) {
@@ -2087,6 +2125,22 @@ export class HostRuntimeStore {
     this.directoryBootstrapInFlight.set(serverId, bootstrap);
   }
 
+  private recordConnectionStatusTransition(
+    serverId: string,
+    nextStatus: HostRuntimeConnectionStatus,
+  ): HostRuntimeConnectionStatus | undefined {
+    const previousStatus = this.lastConnectionStatusByServer.get(serverId);
+    const statusChanged = previousStatus !== nextStatus;
+    const isUnavailable = nextStatus !== "online" && nextStatus !== "idle";
+    const wasUnavailable =
+      previousStatus !== undefined && previousStatus !== "online" && previousStatus !== "idle";
+    if (statusChanged && (!wasUnavailable || !isUnavailable)) {
+      this.connectionStatusStartedAtByServer.set(serverId, Date.now());
+    }
+    this.lastConnectionStatusByServer.set(serverId, nextStatus);
+    return previousStatus;
+  }
+
   drainQueuedAgentMessage(serverId: string, agentId: string): void {
     const drainKey = `${serverId}:${agentId}`;
     if (this.queuedAgentDrainInFlight.has(drainKey)) return;
@@ -2149,6 +2203,10 @@ export class HostRuntimeStore {
 
   getSnapshot(serverId: string): HostRuntimeSnapshot | null {
     return this.controllers.get(serverId)?.getSnapshot() ?? null;
+  }
+
+  getConnectionStatusSince(serverId: string): number | null {
+    return this.connectionStatusStartedAtByServer.get(serverId) ?? null;
   }
 
   /** Every connected host's snapshot, for cross-host diagnostics roll-ups. */
@@ -2315,6 +2373,10 @@ export function getHostRuntimeStore(): HostRuntimeStore {
   return singletonHostRuntimeStore;
 }
 
+export function getHostRuntimeConnectionStatusSince(serverId: string): number | null {
+  return getHostRuntimeStore().getConnectionStatusSince(serverId);
+}
+
 export function useHostRuntimeSnapshot(serverId: string): HostRuntimeSnapshot | null {
   const store = getHostRuntimeStore();
   return useSyncExternalStore(
@@ -2456,6 +2518,8 @@ export interface HostMutations {
     label?: string,
   ) => Promise<HostProfile>;
   renameHost: (serverId: string, label: string) => Promise<void>;
+  setHostColor: (serverId: string, color: HostColor) => Promise<void>;
+  setHostBadgeDisplay: (serverId: string, badgeDisplay: HostBadgeDisplay) => Promise<void>;
   removeHost: (serverId: string) => Promise<void>;
   removeConnection: (serverId: string, connectionId: string) => Promise<void>;
 }
@@ -2470,6 +2534,9 @@ export function useHostMutations(): HostMutations {
       upsertConnectionFromOffer: (offer, label) => store.upsertConnectionFromOffer(offer, label),
       upsertConnectionFromOfferUrl: (url, label) => store.upsertConnectionFromOfferUrl(url, label),
       renameHost: (serverId, label) => store.renameHost(serverId, label),
+      setHostColor: (serverId, color) => store.setHostColor(serverId, color),
+      setHostBadgeDisplay: (serverId, badgeDisplay) =>
+        store.setHostBadgeDisplay(serverId, badgeDisplay),
       removeHost: (serverId) => store.removeHost(serverId),
       removeConnection: (serverId, connectionId) => store.removeConnection(serverId, connectionId),
     }),

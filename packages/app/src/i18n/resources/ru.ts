@@ -60,19 +60,37 @@ export const ru: TranslationResources = {
       close: "Закрыть меню",
     },
     commandCenter: {
-      placeholder: "Введите команду или найдите агентов...",
+      placeholder: "Поиск команд, файлов, рабочих пространств и агентов...",
+      filePlaceholder: "Поиск файлов...",
+      searchingFiles: "Поиск файлов...",
       noMatches: "Нет совпадений",
       actions: "Действия",
+      files: "Файлы",
+      workspaces: "Рабочие пространства",
       agents: "Агенты",
       newAgent: "Новый чат",
       openProject: "Открыть проект",
       home: "Дом",
-      workspaces: "Рабочие пространства",
       addProject: "Добавить проект",
+      groupByProject: "Группировать по проекту",
+      groupByStatus: "Группировать по статусу",
       modelGroupLabel: "Модель",
       modelSearchKeywords: "сменить модель изменить модель выбрать модель установить модель",
+      thinkingGroupLabel: "Мышление",
+      thinkingSearchKeywords: "рассуждение усилие мышление",
+      modeGroupLabel: "Режим",
+      modeSearchKeywords: "доступ разрешение одобрение режим",
+      planModeGroupLabel: "Режим плана",
+      planModeSearchKeywords: "план планирование режим плана",
+      fastModeGroupLabel: "Быстрый",
+      fastModeSearchKeywords: "быстрый скорость низкая задержка",
+      settingOn: "Вкл",
+      settingOff: "Выкл",
     },
   },
+  // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
+  // context-window occupancy - see docs/glossary.md; the two must not be
+  // described with each other's words anywhere in this block.
   chatMetrics: {
     tokensIn: "Входные токены, включая чтения из кэша",
     tokensOut: "Выходные токены",
@@ -85,7 +103,6 @@ export const ru: TranslationResources = {
     subagentsHint: "Субагенты в этом чате (работают / всего).",
     toolCallsHint: "Вызовы инструментов, сделанные субагентами этого чата.",
   },
-
   composer: {
     followSuggestion: {
       active: "Следую подсказке агента. Отправлено {{sent}} из {{max}}.",
@@ -114,9 +131,11 @@ export const ru: TranslationResources = {
       desktop: "Напишите агенту сообщение, отметьте @files или используйте /commands и /skills.",
       mobile: "Сообщение, @files, /commands",
       fallback: "Сообщение...",
+      terminal: "Prompt",
     },
     input: {
       accessibilityLabel: "Агент сообщений...",
+      terminalAccessibilityLabel: "Terminal prompt",
       focusHint: "{{shortcut}}, чтобы сосредоточиться",
       addAttachment: "Добавить вложение",
       interruptAgent: "Агент прерываний",
@@ -148,6 +167,7 @@ export const ru: TranslationResources = {
     },
     attachments: {
       addImage: "Загрузить изображение",
+      pasteImage: "Вставить изображение",
       addFile: "Загрузить файл",
       addFolder: "Добавить папку",
       addIssueOrPr: "Добавить проблему или PR",
@@ -184,17 +204,13 @@ export const ru: TranslationResources = {
       initialPromptRequired: "Требуется начальное приглашение",
       alreadyLoading: "Уже загружается",
       uploadFailed: "Не удалось загрузить файл",
+      noClipboardImage: "В буфере обмена нет изображения",
+      pasteImageFailed: "Не удалось вставить изображение",
       fileTooLarge: "{{fileName}} слишком большой (макс. {{size}})",
     },
     clientCommands: {
       archiveAgent: "Архивировать текущего агента",
       freshDraft: "Архивируйте этот агент и начните новый черновик",
-    },
-    folder: {
-      searching: "Идет поиск...",
-      noResults: "Папки не найдены.",
-      searchPlaceholder: "Поиск папок...",
-      title: "Прикрепить папку",
     },
     github: {
       searching: "Идет поиск...",
@@ -203,6 +219,12 @@ export const ru: TranslationResources = {
       title: "Прикрепите проблему или PR",
       searchPlaceholder_mr: "Поиск проблем и MR...",
       title_mr: "Прикрепите проблему или MR",
+    },
+    folder: {
+      searching: "Идет поиск...",
+      noResults: "Папки не найдены.",
+      searchPlaceholder: "Поиск папок...",
+      title: "Прикрепить папку",
     },
     interruptSubagentsWarning: {
       title: "Прервать работающие субагенты?",
@@ -229,6 +251,8 @@ export const ru: TranslationResources = {
       lessons_one: "{{count}} урок",
       lessons_other: "уроков: {{count}}",
     },
+    // What one personality has learned, and the exact text injected because of
+    // it. See docs/agent-personalities.md § Memory.
     memory: {
       noPersonality:
         "Выберите личность выше, чтобы увидеть, чему она научилась и что это добавляет к каждому её запросу.",
@@ -254,6 +278,10 @@ export const ru: TranslationResources = {
       scope: {
         global: "Везде",
         project: "Этот проект",
+        // A project-scoped lesson recorded somewhere else, and one bound to no
+        // project at all. Both are stored and listed but reach nothing here, so
+        // the row has to say so - otherwise an empty brief above a list of
+        // lessons looks broken.
         elsewhere: "Другой проект",
         unattached: "Без проекта - не отправляется",
         change: "Область: {{scope}}. Нажмите, чтобы изменить.",
@@ -335,6 +363,8 @@ export const ru: TranslationResources = {
     category: {
       contextFiles: "Файлы контекста",
       memoryIndex: "Индекс памяти",
+      // Covers subagent definitions too: both are advertised to the model as a
+      // name plus a description, and both are trimmed the same way.
       skillsRoster: "Навыки и агенты",
       mcpTools: "Инструменты MCP",
       ottoInjected: "Промпт Otto",
@@ -427,6 +457,7 @@ export const ru: TranslationResources = {
         usedTools: "использовал инструментов: {{count}}",
       },
     },
+    historyLoadFailed: "Не удалось загрузить историю агента",
     permission: {
       plan: "План",
       required: "Требуется разрешение",
@@ -487,11 +518,20 @@ export const ru: TranslationResources = {
       lastActive: "Last active",
       size: "Size",
     },
+    noMatches: "Нет подходящих сеансов",
+    tooManyMatches: "Слишком много совпадений: уточните запрос",
+    hostLoadFailed: "{{host}}: Не удалось загрузить историю",
     actions: {
       loadMore: "Загрузить больше",
       clearArchived: "Очистить архив",
       clearingArchived: "Очистка…",
+      clearSearch: "Очистить поиск",
     },
+    // The destructive-delete copy. It says the same two things everywhere and has
+    // to: deleting in Otto removes *Otto's record*, never the agent provider's own
+    // transcript on the host. Consent to an irreversible action you were told the
+    // wrong shape of is not consent, so this is translated like any other
+    // confirmation text - see history/delete-dialogs.ts.
     dialogs: {
       deleteAgent: {
         title: "Удалить этот чат?",
@@ -564,6 +604,14 @@ export const ru: TranslationResources = {
     },
   },
   message: {
+    diagram: {
+      diagram: "Диаграмма",
+      zoomIn: "Приблизить",
+      zoomOut: "Отдалить",
+      resetZoom: "Сбросить вид",
+      viewSource: "Показать код",
+      viewDiagram: "Показать диаграмму",
+    },
     actions: {
       copyCode: "Скопировать код",
       copyTurn: "Копировать ход",
@@ -582,7 +630,10 @@ export const ru: TranslationResources = {
       navigateToFolder: "Перейти к папке",
       copied: "Скопировано",
     },
-    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
+    expandCollapse: {
+      expandAll: "Expand all",
+      collapseAll: "Collapse all",
+    },
     attachments: {
       dismissImage: "Закрыть изображение",
       closeImage: "Закрыть изображение",
@@ -626,6 +677,15 @@ export const ru: TranslationResources = {
       empty: "Заданий пока нет.",
       progress: "{{completed}}/{{total}}",
       dismiss: "Скрыть",
+      tasksProgress: "{{completed}}/{{total}} задач",
+      tasksProgressCurrent: "{{completed}}/{{total}} задач · {{task}}",
+      activity: {
+        created: "Создано задач: {{count}}",
+        added: "Добавлена",
+        started: "Начата",
+        completed: "Завершена",
+        reopened: "Возобновлена",
+      },
     },
     compaction: {
       loading: "Уплотнение...",
@@ -709,6 +769,8 @@ export const ru: TranslationResources = {
       copyBranchName: "Копировать имя ветки",
       copied: "Скопировано",
     },
+    // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
+    // appear on screen at once. See docs/glossary.md.
     solution: {
       lens: {
         files: "Файлы",
@@ -791,6 +853,15 @@ export const ru: TranslationResources = {
         failedToListDirectory: "Не удалось указать каталог",
         alreadyExists: "«{{name}}» уже существует здесь.",
         noLongerExists: "Этого объекта больше нет на диске.",
+        createFailed: "Не удалось создать элемент",
+        renameFailed: "Не удалось переименовать элемент",
+        duplicateFailed: "Не удалось дублировать элемент",
+        revealFailed: "Не удалось показать элемент",
+        deleteFailed: "Не удалось удалить элемент",
+      },
+      draft: {
+        filePlaceholder: "Имя файла",
+        folderPlaceholder: "Имя папки",
       },
     },
     setup: {
@@ -887,6 +958,7 @@ export const ru: TranslationResources = {
     },
     terminal: {
       hostDisconnected: "Host не подключен",
+      updateHost: "Обновите хост, чтобы использовать нативный терминал.",
       unableToSubscribe: "Невозможно подписаться на терминал",
     },
     visualizer: {
@@ -994,6 +1066,7 @@ export const ru: TranslationResources = {
         reloadedAgent: "Перезагруженный агент",
         failedToReloadAgent: "Не удалось перезагрузить агент",
         terminalIdCopiedLabel: "Идентификатор терминала",
+        failedToCloseAgent: "Не удалось закрыть агент",
       },
       confirmations: {
         close: "Закрывать",
@@ -1449,6 +1522,14 @@ export const ru: TranslationResources = {
           viewPullRequest: "Открыть",
           openOn: "Открыть на {{brand}}",
         },
+        checksSummary: {
+          passedLabel: "успешно",
+          failedLabel: "ошибка",
+          runningLabel: "выполняется",
+          passedAccessible: "Проверки пройдены",
+          failedAccessible: "Проверки не пройдены",
+          runningAccessible: "Проверки выполняются",
+        },
         sections: {
           checks: "Чеки",
           reviews: "Отзывы",
@@ -1499,12 +1580,67 @@ export const ru: TranslationResources = {
       navigateToFile: "Перейти к файлу",
       navigateToChanges: "Перейти к изменениям",
       copyPath: "Копировать путь",
+      copyRelativePath: "Копировать относительный путь",
+      revealIn: "Показать в {{target}}",
       download: "Скачать",
-      addToChat: "Добавить в чат…",
+      addToChat: "Добавить в чат",
       moreActions: "Дополнительные действия",
+      newFile: "Новый файл",
+      newFolder: "Новая папка",
+      collapseFolder: "Свернуть папку",
+      rename: "Переименовать",
+      duplicate: "Дублировать",
+      revert: "Отменить изменения",
+      delete: "Удалить",
+      confirmDelete: {
+        fileTitle: "Удалить файл?",
+        folderTitle: "Удалить папку?",
+        message: "«{{name}}» будет удалён безвозвратно.",
+        confirm: "Удалить",
+        cancel: "Отмена",
+      },
+      confirmRevert: {
+        title: "Отменить изменения?",
+        message: "Изменения в «{{name}}» будут безвозвратно отменены.",
+        confirm: "Отменить",
+        cancel: "Отмена",
+        failed: "Не удалось отменить изменения",
+      },
     },
   },
   sidebar: {
+    display: {
+      trigger: "Настройки отображения",
+      heading: "Отображение",
+      grouping: {
+        label: "Группировка",
+        project: "Проект",
+        status: "Статус",
+      },
+      titleSource: {
+        label: "Заголовок",
+        title: "Заголовок",
+        branch: "Имя ветки",
+      },
+      show: {
+        label: "Показывать",
+        host: "Хост",
+        changeRequest: "Pull request",
+        checks: "Проверки",
+        services: "Сервисы",
+        diff: "Статистика изменений",
+        timestamp: "Последняя активность",
+      },
+      checks: {
+        iconAndText: "Значок и текст",
+        icon: "Только значок",
+        none: "Скрыто",
+      },
+      hostFilter: {
+        label: "Хост",
+        all: "Все хосты",
+      },
+    },
     host: {
       noHost: "Нет хоста",
       switchTitle: "Сменить хост",
@@ -1559,7 +1695,8 @@ export const ru: TranslationResources = {
     },
     workspace: {
       status: {
-        scriptsAvailable: "Доступны скрипты",
+        serviceRunning: "Сервис {{name}} запущен",
+        serviceUnhealthy: "Сервис {{name}} неисправен",
         creating: "Создание...",
       },
       actions: {
@@ -1623,7 +1760,7 @@ export const ru: TranslationResources = {
       discord: "Discord",
       github: "Создать issue в GitHub",
       whatsNew: "Что нового",
-      version: "Otto {{version}}",
+      appName: "Otto",
     },
   },
   newProject: {
@@ -1722,8 +1859,8 @@ export const ru: TranslationResources = {
       scaffold_unsupported: "Обновите хост, чтобы создавать проекты.",
     },
     errors: {
-      alreadyAdded: "Эта папка уже является проектом: {{path}}",
       failed: "Не удалось создать проект.",
+      alreadyAdded: "Эта папка уже является проектом: {{path}}",
     },
     actions: {
       open: "Открыть проект",
@@ -1757,9 +1894,15 @@ export const ru: TranslationResources = {
       openExisting: "Открыть",
       createWorktree: "Создать рабочее дерево",
     },
+    tooltips: {
+      project: "Choose the project",
+      host: "Choose the host",
+      isolation: "Choose the isolation level",
+      startingRef: "Выберите, с чего начать",
+      launch: "Choose what to launch",
+    },
     refPicker: {
       startingRef: "Начальная ссылка",
-      chooseStart: "Выберите, с чего начать",
       checkoutHint: "Переключиться на PR #{{number}}?",
       checkoutPr: "Переключиться на PR #{{number}}",
       dismissCheckoutHint: "Скрыть подсказку о переключении на PR #{{number}}",
@@ -1768,6 +1911,15 @@ export const ru: TranslationResources = {
       noMatchingRefs: "Нет подходящих ссылок.",
       searchPlaceholder: "Поиск филиалов и PR",
       title: "Начать с",
+    },
+    launch: {
+      title: "What to launch",
+      chat: "Chat",
+      terminal: "Terminal",
+      manageProfiles: "Manage profiles",
+      submit: "Launch",
+      promptPlaceholder: "Prompt {{name}}",
+      commandPlaceholder: "Run a command, or leave empty for a blank terminal",
     },
   },
   desktop: {
@@ -1963,11 +2115,11 @@ export const ru: TranslationResources = {
         installFailed: "Невозможно установить навыки оркестровки.",
         updateFailed: "Невозможно обновить навыки оркестровки.",
         uninstallFailed: "Невозможно удалить навыки оркестровки.",
+        saveSelectionFailed: "Не удалось сохранить выбор навыков оркестровки.",
       },
     },
   },
   rootError: {
-    kicker: "Что-то пошло не так",
     title: "В Otto возникла проблема.",
     body: "Попробуйте снова перезагрузить приложение. Если это повторяется, приложите приведенные ниже подробности к отчету.",
     details: "Подробности",
@@ -2239,6 +2391,11 @@ export const ru: TranslationResources = {
       settings: "Настройки",
     },
   },
+  // The first-run setup wizard. The blueprint names below are also the names the
+  // generated teams are saved under, so the card and the installed team always
+  // agree. What stays English is what the model reads, not what the user does:
+  // the team prompts, functional cores and persona names in
+  // screens/setup-wizard/presets/ are agent input.
   setupWizard: {
     chrome: {
       skip: "Пропустить настройку",
@@ -2366,11 +2523,18 @@ export const ru: TranslationResources = {
     favorites: "Избранное",
     favoriteModel: "Любимая модель",
     unfavoriteModel: "Нелюбимая модель",
+    profiles: "Профили",
+    providers: "Провайдеры",
+    editProfiles: "Изменить",
+    editProfilesLabel: "Изменить профили агентов",
+    createProfile: "Создать профиль",
     modelCount: "{{count}} модель",
     modelCountPlural: "{{count}} моделей",
     retry: "Повторить попытку",
     retrying: "Повторная попытка...",
     noMatches: "Ни одна модель не соответствует вашему запросу",
+    noMatchesForQuery: "Нет моделей, соответствующих «{{query}}»",
+    searchAllPlaceholder: "Поиск по всем моделям...",
     searchPlaceholder: "Поиск моделей...",
     openProviderSettings: "Открыть настройки{{provider}}",
   },
@@ -2503,9 +2667,21 @@ export const ru: TranslationResources = {
       loadingOffer: "Загрузка предложения по сопряжению...",
       failedToLoadOffer: "Не удалось загрузить предложение сопряжения.",
       relayDisabled: "Реле не включено. Включите реле для сопряжения устройства.",
+      enableTitle: "Включить реле?",
+      enableDescription:
+        "Реле позволяет подключаться с этого устройства откуда угодно. Трафик сопряжения защищён сквозным шифрованием.",
+      relayDocs: "Как работает реле",
+      relayDocsAccessibility: "Прочитать, как работает реле Otto",
+      enableRelay: "Включить реле",
+      enablingRelay: "Включение...",
+      notNow: "Не сейчас",
+      directConnectionHint:
+        "Без реле подключайтесь напрямую через TCP, Tailscale или другую VPN. QR-код не создаётся.",
+      updateRequired: "Обновите хост, чтобы включить реле из Otto Desktop.",
       unavailable: "Предложение по сопряжению недоступно.",
       hint: "Отсканируйте этот код QR с помощью Otto на своем телефоне или скопируйте ссылку ниже.",
       qrUnavailable: "Код QR недоступен.",
+      qrAccessibility: "QR-код сопряжения",
       retry: "Повторить попытку",
       copy: "Копировать",
       copied: "Скопировано",
@@ -2550,6 +2726,47 @@ export const ru: TranslationResources = {
   },
   menu: {
     backdrop: "Фон меню",
+  },
+  subagents: {
+    detachAction: "Отсоединить {{label}}",
+    detachTooltip: "Отсоединить субагент",
+    archiveAction: "Архив{{label}}",
+    archiveTooltip: "Архивный субагент",
+    stopAction: "Остановить {{label}}",
+    stopTooltip: "Остановить субагент",
+    completedGroup: "Завершено ({{count}})",
+    clearCompleted: "Очистить все",
+    clearCompletedTooltip: "Архивировать все завершённые субагенты",
+    stopNothingRunning: "Субагент не запущен, нечего останавливать.",
+    daemonUnavailable: "Демон недоступен",
+    dialogs: {
+      subjectFallback: "этот субагент",
+      subjectFallbackCapitalized: "Этот субагент",
+      archive: {
+        titleRunning: "Архивировать работающий субагент?",
+        title: "Архивировать субагент?",
+        messageRunning:
+          "{{subject}} ещё работает. Архивирование остановит субагент и уберёт его с дорожки.",
+        message: "Убрать {{subject}} с дорожки. Субагент будет архивирован.",
+        confirm: "Архивировать",
+      },
+      detach: {
+        title: "Отделить субагент?",
+        message: "{{subject}} покинет эту дорожку и продолжит работу как самостоятельный агент.",
+        confirm: "Отделить",
+      },
+      clearCompleted: {
+        titleOne: "Очистить завершённый субагент?",
+        titleMany: "Очистить {{count}} завершённых субагентов?",
+        messageOne:
+          "Архивирует 1 завершённый субагент и убирает его с дорожки. Работающие субагенты не затрагиваются.",
+        messageMany:
+          "Архивирует {{count}} завершённых субагентов и убирает их с дорожки. Работающие субагенты не затрагиваются.",
+        confirm: "Очистить",
+      },
+    },
+    archiveFinishedAction: "Архивировать завершенные субагенты",
+    archiveFinishedTooltip: "Архивировать завершенные",
   },
   observedSubagents: {
     readOnlyTitle: "Наблюдаемый субагент · только чтение",
@@ -2704,6 +2921,10 @@ export const ru: TranslationResources = {
     saveFirst: "Сначала сохраните или откатите изменения - улучшение работает с файлом на диске.",
     compactOpen: "Сжать с помощью ИИ",
     unsupported: "Обновите хост, чтобы пользоваться улучшением.",
+    // The job the tab presents itself as: a tab opened from "Compact with AI"
+    // must not call itself "Refine". Used as the tab title, the run button and
+    // inside the idle note, so it has to be a standalone noun/verb in every
+    // locale.
     job: {
       refine: "Улучшить",
       compact: "Сжать",
@@ -2882,47 +3103,6 @@ export const ru: TranslationResources = {
     removeLineFromContext: "Убрать строку {{line}} из чата",
     error: "Поиск не удался",
   },
-  subagents: {
-    detachAction: "Отсоединить {{label}}",
-    detachTooltip: "Отсоединить субагент",
-    archiveAction: "Архив{{label}}",
-    archiveTooltip: "Архивный субагент",
-    stopAction: "Остановить {{label}}",
-    stopTooltip: "Остановить субагент",
-    completedGroup: "Завершено ({{count}})",
-    clearCompleted: "Очистить все",
-    clearCompletedTooltip: "Архивировать все завершённые субагенты",
-    stopNothingRunning: "Субагент не запущен, нечего останавливать.",
-    daemonUnavailable: "Демон недоступен",
-    dialogs: {
-      subjectFallback: "этот субагент",
-      subjectFallbackCapitalized: "Этот субагент",
-      archive: {
-        titleRunning: "Архивировать работающий субагент?",
-        title: "Архивировать субагент?",
-        messageRunning:
-          "{{subject}} ещё работает. Архивирование остановит субагент и уберёт его с дорожки.",
-        message: "Убрать {{subject}} с дорожки. Субагент будет архивирован.",
-        confirm: "Архивировать",
-      },
-      detach: {
-        title: "Отделить субагент?",
-        message: "{{subject}} покинет эту дорожку и продолжит работу как самостоятельный агент.",
-        confirm: "Отделить",
-      },
-      clearCompleted: {
-        titleOne: "Очистить завершённый субагент?",
-        titleMany: "Очистить {{count}} завершённых субагентов?",
-        messageOne:
-          "Архивирует 1 завершённый субагент и убирает его с дорожки. Работающие субагенты не затрагиваются.",
-        messageMany:
-          "Архивирует {{count}} завершённых субагентов и убирает их с дорожки. Работающие субагенты не затрагиваются.",
-        confirm: "Очистить",
-      },
-    },
-    archiveFinishedAction: "Архивировать завершенные субагенты",
-    archiveFinishedTooltip: "Архивировать завершенные",
-  },
   panels: {
     draft: {
       newAgent: "Новый чат",
@@ -2957,7 +3137,9 @@ export const ru: TranslationResources = {
         cursor: "Строка {{line}}, столбец {{column}}",
         preview: "Просмотр",
         source: "Исходник",
-        unavailableTitle: "Файл недоступен на диске",
+        deletedTitle: "Файл удалён с диска",
+        checkFailedTitle: "Не удалось проверить файл на диске",
+        preservedDescription: "Открытая копия сохранена.",
         conflictDescription: "Локальный буфер сохранён. Выберите версию, которую нужно оставить.",
         overwrite: "Перезаписать",
         reload: "Перезагрузить",
@@ -2984,8 +3166,6 @@ export const ru: TranslationResources = {
     input: "Вход",
     output: "Выход",
   },
-  // Tool-call group summaries are literal English pending the pre-release i18n
-  // sweep, like the Refine tab strings above.
   toolCallGroup: {
     editedFiles: {
       one: "edited {{count}} file",
@@ -3086,18 +3266,36 @@ export const ru: TranslationResources = {
       appearance: "Появление",
       shortcuts: "Ярлыки",
       integrations: "Интеграции",
+      notifications: "Уведомления",
       permissions: "Разрешения",
       diagnostics: "Диагностика",
       about: "О",
       editor: "Редактор",
     },
+    notifications: {
+      title: "Уведомления",
+      permission: "Разрешение на уведомления",
+      refreshAccessibility: "Обновить разрешение на уведомления",
+      playSound: "Воспроизводить звук",
+      playSoundHint: "Воспроизводит звук при получении уведомления на компьютере",
+      test: "Проверить уведомление",
+      testHint: "Отправляет уведомление с текущими настройками",
+      permissionRequired: "Разрешите доступ к уведомлениям перед проверкой",
+      send: "Отправить",
+      sending: "Отправка...",
+      sentTitle: "Тестовое уведомление отправлено",
+      sentDescription: "Otto передал уведомление операционной системе.",
+      sendFailedTitle: "Не удалось отправить тестовое уведомление",
+    },
     hostSections: {
+      projects: "Проекты",
       connections: "Соединения",
       agents: "Агенты",
       teams: "Команды",
       tools: "Инструменты",
       code: "Код",
       brain: "Мозг",
+      metadata: "Метаданные",
       workspaces: "Workspaces",
       gitProviders: "Провайдеры Git",
       providers: "Провайдеры",
@@ -3105,6 +3303,20 @@ export const ru: TranslationResources = {
       storage: "Хранилище",
       terminals: "Терминалы",
       host: "Обзор",
+    },
+    metadataGeneration: {
+      title: "Создание метаданных",
+      description:
+        "Выберите модель, которую Otto использует для названий рабочих пространств, веток, сообщений коммитов и черновиков pull request",
+      selection: "Выбор модели",
+      automatic: "Автоматически",
+      preferred: "Вручную",
+      automaticHint: "Otto выбирает быструю доступную модель",
+      preferredHint: "Выберите модель, которую использует Otto",
+      model: "Модель",
+      fallbackHint: "Если она недоступна, Otto использует другую доступную модель",
+      docs: "Документация",
+      saveError: "Не удалось обновить создание метаданных",
     },
     general: {
       title: "Общий",
@@ -3117,6 +3329,15 @@ export const ru: TranslationResources = {
         options: {
           interrupt: "Прерывать",
           queue: "Очередь",
+        },
+      },
+      toolCallDetail: {
+        label: "Отображение вызовов инструментов",
+        description: "Как вызовы инструментов отображаются на временной шкале",
+        accessibilityLabel: "Выбрать отображение вызовов инструментов ({{value}})",
+        options: {
+          overview: "Сводка",
+          detailed: "Полная детализация",
         },
       },
       interfaceMode: {
@@ -3196,6 +3417,7 @@ export const ru: TranslationResources = {
           es: "Español",
           fr: "Français",
           ja: "日本語",
+          ko: "한국어",
           ptBR: "Português brasileiro",
           ru: "Русский",
           zhCN: "中文",
@@ -3218,15 +3440,6 @@ export const ru: TranslationResources = {
         description:
           "По умолчанию показывать блоки размышлений и логики агента полностью развернутыми",
       },
-      toolCallDetail: {
-        label: "Отображение вызовов инструментов",
-        description: "Как вызовы инструментов отображаются на временной шкале",
-        accessibilityLabel: "Выбрать отображение вызовов инструментов ({{value}})",
-        options: {
-          overview: "Сводка",
-          detailed: "Полная детализация",
-        },
-      },
     },
     preview: {
       title: "Предпросмотр",
@@ -3238,6 +3451,11 @@ export const ru: TranslationResources = {
     },
     diagnostics: {
       title: "Диагностика",
+      legacyTerminalRenderer: {
+        label: "Использовать прежний рендерер терминала",
+        description: "Использовать прежний WebView-терминал после повторного открытия",
+        accessibilityLabel: "Использовать прежний рендерер терминала",
+      },
       testAudio: "Тестирование звука",
       playTest: "Игровой тест",
       playing: "Игра...",
@@ -3324,6 +3542,7 @@ export const ru: TranslationResources = {
           horizon: "Горизонт",
           powder: "Пудра",
           light: "Свет",
+          pureBlack: "Чистый чёрный",
           auto: "Система",
         },
       },
@@ -3438,6 +3657,10 @@ export const ru: TranslationResources = {
           accessibilityLabel: "Слой стоимости",
         },
       },
+      chatOutline: {
+        title: "Структура чата",
+        description: "Показывать структуру для перехода между запросами",
+      },
       fonts: {
         title: "Шрифты",
         systemDefault: "Система по умолчанию",
@@ -3472,20 +3695,26 @@ export const ru: TranslationResources = {
       dialogTitle: "Ярлыки",
       unavailableOnMobile: "Сочетания клавиш доступны только на рабочем столе.",
       capturePrompt: "Нажмите ярлык...",
+      unassigned: "Не задано",
       actions: {
+        menu: "Действия для {{name}}",
         done: "Сделанный",
         cancel: "Отмена",
+        bind: "Привязать",
         rebind: "Перепривязка",
-        reset: "Перезагрузить",
+        clear: "Очистить",
+        reset: "Сбросить к значению по умолчанию",
         resetAll: "Сбросить все",
       },
       sections: {
-        navigation: "Навигация",
+        general: "Общие",
+        workspaces: "Проекты и рабочие пространства",
         tabsPanes: "Вкладки и панели",
         projects: "Проекты",
         panels: "Панели",
         editor: "Редактор файлов",
         markdownEditor: "Редактор Markdown",
+        layout: "Макет",
         agentInput: "Вход Agent",
       },
       help: {
@@ -3513,6 +3742,7 @@ export const ru: TranslationResources = {
         moveTabDown: "Переместить вкладку вниз",
         closePane: "Закрыть панель",
         newTerminal: "Новый терминал",
+        searchFiles: "Поиск файлов",
         toggleCommandCenter: "Переключить командный центр",
         showKeyboardShortcuts: "Показать сочетания клавиш",
         toggleLeftSidebar: "Переключить левую боковую панель",
@@ -3554,7 +3784,6 @@ export const ru: TranslationResources = {
         showKeyboardShortcuts: "Доступно, когда фокус находится не в текстовом поле или терминале.",
       },
       searchPlaceholder: "Поиск сочетаний клавиш",
-      // Literal English pending the pre-release i18n sweep.
       searchEmpty: "No shortcuts match that search",
     },
     integrations: {
@@ -3577,6 +3806,15 @@ export const ru: TranslationResources = {
         updateFallback: "Синхронизируйте связанные навыки с вашим компьютером.",
         uninstallTitle: "Удалить навыки Otto?",
         uninstallMessage: "Удаляет все навыки оркестровки Otto из ~/.agents, ~/.claude, ~/.codex.",
+        choose: "Выбрать навыки",
+        chooseAll: "Все навыки",
+        chooseAllHint: "Держите установленными все входящие навыки, включая добавленные позже.",
+        chooseList: "Входящие навыки",
+        chooseEmpty: "В этой сборке нет навыков.",
+        removeTitle: "Удалить снятые навыки?",
+        removeMessage:
+          "{{skills}} будут удалены из ~/.agents, ~/.claude и ~/.codex. Всё, что вы добавили внутри этих папок навыков, тоже удаляется.",
+        saveFailed: "Не удалось сохранить выбор навыков.",
       },
       actions: {
         install: "Установить",
@@ -3584,7 +3822,10 @@ export const ru: TranslationResources = {
         installed: "Установлено",
         update: "Обновлять",
         working: "Работающий...",
+        remove: "Удалить",
         uninstall: "Удалить",
+        save: "Сохранить",
+        saving: "Сохранение...",
       },
       operations: {
         add: "Добавить навык",
@@ -3594,20 +3835,52 @@ export const ru: TranslationResources = {
     },
     permissions: {
       title: "Разрешения",
-      notifications: "Уведомления",
       microphone: "Микрофон",
       refresh: "Обновить",
       refreshing: "Освежающий...",
       refreshAccessibility: "Обновить разрешения рабочего стола",
-      test: "Тест",
       actions: {
         granted: "Предоставленный",
         request: "Запрос",
         requesting: "Запрос...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {
+      appearance: {
+        title: "Оформление",
+        name: {
+          label: "Имя",
+        },
+        color: {
+          label: "Цвет",
+          accessibilityLabel: "Цвет, {{value}}",
+          options: {
+            none: "По умолчанию",
+            violet: "Фиолетовый",
+            sky: "Небесный",
+            emerald: "Изумрудный",
+            orange: "Оранжевый",
+            pink: "Розовый",
+            indigo: "Индиго",
+            teal: "Бирюзовый",
+            red: "Красный",
+            amber: "Янтарный",
+            blue: "Синий",
+          },
+        },
+        badge: {
+          label: "Значок на боковой панели",
+          accessibilityLabel: "Значок на боковой панели, {{value}}",
+          options: {
+            name: "Имя",
+            icon: "Только значок",
+            hidden: "Скрыт",
+          },
+        },
+        preview: {
+          workspaceName: "my-workspace",
+        },
+      },
       notFound: "Host не найден",
       badges: {
         relay: "Реле",
@@ -3834,6 +4107,44 @@ export const ru: TranslationResources = {
         emptyState:
           "Профилей пока нет. Добавьте профиль, чтобы запускать терминалы с определённой командой.",
       },
+      agentProfiles: {
+        sectionTitle: "Профили агента",
+        unavailable: "Подключитесь к этому хосту, чтобы управлять профилями агента",
+        unsupported: "На этом хосте работает daemon, который пока не поддерживает профили агента",
+        emptyState:
+          "Пока нет профилей. Добавьте один, чтобы запускать агентов с сохранённым провайдером и моделью.",
+        addProfileTitle: "Добавить профиль агента",
+        newProfile: "Новый профиль",
+        editProfile: "Изменить профиль",
+        editProfileTitle: "Изменить профиль агента",
+        nameLabel: "Имя",
+        namePlaceholder: "Работа над UI",
+        iconLabel: "Значок",
+        noIcon: "Нет",
+        providerLabel: "Провайдер",
+        providerPlaceholder: "Выберите провайдера",
+        noProviders: "На этом хосте нет доступных провайдеров",
+        modelLabel: "Модель",
+        noModels: "У этого провайдера нет моделей для выбора",
+        modeLabel: "Режим",
+        noModes: "У этого провайдера нет режимов для выбора",
+        thinkingLabel: "Мышление",
+        noThinkingOptions: "У этой модели нет уровней мышления",
+        featuresLabel: "Функции",
+        featureCount: "{{count}} функций",
+        featureCountOne: "{{count}} функция",
+        notesLabel: "Заметки для агентов",
+        notesPlaceholder: "Используйте для работы над UI: компоненты, макет и токены дизайна.",
+        notesHint:
+          "Возвращается инструментом MCP «list_profiles». Напишите это как инструкцию для другого агента.",
+        save: "Сохранить",
+        saving: "Сохранение...",
+        remove: "Удалить",
+        removeConfirmTitle: "Удалить профиль?",
+        removeConfirmMessage: "Удалить «{{name}}»?",
+        moveUp: "Переместить вверх",
+        moveDown: "Переместить вниз",
+      },
       daemon: {
         rename: {
           editLabel: "Изменить ярлык",
@@ -3922,25 +4233,6 @@ export const ru: TranslationResources = {
         notInstalled: "Не установлено",
         requiresBase: "Требуется {{name}}",
       },
-      tools: {
-        title: "Инструменты Otto",
-        description:
-          "Группы инструментов, которые может использовать эта модель. Снимите отметку, чтобы скрыть группу от модели.",
-        globallyDisabled: "Отключено в глобальных настройках",
-        saved: "Настройки инструментов сохранены",
-        saveFailed: "Не удалось сохранить настройки инструментов",
-        groups: {
-          preview: "Серверы предпросмотра",
-          browser: "Управление браузером",
-          web: "Веб-поиск",
-          agents: "Управление агентами",
-          terminals: "Терминалы",
-          schedules: "Расписания",
-          artifacts: "Артефакты",
-          widgets: "Виджеты",
-          workspace: "Рабочие пространства",
-        },
-      },
       tabs: {
         models: "Модели",
         connection: "Подключение",
@@ -3990,6 +4282,25 @@ export const ru: TranslationResources = {
         savedNoKey: "Сохранённый адрес · без API-ключа",
         forget: "Забыть этот адрес",
         forgot: "Адрес забыт",
+      },
+      tools: {
+        title: "Инструменты Otto",
+        description:
+          "Группы инструментов, которые может использовать эта модель. Снимите отметку, чтобы скрыть группу от модели.",
+        globallyDisabled: "Отключено в глобальных настройках",
+        saved: "Настройки инструментов сохранены",
+        saveFailed: "Не удалось сохранить настройки инструментов",
+        groups: {
+          preview: "Серверы предпросмотра",
+          browser: "Управление браузером",
+          web: "Веб-поиск",
+          agents: "Управление агентами",
+          terminals: "Терминалы",
+          schedules: "Расписания",
+          artifacts: "Артефакты",
+          widgets: "Виджеты",
+          workspace: "Рабочие пространства",
+        },
       },
       remove: {
         button: "Удалить провайдера",
@@ -4045,8 +4356,7 @@ export const ru: TranslationResources = {
       },
     },
     project: {
-      noEditableTarget:
-        "У нас нет редактируемой копии этого проекта ни на одном подключенном хосте.",
+      noEditableTarget: "Этот проект нельзя редактировать на этом хосте.",
       backToProjects: "Вернуться к проектам",
       switchHost: "Сменить хост",
       rename: {
@@ -4058,6 +4368,17 @@ export const ru: TranslationResources = {
         saveLabel: "Сохранить название проекта",
         cancelLabel: "Отменить переименование",
         reset: "Перезагрузить",
+      },
+      edit: {
+        title: "Изменить проект",
+        name: "Название",
+        nameLabel: "Название проекта",
+        icon: "Значок",
+        chooseImage: "Выбрать изображение",
+        useAutomatic: "Использовать автоматический",
+        imageUrl: "URL изображения или сайта",
+        save: "Сохранить изменения",
+        savedToast: "Проект обновлён",
       },
       links: {
         title: "Связанные проекты",
@@ -4089,7 +4410,6 @@ export const ru: TranslationResources = {
         invalidTitle: "otto.json не удалось разобрать",
         invalidDescription: "Исправьте файл на диске, затем перезагрузите.",
         missingTitle: "У этого хоста нет этого проекта",
-        missingWithHosts: "Переключитесь на другой хост выше или перезагрузите компьютер.",
         missingSingleHost: "У выбранного хоста нет записей об этом проекте.",
         transportTitle: "Не удалось загрузить otto.json.",
         transportFallback: "Хозяин не ответил.",
@@ -4104,6 +4424,9 @@ export const ru: TranslationResources = {
           "Дополнительную информацию и переменные среды, доступные для этих команд, см. в документации.",
         setup: "Настраивать",
         setupAccessibility: "Команды настройки рабочего дерева",
+        uncommittedTitle: "Закоммитьте изменения otto.json",
+        uncommittedDescription:
+          "Новые рабочие деревья используют сценарий настройки из выбранной базовой ветки.",
         teardown: "Срывать",
         teardownAccessibility: "Команды разрушения рабочего дерева",
       },

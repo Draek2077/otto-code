@@ -4,6 +4,7 @@ import {
   Columns2,
   FileText,
   FolderPlus,
+  GitBranch,
   History,
   Network,
   Plus,
@@ -23,14 +24,19 @@ import {
   View,
   type PressableStateCallbackType,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Gesture } from "react-native-gesture-handler";
 import Animated, { runOnJS, useSharedValue } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { resolveBrainRailLabel } from "@/components/brain/brain-state";
 import { BrainStateIcon } from "@/components/brain/brain-state-icon";
 import { resolveBrainRailRoute, useBrainRail } from "@/components/brain/use-brain-rail-state";
+import {
+  SIDEBAR_RESIZE_ACTIVATION_OFFSET,
+  SIDEBAR_RESIZE_FAIL_OFFSET,
+} from "@/components/sidebar-resize-handle-layout";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import {
@@ -39,12 +45,11 @@ import {
   SidebarFooterNavRow,
 } from "@/components/sidebar/sidebar-footer-nav";
 import { SidebarActiveTeamSwitchers } from "@/components/active-team-switcher";
-import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/sidebar-display-preferences-menu";
+import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { isWeb } from "@/constants/platform";
+import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import { useSidebarSlide } from "@/hooks/use-sidebar-slide";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -64,15 +69,11 @@ import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
-import {
-  MAX_SIDEBAR_WIDTH,
-  MIN_SIDEBAR_WIDTH,
-  selectIsAgentListOpen,
-  usePanelStore,
-} from "@/stores/panel-store";
+import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
+import { useIsMobilePanelPresented } from "@/mobile-panels/provider";
 import {
   buildOpenProjectRoute,
   buildArtifactsRoute,
@@ -93,8 +94,8 @@ import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
 import { SidebarActiveWorkspaceTools } from "./sidebar/sidebar-active-workspace-tools";
 import { SidebarSeamShadow } from "./sidebar-seam-shadow";
-
-const MIN_CHAT_WIDTH = 400;
+import { SidebarResizeHandle } from "./sidebar-resize-handle";
+import { resolveDesktopSidebarWidth } from "./desktop-sidebar-layout";
 
 // How much to shave off the window-controls top spacer: the DESKTOP_* height
 // constants are one-size guesses that read as surplus space above the sidebar
@@ -104,20 +105,21 @@ export const SIDEBAR_TOP_SPACER_TRIM = 6;
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
+const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL?.trim() || null;
+
 interface SidebarSharedProps {
   theme: SidebarTheme;
   statusGroups: StatusGroup[];
   pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
-  projectNamesByKey: Map<string, string>;
   isInitialLoad: boolean;
   isRevalidating: boolean;
   isManualRefresh: boolean;
   groupMode: SidebarGroupMode;
   collapsedProjectKeys: ReadonlySet<string>;
   shortcutIndexByWorkspaceKey: Map<string, number>;
-  toggleProjectCollapsed: (projectKey: string) => void;
+  toggleProjectCollapsed: (projectViewKey: string) => void;
   handleRefresh: () => void;
   handleOpenProject: () => void;
   handleHome: () => void;
@@ -182,7 +184,6 @@ export const LeftSidebar = memo(function LeftSidebar() {
   const {
     projects,
     workspaceEntriesByKey,
-    projectNamesByKey,
     isInitialLoad,
     isRevalidating,
     refreshAll,
@@ -334,7 +335,6 @@ export const LeftSidebar = memo(function LeftSidebar() {
     pinnedGroups,
     projects,
     workspaceEntriesByKey,
-    projectNamesByKey,
     isInitialLoad,
     isRevalidating,
     isManualRefresh,
@@ -636,7 +636,6 @@ function MobileSidebar({
   pinnedGroups,
   projects,
   workspaceEntriesByKey,
-  projectNamesByKey,
   isInitialLoad,
   isRevalidating,
   isManualRefresh,
@@ -670,6 +669,7 @@ function MobileSidebar({
   const isRunsActive = pathname.includes("/runs");
   const isKanbanActive = pathname.includes("/kanban");
   const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
+  const dragGestureHostPresented = useIsMobilePanelPresented("agent-list");
 
   const handleViewMore = useCallback(() => {
     closeSidebar();
@@ -800,12 +800,12 @@ function MobileSidebar({
             pinnedGroups={pinnedGroups}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}
-            projectNamesByKey={projectNamesByKey}
             isRefreshing={isManualRefresh && isRevalidating}
             onRefresh={handleRefresh}
             onWorkspacePress={handleWorkspacePress}
             onAddProject={handleOpenProject}
             parentGestureRef={closeGestureRef}
+            dragGestureHostPresented={dragGestureHostPresented}
           />
         )}
 
@@ -830,7 +830,6 @@ function DesktopSidebar({
   pinnedGroups,
   projects,
   workspaceEntriesByKey,
-  projectNamesByKey,
   isInitialLoad,
   isRevalidating,
   isManualRefresh,
@@ -871,12 +870,19 @@ function DesktopSidebar({
   const closeDesktopAgentList = usePanelStore((state) => state.closeDesktopAgentList);
   const { width: viewportWidth } = useWindowDimensions();
 
-  const startWidthRef = useRef(sidebarWidth);
-  const resizeWidth = useSharedValue(sidebarWidth);
+  const visibleSidebarWidth = resolveDesktopSidebarWidth({
+    requestedWidth: sidebarWidth,
+    viewportWidth,
+  });
+  const startWidthRef = useRef(visibleSidebarWidth);
+  const resizeWidth = useSharedValue(visibleSidebarWidth);
+  const [resizePressed, setResizePressed] = useState(false);
+  const showResizeGrip = useCallback(() => setResizePressed(true), []);
+  const hideResizeGrip = useCallback(() => setResizePressed(false), []);
 
   useEffect(() => {
-    resizeWidth.value = sidebarWidth;
-  }, [sidebarWidth, resizeWidth]);
+    resizeWidth.value = visibleSidebarWidth;
+  }, [resizeWidth, visibleSidebarWidth]);
 
   const resizeGesture = useMemo(
     () =>
@@ -885,24 +891,40 @@ function DesktopSidebar({
         // slop turns a 1px divider into a dead zone plus a catch-up jump.
         .minDistance(0)
         .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
-        .onStart(() => {
-          startWidthRef.current = sidebarWidth;
-          resizeWidth.value = sidebarWidth;
+        .onBegin(() => {
+          scheduleOnRN(showResizeGrip);
+        })
+        // Horizontal intent only, so a finger dragging down the touch grip scrolls
+        // the workspace list instead of resizing. Anchoring the start width to the
+        // activation translation keeps the extra threshold from jumping the edge.
+        .activeOffsetX([-SIDEBAR_RESIZE_ACTIVATION_OFFSET, SIDEBAR_RESIZE_ACTIVATION_OFFSET])
+        .failOffsetY([-SIDEBAR_RESIZE_FAIL_OFFSET, SIDEBAR_RESIZE_FAIL_OFFSET])
+        .onStart((event) => {
+          startWidthRef.current = visibleSidebarWidth - event.translationX;
+          resizeWidth.value = visibleSidebarWidth;
         })
         .onUpdate((event) => {
           // Dragging right (positive translationX) increases width
           const newWidth = startWidthRef.current + event.translationX;
-          const maxWidth = Math.max(
-            MIN_SIDEBAR_WIDTH,
-            Math.min(MAX_SIDEBAR_WIDTH, viewportWidth - MIN_CHAT_WIDTH),
-          );
-          const clampedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxWidth, newWidth));
-          resizeWidth.value = clampedWidth;
+          resizeWidth.value = resolveDesktopSidebarWidth({
+            requestedWidth: newWidth,
+            viewportWidth,
+          });
         })
         .onEnd(() => {
           runOnJS(setSidebarWidth)(resizeWidth.value);
+        })
+        .onFinalize(() => {
+          scheduleOnRN(hideResizeGrip);
         }),
-    [sidebarWidth, resizeWidth, setSidebarWidth, viewportWidth],
+    [
+      hideResizeGrip,
+      resizeWidth,
+      setSidebarWidth,
+      showResizeGrip,
+      viewportWidth,
+      visibleSidebarWidth,
+    ],
   );
 
   // Double-tapping the resize handle closes the sidebar, same as the toggle.
@@ -947,11 +969,6 @@ function DesktopSidebar({
     ],
     [insetsTop, insetsBottom],
   );
-  const resizeHandleStyle = useMemo(
-    () => [styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)],
-    [],
-  );
-
   if (!rendered) {
     return null;
   }
@@ -960,7 +977,24 @@ function DesktopSidebar({
     <Animated.View style={desktopSidebarStyle}>
       <View style={desktopSidebarBorderStyle}>
         <View style={styles.sidebarDragArea}>
-          <TitlebarDragRegion />
+          {DEV_BUILD_LABEL ? (
+            <View style={styles.desktopChromeRow}>
+              <TitlebarDragRegion />
+              <View
+                pointerEvents="none"
+                style={styles.devBuildBadge}
+                testID="dev-build-label"
+                accessibilityLabel={`Development build: ${DEV_BUILD_LABEL}`}
+              >
+                <GitBranch size={12} color={theme.colors.accentForeground} />
+                <Text numberOfLines={1} ellipsizeMode="tail" style={styles.devBuildBadgeText}>
+                  {DEV_BUILD_LABEL}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <TitlebarDragRegion />
+          )}
           {showTopSpacer ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
             <SidebarActiveTeamSwitchers />
@@ -1029,7 +1063,6 @@ function DesktopSidebar({
             pinnedGroups={pinnedGroups}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}
-            projectNamesByKey={projectNamesByKey}
             isRefreshing={isManualRefresh && isRevalidating}
             onRefresh={handleRefresh}
             onAddProject={handleOpenProject}
@@ -1051,10 +1084,12 @@ function DesktopSidebar({
           handleOpenHostSettings={handleOpenHostSettings}
         />
 
-        {/* Resize handle - absolutely positioned over right border */}
-        <GestureDetector gesture={resizeHandleGesture}>
-          <View style={resizeHandleStyle} />
-        </GestureDetector>
+        <SidebarResizeHandle
+          edge="right"
+          gesture={resizeHandleGesture}
+          pressed={resizePressed}
+          testID="left-sidebar-resize-handle"
+        />
 
         <SidebarSeamShadow seam="right" />
       </View>
@@ -1257,16 +1292,35 @@ const styles = StyleSheet.create((theme) => ({
     borderRightColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,
   },
-  resizeHandle: {
-    position: "absolute",
-    right: -5,
-    top: 0,
-    bottom: 0,
-    width: 10,
-    zIndex: 10,
-  },
   sidebarDragArea: {
     position: "relative",
+  },
+  desktopChromeRow: {
+    position: "relative",
+    height: HEADER_INNER_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingHorizontal: theme.spacing[3],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: "transparent",
+  },
+  devBuildBadge: {
+    maxWidth: "60%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: 2,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.accent,
+  },
+  devBuildBadgeText: {
+    minWidth: 0,
+    flexShrink: 1,
+    color: theme.colors.accentForeground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
   },
   sidebarFooter: {
     flexDirection: "row",

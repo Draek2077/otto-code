@@ -11,6 +11,7 @@ import {
   Check,
   ChevronDown,
   SpeakerNotes,
+  Settings2,
 } from "@/components/icons/material-icons";
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -33,8 +34,9 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   shouldUseDesktopDaemon,
   type SkillOp,
-  type SkillsStatus,
+  type SkillsSnapshot,
 } from "@/desktop/daemon/desktop-daemon";
+import { SkillSelectionSheet } from "@/desktop/components/skill-selection-sheet";
 import { useCliInstall, useSkillsStatus } from "@/desktop/hooks/use-install-status";
 
 const CLI_DOCS_URL = "https://otto-code.me/docs/cli";
@@ -64,6 +66,7 @@ function formatUpdateMessage(ops: readonly SkillOp[], t: TFunction): string {
   return sorted.map((op) => `${t(OP_KIND_LABEL_KEY[op.kind])} ${op.name}`).join("\n");
 }
 
+// oxlint-disable-next-line complexity -- one settings section coordinates three independent desktop integrations and their explicit states.
 export function IntegrationsSection(props: { serverId: string | null; isLocalDaemon: boolean }) {
   const { serverId, isLocalDaemon } = props;
   const { t } = useTranslation();
@@ -88,8 +91,14 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
     install: installSkills,
     update: updateSkills,
     uninstall: uninstallSkills,
+    saveSelection: saveSkillSelection,
     refresh: refreshSkillsStatus,
   } = useSkillsStatus();
+  const [isChoosingSkills, setIsChoosingSkills] = useState(false);
+  const skillMaintenanceOps = useMemo(
+    () => skillsStatus?.ops.filter((op) => op.kind !== "delete") ?? [],
+    [skillsStatus?.ops],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -112,18 +121,17 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
 
   const handleUpdateSkills = useCallback(async () => {
     if (isSkillsWorking) return;
-    const ops = skillsStatus?.ops ?? [];
     const confirmed = await confirmDialog({
       title: t("settings.integrations.skills.updateTitle"),
       message:
-        ops.length > 0
-          ? formatUpdateMessage(ops, t)
+        skillMaintenanceOps.length > 0
+          ? formatUpdateMessage(skillMaintenanceOps, t)
           : t("settings.integrations.skills.updateFallback"),
       confirmLabel: t("settings.integrations.actions.update"),
     });
     if (!confirmed) return;
     await updateSkills();
-  }, [isSkillsWorking, skillsStatus, t, updateSkills]);
+  }, [isSkillsWorking, skillMaintenanceOps, t, updateSkills]);
 
   const handleUninstallSkills = useCallback(async () => {
     if (isSkillsWorking) return;
@@ -136,6 +144,14 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
     if (!confirmed) return;
     await uninstallSkills();
   }, [isSkillsWorking, t, uninstallSkills]);
+
+  const handleOpenSkillSelection = useCallback(() => {
+    setIsChoosingSkills(true);
+  }, []);
+
+  const handleCloseSkillSelection = useCallback(() => {
+    setIsChoosingSkills(false);
+  }, []);
 
   const handleOpenCliDocs = useCallback(() => {
     void openLink(CLI_DOCS_URL);
@@ -243,6 +259,11 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
     [theme.iconSize.sm, theme.colors.foregroundMuted],
   );
 
+  const chooseSkillsIcon = useMemo(
+    () => <Settings2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [theme.iconSize.sm, theme.colors.foregroundMuted],
+  );
+
   // Doc links live in a centered footer below the cards (not the section
   // header) so they never overflow the header on narrow windows; they wrap one
   // beneath the other when both don't fit on a single line.
@@ -276,7 +297,14 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
     [arrowIcon, handleOpenCliDocs, handleOpenSkillsDocs, t],
   );
 
-  const skillsState = skillsStatus?.state ?? null;
+  const skillsState =
+    skillsStatus?.state === "drift" && skillMaintenanceOps.length === 0
+      ? "up-to-date"
+      : (skillsStatus?.state ?? null);
+  const hasSelectedSkills =
+    (skillsStatus?.selection.mode === "all" && skillsStatus.available.length > 0) ||
+    (skillsStatus?.selection.mode === "custom" &&
+      skillsStatus.selection.skills.some((name) => skillsStatus.available.includes(name)));
 
   return (
     <>
@@ -441,16 +469,38 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
                     : t("settings.integrations.skills.description")}
                 </Text>
               </View>
-              <SkillsActions
-                state={skillsState}
-                isWorking={isSkillsWorking}
-                onInstall={handleInstallSkills}
-                onUpdate={handleUpdateSkills}
-                onUninstall={handleUninstallSkills}
-              />
+              <View style={styles.actionsRow}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={chooseSkillsIcon}
+                  onPress={handleOpenSkillSelection}
+                  disabled={skillsStatus === null || isSkillsWorking}
+                  accessibilityLabel={t("settings.integrations.skills.choose")}
+                />
+                {hasSelectedSkills ? (
+                  <SkillsActions
+                    state={skillsState}
+                    isWorking={isSkillsWorking}
+                    onInstall={handleInstallSkills}
+                    onUpdate={handleUpdateSkills}
+                    onUninstall={handleUninstallSkills}
+                  />
+                ) : null}
+              </View>
             </View>
           </View>
           {docsFooter}
+          {skillsStatus ? (
+            <SkillSelectionSheet
+              visible={isChoosingSkills}
+              available={skillsStatus.available}
+              selection={skillsStatus.selection}
+              isSaving={isSkillsWorking}
+              onSave={saveSkillSelection}
+              onClose={handleCloseSkillSelection}
+            />
+          ) : null}
         </SettingsSection>
       ) : null}
     </>
@@ -458,7 +508,7 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
 }
 
 interface SkillsActionsProps {
-  state: SkillsStatus["state"] | null;
+  state: SkillsSnapshot["state"] | null;
   isWorking: boolean;
   onInstall: () => void;
   onUpdate: () => void;

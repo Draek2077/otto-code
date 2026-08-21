@@ -149,6 +149,7 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
       ipcRenderer.invoke("otto:browser:unregister-workspace-browser", browserId),
     setWorkspaceActiveBrowser: (input: { workspaceId: string; browserId: string | null }) =>
       ipcRenderer.invoke("otto:browser:set-workspace-active-browser", input),
+    focus: (browserId: string) => ipcRenderer.invoke("otto:browser:focus", browserId),
     openDevTools: (browserId: string) =>
       ipcRenderer.invoke("otto:browser:open-devtools", browserId),
     clearProfile: (legacyBrowserIds: string[]) =>

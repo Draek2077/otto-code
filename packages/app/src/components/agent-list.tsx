@@ -33,6 +33,9 @@ import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
 import { formatFileSize } from "@/utils/format-file-size";
+import { HighlightedText } from "@/components/ui/highlighted-text";
+import type { AgentSearchMatch } from "@otto-code/protocol/messages";
+import type { MatchRange } from "@otto-code/protocol/search/text-match";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -44,6 +47,18 @@ interface AgentListProps {
   listFooterComponent?: ReactElement | null;
   showAttentionIndicator?: boolean;
   showHostColumn?: boolean;
+  /**
+   * Where a search matched each row, keyed by `serverId:agentId`. Rows mark the
+   * spans so the list can explain why a result is in it — the subsequence and
+   * typo tiers match characters the eye would not find on its own.
+   */
+  searchMatchesByAgentKey?: Record<string, AgentSearchMatch[]>;
+  /**
+   * Renders one flat list in the given order instead of grouping by day. Day
+   * headings claim the list is chronological, which is a lie once the caller
+   * has ordered it by something else — relevance, for instance.
+   */
+  flat?: boolean;
 }
 
 export function AgentListColumnHeader({ showHostColumn }: { showHostColumn: boolean }) {
@@ -161,12 +176,14 @@ function SessionBadge({
 function WorkspaceTitlePrefix({
   visible,
   workspaceName,
+  ranges,
   testID,
   iconSize,
   color,
 }: {
   visible: boolean;
   workspaceName: string;
+  ranges?: readonly MatchRange[];
   testID: string;
   iconSize: number;
   color: string;
@@ -177,9 +194,13 @@ function WorkspaceTitlePrefix({
 
   return (
     <>
-      <Text style={styles.workspaceTitleText} numberOfLines={1} testID={testID}>
-        {workspaceName}
-      </Text>
+      <HighlightedText
+        text={workspaceName}
+        ranges={ranges}
+        style={styles.workspaceTitleText}
+        numberOfLines={1}
+        testID={testID}
+      />
       <ChevronRight size={iconSize} color={color} />
     </>
   );
@@ -237,6 +258,7 @@ function SessionRowTrailingAttention({
 
 function SessionRow({
   agent,
+  searchMatches,
   isMobile,
   selectedAgentId,
   showAttentionIndicator,
@@ -245,6 +267,7 @@ function SessionRow({
   onLongPress,
 }: {
   agent: AggregatedAgent;
+  searchMatches?: readonly AgentSearchMatch[];
   isMobile: boolean;
   selectedAgentId?: string;
   showAttentionIndicator: boolean;
@@ -262,6 +285,11 @@ function SessionRow({
   const workspaceName = agent.projectPlacement?.workspaceName ?? "";
   const ProviderIcon = getProviderIcon(agent.provider);
   const pendingPermissionCount = agent.pendingPermissionCount ?? 0;
+  const rangesFor = useCallback(
+    (field: AgentSearchMatch["field"]) =>
+      searchMatches?.find((match) => match.field === field)?.ranges,
+    [searchMatches],
+  );
 
   const pressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -300,6 +328,7 @@ function SessionRow({
           <WorkspaceTitlePrefix
             visible={!isMobile && Boolean(workspaceName)}
             workspaceName={workspaceName}
+            ranges={rangesFor("workspace")}
             testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
             iconSize={theme.iconSize.xs}
             color={theme.colors.foregroundMuted}
@@ -307,9 +336,12 @@ function SessionRow({
           <View style={styles.providerIconWrap}>
             <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </View>
-          <Text style={sessionTitleStyle} numberOfLines={1}>
-            {agent.title || t("agentList.fallbackTitle")}
-          </Text>
+          <HighlightedText
+            text={agent.title || t("agentList.fallbackTitle")}
+            ranges={agent.title ? rangesFor("title") : undefined}
+            style={sessionTitleStyle}
+            numberOfLines={1}
+          />
           <SessionRowBadges
             agent={agent}
             archivedIcon={archivedIcon}
@@ -319,29 +351,29 @@ function SessionRow({
         </View>
         {isMobile ? (
           <View style={styles.rowMetaRow}>
-            <Text
+            <HighlightedText
+              text={projectName}
+              ranges={rangesFor("project")}
               style={styles.sessionMetaText}
               numberOfLines={1}
               testID={`agent-row-project-${agent.serverId}-${agent.id}`}
-            >
-              {projectName}
-            </Text>
+            />
             <Text style={styles.sessionMetaSeparator}>·</Text>
-            <Text
+            <HighlightedText
+              text={branch}
+              ranges={rangesFor("branch")}
               style={styles.sessionMetaText}
               numberOfLines={1}
               testID={`agent-row-branch-${agent.serverId}-${agent.id}`}
-            >
-              {branch}
-            </Text>
+            />
             <Text style={styles.sessionMetaSeparator}>·</Text>
-            <Text
+            <HighlightedText
+              text={workspaceName}
+              ranges={rangesFor("workspace")}
               style={styles.sessionMetaText}
               numberOfLines={1}
               testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
-            >
-              {workspaceName}
-            </Text>
+            />
             <Text style={styles.sessionMetaSeparator}>·</Text>
             <Text style={styles.sessionMetaText}>{timeAgo}</Text>
             {showHostColumn && agent.serverLabel ? (
@@ -357,25 +389,25 @@ function SessionRow({
       </View>
       {!isMobile ? (
         <View style={styles.rowColumns}>
-          <Text
+          <HighlightedText
+            text={projectName}
+            ranges={rangesFor("project")}
             style={styles.columnMeta}
             numberOfLines={1}
             testID={`agent-row-project-${agent.serverId}-${agent.id}`}
-          >
-            {projectName}
-          </Text>
+          />
           {showHostColumn ? (
             <Text style={styles.columnMetaHost} numberOfLines={1}>
               {agent.serverLabel}
             </Text>
           ) : null}
-          <Text
+          <HighlightedText
+            text={branch}
+            ranges={rangesFor("branch")}
             style={styles.columnMeta}
             numberOfLines={1}
             testID={`agent-row-branch-${agent.serverId}-${agent.id}`}
-          >
-            {branch}
-          </Text>
+          />
           <Text style={styles.columnMetaFixed} numberOfLines={1}>
             {timeAgo}
           </Text>
@@ -404,6 +436,8 @@ export function AgentList({
   listFooterComponent,
   showAttentionIndicator = true,
   showHostColumn = false,
+  searchMatchesByAgentKey,
+  flat = false,
 }: AgentListProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -530,6 +564,14 @@ export function AgentList({
   }, [actionAgent, actionClient, archiveAgent]);
 
   const flatItems = useMemo((): FlatListItem[] => {
+    if (flat) {
+      return agents.map((agent) => ({
+        type: "agent" as const,
+        key: `${agent.serverId}:${agent.id}`,
+        agent,
+      }));
+    }
+
     const buckets = new Map<DateSectionKey, AggregatedAgent[]>();
     for (const agent of agents) {
       const section = deriveDateSectionKey(agent.lastActivityAt);
@@ -550,7 +592,7 @@ export function AgentList({
       }
     }
     return result;
-  }, [agents]);
+  }, [agents, flat]);
 
   const renderItem: ListRenderItem<FlatListItem> = useCallback(
     ({ item }) => {
@@ -564,6 +606,7 @@ export function AgentList({
       return (
         <SessionRow
           agent={item.agent}
+          searchMatches={searchMatchesByAgentKey?.[item.key]}
           isMobile={isMobile}
           selectedAgentId={selectedAgentId}
           showAttentionIndicator={showAttentionIndicator}
@@ -577,6 +620,7 @@ export function AgentList({
       handleAgentLongPress,
       handleAgentPress,
       isMobile,
+      searchMatchesByAgentKey,
       selectedAgentId,
       showAttentionIndicator,
       showHostColumn,

@@ -1,5 +1,11 @@
 import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
-import type { AgentProviderNotice, ModelTier } from "@otto-code/protocol/agent-types";
+import type {
+  AgentProviderNotice,
+  AgentTaskItem,
+  ModelTier,
+  ProviderOptions,
+  ToolPolicy,
+} from "@otto-code/protocol/agent-types";
 import type {
   AgentAttachment,
   AgentContextUsage,
@@ -15,7 +21,7 @@ import type { OttoToolCatalog } from "./tools/types.js";
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import type { ResolvedTeamSnapshot } from "./agent-teams.js";
 
-export type { AgentProviderNotice };
+export type { AgentProviderNotice, AgentTaskItem };
 export type { AgentContextUsage };
 export type { AgentRateLimitInfo };
 
@@ -96,6 +102,8 @@ export type ProviderStatus = "ready" | "loading" | "error" | "unavailable";
 export interface AgentModelDefinition {
   provider: AgentProvider;
   id: string;
+  aliases?: string[];
+  isSelectable?: boolean;
   label: string;
   description?: string;
   /** Catalog-owned model-family identity, currently emitted by Otto Brain only. */
@@ -136,6 +144,12 @@ export function normalizeAgentModelDefinition(model: AgentModelDefinition): Agen
     return model;
   }
   return { ...model, defaultThinkingOptionId };
+}
+
+export function filterSelectableAgentModels(
+  models: AgentModelDefinition[] | undefined,
+): AgentModelDefinition[] {
+  return models?.filter((model) => model.isSelectable !== false) ?? [];
 }
 
 export interface ProviderSnapshotEntry {
@@ -509,7 +523,7 @@ export type AgentTimelineItem =
   | { type: "assistant_message"; text: string; messageId?: string }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
-  | { type: "todo"; items: { text: string; completed: boolean }[] }
+  | { type: "todo"; items: AgentTaskItem[] }
   | { type: "error"; message: string }
   | CompactionTimelineItem;
 
@@ -857,6 +871,8 @@ export interface AgentSessionConfig {
     codex?: AgentMetadata;
     claude?: Partial<ClaudeAgentOptions>;
   };
+  providerOptions?: ProviderOptions;
+  toolPolicy?: ToolPolicy;
   mcpServers?: Record<string, McpServerConfig>;
   /**
    * Frozen personality resolution captured at spawn when the agent was created
@@ -1104,14 +1120,18 @@ export type FetchCatalogOptions =
   | {
       scope: "global";
       force: boolean;
-      timeoutMs?: number;
     }
   | {
       scope: "workspace";
       cwd: string;
       force: boolean;
-      timeoutMs?: number;
     };
+
+export interface ProviderRefreshContext {
+  readonly signal: AbortSignal;
+  /** Track an upstream operation so timeout errors identify the work still pending. */
+  runActivity<T>(name: string, operation: () => Promise<T>): Promise<T>;
+}
 
 export interface ProviderCatalog {
   models: AgentModelDefinition[];
@@ -1127,6 +1147,7 @@ export interface AgentResumeSessionOptions {
 export interface ResolveAgentDefaultModeInput {
   config: AgentSessionConfig;
   env?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 export interface AgentClient {
@@ -1148,8 +1169,15 @@ export interface AgentClient {
    * process, separate upstream calls, static modes, or private helpers; callers
    * outside the provider do not get separate runtime model/mode probes.
    * The registry is responsible for merging configured model overrides.
+   * ProviderSnapshotManager supplies a shared context. Providers must pass its
+   * signal downstream and finish resource cleanup before rejecting on abort.
    */
-  fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog>;
+  fetchCatalog(
+    options: FetchCatalogOptions,
+    context?: ProviderRefreshContext,
+  ): Promise<ProviderCatalog>;
+  /** Apply provider-owned defaults to a model supplied through provider configuration. */
+  resolveConfiguredModel?(model: AgentModelDefinition): AgentModelDefinition;
   resolveDefaultModeId?(input: ResolveAgentDefaultModeInput): Promise<string | undefined>;
   /**
    * One-shot, tool-less structured-text completion for internal metadata
@@ -1175,7 +1203,7 @@ export interface AgentClient {
    * Check if this provider is available (CLI binary is installed).
    * Returns true if available, false otherwise.
    */
-  isAvailable(): Promise<boolean>;
+  isAvailable(signal?: AbortSignal): Promise<boolean>;
   getDiagnostic?(): Promise<{ diagnostic: string }>;
   /**
    * Archive a persisted session in the native provider (best-effort).

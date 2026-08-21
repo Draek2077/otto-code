@@ -4,7 +4,7 @@ import { FlatList, Pressable, Text, View, type ListRenderItemInfo } from "react-
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { SvgXml } from "react-native-svg";
 import type { SolutionProjectContents } from "@otto-code/client/internal/daemon-client";
-import { getFileIconSvg } from "@/components/material-file-icons";
+import { getFileIconSvg } from "@/components/file-icon-svg";
 import { Blocks, Boxes, FolderOpen, TriangleAlert } from "@/components/icons/material-icons";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { TreeChevron, TreeIndentGuides, TREE_INDENT_PER_LEVEL } from "@/components/tree-primitives";

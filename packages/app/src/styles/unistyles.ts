@@ -1,5 +1,5 @@
 import { StyleSheet } from "react-native-unistyles";
-import { daylightTheme, darkTheme, blackTheme } from "./theme";
+import { REGISTERED_THEMES } from "./theme";
 
 // Only the `light`/`dark` keys participate in mode switching. Every other
 // named variant (Meadow, Ember, Slate, ...) lives in `theme.ts` as plain
@@ -15,11 +15,7 @@ import { daylightTheme, darkTheme, blackTheme } from "./theme";
 // user's dark-variant pick with pure-black chat surfaces and is repainted by
 // the same runtime patchers as the other two keys.
 StyleSheet.configure({
-  themes: {
-    light: daylightTheme,
-    dark: darkTheme,
-    black: blackTheme,
-  },
+  themes: REGISTERED_THEMES,
   breakpoints: {
     xs: 0,
     sm: 576,
@@ -38,11 +34,7 @@ StyleSheet.configure({
 });
 
 // Type augmentation for TypeScript
-interface AppThemes {
-  light: typeof daylightTheme;
-  dark: typeof darkTheme;
-  black: typeof blackTheme;
-}
+type AppThemes = typeof REGISTERED_THEMES;
 
 interface AppBreakpoints {
   xs: number;

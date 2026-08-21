@@ -20,7 +20,7 @@
     },
     "desktop": {
       "type": "service",
-      "command": "OTTO_DEV_MANAGED_HOME=1 OTTO_DEV_ROOT=\"${OTTO_WORKTREE_PATH:-$PWD}\" OTTO_LISTEN=0.0.0.0:${OTTO_SERVICE_DAEMON_PORT:-6788} OTTO_DEV_DAEMON_ENDPOINT=localhost:${OTTO_SERVICE_DAEMON_PORT:-6788} EXPO_PORT=${OTTO_PORT:-} npm run dev --workspace=@otto-code/desktop"
+      "command": "OTTO_DEV_MANAGED_HOME=1 OTTO_DEV_ROOT=\"${OTTO_WORKTREE_PATH:-$PWD}\" OTTO_LISTEN=0.0.0.0:${OTTO_SERVICE_DAEMON_PORT:-6788} OTTO_DEV_DAEMON_ENDPOINT=localhost:${OTTO_SERVICE_DAEMON_PORT:-6788} EXPO_PORT=${OTTO_PORT:-} exec ./packages/desktop/scripts/dev.sh"
     },
     "ios-simulator": {
       "type": "service",

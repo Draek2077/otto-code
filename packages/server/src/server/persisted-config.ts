@@ -9,8 +9,8 @@ import {
 } from "./agent/provider-launch-config.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
-import { TerminalProfileSchema } from "@otto-code/protocol/messages";
 import { ConnectorConfigSchema, OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
+import { AgentProfileSchema, TerminalProfileSchema } from "@otto-code/protocol/messages";
 import { OttoServicePortAllocationSchema } from "@otto-code/protocol/otto-config-schema";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
@@ -393,6 +393,13 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
+        git: z
+          .object({
+            maxProcessesPerSecond: z.number().int().positive().optional(),
+            maxProcessConcurrency: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
         autoArchiveAfterMerge: z.boolean().optional(),
         gitFetch: z
           .object({
@@ -435,6 +442,7 @@ export const PersistedConfigSchema = z
           .optional(),
         appendSystemPrompt: z.string().optional(),
         terminalProfiles: z.array(TerminalProfileSchema).optional(),
+        agentProfiles: z.array(AgentProfileSchema).optional(),
         cors: z
           .object({
             allowedOrigins: z.array(z.string()).optional(),
@@ -529,6 +537,7 @@ export const PersistedConfigSchema = z
     agents: z
       .object({
         providers: z.preprocess(normalizeAgentProviders, ProviderOverridesSchema).optional(),
+        catalogRefreshTimeoutMs: z.number().int().positive().max(2_147_483_647).optional(),
         metadataGeneration: AgentMetadataGenerationSchema.optional(),
         agentPersonalities: AgentPersonalitiesSchema.optional(),
         agentTeams: AgentTeamsSchema.optional(),
@@ -589,7 +598,7 @@ const DEFAULT_PERSISTED_CONFIG = PersistedConfigSchema.parse({
       allowedOrigins: ["https://app.otto-code.me"],
     },
     relay: {
-      enabled: true,
+      enabled: false,
     },
   },
   app: {

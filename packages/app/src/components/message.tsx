@@ -14,6 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-text";
+import { MarkdownTableCellText } from "@/components/markdown-text-selection";
 import * as React from "react";
 import {
   useState,
@@ -71,13 +72,13 @@ import { BubbleCornerSheen } from "@/components/bubble-corner-sheen";
 import {
   createSharedMarkdownRules,
   MarkdownRenderer,
-  withMarkdownLinkColor,
   type MarkdownStyles,
 } from "@/components/markdown/renderer";
+import { colorMarkdownLinkChildren } from "@/components/markdown/link-children";
 import { createAssistantMarkdownParser } from "@/components/markdown/assistant-parser";
 import { applyMath, MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "@/components/markdown/math";
 import { MathFormula } from "@/components/markdown/math-formula";
-import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
+import type { TaskActivity, TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import { TodoTaskList, useTodoCounts } from "@/components/todo-task-list";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
 import type { AgentUsage, ToolCallDetail } from "@otto-code/protocol/agent-types";
@@ -90,7 +91,8 @@ import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
-import { MarkdownFence } from "@/components/markdown/fence";
+import { MarkdownFenceBlock } from "@/components/markdown/fence/index";
+import type { MarkdownPhase } from "@/components/markdown/fence/types";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 import { formatDuration } from "@/utils/time";
 // Re-exported so existing importers (turn-footer) keep resolving it from here;
@@ -168,6 +170,12 @@ import {
 } from "@/agent-stream/assistant-bubble-text";
 import { useIsMessagePlaybackActive } from "@/agent-stream/message-playback-activity";
 import { useIsAutoSpeechSpeaking } from "@/voice/auto-speech-queue";
+import {
+  markdownCopyDataSet,
+  markdownCopyOrderedListDataSet,
+  markdownCopyTableCellDataSet,
+  type MarkdownCopyInlineTag,
+} from "@/assistant-selection-copy/markup";
 export type { InlinePathTarget } from "@/assistant-file-links";
 export type { AssistantForkTarget };
 
@@ -183,6 +191,7 @@ interface UserMessageProps {
   client?: DaemonClient | null;
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
+  isPending?: boolean;
   disableOuterSpacing?: boolean;
 }
 
@@ -566,6 +575,7 @@ export const UserMessage = memo(function UserMessage({
   client,
   isFirstInGroup = true,
   isLastInGroup = true,
+  isPending = false,
   disableOuterSpacing,
 }: UserMessageProps) {
   const isCompact = useIsCompactFormFactor();
@@ -631,7 +641,7 @@ export const UserMessage = memo(function UserMessage({
   );
 
   return (
-    <View style={containerStyle} testID="user-message">
+    <View style={containerStyle} testID="user-message" aria-busy={isPending}>
       <View
         style={userMessageStylesheet.content}
         onPointerEnter={handlePointerEnter}
@@ -872,6 +882,8 @@ interface AssistantMessageProps {
    */
   id?: string;
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
+  /** Controls streaming-safe Markdown fence presentation. */
+  phase: MarkdownPhase;
   /**
    * How many characters of the message the live-turn typewriter reveal has
    * reached (see agent-stream/turn-reveal.ts). Undefined (or >= length)
@@ -1859,6 +1871,7 @@ interface MarkdownInheritedTextProps {
   textStyle: TextStyle;
   style?: StyleProp<TextStyle>;
   monoSurface?: boolean;
+  copyTag?: MarkdownCopyInlineTag;
   children: ReactNode;
 }
 
@@ -1867,6 +1880,7 @@ function MarkdownInheritedText({
   textStyle,
   style: overrideStyle,
   monoSurface,
+  copyTag,
   children,
 }: MarkdownInheritedTextProps) {
   const style = useMemo(
@@ -1882,6 +1896,7 @@ function MarkdownInheritedText({
   return (
     <MarkdownTextSpan
       monoSurface={monoSurface}
+      copyTag={copyTag}
       style={style}
       onPress={linkPress?.onPress}
       accessibilityRole={linkPress?.accessibilityRole}
@@ -1905,13 +1920,27 @@ function MarkdownListItemContent({ contentStyle, children }: MarkdownListItemCon
 
 interface MarkdownListViewProps {
   baseStyle: ViewStyle;
+  copyTag: "ol" | "ul";
+  orderedStart?: unknown;
   spacing: { marginTop: number; marginBottom: number };
   children: ReactNode;
 }
 
-function MarkdownListView({ baseStyle, spacing, children }: MarkdownListViewProps) {
+function MarkdownListView({
+  baseStyle,
+  copyTag,
+  orderedStart,
+  spacing,
+  children,
+}: MarkdownListViewProps) {
   const style = useMemo(() => [baseStyle, spacing], [baseStyle, spacing]);
-  return <View style={style}>{children}</View>;
+  const copyDataSet =
+    copyTag === "ol" ? markdownCopyOrderedListDataSet(orderedStart) : markdownCopyDataSet.ul;
+  return (
+    <View style={style} dataSet={copyDataSet}>
+      {children}
+    </View>
+  );
 }
 
 export const AssistantMessage = memo(function AssistantMessage({
@@ -1922,6 +1951,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   client,
   id,
   spacing = "default",
+  phase,
   revealBudget,
   blockGroupId,
   blockIndex,
@@ -1945,6 +1975,103 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const markdownRules = useMemo<RenderRules>(() => {
     return {
+      heading1: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <View key={node.key} style={styles._VIEW_SAFE_heading1} dataSet={markdownCopyDataSet.h1}>
+          {children}
+        </View>
+      ),
+      heading2: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <View key={node.key} style={styles._VIEW_SAFE_heading2} dataSet={markdownCopyDataSet.h2}>
+          {children}
+        </View>
+      ),
+      heading3: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <View key={node.key} style={styles._VIEW_SAFE_heading3} dataSet={markdownCopyDataSet.h3}>
+          {children}
+        </View>
+      ),
+      heading4: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <View key={node.key} style={styles._VIEW_SAFE_heading4} dataSet={markdownCopyDataSet.h4}>
+          {children}
+        </View>
+      ),
+      heading5: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <View key={node.key} style={styles._VIEW_SAFE_heading5} dataSet={markdownCopyDataSet.h5}>
+          {children}
+        </View>
+      ),
+      heading6: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <View key={node.key} style={styles._VIEW_SAFE_heading6} dataSet={markdownCopyDataSet.h6}>
+          {children}
+        </View>
+      ),
+      blockquote: (
+        node: ASTNode,
+        children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <View
+          key={node.key}
+          style={styles._VIEW_SAFE_blockquote}
+          dataSet={markdownCopyDataSet.blockquote}
+        >
+          {children}
+        </View>
+      ),
+      hr: (node: ASTNode, _children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+        <View key={node.key} style={styles._VIEW_SAFE_hr} dataSet={markdownCopyDataSet.hr} />
+      ),
+      table: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+        <View key={node.key} style={styles._VIEW_SAFE_table} dataSet={markdownCopyDataSet.table}>
+          {children}
+        </View>
+      ),
+      thead: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+        <View key={node.key} style={styles._VIEW_SAFE_thead} dataSet={markdownCopyDataSet.thead}>
+          {children}
+        </View>
+      ),
+      tbody: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+        <View key={node.key} style={styles._VIEW_SAFE_tbody} dataSet={markdownCopyDataSet.tbody}>
+          {children}
+        </View>
+      ),
+      tr: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+        <View key={node.key} style={styles._VIEW_SAFE_tr} dataSet={markdownCopyDataSet.tr}>
+          {children}
+        </View>
+      ),
       text: (
         node: ASTNode,
         _children: ReactNode[],
@@ -1991,6 +2118,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       ) => (
         <MarkdownInheritedText
           key={node.key}
+          copyTag="strong"
           inheritedStyles={inheritedStyles}
           textStyle={styles.strong}
         >
@@ -2006,6 +2134,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       ) => (
         <MarkdownInheritedText
           key={node.key}
+          copyTag="em"
           inheritedStyles={inheritedStyles}
           textStyle={styles.em}
         >
@@ -2021,25 +2150,35 @@ export const AssistantMessage = memo(function AssistantMessage({
       ) => (
         <MarkdownInheritedText
           key={node.key}
+          copyTag="s"
           inheritedStyles={inheritedStyles}
           textStyle={styles.s}
         >
           {children}
         </MarkdownInheritedText>
       ),
-      // hardbreak/softbreak fall back to react-native-markdown-display's
-      // default, a plain RN <Text>. Inside the paragraph UITextView that plain
-      // <Text> is not hoisted into a UITextViewChild and is dropped (same root
-      // cause as strong/em/s) - so on iOS a hard line break vanished, and a
-      // softbreak between words jammed them together ("one\ntwo" -> "onetwo").
-      // Emit the break through MarkdownTextSpan so it composes on iOS.
-      //
-      // A hardbreak (two trailing spaces, or a backslash) is an explicit line
-      // break and stays "\n". A SOFTbreak is just a newline in the source, which
-      // markdown reflows as a space - the library's "\n" default turned every
-      // hard-wrapped paragraph into a ragged column of short lines.
-      hardbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}>{"\n"}</MarkdownTextSpan>,
-      softbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}> </MarkdownTextSpan>,
+      // Preserve the renderer's resolved break styles. Android relies on the
+      // hardbreak width, while native text selection needs the custom span.
+      hardbreak: (
+        node: ASTNode,
+        _children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <MarkdownTextSpan key={node.key} style={styles.hardbreak} copyTag="br">
+          {"\n"}
+        </MarkdownTextSpan>
+      ),
+      softbreak: (
+        node: ASTNode,
+        _children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <MarkdownTextSpan key={node.key} style={styles.softbreak}>
+          {"\n"}
+        </MarkdownTextSpan>
+      ),
       code_block: (
         node: ASTNode,
         _children: ReactNode[],
@@ -2062,10 +2201,11 @@ export const AssistantMessage = memo(function AssistantMessage({
         styles: MarkdownStyles,
         inheritedStyles: TextStyle = {},
       ) => (
-        <MarkdownFence
+        <MarkdownFenceBlock
           key={node.key}
           code={node.content}
-          language={node.sourceInfo}
+          info={node.sourceInfo}
+          phase={phase}
           inheritedStyles={inheritedStyles}
           textStyle={styles.fence}
         />
@@ -2121,6 +2261,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         return (
           <MarkdownInheritedText
             key={node.key}
+            copyTag="code"
             inheritedStyles={inheritedStyles}
             textStyle={styles.code_inline}
             monoSurface
@@ -2138,6 +2279,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         <MarkdownListView
           key={node.key}
           baseStyle={styles.bullet_list}
+          copyTag="ul"
           spacing={getMarkdownListSpacing(node, parent)}
         >
           {children}
@@ -2152,6 +2294,8 @@ export const AssistantMessage = memo(function AssistantMessage({
         <MarkdownListView
           key={node.key}
           baseStyle={styles.ordered_list}
+          copyTag="ol"
+          orderedStart={node.attributes?.start}
           spacing={getMarkdownListSpacing(node, parent)}
         >
           {children}
@@ -2168,14 +2312,36 @@ export const AssistantMessage = memo(function AssistantMessage({
         const contentStyle = isOrdered ? styles.ordered_list_content : styles.bullet_list_content;
 
         return (
-          <View key={node.key} style={styles.list_item}>
-            <Text style={iconStyle}>{marker}</Text>
+          <View key={node.key} style={styles.list_item} dataSet={markdownCopyDataSet.li}>
+            <Text style={iconStyle} dataSet={markdownCopyDataSet.listMarker}>
+              {marker}
+            </Text>
             <MarkdownListItemContent contentStyle={contentStyle}>
               {children}
             </MarkdownListItemContent>
           </View>
         );
       },
+      th: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+        <MarkdownTableCellText key={node.key}>
+          <View
+            style={styles._VIEW_SAFE_th}
+            dataSet={markdownCopyTableCellDataSet("th", node.attributes?.style)}
+          >
+            {children}
+          </View>
+        </MarkdownTableCellText>
+      ),
+      td: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+        <MarkdownTableCellText key={node.key}>
+          <View
+            style={styles._VIEW_SAFE_td}
+            dataSet={markdownCopyTableCellDataSet("td", node.attributes?.style)}
+          >
+            {children}
+          </View>
+        </MarkdownTableCellText>
+      ),
       paragraph: (
         node: ASTNode,
         children: ReactNode[],
@@ -2219,7 +2385,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           source={getMarkdownLinkSource(node)}
           style={styles.link}
         >
-          {withMarkdownLinkColor(children, styles.link.color)}
+          {colorMarkdownLinkChildren(children, styles.link.color)}
         </AssistantMarkdownLink>
       ),
       image: (
@@ -2250,7 +2416,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         );
       },
     };
-  }, [client, fileLinkActions, markdownParser, serverId, workspaceRoot]);
+  }, [client, fileLinkActions, markdownParser, phase, serverId, workspaceRoot]);
 
   const blocks = useMemo(() => splitMarkdownBlocks(displayMessage), [displayMessage]);
   // Index-only keys: block boundaries are append-only while a message streams
@@ -2911,6 +3077,7 @@ export const CompactionMarker = memo(function CompactionMarker({
 
 interface TodoListCardProps {
   items: TodoEntry[];
+  activity: TaskActivity;
   disableOuterSpacing?: boolean;
 }
 
@@ -2924,11 +3091,20 @@ interface TodoListCardProps {
  */
 export const TodoListCard = memo(function TodoListCard({
   items,
+  activity,
   disableOuterSpacing,
 }: TodoListCardProps) {
   const { t } = useTranslation();
   const animationsEnabled = useAppSettingValue(selectAnimationsEnabled);
   const { completedCount, total } = useTodoCounts(items);
+  const activityLabel = useMemo(() => {
+    if (activity.type === "created") {
+      return t("message.todo.activity.created", { count: activity.count });
+    }
+    return activity.task
+      ? `${t(`message.todo.activity.${activity.type}`)}: ${activity.task}`
+      : t(`message.todo.activity.${activity.type}`);
+  }, [activity, t]);
 
   const cardStyle = useMemo(
     () => [
@@ -2944,6 +3120,9 @@ export const TodoListCard = memo(function TodoListCard({
         <ThemedTodoHeaderIcon size={13} uniProps={foregroundColorMapping} />
         <Text style={todoListCardStylesheet.headerTitle} numberOfLines={1}>
           {t("message.todo.title")}
+        </Text>
+        <Text style={todoListCardStylesheet.headerActivity} numberOfLines={1}>
+          {activityLabel}
         </Text>
         {total > 0 ? (
           <Text style={todoListCardStylesheet.headerCount}>
@@ -2993,6 +3172,11 @@ const todoListCardStylesheet = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
+  },
+  headerActivity: {
+    flexShrink: 1,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
 }));
 
@@ -3953,6 +4137,7 @@ interface ToolCallProps {
   defaultExpanded?: boolean;
   forceInline?: boolean;
   expandAllCommand?: { expanded: boolean; revision: number } | null;
+  maxDetailHeight?: number;
 }
 
 export const ToolCall = memo(function ToolCall({
@@ -3973,6 +4158,7 @@ export const ToolCall = memo(function ToolCall({
   defaultExpanded,
   forceInline = false,
   expandAllCommand,
+  maxDetailHeight = 400,
 }: ToolCallProps) {
   const { openToolCall } = useToolCallSheet();
   const [isExpanded, setIsExpanded] = useState(defaultExpanded ?? false);
@@ -4083,11 +4269,17 @@ export const ToolCall = memo(function ToolCall({
       <ToolCallDetailsContent
         detail={effectiveDetail}
         errorText={presentation.errorText}
-        maxHeight={400}
+        maxHeight={maxDetailHeight}
         showLoadingSkeleton={presentation.isLoadingDetails}
       />
     );
-  }, [shouldRenderInline, effectiveDetail, presentation.errorText, presentation.isLoadingDetails]);
+  }, [
+    shouldRenderInline,
+    effectiveDetail,
+    presentation.errorText,
+    presentation.isLoadingDetails,
+    maxDetailHeight,
+  ]);
 
   // A widget renders as its own content, not as an action row - same treatment
   // as a plan card, and for the same reason: the payload IS what the model is

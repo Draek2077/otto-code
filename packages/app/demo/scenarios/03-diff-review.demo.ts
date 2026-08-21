@@ -1,6 +1,6 @@
-import { expect, test } from "../../e2e/fixtures";
-import { expectFileTabOpen } from "../../e2e/helpers/file-explorer";
-import { gotoWorkspace } from "../../e2e/helpers/launcher";
+import { expect, test } from "../../e2e/support/fixtures";
+import { expectFileTabOpen } from "../../e2e/support/helpers/file-explorer";
+import { gotoWorkspace } from "../../e2e/support/helpers/launcher";
 import { applyDemoAppearance } from "../helpers/appearance";
 import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";
 import { DemoRecorder } from "../helpers/capture";

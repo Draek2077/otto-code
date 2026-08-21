@@ -124,8 +124,13 @@ quietly relying on:
   renders inside its host, not necessarily at window origin. Position anchored
   content relative to the host: `anchorRect - hostRect`. This is what
   `measureFloatingPanelPortalHost()` is for.
+- **React context.** `@gorhom/portal` is not a React portal; a real one keeps
+  context, this one does not. It stores the element and the host renders it, so
+  context resolves at the _host's_ position. Everything provided between
+  `PortalProvider` in `app/_layout.tsx` and your sheet is invisible inside it.
+  This is why app-wide providers wrap `PortalProvider` rather than the reverse.
 
-The fix for transforms is Gotcha 3.
+The fix for transforms is Gotcha 3. The fix for context is Gotcha 8.
 
 ## Gotcha 3 - Reanimated transforms vs `measureInWindow`
 
@@ -287,6 +292,28 @@ Two rules when adding a new floating layer:
    absolute-fill wrapper) permanently disables titlebar dragging - the exact
    unclipped-rect bug the scoped backstop exists to prevent.
 
+## Gotcha 8 - A sheet cannot read context from its call site
+
+React cannot copy contexts reflectively, so the only way across the teleport in
+Gotcha 2 is to render the providers a second time, with values captured on the
+near side where they are still readable. `IsolatedBottomSheetModal` takes a
+`contextBridge` for exactly that:
+
+```tsx
+const contextBridge = useCallback<ContextBridge>(
+  (content) => <ThingContext.Provider value={thing}>{content}</ThingContext.Provider>,
+  [thing],
+);
+```
+
+The prop is **required**, and `null` is a real answer. A sheet whose content
+needs nothing local should have to say so, because the failure mode is silent
+until someone adds a `useContext` deep inside and it throws on device only,
+never on web, where the desktop path uses a real portal. `menu-surface.tsx`
+bridges the menu's two contexts; the rest pass `null`.
+
+Wrapping providers _around_ the modal does nothing. They land on the wrong side.
+
 ## Recipe for a new anchored panel
 
 Before you write a new one, ask:
@@ -309,3 +336,6 @@ Before you write a new one, ask:
    bounded**. Verify before you commit.
 
 Then copy the closest canonical file and trim.
+
+Building a **menu** rather than a bare panel? Don't. Use the menu engine. It already solves
+everything above, plus submenus, sheets, and hover intent. See [menus.md](menus.md).

@@ -1187,7 +1187,12 @@ function TabHandleContent({
   return (
     <View style={styles.tabHandle} dataSet={tabHandleDataSet}>
       <View style={styles.tabIcon}>
-        <WorkspaceTabIcon presentation={presentation} active={isHighlighted} accent={isActiveTab} />
+        <WorkspaceTabIcon
+          presentation={presentation}
+          active={isHighlighted}
+          accent={isActiveTab}
+          backdrop="surface0"
+        />
       </View>
       {showLabel && presentation.titleState === "loading" ? (
         <View style={tabLabelSkeletonStyle} />

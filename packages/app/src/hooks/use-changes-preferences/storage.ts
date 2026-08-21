@@ -10,6 +10,7 @@ import {
   NO_COMMIT_TYPE,
   type CommitTypeChoice,
 } from "@/git/conventional-commit";
+import { readValidatedJson, readValidatedString } from "@/storage/validated-storage";
 
 export const CHANGES_PREFERENCES_STORAGE_KEY = "@otto:changes-preferences";
 export const LEGACY_WRAP_LINES_STORAGE_KEY = "diff-wrap-lines";
@@ -20,7 +21,7 @@ const COMMIT_TYPE_VALUES = [NO_COMMIT_TYPE, ...CONVENTIONAL_COMMIT_TYPES] as [
   ...CommitTypeChoice[],
 ];
 
-const changesPreferencesSchema = z.object({
+const changesPreferencesSchema = z.strictObject({
   presentation: z.enum(["line", "structural"]).optional(),
   layout: z.enum(["unified", "split"]).optional(),
   viewMode: z.enum(["flat", "tree"]).optional(),
@@ -61,28 +62,28 @@ export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
 export interface KeyValueStorage {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
 }
 
 async function loadLegacyWrapLinesPreference(storage: KeyValueStorage): Promise<boolean | null> {
-  const legacyValue = await storage.getItem(LEGACY_WRAP_LINES_STORAGE_KEY);
-  if (legacyValue === "true") {
-    return true;
-  }
-  if (legacyValue === "false") {
-    return false;
-  }
-  return null;
+  const legacyValue = await readValidatedString(
+    storage,
+    LEGACY_WRAP_LINES_STORAGE_KEY,
+    z.enum(["true", "false"]),
+  );
+  return legacyValue === null ? null : legacyValue === "true";
 }
 
 export async function loadChangesPreferencesFromStorage(
   storage: KeyValueStorage,
 ): Promise<ChangesPreferences> {
-  const stored = await storage.getItem(CHANGES_PREFERENCES_STORAGE_KEY);
+  const stored = await readValidatedJson(
+    storage,
+    CHANGES_PREFERENCES_STORAGE_KEY,
+    changesPreferencesSchema,
+  );
   if (stored) {
-    const parsed = changesPreferencesSchema.safeParse(JSON.parse(stored));
-    if (parsed.success) {
-      return { ...DEFAULT_CHANGES_PREFERENCES, ...parsed.data };
-    }
+    return { ...DEFAULT_CHANGES_PREFERENCES, ...stored };
   }
 
   const legacyWrapLines = await loadLegacyWrapLinesPreference(storage);

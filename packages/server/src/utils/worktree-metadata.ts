@@ -6,17 +6,23 @@ const ChangeRequestLookupTargetSchema = z.object({
   headRef: z.string().min(1),
   headRepositoryOwner: z.string().min(1).optional(),
   changeRequestNumber: z.number().int().positive().optional(),
+  localBranchName: z.string().min(1).optional(),
 });
 
+// baseRefName is the display name; baseRef is the exact ref the worktree was cut from
+// ("refs/remotes/upstream/main"). baseRef is optional because worktrees written before it
+// existed only have the name — there are no migrations, so readers fall back.
 const OttoWorktreeMetadataV1Schema = z.object({
   version: z.literal(1),
   baseRefName: z.string().min(1),
+  baseRef: z.string().min(1).optional(),
   changeRequestLookupTarget: ChangeRequestLookupTargetSchema.optional(),
 });
 
 const OttoWorktreeMetadataV2Schema = z.object({
   version: z.literal(2),
   baseRefName: z.string().min(1),
+  baseRef: z.string().min(1).optional(),
   changeRequestLookupTarget: ChangeRequestLookupTargetSchema.optional(),
   firstAgentBranchAutoName: z
     .discriminatedUnion("status", [
@@ -44,8 +50,67 @@ const OttoWorktreeMetadataSchema = z.union([
 ]);
 
 export type OttoWorktreeMetadata = z.infer<typeof OttoWorktreeMetadataSchema>;
+export type OttoWorktreeChangeRequestHint = z.infer<typeof ChangeRequestLookupTargetSchema>;
+export type OttoWorktreeChangeRequestLookupTarget = OttoWorktreeChangeRequestHint;
 
-export type OttoWorktreeChangeRequestLookupTarget = z.infer<typeof ChangeRequestLookupTargetSchema>;
+export function createOttoWorktreeChangeRequestHint(
+  input: OttoWorktreeChangeRequestHint,
+): OttoWorktreeChangeRequestHint {
+  return ChangeRequestLookupTargetSchema.parse(input);
+}
+
+export function getOttoWorktreeChangeRequestHintForBranch(
+  metadata: OttoWorktreeMetadata | null,
+  currentBranch: string,
+): OttoWorktreeChangeRequestHint | null {
+  const target = metadata?.changeRequestLookupTarget;
+  if (!target) {
+    return null;
+  }
+  if (target.localBranchName) {
+    return target.localBranchName === currentBranch ? target : null;
+  }
+
+  // COMPAT(change-request-local-branch): metadata before v0.2.5 omitted the
+  // local binding; remove after 2027-07-31.
+  const canonicalBranches = new Set<string>();
+  if (target.headRepositoryOwner) {
+    canonicalBranches.add(`${target.headRepositoryOwner}/${target.headRef}`);
+    const normalizedOwner = normalizeLegacyGitHubOwnerForBranch(target.headRepositoryOwner);
+    if (normalizedOwner) {
+      canonicalBranches.add(`${normalizedOwner}/${target.headRef}`);
+    }
+  } else {
+    canonicalBranches.add(target.headRef);
+  }
+  return canonicalBranches.has(currentBranch) ? target : null;
+}
+
+function normalizeLegacyGitHubOwnerForBranch(owner: string): string | null {
+  const normalized = owner.trim().toLowerCase();
+  return /^[a-z0-9-]+$/.test(normalized) ? normalized : null;
+}
+
+export function rebindOttoWorktreeChangeRequestHint(
+  worktreeRoot: string,
+  previousBranch: string,
+  currentBranch: string,
+): boolean {
+  const metadata = readOttoWorktreeMetadata(worktreeRoot);
+  const target = getOttoWorktreeChangeRequestHintForBranch(metadata, previousBranch);
+  if (!metadata || !target) {
+    return false;
+  }
+
+  writeOttoWorktreeMetadataFile(worktreeRoot, {
+    ...metadata,
+    changeRequestLookupTarget: {
+      ...target,
+      localBranchName: currentBranch,
+    },
+  });
+  return true;
+}
 
 function getGitDirForWorktreeRoot(worktreeRoot: string): string {
   const gitPath = join(worktreeRoot, ".git");
@@ -74,34 +139,60 @@ export function getOttoWorktreeMetadataPath(worktreeRoot: string): string {
   return join(gitDir, "otto", "worktree.json");
 }
 
-export function normalizeBaseRefName(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    throw new Error("Base branch is required");
+const REMOTE_TRACKING_PREFIX = "refs/remotes/";
+
+/**
+ * The human-readable branch name behind a ref. Display and legacy identity only — it cannot
+ * round-trip, so anything that has to resolve to a commit keeps the exact ref instead.
+ *
+ * refs/remotes/<remote>/<branch> works for any remote, not just origin. Git allows slashes in
+ * remote names, so refs/remotes/a/b/c is ambiguous and the first segment is read as the
+ * remote: slashes are everywhere in branch names and rare in remote names. A remote genuinely
+ * named "team/upstream" therefore displays as "upstream/main" rather than "main"; the exact
+ * ref is unaffected, which is why this is display-only.
+ */
+export function branchNameFromRef(ref: string): string {
+  const trimmed = ref.trim();
+  if (trimmed.startsWith("refs/heads/")) {
+    return trimmed.slice("refs/heads/".length);
   }
+  if (trimmed.startsWith(REMOTE_TRACKING_PREFIX)) {
+    const remainder = trimmed.slice(REMOTE_TRACKING_PREFIX.length);
+    const separator = remainder.indexOf("/");
+    return separator === -1 ? remainder : remainder.slice(separator + 1);
+  }
+  // Short form. It cannot be generalized to any remote the way the qualified form can:
+  // without the remote list, "feature/x" is indistinguishable from "<remote>/x".
   if (trimmed.startsWith("origin/")) {
     return trimmed.slice("origin/".length);
   }
   return trimmed;
 }
 
-/** Rejects anything git could read as a revision expression or a path escape. */
-function assertSafeBaseRefName(baseRefName: string): void {
-  if (baseRefName === "HEAD") {
+export function normalizeBaseRefName(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("Base branch is required");
+  }
+  return branchNameFromRef(trimmed);
+}
+
+function assertValidBaseRef(value: string): void {
+  if (value === "HEAD") {
     throw new Error("Base branch cannot be HEAD");
   }
-  if (baseRefName.includes("..") || baseRefName.includes("@{")) {
-    throw new Error(`Invalid base branch: ${baseRefName}`);
+  if (value.includes("..") || value.includes("@{")) {
+    throw new Error(`Invalid base branch: ${value}`);
   }
-  if (!/^[0-9A-Za-z._/-]+$/.test(baseRefName)) {
-    throw new Error(`Invalid base branch: ${baseRefName}`);
+  if (!/^[0-9A-Za-z._/-]+$/.test(value)) {
+    throw new Error(`Invalid base branch: ${value}`);
   }
 }
 
 /** Normalizes and rejects anything git could read as a revision expression or a path escape. */
 export function normalizeAndValidateBaseRefName(input: string): string {
   const baseRefName = normalizeBaseRefName(input);
-  assertSafeBaseRefName(baseRefName);
+  assertValidBaseRef(baseRefName);
   return baseRefName;
 }
 
@@ -120,7 +211,7 @@ export function validateBaseRefNameAllowingRemote(input: string): string {
   if (!trimmed) {
     throw new Error("Base branch is required");
   }
-  assertSafeBaseRefName(trimmed);
+  assertValidBaseRef(trimmed);
   return trimmed;
 }
 
@@ -128,6 +219,7 @@ export function writeOttoWorktreeMetadata(
   worktreeRoot: string,
   options: {
     baseRefName: string;
+    baseRef?: string;
     // Persisted, not dropped: this is how a change-request worktree remembers
     // which PR/MR it belongs to. The caller always passed it through a spread,
     // which slips past the excess-property check, so leaving it off this
@@ -138,12 +230,15 @@ export function writeOttoWorktreeMetadata(
   },
 ): void {
   const baseRefName = normalizeAndValidateBaseRefName(options.baseRefName);
+  const baseRef = options.baseRef?.trim();
+  if (baseRef) assertValidBaseRef(baseRef);
 
   const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
   mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "otto"), { recursive: true });
   const metadata: OttoWorktreeMetadata = {
     version: 1,
     baseRefName,
+    ...(baseRef ? { baseRef } : {}),
     ...(options.changeRequestLookupTarget
       ? { changeRequestLookupTarget: options.changeRequestLookupTarget }
       : {}),
@@ -167,11 +262,8 @@ export function writeOttoWorktreeRuntimeMetadata(
   const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
   mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "otto"), { recursive: true });
   const next: OttoWorktreeMetadata = {
+    ...current,
     version: 2,
-    baseRefName: current.baseRefName,
-    ...(current.version === 2 && current.firstAgentBranchAutoName
-      ? { firstAgentBranchAutoName: current.firstAgentBranchAutoName }
-      : {}),
     runtime: {
       worktreePort: options.worktreePort,
     },
@@ -194,13 +286,12 @@ export function writeOttoWorktreeFirstAgentBranchAutoNameMetadata(
   }
 
   writeOttoWorktreeMetadataFile(worktreeRoot, {
+    ...current,
     version: 2,
-    baseRefName: current.baseRefName,
     firstAgentBranchAutoName: {
       status: "pending",
       placeholderBranchName,
     },
-    ...(current.version === 2 && current.runtime ? { runtime: current.runtime } : {}),
   });
 }
 
@@ -214,14 +305,13 @@ export function markOttoWorktreeFirstAgentBranchAutoNameAttempted(
   }
 
   const next: OttoWorktreeMetadata = {
+    ...current,
     version: 2,
-    baseRefName: current.baseRefName,
     firstAgentBranchAutoName: {
       status: "attempted",
       placeholderBranchName: current.firstAgentBranchAutoName.placeholderBranchName,
       attemptedAt: options.attemptedAt ?? new Date().toISOString(),
     },
-    ...(current.runtime ? { runtime: current.runtime } : {}),
   };
   writeOttoWorktreeMetadataFile(worktreeRoot, next);
   return next;

@@ -9,8 +9,6 @@ import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
 import { parseGitHubRepoFromRemote } from "../server/workspace-git-metadata.js";
 import {
-  GitHubAuthenticationError,
-  GitHubCliMissingError,
   GitHubCommandError,
   createGitHubService,
   type CurrentPullRequestStatus,
@@ -20,6 +18,7 @@ import {
   type PullRequestMergeable,
 } from "../services/github-service.js";
 import { isGitHostingFeatureDisabledError } from "../services/git-hosting/types.js";
+import { ForgeAuthenticationError, ForgeCliMissingError } from "../services/forge-cli-command.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import {
   MACHINE_READABLE_DIFF_FLAGS,
@@ -65,8 +64,10 @@ export type GitMutationRefreshReason =
   | "create-branch"
   | "stash-push"
   | "stash-pop"
+  | "discard-changes"
   | "create-worktree";
 
+const DISCARD_CHANGES_TIMEOUT_MS = 120_000;
 const DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS = 30_000;
 const PULL_REQUEST_STATUS_CACHE_MAX = 1_000;
 const DEFAULT_SHORTSTAT_CACHE_TTL_MS = 15_000;
@@ -812,6 +813,7 @@ export interface CheckoutStatusGitNonOtto {
   // implementation always sets it.
   baseSource?: CheckoutBaseSource | null;
   aheadBehind: AheadBehind | null;
+  upstreamRef: string | null;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
   hasRemote: boolean;
@@ -830,6 +832,7 @@ export interface CheckoutStatusGitOtto {
   // implementation always sets it.
   baseSource?: CheckoutBaseSource | null;
   aheadBehind: AheadBehind | null;
+  upstreamRef: string | null;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
   hasRemote: boolean;
@@ -2517,9 +2520,12 @@ export async function getCheckoutStatus(
   const baseRef = facts.resolvedBaseRef;
   const mainRepoRoot = facts.mainRepoRoot;
   const factsContext = { ...context, facts };
-  const [aheadBehind, aheadOfOrigin, behindOfOrigin] = await Promise.all([
+  const [aheadBehind, upstreamRef, aheadOfOrigin, behindOfOrigin] = await Promise.all([
     baseRef && currentBranch
       ? getAheadBehind(cwd, baseRef, currentBranch, factsContext)
+      : Promise.resolve(null),
+    hasRemote && currentBranch
+      ? getConfiguredUpstreamRef(cwd, currentBranch, factsContext)
       : Promise.resolve(null),
     hasRemote && currentBranch
       ? getAheadOfOrigin(cwd, currentBranch, factsContext)
@@ -2539,6 +2545,7 @@ export async function getCheckoutStatus(
       baseRef,
       baseSource: facts.baseSource,
       aheadBehind,
+      upstreamRef,
       aheadOfOrigin,
       behindOfOrigin,
       hasRemote,
@@ -2557,6 +2564,7 @@ export async function getCheckoutStatus(
     baseRef,
     baseSource: facts.baseSource,
     aheadBehind,
+    upstreamRef,
     aheadOfOrigin,
     behindOfOrigin,
     hasRemote,
@@ -3388,6 +3396,53 @@ export async function commitAll(cwd: string, message: string): Promise<void> {
   await commitChanges(cwd, { message, addAll: true });
 }
 
+export async function discardChanges(cwd: string, pathspecs: string[]): Promise<void> {
+  await requireGitRepo(cwd);
+  if (pathspecs.length === 0) return;
+
+  try {
+    await runGitCommand(["--literal-pathspecs", "reset", "-q", "HEAD", "--", ...pathspecs], {
+      cwd,
+      timeout: DISCARD_CHANGES_TIMEOUT_MS,
+    });
+  } catch {
+    // An unborn HEAD has no commit to reset to, so remove the paths from the index directly.
+    await runGitCommand(
+      ["--literal-pathspecs", "rm", "--cached", "-r", "-q", "--ignore-unmatch", "--", ...pathspecs],
+      { cwd, timeout: DISCARD_CHANGES_TIMEOUT_MS },
+    );
+  }
+
+  const status = await runGitCommand(
+    ["--literal-pathspecs", "status", "--porcelain=v1", "-z", "--", ...pathspecs],
+    { cwd, timeout: DISCARD_CHANGES_TIMEOUT_MS },
+  );
+  const tracked: string[] = [];
+  const untracked: string[] = [];
+  const tokens = status.stdout.split("\0");
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!token || token.length < 4) continue;
+    const state = token.slice(0, 2);
+    const filePath = token.slice(3);
+    if (state.startsWith("R") || state.startsWith("C")) index += 1;
+    if (state === "??") untracked.push(filePath);
+    else tracked.push(filePath);
+  }
+  if (tracked.length > 0) {
+    await runGitCommand(["--literal-pathspecs", "checkout", "-q", "--", ...tracked], {
+      cwd,
+      timeout: DISCARD_CHANGES_TIMEOUT_MS,
+    });
+  }
+  if (untracked.length > 0) {
+    await runGitCommand(["--literal-pathspecs", "clean", "-fd", "-q", "--", ...untracked], {
+      cwd,
+      timeout: DISCARD_CHANGES_TIMEOUT_MS,
+    });
+  }
+}
+
 const NON_INTERACTIVE_GIT_ENV = {
   GIT_TERMINAL_PROMPT: "0",
 } as const;
@@ -4119,13 +4174,18 @@ function buildPullRequestStatusResult(
   return { status, authState, githubFeaturesEnabled: authState === "authenticated" };
 }
 
+/** True for the CLI-missing or authentication errors of any supported forge. */
+export function isForgeAuthError(error: unknown): boolean {
+  return error instanceof ForgeCliMissingError || error instanceof ForgeAuthenticationError;
+}
+
 /**
  * Map a forge CLI failure to an auth state. A missing-CLI error means the user
  * must install the tool; anything else surfaced as an auth probe failure means
  * they must sign in.
  */
 export function forgeAuthStateFromError(error: unknown): ForgeAuthState {
-  if (error instanceof GitHubCliMissingError) {
+  if (error instanceof ForgeCliMissingError) {
     return "cli_missing";
   }
   return "unauthenticated";
@@ -4273,11 +4333,7 @@ async function getPullRequestStatusUncached(
     }
     return buildPullRequestStatusResult(status, "authenticated");
   } catch (error) {
-    if (
-      error instanceof GitHubCliMissingError ||
-      error instanceof GitHubAuthenticationError ||
-      isGitHostingFeatureDisabledError(error)
-    ) {
+    if (isForgeAuthError(error) || isGitHostingFeatureDisabledError(error)) {
       return buildPullRequestStatusResult(null, forgeAuthStateFromError(error));
     }
     throw error;

@@ -2,7 +2,7 @@
 title: Troubleshooting
 description: Why Otto can't find a provider you've installed, and how to fix the PATH and environment mismatches behind most setup issues.
 nav: Common problems
-order: 50
+order: 90
 category: Troubleshooting
 ---
 
@@ -23,6 +23,15 @@ Open **Settings → your host → Providers**, tap the provider, then tap **Diag
 - **Resolved path**: where Otto found the binary, or `not found`.
 - **Daemon PATH**: the `PATH` Otto is searching. Compare it to `echo $PATH` in a fresh terminal.
 - **Version**: whether the binary actually runs.
+
+From a terminal or agent, request the same diagnostic from the affected daemon:
+
+```bash
+otto provider diagnostic <provider>
+otto provider diagnostic <provider> --host <host:port> --json
+```
+
+Use `--host` when the affected daemon is not the CLI's default local daemon.
 
 `not found` together with a **Daemon PATH** that's missing your binary's directory is the common case: that directory is on your terminal's `PATH` but not on Otto's.
 

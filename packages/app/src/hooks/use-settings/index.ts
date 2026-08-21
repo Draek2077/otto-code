@@ -63,6 +63,7 @@ import {
   type WorkspaceTitleSource,
   type ShortcutOverlayMode,
   type WorkspaceToolsPlacement,
+  type SidebarWorkspaceTrailing,
 } from "./storage";
 import { collectAppSettingsUpdates } from "./update-routing";
 
@@ -120,6 +121,7 @@ export type {
   WorkspaceTitleSource,
   ShortcutOverlayMode,
   WorkspaceToolsPlacement,
+  SidebarWorkspaceTrailing,
 };
 
 const productionDeps: SettingsDeps = {

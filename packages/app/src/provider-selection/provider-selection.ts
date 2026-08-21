@@ -8,7 +8,8 @@ import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manif
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { buildFavoriteModelKey, type FavoriteModelRow } from "@/hooks/use-form-preferences";
 import { i18n } from "@/i18n/i18next";
-import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
+import { compareMatchScores, scoreTextFields } from "@otto-code/protocol/search/text-match";
+import { filterSelectableModels } from "./model-catalog";
 
 export type ProviderSelectionModelRow = FavoriteModelRow & {
   family?: string;
@@ -99,10 +100,11 @@ function buildModelSelection(
   if (models === null) {
     return { kind: "loading" };
   }
-  if (models.length === 0) {
+  const selectableModels = filterSelectableModels(models) ?? [];
+  if (selectableModels.length === 0) {
     return { kind: "models", rows: [buildSyntheticDefaultRow(provider, providerLabel)] };
   }
-  return { kind: "models", rows: buildModelRows(provider, providerLabel, models) };
+  return { kind: "models", rows: buildModelRows(provider, providerLabel, selectableModels) };
 }
 
 function buildEntryModelSelection(
@@ -217,6 +219,10 @@ export function resolveSelectedModelLabel(input: {
 
 export function buildSelectedTriggerLabel(modelLabel: string): string {
   return modelLabel;
+}
+
+export function buildProviderQualifiedDescription(row: ProviderSelectionModelRow): string {
+  return row.description ? `${row.providerLabel} · ${row.description}` : row.providerLabel;
 }
 
 export function matchesModelSearch(

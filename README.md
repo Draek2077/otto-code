@@ -84,7 +84,7 @@ You need at least one agent CLI installed and configured with your credentials:
 
 Download it from [otto-code.me/download](https://otto-code.me/download) or the [GitHub releases page](https://github.com/Draek2077/otto-code/releases). Open the app and the daemon starts automatically. Nothing else to install.
 
-To connect from your phone, scan the QR code shown in Settings.
+To connect from your phone, open **Settings → your host → Pair Device**.
 
 ### CLI / headless
 
@@ -95,11 +95,12 @@ npm install -g @otto-code/cli
 otto
 ```
 
-This shows a QR code in the terminal. Connect from any client. This path is useful for servers and remote machines.
+Otto starts locally, then asks whether to enable the end-to-end encrypted relay for device pairing. If you decline, connect directly over TCP, Tailscale, or another VPN. This path is useful for servers and remote machines.
 
 For full setup and configuration, see:
 
 - [Docs](https://otto-code.me/docs)
+- [Connectivity guide](https://otto-code.me/docs/connectivity)
 - [Configuration reference](https://otto-code.me/docs/configuration)
 
 ### Docker
@@ -123,7 +124,7 @@ Everything you can do in the app, you can do from the terminal.
 
 ```bash
 otto run --provider claude/opus-4.6 "implement user authentication"
-otto run --provider codex/gpt-5.4 --worktree feature-x "implement feature X"
+otto run --provider codex/gpt-5.5 --worktree feature-x "implement feature X"
 
 otto ls                           # list running agents
 otto attach abc123                # stream live output
@@ -134,6 +135,30 @@ otto --host workstation.local:6868 run "run the full test suite"
 ```
 
 See the [full CLI reference](https://otto-code.me/docs/cli) for more.
+
+## TypeScript SDK
+
+Build issue integrations, dashboards, and orchestration services with `@otto-code/client`:
+
+```ts
+import { createOttoClient } from "@otto-code/client";
+
+const client = createOttoClient({ url: "ws://127.0.0.1:6868/ws" });
+await client.connect();
+
+const agent = await client.agents.create({
+  config: { provider: "codex/gpt-5.5" },
+  cwd: "/Users/me/dev/storefront",
+  prompt: "Review the current diff and name the riskiest change.",
+});
+
+const result = await agent.waitForFinish();
+console.log(result.lastMessage);
+
+await client.close();
+```
+
+See the [SDK quickstart](https://otto-code.me/docs/sdk/quickstart), [recipes](https://otto-code.me/docs/sdk/recipes), and [API reference](https://otto-code.me/docs/sdk/reference).
 
 ## Skills
 
@@ -146,7 +171,6 @@ npx skills add Draek2077/otto-code
 Then use them in any agent conversation:
 
 - `/otto-handoff` - hand off work between agents. I use this to plan with Claude and then handoff to Codex to implement.
-- `/otto-loop` - loop an agent against clear acceptance criteria (aka Ralph loops), optionally with a verifier.
 - `/otto-advisor` - spin up a single agent as an advisor for a second opinion, without delegating the work itself.
 - `/otto-committee` - form a committee of two contrasting agents to step back, do root cause analysis, and produce a plan.
 

@@ -1,9 +1,9 @@
-import { expect, test } from "../../e2e/fixtures";
-import { gotoWorkspace } from "../../e2e/helpers/launcher";
+import { expect, test } from "../../e2e/support/fixtures";
+import { gotoWorkspace } from "../../e2e/support/helpers/launcher";
 import {
   openModelPersonalityPicker,
   selectPersonalityInPicker,
-} from "../../e2e/helpers/personalities";
+} from "../../e2e/support/helpers/personalities";
 import { buildArtifactsRoute, buildSchedulesRoute } from "../../src/utils/host-routes";
 import { applyDemoAppearance } from "../helpers/appearance";
 import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";

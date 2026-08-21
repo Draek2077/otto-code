@@ -21,6 +21,7 @@ const DESKTOP_CLI_ENV = "OTTO_DESKTOP_CLI";
 // window, no log line, and no crash dump.
 const IGNORED_ARG_PREFIXES = [
   "-psn_",
+  "--class=",
   "--no-sandbox",
   "--updated",
   "--remote-debugging-port=",

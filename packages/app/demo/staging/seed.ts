@@ -1,4 +1,4 @@
-import { connectSeedClient, type SeedDaemonClient } from "../../e2e/helpers/seed-client";
+import { connectSeedClient, type SeedDaemonClient } from "../../e2e/support/helpers/seed-client";
 import { materializeTemplate, type MaterializedRepo } from "./materialize";
 
 /**

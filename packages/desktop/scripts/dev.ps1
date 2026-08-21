@@ -8,10 +8,10 @@ $env:PATH = "$RootDir\node_modules\.bin;$env:PATH"
 # Metro resolves workspace packages through their published entrypoints, so build
 # the app dependencies before it starts. `dist/` is ignored and absent after a
 # fresh install.
-npm run build:app-deps
+npm --prefix $RootDir run build:app-deps
 
 # Build the Electron main process
-npm run build:main
+npm --prefix $DesktopDir run build:main
 
 # Take the lowest free port in the desktop band so dev browser storage keeps the
 # same localhost origin across restarts. Fall back only when earlier ports are busy.
@@ -42,18 +42,14 @@ try {
 
 # Set EXPO_DEV_URL in the environment so Electron inherits it
 $env:EXPO_DEV_URL = "http://localhost:$($env:EXPO_PORT)"
+$env:EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL = (git -C $RootDir branch --show-current).Trim()
 
-$RemoteDebuggingPort = if ($env:OTTO_ELECTRON_REMOTE_DEBUGGING_PORT) {
-    $env:OTTO_ELECTRON_REMOTE_DEBUGGING_PORT
-} else {
-    "9223"
-}
-$ExistingElectronFlags = if ($env:OTTO_ELECTRON_FLAGS) {
-    "$($env:OTTO_ELECTRON_FLAGS) "
-} else {
-    ""
-}
-$env:OTTO_ELECTRON_FLAGS = "$($ExistingElectronFlags)--remote-debugging-port=$RemoteDebuggingPort"
+$env:OTTO_DEV_ROOT = $RootDir
+$env:OTTO_DEV_RUNTIME_FALLBACK_ROOT = $RootDir
+$DevRuntime = node "$ScriptDir\dev-runtime.mjs" | ConvertFrom-Json
+$env:OTTO_ELECTRON_FLAGS = $DevRuntime.electronFlags
+$env:OTTO_ELECTRON_USER_DATA_DIR = $DevRuntime.userDataDir
+Remove-Item Env:\OTTO_DEV_RUNTIME_FALLBACK_ROOT -ErrorAction SilentlyContinue
 
 # Fully isolate the dev instance from a production Otto install so `npm run dev`
 # works while the installed app is open. Without this the dev build loses the
@@ -78,7 +74,6 @@ Write-Host @"
   Otto Desktop Dev (Windows)
 ======================================================
   Metro:      http://localhost:$($env:EXPO_PORT)
-  CDP:        http://127.0.0.1:$RemoteDebuggingPort
   Daemon:     $($Dev.Listen) (isolated)
   OTTO_HOME:  $($Dev.Home)
   userData:   $($env:OTTO_ELECTRON_USER_DATA_DIR)

@@ -34,6 +34,7 @@ import Markdown, {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
+import { MarkdownFenceBlock } from "@/components/markdown/fence/index";
 import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-text";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
@@ -41,13 +42,13 @@ import { createCompactMarkdownStyles, createMarkdownStyles } from "@/styles/mark
 import type { Theme } from "@/styles/theme";
 import { openLink } from "@/utils/open-link";
 import { SvgXml } from "react-native-svg";
+import { isNative } from "@/constants/platform";
 import {
   splitHtmlishMarkdown,
   type HtmlishOptions,
   type MarkdownDisplayPart,
   type MarkdownInlineImagePart,
 } from "./html-ish";
-import { MarkdownFence } from "./fence";
 import { TASK_LINE_ATTRIBUTE, TASK_STATE_ATTRIBUTE } from "./task-lists";
 import {
   MarkdownTaskCheckbox,
@@ -73,6 +74,8 @@ import {
   resolveHeadingAnnotationTarget,
   type MarkdownDocumentAnnotationTarget,
 } from "./annotation-locators";
+import { colorMarkdownLinkChildren } from "./link-children";
+import { MarkdownLinkText } from "./link-text";
 
 export type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
 export type { MarkdownDocumentAnnotationTarget } from "./annotation-locators";
@@ -894,6 +897,15 @@ function SharedMarkdownLink({
     if (onLinkPress?.(href) === false) return;
     void openLink(href);
   }, [href, onLinkPress]);
+  const style = useMemo(() => [inheritedStyles, linkStyle], [inheritedStyles, linkStyle]);
+
+  if (!isNative) {
+    return (
+      <MarkdownLinkText style={style} onPress={handlePress}>
+        {children}
+      </MarkdownLinkText>
+    );
+  }
 
   return (
     <MarkdownInheritedText
@@ -1078,10 +1090,11 @@ export function createSharedMarkdownRules(): RenderRules {
       styles: MarkdownStyles,
       inheritedStyles: TextStyle = {},
     ) => (
-      <MarkdownFence
+      <MarkdownFenceBlock
         key={node.key}
         code={node.content}
-        language={node.sourceInfo}
+        info={node.sourceInfo}
+        phase="complete"
         inheritedStyles={inheritedStyles}
         textStyle={styles.fence}
         detectUntagged
@@ -1222,7 +1235,7 @@ export function createSharedMarkdownRules(): RenderRules {
         linkStyle={styles.link}
         onLinkPress={onLinkPress}
       >
-        {withMarkdownLinkColor(children, styles.link.color)}
+        {colorMarkdownLinkChildren(children, styles.link.color)}
       </SharedMarkdownLink>
     ),
   };

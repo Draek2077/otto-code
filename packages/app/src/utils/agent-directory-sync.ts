@@ -1,6 +1,10 @@
 import type { FetchAgentsEntry } from "@otto-code/client/internal/daemon-client";
 import { type Agent, useSessionStore } from "@/stores/session-store";
-import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
+import {
+  derivePendingPermissionKey,
+  normalizeAgentActiveTurn,
+  normalizeAgentSnapshot,
+} from "@/utils/agent-snapshots";
 import { resolveProjectPlacement } from "@/utils/project-placement";
 import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
@@ -10,6 +14,7 @@ import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
 import { getInitDeferred, getInitKey, rejectInitDeferred } from "@/utils/agent-initialization";
 import { useClearedSubagentTokensStore } from "@/subagents/cleared-subagent-tokens-store";
+import type { ActiveTurnIdentity } from "@/timeline/turn-liveness";
 
 type AgentDirectoryFetchEntry = FetchAgentsEntry;
 export type AgentDirectoryDelta = Extract<
@@ -52,7 +57,11 @@ function upsertAgentDirectoryReplica(
       resolveProjectPlacement({ projectPlacement: delta.project, cwd: normalized.cwd }) ??
       previousAgent?.projectPlacement,
   };
-  const acceptedAgent = upsertAgentReplica(serverId, agent);
+  const acceptedAgent = upsertAgentReplica(
+    serverId,
+    agent,
+    normalizeAgentActiveTurn(delta.agent, normalized.lastUserMessageAt),
+  );
   if (acceptedAgent.archivedAt) {
     clearArchiveAgentPending({ queryClient, serverId, agentId: acceptedAgent.id });
   }
@@ -64,7 +73,11 @@ function upsertAgentDirectoryReplica(
   };
 }
 
-export function upsertAgentReplica(serverId: string, agent: Agent): Agent {
+export function upsertAgentReplica(
+  serverId: string,
+  agent: Agent,
+  activeTurn?: ActiveTurnIdentity | null,
+): Agent {
   let acceptedAgent = agent;
   useSessionStore.getState().setAgents(serverId, (current) => {
     const currentAgent = current.get(agent.id);
@@ -74,7 +87,21 @@ export function upsertAgentReplica(serverId: string, agent: Agent): Agent {
     next.set(agent.id, acceptedAgent);
     return next;
   });
+  if (activeTurn !== undefined) {
+    applyAgentTurnSnapshot(serverId, acceptedAgent.id, activeTurn);
+  }
   return acceptedAgent;
+}
+
+function applyAgentTurnSnapshot(
+  serverId: string,
+  agentId: string,
+  activeTurn: ActiveTurnIdentity | null,
+): void {
+  useSessionStore.getState().applyAgentTurnLiveness(serverId, agentId, {
+    type: "snapshot",
+    activeTurn,
+  });
 }
 
 export function replaceAgentPendingPermissions(serverId: string, agent: Agent): void {
@@ -186,6 +213,15 @@ export function replaceFetchedAgentDirectory(input: {
   }
 
   store.setAgents(input.serverId, fetchedAgents);
+  for (const entry of input.entries) {
+    const agent = fetchedAgents.get(entry.agent.id);
+    if (!agent) continue;
+    applyAgentTurnSnapshot(
+      input.serverId,
+      agent.id,
+      normalizeAgentActiveTurn(entry.agent, agent.lastUserMessageAt),
+    );
+  }
   store.setAgentDetails(input.serverId, (prev) => {
     let next: Map<string, Agent> | null = null;
     for (const agentId of fetchedAgents.keys()) {

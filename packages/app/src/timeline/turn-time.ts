@@ -54,14 +54,13 @@ function estimateItemStreamedChars(item: StreamItem): number {
 }
 
 export function deriveStreamTurnTiming(params: {
-  agentStatus: string;
+  isTurnActive: boolean;
+  activeTurnStartedAt: Date | null;
   tail: StreamItem[];
   head: StreamItem[];
 }): StreamTurnTiming {
   const byAssistantId = new Map<string, TurnTiming>();
   let currentUserAt: Date | null = null;
-  let currentAuthoritativeUserAt: Date | null = null;
-  let currentUserIsOptimistic = false;
   let currentLastItemAt: Date | null = null;
   let currentAssistantIds: string[] = [];
   let currentUsage: AgentUsage | undefined;
@@ -86,8 +85,6 @@ export function deriveStreamTurnTiming(params: {
     if (item.kind === "user_message") {
       flushCompletedTurn();
       currentUserAt = item.timestamp;
-      currentAuthoritativeUserAt = item.optimistic ? null : item.timestamp;
-      currentUserIsOptimistic = item.optimistic === true;
       currentLastItemAt = null;
       currentAssistantIds = [];
       currentUsage = undefined;
@@ -114,9 +111,8 @@ export function deriveStreamTurnTiming(params: {
     visitItem(item);
   }
 
-  const isRunning = params.agentStatus === "running";
-  const runningStartedAt = isRunning ? currentAuthoritativeUserAt : null;
-  if (params.agentStatus !== "running") {
+  const runningStartedAt = params.isTurnActive ? params.activeTurnStartedAt : null;
+  if (!params.isTurnActive) {
     flushCompletedTurn();
   }
 
@@ -125,7 +121,7 @@ export function deriveStreamTurnTiming(params: {
   // fine here: the only per-tick re-render is the small token Text (the
   // spinner is memo-isolated in the footer).
   const runningEstimatedTokens =
-    params.agentStatus === "running" && currentStreamedChars > 0
+    params.isTurnActive && currentStreamedChars > 0
       ? Math.round(currentStreamedChars / ESTIMATED_CHARS_PER_TOKEN)
       : null;
 
@@ -133,6 +129,6 @@ export function deriveStreamTurnTiming(params: {
     byAssistantId,
     runningStartedAt,
     runningEstimatedTokens,
-    isActive: isRunning || currentUserIsOptimistic,
+    isActive: params.isTurnActive,
   };
 }

@@ -208,6 +208,23 @@ const darkStatusColors = {
   statusOnline: "#d4d4d8", // zinc-300 - lighter than foregroundMuted (#b6b6bf)
 };
 
+// Small status dots need a brighter, more chromatic ladder than status text.
+// Keeping these as dedicated semantic tokens avoids coupling tiny indicators
+// to the lower-chroma colors used for readable labels and filled surfaces.
+const lightStatusDotColors = {
+  statusDotSuccess: "#299f51",
+  statusDotDanger: "#f12e2f",
+  statusDotWarning: "#b37824",
+  statusDotRunning: "#268ae0",
+};
+
+const darkStatusDotColors = {
+  statusDotSuccess: "#35c264",
+  statusDotDanger: "#f7796d",
+  statusDotWarning: "#db932e",
+  statusDotRunning: "#5caaf6",
+};
+
 // Usage-ledger figure tints - input tokens, output tokens, and cost in the
 // Metrics log. Deliberately desaturated: these sit at 12px next to muted text,
 // so they only need enough hue to separate the three columns at a glance. A
@@ -529,6 +546,7 @@ export function buildLightSemanticColors(tint: LightThemeConfig) {
     // Text
     foreground: tint.foreground,
     foregroundMuted: tint.foregroundMuted,
+    foregroundExtraMuted: blendHex(tint.foregroundMuted, tint.surface0, 0.35),
 
     // Controls
     scrollbarHandle: tint.scrollbarHandle,
@@ -581,6 +599,7 @@ export function buildLightSemanticColors(tint: LightThemeConfig) {
 
     ...lightDiffColors,
     ...lightStatusColors,
+    ...lightStatusDotColors,
     ...lightUsageColors,
 
     terminal: {
@@ -773,6 +792,8 @@ interface DarkThemeConfig {
   destructive: string;
   spinnerPrimary: string;
   spinnerSecondary: string;
+  terminalBlack?: string;
+  terminalBrightBlack?: string;
 }
 
 // Primary text ink for every dark variant. A neutral off-white rather than
@@ -839,6 +860,7 @@ export function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     foreground: darkForeground,
     foregroundMuted: tint.foregroundMuted,
+    foregroundExtraMuted: blendHex(tint.foregroundMuted, tint.surface0, 0.35),
 
     scrollbarHandle: tint.scrollbarHandle,
 
@@ -884,6 +906,7 @@ export function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     ...darkDiffColors,
     ...darkStatusColors,
+    ...darkStatusDotColors,
     ...darkUsageColors,
 
     terminal: {
@@ -893,9 +916,9 @@ export function buildDarkSemanticColors(tint: DarkThemeConfig) {
       cursorAccent: tint.surface0,
       selectionBackground: "rgba(255, 255, 255, 0.2)",
       selectionForeground: darkForeground,
-      black: tint.surfaceSidebar,
+      black: tint.terminalBlack ?? tint.surfaceSidebar,
       ...darkTerminalAnsi,
-      brightBlack: tint.surface3,
+      brightBlack: tint.terminalBrightBlack ?? tint.surface3,
     },
   };
 }
@@ -930,6 +953,31 @@ export const neutralDarkColors = buildDarkSemanticColors({
   destructive: "#c44a4a", // neutral red, hue 0 - clearly red without screaming
   spinnerPrimary: "#79b3f2", // namesake twilight blue, lifted to glow on dark
   spinnerSecondary: "#f591b5", // Belt-of-Venus rose - the pink dusk band opposite the sunset
+});
+
+// Upstream Paseo's full-application pure-black palette. This is intentionally
+// separate from Otto's `blackTheme`, which is a scoped chat-pane surface that
+// is repainted from the active Otto variant at runtime.
+export const pureBlackDarkColors = buildDarkSemanticColors({
+  surface0: "#000000",
+  surface1: "#0a0a0a",
+  surface2: "#111111",
+  surface3: "#202020",
+  surface4: "#2d2d2d",
+  surfaceDiffEmpty: "#0c0c0c",
+  surfaceSidebar: "#000000",
+  surfaceSidebarHover: "#161616",
+  foregroundMuted: "#a1a1aa",
+  scrollbarHandle: "#71717a",
+  border: "#1c1c1c",
+  borderAccent: "#242424",
+  accent: "#20744A",
+  accentBright: "#7ccba0",
+  destructive: "#c44a4a",
+  spinnerPrimary: "#7ccba0",
+  spinnerSecondary: "#20744A",
+  terminalBlack: "#595959",
+  terminalBrightBlack: "#8a8a8a",
 });
 
 // Evergreen - Otto's teal-green identity. Muted text, borders, and the bright

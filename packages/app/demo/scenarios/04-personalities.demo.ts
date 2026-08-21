@@ -1,11 +1,11 @@
-import { expect, test } from "../../e2e/fixtures";
-import { gotoWorkspace } from "../../e2e/helpers/launcher";
+import { expect, test } from "../../e2e/support/fixtures";
+import { gotoWorkspace } from "../../e2e/support/helpers/launcher";
 import {
   modelPickerTrigger,
   openModelPersonalityPicker,
   selectPersonalityInPicker,
-} from "../../e2e/helpers/personalities";
-import { getServerId } from "../../e2e/helpers/server-id";
+} from "../../e2e/support/helpers/personalities";
+import { getServerId } from "../../e2e/support/helpers/server-id";
 import { buildSettingsHostSectionRoute } from "../../src/utils/host-routes";
 import { applyDemoAppearance } from "../helpers/appearance";
 import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";

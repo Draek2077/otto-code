@@ -26,6 +26,7 @@ interface ExecCommandOptions extends ExternalEnvOptions {
   timeout?: number;
   maxBuffer?: number;
   shell?: boolean | string;
+  signal?: AbortSignal;
 }
 
 interface ExecCommandResult {

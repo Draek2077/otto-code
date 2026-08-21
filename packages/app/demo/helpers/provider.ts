@@ -1,4 +1,4 @@
-import { LOCAL_AI_PROVIDER, getLocalAiModel } from "../../e2e/helpers/local-ai";
+import { LOCAL_AI_PROVIDER, getLocalAiModel } from "../../e2e/support/helpers/local-ai";
 
 /**
  * Real-run demo scenarios must never silently HARDCODE a provider - that's

@@ -82,6 +82,8 @@ export type ModelTier = "deep" | "standard" | "fast";
 export interface AgentModelDefinition {
   provider: AgentProvider;
   id: string;
+  aliases?: string[];
+  isSelectable?: boolean;
   label: string;
   description?: string;
   /** Catalog-owned model-family identity, currently emitted by Otto Brain only. */
@@ -431,12 +433,20 @@ export interface CompactionTimelineItem {
   postTokens?: number;
 }
 
+export interface AgentTaskItem {
+  text: string;
+  completed: boolean;
+  id?: string;
+  status?: "pending" | "in_progress" | "completed";
+  activeForm?: string;
+}
+
 export type AgentTimelineItem =
   | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
   | { type: "assistant_message"; text: string; messageId?: string }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
-  | { type: "todo"; items: { text: string; completed: boolean }[] }
+  | { type: "todo"; items: AgentTaskItem[] }
   | { type: "error"; message: string }
   | CompactionTimelineItem;
 
@@ -651,6 +661,26 @@ export function isWorkspaceAccess(value: unknown): value is WorkspaceAccess {
   return value === "none" || value === "read" || value === "write";
 }
 
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+export type ProviderOptions = Record<string, JsonValue>;
+
+export interface McpToolRef {
+  kind: "mcp";
+  server: string;
+  tool: string;
+}
+
+export interface ToolPolicy {
+  preapproved: McpToolRef[];
+}
+
 export interface AgentSessionConfig {
   provider: AgentProvider;
   cwd: string;
@@ -679,6 +709,8 @@ export interface AgentSessionConfig {
     codex?: AgentMetadata;
     claude?: AgentMetadata;
   };
+  providerOptions?: ProviderOptions;
+  toolPolicy?: ToolPolicy;
   mcpServers?: Record<string, McpServerConfig>;
   /**
    * Internal agents are hidden from listings and don't trigger notifications.

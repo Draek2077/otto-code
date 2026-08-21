@@ -22,34 +22,17 @@ function assistant(id: string, timestamp: Date): StreamItem {
 }
 
 describe("deriveStreamTurnTiming", () => {
-  it("reserves a running footer for an optimistic prompt before the host starts the turn", () => {
-    const optimisticPrompt = {
-      ...user("optimistic", new Date("2026-05-15T00:00:00.000Z")),
-      optimistic: true as const,
-    };
+  it("starts elapsed time from the submitted prompt", () => {
+    const submittedAt = new Date("2026-05-15T00:00:00.000Z");
 
     const timing = deriveStreamTurnTiming({
-      agentStatus: "idle",
+      isTurnActive: true,
+      activeTurnStartedAt: submittedAt,
       tail: [],
-      head: [optimisticPrompt],
+      head: [user("submitted", submittedAt)],
     });
 
-    assert.equal(timing.isActive, true);
-  });
-
-  it("does not start elapsed time from an optimistic prompt", () => {
-    const optimisticPrompt = {
-      ...user("optimistic", new Date("2026-05-15T00:00:00.000Z")),
-      optimistic: true as const,
-    };
-
-    const timing = deriveStreamTurnTiming({
-      agentStatus: "running",
-      tail: [],
-      head: [optimisticPrompt],
-    });
-
-    assert.equal(timing.runningStartedAt, null);
+    assert.equal(timing.runningStartedAt, submittedAt);
   });
 
   it("uses the last user message as the running turn start", () => {
@@ -57,7 +40,8 @@ describe("deriveStreamTurnTiming", () => {
     const secondUserAt = new Date("2026-05-15T00:01:00.000Z");
 
     const timing = deriveStreamTurnTiming({
-      agentStatus: "running",
+      isTurnActive: true,
+      activeTurnStartedAt: secondUserAt,
       tail: [
         user("u1", firstUserAt),
         assistant("a1", new Date("2026-05-15T00:00:05.000Z")),
@@ -75,7 +59,8 @@ describe("deriveStreamTurnTiming", () => {
     const assistantAt = new Date("2026-05-15T00:00:07.000Z");
 
     const timing = deriveStreamTurnTiming({
-      agentStatus: "idle",
+      isTurnActive: false,
+      activeTurnStartedAt: null,
       tail: [
         user("u1", userAt),
         assistant("a1", assistantAt),
@@ -97,7 +82,8 @@ describe("deriveStreamTurnTiming", () => {
     const lastAssistantAt = new Date("2026-05-15T00:00:07.000Z");
 
     const timing = deriveStreamTurnTiming({
-      agentStatus: "idle",
+      isTurnActive: false,
+      activeTurnStartedAt: null,
       tail: [
         user("u1", userAt),
         assistant("a1", firstAssistantAt),
@@ -126,7 +112,8 @@ describe("deriveStreamTurnTiming", () => {
     };
 
     const timing = deriveStreamTurnTiming({
-      agentStatus: "idle",
+      isTurnActive: false,
+      activeTurnStartedAt: null,
       tail: [
         user("u1", new Date("2026-05-15T00:00:00.000Z")),
         assistant("a1", new Date("2026-05-15T00:00:03.000Z")),
@@ -151,7 +138,8 @@ describe("deriveStreamTurnTiming", () => {
     };
 
     const timing = deriveStreamTurnTiming({
-      agentStatus: "running",
+      isTurnActive: true,
+      activeTurnStartedAt: new Date("2026-05-15T00:01:00.000Z"),
       tail: [
         user("u1", new Date("2026-05-15T00:00:00.000Z")),
         assistant("a1", new Date("2026-05-15T00:00:05.000Z")),
@@ -174,7 +162,8 @@ describe("deriveStreamTurnTiming", () => {
     };
 
     const timing = deriveStreamTurnTiming({
-      agentStatus: "running",
+      isTurnActive: true,
+      activeTurnStartedAt: new Date("2026-05-15T00:00:00.000Z"),
       tail: [user("u1", new Date("2026-05-15T00:00:00.000Z"))],
       head: [streamedText],
     });
@@ -184,7 +173,8 @@ describe("deriveStreamTurnTiming", () => {
 
   it("reports no running token estimate when the agent is idle", () => {
     const timing = deriveStreamTurnTiming({
-      agentStatus: "idle",
+      isTurnActive: false,
+      activeTurnStartedAt: null,
       tail: [
         user("u1", new Date("2026-05-15T00:00:00.000Z")),
         assistant("a1", new Date("2026-05-15T00:00:05.000Z")),

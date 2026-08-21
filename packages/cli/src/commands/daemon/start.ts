@@ -20,6 +20,7 @@ export function startCommand(): Command {
     .option("--port <port>", "Port to listen on (default: 6868)")
     .option("--home <path>", "Otto home directory (default: ~/.otto)")
     .option("--foreground", "Run in foreground (don't daemonize)")
+    .option("--relay", "Enable relay connection")
     .option("--no-relay", "Disable relay connection")
     .option("--relay-use-tls", "Use wss:// for the relay connection and pairing offers")
     .option("--no-mcp", "Disable the Agent MCP HTTP endpoint")

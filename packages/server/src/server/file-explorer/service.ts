@@ -652,3 +652,53 @@ export async function resolveExplorerFilePath({
 }: ReadFileParams): Promise<string> {
   return (await resolveScopedPath({ root, relativePath })).resolvedPath;
 }
+
+export type DuplicateExplorerEntryResult =
+  | { status: "ok"; path: string }
+  | { status: "error"; error: string };
+
+/** Duplicate a file or directory beside its source without overwriting an existing copy. */
+export async function duplicateExplorerEntry({
+  root,
+  relativePath,
+}: ReadFileParams): Promise<DuplicateExplorerEntryResult> {
+  try {
+    const source = await resolveScopedPath({ root, relativePath });
+    const realRoot = await fs.realpath(expandUserPath(root));
+    if (source.resolvedPath === realRoot) {
+      return { status: "error", error: "Cannot duplicate the workspace root" };
+    }
+
+    const stats = await fs.lstat(source.requestedPath);
+    const sourceName = path.basename(source.requestedPath);
+    const extension = stats.isDirectory() ? "" : path.extname(sourceName);
+    const baseName = extension ? sourceName.slice(0, -extension.length) : sourceName;
+    let targetPath = "";
+    for (let copyNumber = 1; ; copyNumber += 1) {
+      const suffix = copyNumber === 1 ? " copy" : ` copy ${copyNumber}`;
+      targetPath = path.join(
+        path.dirname(source.requestedPath),
+        `${baseName}${suffix}${extension}`,
+      );
+      try {
+        await fs.lstat(targetPath);
+      } catch (error) {
+        if (isMissingEntryError(error)) break;
+        throw error;
+      }
+    }
+
+    await fs.cp(source.requestedPath, targetPath, {
+      recursive: stats.isDirectory(),
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+    });
+    return { status: "ok", path: normalizeRelativePath({ root, targetPath }) };
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { status: "error", error: "File or folder no longer exists" };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+}

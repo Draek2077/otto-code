@@ -30,8 +30,12 @@ import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-ha
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { CommandCenter, CommandCenterRootActions } from "@/command-center/command-center";
+import { CommandCenter } from "@/command-center/command-center";
+import { CommandCenterRootActions } from "@/command-center/root-registration";
 import { CommandCenterProvider } from "@/command-center/provider";
+import { CommandCenterWorkspaceActions } from "@/command-center/workspace-registration";
+import { AddProjectFlowHost } from "@/components/add-project-flow-host";
+import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
@@ -44,6 +48,7 @@ import { ConfirmDialogHost } from "@/components/confirm-dialog-host";
 import { TutorialController } from "@/tutorial/controller";
 import { QuitConfirmListener } from "@/desktop/components/quit-confirm-listener";
 import { LeftSidebar } from "@/components/left-sidebar";
+import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
@@ -55,7 +60,17 @@ import { ClientResourceBar } from "@/components/client-resource-bar";
 import { resolveClientResourceBarPlacement } from "@/components/client-resource-bar-placement";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
-import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
+import {
+  getIsElectronRuntime,
+  HEADER_INNER_HEIGHT,
+  useIsCompactFormFactor,
+} from "@/constants/layout";
+import {
+  canDesktopAppSidebarShare,
+  resolveDesktopAppChromeLayout,
+  resolveDesktopAppContentMinimum,
+  resolveDesktopSidebarVisibility,
+} from "@/components/desktop-sidebar-layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { HorizontalScrollProvider } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
@@ -76,6 +91,7 @@ import { registerWorkspaceRouteNavigationRef } from "@/navigation/workspace-rout
 import { ThemedStack } from "@/navigation/themed-stack";
 import { RouteFadeContainer } from "@/components/route-fade-container";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import { legacyFavoriteProfileMigration } from "@/agent-profiles/migration";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { signalDesktopWindowReady, updateDesktopWindowControls } from "@/desktop/electron/window";
 import { getDesktopHost } from "@/desktop/host";
@@ -84,6 +100,7 @@ import { RosettaCalloutSource } from "@/desktop/updates/rosetta-callout-source";
 import { UpdateCalloutSource } from "@/desktop/updates/update-callout-source";
 import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
 import { useGlobalNewWorkspaceAction } from "@/hooks/use-global-new-workspace-action";
+import { useLatchedBoolean } from "@/hooks/use-latched-boolean";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { KeyboardShiftProvider } from "@/hooks/use-keyboard-shift-style";
@@ -96,6 +113,7 @@ import { MobilePanelsProvider } from "@/mobile-panels/provider";
 import { I18nProvider } from "@/i18n/provider";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { polyfillCrypto } from "@/polyfills/crypto";
+import { polyfillNavigator } from "@/polyfills/navigator";
 import { queryClient } from "@/data/query-client";
 import { ResourceMonitorHost } from "@/diagnostics/resource-report/resource-monitor-host";
 import {
@@ -109,6 +127,7 @@ import {
   useHostRegistryLoaded,
   useHostMutations,
   useHostRuntimeClient,
+  useHostRuntimeIsConnected,
   useHosts,
 } from "@/runtime/host-runtime";
 import { getDaemonStartService } from "@/runtime/daemon-start-service";
@@ -116,16 +135,23 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
 import { applyColorScheme } from "@/screens/settings/appearance/apply-color-scheme";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
-import {
-  canDesktopAppSidebarShare,
-  resolveDesktopAppContentMinimum,
-} from "@/components/desktop-sidebar-layout";
+import { useSessionStore } from "@/stores/session-store";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { LightThemeName, DarkThemeName } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
-import { buildOpenProjectRoute, parseServerIdFromPathname } from "@/utils/host-routes";
+import {
+  buildOpenProjectRoute,
+  parseHostWorkspaceRouteFromPathname,
+  parseServerIdFromPathname,
+} from "@/utils/host-routes";
 import { startDesktopResizeReflow } from "@/utils/desktop-window";
+import {
+  useHasWindowChromeObstruction,
+  WindowChromeProvider,
+  WindowChromeRegion,
+  WindowChromeSafeArea,
+} from "@/utils/window-chrome";
 import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import {
@@ -141,7 +167,6 @@ import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import { getDroppedFilePath } from "@/components/file-drop/file-path";
 import type { DroppedItem } from "@/components/file-drop/types";
 import type { Href } from "expo-router";
-import { useSessionStore } from "@/stores/session-store";
 import {
   ensureOsNotificationPermission,
   WEB_NOTIFICATION_CLICK_EVENT,
@@ -151,6 +176,7 @@ import { AgentVoiceCuesHost } from "@/voice/agent-voice-cues-host";
 import { AutoSpeechHost } from "@/voice/auto-speech-host";
 import { ZoomRecorderHost } from "@/desktop/zoom-recorder-host";
 
+polyfillNavigator();
 polyfillCrypto();
 
 // Start the resource monitor before the React tree mounts: it patches the timer
@@ -296,9 +322,31 @@ function ManagedDaemonSession({ daemon }: { daemon: HostProfile }) {
 
   return (
     <SessionProvider key={daemon.serverId} serverId={daemon.serverId} client={client}>
-      {null}
+      <LegacyFavoriteProfileMigrationBootstrap serverId={daemon.serverId} client={client} />
     </SessionProvider>
   );
+}
+
+function LegacyFavoriteProfileMigrationBootstrap({
+  serverId,
+  client,
+}: {
+  serverId: string;
+  client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
+}) {
+  const serverInfo = useSessionStore((state) => state.sessions[serverId]?.serverInfo ?? null);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+
+  useEffect(() => {
+    if (!serverInfo || !isConnected) {
+      return;
+    }
+    void legacyFavoriteProfileMigration.migrateHost(serverId, client).catch((error) => {
+      console.warn("[AgentProfiles] Failed to migrate legacy favourites", error);
+    });
+  }, [client, isConnected, serverId, serverInfo]);
+
+  return null;
 }
 
 function HostSessionManager() {
@@ -496,6 +544,7 @@ const THEME_CYCLE_ORDER: ThemeCycleStep[] = [
   { colorSchemeMode: "dark", darkTheme: "ghostty" }, // Slate
   { colorSchemeMode: "light", lightTheme: "daylight" }, // Daylight
 ];
+const WINDOW_SIDEBAR_TOGGLE_HORIZONTAL_PADDING = 12;
 
 function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppContainerProps) {
   const daemons = useHosts();
@@ -511,6 +560,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     toggleFocusMode();
     return true;
   }, [toggleFocusMode]);
+  const exitFocusMode = usePanelStore((state) => state.exitFocusMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const cycleTheme = useCallback(() => {
@@ -531,7 +581,10 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const isCompactLayout = useIsCompactFormFactor();
   useCompactWebViewportZoomLock(isCompactLayout);
   const pathname = usePathname();
+  const isWorkspaceRoute = parseHostWorkspaceRouteFromPathname(pathname) !== null;
+  const isWorkspaceFocusModeEnabled = isWorkspaceRoute && isFocusModeEnabled;
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
+  const hasMountedDesktopSidebar = useLatchedBoolean(chromeEnabled);
   const toggleAgentList = isCompactLayout ? toggleMobileAgentList : toggleDesktopAgentList;
   const toggleDesktopSidebars = useCallback(() => {
     const { desktop } = usePanelStore.getState();
@@ -565,8 +618,10 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   useKeyboardShortcuts({
     enabled: keyboardShortcutsEnabled,
     isMobile: isCompactLayout,
+    isWorkspaceFocusModeEnabled,
     toggleAgentList,
     toggleBothSidebars: toggleDesktopSidebars,
+    exitFocusMode,
     cycleTheme,
   });
 
@@ -588,17 +643,25 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     requestedExplorerWidth: explorerWidth,
     viewportWidth,
   });
-  const desktopSidebarRendered =
-    !isCompactLayout &&
-    chromeEnabled &&
-    !isFocusModeEnabled &&
-    isDesktopAgentListOpen &&
-    canDesktopAppSidebarShare({
+  const desktopSidebarMounted = hasMountedDesktopSidebar && !isWorkspaceFocusModeEnabled;
+  const desktopSidebarVisible = resolveDesktopSidebarVisibility({
+    chromeEnabled,
+    isCompactLayout,
+    isMounted: desktopSidebarMounted,
+    isOpen: isDesktopAgentListOpen,
+    canShare: canDesktopAppSidebarShare({
       contentMinimumWidth: appContentMinimumWidth,
       requestedSidebarWidth: sidebarWidth,
       viewportWidth,
-    });
-
+    }),
+  });
+  const desktopSidebarRendered = desktopSidebarVisible;
+  const hasTopLeftWindowControls = useHasWindowChromeObstruction("top-left");
+  const appChromeLayout = resolveDesktopAppChromeLayout({
+    desktopSidebarRendered: desktopSidebarVisible,
+    hasTopLeftWindowControls,
+    sidebarControlsEnabled: chromeEnabled && !isWorkspaceFocusModeEnabled,
+  });
   const sidebarChrome = (
     <SidebarChrome
       showSidebar={isCompactLayout ? chromeEnabled : desktopSidebarRendered}
@@ -608,13 +671,21 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
 
   const workspaceChrome = (
     <View style={rowStyle}>
-      {!isCompactLayout ? sidebarChrome : null}
-      {isCompactLayout && chromeEnabled ? (
+      {!isCompactLayout ? (
+        <WindowChromeRegion corners={appChromeLayout.sidebarCorners}>
+          {sidebarChrome}
+        </WindowChromeRegion>
+      ) : null}
+      {isCompactLayout ? (
         <CompactExplorerSidebarHost enabled={chromeEnabled}>
-          <RouteFadeContainer>{children}</RouteFadeContainer>
+          <WindowChromeRegion corners={chromeEnabled ? "both" : appChromeLayout.contentCorners}>
+            <RouteFadeContainer>{children}</RouteFadeContainer>
+          </WindowChromeRegion>
         </CompactExplorerSidebarHost>
       ) : (
-        <RouteFadeContainer>{children}</RouteFadeContainer>
+        <WindowChromeRegion corners={appChromeLayout.contentCorners}>
+          <RouteFadeContainer>{children}</RouteFadeContainer>
+        </WindowChromeRegion>
       )}
     </View>
   );
@@ -622,6 +693,18 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const surface = (
     <View style={layoutStyles.surfaceFill}>
       {workspaceChrome}
+      {!isCompactLayout && appChromeLayout.sidebarToggleOwner === "window" ? (
+        <WindowChromeRegion corners="top-left">
+          <WindowChromeSafeArea
+            placement="inline"
+            horizontalPadding={WINDOW_SIDEBAR_TOGGLE_HORIZONTAL_PADDING}
+            pointerEvents="box-none"
+            style={layoutStyles.windowSidebarToggle}
+          >
+            <SidebarMenuToggle />
+          </WindowChromeSafeArea>
+        </WindowChromeRegion>
+      ) : null}
       <FloatingPanelPortalHost />
       {isCompactLayout ? sidebarChrome : null}
       <DownloadToast />
@@ -629,7 +712,9 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <UpdateCalloutSource />
       <WorktreeSetupCalloutSource />
       <CommandCenterRootActions />
+      <CommandCenterWorkspaceActions />
       <CommandCenter />
+      <AddProjectFlowHost />
       <HostChooserModal />
       <ProviderSettingsHost />
       <WorkspaceSetupDialog />
@@ -783,19 +868,21 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
       <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
       <HostSessionManager />
       <FaviconStatusSync />
-      {/* Agent voice cues are a notification channel, so playback lives here -
+      <AppearanceStyleBoundary>
+        {/* Agent voice cues are a notification channel, so playback lives here -
           app-global, above the router - and is independent of the Visualizer
           entirely. Headless: it fires the cue audio and renders nothing. */}
-      <AgentVoiceCuesHost />
-      {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
+        <AgentVoiceCuesHost />
+        {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
           for the same two reasons as the cues: the shared audio engine resolves
           inside VoiceProvider, and a route change must not cut a queue short. */}
-      <AutoSpeechHost />
-      <ZoomRecorderHost />
-      {/* Headless: binds the resource monitor started above the router to the
+        <AutoSpeechHost />
+        <ZoomRecorderHost />
+        {/* Headless: binds the resource monitor started above the router to the
           `resourceMonitorEnabled` setting, so the telemetry can be turned off. */}
-      <ResourceMonitorHost />
-      {children}
+        <ResourceMonitorHost />
+        {children}
+      </AppearanceStyleBoundary>
     </VoiceProvider>
   );
 }
@@ -1259,8 +1346,6 @@ function RootStack() {
         <Stack.Screen name="setup" />
         <Stack.Screen name="settings/index" />
         <Stack.Screen name="settings/[section]" />
-        <Stack.Screen name="settings/projects/index" />
-        <Stack.Screen name="settings/projects/[serverId]/[projectId]" />
         <Stack.Screen name="new" />
         <Stack.Screen name="new-project" />
         <Stack.Screen name="open-project" />
@@ -1343,11 +1428,13 @@ function SheetPortalProviders({ children }: { children: ReactNode }) {
 function RootProviders({ children }: { children: ReactNode }) {
   return (
     <SafeAreaProvider>
-      <KeyboardProvider>
-        <KeyboardShiftProvider>
-          <SheetPortalProviders>{children}</SheetPortalProviders>
-        </KeyboardShiftProvider>
-      </KeyboardProvider>
+      <WindowChromeProvider>
+        <KeyboardProvider>
+          <KeyboardShiftProvider>
+            <SheetPortalProviders>{children}</SheetPortalProviders>
+          </KeyboardShiftProvider>
+        </KeyboardProvider>
+      </WindowChromeProvider>
     </SafeAreaProvider>
   );
 }
@@ -1439,9 +1526,11 @@ export default function RootLayout() {
   return (
     <QueryProvider>
       <I18nProvider>
-        <RootErrorBoundary>
-          <RootAppTree />
-        </RootErrorBoundary>
+        <SafeAreaProvider>
+          <RootErrorBoundary>
+            <RootAppTree />
+          </RootErrorBoundary>
+        </SafeAreaProvider>
       </I18nProvider>
     </QueryProvider>
   );
@@ -1457,6 +1546,13 @@ const layoutStyles = StyleSheet.create((theme) => ({
   surfaceFill: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+  },
+  windowSidebarToggle: {
+    position: "absolute",
+    top: 1,
+    left: 0,
+    zIndex: 20,
+    height: HEADER_INNER_HEIGHT,
   },
   startupOverlay: {
     position: "absolute",

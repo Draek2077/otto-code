@@ -6,26 +6,24 @@ user-invocable: true
 
 # Committee Skill
 
-Two agents from contrasting providers, fresh context, planning a solution in parallel. They stay alive for review after implementation.
-
-The purpose is to step back, not double down. The committee may propose a completely different approach.
+Two agents from contrasting profiles, fresh context, planning a solution in parallel.
 
 **User's additional context:** $ARGUMENTS
 
 ## Prerequisites
 
-Read the **otto** skill. Before choosing committee members, call `list_personalities` (role `advisor` or `judger`) - if the host has suitable personalities, spawn the members by `personality` name and skip provider selection. Otherwise read `~/.otto/orchestration-preferences.json` unless the user explicitly named providers in this request. Do not create committee agents until you have done one of these.
+Read the **otto** skill. Call `list_profiles` before choosing committee members, and read every configured profile's `notes`. Do not create committee agents until you have inspected the available profiles.
 
-Contrast is the point of a committee, so pick two deliberately contrasting members - by personality when available, otherwise across providers using the configured preferences rather than hardcoded defaults.
+Contrast is the point of a committee, so prefer two suitable profiles from different provider families. Materialize each selected profile into `create_agent` as described by the **otto** skill. If fewer than two profiles fit, use Otto's provider-discovery fallback for the missing member and tell the user.
 
 ## Composition
 
 Two members with different reasoning styles:
 
-- Prefer two contrasting `advisor`/`judger` **personalities** (from `list_personalities`), spawned via `create_agent`'s `personality` argument.
-- Otherwise select from orchestration preferences: one planning/research-strength provider and one contrasting high-reasoning provider.
+- One profile whose notes fit planning, research, or root-cause analysis.
+- One contrasting high-reasoning profile, from another provider family when possible.
 
-Override only when the user explicitly asks for different members.
+If the user names profiles, use those. Override the selection only when the user explicitly asks for different members.
 
 ## Hard rules
 
@@ -35,8 +33,8 @@ Override only when the user explicitly asks for different members.
   This is analysis only. Do NOT edit, create, or delete any files. Do NOT write code.
   ```
 
-- **Trust the wait.** Do not poll, send hurry-ups, or interrupt. GPT-5.4 can reason 15–30 minutes; Opus does extended thinking. Long waits mean it found something worth thinking about.
-- **You are the middleman.** Drive plan → implement → review without yielding to the user, except for divergences that need their call.
+- **Trust the wait.** Do not poll, send hurry-ups, or interrupt. GPT-5.4 can reason 15-30 minutes; Opus does extended thinking. Long waits mean it found something worth thinking about.
+- **You are the middleman.** Drive plan -> implement -> review without yielding to the user, except for divergences that need their call.
 
 ## Phase 1: Plan
 
@@ -44,40 +42,46 @@ Write a problem-level prompt:
 
 - High-level goal and acceptance criteria
 - Constraints
-- Symptoms (if a bug)
+- Symptoms, if a bug
 - What you tried and why it failed
 - Explicit: "do root cause analysis"
 - Explicit: "state assumptions, ask why three levels deep, check whether you're patching a symptom or removing the problem"
 
-Create both agents in parallel via Otto with `[Committee] <task>` titles and the same prompt. Wait for both - not just whichever finishes first.
+Create both agents in parallel via Otto with `[Committee] <task>` titles and the same prompt. Wait for both, not just whichever finishes first.
 
-Read both responses. Challenge them - do not accept at face value:
+Read both responses. Challenge them. Do not accept them at face value:
 
 - "Why does <underlying thing> happen? Symptom or cause?"
 - Verify any assumption the plan makes about the code.
-- "What did you considered and reject?"
+- "What did you consider and reject?"
 
 Send follow-ups until the plan addresses root cause.
 
 Synthesize:
 
-- Convergence → unified plan.
-- Significant divergence → involve the user.
+- Convergence -> unified plan.
+- Significant divergence -> involve the user.
 
 Confirm the merged plan with both members. Multi-turn until consensus.
 
 ## Phase 2: Implement
 
-Default: implement yourself. If the user said **"delegate"**, launch one impl agent and pass the merged plan.
+Default: implement yourself. If the user said **"delegate"**, launch one implementation agent and pass the merged plan.
 
-The committee stays clean - not involved in implementation.
+The committee stays clean: not involved in implementation.
 
 ## Phase 3: Review
 
-Send the diff to the committee:
+Send the diff to the committee for review.
 
-> Implementation is done. Review changes against the plan. Flag drift or missing pieces. <no-edits suffix>
+## Workflow
 
-Apply feedback yourself, or send to the impl agent. Repeat 2 → 3 until consensus.
+1. Write a problem-level prompt.
+2. Create both agents in parallel via Otto with `[Committee] <task>` titles and the same prompt.
+3. Wait for both responses.
+4. Resolve disagreements by passing their arguments between each other.
+5. Keep going until they converge into a response.
 
-After ~10 iterations without convergence, start a fresh committee with the full history of what was tried - the current committee's context may have drifted too far.
+After about 10 iterations without convergence, start a fresh committee with the full history of what was tried; the current committee's context may have drifted too far.
+
+Share the consensus with the user. Summarize where the agents diverged and how they resolved it.

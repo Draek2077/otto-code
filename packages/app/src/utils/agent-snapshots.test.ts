@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
-import { normalizeAgentSnapshot } from "./agent-snapshots";
+import { normalizeAgentActiveTurn, normalizeAgentSnapshot } from "./agent-snapshots";
 
 function createSnapshot(
   input: Partial<Omit<AgentSnapshotPayload, "labels">> & {
@@ -17,6 +17,7 @@ function createSnapshot(
     updatedAt: input.updatedAt ?? "2026-04-20T00:01:00.000Z",
     lastUserMessageAt: input.lastUserMessageAt ?? null,
     status: input.status ?? "idle",
+    activeTurn: input.activeTurn,
     capabilities: input.capabilities ?? {
       supportsStreaming: true,
       supportsSessionPersistence: true,
@@ -35,6 +36,26 @@ function createSnapshot(
 }
 
 describe("normalizeAgentSnapshot", () => {
+  it("normalizes identified and legacy active turns separately from the agent replica", () => {
+    const startedAt = "2026-07-31T12:00:00.000Z";
+    const identified = createSnapshot({
+      status: "running",
+      activeTurn: { turnId: "turn-1", startedAt },
+    });
+    expect(normalizeAgentActiveTurn(identified, new Date(startedAt))).toEqual({
+      turnId: "turn-1",
+      startedAt: new Date(startedAt),
+    });
+
+    const legacy = createSnapshot({ status: "running", lastUserMessageAt: startedAt });
+    expect(normalizeAgentActiveTurn(legacy, new Date(startedAt))).toEqual({
+      turnId: null,
+      startedAt: new Date(startedAt),
+    });
+
+    expect(normalizeAgentSnapshot(identified, "server-1")).not.toHaveProperty("activeTurn");
+  });
+
   it("derives parentAgentId from the parent label while preserving labels", () => {
     const labels = {
       [PARENT_AGENT_ID_LABEL]: "parent-1",

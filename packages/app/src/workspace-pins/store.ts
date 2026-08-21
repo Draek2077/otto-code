@@ -1,7 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
+import { z } from "zod";
 import { isTargetPinned, togglePinnedTarget, type PinnedTabTarget } from "@/workspace-pins/target";
+import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
 interface PinnedTargetsState {
   pinned: PinnedTabTarget[];
@@ -14,6 +16,19 @@ const DEFAULT_PINNED_TARGETS: PinnedTabTarget[] = [
   { kind: "preview" },
   { kind: "terminal" },
 ];
+const PinnedTabTargetSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("draft") }),
+  z.strictObject({ kind: z.literal("terminal") }),
+  z.strictObject({ kind: z.literal("browser") }),
+  z.strictObject({ kind: z.literal("profile"), profileId: z.string() }),
+  z.strictObject({ kind: z.literal("preview") }),
+  z.strictObject({ kind: z.literal("artifact") }),
+  z.strictObject({ kind: z.literal("split-right") }),
+  z.strictObject({ kind: z.literal("split-down") }),
+]);
+const PinnedTargetsPersistedStateSchema = z.strictObject({
+  pinned: z.array(PinnedTabTargetSchema),
+});
 
 function applyDefaultPinnedTargets(pinned: PinnedTabTarget[]): PinnedTabTarget[] {
   const next = [...DEFAULT_PINNED_TARGETS];
@@ -26,7 +41,7 @@ function applyDefaultPinnedTargets(pinned: PinnedTabTarget[]): PinnedTabTarget[]
 }
 
 export const usePinnedTargetsStore = create<PinnedTargetsState>()(
-  persist(
+  persist<PinnedTargetsState, [], [], z.infer<typeof PinnedTargetsPersistedStateSchema>>(
     (set, get) => ({
       pinned: [],
       toggle: (target) => set((state) => ({ pinned: togglePinnedTarget(state.pinned, target) })),
@@ -36,17 +51,17 @@ export const usePinnedTargetsStore = create<PinnedTargetsState>()(
       name: "pinned-tab-targets",
       version: 2,
       merge: (persistedState, currentState) => {
-        const persisted = persistedState as Partial<PinnedTargetsState> | null;
+        const persisted = PinnedTargetsPersistedStateSchema.safeParse(persistedState);
         return {
           ...currentState,
-          ...persisted,
-          pinned: persisted?.pinned ?? applyDefaultPinnedTargets([]),
+          pinned: persisted.success ? persisted.data.pinned : applyDefaultPinnedTargets([]),
         };
       },
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createValidatedPersistStorage(AsyncStorage, PinnedTargetsPersistedStateSchema),
       partialize: (state) => ({ pinned: state.pinned }),
       migrate: (persistedState, version) => {
-        let pinned = (persistedState as { pinned?: PinnedTabTarget[] } | null)?.pinned ?? [];
+        const result = PinnedTargetsPersistedStateSchema.safeParse(persistedState);
+        let pinned = result.success ? result.data.pinned : [];
         if (version === 0) {
           pinned = applyDefaultPinnedTargets(pinned);
         }

@@ -40,6 +40,13 @@ describe("path equivalence", () => {
     expect(isPathInsideRoot("C:\\Otto\\node_modules", "C:\\Otto\\node_modules-other")).toBe(false);
   });
 
+  test("preserves the casing of Windows relative suffixes", () => {
+    expect(getRealpathAwareRelativePath("C:\\Repo\\.git", "c:\\repo\\.git\\HEAD")).toBe("HEAD");
+    expect(
+      getRealpathAwareRelativePath("C:\\Repo\\.git", "c:\\repo\\.git\\refs\\heads\\FeatureCase"),
+    ).toBe("refs\\heads\\FeatureCase");
+  });
+
   test.skipIf(process.platform === "win32")(
     "derives the contained suffix from a realpath-equivalent root",
     () => {

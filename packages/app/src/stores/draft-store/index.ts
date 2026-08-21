@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { AttachmentMetadata, WorkspaceFileComposerAttachment } from "@/attachments/types";
 import { appendWorkspaceFileAttachment } from "@/attachments/workspace-file";
@@ -8,6 +8,7 @@ import {
   persistAttachmentFromDataUrl,
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
+import { collectRetainedAttachmentIds } from "@/attachments/gc-retention";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore, type SessionState } from "@/stores/session-store";
 import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachments-store";
@@ -27,8 +28,14 @@ import {
   type DraftRecord,
   type DraftStoreState,
 } from "./state";
-import { migrateDraftInput, migratePersistedState, type MigrateLegacyImages } from "./migration";
+import {
+  migrateDraftInput,
+  migratePersistedState,
+  type MigrateLegacyImages,
+  PersistedDraftStoreSchema,
+} from "./migration";
 import { createDraftPersistStorage } from "./persistence";
+import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
 export type { DraftInput, DraftLifecycleState } from "./state";
 
@@ -58,7 +65,7 @@ type DraftStore = DraftStoreState & DraftStoreRuntimeState & DraftStoreActions;
 
 let gcScheduled = false;
 const draftPersistStorage = createDraftPersistStorage(
-  createJSONStorage<DraftStoreState>(() => AsyncStorage),
+  createValidatedPersistStorage(AsyncStorage, PersistedDraftStoreSchema),
 );
 
 export function flushDraftPersistStorage(): Promise<void> {
@@ -137,6 +144,9 @@ async function runAttachmentGc(): Promise<void> {
 
   const referencedIds = new Set<string>();
   for (const id of useDraftStore.getState().collectActiveAttachmentIds()) {
+    referencedIds.add(id);
+  }
+  for (const id of collectRetainedAttachmentIds()) {
     referencedIds.add(id);
   }
 
@@ -417,12 +427,11 @@ export const useDraftStore = create<DraftStore>()(
       version: DRAFT_STORE_VERSION,
       storage: draftPersistStorage,
       partialize: ({ drafts, createModalDraft }) => ({ drafts, createModalDraft }),
-      migrate: (persistedState) => {
-        return migratePersistedState(persistedState, {
+      migrate: (state) =>
+        migratePersistedState(state, {
           migrateLegacyImages,
           nowMs: Date.now(),
-        });
-      },
+        }),
       onRehydrateStorage: () => {
         return () => {
           void migrateAllLegacyDrafts();

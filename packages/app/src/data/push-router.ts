@@ -11,12 +11,18 @@ import { orderCheckoutDiffFiles } from "@/git/diff-order";
 import { applyBrainStatusChanged, invalidateBrainStatusAfterReconnect } from "@/data/brain-status";
 import { applyBrainLogLineAdded, invalidateBrainLogsAfterReconnect } from "@/data/brain-logs";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
-import { providersSnapshotQueryKey, providersSnapshotQueryRoot } from "@/data/providers-snapshot";
 import { applyRunUpdate, applyRunsCleared } from "@/data/runs";
 import { applyOrchestrationGraphsChanged } from "@/data/orchestration-graphs";
 import { applyPromptTemplatesChanged } from "@/data/prompt-templates";
 import { useLspActivityStore } from "@/stores/lsp-activity-store";
 import { useLspDiagnosticsStore } from "@/stores/lsp-diagnostics-store";
+import { daemonPairingOfferQueryKey } from "@/data/daemon-pairing";
+import { providerSnapshotCache, type ProviderSnapshotCache } from "@/data/provider-snapshot-cache";
+import {
+  normalizeProvidersSnapshotCwd,
+  providersSnapshotQueryKey,
+  providersSnapshotQueryRoot,
+} from "@/data/providers-snapshot";
 
 type ProvidersSnapshotUpdateMessage = Extract<
   SessionOutboundMessage,
@@ -125,6 +131,12 @@ const RECONNECT_REPAIR_POLICIES: ReconnectRepairPolicy[] = [
   {
     domain: "brainLogs",
     invalidate: invalidateBrainLogsAfterReconnect,
+  },
+  {
+    domain: "daemonPairingOffer",
+    invalidate: ({ queryClient, serverId }) => {
+      void queryClient.invalidateQueries({ queryKey: daemonPairingOfferQueryKey(serverId) });
+    },
   },
   {
     domain: "checkoutDiff",
@@ -243,6 +255,7 @@ export function applyProvidersSnapshotUpdate(input: {
   serverId: string;
   queryClient: QueryClient;
   message: ProvidersSnapshotUpdate;
+  cache?: ProviderSnapshotCache;
 }): void {
   if (input.message.type !== "providers_snapshot_update") {
     return;
@@ -253,6 +266,16 @@ export function applyProvidersSnapshotUpdate(input: {
     generatedAt: input.message.payload.generatedAt,
     requestId: "providers_snapshot_update",
   });
+  const { compactSnapshot, snapshotHash } = input.message.payload;
+  if (compactSnapshot && snapshotHash) {
+    void (input.cache ?? providerSnapshotCache).write({
+      serverId: input.serverId,
+      cwd: normalizeProvidersSnapshotCwd(input.message.payload.cwd),
+      hash: snapshotHash,
+      generatedAt: input.message.payload.generatedAt,
+      compactSnapshot,
+    });
+  }
   void input.queryClient.invalidateQueries({
     queryKey: agentCommandsQueryRoot(input.serverId),
     exact: false,
@@ -614,6 +637,9 @@ function applyDaemonConfigStatus(input: {
     daemonConfigQueryKey(input.serverId),
     payload.config,
   );
+  void input.queryClient.invalidateQueries({
+    queryKey: daemonPairingOfferQueryKey(input.serverId),
+  });
 }
 
 function applyCheckoutDiffUpdate(input: {

@@ -112,6 +112,17 @@ export function planTimelineOlderFetch(cursor: TimelineSyncCursor) {
   } as const;
 }
 
+export function planTimelinePromptJump(target: TimelineSyncCursor) {
+  const newerRows = Math.floor(TIMELINE_FETCH_PAGE_SIZE / 2);
+  return {
+    direction: "before",
+    cursor: { epoch: target.epoch, seq: target.seq + newerRows + 1 },
+    limit: TIMELINE_FETCH_PAGE_SIZE,
+    projection: "projected",
+    mergeWindow: true,
+  } as const;
+}
+
 export function planTimelineCatchUpFollowUp(input: {
   direction: "tail" | "before" | "after";
   hasNewer: boolean;
@@ -135,4 +146,13 @@ export function isTimelineCatchUpComplete(input: {
   }
 
   return input.direction !== "after" || !input.hasNewer;
+}
+
+export function isTimelineResumeSnapshotAuthoritative(input: {
+  direction: "tail" | "before" | "after";
+  hasNewer: boolean;
+  error: string | null;
+}): boolean {
+  if (input.error || input.direction === "before") return false;
+  return input.direction === "tail" || !input.hasNewer;
 }

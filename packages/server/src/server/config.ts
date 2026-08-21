@@ -23,6 +23,7 @@ import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
 import { isRunningInWsl } from "./wsl-detect.js";
+import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
 
 const DEFAULT_PORT = 6868;
 const DEFAULT_RELAY_ENDPOINT = "relay.otto-code.me:443";
@@ -86,6 +87,16 @@ function normalizeLogEnv(value: string | undefined): string | undefined {
   }
 
   return value.trim().toLowerCase();
+}
+
+function resolveGitProcessConfig(
+  env: NodeJS.ProcessEnv,
+  persisted: ReturnType<typeof loadPersistedConfig>,
+): NonNullable<OttoDaemonConfig["git"]> {
+  return resolveGitProcessPolicy({
+    env,
+    persisted: persisted.daemon?.git,
+  });
 }
 
 export type CliConfigOverrides = Partial<{
@@ -188,6 +199,7 @@ interface ResolveRelayInput {
 
 interface ResolvedRelay {
   enabled: boolean;
+  enabledMutable: boolean;
   endpoint: string;
   publicEndpoint: string;
   useTls: boolean;
@@ -211,11 +223,11 @@ function resolveTlsFromEnv(
 }
 
 function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
+  const environmentEnabled = parseBooleanEnv(input.env.OTTO_RELAY_ENABLED);
+  // COMPAT(relayOptInDefault): configs created before v0.2.6 may omit this field.
+  // Preserve their relay-on behavior until 2027-01-31; new homes materialize false.
   const enabled =
-    input.cliRelayEnabled ??
-    parseBooleanEnv(input.env.OTTO_RELAY_ENABLED) ??
-    input.persisted.daemon?.relay?.enabled ??
-    true;
+    input.cliRelayEnabled ?? environmentEnabled ?? input.persisted.daemon?.relay?.enabled ?? true;
   const endpoint =
     input.env.OTTO_RELAY_ENDPOINT ??
     input.persisted.daemon?.relay?.endpoint ??
@@ -236,7 +248,14 @@ function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
     input.persisted.daemon?.relay?.publicUseTls,
     useTls,
   );
-  return { enabled, endpoint, publicEndpoint, useTls, publicUseTls };
+  return {
+    enabled,
+    enabledMutable: input.cliRelayEnabled === undefined && environmentEnabled === undefined,
+    endpoint,
+    publicEndpoint,
+    useTls,
+    publicUseTls,
+  };
 }
 
 interface ResolvedVoiceLlm {
@@ -444,6 +463,18 @@ function resolveAgentBehaviors(persisted: ReturnType<typeof loadPersistedConfig>
   return persisted.daemon?.agentBehaviors;
 }
 
+/**
+ * Both profile lists stay `undefined` when absent rather than defaulting to an
+ * empty array: for terminal profiles that is what selects the built-in
+ * defaults, so an empty array has to keep meaning "the user removed them all".
+ */
+function resolveProfileLists(persisted: ReturnType<typeof loadPersistedConfig>) {
+  return {
+    terminalProfiles: persisted.daemon?.terminalProfiles,
+    agentProfiles: persisted.daemon?.agentProfiles,
+  };
+}
+
 function resolveStaticLoadConfigSettings(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,
@@ -461,7 +492,7 @@ function resolveStaticLoadConfigSettings(
     agentBehaviors: resolveAgentBehaviors(persisted),
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
-    terminalProfiles: persisted.daemon?.terminalProfiles,
+    ...resolveProfileLists(persisted),
     hostnames: mergeHostnames([
       persisted.daemon?.hostnames,
       parseHostnamesEnv(env.OTTO_HOSTNAMES ?? env.OTTO_ALLOWED_HOSTS),
@@ -496,6 +527,7 @@ export function loadConfig(
     autoArchiveAfterMerge,
     appendSystemPrompt,
     terminalProfiles,
+    agentProfiles,
     hostnames,
     trustedProxies,
     appBaseUrl,
@@ -535,16 +567,19 @@ export function loadConfig(
     browserToolsEnabled,
     mcpToolGroups,
     agentBehaviors,
+    git: resolveGitProcessConfig(env, persisted),
     autoArchiveAfterMerge,
     enableTerminalAgentHooks: persisted.daemon?.enableTerminalAgentHooks ?? false,
     appendSystemPrompt,
     terminalProfiles,
+    agentProfiles,
     mcpDebug: env.MCP_DEBUG === "1",
     isDev: resolveOttoNodeEnv(env) === "development",
     agentStoragePath: path.join(ottoHome, "agents"),
     staticDir: "public",
     agentClients: {},
     relayEnabled: relay.enabled,
+    relayEnabledMutable: relay.enabledMutable,
     relayEndpoint: relay.endpoint,
     relayPublicEndpoint: relay.publicEndpoint,
     relayUseTls: relay.useTls,
@@ -559,6 +594,7 @@ export function loadConfig(
     voiceLlmProviderExplicit: voiceLlm.providerExplicit,
     voiceLlmModel: voiceLlm.model,
     agentProviderSettings: extractAgentProviderSettings(providerOverrides),
+    providerCatalogRefreshTimeoutMs: persisted.agents?.catalogRefreshTimeoutMs,
     metadataGeneration: persisted.agents?.metadataGeneration,
     agentPersonalities: persisted.agents?.agentPersonalities,
     agentTeams: persisted.agents?.agentTeams,

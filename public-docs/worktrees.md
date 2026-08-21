@@ -38,7 +38,45 @@ With a custom root, Otto keeps the same hashed layout under that directory:
 1. Create a worktree, Otto runs your setup hooks
 2. Launch an agent, a branch is created or assigned
 3. Review the diff against the base branch
-4. Merge or archive, archive runs teardown and removes the directory
+4. Merge or archive the workspace; after the last workspace using it is archived, Otto runs teardown and removes the worktree
+
+## Create a worktree-backed workspace
+
+The examples below use the current directory as the source checkout. Pass `--path ~/dev/my-app` to create the workspace from another checkout.
+
+Branch off from a base branch:
+
+```bash
+otto workspace create \
+  --isolation worktree \
+  --mode branch-off \
+  --new-branch feature/auth \
+  --worktree-slug feature-auth \
+  --base origin/main
+```
+
+Use `origin/main` rather than `main`. Otto fetches remote refs in the background, so the remote-tracking branch is current, while your local `main` is whatever you last pulled. An unqualified `main` resolves to that local branch first, and the worktree starts from stale history. Prefixing the remote names the fetched ref explicitly.
+
+Check out an existing branch:
+
+```bash
+otto workspace create \
+  --isolation worktree \
+  --mode checkout-branch \
+  --branch feature/existing \
+  --worktree-slug existing-copy
+```
+
+Or open a pull request in its own workspace:
+
+```bash
+otto workspace create \
+  --isolation worktree \
+  --mode checkout-pr \
+  --pr-number 2186
+```
+
+Add `--forge <name>` when Otto cannot infer the forge from the source checkout.
 
 ## otto.json
 
@@ -172,7 +210,10 @@ Services additionally get:
 ## CLI
 
 ```bash
-otto run --worktree feature-auth --base main "implement auth"
-otto worktree ls
-otto worktree archive feature-auth
+otto workspace ls
+otto run --workspace <workspace-id> "implement auth"
+otto workspace rename <workspace-id> "Auth rework"
+otto workspace archive <workspace-id>
 ```
+
+For the common case, `otto run --new-workspace worktree --worktree-mode branch-off --new-branch feature/auth --base origin/main "implement auth"` creates both the workspace and its first agent.

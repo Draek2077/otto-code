@@ -28,6 +28,7 @@ import {
   type TerminalLocalFileLinkSource,
   type TerminalLocalFileLinkTarget,
 } from "../local-links/terminal-local-link-provider";
+import { resolveTerminalFontFamily, resolveTerminalFontSize } from "./terminal-font";
 
 export type TerminalOutputData = Uint8Array;
 
@@ -43,7 +44,7 @@ export interface TerminalEmulatorRuntimeMountInput {
 
 export interface TerminalEmulatorRuntimeCallbacks {
   onInput?: (data: string) => Promise<void> | void;
-  onResize?: (input: { rows: number; cols: number; shouldClaim: boolean }) => Promise<void> | void;
+  onResize?: (input: TerminalResizeEvent) => Promise<void> | void;
   onTerminalKey?: (input: {
     key: string;
     ctrl: boolean;
@@ -61,6 +62,33 @@ export interface TerminalEmulatorRuntimeCallbacks {
     disposition: "main" | "side",
   ) => Promise<void> | void;
   onInputModeChange?: (state: TerminalInputModeState) => Promise<void> | void;
+}
+
+export interface TerminalResizeEvent {
+  rows: number;
+  cols: number;
+  shouldClaim: boolean;
+  forceClaim?: boolean;
+}
+
+export interface TerminalResizeRequest {
+  forceRefresh?: boolean;
+  shouldClaim?: boolean;
+  forceClaim?: boolean;
+}
+
+export function createTerminalResizeEvent(input: {
+  rows: number;
+  cols: number;
+  shouldClaim: boolean;
+  forceClaim: boolean;
+}): TerminalResizeEvent {
+  return {
+    rows: input.rows,
+    cols: input.cols,
+    shouldClaim: input.shouldClaim,
+    forceClaim: input.shouldClaim && input.forceClaim,
+  };
 }
 
 interface TerminalEmulatorRuntimeDisposables {
@@ -109,7 +137,6 @@ const isAppleHandheld =
   });
 
 const DEFAULT_TOUCH_SCROLL_LINE_HEIGHT_PX = 18;
-const DEFAULT_TERMINAL_FONT_SIZE = 13;
 const TERMINAL_SURFACE_INSET_PX = 5;
 const FIT_TIMEOUT_DELAYS_MS = [0, 16, 48, 120, 250, 500, 1_000, 2_000];
 const OUTPUT_OPERATION_TIMEOUT_MS = 5_000;
@@ -129,37 +156,6 @@ function prependTerminalOutput(
   output.set(prefix, 0);
   output.set(data, prefix.length);
   return output;
-}
-
-const DEFAULT_TERMINAL_FONT_FAMILY = [
-  // Prefer common developer fonts, with Nerd Font variants for prompt/TUI glyphs.
-  "JetBrains Mono",
-  "JetBrainsMono Nerd Font",
-  "JetBrainsMono NF",
-  "MesloLGM Nerd Font",
-  "MesloLGM NF",
-  "Hack Nerd Font",
-  "FiraCode Nerd Font",
-  // PUA-only fallback (many Nerd glyphs live here on some systems).
-  "Symbols Nerd Font",
-  // System fallbacks.
-  "SF Mono",
-  "Menlo",
-  "Monaco",
-  "Consolas",
-  "'Liberation Mono'",
-  "monospace",
-].join(", ");
-
-function resolveTerminalFontFamily(fontFamily: string | undefined): string {
-  const trimmed = fontFamily?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : DEFAULT_TERMINAL_FONT_FAMILY;
-}
-
-function resolveTerminalFontSize(fontSize: number | undefined): number {
-  return typeof fontSize === "number" && Number.isFinite(fontSize) && fontSize > 0
-    ? fontSize
-    : DEFAULT_TERMINAL_FONT_SIZE;
 }
 
 function withOverviewRulerBorderHidden(theme: ITheme): ITheme {
@@ -189,8 +185,7 @@ export class TerminalEmulatorRuntime {
   };
   private terminal: Terminal | null = null;
   private fitAddon: FitAddon | null = null;
-  private fitAndEmitResize: ((input?: { force?: boolean; shouldClaim?: boolean }) => void) | null =
-    null;
+  private fitAndEmitResize: ((input?: TerminalResizeRequest) => void) | null = null;
   private lastSize: { rows: number; cols: number } | null = null;
   private cleanup: (() => void) | null = null;
   private outputOperations: TerminalOutputOperation[] = [];
@@ -216,10 +211,10 @@ export class TerminalEmulatorRuntime {
       return;
     }
 
-    this.fitAndEmitResize?.({ force: true, shouldClaim: false });
+    this.fitAndEmitResize?.({ forceRefresh: true, shouldClaim: false });
     if (typeof window.requestAnimationFrame === "function") {
       window.requestAnimationFrame(() => {
-        this.fitAndEmitResize?.({ force: true, shouldClaim: false });
+        this.fitAndEmitResize?.({ forceRefresh: true, shouldClaim: false });
       });
     }
   };
@@ -230,6 +225,10 @@ export class TerminalEmulatorRuntime {
 
   setPendingModifiers(input: { pendingModifiers: PendingTerminalModifiers }): void {
     this.pendingModifiers = input.pendingModifiers;
+  }
+
+  getInputModeState(): TerminalInputModeState {
+    return this.inputModeTracker.getState();
   }
 
   mount(input: TerminalEmulatorRuntimeMountInput): void {
@@ -317,7 +316,7 @@ export class TerminalEmulatorRuntime {
       webglAddon = null;
       disposeImageAddon();
       // WebGL and DOM renderers can have different cell dimensions.
-      this.fitAndEmitResize?.({ force: true, shouldClaim: false });
+      this.fitAndEmitResize?.({ forceRefresh: true, shouldClaim: false });
     };
 
     // Browser xterm is a renderer only; it never replies to terminal protocol queries.
@@ -355,7 +354,7 @@ export class TerminalEmulatorRuntime {
         imageAddon = new ImageAddon();
         terminal.loadAddon(imageAddon);
         registerProtocolQuerySuppression();
-        this.fitAndEmitResize?.({ force: true, shouldClaim: false });
+        this.fitAndEmitResize?.({ forceRefresh: true, shouldClaim: false });
       } catch {
         disposeWebglRenderer();
       }
@@ -372,9 +371,10 @@ export class TerminalEmulatorRuntime {
     this.fitAddon = fitAddon;
     window.__ottoTerminal = terminal;
 
-    const fitAndEmitResize = (resizeInput?: { force?: boolean; shouldClaim?: boolean }): void => {
-      const force = resizeInput?.force ?? false;
+    const fitAndEmitResize = (resizeInput?: TerminalResizeRequest): void => {
+      const forceRefresh = resizeInput?.forceRefresh ?? false;
       const shouldClaim = resizeInput?.shouldClaim ?? true;
+      const forceClaim = resizeInput?.forceClaim ?? false;
       const currentTerminal = this.terminal;
       const currentFitAddon = this.fitAddon;
       if (!currentTerminal || !currentFitAddon) {
@@ -394,21 +394,30 @@ export class TerminalEmulatorRuntime {
       const nextRows = currentTerminal.rows;
       const nextCols = currentTerminal.cols;
       const previous = this.lastSize;
-      if (!force && previous && previous.rows === nextRows && previous.cols === nextCols) {
+      if (
+        !forceRefresh &&
+        !forceClaim &&
+        previous &&
+        previous.rows === nextRows &&
+        previous.cols === nextCols
+      ) {
         return;
       }
 
       this.lastSize = { rows: nextRows, cols: nextCols };
       this.refreshVisibleRows();
-      this.callbacks.onResize?.({
-        rows: nextRows,
-        cols: nextCols,
-        shouldClaim,
-      });
+      this.callbacks.onResize?.(
+        createTerminalResizeEvent({
+          rows: nextRows,
+          cols: nextCols,
+          shouldClaim,
+          forceClaim,
+        }),
+      );
     };
     this.fitAndEmitResize = fitAndEmitResize;
 
-    fitAndEmitResize({ force: true, shouldClaim: false });
+    fitAndEmitResize({ forceRefresh: true, shouldClaim: false });
 
     const inputDisposable = terminal.onData((data) => {
       if (this.suppressInput) {
@@ -493,12 +502,14 @@ export class TerminalEmulatorRuntime {
       terminal,
     });
     const resizeObserver = new ResizeObserver(() => {
-      fitAndEmitResize({ shouldClaim: true });
+      fitAndEmitResize({ shouldClaim: false });
     });
     resizeObserver.observe(input.root);
     resizeObserver.observe(input.host);
 
-    const windowResizeHandler = () => fitAndEmitResize({ shouldClaim: true });
+    const windowResizeHandler = () => {
+      fitAndEmitResize({ shouldClaim: false });
+    };
     window.addEventListener("resize", windowResizeHandler);
     const windowFocusHandler = () => {
       this.handleVisibilityRestore();
@@ -511,23 +522,25 @@ export class TerminalEmulatorRuntime {
     document.addEventListener("visibilitychange", documentVisibilityChangeHandler);
 
     const visualViewport = window.visualViewport;
-    const visualViewportResizeHandler = () => fitAndEmitResize({ shouldClaim: true });
+    const visualViewportResizeHandler = () => {
+      fitAndEmitResize({ shouldClaim: false });
+    };
     visualViewport?.addEventListener("resize", visualViewportResizeHandler);
 
     const fitTimeouts = FIT_TIMEOUT_DELAYS_MS.map((delayMs) =>
       window.setTimeout(() => {
-        fitAndEmitResize({ force: true, shouldClaim: false });
+        fitAndEmitResize({ forceRefresh: true, shouldClaim: false });
       }, delayMs),
     );
 
     const fontSet = document.fonts;
     const fontReadyHandler = () => {
-      fitAndEmitResize({ force: true, shouldClaim: false });
+      fitAndEmitResize({ forceRefresh: true, shouldClaim: false });
     };
     fontSet?.addEventListener?.("loadingdone", fontReadyHandler);
     void fontSet?.ready
       .then(() => {
-        fitAndEmitResize({ force: true, shouldClaim: false });
+        fitAndEmitResize({ forceRefresh: true, shouldClaim: false });
         return;
       })
       .catch(() => {
@@ -535,7 +548,7 @@ export class TerminalEmulatorRuntime {
       });
 
     window.setTimeout(() => {
-      fitAndEmitResize({ force: true, shouldClaim: false });
+      fitAndEmitResize({ forceRefresh: true, shouldClaim: false });
     }, 0);
 
     if (input.initialSnapshot) {
@@ -637,6 +650,10 @@ export class TerminalEmulatorRuntime {
     this.processOutputQueue();
   }
 
+  paste(text: string): void {
+    this.terminal?.paste(text);
+  }
+
   renderSnapshot(input: { state: TerminalState | null; onCommitted?: () => void }): void {
     if (!input.state) {
       this.clear(input);
@@ -667,7 +684,7 @@ export class TerminalEmulatorRuntime {
     this.processOutputQueue();
   }
 
-  resize(input?: { force?: boolean; shouldClaim?: boolean }): void {
+  resize(input?: TerminalResizeRequest): void {
     this.fitAndEmitResize?.(input);
   }
 
@@ -718,7 +735,7 @@ export class TerminalEmulatorRuntime {
       return;
     }
 
-    this.fitAndEmitResize?.({ force: true });
+    this.fitAndEmitResize?.({ forceRefresh: true, shouldClaim: false });
     this.refreshVisibleRows();
   }
 

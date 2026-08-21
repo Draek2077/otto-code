@@ -12,11 +12,11 @@ Transfer the current task - context, decisions, failed attempts, constraints - t
 
 ## Prerequisites
 
-Read the **otto** skill. Before choosing a provider, call `list_personalities` (role `coder`); if the host has a coder personality that fits, hand off to it by name. Otherwise read `~/.otto/orchestration-preferences.json` unless the user explicitly named a provider in this request. Do not create the receiving agent until you have done one of these.
+Read the **otto** skill. Call `list_profiles` before choosing the receiving agent, and read every configured profile's `notes`. Do not create the receiving agent until you have inspected the available profiles.
 
 ## Parsing arguments
 
-1. **Provider or personality** - explicit user request first; otherwise a `coder` **personality** from `list_personalities` (pass its name as `create_agent`'s `personality`), or, failing that, resolve a provider from `impl` preference (or `ui` if the task is styling-only).
+1. **Agent profile** - explicit profile name first; otherwise choose the profile whose `notes` best match the work. Materialize it into `create_agent` as described by the **otto** skill. If no profile fits, use Otto's provider-discovery fallback and tell the user.
 2. **Worktree** - "in a worktree" / "worktree" → create a worktree via Otto with a short branch name derived from the task, based on the current branch.
 3. **Task description** - anything else the user said.
 
@@ -68,4 +68,4 @@ Leave `notifyOnFinish` omitted unless the user explicitly wants no callback.
 
 Handoff agents are siblings/root agents, not your subagents. They must survive you being archived and must not appear in your subagent track.
 
-Don't wait by default - the user decides whether to follow along or move on. Tell them the agent ID and how to follow along (the otto skill explains).
+Do not wait or poll for the agent to finish. Tell the user the agent ID and how to follow along (the otto skill explains).

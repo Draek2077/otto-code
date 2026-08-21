@@ -82,7 +82,7 @@ function strategyFor(platform: "web" | "android"): StreamStrategy {
 
 function layoutFor(input: {
   platform: "web" | "android";
-  agentStatus?: string;
+  isTurnActive?: boolean;
   tail: StreamItem[];
   head?: StreamItem[];
   timingIds?: string[];
@@ -90,7 +90,7 @@ function layoutFor(input: {
   const strategy = strategyFor(input.platform);
   return layoutStream({
     strategy,
-    agentStatus: input.agentStatus ?? "idle",
+    isTurnActive: input.isTurnActive ?? false,
     history: orderTailForStreamRenderStrategy({
       strategy,
       streamItems: input.tail,
@@ -144,6 +144,30 @@ function findLayoutItem(layout: StreamLayout, id: string): StreamLayoutItem {
 
 describe("layoutStream", () => {
   it.each(["web", "android"] as const)(
+    "marks only the active live-head assistant block as streaming on %s",
+    (platform) => {
+      const completed = assistantMessage("turn:block:0", 2, { groupId: "turn", index: 0 });
+      const live = assistantMessage("turn:block:1", 3, { groupId: "turn", index: 1 });
+      const active = layoutFor({
+        platform,
+        isTurnActive: true,
+        tail: [userMessage("u1", 1), completed],
+        head: [live],
+      });
+      const complete = layoutFor({
+        platform,
+        isTurnActive: false,
+        tail: [userMessage("u1", 1), completed],
+        head: [live],
+      });
+
+      expect(findLayoutItem(active, completed.id).phase).toBe("complete");
+      expect(findLayoutItem(active, live.id).phase).toBe("streaming");
+      expect(findLayoutItem(complete, live.id).phase).toBe("complete");
+    },
+  );
+
+  it.each(["web", "android"] as const)(
     "keeps split assistant block spacing identical to unsplit history on %s",
     (platform) => {
       const firstBlock = assistantMessage("turn:block:0", 2, { groupId: "turn", index: 0 });
@@ -151,14 +175,14 @@ describe("layoutStream", () => {
       const thirdBlock = assistantMessage("turn:block:2", 4, { groupId: "turn", index: 2 });
       const splitLayout = layoutFor({
         platform,
-        agentStatus: "running",
+        isTurnActive: true,
         tail: [userMessage("u1", 1), firstBlock],
         head: [secondBlock, thirdBlock],
         timingIds: [firstBlock.id, secondBlock.id, thirdBlock.id],
       });
       const unsplitLayout = layoutFor({
         platform,
-        agentStatus: "running",
+        isTurnActive: true,
         tail: [userMessage("u1", 1), firstBlock, secondBlock, thirdBlock],
         timingIds: [firstBlock.id, secondBlock.id, thirdBlock.id],
       });
@@ -439,7 +463,7 @@ describe("layoutStream", () => {
       const tool = toolCall("tool-1", 3);
       const layout = layoutFor({
         platform,
-        agentStatus: "running",
+        isTurnActive: true,
         tail: [userMessage("u1", 1), assistant, tool],
         timingIds: [assistant.id],
       });

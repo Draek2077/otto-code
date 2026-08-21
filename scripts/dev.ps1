@@ -23,6 +23,7 @@ Write-Host @"
 # Configure the app to auto-connect to this daemon on localhost
 $env:APP_VARIANT = "development"
 $env:EXPO_PUBLIC_LOCAL_DAEMON = $Dev.Endpoint
+$env:EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL = (git branch --show-current).Trim()
 $env:BROWSER = "none"
 
 # Metro reads the workspace packages from their compiled dist, and snapshots

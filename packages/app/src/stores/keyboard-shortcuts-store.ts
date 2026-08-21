@@ -3,6 +3,8 @@ import type { SidebarShortcutWorkspaceTarget } from "@/utils/sidebar-shortcuts";
 
 const SHORTCUT_BADGE_DELAY_MS = 150;
 
+export type CommandCenterScope = "files" | null;
+
 export interface ShortcutDiscoveryModifiers {
   alt: boolean;
   ctrl: boolean;
@@ -19,6 +21,7 @@ const EMPTY_SHORTCUT_DISCOVERY_MODIFIERS: ShortcutDiscoveryModifiers = {
 
 interface KeyboardShortcutsState {
   commandCenterOpen: boolean;
+  commandCenterScope: CommandCenterScope;
   shortcutsDialogOpen: boolean;
   capturingShortcut: boolean;
   shortcutDiscoveryModifiers: ShortcutDiscoveryModifiers;
@@ -26,7 +29,8 @@ interface KeyboardShortcutsState {
   /** Sidebar-visible workspace targets (up to 9), in top-to-bottom visual order. */
   sidebarShortcutWorkspaceTargets: SidebarShortcutWorkspaceTarget[];
 
-  setCommandCenterOpen: (open: boolean) => void;
+  setCommandCenterOpen: (open: boolean, scope?: CommandCenterScope) => void;
+  setCommandCenterScope: (scope: CommandCenterScope) => void;
   setShortcutsDialogOpen: (open: boolean) => void;
   setCapturingShortcut: (capturing: boolean) => void;
   setShortcutDiscoveryModifiers: (modifiers: ShortcutDiscoveryModifiers) => void;
@@ -63,13 +67,16 @@ function updateBadgeTimer(
 
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>((set, get) => ({
   commandCenterOpen: false,
+  commandCenterScope: null,
   shortcutsDialogOpen: false,
   capturingShortcut: false,
   shortcutDiscoveryModifiers: EMPTY_SHORTCUT_DISCOVERY_MODIFIERS,
   showShortcutBadges: false,
   sidebarShortcutWorkspaceTargets: [],
 
-  setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),
+  setCommandCenterOpen: (open, scope = null) =>
+    set({ commandCenterOpen: open, commandCenterScope: open ? scope : null }),
+  setCommandCenterScope: (scope) => set({ commandCenterScope: scope }),
   setShortcutsDialogOpen: (open) => set({ shortcutsDialogOpen: open }),
   setCapturingShortcut: (capturing) => set({ capturingShortcut: capturing }),
   setShortcutDiscoveryModifiers: (modifiers) => {

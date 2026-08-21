@@ -230,7 +230,6 @@ in
       '';
 
       environment = {
-        NODE_ENV = "production";
         OTTO_HOME = cfg.dataDir;
         OTTO_LISTEN = "${cfg.listenAddress}:${toString cfg.port}";
       } // lib.optionalAttrs cfg.inheritUserEnvironment (

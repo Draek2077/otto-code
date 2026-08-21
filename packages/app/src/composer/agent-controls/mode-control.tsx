@@ -12,48 +12,39 @@ import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import {
-  Bot,
-  LocalPolice,
-  PrivacyTip,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldOff,
-  ShieldPerson,
-  ShieldQuestionMark,
-  ShieldToggle,
-} from "@/components/icons/material-icons";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
-import { useSessionStore } from "@/stores/session-store";
-import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
-import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-preferences";
-import { resolveProviderDefinition } from "@/utils/provider-definitions";
-import { useToast } from "@/contexts/toast-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { compactUp, useIconSize } from "@/styles/theme";
-import { toErrorMessage } from "@/utils/error-messages";
-import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import {
-  formatAgentModeLabel,
   getAgentControlHintKey,
   getModeTierColor,
   hexColorWithAlpha,
   type ModeTierColors,
 } from "@/composer/agent-controls/utils";
+import { formatAgentModeLabel } from "@/agent-controls/labels";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { resolveModeSelection, resolveNextAgentModeId } from "@/composer/agent-controls/mode";
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
+import { useComposerControlLayout } from "@/composer/agent-controls/layout-context";
+import { useSessionStore } from "@/stores/session-store";
+import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-preferences";
+import { resolveProviderDefinition } from "@/utils/provider-definitions";
+import { useToast } from "@/contexts/toast-context";
+import { toErrorMessage } from "@/utils/error-messages";
+import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import type { AgentMode, AgentProvider } from "@otto-code/protocol/agent-types";
 import {
   getModeVisuals,
   type AgentProviderDefinition,
 } from "@otto-code/protocol/provider-manifest";
+import { getAgentModeIcon, getAgentModeOptionIcon } from "@/agent-controls/icons";
 
 // The Mode chip always lives inline in the toolbar - it shrinks to an icon-only
 // badge when compact rather than dropping below the input box.
@@ -62,19 +53,6 @@ interface ModeIconProps {
   size: number;
   color: string;
 }
-
-const MODE_ICONS: Record<string, ComponentType<ModeIconProps>> = {
-  Bot,
-  LocalPolice,
-  PrivacyTip,
-  ShieldCheck,
-  ShieldAlert,
-  ShieldOff,
-  ShieldPerson,
-  ShieldQuestionMark,
-  ShieldToggle,
-};
-
 interface ModeComboboxOptionProps {
   option: ComboboxOption;
   selected: boolean;
@@ -97,7 +75,7 @@ function ModeComboboxOption({
   tierColors,
 }: ModeComboboxOptionProps) {
   const visuals = getModeVisuals(provider, option.id, providerDefinitions);
-  const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
+  const IconComponent = getAgentModeOptionIcon(provider, option.id, providerDefinitions);
   const tierColor = getModeTierColor(visuals?.colorTier, tierColors);
   const resolvedIconColor = tierColor ?? iconColor;
   const iconSize = useIconSize();
@@ -117,22 +95,21 @@ function ModeComboboxOption({
   );
 }
 
-interface AgentModeControlViewProps {
+export interface AgentModeControlValue {
   provider: string;
   providerDefinitions: AgentProviderDefinition[];
   modeOptions: AgentMode[];
   selectedModeId: string | null | undefined;
   onSelectMode: (modeId: string) => void;
   disabled?: boolean;
+  /** Live agents can expose a non-selectable current mode that must remain visible. */
+  lockNonSelectable?: boolean;
+}
+
+interface AgentModeControlViewProps extends AgentModeControlValue {
   /** Render as an icon-only badge (compact toolbar) instead of an icon + label chip. */
   iconOnly?: boolean;
-  /**
-   * When the active mode is one a user can't pick (Claude "dontAsk"), lock the
-   * control: show it as a static, non-interactive badge with no dropdown. Used on
-   * a live agent (it's stuck in that mode); left off for draft/config surfaces so
-   * the user can always switch to a selectable mode.
-   */
-  lockNonSelectable?: boolean;
+  onClose?: () => void;
 }
 
 interface ModeChipVisuals {
@@ -166,7 +143,7 @@ function resolveModeChipVisuals({
     : undefined;
   const tierColor = getModeTierColor(visuals?.colorTier, tierColors);
   return {
-    Icon: visuals?.icon ? MODE_ICONS[visuals.icon] : undefined,
+    Icon: getAgentModeIcon(provider, selectedMode?.id ?? "", providerDefinitions),
     iconColor: tierColor ?? mutedColor,
     tierColor,
     tierTint: tierColor ? hexColorWithAlpha(tierColor, 0.05) : undefined,
@@ -243,6 +220,7 @@ function AgentModeControlView({
   disabled = false,
   iconOnly = false,
   lockNonSelectable = false,
+  onClose,
 }: AgentModeControlViewProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -250,6 +228,7 @@ function AgentModeControlView({
   const cycleShortcutKeys = useShortcutKeys("cycle-agent-mode");
   const anchorRef = useRef<View>(null);
   const keyboardHandlerIdRef = useRef(`mode-control:${Math.random().toString(36).slice(2)}`);
+  const openRef = useRef(false);
   const [open, setOpen] = useState(false);
 
   const { selectableModes, selectedMode, isLocked } = useMemo(
@@ -294,9 +273,15 @@ function AgentModeControlView({
     [selectableModes],
   );
 
-  const handleOpenChange = useCallback((next: boolean) => {
-    setOpen(next);
-  }, []);
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      const wasOpen = openRef.current;
+      openRef.current = next;
+      setOpen(next);
+      if (!next && wasOpen) onClose?.();
+    },
+    [onClose],
+  );
 
   const handlePress = useCallback(() => handleOpenChange(!open), [handleOpenChange, open]);
   const handleSelect = useCallback(
@@ -353,7 +338,7 @@ function AgentModeControlView({
   );
 
   const pressableStyle = useCallback(
-    ({ pressed, hovered }: PressableStateCallbackType) => [
+    ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
       iconOnly ? styles.iconChip : styles.chip,
       hovered && styles.chipHovered,
       (pressed || open) && styles.chipPressed,
@@ -449,22 +434,25 @@ function compareAvailableModes(a: AgentMode[], b: AgentMode[]): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
-interface AgentModeControlProps {
-  serverId: string;
-  agentId: string;
-  isCompactLayout?: boolean;
-  /** Extra lock from the host (e.g. a personality switch in flight). */
-  disabled?: boolean;
-}
-
 export const AgentModeControl = memo(function AgentModeControl({
-  serverId,
-  agentId,
-  isCompactLayout,
-  disabled = false,
-}: AgentModeControlProps) {
-  const isCompactFormFactor = useIsCompactFormFactor();
-  const isCompact = isCompactLayout ?? isCompactFormFactor;
+  surface = "toolbar",
+  onClose,
+  ...value
+}: AgentModeControlValue & { surface?: "toolbar" | "sheet"; onClose?: () => void }) {
+  const { presentation } = useComposerControlLayout();
+  return (
+    <AgentModeControlView
+      {...value}
+      iconOnly={surface === "toolbar" && !presentation.showModeLabel}
+      onClose={onClose}
+    />
+  );
+});
+
+export function useLiveAgentModeControl(
+  serverId: string,
+  agentId: string,
+): AgentModeControlValue | null {
   const slice = useSessionStore(
     useShallow((state) => {
       const agent = state.sessions[serverId]?.agents?.get(agentId);
@@ -499,9 +487,7 @@ export const AgentModeControl = memo(function AgentModeControl({
         mergeProviderPreferences({
           preferences: current,
           provider: slice.provider,
-          updates: {
-            mode: modeId || undefined,
-          },
+          updates: { mode: modeId || undefined },
         }),
       ).catch((error) => {
         console.warn("[AgentModeControl] persist mode preference failed", error);
@@ -517,21 +503,19 @@ export const AgentModeControl = memo(function AgentModeControl({
     [agentId, client, slice?.provider, toast, updatePreferences],
   );
 
-  if (!slice || availableModes.length === 0) return null;
-
-  return (
-    <AgentModeControlView
-      provider={slice.provider}
-      providerDefinitions={providerDefinitions}
-      modeOptions={availableModes}
-      selectedModeId={slice.currentModeId}
-      onSelectMode={handleSelectMode}
-      disabled={!client || disabled}
-      iconOnly={isCompact}
-      lockNonSelectable
-    />
-  );
-});
+  return useMemo(() => {
+    if (!slice || availableModes.length === 0) return null;
+    return {
+      provider: slice.provider,
+      providerDefinitions,
+      modeOptions: availableModes,
+      selectedModeId: slice.currentModeId,
+      onSelectMode: handleSelectMode,
+      disabled: !client,
+      lockNonSelectable: true,
+    };
+  }, [availableModes, client, handleSelectMode, providerDefinitions, slice]);
+}
 
 export interface DraftAgentModeControlProps {
   selectedProvider: AgentProvider | null;
@@ -611,6 +595,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   tooltipText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.4,
   },
 }));

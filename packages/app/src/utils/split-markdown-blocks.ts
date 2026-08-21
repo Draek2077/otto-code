@@ -1,3 +1,7 @@
+import MarkdownIt from "markdown-it";
+
+const markdownBlockParser = new MarkdownIt();
+
 function getFenceDelimiter(line: string) {
   const match = /^( {0,3})(`{3,}|~{3,})/.exec(line);
   return match?.[2] ?? null;
@@ -36,11 +40,19 @@ export function splitMarkdownBlocks(text: string): string[] {
   let inDisplayMath = false;
   let sawBlockSeparator = false;
 
-  for (const line of text.split("\n")) {
+  const lines = text.split("\n");
+  const structuralBlankLines = getStructuralBlankLines(text, lines);
+
+  for (const [index, line] of lines.entries()) {
     const isBlankLine = line.trim().length === 0;
     const holdsBlockOpen = activeFenceCharacter !== null || inDisplayMath;
 
-    if (!holdsBlockOpen && isBlankLine) {
+    if (isBlankLine && (holdsBlockOpen || structuralBlankLines.has(index))) {
+      currentLines.push(line);
+      continue;
+    }
+
+    if (isBlankLine) {
       if (currentLines.length > 0) {
         sawBlockSeparator = true;
       }
@@ -89,4 +101,20 @@ export function splitMarkdownBlocks(text: string): string[] {
   }
 
   return blocks.filter((block) => block.length > 0);
+}
+
+function getStructuralBlankLines(text: string, lines: string[]): Set<number> {
+  const blankLines = new Set<number>();
+  for (const token of markdownBlockParser.parse(text, {})) {
+    if (token.level !== 0 || !token.map) {
+      continue;
+    }
+    const [start, end] = token.map;
+    for (let index = start; index < end - 1; index += 1) {
+      if (lines[index]?.trim().length === 0) {
+        blankLines.add(index);
+      }
+    }
+  }
+  return blankLines;
 }

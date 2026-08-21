@@ -187,11 +187,30 @@ A `password=` in the URI always wins over the env var, so you can keep `OTTO_PAS
 
 In the mobile app, enter the password in the direct connection setup screen.
 
+## Relay
+
+New homes write `daemon.relay.enabled: false`. Otto asks before enabling relay when you pair a device; existing homes keep their saved value. See [Connectivity](/docs/connectivity) to choose and configure a connection method, and [Security](/docs/security) for the relay encryption model.
+
+Set the persisted value in `config.json`:
+
+```json
+{
+  "daemon": {
+    "relay": {
+      "enabled": true
+    }
+  }
+}
+```
+
+`OTTO_RELAY_ENABLED=true|false` overrides the persisted value for that daemon launch. The matching `otto daemon start --relay` and `--no-relay` flags have the same authority. Remove the launch override before changing relay from Otto Desktop or `otto daemon pair --relay`.
+
 ## Common env vars
 
 - `OTTO_HOME`, set Otto home directory
 - `OTTO_PASSWORD`, on the daemon, the password to require (plaintext, hashed at startup); on the CLI, the password used to connect when the host URI doesn't include one
 - `OTTO_LISTEN`, override `daemon.listen`
+- `OTTO_RELAY_ENABLED`, enable or disable the outbound relay for this daemon launch
 - `OTTO_HOSTNAMES`, override/extend `daemon.hostnames`
 - `OTTO_ALLOWED_HOSTS`, deprecated alias for `OTTO_HOSTNAMES`
 - `OTTO_WEB_UI_ENABLED`, enable or disable the daemon-served web UI

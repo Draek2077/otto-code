@@ -32,15 +32,12 @@ import type { GestureResponderEvent } from "react-native";
 import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
-import { selectWorkspaceChangeStat } from "@/hooks/sidebar-workspaces-view-model";
 import type { PrHint } from "@/git/use-pr-status-query";
 import { openLink } from "@/utils/open-link";
-import { shortenPath } from "@/utils/shorten-path";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { PrBadge } from "@/components/sidebar/pr-badge";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
-import { useAppSettings } from "@/hooks/use-settings";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
@@ -99,12 +96,14 @@ interface WorkspaceHoverCardProps {
   workspace: SidebarWorkspaceEntry;
   prHint: PrHint | null;
   isDragging: boolean;
+  disabled?: boolean;
 }
 
 export function WorkspaceHoverCard({
   workspace,
   prHint,
   isDragging,
+  disabled = false,
   children,
 }: PropsWithChildren<WorkspaceHoverCardProps>): ReactNode {
   const isCompact = useIsCompactFormFactor();
@@ -114,7 +113,12 @@ export function WorkspaceHoverCard({
   }
 
   return (
-    <WorkspaceHoverCardDesktop workspace={workspace} prHint={prHint} isDragging={isDragging}>
+    <WorkspaceHoverCardDesktop
+      workspace={workspace}
+      prHint={prHint}
+      isDragging={isDragging}
+      disabled={disabled}
+    >
       {children}
     </WorkspaceHoverCardDesktop>
   );
@@ -124,6 +128,7 @@ function WorkspaceHoverCardDesktop({
   workspace,
   prHint,
   isDragging,
+  disabled = false,
   children,
 }: PropsWithChildren<WorkspaceHoverCardProps>): ReactElement {
   const triggerRef = useRef<View>(null);
@@ -158,14 +163,14 @@ function WorkspaceHoverCardDesktop({
   const handleTriggerEnter = useCallback(() => {
     triggerHoveredRef.current = true;
     clearGraceTimer();
-    if (isDragging || openTimerRef.current) return;
+    if (isDragging || disabled || openTimerRef.current) return;
     openTimerRef.current = setTimeout(() => {
       openTimerRef.current = null;
-      if (triggerHoveredRef.current) {
+      if (triggerHoveredRef.current && !disabled) {
         setOpen(true);
       }
     }, HOVER_OPEN_DELAY_MS);
-  }, [clearGraceTimer, isDragging]);
+  }, [clearGraceTimer, disabled, isDragging]);
 
   const handleTriggerLeave = useCallback(() => {
     triggerHoveredRef.current = false;
@@ -184,14 +189,14 @@ function WorkspaceHoverCardDesktop({
     onLeaveSafeZone: scheduleClose,
   });
 
-  // Close when drag starts
+  // Close while another row interaction owns attention.
   useEffect(() => {
-    if (isDragging) {
+    if (isDragging || disabled) {
       clearGraceTimer();
       clearOpenTimer();
       setOpen(false);
     }
-  }, [isDragging, clearGraceTimer, clearOpenTimer]);
+  }, [clearGraceTimer, clearOpenTimer, disabled, isDragging]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -234,9 +239,6 @@ function WorkspaceHoverCardContent({
 }): ReactElement | null {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
-  const { settings } = useAppSettings();
-  const selectedDiffStat = selectWorkspaceChangeStat(workspace, settings.workspaceChangeIndicator);
-  const cwdDisplay = shortenPath(workspace.workspaceDirectory);
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
@@ -309,6 +311,19 @@ function WorkspaceHoverCardContent({
               {workspace.name}
             </Text>
           </View>
+          {prHint ? (
+            <View style={styles.cardInfoRow}>
+              <PrBadge hint={prHint} />
+            </View>
+          ) : null}
+          {workspace.diffStat ? (
+            <View style={styles.cardInfoRow}>
+              <DiffStat
+                additions={workspace.diffStat.additions}
+                deletions={workspace.diffStat.deletions}
+              />
+            </View>
+          ) : null}
           <HostRow serverId={workspace.serverId} />
           {/* Branch + diff are git details - hidden in User interface mode. */}
           {isDeveloperMode && workspace.currentBranch ? (
@@ -320,25 +335,14 @@ function WorkspaceHoverCardContent({
               testID="hover-card-workspace-branch"
             />
           ) : null}
-          {cwdDisplay ? (
+          {workspace.workspaceDirectoryLabel ? (
             <CopyableInfoRow
               icon={ThemedFolder}
-              value={cwdDisplay}
-              copyValue={workspace.workspaceDirectory ?? ""}
+              value={workspace.workspaceDirectoryLabel}
+              copyValue={workspace.workspaceDirectory}
               copyLabel={t("workspace.hoverCard.copyPath")}
               testID="hover-card-workspace-cwd"
             />
-          ) : null}
-          {prHint || (isDeveloperMode && selectedDiffStat) ? (
-            <View style={styles.cardMetaRow}>
-              {isDeveloperMode && selectedDiffStat ? (
-                <DiffStat
-                  additions={selectedDiffStat.additions}
-                  deletions={selectedDiffStat.deletions}
-                />
-              ) : null}
-              {prHint ? <PrBadge hint={prHint} /> : null}
-            </View>
           ) : null}
           <BranchHistory workspace={workspace} visible={isDeveloperMode} />
           {prHint?.checks && prHint.checks.length > 0 ? (
@@ -633,13 +637,6 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
     flex: 1,
     minWidth: 0,
-  },
-  cardMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
   },
   cardBranchHistory: {
     color: theme.colors.foregroundMuted,

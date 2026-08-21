@@ -162,6 +162,8 @@ function applyPersonalityIdentity(
   }
 }
 
+// The wire projection intentionally owns all optional compatibility fields in one place.
+// eslint-disable-next-line complexity
 export function toAgentPayload(
   agent: ManagedAgent,
   options?: ProjectionOptions,
@@ -172,6 +174,12 @@ export function toAgentPayload(
     runtimeInfo,
     configuredThinkingOptionId: thinkingOptionId,
   });
+  const activeTurnId =
+    "activeTurnId" in agent && typeof agent.activeTurnId === "string" ? agent.activeTurnId : null;
+  const activeTurnStartedAt =
+    "activeTurnStartedAt" in agent && agent.activeTurnStartedAt instanceof Date
+      ? agent.activeTurnStartedAt
+      : null;
 
   const payload: AgentSnapshotPayload = {
     id: agent.id,
@@ -186,12 +194,18 @@ export function toAgentPayload(
     updatedAt: agent.updatedAt.toISOString(),
     lastUserMessageAt: agent.lastUserMessageAt ? agent.lastUserMessageAt.toISOString() : null,
     status: agent.lifecycle,
+    activeTurn: activeTurnId
+      ? {
+          turnId: activeTurnId,
+          startedAt: activeTurnStartedAt?.toISOString() ?? null,
+        }
+      : null,
     capabilities: cloneCapabilities(agent.capabilities),
     currentModeId: agent.currentModeId,
     availableModes: cloneAvailableModes(agent.availableModes),
     features: normalizeFeatures(agent.features),
     pendingPermissions: sanitizePendingPermissions(agent.pendingPermissions),
-    persistence: sanitizePersistenceHandle(agent.persistence),
+    persistence: projectPersistenceHandleForWire(agent.persistence),
     title: options?.title ?? null,
     labels: agent.labels,
     // Internal agents (e.g. artifact generation) have no client watching to
@@ -304,7 +318,9 @@ export function buildStoredAgentPayload(
 
   const runtimeInfo = buildStoredRuntimeInfo(record);
   const providerAvailable = isStoredAgentProviderAvailable(record, validProviders);
-  const persistence = buildStoredPersistenceHandle(record, validProviders);
+  const persistence = projectPersistenceHandleForWire(
+    buildStoredPersistenceHandle(record, validProviders),
+  );
 
   return {
     id: record.id,
@@ -597,9 +613,16 @@ function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentC
       serializable.featureValues = featureValues;
     }
   }
-  const extra = sanitizeMetadata(config.extra);
-  if (extra !== undefined) {
-    serializable.extra = extra;
+  if (config.providerOptions !== undefined) {
+    const providerOptions = sanitizeOptionalJson(config.providerOptions);
+    if (providerOptions && isJsonObject(providerOptions)) {
+      serializable.providerOptions = providerOptions;
+    }
+  }
+  if (config.toolPolicy) {
+    serializable.toolPolicy = {
+      preapproved: config.toolPolicy.preapproved.map((grant) => ({ ...grant })),
+    };
   }
   if (config.systemPrompt) {
     serializable.systemPrompt = config.systemPrompt;
@@ -647,6 +670,20 @@ function sanitizePersistenceHandle(
     sanitized.metadata = metadata;
   }
   return sanitized;
+}
+
+function projectPersistenceHandleForWire(
+  handle: AgentPersistenceHandle | null,
+): AgentPersistenceHandle | null {
+  const projected = sanitizePersistenceHandle(handle);
+  if (!projected?.metadata) {
+    return projected;
+  }
+  delete projected.metadata.mcpServers;
+  if (Object.keys(projected.metadata).length === 0) {
+    delete projected.metadata;
+  }
+  return projected;
 }
 
 function cloneCapabilities(capabilities: AgentCapabilityFlags): AgentCapabilityFlags {

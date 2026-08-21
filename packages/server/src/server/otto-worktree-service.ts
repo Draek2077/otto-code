@@ -37,6 +37,7 @@ import type { WorktreeCreationIntent } from "./resolve-worktree-creation-intent.
 import { resolveFirstAgentPromptTitle } from "./agent/create-agent-title.js";
 import { buildAgentBranchNameSeed } from "./agent/prompt-attachments.js";
 import type { FirstAgentContext } from "@otto-code/protocol/messages";
+import { runWithGitCommandPriority } from "../utils/run-git-command.js";
 
 export interface CreateOttoWorktreeInput extends CreateWorktreeCoreInput {
   projectId?: string;
@@ -76,6 +77,13 @@ export interface CreateOttoWorktreeDeps extends CreateWorktreeCoreDeps {
 }
 
 export async function createOttoWorktree(
+  input: CreateOttoWorktreeInput,
+  deps: CreateOttoWorktreeDeps,
+): Promise<CreateOttoWorktreeResult> {
+  return runWithGitCommandPriority("high", () => createOttoWorktreeWithPriority(input, deps));
+}
+
+async function createOttoWorktreeWithPriority(
   input: CreateOttoWorktreeInput,
   deps: CreateOttoWorktreeDeps,
 ): Promise<CreateOttoWorktreeResult> {

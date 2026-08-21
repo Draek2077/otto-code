@@ -876,6 +876,7 @@ describe.skipIf(isPlatform("win32"))("worktree-core POSIX-only", () => {
       expect(metadata?.changeRequestLookupTarget).toEqual({
         headRef: "feature/gitlab-mr",
         changeRequestNumber: 14,
+        localBranchName: "feature/gitlab-mr-1",
       });
       expect(facts).toMatchObject({
         isGit: true,
@@ -1434,8 +1435,7 @@ describe.skipIf(isPlatform("win32"))("worktree-core POSIX-only", () => {
       expect(result.worktree.branchName).toBe("agent-worktree");
     });
 
-    // POSIX-only: Windows git worktree paths need separate canonicalization coverage.
-    test("reuses an existing branch-off worktree for the same slug", async () => {
+    test("creates a suffixed branch-off worktree for the same slug", async () => {
       const { tempDir, repoDir, ottoHome } = createGitRepo();
       cleanupPaths.push(tempDir);
       const deps = createCoreDeps();
@@ -1450,12 +1450,12 @@ describe.skipIf(isPlatform("win32"))("worktree-core POSIX-only", () => {
       );
 
       expect(first.created).toBe(true);
-      expect(second.created).toBe(false);
-      expect(second.worktree).toEqual(first.worktree);
+      expect(second.created).toBe(true);
+      expect(path.basename(second.worktree.worktreePath)).toBe("reused-worktree-1");
+      expect(second.worktree.branchName).toBe("reused-worktree-1");
     });
 
-    // POSIX-only: Windows git worktree paths need separate canonicalization coverage.
-    test("reuses an existing GitHub PR worktree for the resolved slug", async () => {
+    test("creates a suffixed GitHub PR worktree for the resolved slug", async () => {
       const { tempDir, repoDir, ottoHome } = createGitHubPrRemoteRepo();
       cleanupPaths.push(tempDir);
       const deps = createCoreDeps();
@@ -1471,8 +1471,9 @@ describe.skipIf(isPlatform("win32"))("worktree-core POSIX-only", () => {
       const second = await createCoreWorktree(input, deps);
 
       expect(first.created).toBe(true);
-      expect(second.created).toBe(false);
-      expect(second.worktree).toEqual(first.worktree);
+      expect(second.created).toBe(true);
+      expect(path.basename(second.worktree.worktreePath)).toBe("feature-review-pr-1");
+      expect(second.worktree.branchName).toBe("feature/review-pr-1");
     });
 
     test("uses an injectable ForgeService dependency for missing PR head refs", async () => {

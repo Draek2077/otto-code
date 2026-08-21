@@ -34,16 +34,20 @@ import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
 import type { BinaryFrame } from "@otto-code/protocol/binary-frames/index";
 import { CursorError } from "./pagination/cursor.js";
 import { SortablePager, type SortSpec } from "./pagination/sortable-pager.js";
+import { describeAgentHistoryMatches, rankAgentHistoryCandidates } from "./agent-history-search.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
 import {
   EMPTY_SPEECH_SETTINGS_OPTIONS,
   type SpeechSettingsOptions,
 } from "./speech/speech-settings-options.js";
 import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
-import { isStoredAgentProviderAvailable, toAgentPersistenceHandle } from "./persistence-hooks.js";
+import {
+  buildConfigOverrides,
+  isStoredAgentProviderAvailable,
+  toAgentPersistenceHandle,
+} from "./persistence-hooks.js";
 import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent/agent-loading.js";
 import {
-  formatSystemNotificationPrompt,
   sendPromptToAgent,
   waitForAgentRunStartWithTimeout,
   unarchiveAgentState,
@@ -112,6 +116,7 @@ import { fixFindings } from "./agent/context-management/finding-fix.js";
 import type { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
 import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
 import { composeSystemPromptParts } from "./agent/system-prompt.js";
+import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
   ActivityIncrementFn,
@@ -202,6 +207,11 @@ import {
 import { createNoopProjectLinkStore, type ProjectLinkStore } from "./project-links.js";
 import { wrapSpokenInput } from "./voice-config.js";
 import { isVoicePermissionAllowed } from "./voice-permission-policy.js";
+import {
+  readProjectIcon,
+  removeProjectCustomIcon,
+  setProjectCustomIcon,
+} from "../utils/project-custom-icon.js";
 import { VoiceSession } from "./session/voice/voice-session.js";
 import { CheckoutSession, type BusyWorkspaceAgent } from "./session/checkout/checkout-session.js";
 import { KanbanSession, type KanbanProjectTarget } from "./kanban/kanban-session.js";
@@ -229,7 +239,7 @@ import {
   createRefineGenerator,
   type RefineGenerator,
 } from "./session/files/refine-generator.js";
-import { ChatScheduleLoopSession } from "./session/chat/chat-schedule-loop-session.js";
+import { ScheduleSession } from "./session/schedule/schedule-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
@@ -245,7 +255,6 @@ import type { HubRelationshipManagement } from "./hub/relationship-controller.js
 import { HubExecutionController } from "./hub-disabled.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
-import { PushTokenStore } from "./push/token-store.js";
 import type { DevServerManager } from "./preview/dev-server-manager.js";
 import { BrainSession } from "./session/brain/brain-session.js";
 import { CommunicationsSession } from "./session/communications/communications-session.js";
@@ -255,12 +264,12 @@ import { CodeIntelligenceSession } from "./session/code-intelligence/code-intell
 import type { BrainManager } from "./brain/brain-manager.js";
 import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import { readLaunchConfig, LaunchConfigError } from "./preview/launch-config.js";
+import type { PushNotifications } from "./push/index.js";
 import {
   archivePersistedWorkspaceRecord,
   archiveWorkspaceContents,
   dropGitOperationLogs,
   stopLanguageServersForArchivedDirectories,
-  requireActiveWorkspaceForArchive,
 } from "./workspace-archive-service.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
 import {
@@ -294,8 +303,6 @@ import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
-import { FileBackedChatService } from "./chat/chat-service.js";
-import { LoopService } from "./loop-service.js";
 import type { LspService } from "./lsp/service.js";
 import { SolutionService } from "./solution-model/service.js";
 import { ScheduleService } from "./schedule/service.js";
@@ -349,6 +356,13 @@ import {
   toWorktreeWireError,
 } from "./worktree-errors.js";
 import { type WorktreeConfig, createWorktree, isOttoOwnedWorktreeCwd } from "../utils/worktree.js";
+import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
+
+function resolveWorkspaceSetupRuntime(
+  runtime: WorkspaceSetupRuntime | undefined,
+): WorkspaceSetupRuntime {
+  return runtime ?? new WorkspaceSetupRuntime();
+}
 import {
   createProjectDirectory,
   ProjectDirectoryRequestError,
@@ -356,6 +370,11 @@ import {
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 import { resolveWorktreeSourceCwd } from "./workspace-source.js";
+
+type ProviderSubagentManagerEvent = Extract<
+  AgentManagerEvent,
+  { type: "provider_subagent" }
+>["event"];
 
 // TODO: Remove once all app store clients are on >=0.1.45 and understand arbitrary provider strings.
 // Clients before 0.1.45 validate providers with z.enum(["claude", "codex", "opencode"]) and reject
@@ -460,6 +479,15 @@ type FetchAgentHistoryRequestMessage = Extract<
   { type: "fetch_agent_history_request" }
 >;
 type AgentDirectoryRequestMessage = FetchAgentsRequestMessage | FetchAgentHistoryRequestMessage;
+
+/**
+ * Only history carries a query. The active-agents directory filters on
+ * structure and never ranks, so it always reads as no query at all.
+ */
+function agentDirectorySearchQuery(request: AgentDirectoryRequestMessage): string {
+  if (request.type !== "fetch_agent_history_request") return "";
+  return request.search?.trim() ?? "";
+}
 type FetchAgentsRequestFilter = NonNullable<FetchAgentsRequestMessage["filter"]>;
 type FetchAgentsRequestSort = NonNullable<FetchAgentsRequestMessage["sort"]>[number];
 type FetchAgentsResponsePayload = Extract<
@@ -575,7 +603,7 @@ export interface SessionOptions {
    * the fallback is a service with the feature off, which is the correct default anyway.
    */
   solutionService?: SolutionService;
-  pushTokenStore: PushTokenStore;
+  pushNotifications: PushNotifications;
   ottoHome: string;
   worktreesRoot?: string;
   agentManager: AgentManager;
@@ -586,7 +614,6 @@ export interface SessionOptions {
   // (websocket-server) always supplies the real store. Falls back to a noop.
   projectLinkStore?: ProjectLinkStore;
   filesystem?: SessionFileSystem;
-  chatService: FileBackedChatService;
   scheduleService: ScheduleService;
   runService?: RunService | null;
   // Orchestration graph templates (projects/orchestration-graphs). Optional for
@@ -598,7 +625,6 @@ export interface SessionOptions {
   nodeOutputStore?: NodeOutputStore | null;
   // Host-level reusable prompts and snippets. Optional for the same reason.
   promptTemplateStore?: PromptTemplateStore | null;
-  loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: ForgeService;
   gitHostingResolver?: GitHostingResolver;
@@ -649,6 +675,7 @@ export interface SessionOptions {
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
+  workspaceSetupRuntime?: WorkspaceSetupRuntime;
   onBranchChanged?: (
     workspaceId: string,
     oldBranch: string | null,
@@ -766,6 +793,12 @@ interface ArchivedRecordSnapshot {
   archivedAt?: string | null;
 }
 
+interface WorkspaceUpdateOptions {
+  dedupeGitState?: boolean;
+  removedProjectId?: string;
+  optimisticStatus?: WorkspaceDescriptorPayload["status"];
+}
+
 function describeRegistryTransition(record: ArchivedRecordSnapshot | null): RegistryTransition {
   if (!record) {
     return "created";
@@ -878,7 +911,7 @@ export class Session {
   // WorkspaceFilesSession because that class is deliberately file I/O only -
   // it reaches no agent, and this is a model call that touches no file.
   private readonly refineGenerator: RefineGenerator;
-  private readonly pushTokenStore: PushTokenStore;
+  private readonly pushNotifications: PushNotifications;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeCommunicationsPresenceChanges: (() => void) | null = null;
   private unsubscribeProjectMutations: (() => void) | null = null;
@@ -901,6 +934,7 @@ export class Session {
   private unsubscribeGitOperationLog: (() => void) | null = null;
   private readonly agentUpdates: AgentUpdatesService;
   private workspaceUpdatesSubscription: WorkspaceUpdatesSubscriptionState | null = null;
+  private readonly workspaceUpdateTails = new Map<string, Promise<void>>();
   private clientActivity: {
     deviceType: "web" | "mobile";
     focusedAgentId: string | null;
@@ -909,6 +943,7 @@ export class Session {
     appVisible: boolean;
     appVisibilityChangedAt: Date;
   } | null = null;
+  private registeredPushToken: string | null = null;
   private readonly terminalManager: TerminalManager | null;
   private readonly previewDevServers: DevServerManager | null;
   private readonly brainSession: BrainSession;
@@ -934,12 +969,13 @@ export class Session {
   private inflightRequests = 0;
   private peakInflightRequests = 0;
   private readonly workspaceSetupSnapshots: Map<string, WorkspaceSetupSnapshot>;
+  private readonly workspaceSetupRuntime: WorkspaceSetupRuntime;
   private readonly workspaceGitObserver: WorkspaceGitObserverService;
   private readonly workspaceDirectory: WorkspaceDirectory;
   private readonly voiceSession: VoiceSession;
   private readonly checkoutSession: CheckoutSession;
   private readonly kanbanSession: KanbanSession;
-  private readonly chatScheduleLoopSession: ChatScheduleLoopSession;
+  private readonly scheduleSession: ScheduleSession;
   private readonly providerCatalogSession: ProviderCatalogSession;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
   private readonly agentConfigSession: AgentConfigSession;
@@ -962,7 +998,7 @@ export class Session {
       downloadTokenStore,
       lspService,
       solutionService,
-      pushTokenStore,
+      pushNotifications,
       ottoHome,
       worktreesRoot,
       agentManager,
@@ -971,13 +1007,11 @@ export class Session {
       workspaceRegistry,
       projectLinkStore,
       filesystem,
-      chatService,
       scheduleService,
       runService,
       graphStore,
       nodeOutputStore,
       promptTemplateStore,
-      loopService,
       checkoutDiffManager,
       github,
       gitHostingResolver,
@@ -1008,6 +1042,7 @@ export class Session {
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
+      workspaceSetupRuntime,
       onBranchChanged,
       getDaemonTcpPort,
       getDaemonTcpHost,
@@ -1063,7 +1098,7 @@ export class Session {
     this.getTransportBufferedAmount = defaults.getTransportBufferedAmount;
     this.onLifecycleIntent = defaults.onLifecycleIntent;
     this.onWorkspaceRecovered = defaults.onWorkspaceRecovered;
-    this.pushTokenStore = pushTokenStore;
+    this.pushNotifications = pushNotifications;
     this.ottoHome = ottoHome;
     this.worktreesRoot = worktreesRoot;
     this.lspService = lspService;
@@ -1221,33 +1256,9 @@ export class Session {
       onBranchChanged,
       logger: this.sessionLogger,
     });
-    this.chatScheduleLoopSession = new ChatScheduleLoopSession({
-      host: {
-        emit: (msg) => this.emit(msg),
-        listStoredAgents: () => this.agentStorage.list(),
-        listLiveAgents: () => this.agentManager.listAgents(),
-        resolveAgentIdentifier: (identifier) => this.resolveAgentIdentifier(identifier),
-        sendAgentMessage: async (agentId, text) => {
-          await sendPromptToAgent({
-            agentManager: this.agentManager,
-            agentStorage: this.agentStorage,
-            agentId,
-            prompt: formatSystemNotificationPrompt(text),
-            unarchive: false,
-            // A room mention is a message, not an emergency. Interrupting threw
-            // away whatever the mentioned agent was doing on behalf of someone
-            // who only meant to say something to it - and `@everyone` did that
-            // to a roomful at once. See docs/chat-lifecycle.md (Delivery).
-            delivery: "queue",
-            source: "system",
-            logger: this.sessionLogger,
-          });
-        },
-      },
-      chatService,
+    this.scheduleSession = new ScheduleSession({
+      host: { emit: (msg) => this.emit(msg) },
       scheduleService,
-      loopService,
-      clientId: this.clientId,
       logger: this.sessionLogger,
     });
     this.providerCatalogSession = new ProviderCatalogSession({
@@ -1255,6 +1266,7 @@ export class Session {
         emit: (msg) => this.emit(msg),
         isProviderVisibleToClient: (provider) => this.isProviderVisibleToClient(provider),
         supportsCustomModeIcons: () => this.supports(CLIENT_CAPS.customModeIcons),
+        supportsCompactProviderSnapshots: () => this.supports(CLIENT_CAPS.compactProviderSnapshots),
         listProviderAvailability: () => this.agentManager.listProviderAvailability(),
         listDraftFeatures: (config) => this.agentManager.listDraftFeatures(config),
       },
@@ -1339,6 +1351,8 @@ export class Session {
     this.hubExecutionController = options.hubExecutionAgents
       ? new HubExecutionController({
           agents: options.hubExecutionAgents,
+          validateAgentConfiguration: (input) =>
+            providerSnapshotManager.validateAgentConfiguration(input),
           send: (message) => this.emit(message),
         })
       : null;
@@ -1403,7 +1417,7 @@ export class Session {
     });
     this.agentUpdates = createAgentUpdatesService({
       emit: (message) => this.emit(message),
-      buildAgentPayload: (agent) => this.buildAgentPayload(agent),
+      enrichAgentPayload: (payload) => this.enrichAgentPayload(payload),
       buildStoredAgentPayload: (record) => this.buildStoredAgentPayload(record),
       isProviderVisibleToClient: (provider) => this.isProviderVisibleToClient(provider),
       buildProjectPlacementForWorkspaceId: (workspaceId) =>
@@ -1469,6 +1483,7 @@ export class Session {
     this.serviceProxy = serviceProxy ?? null;
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
     this.workspaceSetupSnapshots = workspaceSetupSnapshots ?? new Map();
+    this.workspaceSetupRuntime = resolveWorkspaceSetupRuntime(workspaceSetupRuntime);
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
     this.getDaemonTcpHost = getDaemonTcpHost ?? null;
     this.serviceProxyPublicBaseUrl = serviceProxyPublicBaseUrl ?? null;
@@ -1495,6 +1510,7 @@ export class Session {
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
       listAgentPayloads: (scope) => this.listAgentPayloads(scope),
+      listProviderSubagentActivity: async () => this.agentManager.listProviderSubagentActivity(),
       listTerminalActivityContributions: () => this.listTerminalActivityContributions(),
       isProviderVisibleToClient: (provider) => this.isProviderVisibleToClient(provider),
       buildWorkspaceDescriptor: (input) => this.buildWorkspaceDescriptor(input),
@@ -2281,6 +2297,7 @@ export class Session {
         }
 
         if (event.type === "provider_subagent") {
+          this.emitProviderSubagentWorkspaceUpdate(event.event);
           if (!this.supports(CLIENT_CAPS.providerSubagents)) {
             return;
           }
@@ -2382,6 +2399,24 @@ export class Session {
     );
   }
 
+  private emitProviderSubagentWorkspaceUpdate(event: ProviderSubagentManagerEvent): void {
+    if (event.type === "timeline") {
+      return;
+    }
+    const parentAgentId =
+      event.type === "upsert" ? event.subagent.parentAgentId : event.parentAgentId;
+    const parent = this.agentManager.getAgent(parentAgentId);
+    if (!parent?.workspaceId) {
+      return;
+    }
+    void this.emitWorkspaceUpdateForWorkspaceId(parent.workspaceId).catch((error) => {
+      this.sessionLogger.error(
+        { err: error, parentAgentId, workspaceId: parent.workspaceId },
+        "Failed to emit provider subagent workspace update",
+      );
+    });
+  }
+
   private buildAgentStreamPayload(
     event: Extract<AgentManagerEvent, { type: "agent_stream" }>,
     serializedEvent: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"]["event"],
@@ -2395,20 +2430,15 @@ export class Session {
     };
   }
 
-  private async buildAgentPayload(agent: ManagedAgent): Promise<AgentSnapshotPayload> {
-    const storedRecord = await this.agentStorage.get(agent.id);
-    const title = storedRecord?.title ?? null;
-    const payload = toAgentPayload(agent, { title });
-    const storedUpdatedAt = storedRecord ? resolveStoredAgentPayloadUpdatedAt(storedRecord) : null;
-    if (storedUpdatedAt) {
-      const liveUpdatedAt = Date.parse(payload.updatedAt);
-      const persistedUpdatedAt = Date.parse(storedUpdatedAt);
-      if (Number.isNaN(liveUpdatedAt) || persistedUpdatedAt > liveUpdatedAt) {
-        payload.updatedAt = storedUpdatedAt;
-      }
-    }
+  private async enrichAgentPayload(payload: AgentSnapshotPayload): Promise<AgentSnapshotPayload> {
+    const storedRecord = await this.agentStorage.get(payload.id);
+    payload.title = storedRecord?.title ?? null;
     payload.archivedAt = storedRecord?.archivedAt ?? null;
     return payload;
+  }
+
+  private buildAgentPayload(agent: ManagedAgent): Promise<AgentSnapshotPayload> {
+    return this.enrichAgentPayload(toAgentPayload(agent));
   }
 
   private buildStoredAgentPayload(
@@ -2575,7 +2605,7 @@ export class Session {
       this.dispatchWorkspaceFileMessage(msg, source) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
-      this.dispatchChatScheduleLoopMessage(msg) ??
+      this.dispatchScheduleMessage(msg) ??
       this.dispatchArtifactMessage(msg) ??
       this.runsSession.dispatch(msg) ??
       this.dispatchMiscMessage(msg)
@@ -2968,7 +2998,9 @@ export class Session {
   ): Promise<void> | undefined {
     switch (msg.type) {
       case "fetch_agent_timeline_request":
-        return this.handleFetchAgentTimelineRequest(msg);
+        return this.handleFetchAgentTimelineRequest(msg, source);
+      case "agent.timeline.list_prompts.request":
+        return this.handleAgentTimelineListPromptsRequest(msg, source);
       case "agent.provider_subagents.list.request":
         return this.handleProviderSubagentListRequest(msg);
       case "agent.provider_subagents.timeline.get.request":
@@ -3017,12 +3049,17 @@ export class Session {
     if (msg.type === "hub.execution.agent.create.request") {
       return this.hubExecutionController?.createAgent(msg);
     }
+    if (msg.type === "hub.execution.agent.validate.request") {
+      return this.hubExecutionController?.validateAgent(msg);
+    }
     if (msg.type === "hub.execution.control.request") {
       return this.hubExecutionController?.controlExecution(msg);
     }
     return undefined;
   }
 
+  // This switch is the single routing table for the agent lifecycle message family.
+  // eslint-disable-next-line complexity
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "fetch_agents_request":
@@ -3045,6 +3082,8 @@ export class Session {
         return this.handleUpdateAgentRequest(msg.agentId, msg.name, msg.labels, msg.requestId);
       case "project.rename.request":
         return this.handleProjectRenameRequest(msg.projectId, msg.customName, msg.requestId);
+      case "project.icon.set.request":
+        return this.handleProjectIconSetRequest(msg);
       case "send_agent_message_request":
         return this.handleSendAgentMessageRequest(msg);
       case "wait_for_finish_request":
@@ -3203,6 +3242,8 @@ export class Session {
         return this.agentConfigSession.handleSetAgentFeatureRequest(msg);
       case "set_agent_thinking_request":
         return this.agentConfigSession.handleSetAgentThinkingRequest(msg);
+      case "agent.config.apply.request":
+        return this.agentConfigSession.handleAgentConfigApplyRequest(msg);
       case "connectors.list_tools.request": {
         const listRequestId = msg.requestId;
         const connectorId = msg.connectorId;
@@ -3679,6 +3720,8 @@ export class Session {
         return this.checkoutSession.handleCheckoutSwitchBranchRequest(msg);
       case "checkout.rename_branch.request":
         return this.checkoutSession.handleCheckoutRenameBranchRequest(msg);
+      case "checkout.discard_changes.request":
+        return this.checkoutSession.handleCheckoutDiscardChangesRequest(msg);
       case "checkout_commit_request":
         return this.checkoutSession.handleCheckoutCommitRequest(msg);
       case "checkout.git.commit.request":
@@ -4098,6 +4141,8 @@ export class Session {
     }
   }
 
+  // This switch is the single routing table for legacy and namespaced file RPCs.
+  // eslint-disable-next-line complexity
   private dispatchWorkspaceFileMessage(
     msg: SessionInboundMessage,
     source?: object,
@@ -4174,6 +4219,16 @@ export class Session {
         return this.workspaceFilesSession.handleFileSearchRequest(msg);
       case "file.replace.request":
         return this.workspaceFilesSession.handleFileReplaceRequest(msg);
+      case "fs.entry.create.request":
+        return this.workspaceFilesSession.handleFileEntryCreateRequest(msg);
+      case "fs.entry.rename.request":
+        return this.workspaceFilesSession.handleFileEntryRenameRequest(msg);
+      case "fs.entry.duplicate.request":
+        return this.workspaceFilesSession.handleFileEntryDuplicateRequest(msg);
+      case "fs.entry.delete.request":
+        return this.workspaceFilesSession.handleFileEntryDeleteRequest(msg);
+      case "project.icon.get.request":
+        return this.handleProjectIconGetRequest(msg.projectId, msg.requestId);
       default:
         return this.codeIntelligenceSession.dispatch(msg);
     }
@@ -4713,51 +4768,26 @@ export class Session {
     }
   }
 
-  // eslint-disable-next-line complexity
-  private dispatchChatScheduleLoopMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+  private dispatchScheduleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
-      case "chat/create":
-        return this.chatScheduleLoopSession.handleChatCreateRequest(msg);
-      case "chat/list":
-        return this.chatScheduleLoopSession.handleChatListRequest(msg);
-      case "chat/inspect":
-        return this.chatScheduleLoopSession.handleChatInspectRequest(msg);
-      case "chat/delete":
-        return this.chatScheduleLoopSession.handleChatDeleteRequest(msg);
-      case "chat/post":
-        return this.chatScheduleLoopSession.handleChatPostRequest(msg);
-      case "chat/read":
-        return this.chatScheduleLoopSession.handleChatReadRequest(msg);
-      case "chat/wait":
-        return this.chatScheduleLoopSession.handleChatWaitRequest(msg);
-      case "loop/run":
-        return this.chatScheduleLoopSession.handleLoopRunRequest(msg);
-      case "loop/list":
-        return this.chatScheduleLoopSession.handleLoopListRequest(msg);
-      case "loop/inspect":
-        return this.chatScheduleLoopSession.handleLoopInspectRequest(msg);
-      case "loop/logs":
-        return this.chatScheduleLoopSession.handleLoopLogsRequest(msg);
-      case "loop/stop":
-        return this.chatScheduleLoopSession.handleLoopStopRequest(msg);
       case "schedule/create":
-        return this.chatScheduleLoopSession.handleScheduleCreateRequest(msg);
+        return this.scheduleSession.handleScheduleCreateRequest(msg);
       case "schedule/list":
-        return this.chatScheduleLoopSession.handleScheduleListRequest(msg);
+        return this.scheduleSession.handleScheduleListRequest(msg);
       case "schedule/inspect":
-        return this.chatScheduleLoopSession.handleScheduleInspectRequest(msg);
+        return this.scheduleSession.handleScheduleInspectRequest(msg);
       case "schedule/logs":
-        return this.chatScheduleLoopSession.handleScheduleLogsRequest(msg);
+        return this.scheduleSession.handleScheduleLogsRequest(msg);
       case "schedule/pause":
-        return this.chatScheduleLoopSession.handleSchedulePauseRequest(msg);
+        return this.scheduleSession.handleSchedulePauseRequest(msg);
       case "schedule/resume":
-        return this.chatScheduleLoopSession.handleScheduleResumeRequest(msg);
+        return this.scheduleSession.handleScheduleResumeRequest(msg);
       case "schedule/delete":
-        return this.chatScheduleLoopSession.handleScheduleDeleteRequest(msg);
+        return this.scheduleSession.handleScheduleDeleteRequest(msg);
       case "schedule/run-once":
-        return this.chatScheduleLoopSession.handleScheduleRunOnceRequest(msg);
+        return this.scheduleSession.handleScheduleRunOnceRequest(msg);
       case "schedule/update":
-        return this.chatScheduleLoopSession.handleScheduleUpdateRequest(msg);
+        return this.scheduleSession.handleScheduleUpdateRequest(msg);
       default:
         return undefined;
     }
@@ -4786,6 +4816,8 @@ export class Session {
     }
   }
 
+  // Host-level messages without a dedicated session remain centralized here.
+  // eslint-disable-next-line complexity
   private async dispatchMiscMessage(msg: SessionInboundMessage): Promise<void> {
     // Brain model/runtime management is a self-contained family; handle it in a
     // dedicated dispatcher so this method stays under the complexity ceiling.
@@ -4804,6 +4836,16 @@ export class Session {
         return;
       case "register_push_token":
         this.handleRegisterPushToken(msg.token);
+        return;
+      case "push.unregister.request":
+        this.pushNotifications.revoke(msg.token);
+        if (this.registeredPushToken?.trim() === msg.token.trim()) {
+          this.registeredPushToken = null;
+        }
+        this.emit({
+          type: "push.unregister.response",
+          payload: { requestId: msg.requestId },
+        });
         return;
       // Host-level disk the agents filled - no per-agent or per-workspace
       // family to belong to, so it lands here rather than growing the dispatch
@@ -5087,7 +5129,7 @@ export class Session {
     await this.agentStorage.remove(agentId);
     await this.agentManager.deleteCommittedTimeline(agentId);
 
-    this.agentUpdates.removeAgent(agentId);
+    await this.agentUpdates.removeAgent(agentId);
 
     return knownWorkspaceId;
   }
@@ -5592,17 +5634,40 @@ export class Session {
     });
   }
 
-  private async unarchiveAgentByHandle(handle: AgentPersistenceHandle): Promise<void> {
-    const records = await this.agentStorage.list();
-    const matched = records.find(
-      (record) =>
-        record.persistence?.provider === handle.provider &&
-        record.persistence?.sessionId === handle.sessionId,
+  private async unarchiveAgentByHandle(handle: AgentPersistenceHandle): Promise<{
+    record: StoredAgentRecord;
+    didUnarchive: boolean;
+    originalArchivedAt: string | null;
+  } | null> {
+    const records = await this.agentStorage.listByProviderSession(
+      handle.provider,
+      handle.sessionId,
     );
+    const matched = records.reduce<StoredAgentRecord | null>((latest, candidate) => {
+      if (!latest) {
+        return candidate;
+      }
+      const updatedDelta =
+        Date.parse(resolveStoredAgentPayloadUpdatedAt(candidate)) -
+        Date.parse(resolveStoredAgentPayloadUpdatedAt(latest));
+      if (updatedDelta !== 0) {
+        return updatedDelta > 0 ? candidate : latest;
+      }
+      return Date.parse(candidate.createdAt) > Date.parse(latest.createdAt) ? candidate : latest;
+    }, null);
     if (!matched) {
-      return;
+      return null;
     }
-    await unarchiveAgentState(this.agentStorage, this.agentManager, matched.id);
+    const didUnarchive = await unarchiveAgentState(
+      this.agentStorage,
+      this.agentManager,
+      matched.id,
+    );
+    return {
+      record: matched,
+      didUnarchive,
+      originalArchivedAt: matched.archivedAt ?? null,
+    };
   }
 
   private async handleUpdateAgentRequest(
@@ -5851,6 +5916,61 @@ export class Session {
     }
   }
 
+  private async handleProjectIconSetRequest(
+    request: Extract<SessionInboundMessage, { type: "project.icon.set.request" }>,
+  ): Promise<void> {
+    const { projectId, requestId } = request;
+    try {
+      const updated = await setProjectCustomIcon({
+        ottoHome: this.ottoHome,
+        projectId,
+        source: request.source,
+        projects: this.projectRegistry,
+      });
+
+      this.emit({
+        type: "project.icon.set.response",
+        payload: { requestId, projectId, accepted: true, error: null },
+      });
+      this.emitProjectUpdate({ kind: "upsert", project: updated });
+
+      const affectedWorkspaceIds = (await this.workspaceRegistry.list())
+        .filter((workspace) => workspace.projectId === projectId)
+        .map((workspace) => workspace.workspaceId);
+      if (affectedWorkspaceIds.length > 0) {
+        await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds);
+      }
+    } catch (error) {
+      this.emit({
+        type: "project.icon.set.response",
+        payload: {
+          requestId,
+          projectId,
+          accepted: false,
+          error: getErrorMessageOr(error, "Failed to update project icon"),
+        },
+      });
+    }
+  }
+
+  private async handleProjectIconGetRequest(projectId: string, requestId: string): Promise<void> {
+    try {
+      const project = await this.projectRegistry.get(projectId);
+      if (!project) throw new Error("Project not found");
+
+      const icon = await readProjectIcon({ ottoHome: this.ottoHome, project });
+      this.emit({
+        type: "project.icon.get.response",
+        payload: { projectId, icon, error: null, requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "project.icon.get.response",
+        payload: { projectId, icon: null, error: getErrorMessage(error), requestId },
+      });
+    }
+  }
+
   private async handleProjectRemoveRequest(
     request: Extract<SessionInboundMessage, { type: "project.remove.request" }>,
   ): Promise<void> {
@@ -5918,6 +6038,15 @@ export class Session {
             archivedWorkspaceIds: removedWorkspaceIds,
           },
         );
+        await removeProjectCustomIcon({
+          ottoHome: this.ottoHome,
+          projectId: resolvedProjectId,
+        }).catch((error) => {
+          this.sessionLogger.warn(
+            { err: error, projectId: resolvedProjectId },
+            "Failed to clean up removed project icon",
+          );
+        });
       } finally {
         if (activeWorkspaceIds.length > 0) {
           this.clearWorkspaceArchiving(activeWorkspaceIds);
@@ -6879,8 +7008,19 @@ export class Session {
       `Resuming agent ${handle.sessionId} (${handle.provider})`,
     );
     try {
-      await this.unarchiveAgentByHandle(handle);
-      const snapshot = await this.agentManager.resumeAgentFromPersistence(handle, overrides);
+      const matched = await this.unarchiveAgentByHandle(handle);
+      const effectiveOverrides = matched
+        ? { ...buildConfigOverrides(matched.record), ...overrides }
+        : overrides;
+      let snapshot: ManagedAgent;
+      try {
+        snapshot = await this.agentManager.resumeAgentFromPersistence(handle, effectiveOverrides);
+      } catch (error) {
+        if (matched?.didUnarchive && matched.originalArchivedAt) {
+          await this.agentManager.archiveSnapshot(matched.record.id, matched.originalArchivedAt);
+        }
+        throw error;
+      }
       await unarchiveAgentState(this.agentStorage, this.agentManager, snapshot.id);
       await this.agentManager.hydrateTimelineFromProvider(snapshot.id);
       await this.agentUpdates.forwardLiveAgent(snapshot);
@@ -7279,6 +7419,9 @@ export class Session {
     if (msg.appVisible && focusedTerminalId) {
       void this.clearFocusedTerminalAttention(focusedTerminalId);
     }
+    if (this.registeredPushToken) {
+      this.pushNotifications.renew(this.registeredPushToken);
+    }
     this.syncActiveWorkspaceFromActivity();
   }
 
@@ -7352,7 +7495,8 @@ export class Session {
   }
 
   private handleRegisterPushToken(token: string): void {
-    this.pushTokenStore.addToken(token);
+    this.registeredPushToken = token;
+    this.pushNotifications.renew(token);
     this.sessionLogger.info("Registered push token");
   }
 
@@ -7492,6 +7636,7 @@ export class Session {
           ? WORKSPACE_SEARCH_HIDDEN_DIRECTORIES
           : [],
         confidentResultScanThreshold: searchesWorkspace ? undefined : 5_000,
+        respectGitIgnore: searchesWorkspace,
         includeFiles,
         includeDirectories,
         matchMode,
@@ -7880,6 +8025,7 @@ export class Session {
   private async listFetchAgentsEntries(request: AgentDirectoryRequestMessage): Promise<{
     entries: FetchAgentsResponseEntry[];
     pageInfo: FetchAgentsResponsePageInfo;
+    searchTruncated?: boolean;
   }> {
     const filter =
       request.type === "fetch_agent_history_request" &&
@@ -7924,6 +8070,18 @@ export class Session {
       return placementPromise;
     };
 
+    const search = agentDirectorySearchQuery(request);
+    if (search) {
+      return this.listRankedAgentHistoryEntries({
+        search,
+        agents,
+        sort,
+        filter,
+        getPlacement,
+        page: request.page,
+      });
+    }
+
     let candidates = [...agents];
     candidates.sort((left, right) => this.agentsPager.compare(left, right, sort));
     const cursorToken = request.page?.cursor;
@@ -7957,6 +8115,64 @@ export class Session {
         prevCursor: request.page?.cursor ?? null,
         hasMore,
       },
+    };
+  }
+
+  /**
+   * The searched history page. Ranking has to see every candidate before it can
+   * name the best one, so this path resolves placements for the whole set
+   * instead of stopping at the page limit — that is what makes a query answer
+   * from all persisted sessions rather than from the first page of them.
+   */
+  private async listRankedAgentHistoryEntries(params: {
+    search: string;
+    agents: AgentSnapshotPayload[];
+    sort: FetchAgentsRequestSort[];
+    filter: AgentUpdatesFilter | undefined;
+    getPlacement: (workspaceId: string | undefined) => Promise<ProjectPlacementPayload | null>;
+    page: AgentDirectoryRequestMessage["page"];
+  }): Promise<{
+    entries: FetchAgentsResponseEntry[];
+    pageInfo: FetchAgentsResponsePageInfo;
+    searchTruncated: boolean;
+  }> {
+    const { search, agents, sort, filter, getPlacement, page } = params;
+    if (page?.cursor) {
+      // A ranked result set has no pages to walk, so a cursor here is caller
+      // misuse. Returning the ranked head instead would hide it.
+      throw new SessionRequestError(
+        "invalid_cursor",
+        "A history search returns one ranked page; it cannot be paged with a cursor.",
+      );
+    }
+
+    const allEntries = await this.collectFetchAgentsEntries({
+      candidates: agents,
+      limit: Number.MAX_SAFE_INTEGER,
+      getPlacement,
+      filter,
+    });
+
+    const ranked = rankAgentHistoryCandidates(search, allEntries, (left, right) =>
+      this.agentsPager.compare(left.agent, right.agent, sort),
+    );
+
+    const limit = page?.limit ?? 200;
+    // Ranges are derived only for the rows that will be rendered; ranking
+    // itself never needs them.
+    const entries = ranked.slice(0, limit).map((result) =>
+      Object.assign({}, result.candidate, {
+        searchScore: result.searchScore,
+        searchMatches: describeAgentHistoryMatches(search, result.candidate),
+      }),
+    );
+
+    return {
+      entries,
+      // No next page exists, so `hasMore` is false and truncation is reported
+      // on its own field. See the note on rankAgentHistoryCandidates.
+      pageInfo: { nextCursor: null, prevCursor: null, hasMore: false },
+      searchTruncated: ranked.length > limit,
     };
   }
 
@@ -8011,6 +8227,11 @@ export class Session {
       diffStat = snapshot.git.diffStat;
     }
 
+    const worktreeSlug =
+      workspace.isOttoOwnedWorktree && workspace.worktreeRoot
+        ? basename(workspace.worktreeRoot)
+        : undefined;
+
     return {
       id: workspace.workspaceId,
       projectId: workspace.projectId,
@@ -8018,8 +8239,10 @@ export class Session {
         ? resolveProjectDisplayName(resolvedProjectRecord)
         : workspace.projectId,
       projectCustomName: resolvedProjectRecord?.customName ?? null,
+      projectCustomIconRevision: resolvedProjectRecord?.customIconRevision ?? null,
       projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
       workspaceDirectory: workspace.cwd,
+      worktreeSlug,
       projectKind: (resolvedProjectRecord?.kind ?? "directory") === "git" ? "git" : "non_git",
       workspaceKind: workspace.kind,
       name: resolveWorkspaceDisplayName(workspace),
@@ -8161,8 +8384,10 @@ export class Session {
         ? resolveProjectDisplayName(projectRecord)
         : result.workspace.projectId,
       projectCustomName: projectRecord?.customName ?? null,
+      projectCustomIconRevision: projectRecord?.customIconRevision ?? null,
       projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
       workspaceDirectory: result.workspace.cwd,
+      worktreeSlug: basename(result.worktree.worktreePath),
       projectKind: projectRecord?.kind ?? "git",
       workspaceKind: result.workspace.kind,
       name: resolveWorkspaceName({
@@ -8335,6 +8560,7 @@ export class Session {
       projectDisplayName: resolveProjectDisplayName(project),
       projectCustomName: project.customName ?? null,
       projectKanban: project.kanban ?? null,
+      projectCustomIconRevision: project.customIconRevision ?? null,
       projectRootPath: project.rootPath,
       projectKind: project.kind,
     };
@@ -8548,11 +8774,7 @@ export class Session {
 
   private async emitWorkspaceUpdatesForWorkspaceIds(
     workspaceIds: Iterable<string>,
-    options?: {
-      dedupeGitState?: boolean;
-      removedProjectId?: string;
-      optimisticStatus?: WorkspaceDescriptorPayload["status"];
-    },
+    options?: WorkspaceUpdateOptions,
   ): Promise<void> {
     const subscription = this.workspaceUpdatesSubscription;
     if (!subscription) {
@@ -8564,12 +8786,53 @@ export class Session {
       return;
     }
 
+    await this.enqueueWorkspaceUpdates(uniqueWorkspaceIds, subscription, options);
+  }
+
+  private enqueueWorkspaceUpdates(
+    workspaceIds: ReadonlySet<string>,
+    subscription: WorkspaceUpdatesSubscriptionState,
+    options: WorkspaceUpdateOptions | undefined,
+  ): Promise<void> {
+    const previous = Array.from(workspaceIds, (workspaceId) =>
+      (this.workspaceUpdateTails.get(workspaceId) ?? Promise.resolve()).catch(() => undefined),
+    );
+    const next = Promise.all(previous).then(() =>
+      this.emitWorkspaceUpdateBatch(workspaceIds, subscription, options),
+    );
+    for (const workspaceId of workspaceIds) {
+      this.workspaceUpdateTails.set(workspaceId, next);
+    }
+
+    const clearTail = () => {
+      for (const workspaceId of workspaceIds) {
+        if (this.workspaceUpdateTails.get(workspaceId) === next) {
+          this.workspaceUpdateTails.delete(workspaceId);
+        }
+      }
+    };
+    void next.then(clearTail, clearTail);
+    return next;
+  }
+
+  private async emitWorkspaceUpdateBatch(
+    workspaceIds: ReadonlySet<string>,
+    subscription: WorkspaceUpdatesSubscriptionState,
+    options: WorkspaceUpdateOptions | undefined,
+  ): Promise<void> {
+    if (this.workspaceUpdatesSubscription !== subscription) {
+      return;
+    }
+
     const descriptorsByWorkspaceId = await this.buildWorkspaceDescriptorMap({
-      workspaceIds: uniqueWorkspaceIds,
+      workspaceIds,
       includeGitData: true,
     });
 
-    for (const workspaceId of uniqueWorkspaceIds) {
+    for (const workspaceId of workspaceIds) {
+      if (this.workspaceUpdatesSubscription !== subscription) {
+        return;
+      }
       const workspace = descriptorsByWorkspaceId.get(workspaceId);
       const filteredWorkspace =
         workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })
@@ -8591,6 +8854,9 @@ export class Session {
       if (!nextWorkspace) {
         if (this.shouldSkipWorkspaceRemoval(lastEmitted, options?.removedProjectId)) {
           continue;
+        }
+        if (this.workspaceUpdatesSubscription !== subscription) {
+          return;
         }
         subscription.lastEmittedByWorkspaceId.delete(workspaceId);
         this.bufferOrEmitWorkspaceUpdate(
@@ -9698,6 +9964,8 @@ export class Session {
           this.workspaceAutoName.scheduleForWorktree(autoNameInput, {
             currentSelection: this.getFocusedAgentSelectionForCwd(autoNameInput.workspace.cwd),
           }),
+        startWorkspaceSetup: (workspaceId, operation) =>
+          this.workspaceSetupRuntime.start(workspaceId, operation),
         emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
           this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
         cacheWorkspaceSetupSnapshot: (workspaceId, snapshot) => {
@@ -9737,10 +10005,10 @@ export class Session {
     request: Extract<SessionInboundMessage, { type: "archive_workspace_request" }>,
   ): Promise<void> {
     try {
-      const existing = await requireActiveWorkspaceForArchive(
-        { listActiveWorkspaces: () => this.listActiveWorkspaceRefs() },
-        request.workspaceId,
-      );
+      const existing = await this.workspaceRegistry.get(request.workspaceId);
+      if (!existing) {
+        throw new Error(`Workspace not found: ${request.workspaceId}`);
+      }
 
       const gitSnapshot = await this.workspaceGitService
         .getSnapshot(existing.cwd)
@@ -9780,6 +10048,7 @@ export class Session {
           agentManager: this.agentManager,
           agentStorage: this.agentStorage,
           findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
+          getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
           listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
           archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
           emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds) =>
@@ -9790,6 +10059,7 @@ export class Session {
           killTerminalsForWorkspace: (workspaceId) =>
             this.terminalController.killTerminalsForWorkspace(workspaceId),
           stopLanguageServers: (rootPath) => this.stopWorkspaceProcesses(rootPath),
+          stopWorkspaceSetup: (workspaceId) => this.workspaceSetupRuntime.stop(workspaceId),
           sessionLogger: this.sessionLogger,
         },
         {
@@ -10315,27 +10585,30 @@ export class Session {
     direction: AgentTimelineFetchDirection;
     cursor?: AgentTimelineCursor;
     pageLimit: number;
+    fullTimeline?: AgentTimelineFetchResult;
   }): AgentTimelineProjectionSelection {
-    const timeline = this.shouldUseFullTimelineForProjectedPage({
+    const selectedTimeline = this.shouldUseFullTimelineForProjectedPage({
       timeline: input.controlTimeline,
       pageLimit: input.pageLimit,
     })
-      ? this.agentManager.fetchTimeline(input.agentId, { direction: "tail", limit: 0 })
+      ? (input.fullTimeline ??
+        this.agentManager.fetchTimeline(input.agentId, { direction: "tail", limit: 0 }))
       : input.controlTimeline;
     const page = selectProjectedTimelinePage({
-      rows: timeline.rows,
-      bounds: timeline.window,
+      rows: selectedTimeline.rows,
+      bounds: selectedTimeline.window,
       direction: input.controlTimeline.reset ? "tail" : input.direction,
       ...(input.cursor ? { cursorSeq: input.cursor.seq } : {}),
       limit: input.pageLimit,
     });
 
     return {
-      timeline,
+      timeline: selectedTimeline,
       entries: page.entries,
       startSeq: page.startSeq,
       endSeq: page.endSeq,
-      hasOlder: page.hasOlder || (page.startSeq !== null && page.startSeq > timeline.window.minSeq),
+      hasOlder:
+        page.hasOlder || (page.startSeq !== null && page.startSeq > selectedTimeline.window.minSeq),
       hasNewer: page.hasNewer,
     };
   }
@@ -10347,6 +10620,7 @@ export class Session {
     direction: AgentTimelineFetchDirection;
     cursor?: AgentTimelineCursor;
     pageLimit: number;
+    fullTimeline?: AgentTimelineFetchResult;
   }): AgentTimelineProjectionSelection {
     if (input.projection === "canonical") {
       return this.selectCanonicalTimelineProjection({ timeline: input.controlTimeline });
@@ -10357,6 +10631,7 @@ export class Session {
 
   private async handleFetchAgentTimelineRequest(
     msg: Extract<SessionInboundMessage, { type: "fetch_agent_timeline_request" }>,
+    source?: object,
   ): Promise<void> {
     const direction: AgentTimelineFetchDirection = msg.direction ?? (msg.cursor ? "after" : "tail");
     const projection: TimelineProjectionMode = msg.projection ?? "projected";
@@ -10395,7 +10670,7 @@ export class Session {
           }),
         ));
 
-      const controlTimeline = this.agentManager.fetchTimeline(msg.agentId, {
+      const fetchedControlTimeline = this.agentManager.fetchTimeline(msg.agentId, {
         direction,
         cursor,
         limit: pageLimit,
@@ -10403,7 +10678,7 @@ export class Session {
       const selectedTimeline = this.selectTimelineProjection({
         agentId: msg.agentId,
         projection,
-        controlTimeline,
+        controlTimeline: fetchedControlTimeline,
         direction,
         ...(cursor ? { cursor } : {}),
         pageLimit,
@@ -10417,63 +10692,124 @@ export class Session {
           ? { epoch: selectedTimeline.timeline.epoch, seq: selectedTimeline.endSeq }
           : null;
 
-      this.emit({
-        type: "fetch_agent_timeline_response",
-        payload: {
-          requestId: msg.requestId,
-          agentId: msg.agentId,
-          agent: agentPayload,
-          direction,
-          projection,
-          epoch: selectedTimeline.timeline.epoch,
-          reset: controlTimeline.reset,
-          staleCursor: controlTimeline.staleCursor,
-          gap: controlTimeline.gap,
-          window: selectedTimeline.timeline.window,
-          startCursor,
-          endCursor,
-          hasOlder: selectedTimeline.hasOlder,
-          hasNewer: selectedTimeline.hasNewer,
-          entries: selectedTimeline.entries.map((entry) => ({
-            provider: agentPayload.provider,
-            item: entry.item,
-            timestamp: entry.timestamp,
-            seqStart: entry.seqStart,
-            seqEnd: entry.seqEnd,
-            sourceSeqRanges: entry.sourceSeqRanges,
-            collapsed: this.supports(CLIENT_CAPS.reasoningMergeEnum)
-              ? entry.collapsed
-              : entry.collapsed.filter((value) => value !== "reasoning_merge"),
-          })),
-          error: null,
+      this.emitForSource(
+        {
+          type: "fetch_agent_timeline_response",
+          payload: {
+            requestId: msg.requestId,
+            agentId: msg.agentId,
+            agent: agentPayload,
+            direction,
+            projection,
+            epoch: selectedTimeline.timeline.epoch,
+            reset: fetchedControlTimeline.reset,
+            staleCursor: fetchedControlTimeline.staleCursor,
+            gap: fetchedControlTimeline.gap,
+            window: selectedTimeline.timeline.window,
+            startCursor,
+            endCursor,
+            hasOlder: selectedTimeline.hasOlder,
+            hasNewer: selectedTimeline.hasNewer,
+            ...(msg.mergeWindow === true ? { mergeWindow: true } : {}),
+            entries: selectedTimeline.entries.map((entry) => ({
+              provider: agentPayload.provider,
+              item: entry.item,
+              timestamp: entry.timestamp,
+              seqStart: entry.seqStart,
+              seqEnd: entry.seqEnd,
+              sourceSeqRanges: entry.sourceSeqRanges,
+              collapsed: (
+                source
+                  ? this.supportsForSource(CLIENT_CAPS.reasoningMergeEnum, source)
+                  : this.supports(CLIENT_CAPS.reasoningMergeEnum)
+              )
+                ? entry.collapsed
+                : entry.collapsed.filter((value) => value !== "reasoning_merge"),
+            })),
+            error: null,
+          },
         },
-      });
+        source,
+      );
     } catch (error) {
       this.sessionLogger.error(
         { err: error, agentId: msg.agentId },
         "Failed to handle fetch_agent_timeline_request",
       );
-      this.emit({
-        type: "fetch_agent_timeline_response",
-        payload: {
-          requestId: msg.requestId,
-          agentId: msg.agentId,
-          agent: null,
-          direction,
-          projection,
-          epoch: "",
-          reset: false,
-          staleCursor: false,
-          gap: false,
-          window: { minSeq: 0, maxSeq: 0, nextSeq: 0 },
-          startCursor: null,
-          endCursor: null,
-          hasOlder: false,
-          hasNewer: false,
-          entries: [],
-          error: error instanceof Error ? error.message : String(error),
+      this.emitForSource(
+        {
+          type: "fetch_agent_timeline_response",
+          payload: {
+            requestId: msg.requestId,
+            agentId: msg.agentId,
+            agent: null,
+            direction,
+            projection,
+            epoch: "",
+            reset: false,
+            staleCursor: false,
+            gap: false,
+            window: { minSeq: 0, maxSeq: 0, nextSeq: 0 },
+            startCursor: null,
+            endCursor: null,
+            hasOlder: false,
+            hasNewer: false,
+            ...(msg.mergeWindow === true ? { mergeWindow: true } : {}),
+            entries: [],
+            error: error instanceof Error ? error.message : String(error),
+          },
         },
+        source,
+      );
+    }
+  }
+
+  private async handleAgentTimelineListPromptsRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.timeline.list_prompts.request" }>,
+    source?: object,
+  ): Promise<void> {
+    try {
+      await ensureAgentLoaded(msg.agentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
       });
+      const rows = await this.agentManager.getTimelineRows(msg.agentId);
+      const timeline = this.agentManager.fetchTimeline(msg.agentId, {
+        direction: "tail",
+        limit: 1,
+      });
+      const index = buildTimelinePromptIndex(timeline.epoch, rows);
+      this.emitForSource(
+        {
+          type: "agent.timeline.list_prompts.response",
+          payload: {
+            requestId: msg.requestId,
+            agentId: msg.agentId,
+            ...index,
+            error: null,
+          },
+        },
+        source,
+      );
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, agentId: msg.agentId },
+        "Failed to handle agent.timeline.list_prompts.request",
+      );
+      this.emitForSource(
+        {
+          type: "agent.timeline.list_prompts.response",
+          payload: {
+            requestId: msg.requestId,
+            agentId: msg.agentId,
+            epoch: "",
+            prompts: [],
+            error: error instanceof Error ? error.message : String(error),
+          },
+        },
+        source,
+      );
     }
   }
 

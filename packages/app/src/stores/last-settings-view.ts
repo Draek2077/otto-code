@@ -1,7 +1,6 @@
 import type { SettingsView } from "@/screens/settings-screen";
 import {
   buildProjectSettingsRoute,
-  buildProjectsSettingsRoute,
   buildSettingsHostSectionRoute,
   buildSettingsSectionRoute,
 } from "@/utils/host-routes";
@@ -10,7 +9,6 @@ import {
 export type SettingsRoute =
   | ReturnType<typeof buildSettingsSectionRoute>
   | ReturnType<typeof buildSettingsHostSectionRoute>
-  | ReturnType<typeof buildProjectsSettingsRoute>
   | ReturnType<typeof buildProjectSettingsRoute>;
 
 // Remembers the settings sub-page the user was last on, so re-opening Settings
@@ -26,8 +24,6 @@ export function settingsViewRoute(view: SettingsView): SettingsRoute | null {
     case "host":
       // Builders throw on empty ids; the root list has nothing worth remembering.
       return view.serverId ? buildSettingsHostSectionRoute(view.serverId, view.section) : null;
-    case "projects":
-      return buildProjectsSettingsRoute();
     case "project":
       return view.serverId && view.projectId
         ? buildProjectSettingsRoute(view.serverId, view.projectId)

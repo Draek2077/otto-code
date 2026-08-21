@@ -3,7 +3,7 @@ import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
 import { queryClient } from "@/data/query-client";
 import { useSessionStore, type Agent } from "@/stores/session-store";
-import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
+import { normalizeAgentActiveTurn, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import {
   applyAgentDirectoryDelta,
   type AgentDirectoryDelta,
@@ -49,7 +49,11 @@ export class AgentDirectoryReplica {
       ...timelineAgent,
       projectPlacement: timelineAgent.projectPlacement ?? existing?.projectPlacement,
     };
-    const accepted = upsertAgentReplica(this.serverId, normalized);
+    const accepted = upsertAgentReplica(
+      this.serverId,
+      normalized,
+      normalizeAgentActiveTurn(payload, normalized.lastUserMessageAt),
+    );
     replaceAgentPendingPermissions(this.serverId, accepted);
     useSessionStore.getState().setAgentLastActivity(accepted.id, accepted.lastActivityAt);
     if (accepted.archivedAt) {

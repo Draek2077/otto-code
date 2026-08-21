@@ -1,6 +1,6 @@
-import { expect, test } from "../../e2e/fixtures";
-import { composerLocator } from "../../e2e/helpers/composer";
-import { getServerId } from "../../e2e/helpers/server-id";
+import { expect, test } from "../../e2e/support/fixtures";
+import { composerLocator } from "../../e2e/support/helpers/composer";
+import { getServerId } from "../../e2e/support/helpers/server-id";
 import { buildHostAgentDetailRoute } from "../../src/utils/host-routes";
 import { applyDemoAppearance } from "../helpers/appearance";
 import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";

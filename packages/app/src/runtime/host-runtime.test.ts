@@ -11,6 +11,7 @@ import type {
 } from "@otto-code/client/internal/daemon-client";
 import type { ConnectionOffer } from "@otto-code/protocol/connection-offer";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
+import { defaultHostAppearance } from "@/hosts/appearance";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { queryClient } from "@/data/query-client";
 import {
@@ -21,7 +22,7 @@ import {
   type HostRuntimeStorage,
 } from "./host-runtime";
 
-vi.mock("@/browser-automation/handler", () => ({
+vi.mock("@/desktop/browser/automation/handler", () => ({
   mountBrowserAutomationDaemonClientHandler: vi.fn(() => () => undefined),
 }));
 
@@ -270,6 +271,7 @@ function makeHost(input?: Partial<HostProfile>): HostProfile {
   return {
     serverId: input?.serverId ?? "srv_test",
     label: input?.label ?? "test host",
+    appearance: input?.appearance ?? defaultHostAppearance(),
     lifecycle: input?.lifecycle ?? {},
     connections: input?.connections ?? [direct, relay],
     preferredConnectionId: input?.preferredConnectionId ?? direct.id,
@@ -364,6 +366,9 @@ function createMemoryHostRuntimeStorage(entries: Record<string, string> = {}): H
     getItem: async (key) => values.get(key) ?? null,
     setItem: async (key, value) => {
       values.set(key, value);
+    },
+    removeItem: async (key) => {
+      values.delete(key);
     },
   };
 }
@@ -1332,6 +1337,51 @@ describe("HostRuntimeStore", () => {
     }
   });
 
+  it("tracks connection status transitions independently of agent panels", async () => {
+    useHostRuntimeClock();
+    const host = makeHost({
+      connections: [
+        {
+          id: "direct:lan:6767",
+          type: "directTcp",
+          endpoint: "lan:6767",
+        },
+      ],
+    });
+    const fakeClient = new FakeDaemonClient();
+    fakeClient.setConnectionState({ status: "connected" });
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async ({ host: hostProfile }) => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: hostProfile.serverId,
+          hostname: hostProfile.label ?? null,
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    store.syncHosts([host]);
+    await vi.waitFor(() => {
+      expect(store.getSnapshot(host.serverId)?.connectionStatus).toBe("online");
+    });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    const outageStartedAt = Date.now();
+    fakeClient.setConnectionState({ status: "disconnected", reason: "transport closed" });
+    expect(store.getConnectionStatusSince(host.serverId)).toBe(outageStartedAt);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(store.getConnectionStatusSince(host.serverId)).toBe(outageStartedAt);
+
+    const reconnectStartedAt = Date.now();
+    fakeClient.setConnectionState({ status: "connected" });
+    expect(store.getConnectionStatusSince(host.serverId)).toBe(reconnectStartedAt);
+
+    store.syncHosts([]);
+  });
+
   it("bootstraps agent directory subscription when host transitions online", async () => {
     const host = makeHost({
       connections: [
@@ -1867,6 +1917,37 @@ describe("HostRuntimeStore", () => {
     expect(renamed?.label).toBe("new name");
 
     store.syncHosts([]);
+  });
+
+  it("updates host appearance without dropping the other appearance field", async () => {
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ host }) => ({
+          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: host.label ?? null,
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+      storage: createMemoryHostRuntimeStorage(),
+    });
+
+    try {
+      await store.upsertDirectConnection({
+        serverId: "srv_appearance",
+        endpoint: "lan:6868",
+        label: "Appearance host",
+      });
+      await store.setHostColor("srv_appearance", "teal");
+      await store.setHostBadgeDisplay("srv_appearance", "icon");
+
+      expect(
+        store.getHosts().find((host) => host.serverId === "srv_appearance")?.appearance,
+      ).toEqual({ color: "teal", badgeDisplay: "icon" });
+    } finally {
+      store.syncHosts([]);
+    }
   });
 
   it("preserves a manual host rename when desktop status re-advertises the daemon hostname", async () => {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
+import type { MaterializedAgentProfile } from "@/agent-profiles";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import {
   useAgentFormState,
@@ -22,7 +23,7 @@ import {
 } from "@/provider-selection/provider-selection";
 import { useDraftStore } from "@/stores/draft-store";
 import { toDraftInputIfReady } from "@/stores/draft-store/state";
-import { useFormRolePersonality } from "@/provider-selection/role-model-personality";
+import type { RolePersonality } from "@/provider-selection/role-model-personality";
 
 type AttachmentUpdater =
   | UserComposerAttachment[]
@@ -39,24 +40,25 @@ interface AgentInputDraftComposerOptions {
   initialPersonalityId?: string | null;
 }
 
-// The synthetic "Team's Chatter" picker entry - the composer's binding of the
-// shared team-role picker pattern (mirrors the artifact sheet's "Team's
-// Artificer"). New chat runs immediately, so there is no persisted sentinel;
-// selecting it resolves the active team's Chatter NOW and applies its values.
-// Its id never leaves the draft form.
-const TEAM_CHATTER_ENTRY_ID = "__team-chatter__";
-
 interface UseAgentInputDraftInput {
   draftKey: DraftKeyInput;
   composer?: AgentInputDraftComposerOptions;
 }
+
+type DraftAgentControlsWithProfileCompatibility = DraftAgentControlsProps & {
+  /**
+   * COMPAT(agentProfiles): added in v0.8.12, remove after 2027-02-21 once creation
+   * accepts profileId directly. This is a legacy wire bridge, not a second picker.
+   */
+  personality: RolePersonality | null;
+};
 
 type DraftComposerState = UseAgentFormStateResult & {
   workingDir: string;
   effectiveModelId: string;
   effectiveThinkingOptionId: string;
   featureValues: Record<string, unknown> | undefined;
-  agentControls: DraftAgentControlsProps;
+  agentControls: DraftAgentControlsWithProfileCompatibility;
   commandDraftConfig: DraftCommandConfig | undefined;
 };
 
@@ -69,57 +71,45 @@ export interface AgentInputDraft {
   isHydrated: boolean;
   attachmentFocusRequestId: number;
   composerState: DraftComposerState | null;
-  /** Chatter personality picker state, for surfaces that render it. */
-  personalitySelection: ReturnType<typeof useFormRolePersonality>;
 }
 
-/**
- * New-chat (Chatter) personality picker. Applies a personality's
- * provider/model/mode/effort to the draft form; mode matters here because chat
- * is attended, unlike artifacts and schedules.
- */
-function useChatterPersonalitySelection(input: {
-  formState: ReturnType<typeof useAgentFormState>;
-  initialPersonalityId: string | null;
-}): ReturnType<typeof useFormRolePersonality> {
-  const { formState } = input;
-  const currentSelection = useMemo(
-    () => ({
-      provider: formState.selectedProvider,
-      model: formState.selectedModel,
-      modeId: formState.selectedMode,
-      thinkingOptionId: formState.selectedThinkingOptionId,
-    }),
-    [
-      formState.selectedProvider,
-      formState.selectedModel,
-      formState.selectedMode,
-      formState.selectedThinkingOptionId,
-    ],
-  );
-  return useFormRolePersonality({
-    serverId: formState.selectedServerId,
-    role: "chatter",
-    entries: formState.allProviderEntries ?? [],
-    onApply: formState.applyPersonalityValues,
-    currentSelection,
-    team: {
-      entryId: TEAM_CHATTER_ENTRY_ID,
-      label: "Team's Chatter",
-      roleLabel: "Chatter",
-    },
-    // The chat composer runs the full ladder like every other apply-now
-    // surface: team's Chatter, else the remembered Chatter, else the first
-    // available one. Seeing a bare model here means you have no Chatter at all.
-    autoSelectDefault: "always",
-    initialPersonalityId: input.initialPersonalityId,
-  });
+function buildAgentProfileCompatibility(
+  profileId: string | null,
+  profile: MaterializedAgentProfile | null,
+): RolePersonality | null {
+  if (!profileId) return null;
+  const selectedProfile = profile?.id === profileId ? profile : null;
+  const selectedName = selectedProfile?.name || profileId;
+  return {
+    personalities: selectedProfile
+      ? [
+          {
+            id: profileId,
+            name: selectedName,
+            provider: selectedProfile.provider,
+            subtitle: "",
+            glowA: selectedProfile.spinner?.glowA,
+            glowB: selectedProfile.spinner?.glowB,
+            available: true,
+          },
+        ]
+      : undefined,
+    selectedPersonalityId: profileId,
+    spawnPersonalityId: profileId,
+    onSelectPersonality: undefined,
+    onClearPersonality: undefined,
+    hasBoundPersonality: true,
+    isSwitching: false,
+    selectedName,
+    selectedSpinner: selectedProfile?.spinner,
+  };
 }
 
 export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDraft {
   const composerOptions = input.composer ?? null;
   const formState = useAgentFormState({
     initialServerId: composerOptions?.initialServerId ?? null,
+    initialAgentProfileId: composerOptions?.initialPersonalityId,
     initialValues: composerOptions?.initialValues,
     isVisible: composerOptions?.isVisible ?? false,
     isCreateFlow: true,
@@ -314,6 +304,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     features: draftFeatures,
     featureValues: draftFeatureValues,
     setFeatureValue: setDraftFeatureValue,
+    applyProfileFeatureValues,
   } = useDraftAgentFeatures({
     serverId: formState.selectedServerId,
     provider: formState.selectedProvider,
@@ -323,6 +314,14 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     thinkingOptionId: effectiveThinkingOptionId,
     initialFeatureValues: composerOptions?.initialFeatureValues,
   });
+
+  const applyDraftAgentProfile = useCallback(
+    (profile: Parameters<typeof formState.applyProfileFromUser>[0]) => {
+      formState.applyProfileFromUser(profile);
+      applyProfileFeatureValues(profile.featureValues);
+    },
+    [applyProfileFeatureValues, formState],
+  );
 
   const commandDraftConfig = useMemo(
     () =>
@@ -345,10 +344,14 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     ],
   );
 
-  const personalitySelection = useChatterPersonalitySelection({
-    formState,
-    initialPersonalityId: composerOptions?.initialPersonalityId ?? null,
-  });
+  const profileCompatibility = useMemo(
+    () =>
+      buildAgentProfileCompatibility(
+        formState.selectedAgentProfileId,
+        formState.selectedAgentProfile,
+      ),
+    [formState.selectedAgentProfile, formState.selectedAgentProfileId],
+  );
 
   const composerState = useMemo<DraftComposerState | null>(() => {
     if (!composerOptions) {
@@ -361,12 +364,15 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       effectiveModelId,
       effectiveThinkingOptionId,
       featureValues: draftFeatureValues,
-      agentControls: buildDraftAgentControls({
-        formState,
-        features: draftFeatures,
-        onSetFeature: setDraftFeatureValue,
-        personality: personalitySelection,
-      }),
+      agentControls: {
+        ...buildDraftAgentControls({
+          formState,
+          features: draftFeatures,
+          onSetFeature: setDraftFeatureValue,
+          onApplyAgentProfile: applyDraftAgentProfile,
+        }),
+        personality: profileCompatibility,
+      },
       commandDraftConfig,
     };
   }, [
@@ -376,8 +382,9 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     effectiveThinkingOptionId,
     draftFeatures,
     draftFeatureValues,
+    applyDraftAgentProfile,
     formState,
-    personalitySelection,
+    profileCompatibility,
     setDraftFeatureValue,
     workingDir,
   ]);
@@ -391,7 +398,6 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     isHydrated,
     attachmentFocusRequestId,
     composerState,
-    personalitySelection,
   };
 }
 
@@ -402,4 +408,5 @@ export const __private__ = {
   buildDraftCommandConfig,
   buildDraftComposerCommandConfig: buildDraftCommandConfig,
   buildDraftAgentControls,
+  buildAgentProfileCompatibility,
 };

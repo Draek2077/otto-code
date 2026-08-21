@@ -99,6 +99,30 @@ describe("panel-store explorer tab resolution", () => {
 });
 
 describe("panel-store migration", () => {
+  it("preserves Otto explorer modes and persisted panel widths", () => {
+    const state = migratePanelState(
+      {
+        explorerTab: "search",
+        explorerTabByCheckout: { "host::/repo": "search" },
+        explorerViewModeByCheckout: { "host::/repo": "solution" },
+        explorerSolutionByCheckout: { "host::/repo": "/repo/App.sln" },
+        contextSidebarWidth: 410,
+        projectKnowledgeSidebarWidth: 430,
+      },
+      12,
+      { isWeb: false },
+    );
+
+    expect(state).toMatchObject({
+      explorerTab: "search",
+      explorerTabByCheckout: { "host::/repo": "search" },
+      explorerViewModeByCheckout: { "host::/repo": "solution" },
+      explorerSolutionByCheckout: { "host::/repo": "/repo/App.sln" },
+      contextSidebarWidth: 410,
+      projectKnowledgeSidebarWidth: 430,
+    });
+  });
+
   it("defaults hidden-file visibility to showing hidden files", () => {
     const state = migratePanelState({}, 10, { isWeb: false });
 

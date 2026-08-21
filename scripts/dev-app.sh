@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,6 +12,7 @@ configure_dev_otto_home
 
 EXPO_PORT="${EXPO_PORT:-8081}"
 DAEMON_ENDPOINT="$(resolve_dev_daemon_endpoint)"
+DEV_BUILD_LABEL="$(git -C "$ROOT_DIR" branch --show-current 2>/dev/null || true)"
 
 echo "══════════════════════════════════════════════════════"
 echo "  Otto App Dev"
@@ -32,6 +33,7 @@ node "$SCRIPT_DIR/ensure-app-deps.mjs"
 exec cross-env \
   BROWSER="${BROWSER:-none}" \
   APP_VARIANT=development \
+  EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL="$DEV_BUILD_LABEL" \
   EXPO_PUBLIC_LOCAL_DAEMON="$DAEMON_ENDPOINT" \
   NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=8192" \
   npm run start:expo --workspace=@otto-code/app -- --port "$EXPO_PORT"

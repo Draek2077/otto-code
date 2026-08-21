@@ -52,6 +52,8 @@ import type { ForgeService } from "../../services/forge-service.js";
 import { areEquivalentPaths } from "../../utils/path.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
+import { MutableDaemonConfigSchema, type AgentProfile } from "@otto-code/protocol/messages";
+import type { DaemonConfigStore } from "../daemon-config-store.js";
 import type { BrowserToolsBroker, BrowserToolsExecuteInput } from "../browser-tools/broker.js";
 import type { BrowserToolsResponsePayload } from "../browser-tools/errors.js";
 import { readOttoWorktreeMetadata } from "../../utils/worktree-metadata.js";
@@ -1440,6 +1442,67 @@ describe("create_chat MCP tool", () => {
     );
   });
 
+  it("resolves create_chat from the canonical agent profile roster", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.createAgent.mockResolvedValue({
+      id: "profile-agent",
+      provider: "codex",
+      cwd: REPO_CWD,
+      lifecycle: "idle",
+      currentModeId: "default",
+      availableModes: [],
+      config: { title: "Profile test" },
+    } as ManagedAgent);
+    const profiles: AgentProfile[] = [
+      {
+        id: "review-profile",
+        name: "Review profile",
+        provider: "codex",
+        model: "gpt-5.4",
+        modeId: "default",
+        thinkingOptionId: "high",
+        featureValues: { fast_mode: true },
+        personalityPrompt: "Review carefully.",
+        roles: ["judger"],
+        spinner: { glowA: "#111", glowB: "#222" },
+      },
+    ];
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      daemonConfigStore: daemonConfigStoreStub(profiles),
+      ensureWorkspaceForCreate,
+      logger,
+    });
+
+    await registeredTool(server, "create_chat").handler({
+      ...detachedDirectoryWorkspace(existingCwd),
+      title: "Profile test",
+      personality: "Review profile",
+      initialPrompt: "Review this change",
+      background: true,
+    });
+
+    expect(spies.agentManager.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        model: "gpt-5.4",
+        modeId: "default",
+        thinkingOptionId: "high",
+        featureValues: { fast_mode: true },
+        systemPrompt: expect.stringContaining("Review carefully."),
+        personalitySnapshot: expect.objectContaining({
+          personalityId: "review-profile",
+          roles: ["judger"],
+          spinner: { glowA: "#111", glowB: "#222" },
+        }),
+      }),
+      undefined,
+      expect.objectContaining({ workspaceId: "workspace-created" }),
+    );
+  });
+
   it("returns create_chat structured content with full provider modes", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
@@ -2218,9 +2281,12 @@ describe("create_chat MCP tool", () => {
     const workspaceAutoName = new WorkspaceAutoName({
       agentManager,
       workspaceRegistry: {
-        get: async (workspaceId) => workspaceRecords.get(workspaceId) ?? null,
-        upsert: async (record) => {
-          workspaceRecords.set(record.workspaceId, record);
+        update: async (workspaceId, updater) => {
+          const current = workspaceRecords.get(workspaceId);
+          if (!current) return null;
+          const updated = updater(current);
+          workspaceRecords.set(workspaceId, updated);
+          return updated;
         },
       },
       workspaceGitService,
@@ -3331,6 +3397,64 @@ describe("create_chat MCP tool", () => {
         },
         workspaceId: "wks_parent",
       },
+    );
+  });
+
+  it("inherits provider options only when the child uses the caller provider", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    const parentAgent = {
+      id: "parent-agent",
+      cwd: existingCwd,
+      workspaceId: "wks_parent",
+      provider: "codex",
+      currentModeId: null,
+      config: {
+        providerOptions: {
+          sandbox_mode: "workspace-write",
+          sandbox_workspace_write: { writable_roots: ["/tmp/shared"] },
+        },
+      },
+    } as ManagedAgent;
+    spies.agentManager.getAgent.mockReturnValue(parentAgent);
+    spies.agentManager.createAgent.mockResolvedValue({
+      id: "child-agent",
+      cwd: existingCwd,
+      lifecycle: "idle",
+      currentModeId: null,
+      availableModes: [],
+      config: { title: "Child" },
+    } as ManagedAgent);
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      callerAgentId: "parent-agent",
+      logger,
+    });
+
+    await registeredTool(server, "create_agent").handler({
+      ...subagentCurrentWorkspace(),
+      title: "Codex child",
+      provider: "codex/gpt-5.4",
+      initialPrompt: "Do work",
+    });
+    expect(spies.agentManager.createAgent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ providerOptions: parentAgent.config.providerOptions }),
+      undefined,
+      expect.any(Object),
+    );
+
+    await registeredTool(server, "create_agent").handler({
+      ...subagentCurrentWorkspace(),
+      title: "Claude child",
+      provider: "claude/sonnet",
+      initialPrompt: "Do work",
+      settings: { modeId: "default" },
+    });
+    expect(spies.agentManager.createAgent).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ providerOptions: expect.anything() }),
+      undefined,
+      expect.any(Object),
     );
   });
 
@@ -4954,6 +5078,78 @@ describe("provider listing MCP tool", () => {
         },
       ],
     });
+  });
+});
+
+function daemonConfigStoreStub(agentProfiles?: AgentProfile[]): Pick<DaemonConfigStore, "get"> {
+  const config = MutableDaemonConfigSchema.parse({
+    relay: { enabled: true },
+    mcp: { injectIntoAgents: true },
+    ...(agentProfiles !== undefined ? { agentProfiles } : {}),
+  });
+  return { get: () => config };
+}
+
+describe("agent profile listing MCP tool", () => {
+  const logger = createTestLogger();
+
+  it("returns configured profiles, including notes", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const profiles: AgentProfile[] = [
+      {
+        id: "ui-profile",
+        name: "UI work",
+        provider: "claude",
+        model: "claude-test-model",
+        modeId: "bypassPermissions",
+        thinkingOptionId: "high",
+        featureValues: { fast_mode: true },
+        notes: "Use for UI work: components, layout, design tokens. Not for backend.",
+      },
+    ];
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      daemonConfigStore: daemonConfigStoreStub(profiles),
+      logger,
+    });
+    const tool = registeredTool(server, "list_profiles");
+
+    const response = await tool.handler({});
+
+    expect(response.structuredContent).toEqual({ profiles });
+  });
+
+  it("returns an empty array when no profiles are configured", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      daemonConfigStore: daemonConfigStoreStub(),
+      logger,
+    });
+    const tool = registeredTool(server, "list_profiles");
+
+    const response = await tool.handler({});
+
+    expect(response.structuredContent).toEqual({ profiles: [] });
+  });
+
+  it("returns an empty array when no daemon config store is provided", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      logger,
+    });
+    const tool = registeredTool(server, "list_profiles");
+
+    const response = await tool.handler({});
+
+    expect(response.structuredContent).toEqual({ profiles: [] });
   });
 });
 

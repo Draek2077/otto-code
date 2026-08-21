@@ -34,6 +34,7 @@ function createFinishNotificationScenario(
   Reflect.set(childAgent, "id", "child-agent");
   Reflect.set(childAgent, "lifecycle", "idle");
   Reflect.set(childAgent, "config", { title: "Child Agent" });
+  Reflect.set(childAgent, "pendingPermissions", new Map());
 
   const callerAgent: ManagedAgent = Object.create(null);
   Reflect.set(callerAgent, "id", "caller-agent");
@@ -227,6 +228,7 @@ it("does not notify archived callers", async () => {
   Reflect.set(childAgent, "id", "child-agent");
   Reflect.set(childAgent, "lifecycle", "idle");
   Reflect.set(childAgent, "config", { title: "Child Agent" });
+  Reflect.set(childAgent, "pendingPermissions", new Map());
 
   const callerAgent: ManagedAgent = Object.create(null);
   Reflect.set(callerAgent, "id", "caller-agent");

@@ -46,6 +46,7 @@
     "dev:server:watch": "concurrently --kill-others --names protocol,client,server --prefix-colors yellow,blue,cyan \"npm run watch:protocol\" \"npm run watch:client\" \"npm run dev:server:raw\"",
     "dev:server:raw": "npm run dev --workspace=@otto-code/server",
     "dev:app": "cross-env EXPO_PORT=8081 ./scripts/dev-app.sh",
+    "test:e2e:mobile": "./scripts/test-mobile-agent-device.sh",
     "dev:website": "npm run dev --workspace=@otto-code/website",
     "dev:brain": "./scripts/dev-home.sh npx tsx packages/brain/src/main.ts",
     "dev:win:brain": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-brain.ps1",

@@ -60,19 +60,37 @@ export const ar: TranslationResources = {
       close: "إغلاق القائمة",
     },
     commandCenter: {
-      placeholder: "اكتب أمرًا أو وكلاء بحث...",
+      placeholder: "ابحث في الأوامر والملفات ومساحات العمل والوكلاء...",
+      filePlaceholder: "البحث في الملفات...",
+      searchingFiles: "جارٍ البحث في الملفات...",
       noMatches: "لا توجد مباريات",
       actions: "الإجراءات",
+      files: "الملفات",
+      workspaces: "مساحات العمل",
       agents: "الوكلاء",
       newAgent: "محادثة جديدة",
       openProject: "مشروع مفتوح",
       home: "بيت",
-      workspaces: "مساحات العمل",
       addProject: "إضافة مشروع",
+      groupByProject: "تجميع حسب المشروع",
+      groupByStatus: "تجميع حسب الحالة",
       modelGroupLabel: "النموذج",
       modelSearchKeywords: "تبديل النموذج تغيير النموذج تعيين النموذج اختيار النموذج",
+      thinkingGroupLabel: "التفكير",
+      thinkingSearchKeywords: "الاستدلال الجهد التفكير",
+      modeGroupLabel: "الوضع",
+      modeSearchKeywords: "الوصول الإذن الموافقة الوضع",
+      planModeGroupLabel: "وضع التخطيط",
+      planModeSearchKeywords: "التخطيط خطة وضع التخطيط",
+      fastModeGroupLabel: "سريع",
+      fastModeSearchKeywords: "سريع سرعة زمن انتقال منخفض",
+      settingOn: "تشغيل",
+      settingOff: "إيقاف",
     },
   },
+  // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
+  // context-window occupancy - see docs/glossary.md; the two must not be
+  // described with each other's words anywhere in this block.
   chatMetrics: {
     tokensIn: "الرموز الواردة، بما فيها قراءات ذاكرة التخزين المؤقت",
     tokensOut: "الرموز الصادرة",
@@ -113,9 +131,11 @@ export const ar: TranslationResources = {
       desktop: "أرسل رسالة إلى الوكيل أو ضع علامة على @files أو استخدم /commands و /skills",
       mobile: "الرسالة، @files ، /commands",
       fallback: "رسالة...",
+      terminal: "Prompt",
     },
     input: {
       accessibilityLabel: "وكيل الرسائل...",
+      terminalAccessibilityLabel: "Terminal prompt",
       focusHint: "{{shortcut}}للتركيز",
       addAttachment: "إضافة مرفق",
       interruptAgent: "عامل المقاطعة",
@@ -147,6 +167,7 @@ export const ar: TranslationResources = {
     },
     attachments: {
       addImage: "تحميل صورة",
+      pasteImage: "لصق صورة",
       addFile: "رفع ملف",
       addFolder: "إضافة مجلد",
       addIssueOrPr: "أضف مشكلة أو PR",
@@ -183,17 +204,13 @@ export const ar: TranslationResources = {
       initialPromptRequired: "مطلوب موجه الأولي",
       alreadyLoading: "جارٍ التحميل بالفعل",
       uploadFailed: "تعذّر رفع الملف",
+      noClipboardImage: "لا توجد صورة في الحافظة",
+      pasteImageFailed: "تعذر لصق الصورة",
       fileTooLarge: "{{fileName}} كبير جدًا (الحد الأقصى {{size}})",
     },
     clientCommands: {
       archiveAgent: "أرشفة الوكيل الحالي",
       freshDraft: "أرشفة هذا الوكيل وابدأ مسودة جديدة",
-    },
-    folder: {
-      searching: "جارٍ البحث...",
-      noResults: "لم يتم العثور على مجلدات.",
-      searchPlaceholder: "بحث المجلدات...",
-      title: "إرفاق مجلد",
     },
     github: {
       searching: "جارٍ البحث...",
@@ -202,6 +219,12 @@ export const ar: TranslationResources = {
       title: "إرفاق المشكلة أو PR",
       searchPlaceholder_mr: "بحث القضايا و MR...",
       title_mr: "إرفاق المشكلة أو MR",
+    },
+    folder: {
+      searching: "جارٍ البحث...",
+      noResults: "لم يتم العثور على مجلدات.",
+      searchPlaceholder: "بحث المجلدات...",
+      title: "إرفاق مجلد",
     },
     interruptSubagentsWarning: {
       title: "مقاطعة الوكلاء الفرعيين قيد التشغيل؟",
@@ -228,6 +251,8 @@ export const ar: TranslationResources = {
       lessons_one: "{{count}} درس",
       lessons_other: "{{count}} درسًا",
     },
+    // What one personality has learned, and the exact text injected because of
+    // it. See docs/agent-personalities.md § Memory.
     memory: {
       noPersonality: "اختر شخصية من الأعلى لترى ما تعلّمته، وما الذي يضيفه ذلك إلى كل طلب تقوم به.",
       loading: "جارٍ قراءة ما تتذكّره هذه الشخصية…",
@@ -251,6 +276,10 @@ export const ar: TranslationResources = {
       scope: {
         global: "في كل مكان",
         project: "هذا المشروع",
+        // A project-scoped lesson recorded somewhere else, and one bound to no
+        // project at all. Both are stored and listed but reach nothing here, so
+        // the row has to say so - otherwise an empty brief above a list of
+        // lessons looks broken.
         elsewhere: "مشروع آخر",
         unattached: "بلا مشروع - لا تُرسل أبدًا",
         change: "النطاق: {{scope}}. اضغط للتغيير.",
@@ -331,6 +360,8 @@ export const ar: TranslationResources = {
     category: {
       contextFiles: "ملفات السياق",
       memoryIndex: "فهرس الذاكرة",
+      // Covers subagent definitions too: both are advertised to the model as a
+      // name plus a description, and both are trimmed the same way.
       skillsRoster: "المهارات والوكلاء",
       mcpTools: "أدوات MCP",
       ottoInjected: "موجّه Otto",
@@ -423,6 +454,7 @@ export const ar: TranslationResources = {
         usedTools: "استخدم {{count}} أداة",
       },
     },
+    historyLoadFailed: "تعذر تحميل سجل الوكيل",
     permission: {
       plan: "يخطط",
       required: "الإذن مطلوب",
@@ -481,11 +513,20 @@ export const ar: TranslationResources = {
       lastActive: "Last active",
       size: "Size",
     },
+    noMatches: "لا توجد جلسات مطابقة",
+    tooManyMatches: "نتائج كثيرة جدًا: ضيّق نطاق البحث",
+    hostLoadFailed: "{{host}}: تعذر تحميل السجل",
     actions: {
       loadMore: "تحميل المزيد",
       clearArchived: "مسح المؤرشفة",
       clearingArchived: "جارٍ المسح…",
+      clearSearch: "مسح البحث",
     },
+    // The destructive-delete copy. It says the same two things everywhere and has
+    // to: deleting in Otto removes *Otto's record*, never the agent provider's own
+    // transcript on the host. Consent to an irreversible action you were told the
+    // wrong shape of is not consent, so this is translated like any other
+    // confirmation text - see history/delete-dialogs.ts.
     dialogs: {
       deleteAgent: {
         title: "حذف هذه المحادثة؟",
@@ -556,6 +597,14 @@ export const ar: TranslationResources = {
     },
   },
   message: {
+    diagram: {
+      diagram: "مخطط",
+      zoomIn: "تكبير",
+      zoomOut: "تصغير",
+      resetZoom: "إعادة تعيين العرض",
+      viewSource: "عرض المصدر",
+      viewDiagram: "عرض المخطط",
+    },
     actions: {
       copyCode: "نسخ الرمز",
       copyTurn: "نسخ بدوره",
@@ -574,7 +623,10 @@ export const ar: TranslationResources = {
       navigateToFolder: "انتقل إلى المجلد",
       copied: "منقول",
     },
-    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
+    expandCollapse: {
+      expandAll: "Expand all",
+      collapseAll: "Collapse all",
+    },
     attachments: {
       dismissImage: "تجاهل الصورة",
       closeImage: "إغلاق الصورة",
@@ -618,6 +670,15 @@ export const ar: TranslationResources = {
       empty: "لا توجد مهام حتى الآن.",
       progress: "{{completed}}/{{total}}",
       dismiss: "تجاهل",
+      tasksProgress: "{{completed}}/{{total}} مهام",
+      tasksProgressCurrent: "{{completed}}/{{total}} مهام · {{task}}",
+      activity: {
+        created: "تم إنشاء {{count}} مهام",
+        added: "أُضيفت",
+        started: "بدأت",
+        completed: "اكتملت",
+        reopened: "أُعيد فتحها",
+      },
     },
     compaction: {
       loading: "الضغط...",
@@ -699,6 +760,8 @@ export const ar: TranslationResources = {
       copyBranchName: "نسخ اسم الفرع",
       copied: "تم النسخ",
     },
+    // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
+    // appear on screen at once. See docs/glossary.md.
     solution: {
       lens: {
         files: "ملفات",
@@ -781,6 +844,15 @@ export const ar: TranslationResources = {
         failedToListDirectory: "فشل في سرد ​​الدليل",
         alreadyExists: "«{{name}}» موجود بالفعل هنا.",
         noLongerExists: "لم يعد هذا العنصر موجودًا على القرص.",
+        createFailed: "فشل إنشاء العنصر",
+        renameFailed: "فشل إعادة تسمية العنصر",
+        duplicateFailed: "فشل تكرار العنصر",
+        revealFailed: "فشل إظهار العنصر",
+        deleteFailed: "فشل حذف العنصر",
+      },
+      draft: {
+        filePlaceholder: "اسم الملف",
+        folderPlaceholder: "اسم المجلد",
       },
     },
     setup: {
@@ -875,6 +947,7 @@ export const ar: TranslationResources = {
     },
     terminal: {
       hostDisconnected: "Host غير متصل",
+      updateHost: "حدّث المضيف لاستخدام عارض الطرفية الأصلي.",
       unableToSubscribe: "غير قادر على الاشتراك في المحطة",
     },
     visualizer: {
@@ -982,6 +1055,7 @@ export const ar: TranslationResources = {
         reloadedAgent: "وكيل إعادة تحميل",
         failedToReloadAgent: "فشل في إعادة تحميل الوكيل",
         terminalIdCopiedLabel: "معرف المحطة",
+        failedToCloseAgent: "فشل في إغلاق الوكيل",
       },
       confirmations: {
         close: "يغلق",
@@ -1415,6 +1489,14 @@ export const ar: TranslationResources = {
           viewPullRequest: "عرض",
           openOn: "فتح على {{brand}}",
         },
+        checksSummary: {
+          passedLabel: "نجح",
+          failedLabel: "فشل",
+          runningLabel: "قيد التشغيل",
+          passedAccessible: "نجحت الفحوصات",
+          failedAccessible: "فشلت الفحوصات",
+          runningAccessible: "الفحوصات قيد التشغيل",
+        },
         sections: {
           checks: "الشيكات",
           reviews: "التعليقات",
@@ -1465,12 +1547,67 @@ export const ar: TranslationResources = {
       navigateToFile: "انتقل إلى الملف",
       navigateToChanges: "انتقل إلى التغييرات",
       copyPath: "نسخ المسار",
+      copyRelativePath: "نسخ المسار النسبي",
+      revealIn: "إظهار في {{target}}",
       download: "تحميل",
-      addToChat: "إضافة إلى الدردشة…",
+      addToChat: "إضافة إلى الدردشة",
       moreActions: "المزيد من الإجراءات",
+      newFile: "ملف جديد",
+      newFolder: "مجلد جديد",
+      collapseFolder: "طي المجلد",
+      rename: "إعادة تسمية",
+      duplicate: "تكرار",
+      revert: "تجاهل التغييرات",
+      delete: "حذف",
+      confirmDelete: {
+        fileTitle: "حذف الملف؟",
+        folderTitle: "حذف المجلد؟",
+        message: 'سيتم حذف "{{name}}" نهائيًا.',
+        confirm: "حذف",
+        cancel: "إلغاء",
+      },
+      confirmRevert: {
+        title: "تجاهل التغييرات؟",
+        message: 'سيتم تجاهل التغييرات في "{{name}}" نهائيًا.',
+        confirm: "تجاهل",
+        cancel: "إلغاء",
+        failed: "فشل تجاهل التغييرات",
+      },
     },
   },
   sidebar: {
+    display: {
+      trigger: "تفضيلات العرض",
+      heading: "العرض",
+      grouping: {
+        label: "التجميع",
+        project: "المشروع",
+        status: "الحالة",
+      },
+      titleSource: {
+        label: "العنوان",
+        title: "العنوان",
+        branch: "اسم الفرع",
+      },
+      show: {
+        label: "إظهار",
+        host: "المضيف",
+        changeRequest: "طلب السحب",
+        checks: "الفحوصات",
+        services: "الخدمات",
+        diff: "إحصائيات الفروق",
+        timestamp: "آخر نشاط",
+      },
+      checks: {
+        iconAndText: "أيقونة ونص",
+        icon: "أيقونة فقط",
+        none: "مخفي",
+      },
+      hostFilter: {
+        label: "المضيف",
+        all: "كل المضيفين",
+      },
+    },
     host: {
       noHost: "لا مضيف",
       switchTitle: "تبديل المضيف",
@@ -1525,7 +1662,8 @@ export const ar: TranslationResources = {
     },
     workspace: {
       status: {
-        scriptsAvailable: "البرامج النصية المتاحة",
+        serviceRunning: "الخدمة {{name}} قيد التشغيل",
+        serviceUnhealthy: "الخدمة {{name}} غير سليمة",
         creating: "جارٍ الإنشاء...",
       },
       actions: {
@@ -1589,7 +1727,7 @@ export const ar: TranslationResources = {
       discord: "Discord",
       github: "إنشاء مشكلة على GitHub",
       whatsNew: "ما الجديد",
-      version: "Otto {{version}}",
+      appName: "Otto",
     },
   },
   newProject: {
@@ -1688,8 +1826,8 @@ export const ar: TranslationResources = {
       scaffold_unsupported: "حدّث المضيف لإنشاء المشاريع.",
     },
     errors: {
-      alreadyAdded: "هذا المجلد مشروع بالفعل: {{path}}",
       failed: "تعذّر إنشاء المشروع.",
+      alreadyAdded: "هذا المجلد مشروع بالفعل: {{path}}",
     },
     actions: {
       open: "فتح المشروع",
@@ -1723,9 +1861,15 @@ export const ar: TranslationResources = {
       openExisting: "افتحها",
       createWorktree: "إنشاء شجرة عمل",
     },
+    tooltips: {
+      project: "Choose the project",
+      host: "Choose the host",
+      isolation: "Choose the isolation level",
+      startingRef: "اختر من أين تبدأ",
+      launch: "Choose what to launch",
+    },
     refPicker: {
       startingRef: "بدء المرجع",
-      chooseStart: "اختر من أين تبدأ",
       checkoutHint: "سحب PR #{{number}}؟",
       checkoutPr: "سحب PR #{{number}}",
       dismissCheckoutHint: "تجاهل تلميح سحب PR #{{number}}",
@@ -1734,6 +1878,15 @@ export const ar: TranslationResources = {
       noMatchingRefs: "لا توجد مراجع مطابقة.",
       searchPlaceholder: "بحث الفروع والعلاقات العامة",
       title: "ابدأ من",
+    },
+    launch: {
+      title: "What to launch",
+      chat: "Chat",
+      terminal: "Terminal",
+      manageProfiles: "Manage profiles",
+      submit: "Launch",
+      promptPlaceholder: "Prompt {{name}}",
+      commandPlaceholder: "Run a command, or leave empty for a blank terminal",
     },
   },
   desktop: {
@@ -1922,11 +2075,11 @@ export const ar: TranslationResources = {
         installFailed: "غير قادر على تثبيت مهارات التنسيق.",
         updateFailed: "غير قادر على تحديث مهارات التنسيق.",
         uninstallFailed: "غير قادر على إلغاء تثبيت مهارات التنسيق.",
+        saveSelectionFailed: "غير قادر على حفظ اختيار مهارات التنسيق.",
       },
     },
   },
   rootError: {
-    kicker: "حدث خطأ",
     title: "واجه Otto مشكلة.",
     body: "جرّب مرة أخرى لإعادة تحميل التطبيق. إذا استمر حدوث ذلك، فأرفق التفاصيل أدناه عند الإبلاغ عنه.",
     details: "التفاصيل",
@@ -2195,6 +2348,11 @@ export const ar: TranslationResources = {
       settings: "إعدادات",
     },
   },
+  // The first-run setup wizard. The blueprint names below are also the names the
+  // generated teams are saved under, so the card and the installed team always
+  // agree. What stays English is what the model reads, not what the user does:
+  // the team prompts, functional cores and persona names in
+  // screens/setup-wizard/presets/ are agent input.
   setupWizard: {
     chrome: {
       skip: "تخطّي الإعداد",
@@ -2319,11 +2477,18 @@ export const ar: TranslationResources = {
     favorites: "المفضلة",
     favoriteModel: "النموذج المفضل",
     unfavoriteModel: "نموذج غير مفضل",
+    profiles: "الملفات الشخصية",
+    providers: "المزودون",
+    editProfiles: "تحرير",
+    editProfilesLabel: "تحرير ملفات الوكيل",
+    createProfile: "إنشاء ملف شخصي",
     modelCount: "{{count}} نموذج",
     modelCountPlural: "{{count}} نماذج",
     retry: "أعد المحاولة",
     retrying: "جارٍ إعادة المحاولة...",
     noMatches: "لا توجد نماذج تطابق بحثك",
+    noMatchesForQuery: 'لا توجد نماذج تطابق "{{query}}"',
+    searchAllPlaceholder: "ابحث في كل النماذج...",
     searchPlaceholder: "نماذج البحث...",
     openProviderSettings: "افتح إعدادات{{provider}}",
   },
@@ -2454,9 +2619,21 @@ export const ar: TranslationResources = {
       loadingOffer: "جارٍ تحميل عرض الإقران...",
       failedToLoadOffer: "فشل تحميل عرض الاقتران.",
       relayDisabled: "لم يتم تمكين التتابع. تمكين التتابع لإقران جهاز.",
+      enableTitle: "تمكين التتابع؟",
+      enableDescription:
+        "يتيح التتابع لهذا الجهاز الاتصال من أي مكان. حركة مرور الإقران مشفرة من طرف إلى طرف.",
+      relayDocs: "كيفية عمل التتابع",
+      relayDocsAccessibility: "اقرأ كيفية عمل تتابع Otto",
+      enableRelay: "تمكين التتابع",
+      enablingRelay: "جارٍ التمكين...",
+      notNow: "ليس الآن",
+      directConnectionHint:
+        "بدون التتابع، اتصل مباشرة عبر TCP أو Tailscale أو شبكة VPN أخرى. لن يتم إنشاء رمز QR.",
+      updateRequired: "حدّث المضيف لتمكين التتابع من Otto Desktop.",
       unavailable: "عرض الاقتران غير متاح.",
       hint: "قم بمسح رمز QR هذا باستخدام Otto على هاتفك، أو انسخ الرابط أدناه.",
       qrUnavailable: "رمز QR غير متاح.",
+      qrAccessibility: "رمز QR للإقران",
       retry: "أعد المحاولة",
       copy: "ينسخ",
       copied: "منقول",
@@ -2501,6 +2678,47 @@ export const ar: TranslationResources = {
   },
   menu: {
     backdrop: "خلفية القائمة",
+  },
+  subagents: {
+    detachAction: "فصل {{label}}",
+    detachTooltip: "فصل الوكيل الفرعي",
+    archiveAction: "أرشيف{{label}}",
+    archiveTooltip: "أرشفة الوكيل الفرعي",
+    stopAction: "إيقاف {{label}}",
+    stopTooltip: "إيقاف الوكيل الفرعي",
+    completedGroup: "مكتمل ({{count}})",
+    clearCompleted: "مسح الكل",
+    clearCompletedTooltip: "أرشفة جميع الوكلاء الفرعيين المكتملين",
+    stopNothingRunning: "الوكيل الفرعي غير قيد التشغيل، لا يوجد ما يمكن إيقافه.",
+    daemonUnavailable: "الخادم الخلفي غير متاح",
+    dialogs: {
+      subjectFallback: "هذا الوكيل الفرعي",
+      subjectFallbackCapitalized: "هذا الوكيل الفرعي",
+      archive: {
+        titleRunning: "أرشفة وكيل فرعي قيد التشغيل؟",
+        title: "أرشفة الوكيل الفرعي؟",
+        messageRunning:
+          "{{subject}} لا يزال قيد التشغيل. أرشفته ستوقف الوكيل الفرعي وتزيله من المسار.",
+        message: "إزالة {{subject}} من المسار. ستتم أرشفة الوكيل الفرعي.",
+        confirm: "أرشفة",
+      },
+      detach: {
+        title: "فصل الوكيل الفرعي؟",
+        message: "سيغادر {{subject}} هذا المسار ويستمر كوكيل مستقل.",
+        confirm: "فصل",
+      },
+      clearCompleted: {
+        titleOne: "مسح الوكيل الفرعي المكتمل؟",
+        titleMany: "مسح {{count}} وكلاء فرعيين مكتملين؟",
+        messageOne:
+          "أرشفة وكيل فرعي مكتمل واحد وإزالته من المسار. الوكلاء الفرعيون قيد التشغيل لا يُمسّون.",
+        messageMany:
+          "أرشفة {{count}} وكلاء فرعيين مكتملين وإزالتهم من المسار. الوكلاء الفرعيون قيد التشغيل لا يُمسّون.",
+        confirm: "مسح",
+      },
+    },
+    archiveFinishedAction: "أرشفة الوكلاء الفرعيين المكتملين",
+    archiveFinishedTooltip: "أرشفة المكتملين",
   },
   observedSubagents: {
     readOnlyTitle: "وكيل فرعي مُراقَب · للقراءة فقط",
@@ -2654,6 +2872,10 @@ export const ar: TranslationResources = {
     saveFirst: "احفظ تغييراتك أو تراجع عنها أولًا - التحسين يعمل على الملف الموجود على القرص.",
     compactOpen: "ضغط بالذكاء الاصطناعي",
     unsupported: "حدّث المضيف لاستخدام التحسين.",
+    // The job the tab presents itself as: a tab opened from "Compact with AI"
+    // must not call itself "Refine". Used as the tab title, the run button and
+    // inside the idle note, so it has to be a standalone noun/verb in every
+    // locale.
     job: {
       refine: "تحسين",
       compact: "ضغط",
@@ -2830,47 +3052,6 @@ export const ar: TranslationResources = {
     removeLineFromContext: "إزالة السطر {{line}} من المحادثة",
     error: "فشل البحث",
   },
-  subagents: {
-    detachAction: "فصل {{label}}",
-    detachTooltip: "فصل الوكيل الفرعي",
-    archiveAction: "أرشيف{{label}}",
-    archiveTooltip: "أرشفة الوكيل الفرعي",
-    stopAction: "إيقاف {{label}}",
-    stopTooltip: "إيقاف الوكيل الفرعي",
-    completedGroup: "مكتمل ({{count}})",
-    clearCompleted: "مسح الكل",
-    clearCompletedTooltip: "أرشفة جميع الوكلاء الفرعيين المكتملين",
-    stopNothingRunning: "الوكيل الفرعي غير قيد التشغيل، لا يوجد ما يمكن إيقافه.",
-    daemonUnavailable: "الخادم الخلفي غير متاح",
-    dialogs: {
-      subjectFallback: "هذا الوكيل الفرعي",
-      subjectFallbackCapitalized: "هذا الوكيل الفرعي",
-      archive: {
-        titleRunning: "أرشفة وكيل فرعي قيد التشغيل؟",
-        title: "أرشفة الوكيل الفرعي؟",
-        messageRunning:
-          "{{subject}} لا يزال قيد التشغيل. أرشفته ستوقف الوكيل الفرعي وتزيله من المسار.",
-        message: "إزالة {{subject}} من المسار. ستتم أرشفة الوكيل الفرعي.",
-        confirm: "أرشفة",
-      },
-      detach: {
-        title: "فصل الوكيل الفرعي؟",
-        message: "سيغادر {{subject}} هذا المسار ويستمر كوكيل مستقل.",
-        confirm: "فصل",
-      },
-      clearCompleted: {
-        titleOne: "مسح الوكيل الفرعي المكتمل؟",
-        titleMany: "مسح {{count}} وكلاء فرعيين مكتملين؟",
-        messageOne:
-          "أرشفة وكيل فرعي مكتمل واحد وإزالته من المسار. الوكلاء الفرعيون قيد التشغيل لا يُمسّون.",
-        messageMany:
-          "أرشفة {{count}} وكلاء فرعيين مكتملين وإزالتهم من المسار. الوكلاء الفرعيون قيد التشغيل لا يُمسّون.",
-        confirm: "مسح",
-      },
-    },
-    archiveFinishedAction: "أرشفة الوكلاء الفرعيين المكتملين",
-    archiveFinishedTooltip: "أرشفة المكتملين",
-  },
   panels: {
     draft: {
       newAgent: "محادثة جديدة",
@@ -2905,7 +3086,9 @@ export const ar: TranslationResources = {
         cursor: "السطر {{line}}، العمود {{column}}",
         preview: "معاينة",
         source: "المصدر",
-        unavailableTitle: "الملف غير متاح على القرص",
+        deletedTitle: "تم حذف الملف من القرص",
+        checkFailedTitle: "تعذّر التحقق من الملف على القرص",
+        preservedDescription: "تم الاحتفاظ بالنسخة المفتوحة.",
         conflictDescription: "تم الاحتفاظ بالمحتوى المحلي. اختر الإصدار الذي تريد إبقاءه.",
         overwrite: "استبدال",
         reload: "إعادة تحميل",
@@ -2932,8 +3115,6 @@ export const ar: TranslationResources = {
     input: "مدخل",
     output: "الإخراج",
   },
-  // Tool-call group summaries are literal English pending the pre-release i18n
-  // sweep, like the Refine tab strings above.
   toolCallGroup: {
     editedFiles: {
       one: "edited {{count}} file",
@@ -3034,18 +3215,36 @@ export const ar: TranslationResources = {
       appearance: "مظهر",
       shortcuts: "الاختصارات",
       integrations: "التكامل",
+      notifications: "الإشعارات",
       permissions: "الأذونات",
       diagnostics: "التشخيص",
       about: "عن",
       editor: "المحرر",
     },
+    notifications: {
+      title: "الإشعارات",
+      permission: "إذن الإشعارات",
+      refreshAccessibility: "تحديث إذن الإشعارات",
+      playSound: "تشغيل صوت",
+      playSoundHint: "تشغيل صوت عند وصول إشعار سطح مكتب",
+      test: "اختبار الإشعار",
+      testHint: "إرسال إشعار باستخدام هذه الإعدادات",
+      permissionRequired: "اسمح بالوصول إلى الإشعارات قبل الاختبار",
+      send: "إرسال",
+      sending: "جارٍ الإرسال...",
+      sentTitle: "تم إرسال إشعار الاختبار",
+      sentDescription: "سلّم Otto الإشعار إلى نظام التشغيل.",
+      sendFailedTitle: "تعذر إرسال إشعار الاختبار",
+    },
     hostSections: {
+      projects: "المشاريع",
       connections: "اتصالات",
       agents: "الوكلاء",
       teams: "الفرق",
       tools: "الأدوات",
       code: "الكود",
       brain: "الدماغ",
+      metadata: "البيانات الوصفية",
       workspaces: "Workspaces",
       gitProviders: "موفّرو Git",
       providers: "مقدمي الخدمات",
@@ -3053,6 +3252,20 @@ export const ar: TranslationResources = {
       storage: "التخزين",
       terminals: "الطرفيات",
       host: "نظرة عامة",
+    },
+    metadataGeneration: {
+      title: "إنشاء البيانات الوصفية",
+      description:
+        "اختر النموذج الذي يستخدمه Otto لعناوين مساحات العمل وأسماء الفروع ورسائل الالتزام ومسودات طلبات السحب",
+      selection: "اختيار النموذج",
+      automatic: "تلقائي",
+      preferred: "يدوي",
+      automaticHint: "يختار Otto نموذجًا سريعًا متاحًا",
+      preferredHint: "اختر النموذج الذي يستخدمه Otto",
+      model: "النموذج",
+      fallbackHint: "إذا لم يكن متاحًا، يستخدم Otto نموذجًا آخر متاحًا",
+      docs: "الوثائق",
+      saveError: "تعذر تحديث إنشاء البيانات الوصفية",
     },
     general: {
       title: "عام",
@@ -3066,6 +3279,15 @@ export const ar: TranslationResources = {
         options: {
           interrupt: "مقاطعة",
           queue: "طابور",
+        },
+      },
+      toolCallDetail: {
+        label: "عرض استدعاءات الأدوات",
+        description: "كيفية ظهور استدعاءات الأدوات في المخطط الزمني",
+        accessibilityLabel: "حدد عرض استدعاءات الأدوات ({{value}})",
+        options: {
+          overview: "ملخص",
+          detailed: "التفاصيل الكاملة",
         },
       },
       interfaceMode: {
@@ -3144,6 +3366,7 @@ export const ar: TranslationResources = {
           es: "Español",
           fr: "Français",
           ja: "日本語",
+          ko: "한국어",
           ptBR: "Português brasileiro",
           ru: "Русский",
           zhCN: "中文",
@@ -3164,15 +3387,6 @@ export const ar: TranslationResources = {
         label: "عرض التفكير دائماً",
         description: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
       },
-      toolCallDetail: {
-        label: "عرض استدعاءات الأدوات",
-        description: "كيفية ظهور استدعاءات الأدوات في المخطط الزمني",
-        accessibilityLabel: "حدد عرض استدعاءات الأدوات ({{value}})",
-        options: {
-          overview: "ملخص",
-          detailed: "التفاصيل الكاملة",
-        },
-      },
     },
     preview: {
       title: "المعاينة",
@@ -3184,6 +3398,11 @@ export const ar: TranslationResources = {
     },
     diagnostics: {
       title: "التشخيص",
+      legacyTerminalRenderer: {
+        label: "استخدام عارض الطرفية السابق",
+        description: "استخدام طرفية WebView السابقة بعد إعادة فتح الطرفية",
+        accessibilityLabel: "استخدام عارض الطرفية السابق",
+      },
       testAudio: "اختبار الصوت",
       playTest: "لعب الاختبار",
       playing: "جارٍ اللعب...",
@@ -3269,6 +3488,7 @@ export const ar: TranslationResources = {
           horizon: "الأفق",
           powder: "مسحوق",
           light: "ضوء",
+          pureBlack: "أسود خالص",
           auto: "نظام",
         },
       },
@@ -3383,6 +3603,10 @@ export const ar: TranslationResources = {
           accessibilityLabel: "طبقة التكلفة",
         },
       },
+      chatOutline: {
+        title: "مخطط المحادثة",
+        description: "عرض مخطط للتنقل بين المطالبات",
+      },
       fonts: {
         title: "الخطوط",
         systemDefault: "الافتراضي للنظام",
@@ -3415,20 +3639,26 @@ export const ar: TranslationResources = {
       dialogTitle: "الاختصارات",
       unavailableOnMobile: "اختصارات لوحة المفاتيح متاحة فقط على سطح المكتب",
       capturePrompt: "اضغط على الاختصار...",
+      unassigned: "غير معين",
       actions: {
+        menu: "إجراءات {{name}}",
         done: "منتهي",
         cancel: "يلغي",
+        bind: "ربط",
         rebind: "إعادة ربط",
-        reset: "إعادة ضبط",
+        clear: "مسح",
+        reset: "إعادة الضبط إلى الافتراضي",
         resetAll: "إعادة ضبط الكل",
       },
       sections: {
-        navigation: "ملاحة",
+        general: "عام",
+        workspaces: "المشاريع ومساحات العمل",
         tabsPanes: "علامات التبويب والأجزاء",
         projects: "المشاريع",
         panels: "لوحات",
         editor: "محرّر الملفات",
         markdownEditor: "محرر Markdown",
+        layout: "التخطيط",
         agentInput: "إدخال Agent",
       },
       help: {
@@ -3456,6 +3686,7 @@ export const ar: TranslationResources = {
         moveTabDown: "حرك علامة التبويب لأسفل",
         closePane: "إغلاق الجزء",
         newTerminal: "محطة جديدة",
+        searchFiles: "البحث في الملفات",
         toggleCommandCenter: "تبديل مركز القيادة",
         showKeyboardShortcuts: "إظهار اختصارات لوحة المفاتيح",
         toggleLeftSidebar: "تبديل الشريط الجانبي الأيسر",
@@ -3497,7 +3728,6 @@ export const ar: TranslationResources = {
         showKeyboardShortcuts: "متاح عندما لا يكون التركيز في حقل نص أو محطة طرفية.",
       },
       searchPlaceholder: "البحث في الاختصارات",
-      // Literal English pending the pre-release i18n sweep.
       searchEmpty: "No shortcuts match that search",
     },
     integrations: {
@@ -3520,6 +3750,15 @@ export const ar: TranslationResources = {
         updateFallback: "مزامنة المهارات المجمعة لجهازك.",
         uninstallTitle: "إلغاء تثبيت مهارات Otto ؟",
         uninstallMessage: "يزيل جميع مهارات تنسيق Otto من ~/.agents ، ~/.claude ، ~/.codex.",
+        choose: "اختيار المهارات",
+        chooseAll: "كل المهارات",
+        chooseAllHint: "أبقِ جميع المهارات المرفقة مثبتة، بما فيها ما يُضاف لاحقًا.",
+        chooseList: "المهارات المرفقة",
+        chooseEmpty: "لا تتضمن هذه النسخة أي مهارات.",
+        removeTitle: "إزالة المهارات غير المحددة؟",
+        removeMessage:
+          "سيتم حذف {{skills}} من ~/.agents و~/.claude و~/.codex. كما يُحذف كل ما أضفته داخل مجلدات المهارات تلك.",
+        saveFailed: "تعذر حفظ اختيار المهارات.",
       },
       actions: {
         install: "ثَبَّتَ",
@@ -3527,7 +3766,10 @@ export const ar: TranslationResources = {
         installed: "تم التثبيت",
         update: "تحديث",
         working: "عمل...",
+        remove: "إزالة",
         uninstall: "إلغاء التثبيت",
+        save: "حفظ",
+        saving: "جارٍ الحفظ...",
       },
       operations: {
         add: "أضف مهارة",
@@ -3537,20 +3779,52 @@ export const ar: TranslationResources = {
     },
     permissions: {
       title: "الأذونات",
-      notifications: "إشعارات",
       microphone: "ميكروفون",
       refresh: "ينعش",
       refreshing: "منعش...",
       refreshAccessibility: "تحديث أذونات سطح المكتب",
-      test: "امتحان",
       actions: {
         granted: "ممنوح",
         request: "طلب",
         requesting: "جارٍ الطلب...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {
+      appearance: {
+        title: "المظهر",
+        name: {
+          label: "الاسم",
+        },
+        color: {
+          label: "اللون",
+          accessibilityLabel: "اللون، {{value}}",
+          options: {
+            none: "افتراضي",
+            violet: "بنفسجي",
+            sky: "سماوي",
+            emerald: "زمردي",
+            orange: "برتقالي",
+            pink: "وردي",
+            indigo: "نيلي",
+            teal: "أزرق مخضر",
+            red: "أحمر",
+            amber: "كهرماني",
+            blue: "أزرق",
+          },
+        },
+        badge: {
+          label: "شارة الشريط الجانبي",
+          accessibilityLabel: "شارة الشريط الجانبي، {{value}}",
+          options: {
+            name: "الاسم",
+            icon: "أيقونة فقط",
+            hidden: "مخفي",
+          },
+        },
+        preview: {
+          workspaceName: "my-workspace",
+        },
+      },
       notFound: "لم يتم العثور على Host",
       badges: {
         relay: "تتابع",
@@ -3774,6 +4048,42 @@ export const ar: TranslationResources = {
         save: "حفظ",
         emptyState: "لا توجد ملفات تعريف بعد. أضف واحدًا لتشغيل الطرفيات بأمر محدد.",
       },
+      agentProfiles: {
+        sectionTitle: "ملفات تعريف الوكيل",
+        unavailable: "اتصل بهذا المضيف لإدارة ملفات تعريف الوكيل",
+        unsupported: "يشغّل هذا المضيف نسخة Daemon لا تدعم ملفات تعريف الوكيل بعد",
+        emptyState: "لا توجد ملفات تعريف بعد. أضف واحدًا لبدء الوكلاء من مزود ونموذج محفوظين.",
+        addProfileTitle: "إضافة ملف تعريف وكيل",
+        newProfile: "ملف تعريف جديد",
+        editProfile: "تعديل الملف",
+        editProfileTitle: "تعديل ملف تعريف الوكيل",
+        nameLabel: "الاسم",
+        namePlaceholder: "عمل الواجهة",
+        iconLabel: "الأيقونة",
+        noIcon: "بلا",
+        providerLabel: "المزود",
+        providerPlaceholder: "اختر مزودًا",
+        noProviders: "لا يوجد مزودون متاحون على هذا المضيف",
+        modelLabel: "النموذج",
+        noModels: "لا توجد نماذج يمكن الاختيار من بينها لهذا المزود",
+        modeLabel: "الوضع",
+        noModes: "لا توجد أوضاع يمكن الاختيار من بينها لهذا المزود",
+        thinkingLabel: "التفكير",
+        noThinkingOptions: "لا توجد مستويات تفكير لهذا النموذج",
+        featuresLabel: "السمات",
+        featureCount: "{{count}} سمة",
+        featureCountOne: "{{count}} سمة",
+        notesLabel: "ملاحظات للوكلاء",
+        notesPlaceholder: "استخدمه لعمل الواجهة: المكونات والتخطيط ورموز التصميم.",
+        notesHint: 'تُعاد بواسطة أداة MCP "list_profiles". اكتبها كتعليمة لوكيل آخر.',
+        save: "حفظ",
+        saving: "جارٍ الحفظ...",
+        remove: "إزالة",
+        removeConfirmTitle: "إزالة الملف؟",
+        removeConfirmMessage: 'إزالة "{{name}}"؟',
+        moveUp: "نقل لأعلى",
+        moveDown: "نقل لأسفل",
+      },
       daemon: {
         rename: {
           editLabel: "تحرير التسمية",
@@ -3859,25 +4169,6 @@ export const ar: TranslationResources = {
         notInstalled: "غير مثبت",
         requiresBase: "يتطلب {{name}}",
       },
-      tools: {
-        title: "أدوات Otto",
-        description:
-          "مجموعات الأدوات التي يمكن لهذا النموذج استخدامها. ألغِ تحديد مجموعة لإخفائها عن النموذج.",
-        globallyDisabled: "معطّل في الإعدادات العامة",
-        saved: "تم حفظ إعدادات الأدوات",
-        saveFailed: "تعذّر حفظ إعدادات الأدوات",
-        groups: {
-          preview: "خوادم المعاينة",
-          browser: "التحكم في المتصفح",
-          web: "البحث في الويب",
-          agents: "إدارة الوكلاء",
-          terminals: "الطرفيات",
-          schedules: "الجداول",
-          artifacts: "المخرجات",
-          widgets: "الأدوات المصغّرة",
-          workspace: "مساحات العمل",
-        },
-      },
       tabs: {
         models: "النماذج",
         connection: "الاتصال",
@@ -3925,6 +4216,25 @@ export const ar: TranslationResources = {
         savedNoKey: "نقطة نهاية محفوظة · بدون مفتاح API",
         forget: "نسيان نقطة النهاية هذه",
         forgot: "تم نسيان نقطة النهاية",
+      },
+      tools: {
+        title: "أدوات Otto",
+        description:
+          "مجموعات الأدوات التي يمكن لهذا النموذج استخدامها. ألغِ تحديد مجموعة لإخفائها عن النموذج.",
+        globallyDisabled: "معطّل في الإعدادات العامة",
+        saved: "تم حفظ إعدادات الأدوات",
+        saveFailed: "تعذّر حفظ إعدادات الأدوات",
+        groups: {
+          preview: "خوادم المعاينة",
+          browser: "التحكم في المتصفح",
+          web: "البحث في الويب",
+          agents: "إدارة الوكلاء",
+          terminals: "الطرفيات",
+          schedules: "الجداول",
+          artifacts: "المخرجات",
+          widgets: "الأدوات المصغّرة",
+          workspace: "مساحات العمل",
+        },
       },
       remove: {
         button: "إزالة الموفر",
@@ -3980,7 +4290,7 @@ export const ar: TranslationResources = {
       },
     },
     project: {
-      noEditableTarget: "ليس لدينا نسخة قابلة للتحرير من هذا المشروع على أي مضيف متصل.",
+      noEditableTarget: "هذا المشروع غير متاح للتحرير على هذا المضيف.",
       backToProjects: "العودة إلى المشاريع",
       switchHost: "تبديل المضيف",
       rename: {
@@ -3992,6 +4302,17 @@ export const ar: TranslationResources = {
         saveLabel: "احفظ اسم المشروع",
         cancelLabel: "إلغاء إعادة التسمية",
         reset: "إعادة ضبط",
+      },
+      edit: {
+        title: "تعديل المشروع",
+        name: "الاسم",
+        nameLabel: "اسم المشروع",
+        icon: "الأيقونة",
+        chooseImage: "اختيار صورة",
+        useAutomatic: "استخدام التلقائي",
+        imageUrl: "رابط صورة أو موقع",
+        save: "حفظ التغييرات",
+        savedToast: "تم تحديث المشروع",
       },
       links: {
         title: "المشاريع المرتبطة",
@@ -4022,7 +4343,6 @@ export const ar: TranslationResources = {
         invalidTitle: "تعذر تحليل otto.json",
         invalidDescription: "قم بإصلاح الملف على القرص، ثم أعد تحميله.",
         missingTitle: "هذا المضيف ليس لديه هذا المشروع",
-        missingWithHosts: "قم بالتبديل إلى مضيف آخر أعلاه، أو أعد التحميل.",
         missingSingleHost: "المضيف المحدد ليس لديه سجل لهذا المشروع.",
         transportTitle: "تعذر تحميل otto.json",
         transportFallback: "المضيف لم يستجب.",
@@ -4036,6 +4356,9 @@ export const ar: TranslationResources = {
         docsTooltip: "راجع المستندات لمزيد من التفاصيل ومتغيرات البيئة المتاحة لهذه الأوامر",
         setup: "يثبت",
         setupAccessibility: "أوامر إعداد شجرة العمل",
+        uncommittedTitle: "ثبّت تغييرات otto.json",
+        uncommittedDescription:
+          "تستخدم أشجار العمل الجديدة نص الإعداد البرمجي من الفرع الأساسي الذي تحدده.",
         teardown: "هدم",
         teardownAccessibility: "أوامر هدم شجرة العمل",
       },

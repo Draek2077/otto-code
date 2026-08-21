@@ -2,7 +2,7 @@
 name: otto-advisor
 description: Spin up a single agent as an advisor - second opinion on the current task. Use when the user says "advisor", "second opinion", "what does X think", or wants an outside take without delegating the work itself.
 user-invocable: true
-argument-hint: "[--provider <name>] <question or topic>"
+argument-hint: "[--profile <name>] <question or topic>"
 ---
 
 # Otto Advisor
@@ -13,17 +13,15 @@ Single agent. Reads the situation you're in. Gives a judgment. You decide what t
 
 ## Prerequisites
 
-Read the **otto** skill. Before choosing a provider, call `list_personalities` (role `advisor`); if the host has an advisor personality, prefer it. Otherwise read `~/.otto/orchestration-preferences.json` unless the user explicitly named a provider in this request. Do not create the advisor until you have done one of these.
+Read the **otto** skill. Call `list_profiles` before choosing the advisor, and read every configured profile's `notes`. Do not create the advisor until you have inspected the available profiles.
 
 ## Picking the advisor
 
-1. **User named one** (`--provider claude/opus`) → use it.
-2. **Advisor personality available** → spawn it via `create_agent`'s `personality` argument (it already carries the right provider/model/effort/prompt). This is the preferred path when the host has one.
-3. **Otherwise** resolve from preferences - pick the category that matches the question:
-   - Design / approach question → `planning`
-   - "Did I miss something" review → `audit`
-   - "Is this even right" → `research`
-4. **Contrast helps.** If your own provider matches what preferences would pick, swap to a different family on purpose - fresh perspective is the point.
+1. **User named a profile** (`--profile UI Work`) → select it by name.
+2. **Otherwise** choose the profile whose `notes` best fit the question: design and approach, audit and review, or research and root-cause analysis.
+3. **Contrast helps.** When several profiles fit, prefer a different provider family from your own so the second opinion is genuinely fresh.
+
+Materialize the selected profile into `create_agent` as described by the **otto** skill. If no profile fits, use Otto's provider-discovery fallback and tell the user.
 
 ## The briefing
 
@@ -58,7 +56,7 @@ Pass through any remaining arguments after the skill name as the skill's own inp
 
 ## Launch and synthesize
 
-Create the advisor agent via Otto with a `[Advisor] <topic>` title and the briefing as the initial prompt. Wait for it to finish. Read its response. Synthesize for the user - the advisor's verdict + your recommendation.
+Create the advisor agent via Otto with a `[Advisor] <topic>` title, the briefing as the initial prompt, `relationship: { kind: "subagent" }`, and `workspace: { kind: "current" }`. Wait for it to finish. Read its response. Synthesize for the user - the advisor's verdict + your recommendation.
 
 ## Persistent advisor
 

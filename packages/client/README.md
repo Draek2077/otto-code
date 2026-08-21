@@ -1,12 +1,39 @@
 # @otto-code/client
 
-Otto's JavaScript/TypeScript client package.
+TypeScript SDK for building integrations on top of a Otto daemon.
+
+```bash
+npm install @otto-code/client
+```
+
+```ts
+import { createOttoClient } from "@otto-code/client";
+
+const client = createOttoClient({ url: "ws://127.0.0.1:6868/ws" });
+await client.connect();
+
+const agent = await client.agents.create({
+  config: { provider: "codex/gpt-5.5" },
+  cwd: "/Users/me/dev/storefront",
+  prompt: "Review the current diff and name the riskiest change.",
+});
+
+const result = await agent.waitForFinish();
+console.log(result.lastMessage);
+
+await client.close();
+```
+
+The public API is the package root. Imports under `@otto-code/client/internal/*` are unsupported implementation details used by Otto's own packages.
+
+Read the [SDK documentation](https://otto-code.me/docs/sdk) for agents, workspaces, provider discovery, events, recipes, and the API reference. Runnable TypeScript patterns also live in [`examples/`](./examples/README.md).
+
+## Runtime
+
+The client needs a WebSocket implementation. Modern browsers and Node.js 22 provide one globally.
+
+Use a WebSocket URL ending in `/ws`, such as `ws://127.0.0.1:6868/ws`. Pass `password` when the daemon requires authentication.
 
 ## Stability
 
-This package is public so Otto's published packages can depend on it cleanly.
-It is not a stable public SDK yet.
-
-APIs, exports, runtime behavior, and types may change or disappear in any
-release without advance notice. Use it outside Otto at your own risk until the
-package is explicitly documented as stable.
+The high-level API exported from `@otto-code/client` is the supported SDK surface. The SDK and daemon remain protocol-compatible across versions, but newly added capabilities can require a newer daemon.

@@ -1545,8 +1545,9 @@ export class OpenAICompatAgentClient implements AgentClient {
   }
 
   async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
+    void options;
     const endpoint = this.endpoint();
-    const timeoutMs = options.timeoutMs ?? DEFAULT_CATALOG_TIMEOUT_MS;
+    const timeoutMs = DEFAULT_CATALOG_TIMEOUT_MS;
     let response: Response;
     try {
       response = await fetch(`${endpoint.baseUrl}/models`, {

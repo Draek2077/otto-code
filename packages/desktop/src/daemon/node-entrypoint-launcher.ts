@@ -30,7 +30,7 @@ export function createElectronNodeEnv(
   return {
     ...baseEnv,
     ELECTRON_RUN_AS_NODE: "1",
-    ...(options?.isPackaged === true ? { [OTTO_NODE_ENV]: "production" } : {}),
+    [OTTO_NODE_ENV]: options?.isPackaged === true ? "production" : "development",
   };
 }
 

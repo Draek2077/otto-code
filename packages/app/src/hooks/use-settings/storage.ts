@@ -2,6 +2,17 @@ import { type SyntaxThemeId } from "@otto-code/highlight";
 import type { QueryClient } from "@tanstack/react-query";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { type AppLanguage } from "@/i18n/locales";
+import {
+  DEFAULT_SIDEBAR_CHECKS_DISPLAY,
+  parseSidebarChecksDisplay,
+  type SidebarChecksDisplay,
+} from "@/components/sidebar/display-preferences/checks-display";
+import {
+  DEFAULT_SIDEBAR_ROW_ITEMS,
+  isChecksHiddenByLegacyRowItem,
+  parseSidebarRowItems,
+  type SidebarRowItems,
+} from "@/components/sidebar/display-preferences/row-items";
 import { DEFAULT_CODE_FONT_SIZE, DEFAULT_UI_FONT_SIZE } from "./limits";
 import {
   DEFAULT_OTTO_SETTINGS,
@@ -39,6 +50,8 @@ export const APP_SETTINGS_KEY = "@otto:app-settings";
 export const APP_SETTINGS_QUERY_KEY = ["app-settings"];
 const LEGACY_SETTINGS_KEY = "@otto:settings";
 
+export type SidebarWorkspaceTrailing = "diff" | "timestamp" | "none";
+
 export interface AppSettings extends OttoAppSettings {
   language: AppLanguage;
   sendBehavior: SendBehavior;
@@ -48,6 +61,7 @@ export interface AppSettings extends OttoAppSettings {
   serviceUrlBehavior: ServiceUrlBehavior;
   // See LinkOpenBehavior. Device-local presentation only.
   terminalScrollbackLines: number;
+  useLegacyTerminalRenderer: boolean;
   uiFontFamily: string; // "" = platform default UI stack
   monoFontFamily: string; // "" = platform default mono stack
   uiFontSize: number; // clamped px, default 16
@@ -62,6 +76,9 @@ export interface AppSettings extends OttoAppSettings {
   toolCallDetailLevel: ToolCallDetailLevel;
   /** Vim keybindings in the file editor. */
   vimKeybindings: boolean;
+  sidebarWorkspaceTrailing: SidebarWorkspaceTrailing;
+  sidebarRowItems: SidebarRowItems;
+  sidebarChecksDisplay: SidebarChecksDisplay;
   /** Constrained leader-only Otto action mappings for Vim keybindings. */
 }
 
@@ -76,6 +93,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   sendBehavior: "interrupt",
   serviceUrlBehavior: "ask",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
+  useLegacyTerminalRenderer: false,
   uiFontFamily: "",
   monoFontFamily: "",
   uiFontSize: DEFAULT_UI_FONT_SIZE,
@@ -85,6 +103,9 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   autoExpandReasoning: false,
   toolCallDetailLevel: "detailed",
   vimKeybindings: false,
+  sidebarWorkspaceTrailing: "diff",
+  sidebarRowItems: DEFAULT_SIDEBAR_ROW_ITEMS,
+  sidebarChecksDisplay: DEFAULT_SIDEBAR_CHECKS_DISPLAY,
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -194,6 +215,14 @@ export async function loadSettingsFromStorage(deps: SettingsDeps): Promise<Setti
 }
 
 function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const sidebarWorkspaceTrailing = stored.sidebarWorkspaceTrailing;
+  const sidebarChecksDisplay = parseSidebarChecksDisplay(stored.sidebarChecksDisplay);
+  let sidebarChecksSetting: Partial<AppSettings> = {};
+  if (sidebarChecksDisplay !== null) {
+    sidebarChecksSetting = { sidebarChecksDisplay };
+  } else if (isChecksHiddenByLegacyRowItem(stored.sidebarRowItems)) {
+    sidebarChecksSetting = { sidebarChecksDisplay: "none" };
+  }
   return {
     ...pickThemeAndBehaviorSettings(stored),
     ...pickFontSettings(stored),
@@ -210,6 +239,18 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickVoicePlaybackSettings(stored),
     ...pickAgentAutoSpeechSettings(stored),
     ...pickFeatureFlagSettings(stored),
+    ...(typeof stored.useLegacyTerminalRenderer === "boolean"
+      ? { useLegacyTerminalRenderer: stored.useLegacyTerminalRenderer }
+      : {}),
+    ...(stored.sidebarRowItems !== undefined
+      ? { sidebarRowItems: parseSidebarRowItems(stored.sidebarRowItems) }
+      : {}),
+    ...sidebarChecksSetting,
+    ...(sidebarWorkspaceTrailing === "diff" ||
+    sidebarWorkspaceTrailing === "timestamp" ||
+    sidebarWorkspaceTrailing === "none"
+      ? { sidebarWorkspaceTrailing }
+      : {}),
   };
 }
 

@@ -188,7 +188,6 @@ export function createMarkdownStyles(theme: Theme) {
       borderWidth: 0,
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
-      lineHeight: Math.round(theme.fontSize.code * 1.45),
     },
 
     // Indented and fenced blocks both sit on `surfaceCode` - the editor's code

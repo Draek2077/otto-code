@@ -22,7 +22,7 @@ In `branch-off`, `worktreeSlug` controls the worktree path slug and `branchName`
 
 ## Agents
 
-**`create_agent`** - required: `relationship`, `workspace`, and **either** `provider` (`claude/opus`, `codex/gpt-5.4`, …) **or** `personality` (a host-configured personality name - see [Personalities](#personalities)). `title` and `initialPrompt` are **optional** - omit both to just open a new chat (the agent greets the user and asks what to work on); don't refuse to spawn merely because there's no task yet. Common: `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, … }`.
+**`create_agent`** - required: `relationship`, `workspace`, and `provider` (`claude/opus`, `codex/gpt-5.4`, …). `title` and `initialPrompt` are **optional** - omit both to just open a new chat (the agent greets the user and asks what to work on); don't refuse to spawn merely because there's no task yet. Common: `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, … }`.
 
 Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }` when creating the agent.
 
@@ -64,17 +64,20 @@ Agent-scoped `create_agent` defaults `notifyOnFinish` to true. Set it to `false`
 
 Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look for `fast_mode` and pass `settings: { features: { "fast_mode": true } }` to `create_agent` or `update_agent`.
 
-## Personalities
+## Agent profiles
 
-Agent Personalities are named, host-configured templates that bind a provider→model, effort, permission mode, a personality prompt, one or more **roles**, and a visual/audio identity (spinner colors + a TTS voice). When the host has them, prefer them over hand-picking a raw provider/model - the user curated them for exactly this.
+**`list_profiles`** - named launch bundles configured by the human. Before choosing how to launch a delegated agent, call this tool and read every profile's `notes`. Pick a named profile the user requested, or the profile whose notes best match the work.
 
-**`list_personalities`** - enumerate the host's personalities: `{ id, name, roles, provider, model, available, tier, canLaunch, guidance, unavailableReason?, modeId?, thinkingOptionId?, effortLevel? }`. Filter with `role` (e.g. `worker`, `judger`, `advisor`) and pass `cwd` to resolve availability against a workspace. **Any agent may call this** - every personality can see the others and spawn them by name; the roster is shared, not orchestrator-only. Read each entry's `guidance` (why you'd choose it) and `tier` to pick the right teammate. Fall back to provider strings from orchestration preferences only when the host has no personalities.
+There is no `profile` parameter on `create_agent`. Materialize the selected profile into the call:
 
-The eight roles: `chatter` (chat), `artificer` (artifacts), `scheduler` (schedules), `writer` (fast small-text: commit messages, summaries, names), `coder` (sub-agent/implementer), `judger` (review), `advisor` (read-only second opinion), `orchestrator` (drives multi-agent work). They split into two **tiers**: **coordinators** (chatter, artificer, scheduler, advisor, orchestrator) converse, plan, and delegate; **focused workers** (writer, coder, judger) lift one thing someone's waiting on and stay on task. If you're a focused worker, finish your task rather than spawning helpers; if you're a coordinator, delegate freely. Coder/Judger/Advisor are the ones you'll usually spawn.
+- combine `provider` and `model` as the `provider/model` value for `create_agent.provider`
+- copy `modeId` to `settings.modeId`
+- copy `thinkingOptionId` to `settings.thinkingOptionId`
+- copy `featureValues` to `settings.features`
 
-**Spawning by personality** - pass `personality: "<name>"` to `create_agent` instead of `provider`. It expands to that personality's provider/model/effort/mode/prompt. Explicit `provider`/`settings` still override per-field. If the named personality is missing or out of commission on the target host+cwd, the call **fails loudly** - there is no silent fallback, so surface the error rather than guessing a provider.
+Omit absent values. A profile is launch configuration only: do not remember a selected profile or infer drift later. Profile metadata such as roles, behavior prompts, spinner colors, and voice remains host-owned and must not be flattened into hardcoded provider choices.
 
-Prefer a personality whose role matches the work (a `coder` for implementation, a `judger` for review, an `advisor` for a read-only opinion). Only when no suitable personality exists (or `list_personalities` is unavailable) resolve a raw provider from orchestration preferences below.
+If no profile fits, or no profiles are configured, use the provider discovery tools rather than guessing. Tell the user when you fall back because no configured profile fits.
 
 ## Schedules and heartbeats
 
@@ -88,7 +91,7 @@ Prefer a personality whose role matches the work (a `coder` for implementation, 
 
 ## Orchestration preferences
 
-User-specific configuration at `~/.otto/orchestration-preferences.json`. **Before any Otto skill chooses a provider or creates an agent, it must read this file** (unless it is spawning by [personality](#personalities), which supersedes provider categories - a personality already carries its own provider/model). Reading means an actual file read, not relying on these examples or defaults. Never hardcode a provider string in another skill - resolve through this file.
+User-specific configuration at `~/.otto/orchestration-preferences.json`. Before an Otto skill chooses a raw provider because no configured [Agent profile](#agent-profiles) fits, it must read this file. Reading means an actual file read, not relying on these examples or defaults. Never hardcode a provider string in another skill - resolve through this file.
 
 Two parts:
 
@@ -136,32 +139,4 @@ otto schedule create --cron "*/15 * * * *" "ping main build"
 
 Discover with `otto --help` and `otto <cmd> --help`.
 
-**If `otto` isn't on PATH but the desktop app is installed**, the bundled CLI is at:
-
-- macOS: `/Applications/Otto.app/Contents/Resources/bin/otto`
-- Linux: `<install-dir>/resources/bin/otto`
-- Windows: `C:\Program Files\Otto\resources\bin\otto.cmd`
-
-The desktop app's first-run hook (`installCli`) symlinks this to `~/.local/bin/otto` (macOS/Linux) or drops a `.cmd` trampoline (Windows) and adds `~/.local/bin` to PATH via shell rc files. If that didn't take, offer to symlink it - don't do it silently.
-
-## Ops and debugging
-
-Daemon-client architecture: the daemon owns agent lifecycle, state, and the WebSocket API. Tools, CLI, mobile, and desktop apps are all clients.
-
-|                | Default                                                        |
-| -------------- | -------------------------------------------------------------- |
-| Listen address | `127.0.0.1:6868` (override `OTTO_LISTEN`)                      |
-| Home           | `~/.otto` (override `OTTO_HOME`)                               |
-| Daemon log     | `$OTTO_HOME/daemon.log`                                        |
-| Agent state    | `$OTTO_HOME/agents/<id>.json`                                  |
-| Worktrees      | `$OTTO_HOME/worktrees/` (or `worktrees.root` in `config.json`) |
-| PID file       | `$OTTO_HOME/otto.pid`                                          |
-| Health         | `GET http://127.0.0.1:6868/api/health`                         |
-
-Debug order:
-
-1. `tail -n 200 ~/.otto/daemon.log`.
-2. `otto daemon status` for liveness.
-3. `curl -s localhost:6868/api/health` if the CLI itself is suspect.
-
-**Never restart the daemon without explicit user approval** - it kills every running agent, including, often, the one asking.
+For product questions, setup, logs, version problems, or troubleshooting, use the **otto-help** skill.

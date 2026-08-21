@@ -160,7 +160,12 @@ This mistake once produced tens of thousands of warnings from retained sidebar r
 
 ## Main Gotcha: `contentContainerStyle`
 
-`ScrollView.contentContainerStyle` is the canonical trap. It looks like a style prop, but it is not the same prop that Unistyles' remapped native component registers by default. The upstream tutorial calls this out directly in its [ScrollView Background Issue](https://www.unistyl.es/v3/tutorial/settings-screen#scrollview-background-issue) section.
+`ScrollView.contentContainerStyle` is the canonical trap. It looks like a style prop, but it is not the `style` prop Unistyles registers. How badly that bites depends on who owns the component:
+
+- **A remapped React Native `ScrollView`** still picks the style up — the Babel plugin rewrites the import and the factory tracks `contentContainerStyle` alongside `style`. The failure mode here is staleness: on first mount it can paint with the theme that was active at mount time and never repaint. The upstream tutorial calls this out in its [ScrollView Background Issue](https://www.unistyl.es/v3/tutorial/settings-screen#scrollview-background-issue) section.
+- **A third-party scroller** — `BottomSheetScrollView`, `FlashList`, anything Unistyles never rewrote — drops the style entirely on web. Nothing throws and the value looks right in JS, but the class Unistyles emitted is never applied, so the padding, gap, or background is simply absent. `AdaptiveModalSheet` shipped its compact sheet content flush to the screen edges for exactly this reason while the desktop card, which uses a real `ScrollView`, looked correct.
+
+The second case is why the wrapper-`View` fix below is not optional styling advice. A themed inset belongs on a `View` you own; a third-party scroller only gets theme-free layout.
 
 Avoid this pattern when the style depends on the theme:
 
@@ -175,7 +180,7 @@ const styles = StyleSheet.create((theme) => ({
 }));
 ```
 
-On first mount this can paint with the current adaptive or initial theme. If app settings later load a persisted theme and call [`UnistylesRuntime.setTheme`](https://www.unistyl.es/v3/guides/theming#change-theme), the JS-side style proxy may report the new theme while the native content container keeps the old background. That is how the welcome screen ended up with a light background and dark foreground/buttons.
+If app settings later load a persisted theme and call [`UnistylesRuntime.setTheme`](https://www.unistyl.es/v3/guides/theming#change-theme), the JS-side style proxy reports the new theme while the native content container keeps the old background. That is how the welcome screen ended up with a light background and dark foreground/buttons.
 
 This applies broadly to non-`style` props that carry theme-dependent values, such as component props named `color`, `trackColor`, `tintColor`, `backgroundStyle`, `handleIndicatorStyle`, and other library-specific style props. The [3rd-party view decision algorithm](https://www.unistyl.es/v3/references/3rd-party-views) recommends explicit handling for these cases, and [issue #1030](https://github.com/jpudysz/react-native-unistyles/issues/1030) shows a related native-prop update edge case around `Image.tintColor`. Treat these values as React props unless wrapped with `withUnistyles`.
 
@@ -378,7 +383,7 @@ Gotchas:
 - **`colors.syntax` is owned by `applyAppearance`, not `applyColorScheme`.** When repainting `colors` from a variant's source palette, carry the mirror's _existing_ `colors.syntax` forward (`{ ...source.colors, syntax: t.colors.syntax }`) instead of the source variant's own syntax value, so the two patchers stay commutative regardless of call order.
 - **`lineHeight.diff` is the code/diff line-height axis** - it is coupled to the code-font-size control (≈ `codeFontSize * 1.5`). Do NOT use it for prose. Markdown body line-height scales with the UI ramp (`Math.round(theme.fontSize.base * 1.4)`); routing prose through `lineHeight.diff` clips text at small code sizes.
 - **High-churn draft values** (live-while-typing in the appearance preview) bypass the theme: apply them as inline styles marked with `inlineUnistylesStyle` so per-keystroke values don't grow the `#unistyles-web` CSS registry.
-- **Mounted parsed content uses `AppearanceStyleBoundary`.** Markdown, syntax-highlighted code, and tool-call detail bodies can contain memoized/custom renderer trees that do not naturally re-run when runtime-patched appearance tokens change. Wrap the parsed surface once with `packages/app/src/components/appearance-style-boundary.tsx`; do not add local "appearance key" props at each callsite.
+- **The app shell uses one `AppearanceStyleBoundary`.** Runtime-patched numeric theme values are baked into Unistyles web classes rather than CSS variables, while parsed/memoized content also does not naturally re-run when appearance tokens change. The boundary sits below stable runtime providers in `app/_layout.tsx` and remounts the visual shell once. `applyAppearance` patches the active theme before inactive registry entries so its subscribers receive the committed values in the same update. Do not add local appearance keys or nested boundaries.
 - **Dynamic font tokens stay widened.** `fontFamily`, `fontSize`, and `lineHeight` on `commonTheme` are annotated `string`/`number` (not narrowed by `as const`) so the updater's return assigns; the platform default stacks live in `DEFAULT_UI_FONT_STACK` / `DEFAULT_MONO_FONT_STACK`.
 
 ## `ScopedTheme` Does Not Stick On Web

@@ -24,7 +24,12 @@ import {
   personalityHasRole,
   summarizePersonalityForSelection,
 } from "@otto-code/protocol/agent-personalities";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import {
+  AgentProfileSchema,
+  type AgentPersonality,
+  type AgentProfile,
+} from "@otto-code/protocol/messages";
+import type { DaemonConfigStore } from "../../daemon-config-store.js";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {
   getOrchestrationPolicyFromLabels,
@@ -47,6 +52,11 @@ import {
 } from "../agent-projections.js";
 import { curateAgentActivity } from "../activity-curator.js";
 import { selectItemsByProjectedLimit } from "../timeline-projection.js";
+
+const profileSpinnerSchema = z.object({ glowA: z.string(), glowB: z.string() }).passthrough();
+const profileVoiceSchema = z
+  .object({ provider: z.string(), model: z.string(), name: z.string() })
+  .passthrough();
 import type { AgentStorage } from "../agent-storage.js";
 import { ensureAgentLoaded } from "../agent-loading.js";
 import { isStoredAgentProviderAvailable } from "../../persistence-hooks.js";
@@ -165,6 +175,7 @@ export interface OttoToolHostDependencies {
    */
   runService?: RunService | null;
   providerSnapshotManager: ProviderSnapshotManager;
+  daemonConfigStore?: Pick<DaemonConfigStore, "get">;
   /**
    * Reads the live Agent Personalities roster from the daemon config. Enables
    * chat creation by personality in create_chat and the list_personalities tool. Absent
@@ -871,17 +882,20 @@ function buildPersonalityAgentConfig(brain: {
   systemPrompt?: string;
   personalitySnapshot?: ResolvedPersonalitySnapshot;
   teamSnapshot?: ResolvedTeamSnapshot;
+  featureValues?: Record<string, unknown>;
 }):
   | {
       systemPrompt?: string;
       personalitySnapshot?: ResolvedPersonalitySnapshot;
       teamSnapshot?: ResolvedTeamSnapshot;
+      featureValues?: Record<string, unknown>;
     }
   | undefined {
   if (
     brain.systemPrompt === undefined &&
     brain.personalitySnapshot === undefined &&
-    brain.teamSnapshot === undefined
+    brain.teamSnapshot === undefined &&
+    brain.featureValues === undefined
   ) {
     return undefined;
   }
@@ -889,6 +903,7 @@ function buildPersonalityAgentConfig(brain: {
     systemPrompt?: string;
     personalitySnapshot?: ResolvedPersonalitySnapshot;
     teamSnapshot?: ResolvedTeamSnapshot;
+    featureValues?: Record<string, unknown>;
   } = {};
   if (brain.systemPrompt !== undefined) {
     config.systemPrompt = brain.systemPrompt;
@@ -898,6 +913,9 @@ function buildPersonalityAgentConfig(brain: {
   }
   if (brain.teamSnapshot !== undefined) {
     config.teamSnapshot = brain.teamSnapshot;
+  }
+  if (brain.featureValues !== undefined) {
+    config.featureValues = brain.featureValues;
   }
   return config;
 }
@@ -1212,6 +1230,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     scheduleService,
     runService,
     providerSnapshotManager,
+    daemonConfigStore,
     readAgentPersonalities,
     readAgentTeams,
     callerAgentId,
@@ -1449,12 +1468,23 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
 
   const getPersonalityRoster = (): AgentPersonality[] => readAgentPersonalities?.() ?? [];
 
+  const getProfileRoster = (): AgentProfile[] => daemonConfigStore?.get().agentProfiles ?? [];
+
   const findPersonalityByName = (name: string): AgentPersonality | undefined => {
     const trimmed = name.trim();
     const roster = getPersonalityRoster();
     return (
       roster.find((p) => p.name === trimmed) ??
       roster.find((p) => p.name.toLowerCase() === trimmed.toLowerCase())
+    );
+  };
+
+  const findProfileByName = (name: string): AgentProfile | undefined => {
+    const trimmed = name.trim();
+    const roster = getProfileRoster();
+    return (
+      roster.find((profile) => profile.name === trimmed) ??
+      roster.find((profile) => profile.name.toLowerCase() === trimmed.toLowerCase())
     );
   };
 
@@ -1465,7 +1495,138 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     systemPrompt?: string;
     personalitySnapshot?: ResolvedPersonalitySnapshot;
     teamSnapshot?: ResolvedTeamSnapshot;
+    featureValues?: Record<string, unknown>;
   }
+
+  const resolveThinkingAgainstProvider = async (
+    requested: string,
+    providerModel: string,
+  ): Promise<string> => {
+    const { provider, model } = resolveScheduleProviderAndModel({
+      provider: providerModel,
+      defaultProvider: providerModel,
+    });
+    return resolveEffortAgainstModels({
+      requested,
+      models: await listProviderModels(provider),
+      model,
+    });
+  };
+
+  // Profiles intentionally combine upstream launch settings with Otto identity fields.
+  // eslint-disable-next-line complexity
+  const resolveConfiguredProfileBrain = async (
+    profile: AgentProfile,
+    input: {
+      providerOverride: string | undefined;
+      modeOverride: string | undefined;
+      thinkingOverride: string | undefined;
+      cwd: string | undefined;
+    },
+  ): Promise<ResolvedCreateAgentBrain> => {
+    const entries = await providerSnapshotManager.listProviders({ cwd: input.cwd, wait: true });
+    const providerEntry = entries.find((entry) => entry.provider === profile.provider);
+    const resolvedModel =
+      profile.model ??
+      providerEntry?.models?.find((model) => model.isDefault)?.id ??
+      providerEntry?.models?.[0]?.id;
+    const profileProviderModel = resolvedModel
+      ? `${profile.provider}/${resolvedModel}`
+      : profile.provider;
+    const providerModel = input.providerOverride?.trim() || profileProviderModel;
+    const modeId = input.modeOverride ?? profile.modeId ?? providerEntry?.defaultModeId;
+    const profileEffort = typeof profile.effortLevel === "string" ? profile.effortLevel : undefined;
+    const thinkingOptionId = input.thinkingOverride
+      ? await resolveThinkingAgainstProvider(input.thinkingOverride, providerModel)
+      : (profile.thinkingOptionId ??
+        (profileEffort
+          ? await resolveThinkingAgainstProvider(profileEffort, providerModel)
+          : undefined));
+    const roles = Array.isArray(profile.roles)
+      ? normalizePersonalityRoles(
+          profile.roles.filter((role): role is string => typeof role === "string"),
+        )
+      : [];
+    const personalityPrompt =
+      typeof profile.personalityPrompt === "string" ? profile.personalityPrompt : undefined;
+    const spinnerResult = profileSpinnerSchema.safeParse(profile.spinner);
+    const voiceResult = profileVoiceSchema.safeParse(profile.voice);
+    const teamSnapshot = resolveTeamSnapshotForPersonality(readAgentTeams?.(), profile.id);
+    const composedPrompt = composeTeamAndPersonalityPrompt(teamSnapshot, personalityPrompt, roles);
+    const personalitySnapshot: ResolvedPersonalitySnapshot | undefined = resolvedModel
+      ? {
+          personalityId: profile.id,
+          name: profile.name,
+          provider: profile.provider,
+          model: resolvedModel,
+          ...(modeId ? { modeId } : {}),
+          ...(thinkingOptionId ? { thinkingOptionId } : {}),
+          ...(profileEffort ? { effortLevel: profileEffort } : {}),
+          effortDegraded: false,
+          respectGlobalAppendPrompt:
+            typeof profile.respectGlobalAppendPrompt === "boolean"
+              ? profile.respectGlobalAppendPrompt
+              : true,
+          roles,
+          ...(personalityPrompt ? { systemPrompt: personalityPrompt } : {}),
+          ...(spinnerResult.success ? { spinner: spinnerResult.data } : {}),
+          ...(voiceResult.success ? { voice: voiceResult.data } : {}),
+        }
+      : undefined;
+    return {
+      providerModel,
+      ...(modeId ? { modeId } : {}),
+      ...(thinkingOptionId ? { thinkingOptionId } : {}),
+      ...(composedPrompt ? { systemPrompt: composedPrompt } : {}),
+      ...(personalitySnapshot ? { personalitySnapshot } : {}),
+      ...(teamSnapshot ? { teamSnapshot } : {}),
+      ...(profile.featureValues ? { featureValues: profile.featureValues } : {}),
+    };
+  };
+
+  const resolveLegacyPersonalityBrain = async (
+    personality: AgentPersonality,
+    input: {
+      providerOverride: string | undefined;
+      modeOverride: string | undefined;
+      thinkingOverride: string | undefined;
+      cwd: string | undefined;
+    },
+  ): Promise<ResolvedCreateAgentBrain> => {
+    const entries = await providerSnapshotManager.listProviders({ cwd: input.cwd, wait: true });
+    const resolution = resolvePersonality(personality, entries);
+    if (resolution.status === "unavailable") {
+      throw new Error(
+        `Personality "${personality.name}" is unavailable here: ${resolution.reason}`,
+      );
+    }
+    const snapshot = resolution.snapshot;
+    const teamSnapshot = resolveTeamSnapshotForPersonality(
+      readAgentTeams?.(),
+      snapshot.personalityId,
+    );
+    const composedPrompt = composeTeamAndPersonalityPrompt(
+      teamSnapshot,
+      snapshot.systemPrompt,
+      snapshot.roles,
+    );
+    const snapshotProviderModel = snapshot.model
+      ? `${snapshot.provider}/${snapshot.model}`
+      : snapshot.provider;
+    const providerModel = input.providerOverride?.trim() || snapshotProviderModel;
+    const modeId = input.modeOverride ?? snapshot.modeId;
+    const thinkingOptionId = input.thinkingOverride
+      ? await resolveThinkingAgainstProvider(input.thinkingOverride, providerModel)
+      : snapshot.thinkingOptionId;
+    return {
+      providerModel,
+      ...(modeId !== undefined ? { modeId } : {}),
+      ...(thinkingOptionId !== undefined ? { thinkingOptionId } : {}),
+      ...(composedPrompt !== undefined ? { systemPrompt: composedPrompt } : {}),
+      personalitySnapshot: snapshot,
+      ...(teamSnapshot ? { teamSnapshot } : {}),
+    };
+  };
 
   // Turn the create_chat personality inputs - a personality name and/or explicit
   // provider/settings - into the concrete provider/model/effort/mode/prompt to
@@ -1479,68 +1640,21 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     thinkingOverride: string | undefined;
     cwd: string | undefined;
   }): Promise<ResolvedCreateAgentBrain> => {
-    const resolveThinkingAgainstProvider = async (
-      requested: string,
-      providerModel: string,
-    ): Promise<string> => {
-      const { provider, model } = resolveScheduleProviderAndModel({
-        provider: providerModel,
-        defaultProvider: providerModel,
-      });
-      return resolveEffortAgainstModels({
-        requested,
-        models: await listProviderModels(provider),
-        model,
-      });
-    };
-
     if (input.personalityName) {
+      const profile = findProfileByName(input.personalityName);
+      if (profile) {
+        return resolveConfiguredProfileBrain(profile, input);
+      }
       const personality = findPersonalityByName(input.personalityName);
       if (!personality) {
-        const names = getPersonalityRoster()
-          .map((p) => p.name)
+        const names = [...getProfileRoster(), ...getPersonalityRoster()]
+          .map((candidate) => candidate.name)
           .join(", ");
         throw new Error(
-          `Personality "${input.personalityName}" not found.${names ? ` Available: ${names}.` : " No personalities are configured on this host."}`,
+          `Profile "${input.personalityName}" not found.${names ? ` Available: ${names}.` : " No profiles are configured on this host."}`,
         );
       }
-      const entries = await providerSnapshotManager.listProviders({ cwd: input.cwd, wait: true });
-      const resolution = resolvePersonality(personality, entries);
-      if (resolution.status === "unavailable") {
-        throw new Error(
-          `Personality "${personality.name}" is unavailable here: ${resolution.reason}`,
-        );
-      }
-      const snapshot = resolution.snapshot;
-      // An active-team member carries the frozen team layer; the team prompt
-      // stacks ahead of the personality prompt. Explicit spawn of a non-member
-      // stays deliberate and teamless (explicit is explicit).
-      const teamSnapshot = resolveTeamSnapshotForPersonality(
-        readAgentTeams?.(),
-        snapshot.personalityId,
-      );
-      const composedPrompt = composeTeamAndPersonalityPrompt(
-        teamSnapshot,
-        snapshot.systemPrompt,
-        snapshot.roles,
-      );
-      // Explicit args override the personality per-field.
-      const snapshotProviderModel = snapshot.model
-        ? `${snapshot.provider}/${snapshot.model}`
-        : snapshot.provider;
-      const providerModel = input.providerOverride?.trim() || snapshotProviderModel;
-      const modeId = input.modeOverride ?? snapshot.modeId;
-      const thinkingOptionId = input.thinkingOverride
-        ? await resolveThinkingAgainstProvider(input.thinkingOverride, providerModel)
-        : snapshot.thinkingOptionId;
-      return {
-        providerModel,
-        ...(modeId !== undefined ? { modeId } : {}),
-        ...(thinkingOptionId !== undefined ? { thinkingOptionId } : {}),
-        ...(composedPrompt !== undefined ? { systemPrompt: composedPrompt } : {}),
-        personalitySnapshot: snapshot,
-        ...(teamSnapshot ? { teamSnapshot } : {}),
-      };
+      return resolveLegacyPersonalityBrain(personality, input);
     }
 
     const providerModel = input.providerOverride?.trim();
@@ -1776,7 +1890,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         "Short descriptive title (<= 60 chars) summarizing the agent's focus. Optional - omit to let Otto derive one from the prompt (or name a bare new chat).",
       ),
     provider: ProviderModelInputSchema.optional().describe(
-      "Provider/model pair, for example codex/gpt-5.4. Required unless `personality` is given; when both are given, this overrides the personality's provider/model.",
+      "Provider/model pair, for example codex/gpt-5.4. Required unless `personality` names a profile; when both are given, this overrides the profile's provider/model.",
     ),
     personality: z
       .string()
@@ -1784,7 +1898,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .min(1)
       .optional()
       .describe(
-        "Spawn from a named Agent Personality on this host - expands to its provider/model/effort/mode/prompt; explicit provider/settings override per-field. See list_personalities for each one's guidance and tier (coordinators delegate; focused writer/coder/judger personalities finish one task). Fails loudly if unavailable here - no fallback.",
+        "Spawn from a named agent profile on this host. The compatibility field name remains `personality`; explicit provider/settings override profile values per field. See list_profiles before choosing one. Fails loudly if unavailable here.",
       ),
     labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
     settings: CreateAgentSettingsInputSchema.optional().describe(
@@ -2018,7 +2132,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create chat",
       description:
-        "Start an Otto chat session immediately. A chat can be independent or a child chat. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a personality name. Title and initialPrompt are optional. Prefer a personality profile when available; call list_personalities before choosing one.",
+        "Start an Otto chat session immediately. A chat can be independent or a child chat. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a profile name. Title and initialPrompt are optional. Prefer a named profile when available; call list_profiles before choosing one.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -5143,6 +5257,47 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           provider,
           models,
         }),
+      };
+    },
+  );
+
+  registerTool(
+    "list_profiles",
+    {
+      title: "List agent profiles",
+      description:
+        "List the host's named agent profiles. Profiles bind provider/model/mode settings and may also carry Otto roles, prompts, voice, spinner, and memory behavior. Read `notes` and `roles` to choose a collaborator, then pass its name to create_chat or copy its launch settings.",
+      inputSchema: {},
+      outputSchema: { profiles: z.array(AgentProfileSchema) },
+    },
+    async () => {
+      // v0.4 profiles are the canonical shape. Fold legacy Otto personalities
+      // into that roster so role/prompt/voice behavior survives migration
+      // without exposing two independent lists to new callers.
+      const byId = new Map<string, Record<string, unknown>>();
+      for (const personality of readAgentPersonalities?.() ?? []) {
+        byId.set(personality.id, {
+          id: personality.id,
+          name: personality.name,
+          provider: personality.provider,
+          model: personality.model,
+          modeId: personality.modeId,
+          effortLevel: personality.effortLevel,
+          personalityPrompt: personality.personalityPrompt,
+          respectGlobalAppendPrompt: personality.respectGlobalAppendPrompt,
+          roles: personality.roles,
+          spinner: personality.spinner,
+          voice: personality.voice,
+          voiceCues: personality.voiceCues,
+          memoryEnabled: personality.memoryEnabled,
+        });
+      }
+      for (const profile of daemonConfigStore?.get().agentProfiles ?? []) {
+        byId.set(profile.id, { ...byId.get(profile.id), ...profile });
+      }
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ profiles: [...byId.values()] }),
       };
     },
   );

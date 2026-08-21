@@ -60,19 +60,37 @@ export const ja: TranslationResources = {
       close: "メニューを閉じる",
     },
     commandCenter: {
-      placeholder: "コマンドを入力またはエージェントを検索...",
+      placeholder: "コマンド、ファイル、ワークスペース、エージェントを検索...",
+      filePlaceholder: "ファイルを検索...",
+      searchingFiles: "ファイルを検索中...",
       noMatches: "一致なし",
       actions: "アクション",
+      files: "ファイル",
+      workspaces: "ワークスペース",
       agents: "エージェント",
       newAgent: "新しいチャット",
       openProject: "プロジェクトを開く",
       home: "ホーム",
-      workspaces: "ワークスペース",
       addProject: "プロジェクトを追加",
+      groupByProject: "プロジェクトでグループ化",
+      groupByStatus: "ステータスでグループ化",
       modelGroupLabel: "モデル",
       modelSearchKeywords: "モデルを切り替え モデルを変更 モデルを設定 モデルを選択",
+      thinkingGroupLabel: "思考",
+      thinkingSearchKeywords: "推論 思考レベル 考える",
+      modeGroupLabel: "モード",
+      modeSearchKeywords: "アクセス 権限 承認 モード",
+      planModeGroupLabel: "プランモード",
+      planModeSearchKeywords: "プラン 計画 プランモード",
+      fastModeGroupLabel: "高速",
+      fastModeSearchKeywords: "高速 速度 低遅延",
+      settingOn: "オン",
+      settingOff: "オフ",
     },
   },
+  // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
+  // context-window occupancy - see docs/glossary.md; the two must not be
+  // described with each other's words anywhere in this block.
   chatMetrics: {
     tokensIn: "入力トークン（キャッシュ読み取りを含む）",
     tokensOut: "出力トークン",
@@ -85,7 +103,6 @@ export const ja: TranslationResources = {
     subagentsHint: "このチャットのサブエージェント（実行中 / 合計）。",
     toolCallsHint: "このチャットのサブエージェントによるツール呼び出し回数。",
   },
-
   composer: {
     followSuggestion: {
       active:
@@ -117,9 +134,11 @@ export const ja: TranslationResources = {
         "エージェントにメッセージを送るか、@files でファイルを指定、/commands や /skills を使用",
       mobile: "メッセージ、@files、/commands",
       fallback: "メッセージ...",
+      terminal: "Prompt",
     },
     input: {
       accessibilityLabel: "エージェントにメッセージ...",
+      terminalAccessibilityLabel: "Terminal prompt",
       focusHint: "{{shortcut}}でフォーカス",
       addAttachment: "添付ファイルを追加",
       interruptAgent: "エージェントを中断",
@@ -151,6 +170,7 @@ export const ja: TranslationResources = {
     },
     attachments: {
       addImage: "画像をアップロード",
+      pasteImage: "画像を貼り付け",
       addFile: "ファイルをアップロード",
       addFolder: "フォルダを追加",
       addIssueOrPr: "イシューまたはPRを追加",
@@ -187,17 +207,13 @@ export const ja: TranslationResources = {
       initialPromptRequired: "初期プロンプトが必要です",
       alreadyLoading: "すでに読み込み中です",
       uploadFailed: "ファイルのアップロードに失敗しました",
+      noClipboardImage: "クリップボードに画像がありません",
+      pasteImageFailed: "画像を貼り付けられませんでした",
       fileTooLarge: "{{fileName}}が大きすぎます（最大{{size}}）",
     },
     clientCommands: {
       archiveAgent: "現在のエージェントをアーカイブ",
       freshDraft: "このエージェントをアーカイブして新しい下書きを開始",
-    },
-    folder: {
-      searching: "検索中...",
-      noResults: "フォルダが見つかりません。",
-      searchPlaceholder: "フォルダを検索...",
-      title: "フォルダを添付",
     },
     github: {
       searching: "検索中...",
@@ -206,6 +222,12 @@ export const ja: TranslationResources = {
       title: "イシューまたはPRを添付",
       searchPlaceholder_mr: "イシューとMRを検索...",
       title_mr: "イシューまたはMRを添付",
+    },
+    folder: {
+      searching: "検索中...",
+      noResults: "フォルダが見つかりません。",
+      searchPlaceholder: "フォルダを検索...",
+      title: "フォルダを添付",
     },
     interruptSubagentsWarning: {
       title: "実行中のサブエージェントを中断しますか？",
@@ -232,6 +254,8 @@ export const ja: TranslationResources = {
       lessons_one: "教訓 {{count}} 件",
       lessons_other: "教訓 {{count}} 件",
     },
+    // What one personality has learned, and the exact text injected because of
+    // it. See docs/agent-personalities.md § Memory.
     memory: {
       noPersonality:
         "上でパーソナリティを選ぶと、そのパーソナリティが学んだ内容と、それが各リクエストに何を追加しているかを確認できます。",
@@ -257,6 +281,10 @@ export const ja: TranslationResources = {
       scope: {
         global: "すべての場所",
         project: "このプロジェクト",
+        // A project-scoped lesson recorded somewhere else, and one bound to no
+        // project at all. Both are stored and listed but reach nothing here, so
+        // the row has to say so - otherwise an empty brief above a list of
+        // lessons looks broken.
         elsewhere: "別のプロジェクト",
         unattached: "プロジェクト未設定 - 送信されません",
         change: "適用範囲: {{scope}}。タップで変更します。",
@@ -338,6 +366,8 @@ export const ja: TranslationResources = {
     category: {
       contextFiles: "コンテキストファイル",
       memoryIndex: "メモリ索引",
+      // Covers subagent definitions too: both are advertised to the model as a
+      // name plus a description, and both are trimmed the same way.
       skillsRoster: "スキルとエージェント",
       mcpTools: "MCP ツール",
       ottoInjected: "Otto プロンプト",
@@ -430,6 +460,7 @@ export const ja: TranslationResources = {
         usedTools: "{{count}} 件のツールを使用",
       },
     },
+    historyLoadFailed: "エージェントの履歴を読み込めませんでした",
     permission: {
       plan: "プラン",
       required: "権限が必要です",
@@ -491,11 +522,20 @@ export const ja: TranslationResources = {
       lastActive: "Last active",
       size: "Size",
     },
+    noMatches: "一致するセッションはありません",
+    tooManyMatches: "一致が多すぎます：検索条件を絞ってください",
+    hostLoadFailed: "{{host}}: 履歴を読み込めませんでした",
     actions: {
       loadMore: "さらに読み込む",
       clearArchived: "アーカイブを消去",
       clearingArchived: "消去中…",
+      clearSearch: "検索をクリア",
     },
+    // The destructive-delete copy. It says the same two things everywhere and has
+    // to: deleting in Otto removes *Otto's record*, never the agent provider's own
+    // transcript on the host. Consent to an irreversible action you were told the
+    // wrong shape of is not consent, so this is translated like any other
+    // confirmation text - see history/delete-dialogs.ts.
     dialogs: {
       deleteAgent: {
         title: "このチャットを削除しますか？",
@@ -568,6 +608,14 @@ export const ja: TranslationResources = {
     },
   },
   message: {
+    diagram: {
+      diagram: "図",
+      zoomIn: "拡大",
+      zoomOut: "縮小",
+      resetZoom: "表示をリセット",
+      viewSource: "ソースを表示",
+      viewDiagram: "図を表示",
+    },
     actions: {
       copyCode: "コードをコピー",
       copyTurn: "ターンをコピー",
@@ -586,7 +634,10 @@ export const ja: TranslationResources = {
       navigateToFolder: "フォルダーへ移動",
       copied: "コピーしました",
     },
-    expandCollapse: { expandAll: "Expand all", collapseAll: "Collapse all" },
+    expandCollapse: {
+      expandAll: "Expand all",
+      collapseAll: "Collapse all",
+    },
     attachments: {
       dismissImage: "画像を閉じる",
       closeImage: "画像を閉じる",
@@ -630,6 +681,15 @@ export const ja: TranslationResources = {
       empty: "タスクがまだありません。",
       progress: "{{completed}}/{{total}}",
       dismiss: "閉じる",
+      tasksProgress: "{{completed}}/{{total}}タスク",
+      tasksProgressCurrent: "{{completed}}/{{total}}タスク · {{task}}",
+      activity: {
+        created: "{{count}}件のタスクを作成",
+        added: "追加",
+        started: "開始",
+        completed: "完了",
+        reopened: "再開",
+      },
     },
     compaction: {
       loading: "コンテキストを圧縮中...",
@@ -713,6 +773,8 @@ export const ja: TranslationResources = {
       copyBranchName: "ブランチ名をコピー",
       copied: "コピーしました",
     },
+    // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
+    // appear on screen at once. See docs/glossary.md.
     solution: {
       lens: {
         files: "ファイル",
@@ -795,6 +857,15 @@ export const ja: TranslationResources = {
         failedToListDirectory: "ディレクトリの一覧取得に失敗しました",
         alreadyExists: "「{{name}}」はすでに存在します。",
         noLongerExists: "その項目はディスク上に存在しません。",
+        createFailed: "エントリの作成に失敗しました",
+        renameFailed: "エントリの名前変更に失敗しました",
+        duplicateFailed: "エントリの複製に失敗しました",
+        revealFailed: "エントリの表示に失敗しました",
+        deleteFailed: "エントリの削除に失敗しました",
+      },
+      draft: {
+        filePlaceholder: "ファイル名",
+        folderPlaceholder: "フォルダ名",
       },
     },
     setup: {
@@ -890,6 +961,7 @@ export const ja: TranslationResources = {
     },
     terminal: {
       hostDisconnected: "ホストが接続されていません",
+      updateHost: "ネイティブターミナルを使用するにはホストを更新してください。",
       unableToSubscribe: "ターミナルに接続できません",
     },
     visualizer: {
@@ -998,6 +1070,7 @@ export const ja: TranslationResources = {
         reloadedAgent: "エージェントを再読み込みしました",
         failedToReloadAgent: "エージェントの再読み込みに失敗しました",
         terminalIdCopiedLabel: "ターミナルID",
+        failedToCloseAgent: "エージェントを閉じられませんでした",
       },
       confirmations: {
         close: "閉じる",
@@ -1447,6 +1520,14 @@ export const ja: TranslationResources = {
           viewPullRequest: "表示",
           openOn: "{{brand}}で開く",
         },
+        checksSummary: {
+          passedLabel: "成功",
+          failedLabel: "失敗",
+          runningLabel: "実行中",
+          passedAccessible: "チェック成功",
+          failedAccessible: "チェック失敗",
+          runningAccessible: "チェック実行中",
+        },
         sections: {
           checks: "チェック",
           reviews: "レビュー",
@@ -1497,12 +1578,67 @@ export const ja: TranslationResources = {
       navigateToFile: "ファイルへ移動",
       navigateToChanges: "変更へ移動",
       copyPath: "パスをコピー",
+      copyRelativePath: "相対パスをコピー",
+      revealIn: "{{target}}で表示",
       download: "ダウンロード",
-      addToChat: "チャットに追加…",
+      addToChat: "チャットに追加",
       moreActions: "その他のアクション",
+      newFile: "新規ファイル",
+      newFolder: "新規フォルダ",
+      collapseFolder: "フォルダを折りたたむ",
+      rename: "名前を変更",
+      duplicate: "複製",
+      revert: "変更を破棄",
+      delete: "削除",
+      confirmDelete: {
+        fileTitle: "ファイルを削除しますか？",
+        folderTitle: "フォルダを削除しますか？",
+        message: "「{{name}}」は完全に削除されます。",
+        confirm: "削除",
+        cancel: "キャンセル",
+      },
+      confirmRevert: {
+        title: "変更を破棄しますか？",
+        message: "「{{name}}」への変更は完全に破棄されます。",
+        confirm: "破棄",
+        cancel: "キャンセル",
+        failed: "変更の破棄に失敗しました",
+      },
     },
   },
   sidebar: {
+    display: {
+      trigger: "表示設定",
+      heading: "表示",
+      grouping: {
+        label: "グループ化",
+        project: "プロジェクト",
+        status: "ステータス",
+      },
+      titleSource: {
+        label: "タイトル",
+        title: "タイトル",
+        branch: "ブランチ名",
+      },
+      show: {
+        label: "表示項目",
+        host: "ホスト",
+        changeRequest: "プルリクエスト",
+        checks: "チェック",
+        services: "サービス",
+        diff: "差分統計",
+        timestamp: "最終アクティビティ",
+      },
+      checks: {
+        iconAndText: "アイコンとテキスト",
+        icon: "アイコンのみ",
+        none: "非表示",
+      },
+      hostFilter: {
+        label: "ホスト",
+        all: "すべてのホスト",
+      },
+    },
     host: {
       noHost: "ホストなし",
       switchTitle: "ホストを切り替え",
@@ -1557,7 +1693,8 @@ export const ja: TranslationResources = {
     },
     workspace: {
       status: {
-        scriptsAvailable: "スクリプトが利用可能",
+        serviceRunning: "サービス {{name}} 実行中",
+        serviceUnhealthy: "サービス {{name}} 異常",
         creating: "作成中...",
       },
       actions: {
@@ -1621,7 +1758,7 @@ export const ja: TranslationResources = {
       discord: "Discord",
       github: "GitHub Issueを作成",
       whatsNew: "新着情報",
-      version: "Otto {{version}}",
+      appName: "Otto",
     },
   },
   newProject: {
@@ -1720,8 +1857,8 @@ export const ja: TranslationResources = {
       scaffold_unsupported: "プロジェクトを作成するにはホストを更新してください。",
     },
     errors: {
-      alreadyAdded: "そのフォルダはすでにプロジェクトです: {{path}}",
       failed: "プロジェクトを作成できませんでした。",
+      alreadyAdded: "そのフォルダはすでにプロジェクトです: {{path}}",
     },
     actions: {
       open: "プロジェクトを開く",
@@ -1755,9 +1892,15 @@ export const ja: TranslationResources = {
       openExisting: "開く",
       createWorktree: "ワークツリーを作成",
     },
+    tooltips: {
+      project: "Choose the project",
+      host: "Choose the host",
+      isolation: "Choose the isolation level",
+      startingRef: "開始点を選択",
+      launch: "Choose what to launch",
+    },
     refPicker: {
       startingRef: "開始Ref",
-      chooseStart: "開始点を選択",
       checkoutHint: "PR #{{number}} をチェックアウトしますか？",
       checkoutPr: "PR #{{number}} をチェックアウト",
       dismissCheckoutHint: "PR #{{number}} のチェックアウト案内を閉じる",
@@ -1766,6 +1909,15 @@ export const ja: TranslationResources = {
       noMatchingRefs: "一致するRefがありません。",
       searchPlaceholder: "ブランチとPRを検索",
       title: "開始点",
+    },
+    launch: {
+      title: "What to launch",
+      chat: "Chat",
+      terminal: "Terminal",
+      manageProfiles: "Manage profiles",
+      submit: "Launch",
+      promptPlaceholder: "Prompt {{name}}",
+      commandPlaceholder: "Run a command, or leave empty for a blank terminal",
     },
   },
   desktop: {
@@ -1956,11 +2108,11 @@ export const ja: TranslationResources = {
         installFailed: "オーケストレーションスキルをインストールできません。",
         updateFailed: "オーケストレーションスキルを更新できません。",
         uninstallFailed: "オーケストレーションスキルをアンインストールできません。",
+        saveSelectionFailed: "オーケストレーションスキルの選択を保存できません。",
       },
     },
   },
   rootError: {
-    kicker: "問題が発生しました",
     title: "Otto で問題が発生しました。",
     body: "アプリを再読み込みするにはもう一度お試しください。繰り返し発生する場合は、以下の詳細を添えて報告してください。",
     details: "詳細",
@@ -2230,6 +2382,11 @@ export const ja: TranslationResources = {
       settings: "設定",
     },
   },
+  // The first-run setup wizard. The blueprint names below are also the names the
+  // generated teams are saved under, so the card and the installed team always
+  // agree. What stays English is what the model reads, not what the user does:
+  // the team prompts, functional cores and persona names in
+  // screens/setup-wizard/presets/ are agent input.
   setupWizard: {
     chrome: {
       skip: "セットアップをスキップ",
@@ -2358,11 +2515,18 @@ export const ja: TranslationResources = {
     favorites: "お気に入り",
     favoriteModel: "お気に入りモデル",
     unfavoriteModel: "お気に入りを解除",
+    profiles: "プロファイル",
+    providers: "プロバイダー",
+    editProfiles: "編集",
+    editProfilesLabel: "エージェントプロファイルを編集",
+    createProfile: "プロファイルを作成",
     modelCount: "{{count}}つのモデル",
     modelCountPlural: "{{count}}つのモデル",
     retry: "再試行",
     retrying: "再試行中...",
     noMatches: "検索に一致するモデルがありません",
+    noMatchesForQuery: "「{{query}}」に一致するモデルがありません",
+    searchAllPlaceholder: "すべてのモデルを検索...",
     searchPlaceholder: "モデルを検索...",
     openProviderSettings: "{{provider}}の設定を開く",
   },
@@ -2495,9 +2659,21 @@ export const ja: TranslationResources = {
       failedToLoadOffer: "ペアリングオファーの読み込みに失敗しました。",
       relayDisabled:
         "リレーが有効になっていません。デバイスをペアリングするにはリレーを有効にしてください。",
+      enableTitle: "リレーを有効にしますか？",
+      enableDescription:
+        "リレーを使うと、このデバイスからどこでも接続できます。ペアリング通信はエンドツーエンドで暗号化されます。",
+      relayDocs: "リレーの仕組み",
+      relayDocsAccessibility: "Otto リレーの仕組みを読む",
+      enableRelay: "リレーを有効にする",
+      enablingRelay: "有効化中...",
+      notNow: "今はしない",
+      directConnectionHint:
+        "リレーを使わない場合は、TCP、Tailscale、または別の VPN で直接接続してください。QR コードは作成されません。",
+      updateRequired: "Otto Desktop からリレーを有効にするにはホストを更新してください。",
       unavailable: "ペアリングオファーが利用できません。",
       hint: "スマートフォンのOttoでこのQRコードをスキャンするか、以下のリンクをコピーしてください。",
       qrUnavailable: "QRコードが利用できません。",
+      qrAccessibility: "ペアリング QR コード",
       retry: "再試行",
       copy: "コピー",
       copied: "コピーしました",
@@ -2542,6 +2718,47 @@ export const ja: TranslationResources = {
   },
   menu: {
     backdrop: "メニューの背景",
+  },
+  subagents: {
+    detachAction: "{{label}}を切り離す",
+    detachTooltip: "サブエージェントを切り離す",
+    archiveAction: "{{label}}をアーカイブ",
+    archiveTooltip: "サブエージェントをアーカイブ",
+    stopAction: "{{label}} を停止",
+    stopTooltip: "サブエージェントを停止",
+    completedGroup: "完了 ({{count}})",
+    clearCompleted: "すべてクリア",
+    clearCompletedTooltip: "完了したサブエージェントをすべてアーカイブ",
+    stopNothingRunning: "サブエージェントは実行されていないため、停止するものがありません。",
+    daemonUnavailable: "デーモンが利用できません",
+    dialogs: {
+      subjectFallback: "このサブエージェント",
+      subjectFallbackCapitalized: "このサブエージェント",
+      archive: {
+        titleRunning: "実行中のサブエージェントをアーカイブしますか？",
+        title: "サブエージェントをアーカイブしますか？",
+        messageRunning:
+          "{{subject}} はまだ実行中です。アーカイブするとサブエージェントは停止し、トラックから削除されます。",
+        message: "{{subject}} をトラックから削除します。サブエージェントはアーカイブされます。",
+        confirm: "アーカイブ",
+      },
+      detach: {
+        title: "サブエージェントを切り離しますか？",
+        message: "{{subject}} はこのトラックを離れ、独立したエージェントとして継続します。",
+        confirm: "切り離す",
+      },
+      clearCompleted: {
+        titleOne: "完了したサブエージェントを消去しますか？",
+        titleMany: "完了したサブエージェント {{count}} 件を消去しますか？",
+        messageOne:
+          "完了したサブエージェント 1 件をアーカイブし、トラックから削除します。実行中のサブエージェントはそのままです。",
+        messageMany:
+          "完了したサブエージェント {{count}} 件をアーカイブし、トラックから削除します。実行中のサブエージェントはそのままです。",
+        confirm: "消去",
+      },
+    },
+    archiveFinishedAction: "完了したサブエージェントをアーカイブ",
+    archiveFinishedTooltip: "完了した項目をアーカイブ",
   },
   observedSubagents: {
     readOnlyTitle: "監視中のサブエージェント · 読み取り専用",
@@ -2696,6 +2913,10 @@ export const ja: TranslationResources = {
     saveFirst: "先に変更を保存するか元に戻してください。推敲はディスク上のファイルを対象にします。",
     compactOpen: "AI で圧縮",
     unsupported: "推敲を使うにはホストを更新してください。",
+    // The job the tab presents itself as: a tab opened from "Compact with AI"
+    // must not call itself "Refine". Used as the tab title, the run button and
+    // inside the idle note, so it has to be a standalone noun/verb in every
+    // locale.
     job: {
       refine: "推敲",
       compact: "圧縮",
@@ -2875,47 +3096,6 @@ export const ja: TranslationResources = {
     removeLineFromContext: "{{line}} 行目をチャットから削除",
     error: "検索に失敗しました",
   },
-  subagents: {
-    detachAction: "{{label}}を切り離す",
-    detachTooltip: "サブエージェントを切り離す",
-    archiveAction: "{{label}}をアーカイブ",
-    archiveTooltip: "サブエージェントをアーカイブ",
-    stopAction: "{{label}} を停止",
-    stopTooltip: "サブエージェントを停止",
-    completedGroup: "完了 ({{count}})",
-    clearCompleted: "すべてクリア",
-    clearCompletedTooltip: "完了したサブエージェントをすべてアーカイブ",
-    stopNothingRunning: "サブエージェントは実行されていないため、停止するものがありません。",
-    daemonUnavailable: "デーモンが利用できません",
-    dialogs: {
-      subjectFallback: "このサブエージェント",
-      subjectFallbackCapitalized: "このサブエージェント",
-      archive: {
-        titleRunning: "実行中のサブエージェントをアーカイブしますか？",
-        title: "サブエージェントをアーカイブしますか？",
-        messageRunning:
-          "{{subject}} はまだ実行中です。アーカイブするとサブエージェントは停止し、トラックから削除されます。",
-        message: "{{subject}} をトラックから削除します。サブエージェントはアーカイブされます。",
-        confirm: "アーカイブ",
-      },
-      detach: {
-        title: "サブエージェントを切り離しますか？",
-        message: "{{subject}} はこのトラックを離れ、独立したエージェントとして継続します。",
-        confirm: "切り離す",
-      },
-      clearCompleted: {
-        titleOne: "完了したサブエージェントを消去しますか？",
-        titleMany: "完了したサブエージェント {{count}} 件を消去しますか？",
-        messageOne:
-          "完了したサブエージェント 1 件をアーカイブし、トラックから削除します。実行中のサブエージェントはそのままです。",
-        messageMany:
-          "完了したサブエージェント {{count}} 件をアーカイブし、トラックから削除します。実行中のサブエージェントはそのままです。",
-        confirm: "消去",
-      },
-    },
-    archiveFinishedAction: "完了したサブエージェントをアーカイブ",
-    archiveFinishedTooltip: "完了した項目をアーカイブ",
-  },
   panels: {
     draft: {
       newAgent: "新しいチャット",
@@ -2950,7 +3130,9 @@ export const ja: TranslationResources = {
         cursor: "{{line}} 行、{{column}} 列",
         preview: "プレビュー",
         source: "ソース",
-        unavailableTitle: "ディスク上のファイルを利用できません",
+        deletedTitle: "ファイルはディスク上から削除されました",
+        checkFailedTitle: "ディスク上のファイルを確認できませんでした",
+        preservedDescription: "開いているコピーは保持されています。",
         conflictDescription: "ローカルの内容は保持されています。残すバージョンを選択してください。",
         overwrite: "上書き",
         reload: "再読み込み",
@@ -2977,8 +3159,6 @@ export const ja: TranslationResources = {
     input: "入力",
     output: "出力",
   },
-  // Tool-call group summaries are literal English pending the pre-release i18n
-  // sweep, like the Refine tab strings above.
   toolCallGroup: {
     editedFiles: {
       one: "edited {{count}} file",
@@ -3079,18 +3259,36 @@ export const ja: TranslationResources = {
       appearance: "外観",
       shortcuts: "ショートカット",
       integrations: "連携",
+      notifications: "通知",
       permissions: "権限",
       diagnostics: "診断",
       about: "アプリ情報",
       editor: "エディター",
     },
+    notifications: {
+      title: "通知",
+      permission: "通知の権限",
+      refreshAccessibility: "通知の権限を更新",
+      playSound: "サウンドを再生",
+      playSoundHint: "デスクトップ通知が届いたときにサウンドを再生します",
+      test: "通知をテスト",
+      testHint: "現在の設定でテスト通知を送信します",
+      permissionRequired: "テストする前に通知へのアクセスを許可してください",
+      send: "送信",
+      sending: "送信中...",
+      sentTitle: "テスト通知を送信しました",
+      sentDescription: "Otto が通知をオペレーティングシステムに渡しました。",
+      sendFailedTitle: "テスト通知を送信できません",
+    },
     hostSections: {
+      projects: "プロジェクト",
       connections: "接続",
       agents: "エージェント",
       teams: "チーム",
       tools: "ツール",
       code: "コード",
       brain: "ブレイン",
+      metadata: "メタデータ",
       workspaces: "ワークスペース",
       gitProviders: "Git プロバイダー",
       providers: "プロバイダー",
@@ -3098,6 +3296,20 @@ export const ja: TranslationResources = {
       storage: "ストレージ",
       terminals: "ターミナル",
       host: "概要",
+    },
+    metadataGeneration: {
+      title: "メタデータ生成",
+      description:
+        "ワークスペースのタイトル、ブランチ名、コミットメッセージ、プルリクエストの下書きに使用するモデルを選択します",
+      selection: "モデル選択",
+      automatic: "自動",
+      preferred: "手動",
+      automaticHint: "Otto が利用可能な高速モデルを選択します",
+      preferredHint: "Otto が使用するモデルを選択します",
+      model: "モデル",
+      fallbackHint: "利用できない場合、Otto は別の利用可能なモデルを使用します",
+      docs: "ドキュメント",
+      saveError: "メタデータ生成を更新できません",
     },
     general: {
       title: "一般",
@@ -3110,6 +3322,15 @@ export const ja: TranslationResources = {
         options: {
           interrupt: "中断",
           queue: "キュー",
+        },
+      },
+      toolCallDetail: {
+        label: "ツール呼び出しの表示",
+        description: "タイムラインでのツール呼び出しの表示方法",
+        accessibilityLabel: "ツール呼び出しの表示を選択（{{value}}）",
+        options: {
+          overview: "要約",
+          detailed: "すべての詳細",
         },
       },
       interfaceMode: {
@@ -3188,6 +3409,7 @@ export const ja: TranslationResources = {
           es: "スペイン語",
           fr: "フランス語",
           ja: "日本語",
+          ko: "韓国語",
           ptBR: "ブラジルポルトガル語",
           ru: "ロシア語",
           zhCN: "簡体字中国語",
@@ -3208,15 +3430,6 @@ export const ja: TranslationResources = {
         label: "常に思考プロセスを展開",
         description: "デフォルトでAIのエージェント思考・推論ブロックを完全に展開して表示します",
       },
-      toolCallDetail: {
-        label: "ツール呼び出しの表示",
-        description: "タイムラインでのツール呼び出しの表示方法",
-        accessibilityLabel: "ツール呼び出しの表示を選択（{{value}}）",
-        options: {
-          overview: "要約",
-          detailed: "すべての詳細",
-        },
-      },
     },
     preview: {
       title: "プレビュー",
@@ -3228,6 +3441,11 @@ export const ja: TranslationResources = {
     },
     diagnostics: {
       title: "診断",
+      legacyTerminalRenderer: {
+        label: "以前のターミナルレンダラーを使用",
+        description: "ターミナルを開き直した後、以前の WebView ターミナルを使用します",
+        accessibilityLabel: "以前のターミナルレンダラーを使用",
+      },
       testAudio: "音声をテスト",
       playTest: "テスト再生",
       playing: "再生中...",
@@ -3314,6 +3532,7 @@ export const ja: TranslationResources = {
           horizon: "ホライズン",
           powder: "パウダー",
           light: "ライト",
+          pureBlack: "ピュアブラック",
           auto: "システム",
         },
       },
@@ -3428,6 +3647,10 @@ export const ja: TranslationResources = {
           accessibilityLabel: "コストオーバーレイ",
         },
       },
+      chatOutline: {
+        title: "チャットのアウトライン",
+        description: "プロンプト間を移動するためのアウトラインを表示します",
+      },
       fonts: {
         title: "フォント",
         systemDefault: "システムデフォルト",
@@ -3461,20 +3684,26 @@ export const ja: TranslationResources = {
       dialogTitle: "ショートカット",
       unavailableOnMobile: "キーボードショートカットはデスクトップでのみ利用できます",
       capturePrompt: "ショートカットを押してください...",
+      unassigned: "未設定",
       actions: {
+        menu: "{{name}} のアクション",
         done: "完了",
         cancel: "キャンセル",
+        bind: "割り当て",
         rebind: "再割り当て",
-        reset: "リセット",
+        clear: "クリア",
+        reset: "デフォルトに戻す",
         resetAll: "すべてリセット",
       },
       sections: {
-        navigation: "ナビゲーション",
+        general: "一般",
+        workspaces: "プロジェクト＆ワークスペース",
         tabsPanes: "タブ＆ペイン",
         projects: "プロジェクト",
         panels: "パネル",
         editor: "ファイルエディター",
         markdownEditor: "Markdown エディター",
+        layout: "レイアウト",
         agentInput: "エージェント入力",
       },
       help: {
@@ -3502,6 +3731,7 @@ export const ja: TranslationResources = {
         moveTabDown: "タブを下に移動",
         closePane: "ペインを閉じる",
         newTerminal: "新しいターミナル",
+        searchFiles: "ファイルを検索",
         toggleCommandCenter: "コマンドセンターを切り替え",
         showKeyboardShortcuts: "キーボードショートカットを表示",
         toggleLeftSidebar: "左サイドバーを切り替え",
@@ -3544,7 +3774,6 @@ export const ja: TranslationResources = {
           "テキストフィールドまたはターミナルにフォーカスがない場合に利用できます。",
       },
       searchPlaceholder: "ショートカットを検索",
-      // Literal English pending the pre-release i18n sweep.
       searchEmpty: "No shortcuts match that search",
     },
     integrations: {
@@ -3568,6 +3797,16 @@ export const ja: TranslationResources = {
         uninstallTitle: "Ottoスキルをアンインストールしますか？",
         uninstallMessage:
           "~/.agents、~/.claude、~/.codexからすべてのOttoオーケストレーションスキルを削除します。",
+        choose: "スキルを選択",
+        chooseAll: "すべてのスキル",
+        chooseAllHint:
+          "後から追加されるものも含め、バンドルされたスキルをすべてインストールしたままにします。",
+        chooseList: "バンドルされたスキル",
+        chooseEmpty: "このビルドにはスキルが含まれていません。",
+        removeTitle: "選択を外したスキルを削除しますか？",
+        removeMessage:
+          "{{skills}} を ~/.agents、~/.claude、~/.codex から削除します。それらのスキルフォルダー内に追加したものもすべて削除されます。",
+        saveFailed: "スキルの選択を保存できませんでした。",
       },
       actions: {
         install: "インストール",
@@ -3575,7 +3814,10 @@ export const ja: TranslationResources = {
         installed: "インストール済み",
         update: "更新",
         working: "処理中...",
+        remove: "削除",
         uninstall: "アンインストール",
+        save: "保存",
+        saving: "保存中...",
       },
       operations: {
         add: "スキルを追加",
@@ -3585,20 +3827,52 @@ export const ja: TranslationResources = {
     },
     permissions: {
       title: "権限",
-      notifications: "通知",
       microphone: "マイク",
       refresh: "更新",
       refreshing: "更新中...",
       refreshAccessibility: "デスクトップの権限を更新",
-      test: "テスト",
       actions: {
         granted: "許可済み",
         request: "許可を求める",
         requesting: "許可を求めています...",
-        busySuffix: "{{label}}...",
       },
     },
     host: {
+      appearance: {
+        title: "外観",
+        name: {
+          label: "名前",
+        },
+        color: {
+          label: "色",
+          accessibilityLabel: "色、{{value}}",
+          options: {
+            none: "デフォルト",
+            violet: "バイオレット",
+            sky: "スカイ",
+            emerald: "エメラルド",
+            orange: "オレンジ",
+            pink: "ピンク",
+            indigo: "インディゴ",
+            teal: "ティール",
+            red: "レッド",
+            amber: "アンバー",
+            blue: "ブルー",
+          },
+        },
+        badge: {
+          label: "サイドバーのバッジ",
+          accessibilityLabel: "サイドバーのバッジ、{{value}}",
+          options: {
+            name: "名前",
+            icon: "アイコンのみ",
+            hidden: "非表示",
+          },
+        },
+        preview: {
+          workspaceName: "my-workspace",
+        },
+      },
       notFound: "ホストが見つかりません",
       badges: {
         relay: "リレー",
@@ -3825,6 +4099,44 @@ export const ja: TranslationResources = {
         emptyState:
           "プロファイルがまだありません。特定のコマンドでターミナルを起動するために追加してください。",
       },
+      agentProfiles: {
+        sectionTitle: "エージェントプロファイル",
+        unavailable: "エージェントプロファイルを管理するにはこのホストに接続してください",
+        unsupported: "このホストで動作するデーモンはまだエージェントプロファイルに対応していません",
+        emptyState:
+          "プロファイルがまだありません。保存したプロバイダーとモデルでエージェントを起動するために追加してください。",
+        addProfileTitle: "エージェントプロファイルを追加",
+        newProfile: "新しいプロファイル",
+        editProfile: "プロファイルを編集",
+        editProfileTitle: "エージェントプロファイルを編集",
+        nameLabel: "名前",
+        namePlaceholder: "UI作業",
+        iconLabel: "アイコン",
+        noIcon: "なし",
+        providerLabel: "プロバイダー",
+        providerPlaceholder: "プロバイダーを選択",
+        noProviders: "このホストで利用できるプロバイダーがありません",
+        modelLabel: "モデル",
+        noModels: "このプロバイダーには選択できるモデルがありません",
+        modeLabel: "モード",
+        noModes: "このプロバイダーには選択できるモードがありません",
+        thinkingLabel: "思考",
+        noThinkingOptions: "このモデルには思考レベルがありません",
+        featuresLabel: "機能",
+        featureCount: "{{count}}個の機能",
+        featureCountOne: "{{count}}個の機能",
+        notesLabel: "エージェントへのメモ",
+        notesPlaceholder: "UI作業に使用：コンポーネント、レイアウト、デザイントークンなど。",
+        notesHint:
+          "list_profiles MCPツールによって返されます。他のエージェントへの指示として記述してください。",
+        save: "保存",
+        saving: "保存中...",
+        remove: "削除",
+        removeConfirmTitle: "プロファイルを削除しますか？",
+        removeConfirmMessage: '"{{name}}"を削除しますか？',
+        moveUp: "上に移動",
+        moveDown: "下に移動",
+      },
       daemon: {
         rename: {
           editLabel: "ラベルを編集",
@@ -3914,25 +4226,6 @@ export const ja: TranslationResources = {
         notInstalled: "未インストール",
         requiresBase: "{{name}} が必要です",
       },
-      tools: {
-        title: "Otto ツール",
-        description:
-          "このモデルが使用できるツールグループ。グループのチェックを外すとモデルから隠せます。",
-        globallyDisabled: "グローバル設定で無効",
-        saved: "ツール設定を保存しました",
-        saveFailed: "ツール設定の保存に失敗しました",
-        groups: {
-          preview: "プレビューサーバー",
-          browser: "ブラウザ制御",
-          web: "ウェブ検索",
-          agents: "エージェント管理",
-          terminals: "ターミナル",
-          schedules: "スケジュール",
-          artifacts: "アーティファクト",
-          widgets: "ウィジェット",
-          workspace: "ワークスペース",
-        },
-      },
       tabs: {
         models: "モデル",
         connection: "接続",
@@ -3983,6 +4276,25 @@ export const ja: TranslationResources = {
         savedNoKey: "保存済みエンドポイント · API キーなし",
         forget: "このエンドポイントを削除",
         forgot: "エンドポイントを削除しました",
+      },
+      tools: {
+        title: "Otto ツール",
+        description:
+          "このモデルが使用できるツールグループ。グループのチェックを外すとモデルから隠せます。",
+        globallyDisabled: "グローバル設定で無効",
+        saved: "ツール設定を保存しました",
+        saveFailed: "ツール設定の保存に失敗しました",
+        groups: {
+          preview: "プレビューサーバー",
+          browser: "ブラウザ制御",
+          web: "ウェブ検索",
+          agents: "エージェント管理",
+          terminals: "ターミナル",
+          schedules: "スケジュール",
+          artifacts: "アーティファクト",
+          widgets: "ウィジェット",
+          workspace: "ワークスペース",
+        },
       },
       remove: {
         button: "プロバイダーを削除",
@@ -4038,8 +4350,7 @@ export const ja: TranslationResources = {
       },
     },
     project: {
-      noEditableTarget:
-        "接続されているホストのどれにもこのプロジェクトの編集可能なコピーがありません。",
+      noEditableTarget: "このホストではこのプロジェクトを編集できません。",
       backToProjects: "プロジェクトに戻る",
       switchHost: "ホストを切り替え",
       rename: {
@@ -4051,6 +4362,17 @@ export const ja: TranslationResources = {
         saveLabel: "プロジェクト名を保存",
         cancelLabel: "名前変更をキャンセル",
         reset: "リセット",
+      },
+      edit: {
+        title: "プロジェクトを編集",
+        name: "名前",
+        nameLabel: "プロジェクト名",
+        icon: "アイコン",
+        chooseImage: "画像を選択",
+        useAutomatic: "自動を使う",
+        imageUrl: "画像またはサイトのURL",
+        save: "変更を保存",
+        savedToast: "プロジェクトを更新しました",
       },
       links: {
         title: "リンクされたプロジェクト",
@@ -4081,7 +4403,6 @@ export const ja: TranslationResources = {
         invalidTitle: "otto.jsonを解析できませんでした",
         invalidDescription: "ディスク上のファイルを修正してから再読み込みしてください。",
         missingTitle: "このホストにはこのプロジェクトがありません",
-        missingWithHosts: "上で別のホストに切り替えるか、再読み込みしてください。",
         missingSingleHost: "選択したホストにはこのプロジェクトの記録がありません。",
         transportTitle: "otto.jsonを読み込めませんでした",
         transportFallback: "ホストが応答しませんでした。",
@@ -4096,6 +4417,9 @@ export const ja: TranslationResources = {
           "これらのコマンドで使用可能な詳細と環境変数についてはドキュメントを参照してください",
         setup: "セットアップ",
         setupAccessibility: "ワークツリーセットアップコマンド",
+        uncommittedTitle: "otto.json の変更をコミットしてください",
+        uncommittedDescription:
+          "新しいワークツリーでは、選択したベースブランチのセットアップスクリプトが使われます。",
         teardown: "削除時",
         teardownAccessibility: "ワークツリー削除時のコマンド",
       },

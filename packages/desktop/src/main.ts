@@ -124,6 +124,7 @@ import {
 import {
   createQuitLifecycle,
   shouldStopDesktopManagedDaemonOnQuit,
+  registerExternalQuitSignals,
   stopDesktopManagedDaemonOnQuitIfNeeded,
   markAppQuitting,
   isAppQuitting,
@@ -673,6 +674,18 @@ ipcMain.handle("otto:browser:set-workspace-active-browser", (event, rawInput: un
   }
 });
 
+ipcMain.handle("otto:browser:focus", (event, browserId: unknown): boolean => {
+  if (typeof browserId !== "string" || browserId.trim().length === 0) {
+    return false;
+  }
+  const contents = getOttoBrowserWebContentsForHostWindow(browserId, event.sender.id);
+  if (!contents) {
+    return false;
+  }
+  contents.focus();
+  return true;
+});
+
 ipcMain.handle("otto:browser:open-devtools", (event, browserId: unknown) => {
   requireTrustedMainRenderer(event);
   if (typeof browserId !== "string" || browserId.trim().length === 0) {
@@ -888,8 +901,8 @@ function applyAppIcon(): void {
     return;
   }
 
-  const iconPath = resolveBrandedAssetPath(path.resolve(__dirname, "../assets"), "icon.png");
-  if (!existsSync(iconPath)) {
+  const iconPath = getWindowIconPath();
+  if (!iconPath) {
     return;
   }
 
@@ -1730,6 +1743,7 @@ const quitLifecycle = createQuitLifecycle({
 // electron-updater forwards this event through Electron's built-in autoUpdater.
 electronAutoUpdater.on("before-quit-for-update", quitLifecycle.handleBeforeQuitForUpdate);
 app.on("before-quit", quitLifecycle.handleBeforeQuit);
+registerExternalQuitSignals({ signals: process, quit: () => app.quit() });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

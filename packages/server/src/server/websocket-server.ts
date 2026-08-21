@@ -13,8 +13,6 @@ import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import { createNoopProjectLinkStore, type ProjectLinkStore } from "./project-links.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
-import type { FileBackedChatService } from "./chat/chat-service.js";
-import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
@@ -56,6 +54,7 @@ import type { HostnamesConfig } from "./hostnames.js";
 import { isHostnameAllowed } from "./hostnames.js";
 import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
+import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
@@ -78,8 +77,11 @@ import {
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 import type { AgentAutoTitle } from "./agent/agent-auto-title.js";
 import { deriveProjectSlug } from "./workspace-git-metadata.js";
-import { PushTokenStore } from "./push/token-store.js";
-import { createPushNotificationSender, type PushNotificationSender } from "./push/notifications.js";
+import {
+  createPushNotifications,
+  type PushNotifications,
+  type PushNotificationSender,
+} from "./push/index.js";
 import type { ScriptHealthState } from "./script-health-monitor.js";
 import type { DevServerManager } from "./preview/dev-server-manager.js";
 import type { BrainManager } from "./brain/brain-manager.js";
@@ -171,6 +173,8 @@ interface WebSocketConnectionIdentity {
 interface WebSocketServerConfig {
   allowedOrigins: Set<string>;
   hostnames?: HostnamesConfig;
+  daemonStatusRpc?: boolean;
+  relayConfig?: boolean;
 }
 
 type WebSocketRuntimeMetrics = SessionRuntimeMetrics &
@@ -217,6 +221,7 @@ function createFallbackWorkspaceGitSnapshot(cwd: string): WorkspaceGitRuntimeSna
       isDirty: null,
       baseRef: null,
       aheadBehind: null,
+      upstreamRef: null,
       aheadOfOrigin: null,
       behindOfOrigin: null,
       hasRemote: false,
@@ -297,10 +302,37 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
       workingTreeWatchSetupInFlightCount: 0,
       workspaceRefreshInFlightCount: 0,
       workspaceRefreshQueuedCount: 0,
+      workspaceRefreshAdmissionActiveCount: 0,
+      workspaceRefreshAdmissionPendingCount: 0,
+      workspaceObservationSetupAdmissionActiveCount: 0,
+      workspaceObservationSetupAdmissionPendingCount: 0,
       fetchInFlightCount: 0,
       snapshotUpdatedListenerCount: 0,
+      watcherErrorCallbackCount: 0,
+      fileObserver: {
+        activeObservationCount: 0,
+        nativeHandleCount: 0,
+        nativeTrackedFileCount: 0,
+        pendingEventCount: 0,
+        pendingReconciliationWorkCount: 0,
+        reconciliationInFlightCount: 0,
+        reconciliationCount: 0,
+        scopedReconciliationCount: 0,
+        fullReconciliationCount: 0,
+        reconciliationFailureCount: 0,
+        observerFailureCount: 0,
+        directoryLimitFailureCount: 0,
+        nativeEventCount: 0,
+        nativeChangeEventCount: 0,
+        nativeRenameEventCount: 0,
+        nativePathlessEventCount: 0,
+        nativeClassificationCount: 0,
+        nativeShallowScanCount: 0,
+        lastReconciliationDurationMs: 0,
+        maxReconciliationDurationMs: 0,
+      },
     }),
-    dispose: () => {},
+    dispose: async () => {},
   };
 }
 
@@ -318,11 +350,13 @@ function createNoopProjectRegistry(): ProjectRegistry {
       projectKey: input.projectKey ?? null,
       customName: null,
       kanban: null,
+      customIconRevision: null,
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
       archivedAt: null,
     }),
     upsert: async () => {},
+    update: async () => null,
     archive: async () => {},
     remove: async () => {},
   };
@@ -524,9 +558,14 @@ export class MissingDaemonVersionError extends Error {
   }
 }
 
+function requireDaemonVersion(value: string | undefined): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new MissingDaemonVersionError();
+  }
+  return value.trim();
+}
+
 interface RequiredWebSocketServices {
-  chatService: FileBackedChatService;
-  loopService: LoopService;
   scheduleService: ScheduleService;
   checkoutDiffManager: CheckoutDiffManager;
 }
@@ -541,25 +580,17 @@ function resolveOrchestrationServices(
 }
 
 function requireWebSocketServices(params: {
-  chatService?: FileBackedChatService;
-  loopService?: LoopService;
   scheduleService?: ScheduleService;
   checkoutDiffManager?: CheckoutDiffManager;
 }): RequiredWebSocketServices {
-  const { chatService, loopService, scheduleService, checkoutDiffManager } = params;
-  if (!chatService) {
-    throw new Error("VoiceAssistantWebSocketServer requires a chat service.");
-  }
-  if (!loopService) {
-    throw new Error("VoiceAssistantWebSocketServer requires a loop service.");
-  }
+  const { scheduleService, checkoutDiffManager } = params;
   if (!scheduleService) {
     throw new Error("VoiceAssistantWebSocketServer requires a schedule service.");
   }
   if (!checkoutDiffManager) {
     throw new Error("VoiceAssistantWebSocketServer requires a checkout diff manager.");
   }
-  return { chatService, loopService, scheduleService, checkoutDiffManager };
+  return { scheduleService, checkoutDiffManager };
 }
 
 /**
@@ -580,8 +611,6 @@ export class VoiceAssistantWebSocketServer {
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly projectLinkStore: ProjectLinkStore;
-  private readonly chatService: FileBackedChatService;
-  private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
   private readonly runService: RunService | null;
   private readonly graphStore: GraphStore | null;
@@ -617,7 +646,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly integrationAuthorizationCatalog: IntegrationAuthorizationCatalog;
   private readonly integrationBrowserAuthorization: IntegrationBrowserAuthorizationService | null;
   private readonly zoomTeamChatAuthorization: ZoomTeamChatManagedAuthorizationBroker | null;
-  private readonly pushTokenStore: PushTokenStore;
+  private readonly pushNotifications: PushNotifications;
   private readonly pushNotificationSender: PushNotificationSender;
   private readonly mcpBaseUrl: string | null;
   private speech!: SpeechService | null;
@@ -639,6 +668,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly voiceSpeakHandlers = new Map<string, VoiceSpeakHandler>();
   private readonly voiceCallerContexts = new Map<string, VoiceCallerContext>();
   private readonly workspaceSetupSnapshots = new Map<string, WorkspaceSetupSnapshot>();
+  private readonly workspaceSetupRuntime: WorkspaceSetupRuntime;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private onLifecycleIntent!: ((intent: SessionLifecycleIntent) => void) | null;
   private onBranchChanged!:
@@ -667,6 +697,8 @@ export class VoiceAssistantWebSocketServer {
     | undefined;
   private readonly resetActivityStats: (() => Promise<void>) | undefined;
   private acceptingConnections = true;
+  private readonly advertiseDaemonStatusRpc: boolean;
+  private readonly advertiseRelayConfig: boolean;
 
   constructor(
     server: HTTPServer,
@@ -690,8 +722,6 @@ export class VoiceAssistantWebSocketServer {
     onLifecycleIntent?: (intent: SessionLifecycleIntent) => void,
     projectRegistry?: ProjectRegistry,
     workspaceRegistry?: WorkspaceRegistry,
-    chatService?: FileBackedChatService,
-    loopService?: LoopService,
     scheduleService?: ScheduleService,
     checkoutDiffManager?: CheckoutDiffManager,
     serviceProxy?: ServiceProxySubsystem | null,
@@ -728,13 +758,14 @@ export class VoiceAssistantWebSocketServer {
     integrationAuthorizationCatalog?: IntegrationAuthorizationCatalog,
     integrationBrowserAuthorization?: IntegrationBrowserAuthorizationService | null,
     zoomTeamChatAuthorization?: ZoomTeamChatManagedAuthorizationBroker | null,
+    workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
   ) {
     this.logger = logger.child({ module: "websocket-server" });
+    this.workspaceSetupRuntime = workspaceSetupRuntime;
+    this.advertiseDaemonStatusRpc = wsConfig.daemonStatusRpc !== false;
+    this.advertiseRelayConfig = wsConfig.relayConfig !== false;
     this.serverId = serverId;
-    if (typeof daemonVersion !== "string" || daemonVersion.trim().length === 0) {
-      throw new MissingDaemonVersionError();
-    }
-    this.daemonVersion = daemonVersion.trim();
+    this.daemonVersion = requireDaemonVersion(daemonVersion);
     this.daemonRuntimeConfig = daemonRuntimeConfig;
     this.browserToolsBroker = orNull(browserToolsBroker);
     this.previewDevServers = orNull(previewDevServers);
@@ -745,13 +776,9 @@ export class VoiceAssistantWebSocketServer {
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
     this.projectLinkStore = projectLinkStore ?? createNoopProjectLinkStore();
     const requiredServices = requireWebSocketServices({
-      chatService,
-      loopService,
       scheduleService,
       checkoutDiffManager,
     });
-    this.chatService = requiredServices.chatService;
-    this.loopService = requiredServices.loopService;
     this.scheduleService = requiredServices.scheduleService;
     const orchestration = resolveOrchestrationServices(runService, graphStore);
     this.runService = orchestration.runService;
@@ -879,9 +906,11 @@ export class VoiceAssistantWebSocketServer {
     });
 
     const pushLogger = this.logger.child({ module: "push" });
-    this.pushTokenStore = new PushTokenStore(pushLogger, join(ottoHome, "push-tokens.json"));
-    this.pushNotificationSender =
-      pushNotificationSender ?? createPushNotificationSender(pushLogger, this.pushTokenStore);
+    this.pushNotifications = createPushNotifications({
+      logger: pushLogger,
+      filePath: join(ottoHome, "push-tokens.json"),
+    });
+    this.pushNotificationSender = pushNotificationSender ?? this.pushNotifications;
 
     this.agentManager.setAgentAttentionCallback((params) => {
       void this.broadcastAgentAttention(params).catch((err) => {
@@ -1359,7 +1388,7 @@ export class VoiceAssistantWebSocketServer {
     killAllSharedDotnetProcesses();
     this.providerSnapshotManager.destroy();
     this.checkoutDiffManager.dispose();
-    this.workspaceGitService.dispose();
+    await this.workspaceGitService.dispose();
     this.pendingConnections.clear();
     this.sessions.clear();
     this.socketIdentities.clear();
@@ -1662,7 +1691,7 @@ export class VoiceAssistantWebSocketServer {
       downloadTokenStore: this.downloadTokenStore,
       lspService: this.lspService,
       solutionService: this.solutionService,
-      pushTokenStore: this.pushTokenStore,
+      pushNotifications: this.pushNotifications,
       ottoHome: this.ottoHome,
       worktreesRoot: this.worktreesRoot,
       agentManager: this.agentManager,
@@ -1670,8 +1699,6 @@ export class VoiceAssistantWebSocketServer {
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
       projectLinkStore: this.projectLinkStore,
-      chatService: this.chatService,
-      loopService: this.loopService,
       scheduleService: this.scheduleService,
       runService: this.runService,
       graphStore: this.graphStore,
@@ -1709,6 +1736,7 @@ export class VoiceAssistantWebSocketServer {
       serviceProxy: this.serviceProxy ?? undefined,
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
       workspaceSetupSnapshots: this.workspaceSetupSnapshots,
+      workspaceSetupRuntime: this.workspaceSetupRuntime,
       onBranchChanged: this.onBranchChanged ?? undefined,
       getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
       getDaemonTcpHost: this.getDaemonTcpHost ?? undefined,
@@ -1886,6 +1914,8 @@ export class VoiceAssistantWebSocketServer {
       features: {
         // COMPAT(providersSnapshot): keep optional until all clients rely on snapshot flow.
         providersSnapshot: true,
+        // COMPAT(providersSnapshotCwd): added in v0.3.2, remove gate after 2027-02-10.
+        providersSnapshotCwd: true,
         // COMPAT(checkoutForgeSetAutoMerge): added in v0.1.106, remove old
         // checkoutGithubSetAutoMerge fallback after 2026-12-28.
         checkoutForgeSetAutoMerge: true,
@@ -1897,7 +1927,11 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(forgeSearch): added in v0.1.106, remove github_search fallback after 2026-12-28.
         forgeSearch: true,
         // COMPAT(daemonStatusRpc): added in v0.1.76, remove gate after 2026-11-18.
-        daemonStatusRpc: true,
+        ...(this.advertiseDaemonStatusRpc ? { daemonStatusRpc: true } : {}),
+        // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
+        ...(this.advertiseRelayConfig ? { relayConfig: true } : {}),
+        // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.
+        pushTokenRevocation: true,
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": true,
         // COMPAT(terminalCompatibilityDiagnostic): added in v0.8.9, remove gate after 2027-02-12.
@@ -1906,8 +1940,16 @@ export class VoiceAssistantWebSocketServer {
         terminalEmbeddedPresentation: true,
         // COMPAT(terminalTitleSettings): added in v0.8.5, remove gate after 2027-02-07.
         terminalTitleSettings: true,
+        // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.
+        "terminal-input-mode-replay": true,
+        // COMPAT(terminalSizeOwnership): added in v0.2.6, remove gate after 2027-02-02.
+        "terminal-size-ownership": true,
         // COMPAT(rewind): added in v0.1.X, drop the gate when floor >= v0.1.X.
         rewind: true,
+        // COMPAT(agentTimelinePromptIndex): added in v0.2.X, drop the gate when floor >= v0.2.X.
+        agentTimelinePromptIndex: true,
+        // COMPAT(agentHistorySearch): added in v0.3.0, remove gate after 2027-02-07.
+        agentHistorySearch: true,
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: true,
         // COMPAT(gitFetchControl): added in v0.8.11, remove gate after 2027-02-14.
@@ -2222,6 +2264,8 @@ export class VoiceAssistantWebSocketServer {
         forgeProviders: true,
         // COMPAT(selectiveAgentTimeline): added in v0.1.106, remove after 2027-01-12.
         selectiveAgentTimeline: true,
+        // COMPAT(canonicalSubmittedPrompts): added in v0.2.6, remove gate after 2027-01-30.
+        canonicalSubmittedPrompts: true,
         // COMPAT(stableProjectIdentity): added in v0.1.109, remove gate after 2027-01-15.
         stableProjectIdentity: true,
         // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
@@ -2233,6 +2277,18 @@ export class VoiceAssistantWebSocketServer {
         // Projects v2 registered. Unconditionally true: the mock provider
         // makes the surface work on every host without credentials.
         kanbanBoard: true,
+        // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
+        projectCustomIcon: true,
+        // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.
+        fsEntryOps: true,
+        // COMPAT(fsEntryDuplicate): added in v0.3.0, remove gate after 2027-02-09.
+        fsEntryDuplicate: true,
+        // COMPAT(checkoutDiscardChanges): added in v0.3.0, remove gate after 2027-02-08.
+        checkoutDiscardChanges: true,
+        // COMPAT(agentProfiles): added in v0.3.2, remove gate after 2027-02-11.
+        agentProfiles: true,
+        // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
+        agentConfigApply: true,
       },
     };
   }

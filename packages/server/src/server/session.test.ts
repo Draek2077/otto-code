@@ -26,10 +26,8 @@ import {
   asAgentManager,
   asAgentStorage,
   asDownloadTokenStore,
-  asPushTokenStore,
-  asChatService,
+  asPushNotifications,
   asScheduleService,
-  asLoopService,
   asCheckoutDiffManager,
   asGitHubService,
   asWorkspaceGitService,
@@ -112,8 +110,11 @@ const agentResponseMocks = vi.hoisted(() => ({
 }));
 
 const spawnMocks = vi.hoisted(() => ({
-  execCommand: vi.fn(),
   spawnWorkspaceScript: vi.fn(),
+}));
+
+const gitCommandMocks = vi.hoisted(() => ({
+  runGitCommand: vi.fn(),
 }));
 
 const ottoWorktreeServiceMocks = vi.hoisted(() => ({
@@ -164,11 +165,11 @@ vi.mock("./otto-worktree-service.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../utils/spawn.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../utils/spawn.js")>();
+vi.mock("../utils/run-git-command.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/run-git-command.js")>();
   return {
     ...actual,
-    execCommand: spawnMocks.execCommand,
+    runGitCommand: gitCommandMocks.runGitCommand,
   };
 });
 
@@ -222,6 +223,7 @@ interface SessionForTestOptions {
   getDaemonTcpPort?: () => number | null;
   getDaemonTcpHost?: () => string | null;
   providerSnapshotManager?: ProviderSnapshotManager;
+  hubExecutionAgents?: SessionOptions["hubExecutionAgents"];
   stt?: SessionOptions["stt"];
   voice?: SessionOptions["voice"];
   ottoHome?: string;
@@ -229,6 +231,7 @@ interface SessionForTestOptions {
   daemonVersion?: SessionOptions["daemonVersion"];
   daemonRuntimeConfig?: SessionOptions["daemonRuntimeConfig"];
   downloadTokenStore?: SessionOptions["downloadTokenStore"];
+  pushNotifications?: SessionOptions["pushNotifications"];
   messages?: unknown[];
   binaryMessages?: Uint8Array[];
   clientCapabilities?: SessionOptions["clientCapabilities"];
@@ -288,10 +291,11 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     onBinaryMessage: createBinaryMessageHandler(options.binaryMessages),
     logger,
     downloadTokenStore: options.downloadTokenStore ?? asDownloadTokenStore(),
-    pushTokenStore: asPushTokenStore(),
+    pushNotifications: options.pushNotifications ?? asPushNotifications(),
     ottoHome: options.ottoHome ?? "/tmp/otto-home",
     agentManager: asAgentManager({
       listAgents: vi.fn(() => []),
+      listProviderSubagentActivity: vi.fn(() => []),
       subscribe: vi.fn(() => () => {}),
       // `listAgentPayloads` calls this on every fetch_agents_request. Left unstubbed it throws,
       // and the throw is swallowed by handleFetchAgents' catch - which clears the subscription,
@@ -343,9 +347,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
         })),
       ),
     },
-    chatService: asChatService(),
     scheduleService: asScheduleService(),
-    loopService: asLoopService(),
     checkoutDiffManager: asCheckoutDiffManager(checkoutDiffManager),
     github: asGitHubService(github),
     workspaceGitService: asWorkspaceGitService(workspaceGitService),
@@ -362,6 +364,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     previewDevServers: options.previewDevServers,
     providerSnapshotManager:
       options.providerSnapshotManager ?? createProviderSnapshotManagerStub().manager,
+    hubExecutionAgents: options.hubExecutionAgents,
     serviceProxy: options.serviceProxy,
     scriptRuntimeStore: options.scriptRuntimeStore,
     getDaemonTcpPort: options.getDaemonTcpPort,
@@ -1350,6 +1353,88 @@ describe("project config RPC authorization", () => {
   });
 });
 
+test("push token registration can be revoked by the connected client", async () => {
+  const renewed: string[] = [];
+  const revoked: string[] = [];
+  const messages: unknown[] = [];
+  const session = createSessionForTest({
+    messages,
+    pushNotifications: asPushNotifications({
+      renew: (token: string) => renewed.push(token),
+      revoke: (token: string) => revoked.push(token),
+    }),
+  });
+
+  await session.handleMessage({
+    type: "register_push_token",
+    token: "ExponentPushToken[test-device]",
+  });
+  await session.handleMessage({
+    type: "push.unregister.request",
+    token: "ExponentPushToken[test-device]",
+    requestId: "revoke-1",
+  });
+  await session.handleMessage({
+    type: "client_heartbeat",
+    deviceType: "mobile",
+    focusedAgentId: null,
+    lastActivityAt: "2026-08-10T00:00:00.000Z",
+    appVisible: false,
+  });
+
+  expect(renewed).toEqual(["ExponentPushToken[test-device]"]);
+  expect(revoked).toEqual(["ExponentPushToken[test-device]"]);
+  expect(messages).toEqual([
+    {
+      type: "push.unregister.response",
+      payload: { requestId: "revoke-1" },
+    },
+  ]);
+});
+
+test("push token revocation only acknowledges durable removal", async () => {
+  const renewed: string[] = [];
+  const messages: SessionOutboundMessage[] = [];
+  const session = createSessionForTest({
+    messages,
+    pushNotifications: asPushNotifications({
+      renew: (token: string) => renewed.push(token),
+      revoke: () => {
+        throw new Error("disk full");
+      },
+    }),
+  });
+
+  await session.handleMessage({
+    type: "register_push_token",
+    token: "ExponentPushToken[test-device]",
+  });
+  await session.handleMessage({
+    type: "push.unregister.request",
+    token: "ExponentPushToken[test-device]",
+    requestId: "revoke-failed",
+  });
+  await session.handleMessage({
+    type: "client_heartbeat",
+    deviceType: "mobile",
+    focusedAgentId: null,
+    lastActivityAt: "2026-08-10T00:00:00.000Z",
+    appVisible: false,
+  });
+
+  expect(renewed).toEqual(["ExponentPushToken[test-device]", "ExponentPushToken[test-device]"]);
+  expect(messages.some((message) => message.type === "push.unregister.response")).toBe(false);
+  expect(messages).toContainEqual({
+    type: "rpc_error",
+    payload: {
+      requestId: "revoke-failed",
+      requestType: "push.unregister.request",
+      error: "Request failed: disk full",
+      code: "handler_error",
+    },
+  });
+});
+
 describe("daemon status + pairing RPC", () => {
   const tempDirs: string[] = [];
 
@@ -1372,7 +1457,7 @@ describe("daemon status + pairing RPC", () => {
       ottoHome: makeHome(),
       serverId: "srv-test",
       daemonVersion: "9.9.9",
-      daemonRuntimeConfig: { listen: "127.0.0.1:6868", relay: null },
+      daemonRuntimeConfig: { listen: "127.0.0.1:6868", getRelayConfig: () => null },
       agentManager: {
         listProviderAvailability: vi.fn().mockResolvedValue([
           { provider: "claude", available: true },
@@ -1411,7 +1496,7 @@ describe("daemon status + pairing RPC", () => {
       ottoHome: makeHome(),
       serverId: "srv-test",
       daemonVersion: "9.9.9",
-      daemonRuntimeConfig: { listen: "127.0.0.1:6868", relay: null },
+      daemonRuntimeConfig: { listen: "127.0.0.1:6868", getRelayConfig: () => null },
       agentManager: {
         listProviderAvailability: vi.fn().mockRejectedValue(new Error("provider listing failed")),
       },
@@ -1447,13 +1532,13 @@ describe("daemon status + pairing RPC", () => {
       ottoHome: makeHome(),
       daemonRuntimeConfig: {
         listen: "127.0.0.1:6868",
-        relay: {
+        getRelayConfig: () => ({
           enabled: false,
           endpoint: "relay.otto-code.ai:443",
           publicEndpoint: "relay.otto-code.ai:443",
           useTls: true,
           publicUseTls: true,
-        },
+        }),
       },
     });
 
@@ -3321,6 +3406,7 @@ describe("session checkout status handling", () => {
         aheadBehind: { ahead: 2, behind: 1 },
         aheadOfOrigin: 2,
         behindOfOrigin: 1,
+        upstreamRef: null,
         hasRemote: true,
         remoteUrl: "https://github.com/otto-code-ai/otto-code.git",
         isOttoOwnedWorktree: false,
@@ -3994,7 +4080,7 @@ describe("session stash mutation handling", () => {
     const messages: unknown[] = [];
     const workspaceGitService = { getSnapshot: vi.fn().mockResolvedValue({}) };
     const session = createSessionForTest({ workspaceGitService, messages });
-    spawnMocks.execCommand.mockResolvedValue({
+    gitCommandMocks.runGitCommand.mockResolvedValue({
       stdout: "",
       stderr: "",
       exitCode: 0,
@@ -4009,6 +4095,10 @@ describe("session stash mutation handling", () => {
       requestId: "request-stash-push",
     });
 
+    expect(gitCommandMocks.runGitCommand).toHaveBeenCalledWith(
+      ["stash", "push", "--include-untracked", "-m", "otto-auto-stash: feature"],
+      { cwd: "/tmp/repo", timeout: 120_000 },
+    );
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo", {
       force: true,
       reason: "stash-push",
@@ -4028,7 +4118,7 @@ describe("session stash mutation handling", () => {
     const messages: unknown[] = [];
     const workspaceGitService = { getSnapshot: vi.fn().mockResolvedValue({}) };
     const session = createSessionForTest({ workspaceGitService, messages });
-    spawnMocks.execCommand.mockResolvedValue({
+    gitCommandMocks.runGitCommand.mockResolvedValue({
       stdout: "",
       stderr: "",
       exitCode: 0,
@@ -4043,6 +4133,10 @@ describe("session stash mutation handling", () => {
       requestId: "request-stash-pop",
     });
 
+    expect(gitCommandMocks.runGitCommand).toHaveBeenCalledWith(["stash", "pop", "stash@{0}"], {
+      cwd: "/tmp/repo",
+      timeout: 120_000,
+    });
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo", {
       force: true,
       reason: "stash-pop",
@@ -4486,48 +4580,6 @@ describe("chat/schedule/loop dispatch routing (behavior preservation)", () => {
   // handleMessage receives already-parsed messages, so these fixtures only need to
   // satisfy the TS union here - zod parsing happens upstream at the transport.
   const routingCases: Array<{ msg: SessionInboundMessage; code: string }> = [
-    {
-      msg: { type: "chat/create", requestId: "rt-chat-create", name: "room" },
-      code: "chat_request_failed",
-    },
-    { msg: { type: "chat/list", requestId: "rt-chat-list" }, code: "chat_request_failed" },
-    {
-      msg: { type: "chat/inspect", requestId: "rt-chat-inspect", room: "room" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "chat/delete", requestId: "rt-chat-delete", room: "room" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "chat/post", requestId: "rt-chat-post", room: "room", body: "hi" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "chat/read", requestId: "rt-chat-read", room: "room" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "chat/wait", requestId: "rt-chat-wait", room: "room" },
-      code: "chat_request_failed",
-    },
-    {
-      msg: { type: "loop/run", requestId: "rt-loop-run", prompt: "p", cwd: "/tmp/loop" },
-      code: "loop_request_failed",
-    },
-    { msg: { type: "loop/list", requestId: "rt-loop-list" }, code: "loop_request_failed" },
-    {
-      msg: { type: "loop/inspect", requestId: "rt-loop-inspect", id: "loop-1" },
-      code: "loop_request_failed",
-    },
-    {
-      msg: { type: "loop/logs", requestId: "rt-loop-logs", id: "loop-1" },
-      code: "loop_request_failed",
-    },
-    {
-      msg: { type: "loop/stop", requestId: "rt-loop-stop", id: "loop-1" },
-      code: "loop_request_failed",
-    },
     {
       msg: {
         type: "schedule/create",

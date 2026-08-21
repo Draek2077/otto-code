@@ -31,6 +31,8 @@ interface WorkspaceTabIconProps {
   active?: boolean;
   /** Accent-colored icon - marks the selected tab in the desktop tabs row. */
   accent?: boolean;
+  /** Accepted by shared call sites whose status renderer uses a surface knockout. */
+  backdrop?: "surface0" | "surface1";
   size?: number;
 }
 

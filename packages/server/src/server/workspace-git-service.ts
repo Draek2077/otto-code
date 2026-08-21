@@ -89,6 +89,7 @@ export interface WorkspaceGitRuntimeSnapshot {
     // the client can label an inferred base as the heuristic it is.
     baseSource?: CheckoutBaseSource | null;
     aheadBehind: { ahead: number; behind: number } | null;
+    upstreamRef: string | null;
     aheadOfOrigin: number | null;
     behindOfOrigin: number | null;
     hasRemote: boolean;
@@ -2437,6 +2438,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       isDirty: checkoutStatus.isDirty,
       baseRef: checkoutStatus.baseRef,
       aheadBehind: checkoutStatus.aheadBehind,
+      upstreamRef: checkoutStatus.upstreamRef,
       aheadOfOrigin: checkoutStatus.aheadOfOrigin,
       behindOfOrigin: checkoutStatus.behindOfOrigin,
       hasRemote: checkoutStatus.hasRemote,
@@ -2860,6 +2862,7 @@ function buildNotGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
       isDirty: null,
       baseRef: null,
       aheadBehind: null,
+      upstreamRef: null,
       aheadOfOrigin: null,
       behindOfOrigin: null,
       hasRemote: false,

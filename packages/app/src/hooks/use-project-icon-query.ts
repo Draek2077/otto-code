@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useFetchQuery } from "@/data/query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import type { ProjectIcon } from "@otto-code/protocol/messages";
 
@@ -24,7 +24,7 @@ export function useProjectIconQuery({ serverId, cwd }: UseProjectIconQueryOption
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
 
-  const query = useQuery({
+  const query = useFetchQuery({
     queryKey: projectIconQueryKey(serverId, cwd),
     queryFn: async (): Promise<ProjectIcon | null> => {
       if (!client) {
@@ -34,9 +34,9 @@ export function useProjectIconQuery({ serverId, cwd }: UseProjectIconQueryOption
       return result.icon;
     },
     enabled: !!client && isConnected && !!cwd,
-    staleTime: Infinity,
+    dataShape: "value",
+    staleTimeMs: Number.MAX_SAFE_INTEGER,
     gcTime: 1000 * 60 * 60,
-    refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });

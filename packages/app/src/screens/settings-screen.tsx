@@ -36,11 +36,14 @@ import {
   Keyboard,
   Stethoscope,
   Info,
+  CircleNotificationsFilled,
   Shield,
   Puzzle,
   Plus,
   FolderGit2,
   SquareTerminal,
+  Smartphone,
+  Sparkles,
   Waypoints,
   Workspaces,
   Wrench,
@@ -84,6 +87,7 @@ import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, usePanelStore } from "@/stores/pa
 import { orderHostsLocalFirst, type HostProfile } from "@/types/host-connection";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
+import { WindowChromeRegion } from "@/utils/window-chrome";
 import { SIDEBAR_TOP_SPACER_TRIM } from "@/components/left-sidebar";
 import { BackHeader } from "@/components/headers/back-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
@@ -98,6 +102,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
+import { DesktopNotificationsSection } from "@/desktop/components/desktop-notifications-section";
 import { IntegrationsSection } from "@/desktop/components/integrations-section";
 import {
   type EnableBuiltInDaemonOption,
@@ -128,6 +133,7 @@ import {
 } from "@/i18n/locales";
 import {
   HostConnectionsPage,
+  HostPairDevicePage,
   HostAgentsPage,
   HostTeamsPage,
   HostCodePage,
@@ -140,6 +146,7 @@ import {
   HostTerminalsPage,
 } from "@/screens/settings/host-page";
 import { HostBrainPage } from "@/screens/settings/host-brain-page";
+import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen, {
   confirmDiscardProjectSettingsChanges,
@@ -153,7 +160,6 @@ import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { useRetainedScrollOffset } from "@/hooks/use-retained-scroll-offset";
 import {
   buildOpenProjectRoute,
-  buildProjectsSettingsRoute,
   buildSettingsHostSectionRoute,
   buildSettingsSectionRoute,
   buildSetupRoute,
@@ -161,7 +167,10 @@ import {
   type HostSectionSlug,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
-import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
+import {
+  navigateToLastWorkspace,
+  useLastWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 import { rememberLastSettingsView } from "@/stores/last-settings-view";
 
 // Matches MIN_CHAT_WIDTH in left-sidebar.tsx so both sidebars clamp the shared
@@ -178,7 +187,6 @@ export type SettingsView =
   | { kind: "root" }
   | { kind: "section"; section: SettingsSectionSlug }
   | { kind: "host"; serverId: string; section: HostSectionSlug }
-  | { kind: "projects" }
   | { kind: "project"; serverId: string; projectId: string };
 
 // Counts mounted SettingsScreen instances. Navigating between settings route
@@ -239,6 +247,12 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     desktopOnly: true,
   },
   {
+    id: "notifications",
+    labelKey: "settings.sections.notifications",
+    icon: CircleNotificationsFilled,
+    desktopOnly: true,
+  },
+  {
     id: "permissions",
     labelKey: "settings.sections.permissions",
     icon: Shield,
@@ -259,12 +273,15 @@ interface HostSectionItem {
 
 const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "host", labelKey: "settings.hostSections.host", icon: Server },
+  { id: "projects", labelKey: "settings.hostSections.projects", icon: FolderGit2 },
   { id: "connections", labelKey: "settings.hostSections.connections", icon: Network },
+  { id: "pair-device", labelKey: "openProject.tiles.pairDevice.title", icon: Smartphone },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
   { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
   { id: "code", labelKey: "settings.hostSections.code", icon: DataObject },
   { id: "brain", labelKey: "settings.hostSections.brain", icon: Brain },
+  { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Sparkles },
   // Git-provider settings are collapsed into "Workspaces" as a "Git" panel - too
   // few options to warrant its own sidebar category. See HostWorkspacesPage.
   // Everything in that page (PR auto-archive, Git providers) is developer-only,
@@ -294,8 +311,12 @@ function renderHostSettingsContent(
   isDeveloperMode: boolean,
 ): ReactNode {
   switch (view.section) {
+    case "projects":
+      return <ProjectsScreen serverId={view.serverId} />;
     case "connections":
       return <HostConnectionsPage serverId={view.serverId} />;
+    case "pair-device":
+      return <HostPairDevicePage serverId={view.serverId} />;
     case "agents":
       return <HostAgentsPage serverId={view.serverId} />;
     case "teams":
@@ -306,6 +327,8 @@ function renderHostSettingsContent(
       return <HostCodePage serverId={view.serverId} />;
     case "brain":
       return <HostBrainPage serverId={view.serverId} />;
+    case "metadata":
+      return <MetadataGenerationPage serverId={view.serverId} />;
     case "workspaces":
       return isDeveloperMode ? <HostWorkspacesPage serverId={view.serverId} /> : null;
     case "providers":
@@ -1121,6 +1144,8 @@ function GeneralSection({
 }
 
 interface DiagnosticsSectionProps {
+  useLegacyTerminalRenderer: boolean;
+  onUseLegacyTerminalRendererChange: (value: boolean) => void;
   voiceAudioEngine: ReturnType<typeof useVoiceAudioEngineOptional>;
   isPlaybackTestRunning: boolean;
   playbackTestResult: string | null;
@@ -1130,6 +1155,8 @@ interface DiagnosticsSectionProps {
 }
 
 function DiagnosticsSection({
+  useLegacyTerminalRenderer,
+  onUseLegacyTerminalRendererChange,
   voiceAudioEngine,
   isPlaybackTestRunning,
   playbackTestResult,
@@ -1160,6 +1187,26 @@ function DiagnosticsSection({
   return (
     <SettingsSection title={t("settings.diagnostics.title")}>
       <View style={settingsStyles.card}>
+        {isNative ? (
+          <View style={settingsStyles.row} testID="legacy-terminal-renderer-row">
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.diagnostics.legacyTerminalRenderer.label")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.diagnostics.legacyTerminalRenderer.description")}
+              </Text>
+            </View>
+            <Switch
+              value={useLegacyTerminalRenderer}
+              onValueChange={onUseLegacyTerminalRendererChange}
+              accessibilityLabel={t(
+                "settings.diagnostics.legacyTerminalRenderer.accessibilityLabel",
+              )}
+              testID="legacy-terminal-renderer-switch"
+            />
+          </View>
+        ) : null}
         <View style={settingsStyles.rowResponsive} testID="app-diagnostic-row">
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.app.rowTitle")}</Text>
@@ -1632,38 +1679,6 @@ function SidebarHostSectionButton({
   );
 }
 
-interface SidebarProjectsButtonProps {
-  isSelected: boolean;
-  onSelect: () => void;
-}
-
-function SidebarProjectsButton({ isSelected, onSelect }: SidebarProjectsButtonProps) {
-  const { theme } = useUnistyles();
-  const { t } = useTranslation();
-  const accessibilityState = useMemo(() => ({ selected: isSelected }), [isSelected]);
-  const labelStyle = useMemo(
-    () => [sidebarStyles.label, isSelected && { color: theme.colors.foreground }],
-    [isSelected, theme.colors.foreground],
-  );
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={accessibilityState}
-      onPress={onSelect}
-      testID="settings-projects"
-      style={isSelected ? selectedSidebarItemStyle : sidebarItemStyle}
-    >
-      <FolderGit2
-        size={theme.iconSize.md}
-        color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
-      />
-      <Text style={labelStyle} numberOfLines={1}>
-        {t("settings.projects")}
-      </Text>
-    </Pressable>
-  );
-}
-
 interface HostPickerProps {
   activeServerId: string | null;
   sortedHosts: HostProfile[];
@@ -1673,7 +1688,7 @@ interface HostPickerProps {
 }
 
 /**
- * Scopes the four host sections to a host. Reuses the canonical sidebar host
+ * Scopes the host sections to a host. Reuses the canonical sidebar host
  * switcher pattern (left-sidebar.tsx): a quiet row-styled trigger opening a
  * <Combobox>. The local host is listed first, each row shows the connection it
  * is using right now; an "Add host" row is always reachable from the list -
@@ -1751,7 +1766,6 @@ interface SettingsSidebarProps {
   onSelectSection: (section: SettingsSectionSlug) => void;
   onSelectHostSection: (section: HostSectionSlug) => void;
   onSelectHost: (serverId: string) => void;
-  onSelectProjects: () => void;
   onAddHost: () => void;
   onBackToWorkspace: () => void;
   onNavigateHome: () => void;
@@ -1765,7 +1779,6 @@ function SettingsSidebar({
   onSelectSection,
   onSelectHostSection,
   onSelectHost,
-  onSelectProjects,
   onAddHost,
   onBackToWorkspace,
   onNavigateHome,
@@ -1788,12 +1801,6 @@ function SettingsSidebar({
   const items = SIDEBAR_SECTION_ITEMS.filter(
     (item) => (!item.desktopOnly || isDesktopApp) && (!item.developerOnly || isDeveloperMode),
   );
-  // Projects renders right after Visualizer. Visualizer is developer-only, so in
-  // User mode it's filtered out - fall back to Appearance (always present, and
-  // the item just before Visualizer) so Projects never disappears.
-  const projectsAnchorId: SettingsSectionSlug = items.some((item) => item.id === "visualizer")
-    ? "visualizer"
-    : "appearance";
   const hostItems = HOST_SECTION_ITEMS.filter((item) => !item.developerOnly || isDeveloperMode);
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const isDesktop = layout === "desktop";
@@ -1853,8 +1860,9 @@ function SettingsSidebar({
   );
   const sidebarScroll = useRetainedScrollOffset(SETTINGS_SIDEBAR_SCROLL_KEY);
   const selectedSectionId = view.kind === "section" ? view.section : null;
-  const selectedHostSection = view.kind === "host" ? view.section : null;
-  const isProjectsSelected = view.kind === "projects" || view.kind === "project";
+  let selectedHostSection: HostSectionSlug | null = null;
+  if (view.kind === "host") selectedHostSection = view.section;
+  if (view.kind === "project") selectedHostSection = "projects";
   // Matches the workspace left sidebar's trimmed spacer so the top menu rows of
   // the two sidebars stay vertically aligned when navigating between them.
   const paddingTopStyle = useMemo(
@@ -1882,18 +1890,14 @@ function SettingsSidebar({
       <View style={sidebarStyles.list}>
         <Text style={sidebarStyles.groupLabel}>{t("settings.groups.app")}</Text>
         {items.map((item) => (
-          <Fragment key={item.id}>
-            <SidebarSectionButton
-              itemId={item.id}
-              label={t(item.labelKey)}
-              icon={item.icon}
-              isSelected={selectedSectionId === item.id}
-              onSelect={onSelectSection}
-            />
-            {item.id === projectsAnchorId ? (
-              <SidebarProjectsButton isSelected={isProjectsSelected} onSelect={onSelectProjects} />
-            ) : null}
-          </Fragment>
+          <SidebarSectionButton
+            key={item.id}
+            itemId={item.id}
+            label={t(item.labelKey)}
+            icon={item.icon}
+            isSelected={selectedSectionId === item.id}
+            onSelect={onSelectSection}
+          />
         ))}
       </View>
       <SidebarSeparator />
@@ -2075,8 +2079,21 @@ export default function SettingsScreen({
   const hosts = useHosts();
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
+  const lastWorkspaceSelection = useLastWorkspaceSelection();
+  const routedSettingsHostServerId =
+    view.kind === "host" || view.kind === "project" ? view.serverId : null;
   const [selectedSettingsHostServerId, setSelectedSettingsHostServerId] = useState<string | null>(
-    view.kind === "host" ? view.serverId : preferredHostServerId,
+    routedSettingsHostServerId ?? preferredHostServerId ?? lastWorkspaceSelection?.serverId ?? null,
+  );
+  useFocusEffect(
+    useCallback(() => {
+      setSelectedSettingsHostServerId(
+        routedSettingsHostServerId ??
+          preferredHostServerId ??
+          lastWorkspaceSelection?.serverId ??
+          null,
+      );
+    }, [lastWorkspaceSelection?.serverId, preferredHostServerId, routedSettingsHostServerId]),
   );
   const knownSelectedSettingsHostServerId = useMemo(() => {
     if (!selectedSettingsHostServerId) {
@@ -2100,7 +2117,7 @@ export default function SettingsScreen({
   }, [hosts, localServerId]);
 
   useEffect(() => {
-    if (view.kind === "host") {
+    if (view.kind === "host" || view.kind === "project") {
       setSelectedSettingsHostServerId(view.serverId);
       return;
     }
@@ -2118,7 +2135,7 @@ export default function SettingsScreen({
   // The host the four sections scope to: the host on the active view, otherwise
   // the picker choice, otherwise the local daemon, otherwise the first host.
   const activeHostServerId = useMemo(() => {
-    if (view.kind === "host") return view.serverId;
+    if (view.kind === "host" || view.kind === "project") return view.serverId;
     return (
       knownSelectedSettingsHostServerId ?? knownLocalServerId ?? sortedHosts[0]?.serverId ?? null
     );
@@ -2277,7 +2294,12 @@ export default function SettingsScreen({
     },
     [updateSettings],
   );
-
+  const handleUseLegacyTerminalRendererChange = useCallback(
+    (useLegacyTerminalRenderer: boolean) => {
+      void updateSettings({ useLegacyTerminalRenderer });
+    },
+    [updateSettings],
+  );
   const handlePlaybackTest = useCallback(async () => {
     if (!voiceAudioEngine || isPlaybackTestRunning) {
       return;
@@ -2397,11 +2419,19 @@ export default function SettingsScreen({
   const handleSelectHost = useCallback(
     (serverId: string) => {
       setSelectedSettingsHostServerId(serverId);
+      if (view.kind === "project") {
+        const target = buildSettingsHostSectionRoute(serverId, "projects");
+        if (isCompactLayout) {
+          router.push(target);
+        } else {
+          router.replace(target);
+        }
+        return;
+      }
       if (view.kind !== "host") {
         return;
       }
-      const section: HostSectionSlug = view.section;
-      const target = buildSettingsHostSectionRoute(serverId, section);
+      const target = buildSettingsHostSectionRoute(serverId, view.section);
       if (isCompactLayout) {
         router.push(target);
       } else {
@@ -2429,17 +2459,6 @@ export default function SettingsScreen({
     [activeHostServerId, guardProjectSettingsExit, handleAddHost, isCompactLayout, router],
   );
 
-  const handleSelectProjects = useCallback(() => {
-    guardProjectSettingsExit(() => {
-      const target = buildProjectsSettingsRoute();
-      if (isCompactLayout) {
-        router.push(target);
-      } else {
-        router.replace(target);
-      }
-    });
-  }, [guardProjectSettingsExit, isCompactLayout, router]);
-
   const handleScanQr = useCallback(() => {
     closeAddConnectionFlow();
     router.push({
@@ -2464,6 +2483,15 @@ export default function SettingsScreen({
       router.replace("/settings");
     }
   }, [router]);
+
+  const detailProjectServerId = view.kind === "project" ? view.serverId : null;
+  const handleBackFromDetail = useCallback(() => {
+    if (detailProjectServerId) {
+      router.navigate(buildSettingsHostSectionRoute(detailProjectServerId, "projects"));
+      return;
+    }
+    handleBackToRoot();
+  }, [detailProjectServerId, handleBackToRoot, router]);
 
   const handleBackToWorkspace = useCallback(() => {
     guardProjectSettingsExit(() => {
@@ -2513,7 +2541,7 @@ export default function SettingsScreen({
       if (!item) return null;
       return { title: t(item.labelKey), Icon: item.icon };
     }
-    if (view.kind === "project" || view.kind === "projects") {
+    if (view.kind === "project") {
       return { title: t("settings.projects"), Icon: FolderGit2 };
     }
     return null;
@@ -2534,13 +2562,11 @@ export default function SettingsScreen({
     if (view.kind === "host") {
       return renderHostSettingsContent(view, handleHostRemoved, isDeveloperMode);
     }
-    if (view.kind === "projects") {
-      return <ProjectsScreen view={view} />;
-    }
     if (view.kind === "project") {
       return (
         <ProjectSettingsScreen
-          projectKey={view.projectId}
+          serverId={view.serverId}
+          projectId={view.projectId}
           onDirtyChange={handleProjectSettingsDirtyChange}
         />
       );
@@ -2596,11 +2622,15 @@ export default function SettingsScreen({
               localServerId={knownLocalServerId}
             />
           );
+        case "notifications":
+          return isDesktopApp ? <DesktopNotificationsSection /> : null;
         case "permissions":
           return isDesktopApp ? <DesktopPermissionsSection /> : null;
         case "diagnostics":
           return (
             <DiagnosticsSection
+              useLegacyTerminalRenderer={settings.useLegacyTerminalRenderer}
+              onUseLegacyTerminalRendererChange={handleUseLegacyTerminalRendererChange}
               voiceAudioEngine={voiceAudioEngine}
               isPlaybackTestRunning={isPlaybackTestRunning}
               playbackTestResult={playbackTestResult}
@@ -2688,7 +2718,6 @@ export default function SettingsScreen({
                   onSelectSection={handleSelectSection}
                   onSelectHostSection={handleSelectHostSection}
                   onSelectHost={handleSelectHost}
-                  onSelectProjects={handleSelectProjects}
                   onAddHost={handleAddHost}
                   onBackToWorkspace={handleBackToWorkspace}
                   onNavigateHome={handleNavigateHome}
@@ -2706,18 +2735,13 @@ export default function SettingsScreen({
     );
   }
 
-  // Mobile detail: full-screen content with a back header. Project detail uses
-  // an app-level back (out of settings, to the workspace) since the in-body
-  // "Back to projects" ghost button handles list-level back; other detail views
-  // step back to the settings root.
-  const detailBackHandler = view.kind === "project" ? handleBackToWorkspace : handleBackToRoot;
   if (isCompactLayout) {
     return (
       <View style={styles.container}>
         <BackHeader
           title={detailHeader?.title}
           titleAccessory={detailHeader?.titleAccessory}
-          onBack={detailBackHandler}
+          onBack={handleBackFromDetail}
         />
         <View style={styles.scrollView}>
           <ScrollView
@@ -2751,54 +2775,60 @@ export default function SettingsScreen({
       {detailHeader.titleAccessory}
     </>
   ) : null;
+  const desktopContentScroll = (
+    <View style={styles.scrollView}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={insetBottomStyle}
+        onLayout={webScrollbar.onLayout}
+        onScroll={webScrollbar.onScroll}
+        onContentSizeChange={webScrollbar.onContentSizeChange}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={!showWebScrollbar}
+      >
+        <View style={styles.content}>{content}</View>
+      </ScrollView>
+      {webScrollbar.overlay}
+    </View>
+  );
   return (
     <View style={styles.container}>
       <View style={desktopStyles.row}>
-        <SettingsSidebar
-          view={view}
-          onSelectSection={handleSelectSection}
-          onSelectHostSection={handleSelectHostSection}
-          onSelectHost={handleSelectHost}
-          onSelectProjects={handleSelectProjects}
-          onAddHost={handleAddHost}
-          onBackToWorkspace={handleBackToWorkspace}
-          onNavigateHome={handleNavigateHome}
-          onNavigateStats={handleNavigateStats}
-          activeHostServerId={activeHostServerId}
-          layout="desktop"
-        />
-        <View style={desktopStyles.contentPane} testID="settings-detail-pane">
-          {/* Pane-scoped page fade: the app-wide RouteFadeContainer treats all
-              /settings* routes as one page on desktop (see
-              use-route-transition-key.ts), so section changes fade only this
-              pane and never veil the settings sidebar. */}
-          <KeyedFadeContainer
-            transitionKey={settingsViewKey(view)}
-            fadeOnMount={contentFadeOnMount}
-          >
-            <ScreenHeader
-              borderless={!detailHeader}
-              windowControlsPaddingRole="detailHeader"
-              left={detailHeaderLeft}
-              leftStyle={desktopStyles.detailLeft}
-            />
-            <View style={styles.scrollView}>
-              <ScrollView
-                ref={scrollRef}
-                style={styles.scrollView}
-                contentContainerStyle={insetBottomStyle}
-                onLayout={webScrollbar.onLayout}
-                onScroll={webScrollbar.onScroll}
-                onContentSizeChange={webScrollbar.onContentSizeChange}
-                scrollEventThrottle={16}
-                showsVerticalScrollIndicator={!showWebScrollbar}
-              >
-                <View style={styles.content}>{content}</View>
-              </ScrollView>
-              {webScrollbar.overlay}
-            </View>
-          </KeyedFadeContainer>
-        </View>
+        <WindowChromeRegion corners="top-left">
+          <SettingsSidebar
+            view={view}
+            onSelectSection={handleSelectSection}
+            onSelectHostSection={handleSelectHostSection}
+            onSelectHost={handleSelectHost}
+            onAddHost={handleAddHost}
+            onBackToWorkspace={handleBackToWorkspace}
+            onNavigateHome={handleNavigateHome}
+            onNavigateStats={handleNavigateStats}
+            activeHostServerId={activeHostServerId}
+            layout="desktop"
+          />
+        </WindowChromeRegion>
+        <WindowChromeRegion corners="top-right">
+          <View style={desktopStyles.contentPane} testID="settings-detail-pane">
+            {/* Pane-scoped page fade: the app-wide RouteFadeContainer treats all
+                /settings* routes as one page on desktop (see
+                use-route-transition-key.ts), so section changes fade only this
+                pane and never veil the settings sidebar. */}
+            <KeyedFadeContainer
+              transitionKey={settingsViewKey(view)}
+              fadeOnMount={contentFadeOnMount}
+            >
+              <ScreenHeader
+                borderless={!detailHeader}
+                windowControlsPaddingRole="detailHeader"
+                left={detailHeaderLeft}
+                leftStyle={desktopStyles.detailLeft}
+              />
+              {desktopContentScroll}
+            </KeyedFadeContainer>
+          </View>
+        </WindowChromeRegion>
       </View>
       {addHostModals}
     </View>

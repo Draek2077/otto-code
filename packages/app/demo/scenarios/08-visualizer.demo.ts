@@ -1,10 +1,10 @@
-import { expect, test } from "../../e2e/fixtures";
-import { gotoWorkspace } from "../../e2e/helpers/launcher";
+import { expect, test } from "../../e2e/support/fixtures";
+import { gotoWorkspace } from "../../e2e/support/helpers/launcher";
 import {
   openVisualizerChatsDropdown,
   openVisualizerFromHeader,
   visualizerIframe,
-} from "../../e2e/helpers/visualizer";
+} from "../../e2e/support/helpers/visualizer";
 import { applyDemoAppearance } from "../helpers/appearance";
 import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";
 import { DemoRecorder } from "../helpers/capture";

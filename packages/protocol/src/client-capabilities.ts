@@ -30,6 +30,10 @@ export const CLIENT_CAPS = {
   // Logs tab opens; a client without it keeps the old unconditional feed,
   // because it has no way to ask and would otherwise lose live logs entirely.
   brainLogWatch: "brain_log_watch",
+  // COMPAT(compactProviderSnapshots): added in v0.2.X. Capable clients receive
+  // provider catalogs with shared thinking sets and may revalidate by content hash.
+  // Remove the legacy snapshot encoding after 2027-02-04.
+  compactProviderSnapshots: "compact_provider_snapshots",
   browserHost: "browser_host",
 } as const;
 

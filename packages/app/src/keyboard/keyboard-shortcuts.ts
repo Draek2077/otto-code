@@ -5,7 +5,11 @@ import type {
   KeyboardShortcutPayload,
   MessageInputKeyboardActionKind,
 } from "@/keyboard/actions";
-import { type KeyCombo, parseChordString } from "@/keyboard/shortcut-string";
+import {
+  chordStringToShortcutKeys,
+  type KeyCombo,
+  parseChordString,
+} from "@/keyboard/shortcut-string";
 
 export type { KeyCombo } from "@/keyboard/shortcut-string";
 
@@ -39,7 +43,9 @@ export interface KeyboardShortcutHelpRow {
   id: string;
   label: string;
   labelKey: string;
-  keys: ShortcutKey[];
+  chord: ShortcutKey[][] | null;
+  /** @deprecated Use chord; retained while older shortcut surfaces migrate. */
+  keys?: ShortcutKey[];
   note?: string;
   noteKey?: string;
 }
@@ -49,6 +55,7 @@ export type ShortcutSectionId =
   | "tabs-panes"
   | "projects"
   | "panels"
+  | "layout"
   | "editor"
   | "markdown-editor"
   | "agent-input";
@@ -98,6 +105,7 @@ interface ShortcutHelp {
   section: ShortcutSectionId;
   label: string;
   keys: ShortcutKey[];
+  defaultDisplayKeys?: ShortcutKey[];
   note?: string;
 }
 
@@ -130,6 +138,7 @@ const SHORTCUT_HELP_SECTION_TITLES: Record<ShortcutSectionId, string> = {
   "tabs-panes": "Tabs & Panes",
   projects: "Projects",
   panels: "Panels",
+  layout: "Layout",
   editor: "File Editor",
   "markdown-editor": "Markdown Editor",
   "agent-input": "Agent Input",
@@ -140,6 +149,7 @@ const SHORTCUT_HELP_SECTION_LABEL_KEYS: Record<ShortcutSectionId, string> = {
   "tabs-panes": "settings.shortcuts.sections.tabsPanes",
   projects: "settings.shortcuts.sections.projects",
   panels: "settings.shortcuts.sections.panels",
+  layout: "settings.shortcuts.sections.layout",
   editor: "settings.shortcuts.sections.editor",
   "markdown-editor": "settings.shortcuts.sections.markdownEditor",
   "agent-input": "settings.shortcuts.sections.agentInput",
@@ -384,6 +394,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "tabs-panes",
       label: "Close current tab",
       keys: ["meta", "W"],
+      defaultDisplayKeys: ["meta", "W"],
     },
   },
   {
@@ -423,6 +434,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "navigation",
       label: "Jump to workspace",
       keys: ["mod", "1-9"],
+      defaultDisplayKeys: ["mod", "1-9"],
     },
   },
   {
@@ -436,6 +448,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "navigation",
       label: "Jump to workspace",
       keys: ["mod", "1-9"],
+      defaultDisplayKeys: ["mod", "1-9"],
     },
   },
   {
@@ -449,6 +462,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "navigation",
       label: "Jump to workspace",
       keys: ["alt", "1-9"],
+      defaultDisplayKeys: ["alt", "1-9"],
     },
   },
 
@@ -464,6 +478,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "navigation",
       label: "Jump to tab",
       keys: ["mod", "alt", "1-9"],
+      defaultDisplayKeys: ["mod", "alt", "1-9"],
     },
   },
   {
@@ -477,6 +492,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "navigation",
       label: "Jump to tab",
       keys: ["alt", "1-9"],
+      defaultDisplayKeys: ["alt", "1-9"],
     },
   },
   {
@@ -490,6 +506,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "navigation",
       label: "Jump to tab",
       keys: ["alt", "shift", "1-9"],
+      defaultDisplayKeys: ["alt", "shift", "1-9"],
     },
   },
 
@@ -612,6 +629,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "tabs-panes",
       label: "Split pane right",
       keys: ["mod", "\\"],
+      defaultDisplayKeys: ["mod", "\\"],
     },
   },
   {
@@ -624,6 +642,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "tabs-panes",
       label: "Split pane down",
       keys: ["mod", "shift", "\\"],
+      defaultDisplayKeys: ["mod", "shift", "\\"],
     },
   },
   // Keep the same directional pair on Windows/Linux. Ctrl+\\ is unclaimed in
@@ -639,6 +658,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "tabs-panes",
       label: "Split pane right",
       keys: ["mod", "\\"],
+      defaultDisplayKeys: ["mod", "\\"],
     },
   },
   {
@@ -651,6 +671,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "tabs-panes",
       label: "Split pane down",
       keys: ["mod", "shift", "\\"],
+      defaultDisplayKeys: ["mod", "shift", "\\"],
     },
   },
   {
@@ -863,6 +884,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "panels",
       label: "Toggle left sidebar",
       keys: ["mod", "B"],
+      defaultDisplayKeys: ["mod", "B"],
     },
   },
   {
@@ -1030,6 +1052,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       section: "panels",
       label: "Toggle both sidebars",
       keys: ["mod", "."],
+      defaultDisplayKeys: ["mod", "."],
     },
   },
 
@@ -1483,8 +1506,14 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
 
 // --- Parse bindings at module load ---
 
+export const UNASSIGNED_COMBO = null;
+
+export function parseBindingChord(combo: string): KeyCombo[] {
+  return combo === "" ? [] : parseChordString(combo);
+}
+
 function parseBinding(binding: ShortcutBinding): ParsedShortcutBinding {
-  const parsedChord = parseChordString(binding.combo);
+  const parsedChord = parseBindingChord(binding.combo);
   const lastCombo = parsedChord.at(-1);
   if (binding.repeat === false && lastCombo) {
     lastCombo.repeat = false;
@@ -1495,15 +1524,20 @@ function parseBinding(binding: ShortcutBinding): ParsedShortcutBinding {
 export const DEFAULT_BINDINGS: readonly ParsedShortcutBinding[] =
   SHORTCUT_BINDINGS.map(parseBinding);
 
-export function buildEffectiveBindings(overrides: Record<string, string>): ParsedShortcutBinding[] {
+export type ShortcutOverrides = Record<string, string | null>;
+
+export function buildEffectiveBindings(overrides: ShortcutOverrides): ParsedShortcutBinding[] {
   return DEFAULT_BINDINGS.map(function (binding) {
     const override = overrides[binding.id];
-    if (override === undefined) {
+    if (override === UNASSIGNED_COMBO) {
+      return { ...binding, combo: "", parsedChord: [] };
+    }
+    if (typeof override !== "string") {
       return binding;
     }
     let parsedChord: KeyCombo[];
     try {
-      parsedChord = parseChordString(override);
+      parsedChord = parseBindingChord(override);
     } catch {
       return binding;
     }
@@ -1511,7 +1545,11 @@ export function buildEffectiveBindings(overrides: Record<string, string>): Parse
     if (binding.repeat === false && lastCombo) {
       lastCombo.repeat = false;
     }
-    return { ...binding, combo: override, parsedChord };
+    if (!binding.help?.defaultDisplayKeys) {
+      return { ...binding, combo: override, parsedChord };
+    }
+    const { defaultDisplayKeys: _defaultDisplayKeys, ...help } = binding.help;
+    return { ...binding, combo: override, parsedChord, help };
   });
 }
 
@@ -1873,17 +1911,43 @@ export function getBindingIdForAction(
 export function getDefaultKeysForAction(
   actionId: string,
   platform: { isMac: boolean; isDesktop: boolean },
-): ShortcutKey[] | null {
-  for (const binding of DEFAULT_BINDINGS) {
+  bindings: readonly ParsedShortcutBinding[] = DEFAULT_BINDINGS,
+): ShortcutKey[][] | null {
+  for (const binding of bindings) {
     if (binding.help?.id !== actionId) {
       continue;
     }
     if (!helpMatchesPlatform(binding.when, platform)) {
       continue;
     }
-    return binding.help.keys;
+    return displayChordForBinding(binding);
   }
   return null;
+}
+
+function displayChordForBinding(binding: ParsedShortcutBinding): ShortcutKey[][] | null {
+  if (binding.parsedChord.length === 0) return null;
+  const displayKeys = binding.help?.defaultDisplayKeys;
+  return displayKeys ? [displayKeys] : chordStringToShortcutKeys(binding.combo);
+}
+
+export function resolveShortcutKeysForAction(
+  actionId: string,
+  overrides: ShortcutOverrides,
+  platform: { isMac: boolean; isDesktop: boolean },
+): ShortcutKey[][] | null {
+  const bindingId = getBindingIdForAction(actionId, platform);
+  if (bindingId === null) return null;
+  const defaultChord = getDefaultKeysForAction(actionId, platform);
+  const override = overrides[bindingId];
+  if (override === UNASSIGNED_COMBO || override === "") return null;
+  if (typeof override !== "string") return defaultChord;
+  try {
+    parseBindingChord(override);
+    return chordStringToShortcutKeys(override);
+  } catch {
+    return defaultChord;
+  }
 }
 
 /**
@@ -1893,12 +1957,25 @@ export function getDefaultKeysForAction(
  * does not actually jump: Alt on web, Cmd (Meta) on desktop Mac, Ctrl on
  * desktop non-Mac.
  */
-export function getWorkspaceIndexJumpModifierKey(platform: {
-  isMac: boolean;
-  isDesktop: boolean;
-}): "Alt" | "Meta" | "Control" {
-  if (!platform.isDesktop) return "Alt";
-  return platform.isMac ? "Meta" : "Control";
+export function getWorkspaceIndexJumpModifierKey(
+  platform: { isMac: boolean; isDesktop: boolean },
+  bindings: readonly ParsedShortcutBinding[] = DEFAULT_BINDINGS,
+): "Alt" | "Meta" | "Control" | null {
+  const binding = bindings.find(
+    (candidate) =>
+      candidate.action === "workspace.navigate.index" &&
+      helpMatchesPlatform(candidate.when, platform),
+  );
+  if (!binding || binding.parsedChord.length !== 1) return null;
+  const combo = binding.parsedChord[0];
+  if (!combo || combo.code !== "Digit") return null;
+  const modifiers = [combo.mod, combo.meta, combo.ctrl, combo.alt, combo.shift];
+  if (modifiers.filter(Boolean).length !== 1) return null;
+  if (combo.mod) return platform.isMac ? "Meta" : "Control";
+  if (combo.meta) return "Meta";
+  if (combo.ctrl) return "Control";
+  if (combo.alt) return "Alt";
+  return null;
 }
 
 export function buildKeyboardShortcutHelpSections(
@@ -1911,6 +1988,7 @@ export function buildKeyboardShortcutHelpSections(
     ["tabs-panes", []],
     ["projects", []],
     ["panels", []],
+    ["layout", []],
     ["editor", []],
     ["markdown-editor", []],
     ["agent-input", []],
@@ -1924,21 +2002,24 @@ export function buildKeyboardShortcutHelpSections(
     if (!helpMatchesPlatform(binding.when, input)) {
       continue;
     }
-    const rowKey = `${help.section}:${help.id}`;
+    const outputSection = help.section === "panels" ? "layout" : help.section;
+    const rowKey = `${outputSection}:${help.id}`;
     if (seenRows.has(rowKey)) {
       continue;
     }
     seenRows.add(rowKey);
 
-    const rows = rowsBySection.get(help.section);
+    const rows = rowsBySection.get(outputSection);
     if (!rows) {
       continue;
     }
+    const chord = displayChordForBinding(binding);
     rows.push({
       id: help.id,
       label: help.label,
       labelKey: SHORTCUT_HELP_LABEL_KEYS[help.id] ?? help.label,
-      keys: help.keys,
+      chord,
+      ...(chord?.length === 1 && chord[0] ? { keys: chord[0] } : {}),
       ...(help.note ? { note: help.note } : {}),
       ...(SHORTCUT_HELP_NOTE_KEYS[help.id] ? { noteKey: SHORTCUT_HELP_NOTE_KEYS[help.id] } : {}),
     });
@@ -1948,7 +2029,7 @@ export function buildKeyboardShortcutHelpSections(
     "navigation",
     "tabs-panes",
     "projects",
-    "panels",
+    "layout",
     "editor",
     // After File Editor: it reads as the narrower section it is, and it is the
     // only one that does not apply to every file you can open.

@@ -2,7 +2,7 @@ import { agentPanelRegistration } from "@/panels/agent-panel";
 import { contextManagementPanelRegistration } from "@/panels/context-management-panel-registration";
 import { projectKnowledgePanelRegistration } from "@/panels/project-knowledge-panel-registration";
 import { artifactPanelRegistration } from "@/panels/artifact-panel";
-import { browserPanelRegistration } from "@/panels/browser-panel";
+import { browserPanelRegistration } from "@/desktop/browser/panel";
 import { draftPanelRegistration } from "@/panels/draft-panel";
 import { filePanelRegistration } from "@/panels/file-panel";
 import { codeReferencesPanelRegistration } from "@/panels/code-references-panel";

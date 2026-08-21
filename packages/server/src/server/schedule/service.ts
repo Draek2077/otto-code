@@ -1510,12 +1510,8 @@ function buildScheduleAgentConfig(
     model: config.model,
     thinkingOptionId: config.thinkingOptionId,
     title: config.title,
-    approvalPolicy: config.approvalPolicy,
-    sandboxMode: config.sandboxMode,
-    networkAccess: config.networkAccess,
-    webSearch: config.webSearch,
+    providerOptions: config.providerOptions,
     featureValues: config.featureValues,
-    extra: config.extra,
     systemPrompt: config.systemPrompt,
     mcpServers: config.mcpServers as AgentSessionConfig["mcpServers"],
   };

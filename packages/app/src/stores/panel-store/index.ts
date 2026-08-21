@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   buildExplorerCheckoutKey,
@@ -31,6 +31,7 @@ import {
   MIN_EXPLORER_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
   migratePanelState,
+  PanelPersistedStateSchema,
   selectIsAgentListOpen,
   selectIsFileExplorerOpen,
   setMobilePanelTarget,
@@ -45,6 +46,7 @@ import {
   type SortOption,
 } from "./state";
 import { isWeb } from "@/constants/platform";
+import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 export type { ExplorerTab } from "../explorer-tab-memory";
 export type { ExplorerCheckoutContext } from "../explorer-checkout-context";
 export type {
@@ -75,6 +77,8 @@ export {
   selectIsFileExplorerOpen,
   selectPanelVisibility,
 };
+
+export type ExpandedPathsUpdate = string[] | ((currentPaths: string[]) => string[]);
 
 export interface PanelState {
   // Mobile: React's durable target plus the generation that owns it.
@@ -143,6 +147,7 @@ export interface PanelState {
 
   // Actions
   toggleFocusMode: () => void;
+  exitFocusMode: () => void;
   showMobileAgent: () => void;
   showMobileAgentList: () => void;
   toggleMobileAgentList: () => void;
@@ -169,7 +174,7 @@ export interface PanelState {
     cwd: string;
     solutionPath: string;
   }) => void;
-  setExpandedPathsForWorkspace: (workspaceKey: string, paths: string[]) => void;
+  setExpandedPathsForWorkspace: (workspaceKey: string, paths: ExpandedPathsUpdate) => void;
   setDiffExpandedPathsForWorkspace: (workspaceKey: string, paths: string[]) => void;
   setDiffCollapsedFoldersForWorkspace: (workspaceKey: string, dirPaths: string[]) => void;
   activateExplorerTabForCheckout: (checkout: ExplorerCheckoutContext) => void;
@@ -241,6 +246,13 @@ export const usePanelStore = create<PanelState>()(
         set((state) => ({
           desktop: { ...state.desktop, focusModeEnabled: !state.desktop.focusModeEnabled },
         })),
+
+      exitFocusMode: () =>
+        set((state) =>
+          state.desktop.focusModeEnabled
+            ? { desktop: { ...state.desktop, focusModeEnabled: false } }
+            : state,
+        ),
 
       showMobileAgent: () => set((state) => setMobilePanelTargetPatch(state, "agent")),
 
@@ -363,9 +375,16 @@ export const usePanelStore = create<PanelState>()(
           };
         }),
       setExpandedPathsForWorkspace: (workspaceKey, paths) =>
-        set((state) => ({
-          expandedPathsByWorkspace: { ...state.expandedPathsByWorkspace, [workspaceKey]: paths },
-        })),
+        set((state) => {
+          const currentPaths = state.expandedPathsByWorkspace[workspaceKey] ?? ["."];
+          const nextPaths = typeof paths === "function" ? paths(currentPaths) : paths;
+          return {
+            expandedPathsByWorkspace: {
+              ...state.expandedPathsByWorkspace,
+              [workspaceKey]: nextPaths,
+            },
+          };
+        }),
       setDiffExpandedPathsForWorkspace: (workspaceKey, paths) =>
         set((state) => ({
           diffExpandedPathsByWorkspace: {
@@ -443,9 +462,8 @@ export const usePanelStore = create<PanelState>()(
     {
       name: "panel-state",
       version: 12,
-      storage: createJSONStorage(() => AsyncStorage),
-      migrate: (persistedState, version) =>
-        migratePanelState(persistedState, version, { isWeb }) as unknown as PanelState,
+      storage: createValidatedPersistStorage(AsyncStorage, PanelPersistedStateSchema),
+      migrate: (persistedState, version) => migratePanelState(persistedState, version, { isWeb }),
       partialize: (state) => ({
         desktop: state.desktop,
         explorerTab: state.explorerTab,

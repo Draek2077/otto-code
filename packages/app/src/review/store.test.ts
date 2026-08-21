@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { StateStorage } from "zustand/middleware";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import { resolveDeleteAllReviewCommentsDialog } from "./delete-dialogs";
+import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 import {
   buildReviewAttachmentSnapshot,
   buildReviewDraftBranchKeyPrefix,
@@ -20,6 +22,7 @@ import {
   type ReviewDraftComment,
   type ReviewDraftStoreState,
   serializeReviewDraftState,
+  SerializedReviewDraftStateSchema,
   setDiffModeOverrideInState,
   summarizeReviewDraftsForPrefix,
   updateCommentInState,
@@ -71,6 +74,20 @@ function makeFile(): ParsedDiffFile {
         ],
       },
     ],
+  };
+}
+
+function createMemoryStorage(): StateStorage & { values: Map<string, string> } {
+  const values = new Map<string, string>();
+  return {
+    values,
+    getItem: async (key) => values.get(key) ?? null,
+    setItem: async (key, value) => {
+      values.set(key, value);
+    },
+    removeItem: async (key) => {
+      values.delete(key);
+    },
   };
 }
 
@@ -148,7 +165,27 @@ describe("buildReviewDraftKey", () => {
 });
 
 describe("normalizePersistedState", () => {
-  it("filters invalid draft comments and ignores activeModesByScope from old persisted JSON", () => {
+  it("keeps v1 review comments for migration while dropping the legacy mode field", async () => {
+    const backing = createMemoryStorage();
+    const legacyState = {
+      drafts: { "review:key": [makeComment()] },
+      activeModesByScope: { "review:scope": "base" },
+    };
+    backing.values.set(
+      "@otto:review-draft-store",
+      JSON.stringify({ state: legacyState, version: 1 }),
+    );
+    const storage = createValidatedPersistStorage(backing, SerializedReviewDraftStateSchema);
+
+    const stored = await storage.getItem("@otto:review-draft-store");
+    const normalized = normalizePersistedState(stored?.state);
+
+    expect(normalized.drafts["review:key"]).toEqual([makeComment()]);
+    expect(normalized.diffModeOverrides).toEqual({});
+    expect(backing.values.has("@otto:review-draft-store")).toBe(true);
+  });
+
+  it("rejects the complete payload when any draft comment or field is invalid", () => {
     const normalized = normalizePersistedState({
       drafts: {
         "review:key": [
@@ -172,17 +209,7 @@ describe("normalizePersistedState", () => {
     });
 
     expect(normalized.diffModeOverrides).toEqual({});
-    expect(normalized.drafts["review:key"]).toEqual([
-      {
-        id: "comment-1",
-        filePath: "src/example.ts",
-        side: "new",
-        lineNumber: 41,
-        body: "Keep me.",
-        createdAt: "2026-04-21T00:00:00.000Z",
-        updatedAt: "2026-04-21T00:00:00.000Z",
-      },
-    ]);
+    expect(normalized.drafts).toEqual({});
   });
 
   it("returns empty state for null, non-object, or malformed inputs", () => {

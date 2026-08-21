@@ -126,14 +126,14 @@ OTTO_DESKTOP_SMOKE_ARTIFACT_DIR=/tmp/otto-desktop-smoke \
 npm run build:desktop -- --publish never --linux --x64 --dir
 ```
 
-### Browser tab bridge regression
+### Desktop browser regression
 
-The desktop browser tab bridge E2E launches an isolated real daemon, Metro, and Electron app. It forces workspace LRU eviction to reparent the original tab and replace its guest `WebContents`, then makes one MCP call each for tab listing, snapshot, and click against that original browser id. A final MCP wait proves the real target page received the click.
+The desktop browser E2E launches an isolated real daemon, Metro, and Electron app. It forces workspace LRU eviction to reparent the original tab and replace its guest `WebContents`, then makes one MCP call each for tab listing, snapshot, and click against that original browser id. A final MCP wait proves the real target page received the click.
 
-Run it locally with the same command owned by the Ubuntu leg of the existing `desktop-tests` CI check:
+Run it locally with the same command owned by the Ubuntu `desktop-tests` required check:
 
 ```bash
-npm run test:e2e:browser-tab-bridge --workspace=@otto-code/desktop
+npm run test:e2e:browser-tabs --workspace=@otto-code/desktop
 ```
 
 ## Test organization
@@ -156,7 +156,7 @@ Vitest picks up tests by suffix. The suffix tells the runner which category it b
 | `*.real.e2e.test.ts`  | E2E that hits a real provider (Claude/Codex/Copilot/OpenCode/Pi) - needs creds in `packages/server/.env.test` | `npm run test:integration:real` / `test:e2e:real`                                    |
 | `*.local.e2e.test.ts` | E2E that needs a local-only resource                                                                          | `npm run test:integration:local` / `test:e2e:local`                                  |
 
-App-level Playwright browser E2E lives in `packages/app/e2e/*.spec.ts` and is a separate runner from Vitest E2E; it has three tiers of its own - see [App end-to-end tiers](#app-end-to-end-tiers-playwright) below.
+Browser Playwright specs live in `packages/app/e2e/browser/`. Desktop Playwright and real-Electron E2E live in `packages/desktop/e2e/`. Harness code shared by both suites lives in `packages/app/e2e/support/`; neither suite may place specs there. App Playwright specs that hit real providers use `*.real.spec.ts` and run through `npm run test:e2e:real --workspace=@otto-code/app`; the default browser project ignores that suffix so CI does not need provider credentials. It has three tiers of its own, see [App end-to-end tiers](#app-end-to-end-tiers-playwright) below.
 
 Live provider smoke tests belong in `*.real.e2e.test.ts`, not `*.test.ts`, even when guarded by environment variables. Default unit suites must use deterministic provider adapters/fakes so missing credits, auth outages, and upstream model drift do not block normal CI.
 
@@ -267,7 +267,7 @@ assert on the assistant's wording.
   exactly `hello-e2e` and nothing else. Do not explain." Then assert the file row appears in
   Changes and the content matches through the daemon.
 - **Cap the blast radius** - a low tool-round cap for the spec's agent, a temp workspace, and
-  60–120 s timeouts, because local inference is slow.
+  60 to 120 s timeouts, because local inference is slow.
 - **Assert loop mechanics, not intelligence.** Good targets: a tool call row rendered, a permission
   prompt appeared and denial stopped execution, a compaction event emitted and the session still
   answers, rewind truncated the timeline. Bad targets: summary quality, wording, multi-file
@@ -353,10 +353,32 @@ Test suites in this repo are heavy. Running them in bulk freezes the machine, es
 - For a broad sweep, redirect to a file and read it after: `npx vitest run <path> --bail=1 > /tmp/test-output.txt 2>&1`
 - Never re-run a suite another agent already reported green.
 - For full-suite confidence, push to CI and check GitHub Actions.
-- Never run the full Playwright E2E suite locally - defer whole-suite verification to CI. Targeted Playwright specs are allowed when you changed or need to prove that specific flow.
-- App Playwright specs share one isolated daemon per run. Helpers that create projects or workspaces must remove the daemon project record during cleanup, not only delete the temp directory. Agent helpers must pass the intended `workspaceId` through to agent creation; never infer ownership from `cwd`.
-- CI can shard app Playwright across multiple jobs; each shard still owns a full isolated daemon/relay/Metro stack from global setup. Helpers that restart the daemon must preserve the global setup environment, including disabled speech/local-model settings, so a restart does not change the tested surface or start background downloads.
-- Global setup starts Metro before Wrangler, assigns Wrangler explicit distinct relay and inspector ports, and accepts Metro as ready only when `/status` returns `packager-status:running`. A generic TCP listener is not sufficient readiness evidence.
+- Never run the full Playwright E2E suite locally; defer whole-suite verification to CI. Targeted Playwright specs are allowed when you changed or need to prove that specific flow.
+- App Playwright shares one warmed Metro server per run and gives every Playwright worker its own isolated daemon and `OTTO_HOME`. Spec files run concurrently without exposing one file's projects, agents, terminals, history, or provider configuration to another worker; tests within a file remain together so file-level setup is not repeated.
+- Helpers that create projects or workspaces own those records until cleanup. Their clients remove the daemon project on close, and an automatic fixture fails any test that still leaks a project record. Deleting only the temporary directory is not cleanup. Agent helpers pass the intended `workspaceId` through to agent creation; they never infer ownership from `cwd`.
+- Tests whose subject is daemon-global state, such as an empty history or daemon restart, start a dedicated host explicitly. Filenames and directories describe product behavior, never execution order or isolation mechanics.
+- Global setup accepts Metro as ready only when `/status` returns `packager-status:running`, then fetches the document's scripts so the cold bundle compilation finishes before Playwright's per-test timeout starts. A generic TCP listener is not sufficient readiness evidence. The browser suite uses direct local daemon connections and does not start a relay.
+
+## Pull-request test routing
+
+**Every job runs on every push right now, and that is deliberate.** Path routing was removed on
+2026-08-18 after it produced green runs that had executed nothing: the skip was wired as a per-step
+`if:` guard, so an unaffected job ran a single `echo` and reported **success**. Between 2026-08-07
+and 2026-08-18 that gave 80 consecutive runs, 55 failures, 22 cancellations, and 3 "successes" that
+had all skipped Playwright entirely. A continuously red suite was indistinguishable from a healthy
+one, and 0.8.10 shipped on a cancelled run.
+
+The invariant that has to hold before routing comes back: **the condition goes on the job, never on
+its steps.** A routed-out job must report `skipped`, never `success`. Matrix legs have to expand into
+statically named jobs first, or the required-check name moves when the matrix does.
+
+`.github/ci-paths.yml` is the filter definition prepared for that return, and
+`scripts/ci-workflow.test.mjs` is the contract test that would enforce the job names. Neither is
+wired into `.github/workflows/ci.yml` yet, so treat them as staged work rather than current
+behavior. When routing is reinstated, the smallest meaningful contract wins over package ownership:
+a package does not inherit every suite of its runtime consumers, cross-package static compatibility
+belongs to `typecheck`, and repository scripts plus the shared Vitest configuration run every
+contract because they are cross-cutting toolchain inputs.
 
 ### Structural diff corpus
 

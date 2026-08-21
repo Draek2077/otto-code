@@ -1,12 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceDescriptorPayload } from "@otto-code/protocol/messages";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import {
   normalizeProjectDescriptor,
   normalizeWorkspaceDescriptor,
+  selectAgentTimelineState,
   useSessionStore,
 } from "@/stores/session-store";
-import type { StreamItem } from "@/types/stream";
+import { createUserMessage, type StreamItem } from "@/types/stream";
 import { ReplicaCache, type ReplicaCacheStorage } from ".";
 
 const SERVER_ID = "cached-host";
@@ -14,13 +15,19 @@ const LRU_SERVER_IDS = ["host-a", "host-b", "host-c"] as const;
 
 class MemoryStorage implements ReplicaCacheStorage {
   readonly values = new Map<string, string>();
+  writes = 0;
 
   async getItem(key: string): Promise<string | null> {
     return this.values.get(key) ?? null;
   }
 
   async setItem(key: string, value: string): Promise<void> {
+    this.writes += 1;
     this.values.set(key, value);
+  }
+
+  async removeItem(key: string): Promise<void> {
+    this.values.delete(key);
   }
 }
 
@@ -94,7 +101,16 @@ function seedSession(): void {
   store.setAgents(SERVER_ID, new Map([["agent-1", agent("agent-1")]]));
   store.setWorkspaces(
     SERVER_ID,
-    new Map([["workspace-1", normalizeWorkspaceDescriptor(workspace())]]),
+    new Map([
+      [
+        "workspace-1",
+        normalizeWorkspaceDescriptor({
+          ...workspace(),
+          workspaceKind: "worktree",
+          worktreeSlug: "owned-worktree",
+        }),
+      ],
+    ]),
   );
   store.setProjects(SERVER_ID, [
     normalizeProjectDescriptor({
@@ -144,12 +160,39 @@ function seedTimeline(serverId: string, text: string): void {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   const store = useSessionStore.getState();
   store.clearSession(SERVER_ID);
   for (const serverId of LRU_SERVER_IDS) store.clearSession(serverId);
 });
 
 describe("ReplicaCache", () => {
+  it("persists focused replica changes without writing transient stream head updates", async () => {
+    vi.useFakeTimers();
+    const storage = new MemoryStorage();
+    const cache = new ReplicaCache(storage);
+    cache.setHosts([SERVER_ID]);
+    seedSession();
+    await cache.flush();
+    cache.start();
+    const writesBeforeStream = storage.writes;
+
+    useSessionStore
+      .getState()
+      .setAgentStreamHead(SERVER_ID, new Map([["agent-1", [message("live", "Streaming")]]]));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(storage.writes).toBe(writesBeforeStream);
+
+    useSessionStore
+      .getState()
+      .setAgentStreamTail(SERVER_ID, new Map([["agent-1", [message("saved", "Committed")]]]));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(storage.writes).toBe(writesBeforeStream + 1);
+    cache.setHosts([]);
+  });
+
   it("restores a displayable stale replica without claiming remote hydration", async () => {
     const storage = new MemoryStorage();
     const writer = new ReplicaCache(storage);
@@ -164,22 +207,27 @@ describe("ReplicaCache", () => {
     await reader.restore();
 
     const session = useSessionStore.getState().sessions[SERVER_ID];
-    expect(session?.client).toBeNull();
-    expect(session?.hasHydratedAgents).toBe(false);
-    expect(session?.hasHydratedWorkspaces).toBe(false);
-    expect(Array.from(session?.agents.keys() ?? [])).toEqual(["agent-1"]);
-    expect(Array.from(session?.workspaces.keys() ?? [])).toEqual(["workspace-1"]);
-    expect(Array.from(session?.projects.keys() ?? [])).toEqual(["project-1"]);
-    expect(session?.agents.get("agent-1")?.updatedAt).toBeInstanceOf(Date);
-    expect(session?.workspaces.get("workspace-1")?.statusEnteredAt).toBeInstanceOf(Date);
-    expect(session?.agentStreamTail.get("agent-1")).toEqual([message("message-1", "Cached")]);
-    expect(session?.agentAuthoritativeHistoryApplied.get("agent-1")).toBe(true);
-    expect(session?.agentTimelineCursor.get("agent-1")).toEqual({
-      epoch: "epoch-1",
-      startSeq: 1,
-      endSeq: 12,
+    expect(session).toBeDefined();
+    if (!session) throw new Error("Expected restored session");
+    expect(session.client).toBeNull();
+    expect(session.hasHydratedAgents).toBe(false);
+    expect(session.hasHydratedWorkspaces).toBe(false);
+    expect(Array.from(session.agents.keys())).toEqual(["agent-1"]);
+    expect(Array.from(session.workspaces.keys())).toEqual(["workspace-1"]);
+    expect(Array.from(session.projects.keys())).toEqual(["project-1"]);
+    expect(session.agents.get("agent-1")?.updatedAt).toBeInstanceOf(Date);
+    expect(session.workspaces.get("workspace-1")?.statusEnteredAt).toBeInstanceOf(Date);
+    expect(session.workspaces.get("workspace-1")?.worktreeSlug).toBe("owned-worktree");
+    expect(session.agentStreamTail.get("agent-1")).toEqual([message("message-1", "Cached")]);
+    expect(session.agentAuthoritativeHistoryApplied).toEqual(new Map());
+    expect(session.agentTimelineCursor).toEqual(new Map());
+    expect(session.agentTimelineHasOlder).toEqual(new Map());
+    expect(session.agentTimelineHasNewer).toEqual(new Map());
+    expect(session.agentHistorySyncGeneration).toEqual(new Map());
+    expect(selectAgentTimelineState(session, "agent-1")).toEqual({
+      status: "painted",
+      items: [message("message-1", "Cached")],
     });
-    expect(session?.agentTimelineHasOlder.get("agent-1")).toBe(true);
   });
 
   it("persists only the focused agent view with a short timeline tail", async () => {
@@ -223,6 +271,43 @@ describe("ReplicaCache", () => {
     expect(Array.from(session?.projects.keys() ?? [])).toEqual(["project-2"]);
     expect(Array.from(timelines?.keys() ?? [])).toEqual(["agent-2"]);
     expect(timelines?.get("agent-2")).toEqual(secondTimeline.slice(-50));
+
+    const persisted = JSON.parse(storage.values.get("@otto:replica-cache") ?? "null") as {
+      version: number;
+      hosts: Array<{ timeline: Record<string, unknown> | null }>;
+    };
+    expect(persisted.version).toBe(5);
+    expect(Object.keys(persisted.hosts[0]?.timeline ?? {}).sort()).toEqual(["agentId", "items"]);
+  });
+
+  it("persists reconciled rows without caching unreconciled local presentations", async () => {
+    const storage = new MemoryStorage();
+    const cache = new ReplicaCache(storage);
+    cache.setHosts([SERVER_ID]);
+    seedSession();
+    const unreconciled = createUserMessage({
+      clientMessageId: "client-pending",
+      text: "Pending",
+      timestamp: new Date("2026-07-18T08:01:00.000Z"),
+    });
+    const reconciled = createUserMessage({
+      clientMessageId: "client-sent",
+      messageId: "provider-sent",
+      timelineCursor: { epoch: "epoch-1", seq: 11 },
+      text: "Sent",
+      timestamp: new Date("2026-07-18T08:01:30.000Z"),
+    });
+    useSessionStore
+      .getState()
+      .setAgentStreamTail(SERVER_ID, new Map([["agent-1", [unreconciled, reconciled]]]));
+
+    await cache.flush();
+    useSessionStore.getState().clearSession(SERVER_ID);
+    await cache.restore();
+
+    expect(useSessionStore.getState().sessions[SERVER_ID]?.agentStreamTail.get("agent-1")).toEqual([
+      reconciled,
+    ]);
   });
 
   it("evicts the least recently written host when the cache exceeds its byte budget", async () => {
@@ -250,14 +335,39 @@ describe("ReplicaCache", () => {
     expect(Object.keys(useSessionStore.getState().sessions).sort()).toEqual(["host-a", "host-c"]);
   });
 
-  it("drops malformed or unknown cache versions", async () => {
+  it("rejects and clears version 4 cache data before overwriting it on flush", async () => {
     const storage = new MemoryStorage();
-    storage.values.set("@otto:replica-cache", JSON.stringify({ version: 999, hosts: [] }));
+    storage.values.set(
+      "@otto:replica-cache",
+      JSON.stringify({
+        version: 4,
+        hosts: [
+          {
+            serverId: SERVER_ID,
+            agents: [],
+            workspaces: [],
+            emptyProjects: [],
+            timeline: {
+              agentId: "agent-1",
+              items: [],
+              cursor: { epoch: "poisoned", startSeq: 1, endSeq: 100 },
+              hasOlder: false,
+            },
+          },
+        ],
+      }),
+    );
     const cache = new ReplicaCache(storage);
     cache.setHosts([SERVER_ID]);
 
     await cache.restore();
+    expect(storage.values.has("@otto:replica-cache")).toBe(false);
+    await cache.flush();
 
     expect(useSessionStore.getState().sessions[SERVER_ID]).toBeUndefined();
+    expect(JSON.parse(storage.values.get("@otto:replica-cache") ?? "null")).toEqual({
+      version: 5,
+      hosts: [],
+    });
   });
 });

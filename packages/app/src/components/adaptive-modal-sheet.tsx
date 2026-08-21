@@ -33,9 +33,10 @@ import {
   BottomSheetBackdrop,
   BottomSheetScrollView,
   BottomSheetTextInput,
+  useBottomSheetInternal,
   type BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
-import Animated from "react-native-reanimated";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { ArrowLeft, Search, X } from "@/components/icons/material-icons";
 import { SearchClearButton } from "@/components/ui/search-clear-button";
 import {
@@ -199,9 +200,13 @@ const styles = StyleSheet.create((theme) => ({
   // Horizontal padding matches the model picker's row indent: the picker uses
   // children mode (desktopChildrenScrollContent, no scroll padding), so the
   // row content starts at item.paddingHorizontal = spacing[3].
+  // The search row below owns the gap under the title: the input already
+  // carries its own vertical padding, so a paddingBottom here would stack on
+  // top of two more and push the title far off the field.
   inlineHeaderRow: {
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
+    paddingTop: theme.spacing[2],
+    paddingBottom: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
@@ -250,10 +255,11 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minHeight: 0,
   },
-  desktopContent: {
+  // The sheet's content inset — one definition for every presentation, always
+  // applied through <SheetContent />.
+  sheetContent: {
     padding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     gap: theme.spacing[4],
-    flexGrow: 1,
   },
   // Relatively positioned so the seam fades can be absolutely placed over the
   // mobile scroll view's edges (the desktop card uses desktopScrollContainer).
@@ -263,11 +269,14 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     position: "relative",
   },
-  bottomSheetContent: {
-    padding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
-    gap: theme.spacing[4],
+  contentGrow: {
+    flexGrow: 1,
   },
-  bottomSheetStaticContent: {
+  bottomSheetVisibleContent: {
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  compactStaticContent: {
     flex: 1,
     minHeight: 0,
   },
@@ -361,6 +370,67 @@ function SheetBackground({ style }: BottomSheetBackgroundProps) {
     [style, theme.colors.surface0, theme.borderRadius],
   );
   return <Animated.View pointerEvents="none" style={combinedStyle} />;
+}
+
+/**
+ * The sheet body, indented to the sheet's content inset.
+ *
+ * The inset lives on a real `View` and never on a scroller's
+ * `contentContainerStyle`: that is a library prop, not the `style` prop
+ * Unistyles registers, so a themed inset handed to a third-party scroller such
+ * as `BottomSheetScrollView` silently resolves to nothing on web — which is how
+ * the compact sheet ended up rendering its cards flush to the screen edges. See
+ * docs/unistyles.md "Main Gotcha: contentContainerStyle".
+ */
+function SheetContent({
+  style,
+  inset = true,
+  onLayout,
+  children,
+}: {
+  style?: StyleProp<ViewStyle>;
+  inset?: boolean;
+  onLayout?: (event: LayoutChangeEvent) => void;
+  children: ReactNode;
+}) {
+  return (
+    <View style={[inset ? styles.sheetContent : null, style]} onLayout={onLayout}>
+      {children}
+    </View>
+  );
+}
+
+function BottomSheetVisibleContent({ children }: { children: ReactNode }) {
+  const { animatedDetentsState, animatedKeyboardState, animatedLayoutState, animatedPosition } =
+    useBottomSheetInternal();
+  const visibleContentStyle = useAnimatedStyle(() => {
+    const { containerHeight, handleHeight } = animatedLayoutState.get();
+    if (containerHeight < 0 || handleHeight < 0) {
+      return { height: 0 };
+    }
+
+    const initialDetentPosition = animatedDetentsState.get().detents?.[0];
+    const contentPosition =
+      initialDetentPosition == null
+        ? animatedPosition.get()
+        : Math.min(animatedPosition.get(), initialDetentPosition);
+
+    return {
+      height: Math.max(
+        0,
+        containerHeight -
+          contentPosition -
+          handleHeight -
+          animatedKeyboardState.get().heightWithinContainer,
+      ),
+    };
+  }, [animatedDetentsState, animatedKeyboardState, animatedLayoutState, animatedPosition]);
+
+  return (
+    <Animated.View style={[styles.bottomSheetVisibleContent, visibleContentStyle]}>
+      {children}
+    </Animated.View>
+  );
 }
 
 export type AdaptiveTextInputProps = TextInputProps & {
@@ -485,6 +555,7 @@ export function SheetHeaderView({
         {header.actions ? <View style={styles.headerActions}>{header.actions}</View> : null}
         {showCloseButton ? (
           <Pressable
+            accessibilityRole="button"
             accessibilityLabel={t("common.actions.close")}
             style={closeButtonStyle}
             onPress={onClose}
@@ -651,8 +722,11 @@ export interface AdaptiveModalSheetProps {
    * Make the scroll area fill the current snap point rather than sizing to its
    * content, so a taller snap does not leave the sheet short.
    */
-  sizeContentToCurrentSnapPoint?: boolean;
   presentation?: "push" | "replace";
+  /** Layout intent for the sheet body, composed over the sheet's own content inset. */
+  contentStyle?: StyleProp<ViewStyle>;
+  /** Size compact sheet content to the live snap height instead of its largest snap point. */
+  sizeContentToCurrentSnapPoint?: boolean;
   /**
    * Render the themed desktop-web scrollbar over the scroll area instead of the
    * native browser scrollbar. On by default - every dialog gets the same
@@ -682,8 +756,9 @@ export function AdaptiveModalSheet({
   desktopMaxWidth,
   desktopHeight,
   scrollable = true,
-  sizeContentToCurrentSnapPoint = false,
   presentation,
+  contentStyle,
+  sizeContentToCurrentSnapPoint = false,
   webScrollbar = true,
   contentPadding = true,
 }: AdaptiveModalSheetProps) {
@@ -774,26 +849,34 @@ export function AdaptiveModalSheet({
       }),
     [footer, insets.bottom, isMobile, theme.spacing],
   );
-  const bottomSheetContentStyle = useMemo(
-    () => [
-      styles.bottomSheetContent,
-      contentContainerStyle,
-      compactSafeAreaPadding.contentPaddingBottom != null
-        ? { paddingBottom: compactSafeAreaPadding.contentPaddingBottom }
-        : null,
-    ],
-    [compactSafeAreaPadding.contentPaddingBottom, contentContainerStyle],
+  const effectiveContentStyle = useMemo(
+    () => [contentContainerStyle, contentStyle],
+    [contentContainerStyle, contentStyle],
   );
-  const bottomSheetStaticContentStyle = useMemo(
+  const compactContentStyle = useMemo(
     () => [
-      styles.bottomSheetStaticContent,
-      contentContainerStyle,
-      contentPadding ? styles.staticContentSpacing : null,
+      effectiveContentStyle,
       compactSafeAreaPadding.contentPaddingBottom != null
         ? { paddingBottom: compactSafeAreaPadding.contentPaddingBottom }
         : null,
     ],
-    [contentPadding, compactSafeAreaPadding.contentPaddingBottom, contentContainerStyle],
+    [compactSafeAreaPadding.contentPaddingBottom, effectiveContentStyle],
+  );
+  const compactStaticContentStyle = useMemo(
+    () => [styles.compactStaticContent, compactContentStyle],
+    [compactContentStyle],
+  );
+  const desktopScrollContentStyle = useMemo(
+    () => [styles.contentGrow, effectiveContentStyle],
+    [effectiveContentStyle],
+  );
+  const desktopStaticContentStyle = useMemo(
+    () => [
+      styles.desktopStaticContent,
+      effectiveContentStyle,
+      desktopHeight != null ? styles.desktopFill : null,
+    ],
+    [desktopHeight, effectiveContentStyle],
   );
   const footerStyle = useMemo(
     () => [
@@ -851,14 +934,6 @@ export function AdaptiveModalSheet({
         : styles.desktopScrollContainer,
     [desktopHeight],
   );
-  const desktopStaticContentStyle = useMemo(
-    () => [
-      styles.desktopStaticContent,
-      contentPadding ? styles.staticContentSpacing : null,
-      desktopHeight != null ? styles.desktopFill : null,
-    ],
-    [contentPadding, desktopHeight],
-  );
   const desktopOverlayStyle = useMemo(
     () => [
       styles.desktopOverlay,
@@ -908,10 +983,50 @@ export function AdaptiveModalSheet({
   }, [visible, isMobile, notifyNativeModalDismiss]);
 
   if (isMobile) {
+    const sheetContent = (
+      <>
+        <View onLayout={onHeaderLayout}>
+          <SheetHeaderView header={header} onClose={onClose} testID={testID} />
+        </View>
+        {subHeader ? <View onLayout={onSubHeaderLayout}>{subHeader}</View> : null}
+        {scrollable ? (
+          <View style={styles.bottomSheetScrollContainer}>
+            <BottomSheetScrollView
+              ref={mobileScrollRef as unknown as Ref<never>}
+              style={
+                sizeContentToCurrentSnapPoint
+                  ? [BOTTOM_SHEET_SCROLL_STYLE, styles.bottomSheetVisibleScroll]
+                  : BOTTOM_SHEET_SCROLL_STYLE
+              }
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              onLayout={mobileScrollRegion.onLayout}
+              onScroll={mobileScrollRegion.onScroll}
+              onContentSizeChange={mobileScrollRegion.onContentSizeChange}
+            >
+              <SheetContent style={compactContentStyle} onLayout={onContentLayout}>
+                {children}
+              </SheetContent>
+            </BottomSheetScrollView>
+            {mobileScrollRegion.decorations}
+          </View>
+        ) : (
+          <SheetContent style={compactStaticContentStyle} inset={contentPadding}>
+            {children}
+          </SheetContent>
+        )}
+        {footer ? (
+          <View style={footerStyle} onLayout={onFooterLayout}>
+            {footer}
+          </View>
+        ) : null}
+      </>
+    );
     return (
       <OverlayLayerProvider layer={modalOverlayLayer}>
         <IsolatedBottomSheetModal
           ref={sheetRef}
+          contextBridge={null}
           snapPoints={resolvedSnapPoints}
           index={0}
           enableDynamicSizing={false}
@@ -926,39 +1041,11 @@ export function AdaptiveModalSheet({
           accessible={false}
           presentation={presentation}
         >
-          <View onLayout={onHeaderLayout}>
-            <SheetHeaderView header={header} onClose={onClose} testID={testID} />
-          </View>
-          {subHeader ? <View onLayout={onSubHeaderLayout}>{subHeader}</View> : null}
-          {scrollable ? (
-            <View style={styles.bottomSheetScrollContainer}>
-              <BottomSheetScrollView
-                ref={mobileScrollRef as unknown as Ref<never>}
-                style={
-                  sizeContentToCurrentSnapPoint
-                    ? [BOTTOM_SHEET_SCROLL_STYLE, styles.bottomSheetVisibleScroll]
-                    : BOTTOM_SHEET_SCROLL_STYLE
-                }
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                onLayout={mobileScrollRegion.onLayout}
-                onScroll={mobileScrollRegion.onScroll}
-                onContentSizeChange={mobileScrollRegion.onContentSizeChange}
-              >
-                <View style={bottomSheetContentStyle} onLayout={onContentLayout}>
-                  {children}
-                </View>
-              </BottomSheetScrollView>
-              {mobileScrollRegion.decorations}
-            </View>
+          {sizeContentToCurrentSnapPoint ? (
+            <BottomSheetVisibleContent>{sheetContent}</BottomSheetVisibleContent>
           ) : (
-            <View style={bottomSheetStaticContentStyle}>{children}</View>
+            sheetContent
           )}
-          {footer ? (
-            <View style={footerStyle} onLayout={onFooterLayout}>
-              {footer}
-            </View>
-          ) : null}
         </IsolatedBottomSheetModal>
       </OverlayLayerProvider>
     );
@@ -973,7 +1060,7 @@ export function AdaptiveModalSheet({
           <ScrollView
             ref={desktopScrollRef}
             style={styles.desktopScroll}
-            contentContainerStyle={styles.desktopContent}
+            contentContainerStyle={styles.contentGrow}
             keyboardShouldPersistTaps="handled"
             onLayout={desktopScrollRegion.onLayout}
             onScroll={desktopScrollRegion.onScroll}
@@ -981,12 +1068,14 @@ export function AdaptiveModalSheet({
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={desktopScrollRegion.showsVerticalScrollIndicator}
           >
-            {children}
+            <SheetContent style={desktopScrollContentStyle}>{children}</SheetContent>
           </ScrollView>
           {desktopScrollRegion.decorations}
         </View>
       ) : (
-        <View style={desktopStaticContentStyle}>{children}</View>
+        <SheetContent style={desktopStaticContentStyle} inset={contentPadding}>
+          {children}
+        </SheetContent>
       )}
       {footer ? <View style={footerStyle}>{footer}</View> : null}
     </>

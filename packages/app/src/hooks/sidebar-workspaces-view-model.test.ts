@@ -30,6 +30,7 @@ function project(input: {
   hosts?: WorkspaceStructureProject["hosts"];
 }): WorkspaceStructureProject {
   return {
+    viewKey: input.projectKey,
     projectKey: input.projectKey,
     projectName: input.projectName ?? input.projectKey,
     projectKind: input.projectKind ?? "git",
@@ -43,7 +44,7 @@ function project(input: {
         // into a `projectId` field ("Project not found for worktree").
         projectId: `prj_${input.projectKey}`,
         iconWorkingDir: input.iconWorkingDir ?? input.projectKey,
-        canCreateWorktree: true,
+        worktreeSupport: "supported",
       },
     ],
     workspaceKeys: input.workspaceKeys,
@@ -176,7 +177,7 @@ describe("buildSidebarProjectsFromStructure", () => {
       ],
     });
 
-    expect(projects.map((entry) => entry.projectKey)).toEqual(["project-b", "project-a"]);
+    expect(projects.map((entry) => entry.viewKey)).toEqual(["project-b", "project-a"]);
   });
 
   it("preserves the structure hook workspace order", () => {
@@ -200,7 +201,7 @@ describe("buildSidebarProjectsFromStructure", () => {
               serverId: "relay:otto-host",
               projectId: "project-1",
               iconWorkingDir: "/repo/project-1",
-              canCreateWorktree: true,
+              worktreeSupport: "supported",
             },
           ],
           workspaceKeys: ["relay:otto-host:ws-main"],
@@ -229,13 +230,13 @@ describe("shared sidebar workspace model", () => {
               serverId: "host-a",
               projectId: "otto-code-ai/otto-code",
               iconWorkingDir: "/repo/otto-code-ai/otto-code",
-              canCreateWorktree: true,
+              worktreeSupport: "supported",
             },
             {
               serverId: "host-b",
               projectId: "otto-code-ai/otto-code",
               iconWorkingDir: "/repo/otto-code-ai/otto-code",
-              canCreateWorktree: true,
+              worktreeSupport: "supported",
             },
           ],
           workspaceKeys: ["host-a:main", "host-b:feature"],
@@ -287,19 +288,19 @@ describe("shared sidebar workspace model", () => {
     ]);
     expect(model.projects).toEqual([
       expect.objectContaining({
-        projectKey: "otto-code-ai/otto-code",
+        viewKey: "otto-code-ai/otto-code",
         hosts: [
           {
             serverId: "host-a",
             projectId: "otto-code-ai/otto-code",
             iconWorkingDir: "/repo/otto-code-ai/otto-code",
-            canCreateWorktree: true,
+            worktreeSupport: "supported",
           },
           {
             serverId: "host-b",
             projectId: "otto-code-ai/otto-code",
             iconWorkingDir: "/repo/otto-code-ai/otto-code",
-            canCreateWorktree: true,
+            worktreeSupport: "supported",
           },
         ],
         workspaces: [
@@ -326,7 +327,7 @@ describe("shared sidebar workspace model", () => {
       ["host-a:main", "done", "main"],
       ["host-b:feature", "running", "feature/status-flow"],
     ]);
-    expect(model.projectNamesByKey).toEqual(
+    expect(model.projectNamesByViewKey).toEqual(
       new Map([["otto-code-ai/otto-code", "otto-code-ai/otto-code"]]),
     );
   });
@@ -406,7 +407,7 @@ describe("shouldShowSidebarHostLabels", () => {
               serverId: "host-a",
               projectId: "project-a",
               iconWorkingDir: "/repo/project-a",
-              canCreateWorktree: true,
+              worktreeSupport: "supported",
             },
           ],
           workspaceKeys: ["host-a:ws-1"],
@@ -418,7 +419,7 @@ describe("shouldShowSidebarHostLabels", () => {
               serverId: "host-b",
               projectId: "project-b",
               iconWorkingDir: "/repo/project-b",
-              canCreateWorktree: true,
+              worktreeSupport: "supported",
             },
           ],
           workspaceKeys: ["host-b:ws-2"],
@@ -439,13 +440,13 @@ describe("shouldShowSidebarHostLabels", () => {
               serverId: "host-a",
               projectId: "otto-code-ai/otto-code",
               iconWorkingDir: "/repo/otto",
-              canCreateWorktree: true,
+              worktreeSupport: "supported",
             },
             {
               serverId: "host-b",
               projectId: "otto-code-ai/otto-code",
               iconWorkingDir: "/repo/otto",
-              canCreateWorktree: true,
+              worktreeSupport: "supported",
             },
           ],
           workspaceKeys: ["host-a:main", "host-b:feature"],
@@ -482,8 +483,8 @@ describe("computeSidebarOrderUpdates", () => {
 
     expect(updates.projectOrder).toEqual(["project-a", "project-b"]);
     expect(updates.workspaceOrders).toEqual([
-      { projectKey: "project-a", order: ["srv:ws-2", "srv:ws-1"] },
-      { projectKey: "project-b", order: ["srv:ws-3"] },
+      { projectViewKey: "project-a", order: ["srv:ws-2", "srv:ws-1"] },
+      { projectViewKey: "project-b", order: ["srv:ws-3"] },
     ]);
   });
 

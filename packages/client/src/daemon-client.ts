@@ -46,12 +46,9 @@ import type {
   SolutionProjectNode,
   SolutionProjectStatus,
   SolutionPackageReference,
-  FileCreateResult,
-  FileDeleteResult,
   FileDownloadTokenResponse,
   FileEntryKind,
   FileEol,
-  FileRenameResult,
   FileReplaceFileResult,
   FileReplaceRequest,
   FileReplaceResponse,
@@ -126,6 +123,7 @@ import type {
   DirectorySuggestionsResponse,
   OttoWorktreeListResponse,
   OttoWorktreeArchiveResponse,
+  ProjectIconSource,
   ProjectIconResponse,
   ContextCategory,
   ContextPromptPreviewGetResponseMessage,
@@ -145,6 +143,7 @@ import type {
   ProjectKnowledgeReferenceApplyResponseMessage,
   ProjectKnowledgeRootApplyResponseMessage,
   ProjectKnowledgeDeleteResponseMessage,
+  ProjectIconGetResponse,
   ProjectAddResponse,
   ProjectResolveWorkspaceForPathResponse,
   ProjectScaffoldGit,
@@ -262,6 +261,7 @@ import type {
   VisualizerVoiceCuesResult,
   AgentPersonalitiesGenerateProfileResult,
 } from "@otto-code/protocol/messages";
+import type { AgentConfigApply } from "@otto-code/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@otto-code/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@otto-code/protocol/terminal-subscription-key";
 import {
@@ -434,7 +434,14 @@ export interface DaemonClientConfig {
   };
   runtimeMetricsIntervalMs?: number;
   runtimeMetricsWindowMs?: number;
+  trace?: DaemonClientTrace;
   capabilities?: Partial<Record<ClientCapability, unknown>>;
+}
+
+export interface DaemonClientTrace {
+  isEnabled(): boolean;
+  beginSection(name: string, args?: Record<string, string>): void;
+  endSection(): void;
 }
 
 export interface SendMessageOptions {
@@ -862,30 +869,6 @@ type CloseItemsPayload = CloseItemsResponse["payload"];
 type KillTerminalPayload = KillTerminalResponse["payload"];
 type CaptureTerminalPayload = CaptureTerminalResponse["payload"];
 type TerminalCompatibilityDiagnosticPayload = TerminalCompatibilityDiagnosticResponse["payload"];
-type ChatCreatePayload = Extract<
-  SessionOutboundMessage,
-  { type: "chat/create/response" }
->["payload"];
-type ChatListPayload = Extract<SessionOutboundMessage, { type: "chat/list/response" }>["payload"];
-type ChatInspectPayload = Extract<
-  SessionOutboundMessage,
-  { type: "chat/inspect/response" }
->["payload"];
-type ChatDeletePayload = Extract<
-  SessionOutboundMessage,
-  { type: "chat/delete/response" }
->["payload"];
-type ChatPostPayload = Extract<SessionOutboundMessage, { type: "chat/post/response" }>["payload"];
-type ChatReadPayload = Extract<SessionOutboundMessage, { type: "chat/read/response" }>["payload"];
-type ChatWaitPayload = Extract<SessionOutboundMessage, { type: "chat/wait/response" }>["payload"];
-type LoopRunPayload = Extract<SessionOutboundMessage, { type: "loop/run/response" }>["payload"];
-type LoopListPayload = Extract<SessionOutboundMessage, { type: "loop/list/response" }>["payload"];
-type LoopInspectPayload = Extract<
-  SessionOutboundMessage,
-  { type: "loop/inspect/response" }
->["payload"];
-type LoopLogsPayload = Extract<SessionOutboundMessage, { type: "loop/logs/response" }>["payload"];
-type LoopStopPayload = Extract<SessionOutboundMessage, { type: "loop/stop/response" }>["payload"];
 type ScheduleCreatePayload = Extract<
   SessionOutboundMessage,
   { type: "schedule/create/response" }
@@ -971,9 +954,15 @@ export interface FetchAgentTimelineOptions {
   cursor?: FetchAgentTimelineCursor;
   limit?: number;
   projection?: FetchAgentTimelineProjection;
+  mergeWindow?: boolean;
   requestId?: string;
   timeout?: number;
 }
+
+export type AgentTimelinePromptIndexPayload = Extract<
+  SessionOutboundMessage,
+  { type: "agent.timeline.list_prompts.response" }
+>["payload"];
 
 export type ProviderSubagentListPayload = Extract<
   SessionOutboundMessage,
@@ -1089,70 +1078,6 @@ export type FetchWorkspacesOptions = Omit<FetchWorkspacesRequest, "type" | "requ
 };
 export type FetchWorkspacesEntry = FetchWorkspacesPayload["entries"][number];
 export type FetchWorkspacesPageInfo = FetchWorkspacesPayload["pageInfo"];
-export interface CreateChatRoomOptions {
-  name: string;
-  purpose?: string | null;
-  requestId?: string;
-}
-export interface InspectChatRoomOptions {
-  room: string;
-  requestId?: string;
-}
-export interface DeleteChatRoomOptions {
-  room: string;
-  requestId?: string;
-}
-export interface PostChatMessageOptions {
-  room: string;
-  body: string;
-  authorAgentId?: string;
-  replyToMessageId?: string | null;
-  requestId?: string;
-}
-export interface ReadChatMessagesOptions {
-  room: string;
-  limit?: number;
-  since?: string;
-  authorAgentId?: string;
-  requestId?: string;
-  timeout?: number;
-}
-export interface WaitForChatMessagesOptions {
-  room: string;
-  afterMessageId?: string | null;
-  timeoutMs?: number;
-  requestId?: string;
-}
-export interface RunLoopOptions {
-  prompt: string;
-  cwd: string;
-  provider?: string;
-  model?: string;
-  modeId?: string;
-  verifierProvider?: string;
-  verifierModel?: string;
-  verifierModeId?: string;
-  verifyPrompt?: string | null;
-  verifyChecks?: string[];
-  name?: string | null;
-  sleepMs?: number;
-  maxIterations?: number;
-  maxTimeMs?: number;
-  requestId?: string;
-}
-export interface InspectLoopOptions {
-  id: string;
-  requestId?: string;
-}
-export interface LoopLogsOptions {
-  id: string;
-  afterSeq?: number;
-  requestId?: string;
-}
-export interface StopLoopOptions {
-  id: string;
-  requestId?: string;
-}
 export interface CreateScheduleOptions {
   prompt: string;
   name?: string | null;
@@ -1188,11 +1113,7 @@ export interface CreateScheduleOptions {
           archiveOnFinish?: boolean;
           isolation?: "local" | "worktree";
           title?: string | null;
-          approvalPolicy?: string;
-          sandboxMode?: string;
-          networkAccess?: boolean;
-          webSearch?: boolean;
-          extra?: AgentSessionConfig["extra"];
+          providerOptions?: AgentSessionConfig["providerOptions"];
           systemPrompt?: string;
           mcpServers?: AgentSessionConfig["mcpServers"];
         };
@@ -1428,6 +1349,7 @@ function toTimeoutError(error: unknown, label: string, timeoutMs: number): Error
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 1500;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30000;
 const DEFAULT_SESSION_RPC_TIMEOUT_MS = 60_000;
+const PUSH_TOKEN_REVOCATION_TIMEOUT_MS = 2_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 const DEFAULT_LIVENESS_TIMEOUT_MS = 5000;
 const LIVENESS_HEARTBEAT_INTERVAL_MS = 10_000;
@@ -1501,6 +1423,26 @@ function concatByteChunks(chunks: Uint8Array[], size: number): Uint8Array {
     offset += chunk.byteLength;
   }
   return bytes;
+}
+
+function getTransportFrameSize(frame: string | Uint8Array | ArrayBuffer): number {
+  if (typeof frame === "string") {
+    return frame.length;
+  }
+  return frame.byteLength;
+}
+
+function describeInboundTransportFrame(
+  frame: unknown,
+  rawBytes: Uint8Array | null,
+): Record<string, string> {
+  if (typeof frame === "string") {
+    return { kind: "text", size: String(frame.length) };
+  }
+  if (rawBytes) {
+    return { kind: "binary", size: String(rawBytes.byteLength) };
+  }
+  return { kind: "unknown", size: "0" };
 }
 
 function hashForLog(value: string): string {
@@ -2018,6 +1960,49 @@ export class DaemonClient {
   // Core Send Helpers
   // ============================================================================
 
+  private beginTraceSection(name: string, args?: Record<string, string>): boolean {
+    const trace = this.config.trace;
+    if (!trace?.isEnabled()) {
+      return false;
+    }
+    trace.beginSection(name, args);
+    return true;
+  }
+
+  private endTraceSection(isOpen: boolean): void {
+    if (isOpen) {
+      this.config.trace?.endSection();
+    }
+  }
+
+  private traceInstant(name: string, args?: Record<string, string>): void {
+    const isOpen = this.beginTraceSection(name, args);
+    this.endTraceSection(isOpen);
+  }
+
+  private sendJsonMessage(envelopeType: string, messageType: string, message: unknown): void {
+    this.traceInstant("otto.ws.message.outbound", {
+      envelopeType,
+      messageType,
+    });
+    this.sendTransportFrame(JSON.stringify(message));
+  }
+
+  private sendTransportFrame(frame: string | Uint8Array | ArrayBuffer): void {
+    if (!this.transport) {
+      throw new Error("Transport not connected");
+    }
+    const isOpen = this.beginTraceSection("otto.ws.frame.outbound", {
+      kind: typeof frame === "string" ? "text" : "binary",
+      size: String(getTransportFrameSize(frame)),
+    });
+    try {
+      this.transport.send(frame);
+    } finally {
+      this.endTraceSection(isOpen);
+    }
+  }
+
   /**
    * Send a session message. For fire-and-forget messages (heartbeats, etc.),
    * failures are suppressed if `suppressSendErrors` is configured.
@@ -2032,7 +2017,7 @@ export class DaemonClient {
     }
     const payload = SessionInboundMessageSchema.parse(message);
     try {
-      this.transport.send(JSON.stringify({ type: "session", message: payload }));
+      this.sendJsonMessage("session", payload.type, { type: "session", message: payload });
     } catch (error) {
       if (this.config.suppressSendErrors) {
         return;
@@ -2049,7 +2034,11 @@ export class DaemonClient {
       throw new Error(`Transport not connected (status: ${this.connectionState.status})`);
     }
     try {
-      this.transport.send(frame);
+      this.traceInstant("otto.ws.message.outbound", {
+        envelopeType: "binary",
+        messageType: "binary",
+      });
+      this.sendTransportFrame(frame);
     } catch (error) {
       if (this.config.suppressSendErrors) {
         return;
@@ -2070,7 +2059,7 @@ export class DaemonClient {
     // If connected, send immediately
     if (this.transport && status === "connected") {
       const payload = SessionInboundMessageSchema.parse(message);
-      this.transport.send(JSON.stringify({ type: "session", message: payload }));
+      this.sendJsonMessage("session", payload.type, { type: "session", message: payload });
       return Promise.resolve();
     }
 
@@ -2106,7 +2095,7 @@ export class DaemonClient {
       try {
         if (this.transport && this.connectionState.status === "connected") {
           const payload = SessionInboundMessageSchema.parse(pending.message);
-          this.transport.send(JSON.stringify({ type: "session", message: payload }));
+          this.sendJsonMessage("session", payload.type, { type: "session", message: payload });
           pending.resolve();
         } else {
           pending.reject(new Error("Connection lost before message could be sent"));
@@ -2260,7 +2249,7 @@ export class DaemonClient {
     }
     const payload = SessionInboundMessageSchema.parse(message);
     try {
-      this.transport.send(JSON.stringify({ type: "session", message: payload }));
+      this.sendJsonMessage("session", payload.type, { type: "session", message: payload });
     } catch (error) {
       throw error instanceof Error ? error : new Error(String(error));
     }
@@ -2338,6 +2327,16 @@ export class DaemonClient {
     this.sendSessionMessage({
       type: "register_push_token",
       token,
+    });
+  }
+
+  async unregisterPushToken(token: string): Promise<void> {
+    const requestId = this.createRequestId();
+    await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "push.unregister.request", token, requestId },
+      responseType: "push.unregister.response",
+      timeout: PUSH_TOKEN_REVOCATION_TIMEOUT_MS,
     });
   }
 
@@ -2435,7 +2434,7 @@ export class DaemonClient {
     this.pingProbe = probe;
 
     try {
-      this.transport.send(JSON.stringify({ type: "ping" }));
+      this.sendJsonMessage("ping", "ping", { type: "ping" });
     } catch (error) {
       this.clearPingProbe();
       const sendError = error instanceof Error ? error : new Error(String(error));
@@ -2514,6 +2513,7 @@ export class DaemonClient {
       type: "fetch_agent_history_request",
       requestId: resolvedRequestId,
       ...(options?.filter ? { filter: options.filter } : {}),
+      ...(options?.search ? { search: options.search } : {}),
       ...(options?.sort ? { sort: options.sort } : {}),
       ...(options?.page ? { page: options.page } : {}),
     });
@@ -3454,6 +3454,18 @@ export class DaemonClient {
     return { target: payload.target };
   }
 
+  async setProjectIcon(
+    projectId: string,
+    source: ProjectIconSource,
+    requestId?: string,
+  ): Promise<void> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"project.icon.set.response">({
+      requestId,
+      message: { type: "project.icon.set.request", projectId, source },
+    });
+    if (!payload.accepted) throw new Error(payload.error ?? "setProjectIcon rejected");
+  }
+
   async removeProject(
     projectId: string,
     requestId?: string,
@@ -4080,6 +4092,7 @@ export class DaemonClient {
       ...(options.cursor ? { cursor: options.cursor } : {}),
       ...(typeof options.limit === "number" ? { limit: options.limit } : {}),
       ...(options.projection ? { projection: options.projection } : {}),
+      ...(options.mergeWindow === true ? { mergeWindow: true } : {}),
     });
 
     const payload = await this.sendRequest({
@@ -4102,6 +4115,32 @@ export class DaemonClient {
       throw new Error(payload.error);
     }
 
+    return payload;
+  }
+  async listAgentTimelinePrompts(
+    agentId: string,
+    options: { requestId?: string; timeout?: number } = {},
+  ): Promise<AgentTimelinePromptIndexPayload> {
+    const requestId = this.createRequestId(options.requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.timeline.list_prompts.request",
+      agentId,
+      requestId,
+    });
+    const payload = await this.sendRequest({
+      requestId,
+      message,
+      timeout: options.timeout,
+      options: { skipQueue: true },
+      select: (response) =>
+        response.type === "agent.timeline.list_prompts.response" &&
+        response.payload.requestId === requestId
+          ? response.payload
+          : null,
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
     return payload;
   }
 
@@ -4509,6 +4548,44 @@ export class DaemonClient {
     });
     if (!payload.accepted) {
       throw new Error(payload.error ?? "setAgentPersonality rejected");
+    }
+    return payload.notice ?? null;
+  }
+
+  /**
+   * Applies a whole agent-config bundle in one request. Use this instead of
+   * chaining the single-field setters when the values belong together so client
+   * interruption and other mutations cannot interleave between steps. A
+   * provider rejection can still leave earlier steps applied.
+   * Gated on `server_info.features.agentConfigApply`.
+   */
+  async applyAgentConfig(
+    agentId: string,
+    config: AgentConfigApply,
+  ): Promise<AgentProviderNotice | null> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.config.apply.request",
+      agentId,
+      config,
+      requestId,
+    });
+    const payload = await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "agent.config.apply.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "applyAgentConfig rejected");
     }
     return payload.notice ?? null;
   }
@@ -5884,51 +5961,6 @@ export class DaemonClient {
     );
   }
 
-  /** Create an empty file or a directory. Never overwrites - see FileCreateResultSchema. */
-  async createFileEntry(options: FileCreateOptions): Promise<FileCreateResult> {
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "file.create.request",
-        cwd: options.cwd,
-        path: options.path,
-        kind: options.kind,
-      },
-      responseType: "file.create.response",
-    });
-    return payload.result;
-  }
-
-  /** Permanent delete - an unlink, not a move to any trash. */
-  async deleteFileEntry(options: FileDeleteOptions): Promise<FileDeleteResult> {
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "file.delete.request",
-        cwd: options.cwd,
-        path: options.path,
-        recursive: options.recursive,
-      },
-      responseType: "file.delete.response",
-    });
-    return payload.result;
-  }
-
-  /** Rename, which is also move. Never clobbers an occupied destination. */
-  async renameFileEntry(options: FileRenameOptions): Promise<FileRenameResult> {
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "file.rename.request",
-        cwd: options.cwd,
-        path: options.path,
-        newPath: options.newPath,
-      },
-      responseType: "file.rename.response",
-    });
-    return payload.result;
-  }
-
   async refineFile(options: FileRefineOptions): Promise<FileRefineResult> {
     const payload = await this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
@@ -6873,6 +6905,7 @@ export class DaemonClient {
 
   async getProvidersSnapshot(options?: {
     cwd?: string;
+    ifNoneMatch?: string;
     requestId?: string;
   }): Promise<GetProvidersSnapshotPayload> {
     const payload = await this.sendCorrelatedSessionRequest({
@@ -6880,6 +6913,7 @@ export class DaemonClient {
       message: {
         type: "get_providers_snapshot_request",
         cwd: options?.cwd,
+        ifNoneMatch: options?.ifNoneMatch,
       },
       responseType: "get_providers_snapshot_response",
     });
@@ -7596,6 +7630,54 @@ export class DaemonClient {
     return unwrapBrainJob(payload);
   }
 
+  async createFileEntry(input: {
+    cwd: string;
+    parentPath: string;
+    name: string;
+    kind: "file" | "directory";
+  }): Promise<CorrelatedResponsePayload<"fs.entry.create.response">> {
+    return this.sendNamespacedCorrelatedSessionRequest<"fs.entry.create.response">({
+      message: { type: "fs.entry.create.request", ...input },
+    });
+  }
+
+  async renameFileEntry(input: {
+    cwd: string;
+    path: string;
+    name: string;
+  }): Promise<CorrelatedResponsePayload<"fs.entry.rename.response">> {
+    return this.sendNamespacedCorrelatedSessionRequest<"fs.entry.rename.response">({
+      message: { type: "fs.entry.rename.request", ...input },
+    });
+  }
+
+  async duplicateFileEntry(input: {
+    cwd: string;
+    path: string;
+  }): Promise<CorrelatedResponsePayload<"fs.entry.duplicate.response">> {
+    return this.sendNamespacedCorrelatedSessionRequest<"fs.entry.duplicate.response">({
+      message: { type: "fs.entry.duplicate.request", ...input },
+    });
+  }
+
+  async deleteFileEntry(input: {
+    cwd: string;
+    path: string;
+  }): Promise<CorrelatedResponsePayload<"fs.entry.delete.response">> {
+    return this.sendNamespacedCorrelatedSessionRequest<"fs.entry.delete.response">({
+      message: { type: "fs.entry.delete.request", ...input },
+    });
+  }
+
+  async checkoutDiscardChanges(
+    cwd: string,
+    input: { paths: string[] },
+  ): Promise<CorrelatedResponsePayload<"checkout.discard_changes.response">> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.discard_changes.response">({
+      message: { type: "checkout.discard_changes.request", cwd, paths: input.paths },
+    });
+  }
+
   async brainJobsList(requestId?: string): Promise<BrainJob[]> {
     const payload = await this.sendCorrelatedSessionRequest({
       requestId,
@@ -7735,6 +7817,19 @@ export class DaemonClient {
     }
     return payload.status;
   }
+  async getProjectIcon(
+    projectId: string,
+    requestId?: string,
+  ): Promise<ProjectIconGetResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"project.icon.get.response">({
+      requestId,
+      message: { type: "project.icon.get.request", projectId },
+    });
+  }
+
+  // ============================================================================
+  // Provider Models / Commands
+  // ============================================================================
 
   /** Delete a model's files. The brain refuses while that model is loaded. */
   async brainModelDelete(
@@ -8504,93 +8599,6 @@ export class DaemonClient {
     });
   }
 
-  async createChatRoom(options: CreateChatRoomOptions): Promise<ChatCreatePayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "chat/create",
-        name: options.name,
-        ...(options.purpose ? { purpose: options.purpose } : {}),
-      },
-      responseType: "chat/create/response",
-    });
-  }
-
-  async listChatRooms(requestId?: string): Promise<ChatListPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId,
-      message: {
-        type: "chat/list",
-      },
-      responseType: "chat/list/response",
-    });
-  }
-
-  async inspectChatRoom(options: InspectChatRoomOptions): Promise<ChatInspectPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "chat/inspect",
-        room: options.room,
-      },
-      responseType: "chat/inspect/response",
-    });
-  }
-
-  async deleteChatRoom(options: DeleteChatRoomOptions): Promise<ChatDeletePayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "chat/delete",
-        room: options.room,
-      },
-      responseType: "chat/delete/response",
-    });
-  }
-
-  async postChatMessage(options: PostChatMessageOptions): Promise<ChatPostPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "chat/post",
-        room: options.room,
-        body: options.body,
-        ...(options.authorAgentId ? { authorAgentId: options.authorAgentId } : {}),
-        ...(options.replyToMessageId ? { replyToMessageId: options.replyToMessageId } : {}),
-      },
-      responseType: "chat/post/response",
-    });
-  }
-
-  async readChatMessages(options: ReadChatMessagesOptions): Promise<ChatReadPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "chat/read",
-        room: options.room,
-        ...(typeof options.limit === "number" ? { limit: options.limit } : {}),
-        ...(options.since ? { since: options.since } : {}),
-        ...(options.authorAgentId ? { authorAgentId: options.authorAgentId } : {}),
-      },
-      responseType: "chat/read/response",
-      timeout: options.timeout,
-    });
-  }
-
-  async waitForChatMessages(options: WaitForChatMessagesOptions): Promise<ChatWaitPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "chat/wait",
-        room: options.room,
-        ...(options.afterMessageId ? { afterMessageId: options.afterMessageId } : {}),
-        ...(typeof options.timeoutMs === "number" ? { timeoutMs: options.timeoutMs } : {}),
-      },
-      responseType: "chat/wait/response",
-      timeout: (options.timeoutMs ?? 0) + 10000,
-    });
-  }
-
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
@@ -8847,81 +8855,6 @@ export class DaemonClient {
     });
   }
 
-  async loopRun(options: RunLoopOptions): Promise<LoopRunPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
-      message: {
-        type: "loop/run",
-        prompt: options.prompt,
-        cwd: options.cwd,
-        ...(options.provider ? { provider: options.provider } : {}),
-        ...(options.model ? { model: options.model } : {}),
-        ...(options.modeId ? { modeId: options.modeId } : {}),
-        ...(options.verifierProvider ? { verifierProvider: options.verifierProvider } : {}),
-        ...(options.verifierModel ? { verifierModel: options.verifierModel } : {}),
-        ...(options.verifierModeId ? { verifierModeId: options.verifierModeId } : {}),
-        ...(options.verifyPrompt ? { verifyPrompt: options.verifyPrompt } : {}),
-        ...(options.verifyChecks && options.verifyChecks.length > 0
-          ? { verifyChecks: options.verifyChecks }
-          : {}),
-        ...(options.name ? { name: options.name } : {}),
-        ...(typeof options.sleepMs === "number" ? { sleepMs: options.sleepMs } : {}),
-        ...(typeof options.maxIterations === "number"
-          ? { maxIterations: options.maxIterations }
-          : {}),
-        ...(typeof options.maxTimeMs === "number" ? { maxTimeMs: options.maxTimeMs } : {}),
-      },
-      responseType: "loop/run/response",
-    });
-  }
-
-  async loopList(requestId?: string): Promise<LoopListPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId,
-      message: {
-        type: "loop/list",
-      },
-      responseType: "loop/list/response",
-    });
-  }
-
-  async loopInspect(options: string | InspectLoopOptions): Promise<LoopInspectPayload> {
-    const normalized = typeof options === "string" ? { id: options } : options;
-    return this.sendCorrelatedSessionRequest({
-      requestId: normalized.requestId,
-      message: {
-        type: "loop/inspect",
-        id: normalized.id,
-      },
-      responseType: "loop/inspect/response",
-    });
-  }
-
-  async loopLogs(options: string | LoopLogsOptions, afterSeq?: number): Promise<LoopLogsPayload> {
-    const normalized = typeof options === "string" ? { id: options, afterSeq } : options;
-    return this.sendCorrelatedSessionRequest({
-      requestId: normalized.requestId,
-      message: {
-        type: "loop/logs",
-        id: normalized.id,
-        ...(typeof normalized.afterSeq === "number" ? { afterSeq: normalized.afterSeq } : {}),
-      },
-      responseType: "loop/logs/response",
-    });
-  }
-
-  async loopStop(options: string | StopLoopOptions): Promise<LoopStopPayload> {
-    const normalized = typeof options === "string" ? { id: options } : options;
-    return this.sendCorrelatedSessionRequest({
-      requestId: normalized.requestId,
-      message: {
-        type: "loop/stop",
-        id: normalized.id,
-      },
-      responseType: "loop/stop/response",
-    });
-  }
-
   onTerminalStreamEvent(handler: (event: TerminalStreamEvent) => void): () => void {
     return this.terminalStreams.onEvent(handler);
   }
@@ -8988,26 +8921,25 @@ export class DaemonClient {
     }
 
     try {
-      this.transport.send(
-        JSON.stringify({
-          type: "hello",
-          clientId: this.config.clientId,
-          clientType: this.config.clientType ?? "cli",
-          protocolVersion: 1,
-          capabilities: {
-            [CLIENT_CAPS.customModeIcons]: true,
-            [CLIENT_CAPS.reasoningMergeEnum]: true,
-            [CLIENT_CAPS.terminalReflowableSnapshot]: true,
-            [CLIENT_CAPS.providerSubagents]: true,
-            // The daemon gates project.updated.notification on this (session.ts),
-            // so dropping it silently kills cross-session project renames.
-            [CLIENT_CAPS.projectUpdates]: true,
-            [CLIENT_CAPS.communicationsPresenceUpdates]: true,
-            ...this.config.capabilities,
-          },
-          ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
-        }),
-      );
+      this.sendJsonMessage("hello", "hello", {
+        type: "hello",
+        clientId: this.config.clientId,
+        clientType: this.config.clientType ?? "cli",
+        protocolVersion: 1,
+        capabilities: {
+          [CLIENT_CAPS.customModeIcons]: true,
+          [CLIENT_CAPS.reasoningMergeEnum]: true,
+          [CLIENT_CAPS.terminalReflowableSnapshot]: true,
+          [CLIENT_CAPS.providerSubagents]: true,
+          // The daemon gates project.updated.notification on this (session.ts),
+          // so dropping it silently kills cross-session project renames.
+          [CLIENT_CAPS.projectUpdates]: true,
+          [CLIENT_CAPS.communicationsPresenceUpdates]: true,
+          [CLIENT_CAPS.compactProviderSnapshots]: true,
+          ...this.config.capabilities,
+        },
+        ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to send hello message";
       this.lastErrorValue = message;
@@ -9078,24 +9010,37 @@ export class DaemonClient {
     }
 
     const rawBytes = asUint8Array(rawData);
-    if (rawBytes && this.tryHandleBinaryFrame(rawBytes)) {
-      return;
+    const isOpen = this.beginTraceSection(
+      "otto.ws.frame.inbound",
+      describeInboundTransportFrame(rawData, rawBytes),
+    );
+    try {
+      if (rawBytes && this.tryHandleBinaryFrame(rawBytes)) {
+        return;
+      }
+      const payload = decodeMessageData(rawData);
+      if (!payload) {
+        return;
+      }
+      this.handleJsonPayload(payload, rawBytes?.byteLength);
+    } finally {
+      this.endTraceSection(isOpen);
     }
-    const payload = decodeMessageData(rawData);
-    if (!payload) {
-      return;
-    }
-    this.handleJsonPayload(payload, rawBytes?.byteLength);
   }
 
   private handleJsonPayload(payload: string, rawBytesLength: number | undefined): void {
     const bytes = rawBytesLength ?? payload.length;
     const startMs = perfNow();
     let parsedJson: unknown;
+    const parseTraceOpen = this.beginTraceSection("otto.ws.json.parse", {
+      size: String(bytes),
+    });
     try {
       parsedJson = JSON.parse(payload);
     } catch {
       return;
+    } finally {
+      this.endTraceSection(parseTraceOpen);
     }
 
     const parsed = validateWSOutboundMessage(parsedJson);
@@ -9122,11 +9067,19 @@ export class DaemonClient {
     this.consecutiveLivenessFailures = 0;
 
     if (parsed.data.type === "pong") {
+      this.traceInstant("otto.ws.message.inbound", {
+        envelopeType: "pong",
+        messageType: "pong",
+      });
       this.resolvePingProbe();
       this.runtimeMetrics?.recordMessage("pong", bytes, perfNow() - startMs);
       return;
     }
 
+    this.traceInstant("otto.ws.message.inbound", {
+      envelopeType: "session",
+      messageType: parsed.data.message.type,
+    });
     this.handleSessionMessage(parsed.data.message);
     const msgType = parsed.data.message.type;
     this.runtimeMetrics?.recordMessage(msgType, bytes, perfNow() - startMs);
@@ -9138,6 +9091,11 @@ export class DaemonClient {
   private tryHandleBinaryFrame(rawBytes: Uint8Array): boolean {
     const fileFrame = decodeFileTransferFrame(rawBytes);
     if (fileFrame) {
+      this.traceInstant("otto.ws.message.inbound", {
+        envelopeType: "binary",
+        messageType: "file",
+        opcode: String(fileFrame.opcode),
+      });
       this.consecutiveLivenessFailures = 0;
       this.handleFileTransferFrame(fileFrame);
       this.runtimeMetrics?.recordBinaryFrame("other", rawBytes.byteLength, 0);
@@ -9148,6 +9106,11 @@ export class DaemonClient {
     if (!frame) {
       return false;
     }
+    this.traceInstant("otto.ws.message.inbound", {
+      envelopeType: "binary",
+      messageType: "terminal",
+      opcode: String(frame.opcode),
+    });
     this.consecutiveLivenessFailures = 0;
     const binaryStartMs = perfNow();
     this.terminalStreams.handleFrame(frame);

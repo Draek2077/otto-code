@@ -18,6 +18,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
+import type { TurnPresentation } from "@/timeline/turn-liveness";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 
@@ -162,6 +163,15 @@ function ProviderSubagentPanel() {
     }),
     [isLoadingOlder, loadOlder, progressKey, timeline?.hasOlder],
   );
+  const turnPresentation = useMemo<TurnPresentation>(() => {
+    const isActive = descriptor?.status === "running";
+    return {
+      isActive,
+      isCancelling: false,
+      startedAt: isActive && descriptor ? new Date(descriptor.createdAt) : null,
+      turnId: null,
+    };
+  }, [descriptor]);
 
   if (serverInfo && !supported) {
     return (
@@ -180,6 +190,7 @@ function ProviderSubagentPanel() {
         streamItems={timeline?.tail ?? EMPTY_STREAM_ITEMS}
         streamHead={timeline?.head ?? EMPTY_STREAM_ITEMS}
         pendingPermissions={EMPTY_PERMISSIONS}
+        turnPresentation={turnPresentation}
         isAuthoritativeHistoryReady
         onOpenWorkspaceFile={openFileInWorkspace}
         readOnly

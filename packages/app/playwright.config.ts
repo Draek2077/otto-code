@@ -4,6 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 // This allows multiple test runs in parallel across different worktrees
 const baseURL =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_METRO_PORT ?? "8081"}`;
+const relayDeploymentSpec = "**/relay-deployment-reconnect.real.spec.ts";
 
 // Artifacts (traces, videos, screenshots) live under a per-project directory.
 // Playwright wipes a test's output directory - and its worker's shared
@@ -26,8 +27,8 @@ const htmlReportDir = process.env.E2E_HTML_REPORT_DIR ?? "playwright-report";
 const qaReportDir = process.env.E2E_REPORT_DIR ?? "e2e-report";
 
 export default defineConfig({
-  testDir: "./e2e",
-  globalSetup: "./e2e/global-setup.ts",
+  testDir: "./e2e/browser",
+  globalSetup: "./e2e/support/global-setup.ts",
   timeout: 60_000,
   // Set by CI (see `E2E_GLOBAL_TIMEOUT_MINUTES` in ci.yml) and deliberately unset
   // locally, where a run is interactive and interruptible. It exists so a shard
@@ -40,10 +41,10 @@ export default defineConfig({
   expect: {
     timeout: 10_000,
   },
-  // E2E tests share a single daemon/relay/metro stack from global setup.
-  // Running tests concurrently causes cross-test contention and non-deterministic failures.
+  // Files run concurrently, while each worker owns its daemon state. Keeping a
+  // spec on one worker avoids repeating its file-level setup across daemons.
   fullyParallel: false,
-  workers: 1,
+  workers: Number(process.env.E2E_WORKERS ?? (process.env.CI ? "2" : "1")),
   // Two retries in CI: the shared metro/daemon/relay stack occasionally drops a
   // browser at startup ("Target page/context or browser has been closed"), which
   // is pure environmental flake a retry clears. Deterministic failures still fail
@@ -65,8 +66,8 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "Desktop Chrome",
-      outputDir: projectOutputDir("Desktop Chrome"),
+      name: "browser",
+      outputDir: projectOutputDir("browser"),
       testIgnore: ["**/*.real.spec.ts", "**/*.local.spec.ts"],
       // E2E_BROWSER_CHANNEL lets local runs drive an installed browser (e.g.
       // "msedge" on Windows) instead of Playwright's downloaded chromium.
@@ -76,6 +77,13 @@ export default defineConfig({
       name: "real-provider",
       outputDir: projectOutputDir("real-provider"),
       testMatch: ["**/*.real.spec.ts"],
+      testIgnore: [relayDeploymentSpec],
+      use: { ...devices["Desktop Chrome"], channel: process.env.E2E_BROWSER_CHANNEL },
+    },
+    {
+      name: "relay-deployment",
+      outputDir: projectOutputDir("relay-deployment"),
+      testMatch: [relayDeploymentSpec],
       use: { ...devices["Desktop Chrome"], channel: process.env.E2E_BROWSER_CHANNEL },
     },
     {

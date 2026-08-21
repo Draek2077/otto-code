@@ -5,6 +5,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
+import { materializeAgentProfile } from "@/agent-profiles/internal/materialize-profile";
 import { useAgentFormState } from "./use-agent-form-state";
 
 const mocks = vi.hoisted(() => ({
@@ -299,6 +300,41 @@ describe("useAgentFormState (create-sheet open flow)", () => {
     });
 
     expect(mocks.preferences.updatePreferences).toHaveBeenCalled();
+  });
+
+  it("binds one canonical profile id until the user picks a raw model", async () => {
+    mocks.snapshot.entries = READY_ENTRIES;
+    const { result, rerender } = renderArtifactStyleForm();
+
+    rerender({ visible: true });
+    await waitFor(() => {
+      expect(result.current.selectedProvider).toBe("mock");
+    });
+
+    const profile = materializeAgentProfile({
+      id: "profile-coder",
+      name: "Coder",
+      provider: "mock",
+      model: "model-a",
+      thinkingOptionId: "low",
+      personalityPrompt: "Stay focused.",
+      roles: ["coder"],
+      spinner: { glowA: "violet", glowB: "blue" },
+    });
+    act(() => {
+      result.current.applyProfileFromUser(profile);
+    });
+
+    expect(result.current.selectedAgentProfileId).toBe("profile-coder");
+    expect(result.current.selectedAgentProfile).toBe(profile);
+    expect(result.current.selectedModel).toBe("model-a");
+    expect(result.current.selectedThinkingOptionId).toBe("low");
+
+    act(() => {
+      result.current.setModelFromUser("model-b");
+    });
+    expect(result.current.selectedAgentProfileId).toBeNull();
+    expect(result.current.selectedAgentProfile).toBeNull();
   });
 
   it("re-resolves from preferences on each reopen", async () => {

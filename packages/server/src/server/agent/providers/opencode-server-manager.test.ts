@@ -27,6 +27,16 @@ afterEach(() => {
 });
 
 describe("OpenCodeServerManager generations", () => {
+  test("uses an explicit base environment for the server process", async () => {
+    const baseEnv = { HOME: "/isolated/home", PATH: "/isolated/bin" };
+    const { manager, runtime } = createTestManager([4091], { baseEnv });
+
+    const acquisition = await manager.acquireCurrent();
+
+    expect(runtime.spawnCalls[0]?.options.baseEnv).toEqual(baseEnv);
+    await acquisition.release();
+  });
+
   test("rotation creates a new current server without killing a referenced old server", async () => {
     const { manager, runtime } = createTestManager([4101, 4102]);
 
@@ -126,6 +136,25 @@ describe("OpenCodeServerManager generations", () => {
     await failure;
     expect(runtime.terminatedPorts).toEqual([4471]);
     expect(await runtime.managedProcesses.list()).toEqual([]);
+  });
+
+  test("aborted acquisition transfers no reference and leaves startup reusable", async () => {
+    const { manager, runtime } = createTestManager([4477], { autoAnnounce: false });
+    const controller = new AbortController();
+
+    const abortedAcquisition = manager.acquireCurrent(controller.signal);
+    await runtime.settle();
+    controller.abort(new Error("catalog refresh expired"));
+
+    await expect(abortedAcquisition).rejects.toThrow("catalog refresh expired");
+    runtime.processForPort(4477).announceListening();
+
+    const nextAcquisition = await manager.acquireCurrent();
+    expect(nextAcquisition.server.url).toBe("http://127.0.0.1:4477");
+    expect(runtime.launchedPorts).toEqual([4477]);
+
+    await nextAcquisition.release();
+    expect(runtime.terminatedPorts).toEqual([4477]);
   });
 
   test("shutdown kills a server that is still starting", async () => {
@@ -334,7 +363,11 @@ describe.runIf(process.platform === "win32")(
 
 function createTestManager(
   ports: number[],
-  options: { autoAnnounce?: boolean; opencodeHomeDir?: string } = {},
+  options: {
+    autoAnnounce?: boolean;
+    baseEnv?: Record<string, string>;
+    opencodeHomeDir?: string;
+  } = {},
 ): {
   manager: OpenCodeServerManager;
   runtime: FakeOpenCodeServerRuntime;
@@ -346,6 +379,7 @@ function createTestManager(
   return {
     manager: new OpenCodeServerManager({
       logger: createTestLogger(),
+      baseEnv: options.baseEnv,
       managedProcesses: runtime.managedProcesses,
       portAllocator: runtime.allocatePort,
       resolveCommandPrefix: runtime.resolveCommandPrefix,

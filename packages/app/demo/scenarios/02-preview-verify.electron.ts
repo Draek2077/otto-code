@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
-import { launchDesktopElectron } from "../../e2e/helpers/electron-app";
+import { launchDesktopElectron } from "../../e2e/support/helpers/electron-app";
 import { DESKTOP_CAPTURE_RESOLUTION, DESKTOP_LAYOUT_VIEWPORT } from "../helpers/resolution";
-import type { SeedDaemonClient } from "../../e2e/helpers/seed-client";
-import { getE2EDaemonPort } from "../../e2e/helpers/daemon-port";
+import type { SeedDaemonClient } from "../../e2e/support/helpers/seed-client";
+import { getE2EDaemonPort } from "../../e2e/support/helpers/daemon-port";
 import { buildHostAgentDetailRoute } from "../../src/utils/host-routes";
 import { applyDemoAppearance } from "../helpers/appearance";
 import { demoThemeAppearance, type DemoThemeName } from "../helpers/theme";

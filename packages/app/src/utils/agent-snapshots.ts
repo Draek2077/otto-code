@@ -1,6 +1,24 @@
 import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import type { AgentPermissionRequest } from "@otto-code/protocol/agent-types";
 import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
+import type { ActiveTurnIdentity } from "@/timeline/turn-liveness";
+
+export function normalizeAgentActiveTurn(
+  snapshot: AgentSnapshotPayload,
+  lastUserMessageAt: Date | null,
+): ActiveTurnIdentity | null {
+  if (snapshot.activeTurn === null) return null;
+  if (snapshot.activeTurn) {
+    return {
+      turnId: snapshot.activeTurn.turnId,
+      startedAt: snapshot.activeTurn.startedAt ? new Date(snapshot.activeTurn.startedAt) : null,
+    };
+  }
+  // COMPAT(agentTurnIdentity): added in v0.2.6, remove after 2027-01-31 once daemon floor >= v0.2.6.
+  // Old daemons expose only status. Normalize that legacy signal once at the
+  // snapshot boundary; the Agent replica itself never owns turn liveness.
+  return snapshot.status === "running" ? { turnId: null, startedAt: lastUserMessageAt } : null;
+}
 
 export function derivePendingPermissionKey(
   agentId: string,
@@ -27,7 +45,6 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     : null;
   const archivedAt = snapshot.archivedAt ? new Date(snapshot.archivedAt) : null;
   const parentAgentId = getParentAgentIdFromLabels(snapshot.labels);
-
   return {
     serverId,
     id: snapshot.id,

@@ -1,4 +1,4 @@
-import { resolve as resolvePath } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 import type pino from "pino";
 import type { SolutionService } from "../../solution-model/service.js";
 import { getErrorMessage } from "@otto-code/protocol/error-utils";
@@ -13,6 +13,10 @@ import type {
   FileDeleteRequest,
   FileDeleteResult,
   FileDownloadTokenRequest,
+  FileEntryCreateRequest,
+  FileEntryDeleteRequest,
+  FileEntryDuplicateRequest,
+  FileEntryRenameRequest,
   FileExplorerRequest,
   FileRenameRequest,
   FileRenameResult,
@@ -34,6 +38,7 @@ import type { DownloadTokenStore } from "../../file-download/token-store.js";
 import {
   createExplorerEntry,
   deleteExplorerEntry,
+  duplicateExplorerEntry,
   getDownloadableFileInfo,
   listDirectoryEntries,
   readExplorerFile,
@@ -219,6 +224,92 @@ export class WorkspaceFilesSession {
         path: request.path,
         ok: Boolean(cwd),
         error: cwd ? null : "cwd is required",
+        requestId: request.requestId,
+      },
+    });
+  }
+
+  async handleFileEntryCreateRequest(request: FileEntryCreateRequest): Promise<void> {
+    const result = await createExplorerEntry({
+      root: request.cwd,
+      relativePath: join(request.parentPath, request.name),
+      kind: request.kind,
+    });
+    this.host.emit({
+      type: "fs.entry.create.response",
+      payload: {
+        cwd: request.cwd,
+        parentPath: request.parentPath,
+        path: result.status === "ok" ? result.path : null,
+        success: result.status === "ok",
+        error: result.status === "ok" ? null : `"${request.name.trim()}" already exists`,
+        requestId: request.requestId,
+      },
+    });
+  }
+
+  async handleFileEntryRenameRequest(request: FileEntryRenameRequest): Promise<void> {
+    const result = await renameExplorerEntry({
+      root: request.cwd,
+      relativePath: request.path,
+      newRelativePath: join(dirname(request.path), request.name),
+    });
+    let error: string | null = null;
+    if (result.status === "not_found") {
+      error = "File or folder no longer exists";
+    } else if (result.status !== "ok") {
+      error = `"${request.name.trim()}" already exists`;
+    }
+    this.host.emit({
+      type: "fs.entry.rename.response",
+      payload: {
+        cwd: request.cwd,
+        path: request.path,
+        renamedPath: result.status === "ok" ? result.to : null,
+        success: result.status === "ok",
+        error,
+        requestId: request.requestId,
+      },
+    });
+  }
+
+  async handleFileEntryDuplicateRequest(request: FileEntryDuplicateRequest): Promise<void> {
+    const result = await duplicateExplorerEntry({
+      root: request.cwd,
+      relativePath: request.path,
+    });
+    this.host.emit({
+      type: "fs.entry.duplicate.response",
+      payload: {
+        cwd: request.cwd,
+        path: request.path,
+        duplicatedPath: result.status === "ok" ? result.path : null,
+        success: result.status === "ok",
+        error: result.status === "ok" ? null : result.error,
+        requestId: request.requestId,
+      },
+    });
+  }
+
+  async handleFileEntryDeleteRequest(request: FileEntryDeleteRequest): Promise<void> {
+    const result = await deleteExplorerEntry({
+      root: request.cwd,
+      relativePath: request.path,
+      recursive: true,
+    });
+    let error: string | null = null;
+    if (result.status === "not_found") {
+      error = "File or folder no longer exists";
+    } else if (result.status !== "ok") {
+      error = "Folder is not empty";
+    }
+    this.host.emit({
+      type: "fs.entry.delete.response",
+      payload: {
+        cwd: request.cwd,
+        path: request.path,
+        success: result.status === "ok",
+        error,
         requestId: request.requestId,
       },
     });

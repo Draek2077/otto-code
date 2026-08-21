@@ -18,6 +18,8 @@ The target can be:
 
 Cadence is either an interval, like every 30 minutes, or a cron expression, like every weekday morning. Every run is recorded, and you can pause, resume, run once, update, or delete a schedule at any time.
 
+Both run on a cadence you set. To start an agent from an external event instead — a comment, a mention — see [Hub](/docs/hub).
+
 ## What it's for
 
 - **Overnight refactors:** wake an agent every 30 minutes to continue a scoped refactor, run checks, and leave notes.

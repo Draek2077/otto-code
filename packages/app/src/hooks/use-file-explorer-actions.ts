@@ -1,6 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useSessionStore, type AgentFileExplorerState } from "@/stores/session-store";
+import {
+  useSessionStore,
+  type AgentFileExplorerState,
+  type ExplorerDirectory,
+} from "@/stores/session-store";
 import { explorerFileFromReadResult } from "@/file-explorer/read-result";
 import {
   buildWorkspaceExplorerStateKey,
@@ -12,6 +16,7 @@ export {
   buildWorkspaceExplorerStateKey,
   type FileExplorerWorkspaceScope,
 } from "@/file-explorer/state-key";
+import { explorerParentPath } from "@/utils/explorer-paths";
 
 function createExplorerState(): AgentFileExplorerState {
   return {
@@ -84,9 +89,9 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
          */
         surfaceErrors?: boolean;
       },
-    ): Promise<boolean> => {
+    ): Promise<ExplorerDirectory | null> => {
       if (!workspaceStateKey) {
-        return false;
+        return null;
       }
       const normalizedPath = path && path.length > 0 ? path : ".";
       const shouldSetCurrentPath = options?.setCurrentPath ?? true;
@@ -122,7 +127,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
           isLoading: false,
           pendingRequest: null,
         }));
-        return false;
+        return null;
       }
 
       try {
@@ -143,7 +148,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
 
           return nextState;
         });
-        return true;
+        return directory;
       } catch (error) {
         updateExplorerState((state) => ({
           ...state,
@@ -158,7 +163,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
             : {}),
           pendingRequest: null,
         }));
-        return false;
+        return null;
       }
     },
     [client, normalizedWorkspaceRoot, t, updateExplorerState, workspaceStateKey],
@@ -235,6 +240,80 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
     [client, normalizedWorkspaceRoot, t],
   );
 
+  const createEntry = useCallback(
+    async (input: { parentPath: string; name: string; kind: "file" | "directory" }) => {
+      if (!client || !normalizedWorkspaceRoot) {
+        return null;
+      }
+      const payload = await client.createFileEntry({
+        cwd: normalizedWorkspaceRoot,
+        ...input,
+      });
+      if (payload.success) {
+        await requestDirectoryListing(input.parentPath, {
+          recordHistory: false,
+          setCurrentPath: false,
+        });
+      }
+      return payload;
+    },
+    [client, normalizedWorkspaceRoot, requestDirectoryListing],
+  );
+
+  const renameEntry = useCallback(
+    async (input: { path: string; name: string }) => {
+      if (!client || !normalizedWorkspaceRoot) {
+        return null;
+      }
+      const payload = await client.renameFileEntry({
+        cwd: normalizedWorkspaceRoot,
+        ...input,
+      });
+      if (payload.success) {
+        await requestDirectoryListing(explorerParentPath(input.path), {
+          recordHistory: false,
+          setCurrentPath: false,
+        });
+      }
+      return payload;
+    },
+    [client, normalizedWorkspaceRoot, requestDirectoryListing],
+  );
+
+  const duplicateEntry = useCallback(
+    async (path: string) => {
+      if (!client || !normalizedWorkspaceRoot) {
+        return null;
+      }
+      const payload = await client.duplicateFileEntry({ cwd: normalizedWorkspaceRoot, path });
+      if (payload.success) {
+        await requestDirectoryListing(explorerParentPath(path), {
+          recordHistory: false,
+          setCurrentPath: false,
+        });
+      }
+      return payload;
+    },
+    [client, normalizedWorkspaceRoot, requestDirectoryListing],
+  );
+
+  const deleteEntry = useCallback(
+    async (path: string) => {
+      if (!client || !normalizedWorkspaceRoot) {
+        return null;
+      }
+      const payload = await client.deleteFileEntry({ cwd: normalizedWorkspaceRoot, path });
+      if (payload.success) {
+        await requestDirectoryListing(explorerParentPath(path), {
+          recordHistory: false,
+          setCurrentPath: false,
+        });
+      }
+      return payload;
+    },
+    [client, normalizedWorkspaceRoot, requestDirectoryListing],
+  );
+
   const selectExplorerEntry = useCallback(
     (path: string | null) => {
       updateExplorerState((state) => ({
@@ -250,6 +329,10 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
     requestDirectoryListing,
     requestFilePreview,
     requestFileDownloadToken,
+    createEntry,
+    renameEntry,
+    duplicateEntry,
+    deleteEntry,
     selectExplorerEntry,
   };
 }

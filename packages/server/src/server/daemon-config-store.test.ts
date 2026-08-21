@@ -72,6 +72,180 @@ describe("DaemonConfigStore", () => {
     }
   });
 
+  test("patch persists relay state and emits its field change", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+    });
+    const changes: unknown[] = [];
+    store.onFieldChange("relay.enabled", (value) => changes.push(value));
+
+    store.patch({ relay: { enabled: true } });
+
+    expect(changes).toEqual([true]);
+    expect(loadPersistedConfig(paseoHome).daemon?.relay?.enabled).toBe(true);
+  });
+
+  test("patch round-trips agent profiles through the strictly-parsed persisted config", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+    });
+
+    store.patch({
+      agentProfiles: [
+        {
+          id: "profile_ui",
+          name: "UI work",
+          icon: "🎨",
+          provider: "claude",
+          model: "claude-opus-5",
+          modeId: "plan",
+          thinkingOptionId: "think-hard",
+          featureValues: { webSearch: true },
+          notes: "Use for components, layout and design tokens.",
+        },
+      ],
+    });
+
+    expect(loadPersistedConfig(paseoHome).daemon?.agentProfiles).toEqual([
+      {
+        id: "profile_ui",
+        name: "UI work",
+        icon: "🎨",
+        provider: "claude",
+        model: "claude-opus-5",
+        modeId: "plan",
+        thinkingOptionId: "think-hard",
+        featureValues: { webSearch: true },
+        notes: "Use for components, layout and design tokens.",
+      },
+    ]);
+    expect(store.get().agentProfiles).toHaveLength(1);
+  });
+
+  test("patch replaces the whole agent profile list rather than merging entries", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+      agentProfiles: [
+        { id: "a", name: "Keep", provider: "claude" },
+        { id: "b", name: "Drop", provider: "codex" },
+      ],
+    });
+
+    store.patch({ agentProfiles: [{ id: "a", name: "Keep", provider: "claude" }] });
+
+    expect(store.get().agentProfiles).toEqual([{ id: "a", name: "Keep", provider: "claude" }]);
+    expect(loadPersistedConfig(paseoHome).daemon?.agentProfiles).toHaveLength(1);
+  });
+
+  test("rolls back config when a field transition fails", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+    });
+    store.onFieldChange("relay.enabled", (enabled) => {
+      if (enabled === true) {
+        throw new Error("Relay transport failed to start");
+      }
+    });
+
+    expect(() => store.patch({ relay: { enabled: true } })).toThrow(
+      "Relay transport failed to start",
+    );
+    expect(store.get().relay?.enabled).toBe(false);
+    expect(loadPersistedConfig(paseoHome).daemon?.relay?.enabled).toBe(false);
+  });
+
+  test("rejects relay patches when a launch override owns the setting", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        relay: { enabled: false },
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+      { relayEnabledMutable: false },
+    );
+
+    expect(() => store.patch({ relay: { enabled: true } })).toThrow(
+      "Relay is controlled by a daemon launch override",
+    );
+  });
+
+  test("unrelated patches do not persist a one-launch relay override", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const persisted = loadPersistedConfig(paseoHome);
+    writeFileSync(
+      path.join(paseoHome, "config.json"),
+      `${JSON.stringify({
+        ...persisted,
+        daemon: { ...persisted.daemon, relay: { enabled: false } },
+      })}\n`,
+    );
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        relay: { enabled: true },
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+      { relayEnabledMutable: false },
+    );
+
+    store.patch({ browserTools: { enabled: true } });
+
+    expect(loadPersistedConfig(paseoHome).daemon?.relay?.enabled).toBe(false);
+  });
+
   test("patch persists provider enabled flags into config.json", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);

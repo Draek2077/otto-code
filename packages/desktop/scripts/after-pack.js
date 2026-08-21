@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { createHash } = require("crypto");
 
-const { smokePackagedDesktopApp } = require("./smoke-packaged-desktop-app.js");
+const { smokePackagedDesktopApp } = require("../e2e/packaged-app-smoke.js");
 
 const EXECUTABLE_NAME = "Otto";
 

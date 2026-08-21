@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+/**
+ * @vitest-environment jsdom
+ */
+import * as React from "react";
+import { createElement, type ReactNode } from "react";
+import { fireEvent, render } from "@testing-library/react";
+import { Text, type StyleProp, type TextStyle } from "react-native";
+import { describe, expect, it, vi } from "vitest";
 import MarkdownIt from "markdown-it";
 import {
   collectMarkdownDocumentAnnotationTargets,
@@ -6,6 +13,42 @@ import {
   resolveHeadingAnnotationTarget,
 } from "./annotation-locators";
 import { resolveInlineImageSize } from "./inline-image-size";
+import { colorMarkdownLinkChildren } from "./link-children";
+import { MarkdownLinkText } from "./link-text";
+
+vi.stubGlobal("React", React);
+
+vi.mock("react-native", () => ({
+  Pressable: ({
+    accessibilityRole,
+    children,
+    onHoverIn,
+    onHoverOut,
+    onPress,
+  }: {
+    accessibilityRole?: string;
+    children?: ReactNode;
+    onHoverIn?(): void;
+    onHoverOut?(): void;
+    onPress?(): void;
+  }) =>
+    createElement(
+      "div",
+      {
+        role: accessibilityRole,
+        onClick: onPress,
+        onMouseEnter: onHoverIn,
+        onMouseLeave: onHoverOut,
+      },
+      children,
+    ),
+  Text: ({ children, style }: { children?: ReactNode; style?: StyleProp<TextStyle> }) =>
+    createElement("span", { style: flattenStyle(style) }, children),
+}));
+
+function flattenStyle(style: StyleProp<TextStyle>): TextStyle {
+  return Object.assign({}, ...(Array.isArray(style) ? style.filter(Boolean) : [style]));
+}
 
 describe("resolveInlineImageSize", () => {
   it("respects a one-sided explicit width using natural aspect ratio", () => {
@@ -33,7 +76,6 @@ describe("resolveInlineImageSize", () => {
     });
   });
 });
-
 describe("collectMarkdownDocumentAnnotationTargets", () => {
   it("keeps durable source ranges for supported rendered markdown blocks", () => {
     const targets = Array.from(
@@ -190,5 +232,31 @@ describe("collectMarkdownDocumentAnnotationTargets", () => {
       level: 2,
       text: 'What "dirty" means?',
     });
+  });
+});
+describe("shared Markdown links", () => {
+  it("renders accent text and underlines it while hovered", () => {
+    const onPress = vi.fn();
+    const children = colorMarkdownLinkChildren(
+      createElement(Text, { style: { color: "white" } }, "Otto"),
+      "rgb(0, 122, 255)",
+    );
+    const view = render(
+      createElement(MarkdownLinkText, { style: { color: "rgb(0, 122, 255)" }, onPress }, children),
+    );
+    const link = view.getByRole("link");
+    const linkText = link.firstElementChild as HTMLElement;
+
+    expect((view.getByText("Otto") as HTMLElement).style.color).toBe("rgb(0, 122, 255)");
+    expect(linkText.style.textDecorationLine).toBe("");
+
+    fireEvent.mouseEnter(link);
+    expect(linkText.style.textDecorationLine).toBe("underline");
+
+    fireEvent.mouseLeave(link);
+    expect(linkText.style.textDecorationLine).toBe("");
+
+    fireEvent.click(link);
+    expect(onPress).toHaveBeenCalledOnce();
   });
 });

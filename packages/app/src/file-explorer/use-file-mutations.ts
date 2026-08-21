@@ -5,11 +5,8 @@ import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { toErrorMessage } from "@/utils/error-messages";
-import { explorerParentPath, joinExplorerPath } from "@/utils/explorer-paths";
-import {
-  resolveDeleteEntryDialog,
-  resolveDeleteFolderContentsDialog,
-} from "@/file-explorer/mutation-dialogs";
+import { explorerParentPath } from "@/utils/explorer-paths";
+import { resolveDeleteEntryDialog } from "@/file-explorer/mutation-dialogs";
 
 export interface FileMutationEntry {
   path: string;
@@ -54,14 +51,17 @@ export function useFileMutations({
       if (!client) {
         return t("workspace.terminal.hostDisconnected");
       }
-      const path = joinExplorerPath(input.parentPath, input.name);
       try {
-        const result = await client.createFileEntry({ cwd: workspaceRoot, path, kind: input.kind });
-        if (result.status === "exists") {
-          return t("workspace.fileExplorer.errors.alreadyExists", { name: input.name });
-        }
-        if (result.status === "error") {
-          return result.message;
+        const result = await client.createFileEntry({
+          cwd: workspaceRoot,
+          parentPath: input.parentPath,
+          name: input.name,
+          kind: input.kind,
+        });
+        if (!result.success) {
+          return (
+            result.error ?? t("workspace.fileExplorer.errors.alreadyExists", { name: input.name })
+          );
         }
         refreshDirectory(input.parentPath);
         return null;
@@ -78,21 +78,14 @@ export function useFileMutations({
         return t("workspace.terminal.hostDisconnected");
       }
       const parentPath = explorerParentPath(input.path);
-      const newPath = joinExplorerPath(parentPath, input.newName);
       try {
         const result = await client.renameFileEntry({
           cwd: workspaceRoot,
           path: input.path,
-          newPath,
+          name: input.newName,
         });
-        if (result.status === "exists") {
-          return t("workspace.fileExplorer.errors.alreadyExists", { name: input.newName });
-        }
-        if (result.status === "not_found") {
-          return t("workspace.fileExplorer.errors.noLongerExists");
-        }
-        if (result.status === "error") {
-          return result.message;
+        if (!result.success) {
+          return result.error ?? t("workspace.fileExplorer.errors.noLongerExists");
         }
         refreshDirectory(parentPath);
         return null;
@@ -103,12 +96,7 @@ export function useFileMutations({
     [client, refreshDirectory, t, workspaceRoot],
   );
 
-  /**
-   * Confirm, delete, and - when the target turns out to be a non-empty folder -
-   * confirm a second time before recursing. The daemon refuses to recurse unless
-   * asked, so nothing has been removed at the point the second dialog appears:
-   * "this folder is not empty" is discovered by trying, not by pre-counting.
-   */
+  /** Confirm once, then let the daemon apply its canonical recursive-delete policy. */
   const deleteEntry = useCallback(
     async (entry: FileMutationEntry): Promise<void> => {
       if (!client) {
@@ -124,28 +112,12 @@ export function useFileMutations({
 
       const parentPath = explorerParentPath(entry.path);
       try {
-        let result = await client.deleteFileEntry({ cwd: workspaceRoot, path: entry.path });
+        const result = await client.deleteFileEntry({ cwd: workspaceRoot, path: entry.path });
 
-        if (result.status === "not_empty") {
-          const recurse = await confirmDialog(
-            resolveDeleteFolderContentsDialog({ name: entry.name }),
-          );
-          if (!recurse) {
-            return;
-          }
-          result = await client.deleteFileEntry({
-            cwd: workspaceRoot,
-            path: entry.path,
-            recursive: true,
-          });
-        }
-
-        if (result.status === "error") {
-          toast.error(result.message);
+        if (!result.success) {
+          toast.error(result.error ?? t("workspace.fileExplorer.errors.noLongerExists"));
           return;
         }
-        // `not_found` is a success as far as the user is concerned: the thing
-        // they asked to be gone is gone. Refresh so the stale row disappears.
         refreshDirectory(parentPath);
       } catch (error) {
         toast.error(toErrorMessage(error));

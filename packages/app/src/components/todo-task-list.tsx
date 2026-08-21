@@ -11,7 +11,12 @@ import Animated, {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Check } from "@/components/icons/material-icons";
 import type { Theme } from "@/styles/theme";
-import type { TodoEntry, TodoEntryStatus } from "@/types/stream";
+import {
+  resolveTodoEntryStatus,
+  resolveTodoEntryText,
+  type TodoEntry,
+  type TodoEntryStatus,
+} from "@/types/stream";
 
 const ThemedTodoCheckIcon = withUnistyles(Check);
 const primaryForegroundColorMapping = (theme: Theme) => ({ color: theme.colors.primaryForeground });
@@ -53,9 +58,10 @@ export function useTodoCounts(items: TodoEntry[]): TodoCounts {
     let completedCount = 0;
     let inProgressCount = 0;
     for (const item of items) {
-      if (item.status === "completed") {
+      const status = resolveTodoEntryStatus(item);
+      if (status === "completed") {
         completedCount += 1;
-      } else if (item.status === "in_progress") {
+      } else if (status === "in_progress") {
         inProgressCount += 1;
       }
     }
@@ -310,8 +316,8 @@ export function TodoTaskList({ items, animationsEnabled, emptyLabel }: TodoTaskL
         {items.map((item) => (
           <TodoTaskRow
             key={item.id ?? item.text}
-            text={item.text}
-            status={item.status}
+            text={resolveTodoEntryText(item)}
+            status={resolveTodoEntryStatus(item)}
             animationsEnabled={animationsEnabled}
           />
         ))}

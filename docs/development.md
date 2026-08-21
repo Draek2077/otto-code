@@ -43,6 +43,14 @@ Root checkout dev is otherwise split across terminals:
 - `npm run dev:app` runs Expo on `http://localhost:8081` and connects to the dev daemon.
 - `npm run dev:desktop` runs its own Electron-flavored Expo server on the first free port from `8082` through `8089`. It never claims port `8081`.
 
+Desktop dev launches its desktop-managed daemon with `OTTO_NODE_ENV=development`,
+so development-only providers such as Mock Load Test are available. Packaged
+desktop launches always force the daemon to production mode.
+
+The web and desktop dev launchers pass the current Git branch to Metro as
+`EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL`. The expanded desktop sidebar shows it in
+the titlebar row. Production builds leave the variable unset and show no label.
+
 `npm run dev` is only a shorthand for `npm run dev:server`.
 
 Whichever you use, they all resolve through the same dev defaults, so they land on the same
@@ -57,7 +65,7 @@ and its own running space, and nothing in one lane can reach into another:
 | Lane              | Daemon port | `OTTO_HOME`                        | Metro         | Other fixed ports |
 | ----------------- | ----------- | ---------------------------------- | ------------- | ----------------- |
 | **Installed app** | `6868`      | `~/.otto`                          | -             | -                 |
-| **Dev**           | `6788`      | `packages/desktop/.dev/otto-home`  | `8081`–`8089` | CDP `9223`        |
+| **Dev**           | `6788`      | `packages/desktop/.dev/otto-home`  | `8081`-`8089` | CDP `9223`        |
 | **Agent**         | `6799`      | `packages/desktop/.dev/agent-home` | `8095` (web)  | -                 |
 | **Tests** (e2e)   | dynamic     | `$TMP/otto-e2e-home-*`             | dynamic       | relay dynamic     |
 | **Demos**         | dynamic     | `$TMP/otto-e2e-home-*`             | dynamic       | relay dynamic     |
@@ -227,7 +235,7 @@ runs go at once - two e2e runs, or e2e and demos together, or one per worktree
 under `otto.json` services. A fixed band would trade all of that away to solve a
 collision the dynamic allocator does not have. Cross-lane safety instead comes
 from subtraction: `RESERVED_LOCAL_PORTS` in `global-setup.ts` lists every fixed
-port the other lanes own (`6868`, `6788`, `8081`–`8090`, `9223`, `4300`, plus
+port the other lanes own (`6868`, `6788`, `8081`-`8090`, `9223`, `4300`, plus
 OpenCode's `61680`) and the allocator refuses all of them. **Add a row there
 whenever a lane claims a new fixed port.**
 
@@ -270,6 +278,19 @@ installed app's working shim with one that only resolves inside the checkout.
 `scripts/dev-home.sh` and `scripts/dev-home.ps1` hold these defaults, one per
 shell. They are mirrors of each other - change one, change both.
 
+## Nix desktop package
+
+The flake exposes `packages.<system>.desktop` on Linux and macOS:
+
+```bash
+nix build .#desktop
+```
+
+Linux produces the `otto-desktop` launcher and desktop entry. macOS produces
+`Applications/Otto.app` plus the `otto-desktop` launcher. Both use the nixpkgs
+Electron runtime and the checkout's built daemon, client, and renderer rather
+than downloading a published desktop release.
+
 ### OTTO_HOME
 
 `OTTO_HOME` is the directory that holds runtime state (agents, worktrees, workspace config, sockets, daemon log). Resolution rules:
@@ -303,7 +324,7 @@ OTTO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived work
 - Marketing site (`dev:website`): `http://localhost:4300`.
 
 **`808x` belongs to Metro/Expo; nothing else may sit in it.** `8081` is the root
-checkout, `8082`–`8089` is the desktop dev band, `8095` is the agent lane. The
+checkout, `8082`-`8089` is the desktop dev band, `8095` is the agent lane. The
 sites live at `43xx`/`44xx` for exactly this reason - the website was on `8082`
 until it turned out that is the desktop dev shell's _first_ choice, so running
 `dev:desktop` and `dev:website` together gave one of them a port the other
@@ -333,10 +354,35 @@ Starting the service must not create, focus, reveal, or leave behind macOS Simul
 
 ### Desktop renderer profiling
 
-`npm run dev:desktop` starts Electron with Chromium remote debugging enabled on
-`http://127.0.0.1:9223` so renderer CPU profiles can be captured through CDP.
-It launches its own Electron-flavored Expo server and passes that URL to Electron.
-Override the CDP port with `OTTO_ELECTRON_REMOTE_DEBUGGING_PORT` when `9223` is busy.
+`npm run dev:desktop` starts Electron with Chromium remote debugging enabled so
+renderer CPU profiles can be captured through CDP. By default it passes
+`--remote-debugging-port=0`, so Chromium atomically asks the OS for an available
+port and prints the selected DevTools endpoint. Set
+`OTTO_ELECTRON_REMOTE_DEBUGGING_PORT` when a QA workflow requires a validated,
+fixed port.
+
+Desktop dev also scopes Electron `userData` to the current dev root. This prevents
+desktop-only environment inherited by terminals opened inside Otto from coupling
+a new worktree instance to the parent desktop instance's profile or single-instance
+lock.
+
+The desktop workspace script `exec`s the dev runner so the terminal owns the runner
+PID. Terminal shutdown reaches the runner as `SIGHUP`; the runner stops Metro and
+asks Electron to quit through its normal app lifecycle. Do not add an npm wrapper or
+detach Electron: either change leaves an orphan holding the worktree's single-instance
+lock and broken output pipes.
+
+With desktop dev running, verify the real BrowserWindow, titlebar clearance, fullscreen
+transition, and 751-pixel settings split with:
+
+```bash
+npm run verify:electron-cdp --workspace=@otto-code/desktop
+```
+
+The verifier reads the same `EXPO_PORT` and
+`OTTO_ELECTRON_REMOTE_DEBUGGING_PORT` environment names as desktop dev. Set an
+explicit remote-debugging port for verifier runs, and set both when testing an
+isolated instance on non-default ports.
 
 When running a dedicated Electron QA instance against a non-default Expo port, set
 `EXPO_DEV_URL` explicitly. Desktop main defaults to `http://localhost:8081`, so
@@ -439,6 +485,27 @@ The supervisor rotates `daemon.log`. Persisted `log.file.rotate` settings in
 `OTTO_LOG_ROTATE_SIZE` and `OTTO_LOG_ROTATE_COUNT` env vars override the
 defaults. The default rotation is `10m` x `3` files everywhere.
 
+### Git process pressure
+
+If Git refreshes consume too much CPU, disk, or antivirus capacity, especially on Windows, reduce
+the daemon-global Git process limits in `$OTTO_HOME/config.json`:
+
+```json
+{
+  "daemon": {
+    "git": {
+      "maxProcessesPerSecond": 5,
+      "maxProcessConcurrency": 4
+    }
+  }
+}
+```
+
+Restart the daemon with `otto daemon restart`. If Otto Desktop manages the daemon, fully quit and
+reopen the desktop app. Lower values reduce machine pressure but make Git-backed workspace state and
+Git RPCs wait longer. See [Git process limits](data-model.md#git-process-limits) for defaults,
+semantics, and environment-variable overrides.
+
 ### Agent Tool Catalog Measurement
 
 Measure the MCP `tools/list` payload that Otto injects into agents with:
@@ -452,6 +519,21 @@ tools, and the browser-tools delta. It defaults to the agent-scoped catalog; use
 `-- --scope=top-level` for the unaffiliated `/mcp/agents` shape and `-- --json`
 for machine-readable output.
 
+## Worktree starting refs
+
+A new worktree starts from the current branch's upstream, or the local branch when it has no
+upstream. This keeps unpushed local commits out of new workspaces by default. The picker collapses
+identical refs; divergent local or non-origin refs remain explicit, qualified choices.
+
+The daemon sends the exact upstream ref because the remote and branch names cannot be inferred.
+Worktrees retain that ref for comparisons and updates from base while exposing its branch name to
+the UI. Merging into base requires a mutable local target: `origin/main` maps to local `main`, while
+another remote fails closed until the worktree records an explicit local target. Older daemons omit
+the optional field and retain the previous local-first behavior; older worktree metadata without the
+exact ref also resolves through its stored branch name.
+
+Worktrees inherit committed Git state only; uncommitted source-checkout changes are not copied.
+
 ## otto.json service scripts
 
 `worktree.setup` and `worktree.teardown` accept either a multiline shell script or an array
@@ -461,9 +543,9 @@ Lifecycle commands run in the worktree through a stable script shell: `bash`
 resolved from `PATH` on macOS/Linux, and PowerShell with `-NoProfile` on
 Windows. They inherit the daemon environment plus Otto's lifecycle variables;
 login and interactive shell startup files are not loaded, and Bash's `BASH_ENV`
-hook is unset. Daemon-run loop verify checks and ACP single-string terminal
-commands use the same non-login Bash behavior on macOS/Linux, but preserve their
-existing `cmd.exe /c` string semantics on Windows. Service scripts are separate:
+hook is unset. ACP single-string terminal commands use the same non-login Bash
+behavior on macOS/Linux, but preserve their existing `cmd.exe /c` string semantics
+on Windows. Service scripts are separate:
 they launch in a terminal and receive the service environment described below.
 
 ```json
@@ -599,6 +681,8 @@ install.
 ## CLI reference
 
 Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's dev home (`packages/desktop/.dev/otto-home`) and the dev daemon on `6788` unless you pass an explicit override. The globally installed `otto` binary is a shim into the installed Otto desktop app, not this checkout - use it to drive the installed app's daemon on `6868`, and `npm run cli` when you want to talk to the CLI you are editing.
+
+Canonical automation uses `otto workspace create/ls/rename/archive`, `otto heartbeat create/update/delete`, and the full `otto schedule` group. MCP heartbeat automation is intentionally smaller: create and delete only. Detach remains an explicit user lifecycle action rather than an agent tool. `otto run --new-workspace local|worktree` composes workspace creation with agent creation. The old `otto worktree` and `otto run --worktree` forms are hidden compatibility aliases.
 
 ```bash
 npm run cli -- ls -a -g              # List all agents globally

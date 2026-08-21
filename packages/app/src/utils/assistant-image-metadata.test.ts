@@ -61,7 +61,6 @@ describe("assistant image metadata", () => {
       width: 900,
     });
   });
-
   it("estimates assistant message height from cached image metadata", () => {
     setAssistantImageMetadata(
       {

@@ -14,7 +14,7 @@ Otto runs your coding agents on your machine and gives you a mobile, desktop, we
 
 Download from [otto-code.me/download](https://otto-code.me/download) or the [GitHub releases page](https://github.com/Draek2077/otto-code/releases). Open it and you're done.
 
-The desktop app bundles its own daemon and starts it automatically, no separate install required. On first launch you'll see a brief startup screen, then connect from your phone by scanning the QR code in Settings.
+The desktop app bundles its own daemon and starts it automatically, no separate install required. On first launch you'll see a brief startup screen, then connect from your phone using **Settings → your host → Pair Device**.
 
 ## Server / CLI
 
@@ -25,7 +25,7 @@ npm install -g @otto-code/cli
 otto
 ```
 
-Otto prints a QR code in the terminal. Scan it from the mobile app, or enter the daemon address manually from another client.
+Otto starts the daemon locally, then asks whether to enable the end-to-end encrypted relay and print a pairing QR code. If you decline, enter the daemon address manually over TCP, Tailscale, or another VPN.
 
 The daemon can also serve the browser web app itself, so you can use the full UI without the hosted app. See [Self-hosting the web UI](/docs/web-ui).
 
@@ -50,6 +50,7 @@ The image runs the daemon and serves the bundled web UI. It does not bundle agen
 
 ## Where next
 
+- [Connectivity](/docs/connectivity), connect through the relay or Tailscale.
 - [Docker](/docs/docker), run the daemon and bundled web UI in a container.
 - [Workspaces](/docs/workspaces), the project, workspace, and session model Otto is built around.
 - [Providers](/docs/providers), what a provider is and how Otto wraps existing CLIs.

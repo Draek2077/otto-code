@@ -26,12 +26,12 @@ import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { settingsStyles } from "@/styles/settings";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
 import { formatTimeAgo } from "@/utils/time";
-import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
 import type {
   AgentModelDefinition,
   AgentProvider,
   ModelTier,
 } from "@otto-code/protocol/agent-types";
+import { compareMatchScores, scoreTextFields } from "@otto-code/protocol/search/text-match";
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { TextFieldPicker } from "@/components/ui/text-field-picker";

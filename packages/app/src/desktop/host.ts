@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import { getElectronHost } from "@/desktop/electron/host";
-import type { BrowserKeyboardPolicy } from "@/keyboard/browser-shortcuts";
+import type { BrowserKeyboardPolicy } from "@/desktop/browser/shortcuts";
 import type { SessionInboundMessage, SessionOutboundMessage } from "@otto-code/protocol/messages";
 
 type BrowserAutomationExecuteRequest = Extract<
@@ -230,6 +230,7 @@ export interface DesktopBrowserBridge {
     workspaceId: string;
     browserId: string | null;
   }) => Promise<void>;
+  focus?: (browserId: string) => Promise<boolean>;
   openDevTools?: (browserId: string) => Promise<unknown>;
   clearProfile?: (legacyBrowserIds: string[]) => Promise<void>;
   executeAutomationCommand?: (

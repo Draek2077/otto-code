@@ -141,6 +141,7 @@ import {
   findOccupyingWorkspaceForCwd,
 } from "./otto-worktree-service.js";
 import { revealScheduleRunWorkspace } from "./schedule-workspace-reveal.js";
+import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
 import { createOttoWorktreeWorkflow } from "./worktree-session.js";
 import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
@@ -174,11 +175,13 @@ import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { OTTO_BRAIN_PROVIDER_ID } from "./agent/provider-registry.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
-import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
 import { FileBackedProjectLinkStore } from "./project-links.js";
-import { FileBackedChatService } from "./chat/chat-service.js";
+import {
+  FileBackedProjectRegistry,
+  FileBackedWorkspaceRegistry,
+  type WorkspaceArchiveContext,
+} from "./workspace-registry.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
-import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { RunService } from "./orchestration/run-service.js";
 import { RunStore } from "./orchestration/run-store.js";
@@ -208,14 +211,12 @@ import { wrapSessionMessage, type SessionOutboundMessage } from "./messages.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
-import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
-import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
-import type { PushNotificationSender } from "./push/notifications.js";
+import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
+import type { PushNotificationSender } from "./push/index.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
-import type { FirstAgentContext, TerminalProfile } from "@otto-code/protocol/messages";
 import {
   DEFAULT_MUTABLE_BRAIN_CONFIG,
   MutableBrainConfigSchema,
@@ -226,6 +227,11 @@ import {
   DEFAULT_AGENT_PERSONALITIES,
   DEFAULT_AGENT_TEAMS,
 } from "@otto-code/protocol/default-personalities";
+import type {
+  AgentProfile,
+  FirstAgentContext,
+  TerminalProfile,
+} from "@otto-code/protocol/messages";
 import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
@@ -272,6 +278,8 @@ import { WorkspaceAutoName } from "./workspace-auto-name.js";
 import { AgentAutoTitle } from "./agent/agent-auto-title.js";
 import { createGitMutationService } from "./session/git-mutation/git-mutation-service.js";
 import { workspaceIdsOnCheckout } from "./workspace-directory.js";
+import { configureGitProcessPolicy } from "../utils/run-git-command.js";
+import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
 import { resolveFirstAgentPromptTitle } from "./agent/create-agent-title.js";
 import {
   createAgentCommand,
@@ -484,16 +492,22 @@ export interface OttoDaemonConfig {
     todoReconcileOnIdle?: boolean;
     stallGuardThreshold?: number;
   };
+  git?: {
+    maxProcessesPerSecond: number;
+    maxProcessConcurrency: number;
+  };
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
   terminalProfiles?: TerminalProfile[];
+  agentProfiles?: AgentProfile[];
   staticDir: string;
   mcpDebug: boolean;
   isDev?: boolean;
   agentClients: Partial<Record<AgentProvider, AgentClient>>;
   agentStoragePath: string;
   relayEnabled?: boolean;
+  relayEnabledMutable?: boolean;
   relayEndpoint?: string;
   relayPublicEndpoint?: string;
   relayUseTls?: boolean;
@@ -516,6 +530,7 @@ export interface OttoDaemonConfig {
   dictationFinalTimeoutMs?: number;
   downloadTokenTtlMs?: number;
   agentProviderSettings?: AgentProviderRuntimeSettingsMap;
+  providerCatalogRefreshTimeoutMs?: number;
   metadataGeneration?: {
     providers?: Array<{
       provider: string;
@@ -559,6 +574,10 @@ export interface OttoDaemonDependencies {
   hubRelationshipClock?: HubRelationshipClock;
   hubRelationshipRetryPolicy?: HubRelationshipRetryPolicy;
   createHubDaemonId?: () => string;
+  serverFeatureOverrides?: {
+    daemonStatusRpc?: boolean;
+    relayConfig?: boolean;
+  };
 }
 
 function createBootstrapManagedProcessRegistry(
@@ -846,6 +865,31 @@ function withSavedEndpointApiKey(
   return { ...endpoint, apiKey: endpoint.apiKey ?? "" };
 }
 
+function buildInitialAgentPersonalities(
+  config: OttoDaemonConfig,
+): MutableDaemonConfig["agentPersonalities"] {
+  return {
+    // A host that has never carried a personalities section (undefined, not an
+    // empty roster the user cleared) is seeded with the shipped starter team.
+    personalities:
+      config.agentPersonalities === undefined
+        ? [...DEFAULT_AGENT_PERSONALITIES]
+        : (config.agentPersonalities.personalities ?? []),
+  };
+}
+
+function buildInitialAgentTeams(config: OttoDaemonConfig): MutableDaemonConfig["agentTeams"] {
+  return {
+    // A missing section receives the inactive starter team. Persisting the seed
+    // separately makes clearing the roster stick on subsequent starts.
+    teams:
+      config.agentTeams === undefined ? [...DEFAULT_AGENT_TEAMS] : (config.agentTeams.teams ?? []),
+    ...(config.agentTeams?.activeTeamId !== undefined
+      ? { activeTeamId: config.agentTeams.activeTeamId }
+      : {}),
+  };
+}
+
 function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
   const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
     Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
@@ -863,6 +907,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
   const persistedGitHosting = persistedConfig.gitHosting;
 
   const initialConfig: MutableDaemonConfig = {
+    relay: { enabled: config.relayEnabled ?? true },
     mcp: buildInitialMcpSection(config),
     browserTools: { enabled: config.browserToolsEnabled ?? false },
     // On by default and safe: nothing spawns until a code-intelligence action needs
@@ -893,33 +938,8 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     speech: createInitialMutableSpeechConfig(config),
     ...(persistedGitHosting ? { gitHosting: persistedGitHosting } : {}),
-    agentPersonalities: {
-      // A host that has never carried a personalities section (undefined, not an
-      // empty roster the user cleared) is seeded with the shipped starter team so
-      // a fresh install opens with a working, role-complete roster. The one-time
-      // seed is also recorded on disk right after the store is built (see
-      // seedDefaultPersonalitiesIfAbsent) so clearing the whole team sticks.
-      personalities:
-        config.agentPersonalities === undefined
-          ? [...DEFAULT_AGENT_PERSONALITIES]
-          : (config.agentPersonalities.personalities ?? []),
-    },
-    agentTeams: {
-      // A host that has never carried a teams section is seeded with the
-      // starter team (NOT active - activating a prompt-bearing team on install
-      // would change spawn behavior out from under existing users). Recorded
-      // on disk right after the store is built (seedDefaultTeamsIfAbsent) so
-      // deleting it sticks.
-      teams:
-        config.agentTeams === undefined
-          ? [...DEFAULT_AGENT_TEAMS]
-          : (config.agentTeams.teams ?? []),
-      // null and absent both read as "no team active"; preserve what disk says
-      // so a round-trip never invents a value.
-      ...(config.agentTeams?.activeTeamId !== undefined
-        ? { activeTeamId: config.agentTeams.activeTeamId }
-        : {}),
-    },
+    agentPersonalities: buildInitialAgentPersonalities(config),
+    agentTeams: buildInitialAgentTeams(config),
     // User per-model tier tags round-trip config.json ⇄ mutable config; absent
     // on disk reads as an empty tag set (all tiers inferred at ingest).
     modelTierOverrides: config.modelTierOverrides ?? [],
@@ -937,6 +957,10 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     initialConfig.terminalProfiles = config.terminalProfiles;
   }
 
+  if (config.agentProfiles !== undefined) {
+    initialConfig.agentProfiles = config.agentProfiles;
+  }
+
   return initialConfig;
 }
 
@@ -945,6 +969,7 @@ export async function createOttoDaemon(
   rootLogger: Logger,
   dependencies: OttoDaemonDependencies = {},
 ): Promise<OttoDaemon> {
+  configureGitProcessPolicy(config.git ?? resolveGitProcessPolicy({ env: process.env }));
   const logger = rootLogger.child({ module: "bootstrap" });
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
@@ -953,6 +978,7 @@ export async function createOttoDaemon(
     config.ottoHome,
     createInitialMutableDaemonConfig(config),
     logger,
+    { relayEnabledMutable: config.relayEnabledMutable ?? true },
   );
   // Record the first-run seed on disk so the shipped starter team survives a
   // restart AND a subsequent "delete every personality" stays deleted.
@@ -1034,7 +1060,7 @@ export async function createOttoDaemon(
       };
     },
   });
-  let relayTransport: RelayTransportController | null = null;
+  let relayRuntime: RelayRuntime | null = null;
 
   const staticDir = config.staticDir;
   const downloadTokenTtlMs = config.downloadTokenTtlMs ?? 60000;
@@ -1071,6 +1097,7 @@ export async function createOttoDaemon(
     publicBaseUrl: serviceProxyPublicBaseUrl,
   });
   const scriptRuntimeStore = new WorkspaceScriptRuntimeStore();
+  const workspaceSetupRuntime = new WorkspaceSetupRuntime();
   const configuredHostnames = config.hostnames ?? config.allowedHosts;
   let wsServer: VoiceAssistantWebSocketServer | null = null;
   let serviceProxyListenTarget: ListenTarget | null = null;
@@ -1286,10 +1313,6 @@ export async function createOttoDaemon(
     path.join(config.ottoHome, "projects", "project-links.json"),
     logger,
   );
-  const chatService = new FileBackedChatService({
-    ottoHome: config.ottoHome,
-    logger,
-  });
   // All PR/issue functionality routes through the git hosting layer: GitHub
   // uses gh and Bitbucket Cloud uses its native REST adapter.
   const gitHostingResolver = createGitHostingResolver({
@@ -1355,6 +1378,7 @@ export async function createOttoDaemon(
   const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
   const providerSnapshotManager = new ProviderSnapshotManager({
     logger: providerSnapshotLogger,
+    refreshTimeoutMs: config.providerCatalogRefreshTimeoutMs,
     runtimeSettings: config.agentProviderSettings,
     providerOverrides: config.providerOverrides,
     workspaceGitService,
@@ -1460,17 +1484,19 @@ export async function createOttoDaemon(
   void workspaceReconciliation.reconcileNow().catch((error) => {
     logger.warn({ err: error }, "Initial workspace reconciliation failed");
   });
-  await chatService.initialize();
-  logger.info({ elapsed: elapsed() }, "Chat service initialized");
   const checkoutDiffManager = new CheckoutDiffManager({
     logger,
     ottoHome: config.ottoHome,
     workspaceGitService,
   });
-  const archiveWorkspaceRecordExternal = async (workspaceId: string) => {
+  const archiveWorkspaceRecordExternal = async (
+    workspaceId: string,
+    context?: WorkspaceArchiveContext,
+  ) => {
     const existingWorkspace = await archivePersistedWorkspaceRecord({
       workspaceId,
       workspaceRegistry,
+      context,
     });
     if (!existingWorkspace || existingWorkspace.archivedAt) return;
     teardownArchivedWorkspaceRuntime(workspaceId);
@@ -1624,6 +1650,8 @@ export async function createOttoDaemon(
     logger,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
     listActiveWorkspaces: listActiveWorkspacesExternal,
+    getAutoArchivedChangeRequestUrl: async (workspaceId) =>
+      (await workspaceRegistry.get(workspaceId))?.autoArchivedChangeRequestUrl ?? null,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
@@ -1665,6 +1693,8 @@ export async function createOttoDaemon(
           await emitWorkspaceUpdatesExternal([workspaceId]);
         },
         cacheWorkspaceSetupSnapshot: () => {},
+        startWorkspaceSetup: (workspaceId, operation) =>
+          workspaceSetupRuntime.start(workspaceId, operation),
         emit: emitExternalSessionMessage,
         sessionLogger: logger,
         terminalManager,
@@ -1706,12 +1736,14 @@ export async function createOttoDaemon(
         agentStorage,
         findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
         listActiveWorkspaces: listActiveWorkspacesExternal,
+        getWorkspace: (workspaceIdToGet) => workspaceRegistry.get(workspaceIdToGet),
         archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
         emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
         markWorkspaceArchiving: markWorkspaceArchivingExternal,
         clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
         killTerminalsForWorkspace: (workspaceIdToKill) =>
           killTerminalsForWorkspace({ terminalManager, sessionLogger: logger }, workspaceIdToKill),
+        stopWorkspaceSetup: (workspaceIdToStop) => workspaceSetupRuntime.stop(workspaceIdToStop),
         sessionLogger: logger,
       },
       { scope: { kind: "workspace", workspaceId }, requestId },
@@ -1730,7 +1762,7 @@ export async function createOttoDaemon(
     listActiveWorkspaces: listActiveWorkspacesExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     emit: emitExternalSessionMessage,
-    emitAgentRemove: () => undefined,
+    emitAgentRemove: async () => undefined,
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
@@ -1740,6 +1772,7 @@ export async function createOttoDaemon(
   });
   const hubRelationships = new HubRelationshipController({
     ottoHome: config.ottoHome,
+    hostname: getHostname(),
     serverId,
     daemonPublicKey: daemonKeyPair.publicKeyB64,
     logger,
@@ -1758,24 +1791,12 @@ export async function createOttoDaemon(
         agentStorage,
         createAgent,
         interruptAgent: (agentId) => cancelAgentRunCommand({ agentManager, logger }, agentId),
-        archiveAgent: (agentId) =>
-          archiveAgentCommand({ agentManager, agentStorage, logger }, agentId),
-        listActiveWorkspaces: listActiveWorkspacesExternal,
         archiveWorkspace: archiveWorkspaceByIdExternal,
         cleanupFailedCreate: (input) =>
           hubAgentLifecycle.cleanupCreatedWorktreeAfterFailedAgentCreate(input),
       }),
   });
 
-  const loopService = new LoopService({
-    ottoHome: config.ottoHome,
-    logger,
-    agentManager,
-    createAgent,
-    ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
-  });
-  await loopService.initialize();
-  logger.info({ elapsed: elapsed() }, "Loop service initialized");
   const createScheduleLocalWorkspaceExternal = async (input: {
     cwd: string;
     firstAgentContext: FirstAgentContext;
@@ -1854,6 +1875,7 @@ export async function createOttoDaemon(
         agentStorage,
         findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
         listActiveWorkspaces: listActiveWorkspacesExternal,
+        getWorkspace: (workspaceIdToGet) => workspaceRegistry.get(workspaceIdToGet),
         archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
         emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
         markWorkspaceArchiving: markWorkspaceArchivingExternal,
@@ -1866,6 +1888,7 @@ export async function createOttoDaemon(
             },
             workspaceIdToKill,
           ),
+        stopWorkspaceSetup: (workspaceIdToStop) => workspaceSetupRuntime.stop(workspaceIdToStop),
         sessionLogger: logger,
       },
       {
@@ -1990,6 +2013,7 @@ export async function createOttoDaemon(
     readAgentTeams: () => daemonConfigStore.get().agentTeams,
     personalityMemory,
     projectKnowledge,
+    daemonConfigStore,
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
@@ -2260,8 +2284,6 @@ export async function createOttoDaemon(
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
             const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.otto-code.me:443";
             const relayPublicUseTls = config.relayPublicUseTls ?? relayUseTls;
-            const appBaseUrl = config.appBaseUrl ?? "https://app.otto-code.me";
-
             if (boundListenTarget.type === "tcp") {
               logger.info(
                 {
@@ -2327,7 +2349,12 @@ export async function createOttoDaemon(
               config.ottoHome,
               daemonConfigStore,
               mcpBaseUrl,
-              { allowedOrigins, hostnames: configuredHostnames },
+              {
+                allowedOrigins,
+                hostnames: configuredHostnames,
+                daemonStatusRpc: dependencies.serverFeatureOverrides?.daemonStatusRpc,
+                relayConfig: dependencies.serverFeatureOverrides?.relayConfig,
+              },
               workspaceAutoName,
               config.auth,
               speechService,
@@ -2345,8 +2372,6 @@ export async function createOttoDaemon(
               },
               projectRegistry,
               workspaceRegistry,
-              chatService,
-              loopService,
               scheduleService,
               checkoutDiffManager,
               serviceProxy,
@@ -2364,13 +2389,14 @@ export async function createOttoDaemon(
                 worktreesRoot: config.worktreesRoot,
                 appBaseUrl: config.appBaseUrl,
                 desktopManaged: config.desktopManaged === true,
-                relay: {
-                  enabled: relayEnabled,
-                  endpoint: relayEndpoint,
-                  publicEndpoint: relayPublicEndpoint,
-                  useTls: relayUseTls,
-                  publicUseTls: relayPublicUseTls,
-                },
+                getRelayConfig: () =>
+                  relayRuntime?.getConfig() ?? {
+                    enabled: daemonConfigStore.get().relay?.enabled ?? relayEnabled,
+                    endpoint: relayEndpoint,
+                    publicEndpoint: relayPublicEndpoint,
+                    useTls: relayUseTls,
+                    publicUseTls: relayPublicUseTls,
+                  },
               },
               serviceProxyPublicBaseUrl,
               browserToolsBroker,
@@ -2404,7 +2430,27 @@ export async function createOttoDaemon(
               integrationAuthorizationCatalog,
               integrationBrowserAuthorization,
               zoomTeamChatAuthorization,
+              workspaceSetupRuntime,
             );
+            relayRuntime = createRelayRuntime({
+              config: {
+                enabled: relayEnabled,
+                endpoint: relayEndpoint,
+                publicEndpoint: relayPublicEndpoint,
+                useTls: relayUseTls,
+                publicUseTls: relayPublicUseTls,
+              },
+              logger,
+              attachSocket: async (ws, metadata) => {
+                if (!wsServer) throw new Error("WebSocket server is not ready");
+                await wsServer.attachExternalSocket(ws, metadata);
+              },
+              serverId,
+              daemonKeyPair: daemonKeyPair.keyPair,
+            });
+            daemonConfigStore.onFieldChange("relay.enabled", (value) => {
+              relayRuntime?.setEnabled(value === true);
+            });
             await hubRelationships.start();
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());
@@ -2433,34 +2479,6 @@ export async function createOttoDaemon(
               }
               return [...ports];
             });
-
-            if (relayEnabled) {
-              const offer = await createConnectionOfferV2({
-                serverId,
-                daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
-                relay: {
-                  endpoint: relayPublicEndpoint,
-                  useTls: relayPublicUseTls,
-                },
-              });
-
-              encodeOfferToFragmentUrl({ offer, appBaseUrl });
-
-              relayTransport?.stop().catch(() => undefined);
-              relayTransport = startRelayTransport({
-                logger,
-                attachSocket: (ws, metadata) => {
-                  if (!wsServer) {
-                    throw new Error("WebSocket server not initialized");
-                  }
-                  return wsServer.attachExternalSocket(ws, metadata);
-                },
-                relayEndpoint,
-                relayUseTls,
-                serverId,
-                daemonKeyPair: daemonKeyPair.keyPair,
-              });
-            }
           };
 
           logAndResolve().then(resolve, reject);
@@ -2523,7 +2541,7 @@ export async function createOttoDaemon(
     speechService.stop();
     toolArtifactService.stop();
     await scheduleService.stop().catch(() => undefined);
-    await relayTransport?.stop().catch(() => undefined);
+    await relayRuntime?.stop().catch(() => undefined);
     if (wsServer) {
       await wsServer.close();
     }

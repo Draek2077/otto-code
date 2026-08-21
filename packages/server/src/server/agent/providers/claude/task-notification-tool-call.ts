@@ -14,6 +14,7 @@ const OptionalNonEmptyTrimmedStringSchema = z.preprocess(
 const TaskNotificationEnvelopeSchema = z.object({
   messageId: z.string().nullable(),
   taskId: z.string().nullable(),
+  toolUseId: z.string().nullable(),
   status: z.string().nullable(),
   summary: z.string().nullable(),
   outputFile: z.string().nullable(),
@@ -39,10 +40,12 @@ const TaskNotificationHistoryRecordSchema = z
     uuid: z.string().optional(),
     message_id: z.string().optional(),
     task_id: z.string().optional(),
+    tool_use_id: z.string().optional(),
     status: z.string().optional(),
     summary: z.string().optional(),
     output_file: z.string().optional(),
     content: z.string().optional(),
+    message: z.object({ content: z.unknown().optional() }).passthrough().optional(),
   })
   .passthrough();
 
@@ -138,6 +141,22 @@ function readTaskNotificationTagValue(input: ReadTaskNotificationTagInput): stri
   return toNonEmptyString(match[1]);
 }
 
+function readFirstTaskNotificationTag(
+  rawText: string | null,
+  ...tagNames: string[]
+): string | null {
+  if (!rawText) {
+    return null;
+  }
+  for (const tagName of tagNames) {
+    const value = readTaskNotificationTagValue({ text: rawText, tagName });
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
 function parseTaskNotificationFromUserContent(
   input: MapTaskNotificationUserContentToToolCallInput,
 ): TaskNotificationEnvelope | null {
@@ -154,6 +173,9 @@ function parseTaskNotificationFromUserContent(
   return TaskNotificationEnvelopeSchema.parse({
     messageId: toNonEmptyString(parsedInput.data.messageId),
     taskId: readTaskNotificationTagValue({ text: rawText, tagName: "task-id" }),
+    toolUseId:
+      readTaskNotificationTagValue({ text: rawText, tagName: "tool-use-id" }) ??
+      readTaskNotificationTagValue({ text: rawText, tagName: "tool_use_id" }),
     status: readTaskNotificationTagValue({ text: rawText, tagName: "status" }),
     summary: readTaskNotificationTagValue({ text: rawText, tagName: "summary" }),
     outputFile:
@@ -188,20 +210,17 @@ function parseTaskNotificationFromSystemRecord(record: unknown): TaskNotificatio
   return TaskNotificationEnvelopeSchema.parse({
     messageId: toNonEmptyString(systemRecord.uuid) ?? toNonEmptyString(systemRecord.message_id),
     taskId:
-      toNonEmptyString(systemRecord.task_id) ??
-      (rawText ? readTaskNotificationTagValue({ text: rawText, tagName: "task-id" }) : null),
+      toNonEmptyString(systemRecord.task_id) ?? readFirstTaskNotificationTag(rawText, "task-id"),
+    toolUseId:
+      toNonEmptyString(systemRecord.tool_use_id) ??
+      readFirstTaskNotificationTag(rawText, "tool-use-id", "tool_use_id"),
     status:
-      toNonEmptyString(systemRecord.status) ??
-      (rawText ? readTaskNotificationTagValue({ text: rawText, tagName: "status" }) : null),
+      toNonEmptyString(systemRecord.status) ?? readFirstTaskNotificationTag(rawText, "status"),
     summary:
-      toNonEmptyString(systemRecord.summary) ??
-      (rawText ? readTaskNotificationTagValue({ text: rawText, tagName: "summary" }) : null),
+      toNonEmptyString(systemRecord.summary) ?? readFirstTaskNotificationTag(rawText, "summary"),
     outputFile:
       toNonEmptyString(systemRecord.output_file) ??
-      (rawText
-        ? (readTaskNotificationTagValue({ text: rawText, tagName: "output-file" }) ??
-          readTaskNotificationTagValue({ text: rawText, tagName: "output_file" }))
-        : null),
+      readFirstTaskNotificationTag(rawText, "output-file", "output_file"),
     rawText,
   });
 }
@@ -338,6 +357,22 @@ export function mapTaskNotificationSystemRecordToToolCall(
     return null;
   }
   return toTaskNotificationToolCall(parsed);
+}
+
+export function readTaskNotificationToolUseIdFromHistoryRecord(record: unknown): string | null {
+  const parsedRecord = TaskNotificationHistoryRecordSchema.safeParse(record);
+  if (!parsedRecord.success) {
+    return null;
+  }
+  if (parsedRecord.data.type === "user" && parsedRecord.data.message) {
+    return (
+      parseTaskNotificationFromUserContent({
+        content: parsedRecord.data.message.content,
+        messageId: parsedRecord.data.uuid ?? parsedRecord.data.message_id,
+      })?.toolUseId ?? null
+    );
+  }
+  return parseTaskNotificationFromSystemRecord(record)?.toolUseId ?? null;
 }
 
 export function coerceTaskNotificationHistoryRecordToSystemMessage(

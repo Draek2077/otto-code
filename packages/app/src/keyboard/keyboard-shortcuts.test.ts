@@ -872,13 +872,13 @@ describe("keyboard-shortcut help sections", () => {
   it("returns stable i18n keys for section titles and help rows", () => {
     const sections = buildKeyboardShortcutHelpSections({ isMac: true, isDesktop: true });
     const projects = sections.find((section) => section.id === "projects");
-    const panels = sections.find((section) => section.id === "panels");
+    const layout = sections.find((section) => section.id === "layout");
     const openProject = findRow(sections, "new-agent");
     const cycleAgentMode = findRow(sections, "cycle-agent-mode");
     const showShortcuts = findRow(sections, "show-shortcuts");
 
     expect(projects?.titleKey).toBe("settings.shortcuts.sections.projects");
-    expect(panels?.titleKey).toBe("settings.shortcuts.sections.panels");
+    expect(layout?.titleKey).toBe("settings.shortcuts.sections.layout");
     expect(openProject?.labelKey).toBe("settings.shortcuts.help.openProject");
     expect(openProject?.label).toBe("Open project");
     expect(cycleAgentMode?.labelKey).toBe("settings.shortcuts.help.cycleAgentMode");

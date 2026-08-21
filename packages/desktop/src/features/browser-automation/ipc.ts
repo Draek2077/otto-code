@@ -87,6 +87,7 @@ interface WebContentsDebugger {
     event: "message",
     listener: (event: unknown, method: string, params?: Record<string, unknown>) => void,
   ): void;
+  on?(event: "detach", listener: () => void): void;
 }
 
 // Electron 32+ delivers the message details on the event object itself; the
@@ -342,6 +343,7 @@ function getDialogMonitor(
 class DialogMonitor {
   private enabled = false;
   private listenerRegistered = false;
+  private detachGeneration = 0;
   private readonly activeCollectors: DialogCollector[] = [];
 
   public constructor(
@@ -353,10 +355,14 @@ class DialogMonitor {
     task: () => Promise<T>,
   ): Promise<{ result: T; dialogs: BrowserAutomationDialogEvent[] }> {
     const collector: DialogCollector = { dialogs: [] };
+    const setupDetachGeneration = this.detachGeneration;
     try {
       await this.enable();
       await this.installPromptShim();
     } catch (error) {
+      if (this.contents.isDestroyed() || this.detachGeneration !== setupDetachGeneration) {
+        throw error;
+      }
       console.warn("[browser-automation] Dialog capture unavailable; running command without it", {
         contentsId: this.contents.id,
         error,
@@ -396,6 +402,10 @@ class DialogMonitor {
           return;
         }
         void this.handleOpening(params ?? {});
+      });
+      this.contents.debugger.on("detach", () => {
+        this.enabled = false;
+        this.detachGeneration += 1;
       });
     }
     await this.sendDebugCommand("Page.enable");

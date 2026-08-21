@@ -32,21 +32,24 @@ function toAgentLifecycleStatus(row: SubagentRow): AgentLifecycleStatus {
 }
 
 export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowPresentationData {
+  const description = resolveRowLabel(row.description);
   const title = resolveRowLabel(row.title);
   // A personality-spawned subagent leads with its identity: "<Name>: <Chat title>".
   // With no title yet, the name alone beats a bare loading placeholder.
   const personalityName = row.kind === "otto" ? row.personalityName?.trim() || null : null;
-  let label = title;
+  let label = description ?? title;
   if (personalityName) {
     label = title ? `${personalityName}: ${title}` : personalityName;
   }
+  const providerSubtitle = row.kind === "provider" ? resolveRowLabel(row.subtitle) : null;
+  const subtitle = providerSubtitle ?? (description ? title : null);
   return {
     // Namespaced by row kind: an Otto subagent and a provider-reported one can
     // carry the same id without being the same row.
     key: `${row.kind}_subagent_${row.id}`,
     kind: "agent",
     label: label ?? "",
-    subtitle: "",
+    subtitle: subtitle ?? "",
     titleState: label ? "ready" : "loading",
     statusBucket: deriveSidebarStateBucket({
       status: toAgentLifecycleStatus(row),

@@ -16,6 +16,7 @@ export type ClaudeAutoModeSupport = "all" | "anthropic-api" | "none";
 
 interface ClaudeModelManifestEntry {
   id: string;
+  aliases?: readonly string[];
   label: string;
   description: string;
   isDefault?: boolean;
@@ -45,6 +46,7 @@ const CLAUDE_EFFORT_LABELS = {
 
 export const CLAUDE_ULTRACODE_THINKING_OPTION_ID = "ultracode";
 export const CLAUDE_THINKING_OFF_OPTION_ID = "off";
+export const CLAUDE_DEFAULT_THINKING_OPTION_ID = "high";
 
 /**
  * The Claude models Otto offers, mirroring the Claude Code CLI's own catalog.
@@ -72,6 +74,8 @@ export const CLAUDE_THINKING_OFF_OPTION_ID = "off";
 export const CLAUDE_MODEL_MANIFEST = [
   {
     id: "claude-fable-5",
+    // COMPAT(claudeFable5OneMillionId): added in v0.3.0, remove after 2027-02-06 once pre-v0.3.0 app preferences are outside support.
+    aliases: ["claude-fable-5[1m]"],
     label: "Fable 5",
     description: "Fable 5 · Most powerful model",
     contextWindowMaxTokens: 1_000_000,
@@ -198,6 +202,7 @@ function buildThinkingOptions(
     ...effortLevels.map((id) => ({
       id,
       label: CLAUDE_EFFORT_LABELS[id],
+      ...(id === CLAUDE_DEFAULT_THINKING_OPTION_ID ? { isDefault: true } : {}),
     })),
   );
 
@@ -371,6 +376,14 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
     runtimeMatch[3],
     Boolean(runtimeMatch[4]),
   );
+}
+
+export function getClaudeCustomModelThinkingOptions(): AgentSelectOption[] {
+  return CLAUDE_EFFORT_LEVELS.standard.map((id) => {
+    const option: AgentSelectOption = { id, label: CLAUDE_EFFORT_LABELS[id] };
+    if (id === CLAUDE_DEFAULT_THINKING_OPTION_ID) option.isDefault = true;
+    return option;
+  });
 }
 
 function normalizeSingleSegmentClaudeModelId(

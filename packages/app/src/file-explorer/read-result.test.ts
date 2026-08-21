@@ -10,6 +10,7 @@ function textRead(bytes: Uint8Array): FileReadResult {
     path: "notes.txt",
     kind: "text",
     modifiedAt: "2026-07-21T00:00:00.000Z",
+    revision: "revision-1",
   };
 }
 
@@ -19,7 +20,7 @@ describe("explorerFileFromReadResult", () => {
       textRead(new Uint8Array([0xef, 0xbb, 0xbf, 0x68, 0x69])),
     );
 
-    expect(file).toMatchObject({ content: "hi", hasBom: true });
+    expect(file).toMatchObject({ content: "hi", hasBom: true, revision: "revision-1" });
   });
 
   it("does not mark BOM-free text or non-leading U+FEFF as BOM files", () => {

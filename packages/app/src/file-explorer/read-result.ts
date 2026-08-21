@@ -13,6 +13,7 @@ export function explorerFileFromReadResult(file: FileReadResult): ExplorerFile {
     size: file.size,
     modifiedAt: file.modifiedAt,
     eol: file.eol ?? null,
+    revision: file.revision,
   };
 }
 

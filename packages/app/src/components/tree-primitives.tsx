@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronRight } from "@/components/icons/material-icons";
 import { TREE_RAILS_ALL_CONTINUE, treeRailContinuesAt } from "@/components/tree-rail-mask";
-import { compactUp, SPACING, useIconSize, type Theme } from "@/styles/theme";
+import { compactUp, SPACING, type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 // Shared presentation primitives for the app's directory trees. Both the Files
@@ -14,6 +14,16 @@ import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 export const TREE_INDENT_PER_LEVEL = 16;
 /** Shared vertical padding for file-tree rows, so diff and explorer rows align. */
 export const WORKSPACE_FILE_ROW_VERTICAL_PADDING = SPACING[1.5];
+export const WORKSPACE_TREE_ICON_SIZE = 16;
+export const WORKSPACE_TREE_LOADING_ICON_SIZE = 14;
+export const WORKSPACE_TREE_ICON_FRAME_SIZE = compactUp(WORKSPACE_TREE_ICON_SIZE);
+export const WORKSPACE_TREE_ICON_LABEL_GAP = SPACING[2];
+/**
+ * Trailing glyph rail shared with the explorer X and Changes options chevron.
+ * The extra 2px is optical: text ink ends inside its layout box, while the
+ * header icons' strokes extend to theirs.
+ */
+export const WORKSPACE_FILE_ROW_TRAILING_PADDING = SPACING[4] + 2;
 
 // Length of the horizontal tick that branches off the deepest rail into a nested
 // row. Kept just short of the row's own content padding (8px in the explorer and
@@ -26,7 +36,9 @@ export function treeRowPaddingLeft(depth: number): number {
   return SPACING[3] + depth * TREE_INDENT_PER_LEVEL;
 }
 
-const foregroundMutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const foregroundExtraMutedIconColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundExtraMuted,
+});
 
 const ThemedChevronRight = withUnistyles(ChevronRight);
 
@@ -92,10 +104,12 @@ export function TreeIndentGuides({
 
 /** Rotating disclosure chevron for a directory row (points right; rotates down when expanded). */
 export function TreeChevron({ expanded }: { expanded: boolean }) {
-  const iconSize = useIconSize();
   return (
     <View style={expanded ? CHEVRON_EXPANDED_STYLE : styles.chevron}>
-      <ThemedChevronRight size={iconSize.md} uniProps={foregroundMutedIconColorMapping} />
+      <ThemedChevronRight
+        size={WORKSPACE_TREE_ICON_SIZE}
+        uniProps={foregroundExtraMutedIconColorMapping}
+      />
     </View>
   );
 }
@@ -124,9 +138,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   chevron: {
-    // Doubled on compact to wrap the chevron icon's compact upscale.
-    width: compactUp(16),
-    height: compactUp(16),
+    width: WORKSPACE_TREE_ICON_FRAME_SIZE,
+    height: WORKSPACE_TREE_ICON_FRAME_SIZE,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,

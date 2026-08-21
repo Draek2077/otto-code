@@ -89,6 +89,12 @@ files:
   # non-Windows platforms, so keeping it here shipped two orphan `.json` files and no assemblies
   # on Linux and macOS, and on Windows it would only duplicate the payload inside app.asar.
   - "!node_modules/@otto-code/server/dist/dotnet-probe/**"
+  # Workspace packages are symlinked, so anything a dev generates inside them
+  # lands in the asar. CI never has these; a local .debug run adds gigabytes.
+  - "!node_modules/@otto-code/*/.debug/**"
+  - "!node_modules/@otto-code/*/.tasks/**"
+  - "!node_modules/@otto-code/*/conversations/**"
+  - "!node_modules/@otto-code/*/test-results/**"
 asarUnpack:
   - dist/daemon/node-entrypoint-runner.js
   - node_modules/@otto-code/server/dist/server/terminal/shell-integration/**/*
@@ -146,6 +152,8 @@ mac:
   extraResources:
     - from: bin/otto
       to: bin/otto
+    - from: assets/icon.png
+      to: icon.png
   target:
     - dmg
     - zip

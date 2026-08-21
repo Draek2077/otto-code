@@ -175,4 +175,10 @@ export class HubExecutionController {
   ): Promise<void> {
     throw hubDisabled();
   }
+
+  async validateAgent(
+    _message: Parameters<RealHubExecutionController["validateAgent"]>[0],
+  ): Promise<void> {
+    throw hubDisabled();
+  }
 }

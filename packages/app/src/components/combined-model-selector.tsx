@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
+import type { AgentProfilePicker } from "@/agent-profiles";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
@@ -37,9 +38,9 @@ import type {
   SelectorView,
 } from "./model-selector/selector-content";
 const EMPTY_COMBOBOX_OPTIONS: ComboboxOption[] = [];
+const EMPTY_FAVORITE_KEYS = new Set<string>();
 
 function noop() {}
-
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 
 const foregroundMutedMapping = (theme: Theme) => ({
@@ -54,6 +55,9 @@ interface CombinedModelSelectorProps {
   isLoading: boolean;
   favoriteKeys?: Set<string>;
   onToggleFavorite?: (provider: string, modelId: string) => void;
+  profiles?: AgentProfilePicker | null;
+  onApplyProfile?: (profileId: string) => void;
+  onEditProfiles?: () => void;
   renderTrigger?: (input: {
     selectedModelLabel: string;
     onPress: () => void;
@@ -120,8 +124,11 @@ export function CombinedModelSelector({
   selectedModel,
   onSelect,
   isLoading,
-  favoriteKeys = new Set<string>(),
+  favoriteKeys = EMPTY_FAVORITE_KEYS,
   onToggleFavorite,
+  profiles = null,
+  onApplyProfile,
+  onEditProfiles,
   renderTrigger,
   onOpen,
   onClose,
@@ -152,13 +159,31 @@ export function CombinedModelSelector({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
 
-  // Only a *selectable* roster (one that renders the personalities section)
+  const profileRows = useMemo<SelectorPersonality[]>(
+    () =>
+      (profiles?.rows ?? []).map((profile) => ({
+        id: `profile:${profile.id}`,
+        name: profile.name,
+        provider: profile.provider,
+        subtitle: profile.summary,
+        glowA: profile.color || undefined,
+        glowB: profile.color || undefined,
+        available: true,
+      })),
+    [profiles],
+  );
+  const selectableIdentities = useMemo(
+    () => [...profileRows, ...(personalities ?? [])],
+    [personalities, profileRows],
+  );
+
+  // Only a *selectable* roster (one that renders the identities section)
   // changes the view layout. A read-only identity roster - passed with a
   // selected id but no onSelectPersonality, as the running-agent controls do to
   // label the trigger - must not suppress the single-provider bypass.
   const hasPersonalities =
-    ((personalities?.length ?? 0) > 0 || (personalityGroups?.length ?? 0) > 0) &&
-    Boolean(onSelectPersonality);
+    (selectableIdentities.length > 0 || (personalityGroups?.length ?? 0) > 0) &&
+    Boolean(onSelectPersonality || onApplyProfile);
 
   // Providers in an error/unavailable state (auth failed, not installed,
   // unreachable) are hidden from the picker entirely. The one exception is the
@@ -257,15 +282,19 @@ export function CombinedModelSelector({
   // roster rows stay hidden - the entries then only label the trigger.
   const handlePersonalitySelect = useMemo(
     () =>
-      onSelectPersonality
+      onSelectPersonality || onApplyProfile
         ? (id: string) => {
-            onSelectPersonality(id);
+            if (id.startsWith("profile:")) {
+              onApplyProfile?.(id.slice("profile:".length));
+            } else {
+              onSelectPersonality?.(id);
+            }
             setIsOpen(false);
             setSearchQuery("");
             bumpSearchResetKey();
           }
         : undefined,
-    [onSelectPersonality],
+    [onApplyProfile, onSelectPersonality],
   );
 
   const handlePersonalityClear = useMemo(
@@ -454,9 +483,28 @@ export function CombinedModelSelector({
     useProviderSettingsStore.getState().open({ serverId, provider: view.providerId });
   }, [serverId, view]);
 
+  const handleEditProfiles = useCallback(() => {
+    handleOpenChange(false);
+    onEditProfiles?.();
+  }, [handleOpenChange, onEditProfiles]);
+
   const sheetHeader = useMemo<SheetHeader>(() => {
     if (view.kind === "all") {
-      return { title: t("modelSelector.title") };
+      return {
+        title: t("modelSelector.title"),
+        actions: onEditProfiles ? (
+          <Pressable
+            onPress={handleEditProfiles}
+            hitSlop={8}
+            style={iconButtonStyle}
+            accessibilityRole="button"
+            accessibilityLabel={t("modelSelector.editProfilesLabel")}
+            testID="model-profiles-edit"
+          >
+            <HeaderSettingsIcon disabled={false} />
+          </Pressable>
+        ) : undefined,
+      };
     }
     if (view.kind === "personalityGroup") {
       return {
@@ -509,6 +557,8 @@ export function CombinedModelSelector({
     handleBackToAll,
     handleSearchQueryChange,
     searchResetKey,
+    handleEditProfiles,
+    onEditProfiles,
     t,
   ]);
 
@@ -570,9 +620,12 @@ export function CombinedModelSelector({
         anchorRef={anchorRef}
         desktopPlacement={desktopPlacement}
         desktopMinWidth={desktopMinWidth}
+        desktopLockWidth
         desktopFixedHeight={desktopFixedHeight}
+        desktopChildrenScrollEnabled={false}
         header={sheetHeader}
         mobileChildrenScrollEnabled={view.kind !== "provider" || !isNative}
+        mobileChildrenContentContainerStyle={styles.mobileBrowserContent}
       >
         {isContentReady ? (
           <SelectorContent
@@ -588,7 +641,8 @@ export function CombinedModelSelector({
             onDrillDownPersonalityGroup={handleDrillDownPersonalityGroup}
             onRetryProvider={onRetryProvider}
             isRetryingProvider={isRetryingProvider}
-            personalities={personalities}
+            personalities={selectableIdentities}
+            personalitySectionLabel="Profiles"
             personalityGroups={personalityGroups}
             selectedPersonalityId={selectedPersonalityId}
             onSelectPersonality={handlePersonalitySelect}
@@ -606,6 +660,9 @@ export function CombinedModelSelector({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  mobileBrowserContent: {
+    paddingHorizontal: 0,
+  },
   // Geometry mirrors the composer's mode/effort chips (mode-control `chip`,
   // agent-controls `modeBadge`) - all three sit in the same toolbar row and
   // must scale together on compact breakpoints.

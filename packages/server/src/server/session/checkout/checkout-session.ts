@@ -49,6 +49,7 @@ import {
   commitChanges,
   commitPaths,
   createPullRequest,
+  discardChanges,
   mergeFromBase,
   mergeToBase,
   NotGitRepoError,
@@ -66,8 +67,8 @@ import {
 } from "../../../utils/git-file-history.js";
 import type { ParsedDiffFile } from "../../utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../../utils/diff-highlighter.js";
-import { execCommand } from "../../../utils/spawn.js";
 import { isAbsolute } from "node:path";
+import { runGitCommand } from "../../../utils/run-git-command.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
 
@@ -576,6 +577,26 @@ export class CheckoutSession {
     }
   }
 
+  async handleCheckoutDiscardChangesRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.discard_changes.request" }>,
+  ): Promise<void> {
+    const { cwd, paths, requestId } = msg;
+    try {
+      await discardChanges(cwd, paths);
+      await this.gitMutation.notifyGitMutation(cwd, "discard-changes");
+      this.scheduleDiffRefresh(cwd);
+      this.host.emit({
+        type: "checkout.discard_changes.response",
+        payload: { cwd, success: true, error: null, requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.discard_changes.response",
+        payload: { cwd, success: false, error: toCheckoutError(error), requestId },
+      });
+    }
+  }
+
   async handleStashSaveRequest(
     msg: Extract<SessionInboundMessage, { type: "stash_save_request" }>,
   ): Promise<void> {
@@ -585,8 +606,9 @@ export class CheckoutSession {
       const message = branchLabel
         ? `${CheckoutSession.OTTO_STASH_PREFIX} ${branchLabel}`
         : `${CheckoutSession.OTTO_STASH_PREFIX} unnamed`;
-      await execCommand("git", ["stash", "push", "--include-untracked", "-m", message], {
+      await runGitCommand(["stash", "push", "--include-untracked", "-m", message], {
         cwd,
+        timeout: 120_000,
       });
       await this.gitMutation.notifyGitMutation(cwd, "stash-push");
       this.scheduleDiffRefresh(cwd);
@@ -607,8 +629,9 @@ export class CheckoutSession {
   ): Promise<void> {
     const { cwd, stashIndex, requestId } = msg;
     try {
-      await execCommand("git", ["stash", "pop", `stash@{${stashIndex}}`], {
+      await runGitCommand(["stash", "pop", `stash@{${stashIndex}}`], {
         cwd,
+        timeout: 120_000,
       });
       await this.gitMutation.notifyGitMutation(cwd, "stash-pop");
       this.scheduleDiffRefresh(cwd);

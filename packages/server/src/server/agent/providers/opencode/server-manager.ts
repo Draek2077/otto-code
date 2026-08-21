@@ -25,8 +25,8 @@ export interface OpenCodeServerAcquisition {
 }
 
 export interface OpenCodeServerManagerLike {
-  acquireCurrent(): Promise<OpenCodeServerAcquisition>;
-  acquireNew(): Promise<OpenCodeServerAcquisition>;
+  acquireCurrent(signal?: AbortSignal): Promise<OpenCodeServerAcquisition>;
+  acquireNew(signal?: AbortSignal): Promise<OpenCodeServerAcquisition>;
   acquireDedicated(env: Record<string, string>): Promise<OpenCodeServerAcquisition>;
   acquireExisting(url: string): OpenCodeServerAcquisition | null;
   shutdown(): Promise<void>;
@@ -53,6 +53,7 @@ export type OpenCodeServerProcessSpawner = (
 
 export interface OpenCodeServerManagerOptions {
   logger: Logger;
+  baseEnv?: SpawnProcessOptions["baseEnv"];
   runtimeSettings?: ProviderRuntimeSettings;
   managedProcesses?: ManagedProcessRegistry;
   terminateProcess?: ProcessTerminator;
@@ -70,6 +71,7 @@ export class OpenCodeServerManager implements OpenCodeServerManagerLike {
   private startPromise: Promise<OpenCodeServerGeneration> | null = null;
   private newServerPromise: Promise<OpenCodeServerGeneration> | null = null;
   private readonly logger: Logger;
+  private readonly baseEnv?: SpawnProcessOptions["baseEnv"];
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly runtimeSettingsKey: string;
   private readonly managedProcesses?: ManagedProcessRegistry;
@@ -81,6 +83,7 @@ export class OpenCodeServerManager implements OpenCodeServerManagerLike {
 
   constructor(options: OpenCodeServerManagerOptions) {
     this.logger = options.logger;
+    this.baseEnv = options.baseEnv;
     this.runtimeSettings = options.runtimeSettings;
     this.runtimeSettingsKey = JSON.stringify(this.runtimeSettings ?? {});
     this.managedProcesses = options.managedProcesses;
@@ -134,13 +137,17 @@ export class OpenCodeServerManager implements OpenCodeServerManagerLike {
     process.on("SIGINT", cleanup);
   }
 
-  async acquireCurrent(): Promise<OpenCodeServerAcquisition> {
-    const server = await this.getCurrentServer();
+  async acquireCurrent(signal?: AbortSignal): Promise<OpenCodeServerAcquisition> {
+    signal?.throwIfAborted();
+    const server = await waitForServerAcquisition(this.getCurrentServer(), signal);
+    signal?.throwIfAborted();
     return this.acquireServer(server);
   }
 
-  async acquireNew(): Promise<OpenCodeServerAcquisition> {
-    const server = await this.getNewServer();
+  async acquireNew(signal?: AbortSignal): Promise<OpenCodeServerAcquisition> {
+    signal?.throwIfAborted();
+    const server = await waitForServerAcquisition(this.getNewServer(), signal);
+    signal?.throwIfAborted();
     return this.acquireServer(server);
   }
 
@@ -298,6 +305,7 @@ export class OpenCodeServerManager implements OpenCodeServerManagerLike {
       detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
       ...createProviderEnvSpec({
+        baseEnv: this.baseEnv,
         runtimeSettings: this.runtimeSettings,
         overlays: [launchEnv],
       }),
@@ -526,6 +534,23 @@ export class OpenCodeServerManager implements OpenCodeServerManagerLike {
     } catch (error) {
       this.logger.warn({ err: error, id }, "Failed to remove OpenCode helper process record");
     }
+  }
+}
+
+async function waitForServerAcquisition<T>(
+  operation: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) return await operation;
+  let handleAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    handleAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+  try {
+    return await Promise.race([operation, aborted]);
+  } finally {
+    if (handleAbort) signal.removeEventListener("abort", handleAbort);
   }
 }
 

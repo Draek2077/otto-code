@@ -63,6 +63,11 @@ type ConfigListener = (config: MutableDaemonConfig, details: ConfigChangeDetails
 
 type FieldChangeHandler = (value: unknown) => void;
 
+interface AppliedFieldChange {
+  handler: FieldChangeHandler;
+  previousValue: unknown;
+}
+
 function getLogger(logger: LoggerLike | undefined): LoggerLike | undefined {
   return logger?.child({ module: "daemon-config-store" });
 }
@@ -127,11 +132,21 @@ export class DaemonConfigStore {
   private readonly logger: LoggerLike | undefined;
   private readonly changeListeners = new Set<ConfigListener>();
   private readonly fieldChangeHandlers = new Map<string, Set<FieldChangeHandler>>();
+  private readonly relayEnabledMutable: boolean;
 
-  constructor(ottoHome: string, initial: MutableDaemonConfig, logger?: LoggerLike) {
+  constructor(
+    ottoHome: string,
+    initial: MutableDaemonConfig,
+    logger?: LoggerLike,
+    options: { relayEnabledMutable?: boolean } = {},
+  ) {
     this.ottoHome = ottoHome;
     this.logger = getLogger(logger);
-    this.current = MutableDaemonConfigSchema.parse(initial);
+    this.current = MutableDaemonConfigSchema.parse({
+      ...initial,
+      relay: initial.relay ?? { enabled: true },
+    });
+    this.relayEnabledMutable = options.relayEnabledMutable ?? true;
   }
 
   public get(): MutableDaemonConfig {
@@ -202,6 +217,11 @@ export class DaemonConfigStore {
 
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
     const parsedPatch = MutableDaemonConfigPatchSchema.parse(partial);
+    if (parsedPatch.relay?.enabled !== undefined && !this.relayEnabledMutable) {
+      throw new Error(
+        "Relay is controlled by a daemon launch override. Remove OTTO_RELAY_ENABLED or the relay CLI flag before changing it here.",
+      );
+    }
     // A masked secret that comes back unchanged must not overwrite the stored
     // value with the sentinel placeholder.
     stripRedactedSecretsFromPatch(parsedPatch);
@@ -222,20 +242,30 @@ export class DaemonConfigStore {
       return this.current;
     }
 
-    // Persist before updating in-memory state so that if persistence fails,
-    // runtime and disk stay consistent.
-    this.persistConfig(next, removedProviderIds);
+    const persistedBeforePatch = this.persistConfig(next, removedProviderIds);
+    const previous = this.current;
+    const appliedFieldChanges: AppliedFieldChange[] = [];
     this.current = next;
-
-    for (const path of changedFieldPaths) {
-      const handlers = this.fieldChangeHandlers.get(path);
-      if (!handlers) {
-        continue;
+    try {
+      for (const path of changedFieldPaths) {
+        const handlers = this.fieldChangeHandlers.get(path);
+        if (!handlers) {
+          continue;
+        }
+        const value = getValueAtPath(next, path);
+        const previousValue = getValueAtPath(previous, path);
+        for (const handler of handlers) {
+          appliedFieldChanges.push({ handler, previousValue });
+          handler(value);
+        }
       }
-      const value = getValueAtPath(next, path);
-      for (const handler of handlers) {
-        handler(value);
+    } catch (error) {
+      this.current = previous;
+      for (const change of appliedFieldChanges.toReversed()) {
+        change.handler(change.previousValue);
       }
+      savePersistedConfig(this.ottoHome, persistedBeforePatch, this.logger);
+      throw error;
     }
 
     for (const listener of this.changeListeners) {
@@ -306,23 +336,32 @@ export class DaemonConfigStore {
     };
   }
 
-  private persistConfig(config: MutableDaemonConfig, removedProviderIds: string[]): void {
+  private persistConfig(
+    config: MutableDaemonConfig,
+    removedProviderIds: readonly string[],
+  ): PersistedConfig {
     const persisted = loadPersistedConfig(this.ottoHome, this.logger);
     const nextPersisted = mergeMutableConfigIntoPersistedConfig({
       persisted,
       mutable: config,
       removedProviderIds,
+      persistRelayEnabled: this.relayEnabledMutable,
     });
     savePersistedConfig(this.ottoHome, nextPersisted, this.logger);
+    return persisted;
   }
 }
 
 function mergeMutableConfigIntoPersistedConfig(params: {
   persisted: PersistedConfig;
   mutable: MutableDaemonConfig;
-  removedProviderIds: string[];
+  removedProviderIds: readonly string[];
+  persistRelayEnabled: boolean;
 }): PersistedConfig {
-  const { persisted, mutable, removedProviderIds } = params;
+  const { persisted, mutable, removedProviderIds, persistRelayEnabled } = params;
+  if (!mutable.relay) {
+    throw new Error("Mutable daemon config is missing relay state");
+  }
   const metadataGenerationProviders = readMetadataGenerationProviders(mutable);
   const metadataGenerationFlags = readMetadataGenerationFlags(mutable);
   const agentPersonalities = readAgentPersonalities(mutable);
@@ -385,7 +424,18 @@ function mergeMutableConfigIntoPersistedConfig(params: {
 
   return {
     ...persisted,
-    daemon: buildPersistedDaemonSection(persisted, mutable),
+    daemon: {
+      ...buildPersistedDaemonSection(persisted, mutable),
+      ...(persistRelayEnabled
+        ? {
+            relay: {
+              ...persisted.daemon?.relay,
+              enabled: mutable.relay.enabled,
+            },
+          }
+        : {}),
+      ...(mutable.agentProfiles !== undefined ? { agentProfiles: mutable.agentProfiles } : {}),
+    },
     agents: nextAgents,
     features: mergeSpeechIntoPersistedFeatures(persisted, mutable.speech),
     providers: mergeSpeechOpenAiIntoPersistedProviders(persisted, mutable.speech),

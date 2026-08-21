@@ -7,7 +7,11 @@ import type {
   TestCase,
   TestResult,
 } from "@playwright/test/reporter";
-import { EVIDENCE_SEPARATOR, MONEY_SHOT_PREFIX, STEP_SHOT_PREFIX } from "../helpers/evidence-names";
+import {
+  EVIDENCE_SEPARATOR,
+  MONEY_SHOT_PREFIX,
+  STEP_SHOT_PREFIX,
+} from "../support/helpers/evidence-names";
 
 /**
  * Builds the human-auditable QA report for an e2e run.

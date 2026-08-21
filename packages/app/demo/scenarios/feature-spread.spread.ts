@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "../../e2e/fixtures";
-import { getServerId } from "../../e2e/helpers/server-id";
-import { gotoWorkspace } from "../../e2e/helpers/launcher";
+import { expect, test } from "../../e2e/support/fixtures";
+import { getServerId } from "../../e2e/support/helpers/server-id";
+import { gotoWorkspace } from "../../e2e/support/helpers/launcher";
 import {
   buildHostAgentDetailRoute,
   buildSettingsHostSectionRoute,

@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Page, TestInfo } from "@playwright/test";
-import { resizePngToTarget, type ImageSize } from "../../e2e/helpers/image";
+import { resizePngToTarget, type ImageSize } from "../../e2e/support/helpers/image";
 import { DESKTOP_CAPTURE_RESOLUTION, DESKTOP_LAYOUT_VIEWPORT } from "./resolution";
 
 /**

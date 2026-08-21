@@ -1,3 +1,11 @@
+// Whole-run setup for the DEMO CAPTURE lanes only (playwright.demo.config.ts and
+// playwright.demo-electron.config.ts): one daemon, one relay and one Metro for
+// the entire run, because a capture scripts a single long-lived host.
+//
+// The e2e lanes moved to `support/global-setup.ts` (Metro only) plus the
+// per-worker daemon fixture in `support/helpers/e2e-worker.ts` when upstream
+// split them apart. Do not point `playwright.config.ts` back at this file, and
+// do not add e2e-only setup here - it belongs in `support/`.
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -8,10 +16,13 @@ import net from "node:net";
 import { Buffer } from "node:buffer";
 import { chromium } from "@playwright/test";
 import dotenv from "dotenv";
-import { loadDaemonClientConstructor } from "./helpers/daemon-client-loader";
-import { createNodeWebSocketFactory, type NodeWebSocketFactory } from "./helpers/node-ws-factory";
-import { forkOttoHomeMetadata, resolveOttoHomePath } from "./helpers/otto-home-fork";
-import { withDisabledE2ESpeechEnv } from "./helpers/speech-env";
+import { loadDaemonClientConstructor } from "./support/helpers/daemon-client-loader";
+import {
+  createNodeWebSocketFactory,
+  type NodeWebSocketFactory,
+} from "./support/helpers/node-ws-factory";
+import { forkOttoHomeMetadata, resolveOttoHomePath } from "./support/helpers/otto-home-fork";
+import { withDisabledE2ESpeechEnv } from "./support/helpers/speech-env";
 
 const wranglerCliPath = path.resolve(__dirname, "../node_modules/wrangler/bin/wrangler.js");
 

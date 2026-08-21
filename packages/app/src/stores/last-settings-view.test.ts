@@ -23,14 +23,9 @@ describe("settingsViewRoute", () => {
     );
   });
 
-  it("maps projects and a single project", () => {
-    expect(settingsViewRoute({ kind: "projects" })).toBe("/settings/projects");
-    // Otto keeps the settings project route host-scoped, matching the route
-    // files under app/settings/projects/[serverId]/[projectId].tsx. Paseo
-    // addresses projects by host-local id alone; adopting that would be a route
-    // restructure, not a rename.
+  it("maps a single project", () => {
     expect(settingsViewRoute({ kind: "project", serverId: "host-a", projectId: "proj1" })).toBe(
-      "/settings/projects/host-a/proj1",
+      "/settings/hosts/host-a/projects/proj1",
     );
   });
 

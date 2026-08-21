@@ -34,6 +34,7 @@ import {
 } from "./terminal-restore.js";
 import type { TerminalSession } from "./terminal.js";
 import type { TerminalManager, TerminalsChangedEvent } from "./terminal-manager.js";
+import { applyTerminalSize } from "./terminal-size-ownership.js";
 import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
 import { terminalSubscriptionKey } from "@otto-code/protocol/terminal-subscription-key";
 import { runTerminalCompatibilityDiagnostic } from "./terminal-compatibility-diagnostic.js";
@@ -144,6 +145,7 @@ export class TerminalSessionController {
     mode: "auto" | "default";
     includePaths: boolean;
   };
+  private readonly terminalSizeOwner = {};
 
   // A subscription is scoped to a (cwd, workspaceId) pair, keyed by
   // terminalSubscriptionKey: two workspaces sharing a cwd subscribe and unsub
@@ -258,7 +260,7 @@ export class TerminalSessionController {
         if (!resize) {
           return;
         }
-        terminal.send({ type: "resize", rows: resize.rows, cols: resize.cols });
+        applyTerminalSize(terminal, this.terminalSizeOwner, resize);
         return;
       }
 
@@ -702,17 +704,10 @@ export class TerminalSessionController {
     this.ensureExitSubscription(session);
 
     if (msg.restore?.size) {
-      const currentSize = session.getSize();
-      if (
-        currentSize.rows !== msg.restore.size.rows ||
-        currentSize.cols !== msg.restore.size.cols
-      ) {
-        session.send({
-          type: "resize",
-          rows: msg.restore.size.rows,
-          cols: msg.restore.size.cols,
-        });
-      }
+      applyTerminalSize(session, this.terminalSizeOwner, {
+        ...msg.restore.size,
+        intent: "claim",
+      });
     }
 
     const slot = this.bindActiveStream(session, { restore: msg.restore });
@@ -767,10 +762,8 @@ export class TerminalSessionController {
     this.ensureExitSubscription(session);
 
     if (msg.message.type === "resize") {
-      const currentSize = session.getSize();
-      if (currentSize.rows === msg.message.rows && currentSize.cols === msg.message.cols) {
-        return;
-      }
+      applyTerminalSize(session, this.terminalSizeOwner, msg.message);
+      return;
     }
 
     session.send(msg.message);

@@ -102,7 +102,7 @@ Five primitives. The pick is determined by option count, the need to search, and
 
 `<AdaptiveModalSheet>` is for a focused task. Multi-field forms (`packages/app/src/components/add-host-modal.tsx`, `packages/app/src/components/pair-link-modal.tsx`, `packages/app/src/components/project-picker-modal.tsx`), confirmations with detail, anything that earns a backdrop. Bottom sheet on compact, centered card on desktop. Raw `Modal` is wrong for any of these.
 
-`<AdaptiveModalSheet>` owns compact bottom safe-area padding inside the sheet so the sheet background still reaches the screen bottom. If a sheet's first snap point is shorter than its header, content, and safe-area clearance, raise that snap point rather than moving the sheet container.
+`<AdaptiveModalSheet>` owns the presentation. Its content inset (the gutter that puts sheet content on the same rails as the sheet header) and compact bottom safe-area padding are the sheet's, not the caller's. A caller declares layout intent through `contentStyle` and never branches on form factor to add its own margins. If a sheet's first snap point is shorter than its header, content, and safe-area clearance, raise that snap point rather than moving the sheet container.
 
 The title is always pinned. Action buttons (Save/Cancel) belong in the sheet's `footer` slot, not stacked at the end of the scrolling body - a footer stays pinned to the bottom of both the desktop card and the mobile bottom sheet while the content between scrolls. A fixed strip that must stay visible above the content (a tab bar, a filter row) goes in the `subHeader` slot. `desktopHeight` fixes the card height so it does not resize as content or tabs change; without it the card hugs content up to 85% of the viewport, then scrolls. This is the hybrid every dialog gets: pinned title, scrollable content, pinned footer. `provider-diagnostic-sheet.tsx` is the reference.
 
@@ -124,13 +124,27 @@ Sections sit apart. `<SettingsSection>` owns its own bottom margin; the next thi
 
 Cards inside a section sit closer than sections. Rows inside a card touch - only the divider separates them. The rhythm is page → spacious; section → spacious; card → tight.
 
-Rows have generous vertical padding: roughly 16px of content plus 16px of vertical padding for settings rows, 8–12px for sidebar list items where many rows must fit. Compressing rows below the established density to fit more on the screen is wrong. Too many rows means more cards or more sections, not smaller rows.
+Rows have generous vertical padding: roughly 16px of content plus 16px of vertical padding for settings rows, 8 to 12px for sidebar list items where many rows must fit. Compressing rows below the established density to fit more on the screen is wrong. Too many rows means more cards or more sections, not smaller rows.
 
 The whitespace is the design.
 
 ---
 
-## 8. Responsiveness
+## 8. Alignment
+
+Things align to their glyphs, not to their boxes. A row's leading icon, its title, and the label of the button in its trailing slot sit on the same rails: the ink lines up, not the padding, not the touch target, not the hover background.
+
+Pick the rails from the content, then hold them. A settings card establishes a leading rail at the icon's left edge and a trailing rail at the last glyph's right edge; every row in that card uses the same two. A row whose icon is absent still starts its title on the leading rail. Indentation is a new rail, not an arbitrary offset.
+
+The pressable is bigger than the glyph, and that is fine. Hit areas grow outward from the aligned content; they never move it. A button that looks two pixels off because its padding is asymmetric is misaligned even though its box is correct.
+
+Optical alignment beats arithmetic when a glyph disagrees with its bounding box. Icons with visual weight on one side, chevrons, and single-character labels usually need a small nudge to look centered. Trust the eye, then leave a comment saying the offset is optical.
+
+One row off the rail makes the whole card look unconsidered.
+
+---
+
+## 9. Responsiveness
 
 Compact-first. The small case is designed; the large case adds chrome around it.
 
@@ -154,7 +168,7 @@ A new list+detail feature copies the settings shell. A new workspace-shaped feat
 
 ---
 
-## 9. Copy and voice
+## 10. Copy and voice
 
 Sentence case. "Pair a device", "Danger zone", "Restart daemon", "Inject Otto tools", "No sessions yet", "Load more". Proper nouns retain casing - Otto, Beta, Stable, Local. Title case is wrong.
 
@@ -176,7 +190,7 @@ Terminology:
 
 ---
 
-## 10. States
+## 11. States
 
 Loading is inline by default. `<LoadingSpinner size={14} color={foregroundMuted} />` sits next to the thing it relates to (`packages/app/src/screens/settings/providers-section.tsx:227-231`). Page-level loading is a centered `<LoadingSpinner size="large">` (`packages/app/src/screens/sessions-screen.tsx:69-72`). Card-level loading is a single short line, not a spinner. In-row dropdown items use `<DropdownMenuItem status="pending" pendingLabel="Removing...">`; the menu item handles its own pending state.
 
@@ -196,9 +210,11 @@ Partial failure (a list mostly fine but one source errored) is a bordered banner
 
 State surfaces at the smallest scope it affects. Field error stays under the field; page error is a banner; flow-stopping error is an `Alert`.
 
+Changing state must not move the layout. A row that grows when its badge arrives, a card that reflows when a count resolves, a list that jumps as data streams in: all wrong. Reserve the space the loaded state will need, so the skeleton, the spinner, and the content occupy the same box. A surface that shifts under the user stops feeling calm.
+
 ---
 
-## 11. List rows
+## 12. List rows
 
 The row anatomy is a content column with an optional trailing slot. Inside a card the row is `settingsStyles.row`. Inside a sidebar list the row carries its own padding and `borderRadius.lg` per item (`packages/app/src/components/sidebar-workspace-list.tsx:2614-2625`).
 
@@ -214,28 +230,34 @@ Selected state on rows in a desktop list+detail uses `surfaceSidebarHover` as th
 
 ---
 
-## 12. Status pills and badges
+## 13. Status pills and badges
 
-Status pills are `palette.<color>[300]` foreground on a 10%-alpha background of the same color. Success uses green, warning uses amber, danger uses red, muted uses zinc. The `<StatusBadge>` primitive (`packages/app/src/components/ui/status-badge.tsx`) is canonical.
+There is exactly one token per status signal (`statusSuccess`, `statusDanger`, `statusWarning`, `statusMerged`) and every status surface uses it: PR state icons, CI check icons and pies, diff stats, file-change icons, status pills, usage bars. A surface does not get a quieter or louder variant because of where it sits. If a dense list feels loud, that is a density or weight problem; fix the density, not the color. The tokens are generated, not hand-picked; see the rule in `packages/app/src/styles/theme.ts` and regenerate rather than nudging one value. The level is set by the densest consumer, the sidebar workspace list.
 
-Status dots - the small filled circles next to a host or chat name - are `borderRadius.full` filled with the status color (`statusSuccess`, `statusWarning`, `statusDanger`, or `foregroundMuted`). They sit in the trailing slot of a sidebar row or as a leading marker on a status pill.
+Status **dots** are the one exception, and they are a family of their own (`statusDotSuccess`, `statusDotDanger`, `statusDotWarning`, `statusDotRunning`), read only by `getStatusDotColor` (`packages/app/src/utils/status-dot-color.ts`). Same hues and the same generation rule, but their own band: 90% of gamut chroma against the status family's 55% to 60%. A dot is a few points of solid color with no shape to read and no label attached, and the running one pulses, so at the status band's chroma the dots read dimmer than the metadata beside them, which is backwards, since the dot is the row's state. Lightness is set by hue separation rather than by distance from the surface: at 6pt four dark hues on a light surface all read as one dark blob no matter how much contrast they have. So the light band runs as bright as the contrast floor allows at L=0.62, the last step where all four clear 3:1 against the sidebar's `surface2`; the dark band sits at L=0.72, where danger turns pink above. All four move together; regenerate the set, never one hue.
+
+Status pills are the status token as foreground on a 10%-alpha tint of the same token (`${token}1a`), with a 20% border (`${token}33`). The `<StatusBadge>` primitive (`packages/app/src/components/ui/status-badge.tsx`) is canonical; a pill never reaches into `palette`.
+
+Status dots, the small filled circles next to a host or chat name, are `borderRadius.full` filled with the status token. Which token a given agent state maps to is owned by `getStatusDotColor` (`packages/app/src/utils/status-dot-color.ts`); a row, a group header, and a project icon all call it rather than restating the mapping. They sit in the trailing slot of a sidebar row or as a leading marker on a status pill.
 
 The `status<Tone>Surface` fills are the same tones as chrome rather than as a pill: alpha washes (`statusInfoSurface`, `statusWarningSurface`, `statusDangerSurface`, `statusSuccessSurface`, `statusMergedSurface`) that tint whatever sits below them, so one token is correct on the app background, an elevated card, or the pure-black chat pane. Use them to tone a whole surface that carries a meaning - the suggested-task card (`packages/app/src/suggested-tasks/overlay.tsx`) is the reference: a `statusInfo` ring around a `statusInfoSurface`-washed interior, because a suggestion is an offer, not chrome.
 
 An alpha wash needs an opaque base underneath when the surface floats over content, or the content shows through. Do not reach for the theme accent to tone a surface: accent is the CTA colour and usually already paints the action inside that surface, and its hue swings from gold to cyan to magenta across the variants, so an "accent tint" carries no consistent meaning. A status tone stays a status tone across all 13 variants.
 
+Identity badges (the project icon, the sidebar host badge, and the PR-panel participant avatar) do not use the theme palette. They draw from the fixed ten-color identity table in `packages/app/src/styles/identity-colors.ts`, whose hexes are held to one contrast band so a color identifies rather than ranks. Project icons and PR avatars use it as a fill with a white letter: that is `identityColor`, one theme-independent hex per identity. Host badges use it as a _foreground_ on both the glyph and the label, which is a different contrast problem that the fill table cannot solve: no single hex clears 4.5:1 against both a near-white and a dark sidebar. Foregrounds therefore come from `identityForeground(name, colorScheme)`, one set per scheme, hue unchanged. That set is generated on the **status family's** lightness and chroma fraction, because a meta row puts a host badge beside a CI check and a diff stat, and two families at different lightness make the brighter one shout. Change the status band and this one changes with it. A host with no color assigned falls back to `foregroundMuted`. The table is theme-independent by design; do not fork it per theme, and do not add hexes to it without recomputing the band.
+
 The bespoke pills in `packages/app/src/screens/settings/host-page.tsx:97-116`, `packages/app/src/components/agent-list.tsx:607-632`, and `packages/app/src/components/sidebar-workspace-list.tsx:2889-2894` are drift to be removed. New code uses `<StatusBadge>`.
 
 ---
 
-## 13. Forbidden
+## 14. Forbidden
 
 - `fontWeight.medium` on row titles, body text, button labels, badge text, or `<SidebarCallout>` titles. Medium is reserved for the structural-label tier described in §3 - section labels, modal/sheet titles, dense metadata emphasis, and tight action labels. Anything else is `normal`. `<ScreenTitle>` is responsive `400/300` and is never overridden.
 - `<Pressable>` wrapping `<Text>` to make a button. `<Button>` exists.
 - Bare `<Text>` for a section header inside settings. `<SettingsSection>` exists.
 - A "Settings" CTA on a detail page. Detail pages are settings; settings is reached from the sidebar, the host entry, or a row's kebab menu.
 - The word "checkout" in UI strings or identifiers. The term is "workspace".
-- New color tokens or hardcoded hex outside the palette. Status pill rgba backgrounds are the documented pattern (§12), not a license.
+- New color tokens or hardcoded hex outside the palette. Status pill rgba backgrounds and the identity color table are the documented exceptions (§13), not a license.
 - Placeholder text dimmed beyond `foregroundMuted`. No extra opacity, no italics, no ghost-text.
 - `onPointerEnter` and `onPointerLeave`. They do not fire on native iOS. Hover uses Pressable's `onHoverIn`/`onHoverOut` gated with `isHovered || isCompact || isNative`.
 - Raw DOM APIs without an `isWeb` guard.
@@ -249,7 +271,7 @@ The bespoke pills in `packages/app/src/screens/settings/host-page.tsx:97-116`, `
 
 ---
 
-## 14. Canonical surfaces by pattern
+## 15. Canonical surfaces by pattern
 
 | Pattern                                             | Reference                                                                                                                                                                                                                                                                                                |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -274,7 +296,7 @@ The bespoke pills in `packages/app/src/screens/settings/host-page.tsx:97-116`, `
 
 ---
 
-## 15. Elevation
+## 16. Elevation
 
 Three steps, `theme.shadow.sm` / `md` / `lg` (`packages/app/src/styles/theme.ts`), authored per scheme. Anything that floats spreads one of them rather than authoring shadow props inline.
 

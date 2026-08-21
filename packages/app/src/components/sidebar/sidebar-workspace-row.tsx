@@ -1,17 +1,15 @@
-import { memo, useCallback, useMemo, useState, type ReactNode, type Ref } from "react";
-import { useIsLspBusy } from "@/stores/lsp-activity-store";
+import { memo, useCallback, useMemo, useState, type Ref } from "react";
 import { useTranslation } from "react-i18next";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, type GestureResponderEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
+import { useIsLspBusy } from "@/stores/lsp-activity-store";
+import type { HostBadgeModel } from "@/hosts/appearance";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
-import { selectWorkspaceChangeStat } from "@/hooks/sidebar-workspaces-view-model";
 import type { DraggableListDragHandleProps } from "@/components/draggable-list.types";
 import type { ShortcutKey } from "@/utils/format-shortcut";
-import { DiffStat } from "@/components/diff-stat";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
-import { useAppSettings } from "@/hooks/use-settings";
 import { useToast } from "@/contexts/toast-context";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { toWorktreeArchiveRisk } from "@/git/worktree-archive-warning";
@@ -24,23 +22,25 @@ import { requireWorkspaceDirectory } from "@/utils/workspace-directory";
 import { isNative as platformIsNative } from "@/constants/platform";
 import { useLongPressDragInteraction } from "@/components/sidebar/use-long-press-drag-interaction";
 import {
+  SidebarWorkspaceContextMenu,
   SidebarWorkspaceMenu,
-  WorkspaceMenuItems,
 } from "@/components/sidebar/sidebar-workspace-menu";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import {
   SidebarWorkspaceRowFrame,
   SidebarWorkspaceRowContent,
+  resolveTrailingActionVisibility,
   SidebarWorkspaceTrailingActionBase,
   SidebarWorkspaceTrailingActionOverlay,
   SidebarWorkspaceTrailingActionSlot,
-  useFloatingRowActions,
 } from "@/components/sidebar/sidebar-workspace-row-content";
+import { useOpenKebabMenuVisibility } from "@/components/sidebar/use-open-kebab-menu-visibility";
+import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop";
+import { selectWorkspaceServiceSummary } from "@/components/sidebar/workspace-meta-row";
+import {
+  SidebarWorkspaceTrailingContent,
+  useSidebarWorkspaceTrailing,
+  type SidebarWorkspaceTrailing,
+} from "@/components/sidebar/workspace-trailing";
 
 function noop() {}
 
@@ -51,8 +51,8 @@ interface SidebarWorkspaceRowProps {
   showShortcutBadge: boolean;
   canCopyBranchName: boolean;
   onPress: () => void;
-  /** Secondary line under the name (status grouping shows the project name). */
-  subtitle?: string | null;
+  /** The host pill after the title. Absent → the sidebar spans one host, or this one is hidden. */
+  hostBadge?: HostBadgeModel | null;
   /** Project grouping only: shows a transient "creating" affordance. */
   isCreating?: boolean;
   /** Project grouping only: drag-to-reorder wiring. Absent → not draggable. */
@@ -68,7 +68,7 @@ export function SidebarWorkspaceRow({
   showShortcutBadge,
   canCopyBranchName,
   onPress,
-  subtitle,
+  hostBadge,
   isCreating = false,
   drag,
   isDragging = false,
@@ -188,7 +188,7 @@ export function SidebarWorkspaceRow({
         selected={selected}
         shortcutNumber={shortcutNumber}
         showShortcutBadge={showShortcutBadge}
-        subtitle={subtitle}
+        hostBadge={hostBadge}
         isCreating={isCreating}
         isArchiving={isArchiving}
         onPress={onPress}
@@ -224,7 +224,7 @@ interface WorkspaceRowBodyProps {
   selected: boolean;
   shortcutNumber: number | null;
   showShortcutBadge: boolean;
-  subtitle?: string | null;
+  hostBadge?: HostBadgeModel | null;
   isCreating: boolean;
   isArchiving: boolean;
   onPress: () => void;
@@ -247,7 +247,7 @@ function WorkspaceRowBody({
   selected,
   shortcutNumber,
   showShortcutBadge,
-  subtitle,
+  hostBadge,
   isCreating,
   isArchiving,
   onPress,
@@ -264,13 +264,10 @@ function WorkspaceRowBody({
   onMarkAsRead,
   archiveShortcutKeys,
 }: WorkspaceRowBodyProps) {
-  const { t } = useTranslation();
-  const { settings } = useAppSettings();
-  const showDiffStat = settings.workspaceToolsPlacement !== "workspaceList";
-  const diffStat = selectWorkspaceChangeStat(workspace, settings.workspaceChangeIndicator);
-  const floatActions = useFloatingRowActions();
-  const isLspBusy = useIsLspBusy(workspace.serverId, workspace.workspaceDirectory ?? null);
   const isTouchPlatform = platformIsNative;
+  const isLspBusy = useIsLspBusy(workspace.serverId, workspace.workspaceDirectory ?? null);
+  const [isPressed, setIsPressed] = useState(false);
+  const trailing = useSidebarWorkspaceTrailing();
   const draggable = Boolean(drag);
   const interaction = useLongPressDragInteraction({
     drag: drag ?? noop,
@@ -290,59 +287,31 @@ function WorkspaceRowBody({
     }
     onPress();
   }, [interaction.didLongPressRef, onPress]);
+  const handleWorkspacePressIn = useCallback(
+    (event: GestureResponderEvent) => {
+      setIsPressed(true);
+      if (draggable) interaction.handlePressIn(event);
+    },
+    [draggable, interaction],
+  );
+  const handleWorkspacePressOut = useCallback(() => {
+    setIsPressed(false);
+    if (draggable) interaction.handlePressOut();
+  }, [draggable, interaction]);
 
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
 
   return (
     <SidebarWorkspaceRowFrame workspace={workspace} isDragging={isDragging}>
-      {({ isHovered, hoverHandlers }) => {
+      {({ isHovered, contextMenuOpen, onContextMenuOpenChange, hoverHandlers }) => {
         const isDesktop = !isTouchPlatform;
-        const showScriptsIcon = isDesktop && workspace.hasRunningScripts;
-        const hasRunningService = workspace.scripts.some(
-          (s) => s.lifecycle === "running" && (s.type ?? "service") === "service",
-        );
-        let scriptIconKind: "service" | "command" | null = null;
-        if (showScriptsIcon) {
-          scriptIconKind = hasRunningService ? "service" : "command";
-        }
-        const workspaceRowStyle = getWorkspaceRowStyle({ isDragging, selected, isHovered });
-        const trailing = buildWorkspaceRowTrailing({
-          t,
-          showDiffStat,
-          diffStat,
-          floatActions,
-          workspace,
+        const serviceSummary = isDesktop ? selectWorkspaceServiceSummary(workspace.scripts) : null;
+        const workspaceRowStyle = getWorkspaceRowStyle({
+          isDragging,
+          isPressed,
+          selected,
           isHovered,
-          isTouchPlatform,
-          isCreating,
-          showShortcutBadge,
-          shortcutNumber,
-          archiveLabel,
-          archiveStatus,
-          archivePendingLabel,
-          archiveShortcutKeys,
-          onArchive,
-          onCopyBranchName,
-          onCopyPath,
-          onRename,
-          onMarkAsRead,
         });
-        const rowContent = (
-          <SidebarWorkspaceRowContent
-            workspace={workspace}
-            subtitle={subtitle}
-            scriptIconKind={scriptIconKind}
-            isHovered={isHovered}
-            isLoading={isArchiving || isCreating}
-            isIndexing={isLspBusy}
-            isCreating={isCreating}
-            shortcutNumber={shortcutNumber}
-            showShortcutBadge={showShortcutBadge}
-            floatingTrailing={trailing.floating}
-          >
-            {trailing.flow}
-          </SidebarWorkspaceRowContent>
-        );
         return (
           <View
             {...(draggable ? dragAttributes : {})}
@@ -353,61 +322,69 @@ function WorkspaceRowBody({
             style={styles.workspaceRowContainer}
             {...hoverHandlers}
           >
-            {onArchive ? (
-              <ContextMenu>
-                <ContextMenuTrigger
-                  enabledOnMobile={false}
-                  disabled={isArchiving}
-                  aria-selected={selected}
-                  accessibilityRole="button"
-                  accessibilityState={accessibilityState}
-                  style={workspaceRowStyle}
-                  onPressIn={draggable ? interaction.handlePressIn : undefined}
-                  onTouchMove={draggable ? interaction.handleTouchMove : undefined}
-                  onPressOut={draggable ? interaction.handlePressOut : undefined}
-                  onPress={handlePress}
-                  testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
-                >
-                  {rowContent}
-                </ContextMenuTrigger>
-                <ContextMenuContent
-                  align="start"
-                  width={260}
-                  testID={`sidebar-workspace-context-menu-${workspace.workspaceKey}`}
-                >
-                  <WorkspaceMenuItems
-                    ItemComponent={ContextMenuItem}
-                    workspaceKey={workspace.workspaceKey}
-                    onCopyPath={onCopyPath}
-                    onCopyBranchName={onCopyBranchName}
-                    onRename={onRename}
-                    onMarkAsRead={onMarkAsRead}
-                    serverId={workspace.serverId}
-                    workspaceId={workspace.workspaceId}
-                    onArchive={onArchive}
-                    archiveLabel={archiveLabel}
-                    archiveStatus={archiveStatus}
-                    archivePendingLabel={archivePendingLabel}
-                    archiveShortcutKeys={archiveShortcutKeys}
-                  />
-                </ContextMenuContent>
-              </ContextMenu>
-            ) : (
-              <Pressable
-                disabled={isArchiving}
-                aria-selected={selected}
-                accessibilityRole="button"
-                accessibilityState={accessibilityState}
-                style={workspaceRowStyle}
-                onPressIn={draggable ? interaction.handlePressIn : undefined}
-                onTouchMove={draggable ? interaction.handleTouchMove : undefined}
-                onPressOut={draggable ? interaction.handlePressOut : undefined}
-                onPress={handlePress}
-                testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
+            <SidebarWorkspaceContextMenu
+              contextMenuOpen={contextMenuOpen}
+              onContextMenuOpenChange={onContextMenuOpenChange}
+              workspace={workspace}
+              hostBadgeLabel={hostBadge?.label}
+              serviceSummary={serviceSummary}
+              workspaceKey={workspace.workspaceKey}
+              onCopyPath={onCopyPath}
+              onCopyBranchName={onCopyBranchName}
+              onRename={onRename}
+              onMarkAsRead={onMarkAsRead}
+              serverId={workspace.serverId}
+              workspaceId={workspace.workspaceId}
+              onArchive={onArchive}
+              archiveLabel={archiveLabel}
+              archiveStatus={archiveStatus}
+              archivePendingLabel={archivePendingLabel}
+              archiveShortcutKeys={archiveShortcutKeys}
+              openInFileManagerPath={workspace.workspaceDirectory}
+              disabled={isArchiving}
+              aria-selected={selected}
+              accessibilityRole="button"
+              accessibilityState={accessibilityState}
+              style={workspaceRowStyle}
+              highlightStyle={styles.workspaceRowPressed}
+              onPressIn={handleWorkspacePressIn}
+              onTouchMove={draggable ? interaction.handleTouchMove : undefined}
+              onPressOut={handleWorkspacePressOut}
+              onPress={handlePress}
+              testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
+            >
+              <SidebarWorkspaceRowContent
+                workspace={workspace}
+                hostBadge={hostBadge}
+                serviceSummary={serviceSummary}
+                backdrop={getSidebarRowBackdrop({ isDragging, isPressed, selected, isHovered })}
+                isHovered={isHovered}
+                isLoading={isArchiving || isCreating}
+                isIndexing={isLspBusy}
+                isCreating={isCreating}
+                shortcutNumber={shortcutNumber}
+                showShortcutBadge={showShortcutBadge}
               >
-                {rowContent}
-              </Pressable>
-            )}
+                <WorkspaceRowTrailingActions
+                  workspace={workspace}
+                  trailing={trailing}
+                  isHovered={isHovered}
+                  isTouchPlatform={isTouchPlatform}
+                  isCreating={isCreating}
+                  showShortcutBadge={showShortcutBadge}
+                  shortcutNumber={shortcutNumber}
+                  archiveLabel={archiveLabel}
+                  archiveStatus={archiveStatus}
+                  archivePendingLabel={archivePendingLabel}
+                  archiveShortcutKeys={archiveShortcutKeys}
+                  onArchive={onArchive}
+                  onCopyBranchName={onCopyBranchName}
+                  onCopyPath={onCopyPath}
+                  onRename={onRename}
+                  onMarkAsRead={onMarkAsRead}
+                />
+              </SidebarWorkspaceRowContent>
+            </SidebarWorkspaceContextMenu>
           </View>
         );
       }}
@@ -415,21 +392,9 @@ function WorkspaceRowBody({
   );
 }
 
-/**
- * Splits this row's trailing controls into the part that reserves width in the
- * title line and the part that floats over the row's right edge. See the twin in
- * sidebar-workspace-list.tsx for why this is a function and not a component.
- *
- * The difference here is the diff stat: it is real content, not a hover
- * affordance, so it keeps its reserved slot on every platform. Only the kebab
- * floats, and it paints over the diff stat instead of the old opacity swap.
- */
-function buildWorkspaceRowTrailing({
-  t,
-  showDiffStat,
-  diffStat,
-  floatActions,
+function WorkspaceRowTrailingActions({
   workspace,
+  trailing,
   isHovered,
   isTouchPlatform,
   isCreating,
@@ -445,11 +410,8 @@ function buildWorkspaceRowTrailing({
   onCopyPath,
   onRename,
 }: {
-  t: ReturnType<typeof useTranslation>["t"];
-  showDiffStat: boolean;
-  diffStat: { additions: number; deletions: number } | null | undefined;
-  floatActions: boolean;
   workspace: SidebarWorkspaceEntry;
+  trailing: SidebarWorkspaceTrailing;
   isHovered: boolean;
   isTouchPlatform: boolean;
   isCreating: boolean;
@@ -464,93 +426,77 @@ function buildWorkspaceRowTrailing({
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
   onRename?: () => void;
-}): { flow: ReactNode; floating: ReactNode } {
+}) {
+  const { t } = useTranslation();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
-  const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
-  // The shortcut badge owns this corner when it is on, so the kebab yields.
-  const showKebabInSlot = showKebab && !showShortcut;
-  const hasDiffStat = Boolean(showDiffStat && diffStat);
-  const creating = isCreating ? (
-    <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
-  ) : null;
-  const diffStatNode =
-    showDiffStat && diffStat ? (
-      <DiffStat additions={diffStat.additions} deletions={diffStat.deletions} />
-    ) : null;
-  const kebab = onArchive ? (
-    <SidebarWorkspaceMenu
-      workspaceKey={workspace.workspaceKey}
-      onCopyPath={onCopyPath}
-      onCopyBranchName={onCopyBranchName}
-      onRename={onRename}
-      onMarkAsRead={onMarkAsRead}
-      serverId={workspace.serverId}
-      workspaceId={workspace.workspaceId}
-      onArchive={onArchive}
-      archiveLabel={archiveLabel}
-      archiveStatus={archiveStatus}
-      archivePendingLabel={archivePendingLabel}
-      archiveShortcutKeys={archiveShortcutKeys}
-    />
-  ) : null;
+  const {
+    showTrailing,
+    showKebab: showKebabInSlot,
+    showScrim,
+    renderSlot,
+    reserveSlotWidth,
+  } = resolveTrailingActionVisibility({
+    workspace,
+    trailing,
+    hasArchiveAction: Boolean(onArchive),
+    isHovered,
+    isTouchPlatform,
+    showShortcut,
+  });
+  const kebab = useOpenKebabMenuVisibility(showKebabInSlot);
 
-  if (floatActions) {
-    return {
-      // Reserve only for the diff stat, and only when there is one. With no diff
-      // stat the row reserves nothing and the workspace name runs the full width.
-      flow: hasDiffStat ? (
-        <>
-          {creating}
-          <SidebarWorkspaceTrailingActionSlot>
-            <SidebarWorkspaceTrailingActionBase visible={!showShortcut}>
-              {diffStatNode}
-            </SidebarWorkspaceTrailingActionBase>
-          </SidebarWorkspaceTrailingActionSlot>
-        </>
-      ) : (
-        creating
-      ),
-      floating: showKebabInSlot ? kebab : null,
-    };
-  }
-
-  return {
-    flow:
-      onArchive || hasDiffStat ? (
-        <>
-          {creating}
-          <SidebarWorkspaceTrailingActionSlot>
-            <SidebarWorkspaceTrailingActionBase
-              visible={hasDiffStat && !showKebabInSlot && !showShortcut}
-            >
-              {diffStatNode}
-            </SidebarWorkspaceTrailingActionBase>
-            <SidebarWorkspaceTrailingActionOverlay visible={showKebabInSlot}>
-              {kebab}
-            </SidebarWorkspaceTrailingActionOverlay>
-          </SidebarWorkspaceTrailingActionSlot>
-        </>
-      ) : (
-        creating
-      ),
-    floating: null,
-  };
+  return (
+    <>
+      {isCreating ? (
+        <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
+      ) : null}
+      {renderSlot ? (
+        <SidebarWorkspaceTrailingActionSlot reserveWidth={reserveSlotWidth}>
+          <SidebarWorkspaceTrailingActionBase visible={showTrailing}>
+            <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
+          </SidebarWorkspaceTrailingActionBase>
+          <SidebarWorkspaceTrailingActionOverlay visible={kebab.showKebab} scrim={showScrim}>
+            {onArchive ? (
+              <SidebarWorkspaceMenu
+                {...kebab.menuProps}
+                workspaceKey={workspace.workspaceKey}
+                onCopyPath={onCopyPath}
+                onCopyBranchName={onCopyBranchName}
+                onRename={onRename}
+                onMarkAsRead={onMarkAsRead}
+                serverId={workspace.serverId}
+                workspaceId={workspace.workspaceId}
+                onArchive={onArchive}
+                archiveLabel={archiveLabel}
+                archiveStatus={archiveStatus}
+                archivePendingLabel={archivePendingLabel}
+                archiveShortcutKeys={archiveShortcutKeys}
+              />
+            ) : null}
+          </SidebarWorkspaceTrailingActionOverlay>
+        </SidebarWorkspaceTrailingActionSlot>
+      ) : null}
+    </>
+  );
 }
 
 function getWorkspaceRowStyle({
   isDragging,
+  isPressed,
   selected,
   isHovered,
 }: {
   isDragging: boolean;
+  isPressed: boolean;
   selected: boolean;
   isHovered: boolean;
 }) {
   return [
     styles.workspaceRow,
-    isDragging && styles.workspaceRowDragging,
     selected && styles.sidebarRowSelected,
     isHovered && styles.workspaceRowHovered,
+    isDragging && styles.workspaceRowDragging,
+    isPressed && styles.workspaceRowPressed,
   ];
 }
 
@@ -561,11 +507,11 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   workspaceRow: {
-    // Match the compact sidebar header rows (New workspace / Artifacts / Schedules).
-    minHeight: 32,
-    marginBottom: 2,
-    paddingVertical: theme.spacing[1.5],
-    paddingHorizontal: theme.spacing[2],
+    minHeight: 36,
+    marginBottom: theme.spacing[1],
+    paddingVertical: theme.spacing[2],
+    paddingLeft: theme.spacing[2],
+    paddingRight: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
     alignItems: "stretch",
@@ -576,11 +522,11 @@ const styles = StyleSheet.create((theme) => ({
   workspaceRowHovered: {
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
+  workspaceRowPressed: {
+    backgroundColor: theme.colors.surface2,
+  },
   workspaceRowDragging: {
-    // surface1, not surface2: `border` is nearly identical to surface2 on this
-    // theme, which swallowed the lifted card's own outline (the shadow still
-    // sells the lift against the sidebar background either way).
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
     borderWidth: 1,
     borderColor: theme.colors.border,
     transform: [{ scale: 1.02 }],

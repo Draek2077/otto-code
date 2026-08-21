@@ -1,10 +1,10 @@
-import { expect, test } from "../../e2e/fixtures";
+import { expect, test } from "../../e2e/support/fixtures";
 import {
   connectPersonalitiesClient,
   openModelPersonalityPicker,
-} from "../../e2e/helpers/personalities";
-import { getServerId } from "../../e2e/helpers/server-id";
-import { openVisualizerFromHeader, visualizerIframe } from "../../e2e/helpers/visualizer";
+} from "../../e2e/support/helpers/personalities";
+import { getServerId } from "../../e2e/support/helpers/server-id";
+import { openVisualizerFromHeader, visualizerIframe } from "../../e2e/support/helpers/visualizer";
 import { buildHostAgentDetailRoute } from "../../src/utils/host-routes";
 import { applyDemoAppearance } from "../helpers/appearance";
 import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";
