@@ -1,5 +1,12 @@
 import { useCallback, useMemo } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+  type PressableStateCallbackType,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { IconComponent } from "@/components/icons/material-icons";
 import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from "@/constants/layout";
@@ -36,6 +43,7 @@ interface SidebarHeaderRowProps {
    */
   variant?: SidebarHeaderRowVariant;
   shortcutKeys?: ShortcutKey[][] | null;
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
 export function SidebarHeaderRow({
@@ -48,12 +56,16 @@ export function SidebarHeaderRow({
   accessibilityLabel,
   variant = "header",
   shortcutKeys = null,
+  containerStyle: containerStyleOverride,
 }: SidebarHeaderRowProps) {
   const ThemedIcon = useMemo(() => withUnistyles(Icon), [Icon]);
 
   const containerStyle = useMemo(
-    () => (variant === "compact" ? styles.containerCompact : styles.container),
-    [variant],
+    () => [
+      variant === "compact" ? styles.containerCompact : styles.container,
+      containerStyleOverride,
+    ],
+    [containerStyleOverride, variant],
   );
 
   const buttonStyle = useCallback(
@@ -111,7 +123,11 @@ function SidebarHeaderRowLabel({
     () => [styles.label, isHighlighted && styles.labelHighlighted],
     [isHighlighted],
   );
-  return <Text style={labelStyle}>{label}</Text>;
+  return (
+    <Text style={labelStyle} numberOfLines={1} ellipsizeMode="tail">
+      {label}
+    </Text>
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -155,6 +171,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceHover,
   },
   label: {
+    flexShrink: 1,
     // Explicit compact bump (not left to the ambient theme-patch scale).
     fontSize: {
       xs: theme.fontSize.sm + 2,

@@ -6,7 +6,6 @@ import {
   FolderPlus,
   History,
   Network,
-  Plus,
   Search,
   Server,
   X,
@@ -49,8 +48,6 @@ import { useSidebarSlide } from "@/hooks/use-sidebar-slide";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
-import { canCreateWorktreeForProjectKind } from "@/projects/host-projects";
-import { useHostFeature } from "@/runtime/host-features";
 import {
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
@@ -62,8 +59,6 @@ import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { type SidebarGroupMode } from "@/stores/sidebar-view-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
-import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import { useWorkspace } from "@/stores/session-store-hooks";
 import {
   MAX_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
@@ -76,7 +71,6 @@ import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import {
   buildOpenProjectRoute,
   buildArtifactsRoute,
-  buildNewWorkspaceRoute,
   buildRunsRoute,
   buildKanbanRoute,
   buildSchedulesRoute,
@@ -86,7 +80,6 @@ import {
   buildStatsRoute,
   buildSettingsRoute,
 } from "@/utils/host-routes";
-import type { ShortcutKey } from "@/utils/format-shortcut";
 import { compactUp, ICON_SIZE, useIconSize } from "@/styles/theme";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
@@ -125,14 +118,12 @@ interface SidebarSharedProps {
   handleStats: () => void;
   handleBrain: () => void;
   labels: SidebarLabels;
-  newWorkspaceKeys: ShortcutKey[][] | null;
   handleAddHost: () => void;
   handleOpenHostSettings: (serverId: string) => void;
 }
 
 interface SidebarLabels {
   addProject: string;
-  newWorkspace: string;
   home: string;
   settings: string;
   stats: string;
@@ -304,11 +295,9 @@ export const LeftSidebar = memo(function LeftSidebar() {
     router.push(buildKanbanRoute());
   }, []);
 
-  const newWorkspaceKeys = useShortcutKeys("new-workspace");
   const labels = useMemo(
     (): SidebarLabels => ({
       addProject: t("sidebar.actions.addProject"),
-      newWorkspace: t("sidebar.actions.newWorkspace"),
       home: t("sidebar.actions.home"),
       settings: t("sidebar.actions.settings"),
       // Temporary label (English-only), same rationale as `runs` below.
@@ -344,7 +333,6 @@ export const LeftSidebar = memo(function LeftSidebar() {
     toggleProjectCollapsed,
     handleRefresh,
     labels,
-    newWorkspaceKeys,
   };
 
   if (isCompactLayout) {
@@ -492,60 +480,83 @@ function HeaderIconTooltipContent({
   );
 }
 
-const SidebarNewWorkspaceHeaderRow = memo(function SidebarNewWorkspaceHeaderRow({
-  label,
-  testID,
-  variant,
-  shortcutKeys,
-  onBeforeNavigate,
-}: {
-  label: string;
-  testID: string;
-  variant: "header" | "compact";
-  shortcutKeys: ShortcutKey[][] | null;
-  onBeforeNavigate?: () => void;
-}) {
-  const activeWorkspaceSelection = useActiveWorkspaceSelection();
-  const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
-  const activeWorkspaceId = activeWorkspaceSelection?.workspaceId ?? null;
-  const activeWorkspace = useWorkspace(activeWorkspaceServerId, activeWorkspaceId);
-  const supportsWorkspaceMultiplicity = useHostFeature(
-    activeWorkspaceServerId,
-    "workspaceMultiplicity",
-  );
-  const canUseActiveWorkspaceContext = Boolean(
-    activeWorkspace &&
-    (supportsWorkspaceMultiplicity || canCreateWorktreeForProjectKind(activeWorkspace.projectKind)),
-  );
+interface SidebarNavigationGridProps {
+  labels: SidebarLabels;
+  isSessionsActive: boolean;
+  isArtifactsActive: boolean;
+  isRunsActive: boolean;
+  isSchedulesActive: boolean;
+  isKanbanActive: boolean;
+  onViewSessions: () => void;
+  onViewArtifacts: () => void;
+  onViewRuns: () => void;
+  onViewSchedules: () => void;
+  onViewKanban: () => void;
+}
 
-  const handlePress = useCallback(() => {
-    onBeforeNavigate?.();
-    router.push(
-      activeWorkspaceServerId
-        ? buildNewWorkspaceRoute(
-            activeWorkspace && canUseActiveWorkspaceContext
-              ? {
-                  serverId: activeWorkspaceServerId,
-                  sourceDirectory: activeWorkspace.projectRootPath,
-                  projectId: activeWorkspace.projectId,
-                }
-              : { serverId: activeWorkspaceServerId },
-          )
-        : buildNewWorkspaceRoute(),
-    );
-  }, [activeWorkspace, activeWorkspaceServerId, canUseActiveWorkspaceContext, onBeforeNavigate]);
-
+function SidebarNavigationGrid({
+  labels,
+  isSessionsActive,
+  isArtifactsActive,
+  isRunsActive,
+  isSchedulesActive,
+  isKanbanActive,
+  onViewSessions,
+  onViewArtifacts,
+  onViewRuns,
+  onViewSchedules,
+  onViewKanban,
+}: SidebarNavigationGridProps) {
   return (
-    <SidebarHeaderRow
-      icon={Plus}
-      label={label}
-      onPress={handlePress}
-      testID={testID}
-      variant={variant}
-      shortcutKeys={shortcutKeys}
-    />
+    <View style={styles.sidebarNavigationGrid}>
+      <SidebarHeaderRow
+        icon={History}
+        label={labels.sessions}
+        onPress={onViewSessions}
+        isActive={isSessionsActive}
+        testID="sidebar-sessions"
+        variant="compact"
+        containerStyle={styles.sidebarNavigationItemFullWidth}
+      />
+      <SidebarHeaderRow
+        icon={FileText}
+        label={labels.artifacts}
+        onPress={onViewArtifacts}
+        isActive={isArtifactsActive}
+        testID="sidebar-artifacts"
+        variant="compact"
+        containerStyle={styles.sidebarNavigationItem}
+      />
+      <SidebarHeaderRow
+        icon={Network}
+        label={labels.runs}
+        onPress={onViewRuns}
+        isActive={isRunsActive}
+        testID="sidebar-runs"
+        variant="compact"
+        containerStyle={styles.sidebarNavigationItem}
+      />
+      <SidebarHeaderRow
+        icon={CalendarClock}
+        label={labels.schedules}
+        onPress={onViewSchedules}
+        isActive={isSchedulesActive}
+        testID="sidebar-schedules"
+        variant="compact"
+        containerStyle={styles.sidebarNavigationItem}
+      />
+      <SidebarHeaderRow
+        icon={Columns2}
+        label={labels.kanban}
+        onPress={onViewKanban}
+        isActive={isKanbanActive}
+        testID="sidebar-kanban"
+        variant="compact"
+        containerStyle={styles.sidebarNavigationItem}
+      />
+    </View>
   );
-});
+}
 
 function SidebarFooter({
   theme,
@@ -645,7 +656,6 @@ function MobileSidebar({
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
   handleRefresh,
-  newWorkspaceKeys,
   handleOpenProject,
   handleHome,
   handleSettings,
@@ -718,52 +728,18 @@ function MobileSidebar({
       <View style={styles.sidebarContent} pointerEvents="auto">
         <View style={styles.sidebarHeaderGroup}>
           <SidebarActiveTeamSwitchers onBeforeNavigate={closeSidebar} />
-          <SidebarNewWorkspaceHeaderRow
-            label={labels.newWorkspace}
-            testID="sidebar-global-new-workspace"
-            variant="compact"
-            shortcutKeys={newWorkspaceKeys}
-            onBeforeNavigate={closeSidebar}
-          />
-          <SidebarHeaderRow
-            icon={History}
-            label={labels.sessions}
-            onPress={handleViewMore}
-            isActive={isSessionsActive}
-            testID="sidebar-sessions"
-            variant="compact"
-          />
-          <SidebarHeaderRow
-            icon={FileText}
-            label={labels.artifacts}
-            onPress={handleViewArtifacts}
-            isActive={isArtifactsActive}
-            testID="sidebar-artifacts"
-            variant="compact"
-          />
-          <SidebarHeaderRow
-            icon={Network}
-            label={labels.runs}
-            onPress={handleViewRuns}
-            isActive={isRunsActive}
-            testID="sidebar-runs"
-            variant="compact"
-          />
-          <SidebarHeaderRow
-            icon={CalendarClock}
-            label={labels.schedules}
-            onPress={handleViewSchedules}
-            isActive={isSchedulesActive}
-            testID="sidebar-schedules"
-            variant="compact"
-          />
-          <SidebarHeaderRow
-            icon={Columns2}
-            label={labels.kanban}
-            onPress={handleViewKanban}
-            isActive={isKanbanActive}
-            testID="sidebar-kanban"
-            variant="compact"
+          <SidebarNavigationGrid
+            labels={labels}
+            isSessionsActive={isSessionsActive}
+            isArtifactsActive={isArtifactsActive}
+            isRunsActive={isRunsActive}
+            isSchedulesActive={isSchedulesActive}
+            isKanbanActive={isKanbanActive}
+            onViewSessions={handleViewMore}
+            onViewArtifacts={handleViewArtifacts}
+            onViewRuns={handleViewRuns}
+            onViewSchedules={handleViewSchedules}
+            onViewKanban={handleViewKanban}
           />
         </View>
         <WorkspacesSectionHeader
@@ -839,7 +815,6 @@ function DesktopSidebar({
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
   handleRefresh,
-  newWorkspaceKeys,
   handleOpenProject,
   handleHome,
   handleSettings,
@@ -964,51 +939,18 @@ function DesktopSidebar({
           {showTopSpacer ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
             <SidebarActiveTeamSwitchers />
-            <SidebarNewWorkspaceHeaderRow
-              label={labels.newWorkspace}
-              testID="sidebar-global-new-workspace"
-              variant="compact"
-              shortcutKeys={newWorkspaceKeys}
-            />
-            <SidebarHeaderRow
-              icon={History}
-              label={labels.sessions}
-              onPress={handleViewMore}
-              isActive={isSessionsActive}
-              testID="sidebar-sessions"
-              variant="compact"
-            />
-            <SidebarHeaderRow
-              icon={FileText}
-              label={labels.artifacts}
-              onPress={handleViewArtifacts}
-              isActive={isArtifactsActive}
-              testID="sidebar-artifacts"
-              variant="compact"
-            />
-            <SidebarHeaderRow
-              icon={Network}
-              label={labels.runs}
-              onPress={handleViewRuns}
-              isActive={isRunsActive}
-              testID="sidebar-runs"
-              variant="compact"
-            />
-            <SidebarHeaderRow
-              icon={CalendarClock}
-              label={labels.schedules}
-              onPress={handleViewSchedules}
-              isActive={isSchedulesActive}
-              testID="sidebar-schedules"
-              variant="compact"
-            />
-            <SidebarHeaderRow
-              icon={Columns2}
-              label={labels.kanban}
-              onPress={handleViewKanban}
-              isActive={isKanbanActive}
-              testID="sidebar-kanban"
-              variant="compact"
+            <SidebarNavigationGrid
+              labels={labels}
+              isSessionsActive={isSessionsActive}
+              isArtifactsActive={isArtifactsActive}
+              isRunsActive={isRunsActive}
+              isSchedulesActive={isSchedulesActive}
+              isKanbanActive={isKanbanActive}
+              onViewSessions={handleViewMore}
+              onViewArtifacts={handleViewArtifacts}
+              onViewRuns={handleViewRuns}
+              onViewSchedules={handleViewSchedules}
+              onViewKanban={handleViewKanban}
             />
           </View>
         </View>
@@ -1182,6 +1124,18 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[1.5],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+  },
+  sidebarNavigationGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 2,
+  },
+  sidebarNavigationItem: {
+    flexGrow: 1,
+    flexBasis: 0,
+  },
+  sidebarNavigationItemFullWidth: {
+    flexBasis: "100%",
   },
   workspacesSectionHeader: {
     flexDirection: "row",
