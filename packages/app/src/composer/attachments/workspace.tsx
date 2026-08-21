@@ -15,7 +15,7 @@ import {
 } from "@/attachments/workspace-attachment-utils";
 import {
   getAttachmentKey,
-  removeSentContextAttachments,
+  removeSentWorkspaceAttachments,
   removeWorkspaceAttachmentsMatching,
 } from "./workspace-cleanup";
 import { useClearReviewDraft } from "@/review/store";
@@ -174,7 +174,7 @@ function useWorkspaceAttachmentBinding({
           clearReviewDraft({ key: attachment.reviewDraftKey });
         }
       }
-      removeSentContextAttachments(attachments);
+      removeSentWorkspaceAttachments(attachments);
     },
     [clearReviewDraft],
   );
@@ -183,24 +183,18 @@ function useWorkspaceAttachmentBinding({
     ({ selectedAttachments: current, index }: RemoveWorkspaceAttachmentInput) => {
       const selected = current[index];
       if (isWorkspaceAttachment(selected)) {
-        if (
-          selected.kind === "browser_element" ||
-          selected.kind === "chat_history" ||
-          selected.kind === "meeting_transcript" ||
-          selected.kind === "file_context" ||
-          selected.kind === "rendered_document" ||
-          isPullRequestContextAttachment(selected)
-        ) {
-          const selectedKey = getAttachmentKey(selected);
-          removeWorkspaceAttachmentsMatching(selectedKey);
+        if (selected.kind === "review") {
+          clearReviewDraft({ key: selected.reviewDraftKey });
+          removeWorkspaceAttachmentsMatching(getAttachmentKey(selected));
+          suppressWorkspaceAttachment(selected);
           return true;
         }
-        suppressWorkspaceAttachment(selected);
+        removeWorkspaceAttachmentsMatching(getAttachmentKey(selected));
         return true;
       }
       return false;
     },
-    [suppressWorkspaceAttachment],
+    [clearReviewDraft, suppressWorkspaceAttachment],
   );
 
   const openAttachment = useCallback(

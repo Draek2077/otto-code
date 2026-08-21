@@ -1,6 +1,9 @@
 import type { ComposerAttachment, WorkspaceComposerAttachment } from "@/attachments/types";
 import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachments-store";
-import { isPullRequestContextAttachment } from "@/attachments/workspace-attachment-utils";
+import {
+  isPullRequestContextAttachment,
+  isWorkspaceAttachment,
+} from "@/attachments/workspace-attachment-utils";
 
 export function getAttachmentKey(attachment: WorkspaceComposerAttachment): string {
   if (attachment.kind === "browser_element") {
@@ -58,22 +61,15 @@ export function removeWorkspaceAttachmentsMatching(selectedKey: string): void {
   }
 }
 
-function isSentContextAttachment(
+function isSentWorkspaceAttachment(
   attachment: ComposerAttachment,
 ): attachment is WorkspaceComposerAttachment {
-  return (
-    attachment.kind === "browser_element" ||
-    attachment.kind === "chat_history" ||
-    attachment.kind === "meeting_transcript" ||
-    attachment.kind === "file_context" ||
-    attachment.kind === "rendered_document" ||
-    isPullRequestContextAttachment(attachment)
-  );
+  return isWorkspaceAttachment(attachment);
 }
 
-export function removeSentContextAttachments(attachments: readonly ComposerAttachment[]): void {
-  const sentContextKeys = attachments.filter(isSentContextAttachment).map(getAttachmentKey);
-  for (const key of sentContextKeys) {
+export function removeSentWorkspaceAttachments(attachments: readonly ComposerAttachment[]): void {
+  const sentWorkspaceKeys = attachments.filter(isSentWorkspaceAttachment).map(getAttachmentKey);
+  for (const key of sentWorkspaceKeys) {
     removeWorkspaceAttachmentsMatching(key);
   }
 }

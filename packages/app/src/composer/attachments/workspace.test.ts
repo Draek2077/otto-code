@@ -1,11 +1,27 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import "@/test/window-local-storage";
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import {
   buildDraftWorkspaceAttachmentScopeKey,
+  buildWorkspaceAttachmentScopeKey,
   resetWorkspaceAttachmentsStore,
+  useWorkspaceAttachments,
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
-import { removeSentContextAttachments } from "./workspace-cleanup";
+import { resetReviewDraftStore, useReviewDraftStore } from "@/review/store";
+import { removeSentWorkspaceAttachments } from "./workspace-cleanup";
+import { composerWorkspaceAttachment } from "./workspace";
+
+vi.mock("@/attachments/attachment-pill-content", () => ({
+  getWorkspaceAttachmentPillContent: vi.fn(),
+}));
+
+vi.mock("@/components/attachment-pill", () => ({
+  AttachmentLabel: vi.fn(),
+  AttachmentPill: vi.fn(),
+}));
 
 function chatHistoryAttachment(): WorkspaceComposerAttachment {
   return {
@@ -63,6 +79,60 @@ function browserElementAttachment(): WorkspaceComposerAttachment {
   };
 }
 
+function reviewAttachment(
+  reviewDraftKey: string,
+): Extract<WorkspaceComposerAttachment, { kind: "review" }> {
+  return {
+    kind: "review",
+    reviewDraftKey,
+    commentCount: 1,
+    attachment: {
+      type: "review",
+      mimeType: "application/otto-review",
+      cwd: "/repo",
+      mode: "uncommitted",
+      baseRef: null,
+      comments: [],
+    },
+  };
+}
+
+const discardableWorkspaceAttachments: Array<[string, WorkspaceComposerAttachment]> = [
+  ["browser annotation", browserElementAttachment()],
+  ["meeting notes", meetingTranscriptAttachment()],
+  ["PR feedback", pullRequestContextAttachment()],
+  ["chat history", chatHistoryAttachment()],
+  [
+    "file context",
+    { kind: "file_context", id: "src/example.ts:41", path: "src/example.ts", lineStart: 41 },
+  ],
+  [
+    "rendered document annotation",
+    {
+      kind: "rendered_document",
+      id: "docs/design.md:heading:12:12",
+      path: "docs/design.md",
+      locator: { kind: "heading", level: 2, lineStart: 12, lineEnd: 12, text: "Design" },
+      excerpt: "## Design",
+      comment: "Keep this stable.",
+    },
+  ],
+];
+
+function useStoredWorkspaceAttachmentBinding(scopeKey: string) {
+  const workspaceAttachments = useWorkspaceAttachments(scopeKey);
+  return composerWorkspaceAttachment.useBinding({
+    normalAttachments: [],
+    workspaceAttachments,
+  });
+}
+
+afterEach(() => {
+  cleanup();
+  resetReviewDraftStore();
+  resetWorkspaceAttachmentsStore();
+});
+
 describe("workspace composer attachment cleanup", () => {
   it("clears sent scoped context attachments from their stores", () => {
     resetWorkspaceAttachmentsStore();
@@ -70,12 +140,13 @@ describe("workspace composer attachment cleanup", () => {
     const chatHistory = chatHistoryAttachment();
     const pullRequestContext = pullRequestContextAttachment();
     const browserElement = browserElementAttachment();
+    const review = reviewAttachment("review:sent");
     useWorkspaceAttachmentsStore.getState().setWorkspaceAttachments({
       scopeKey,
-      attachments: [chatHistory, pullRequestContext, browserElement],
+      attachments: [chatHistory, pullRequestContext, browserElement, review],
     });
 
-    removeSentContextAttachments([chatHistory, pullRequestContext, browserElement]);
+    removeSentWorkspaceAttachments([chatHistory, pullRequestContext, browserElement, review]);
 
     expect(useWorkspaceAttachmentsStore.getState().attachmentsByScope[scopeKey]).toBeUndefined();
   });
@@ -89,8 +160,71 @@ describe("workspace composer attachment cleanup", () => {
       attachments: [transcript],
     });
 
-    removeSentContextAttachments([transcript]);
+    removeSentWorkspaceAttachments([transcript]);
 
     expect(useWorkspaceAttachmentsStore.getState().attachmentsByScope[scopeKey]).toBeUndefined();
   });
+
+  it("deletes review comments when the review attachment is dismissed", () => {
+    const reviewDraftKey = "review:local:repo:uncommitted";
+    const scopeKey = buildWorkspaceAttachmentScopeKey({
+      serverId: "local",
+      workspaceId: "workspace-1",
+      cwd: "/repo",
+    });
+    useReviewDraftStore.getState().addComment({
+      key: reviewDraftKey,
+      comment: {
+        filePath: "src/example.ts",
+        side: "new",
+        lineNumber: 41,
+        body: "Please handle this edge case.",
+      },
+    });
+    const review = reviewAttachment(reviewDraftKey);
+    useWorkspaceAttachmentsStore
+      .getState()
+      .setWorkspaceAttachments({ scopeKey, attachments: [review] });
+    const { result } = renderHook(() => useStoredWorkspaceAttachmentBinding(scopeKey));
+
+    let didRemove = false;
+    act(() => {
+      didRemove = result.current.removeAttachment({
+        selectedAttachments: result.current.selectedAttachments,
+        index: 0,
+      });
+    });
+
+    expect(didRemove).toBe(true);
+    expect(useReviewDraftStore.getState().drafts[reviewDraftKey]).toBeUndefined();
+    expect(useWorkspaceAttachmentsStore.getState().attachmentsByScope[scopeKey]).toBeUndefined();
+    expect(result.current.selectedAttachments).toEqual([]);
+  });
+
+  it.each(discardableWorkspaceAttachments)(
+    "permanently discards %s when its composer attachment is dismissed",
+    (_label, attachment) => {
+      const scopeKey = buildWorkspaceAttachmentScopeKey({
+        serverId: "local",
+        workspaceId: "workspace-1",
+        cwd: "/repo",
+      });
+      useWorkspaceAttachmentsStore
+        .getState()
+        .setWorkspaceAttachments({ scopeKey, attachments: [attachment] });
+      const { result } = renderHook(() => useStoredWorkspaceAttachmentBinding(scopeKey));
+
+      let didRemove = false;
+      act(() => {
+        didRemove = result.current.removeAttachment({
+          selectedAttachments: result.current.selectedAttachments,
+          index: 0,
+        });
+      });
+
+      expect(didRemove).toBe(true);
+      expect(useWorkspaceAttachmentsStore.getState().attachmentsByScope[scopeKey]).toBeUndefined();
+      expect(result.current.selectedAttachments).toEqual([]);
+    },
+  );
 });
