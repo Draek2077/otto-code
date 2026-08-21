@@ -21,6 +21,7 @@ import {
   FolderOpen,
   History,
   List,
+  MessageSquarePlus,
   Save,
   Search,
   Terminal,
@@ -76,6 +77,11 @@ import { useCodeIndexFeature } from "@/editor/use-code-index-feature";
 import { useMarkdownLinkTargets } from "@/editor/use-markdown-link-targets";
 import { useMarkdownImageDrop } from "@/editor/markdown/use-markdown-image-drop";
 import { useSessionStore } from "@/stores/session-store";
+import { createFileContextAttachment } from "@/attachments/file-context";
+import {
+  useWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachmentsStore,
+} from "@/attachments/workspace-attachments-store";
 import { exportMarkdownAsHtml } from "@/components/markdown/export-markdown-html";
 import { exportMarkdownAsPdf } from "@/components/markdown/export-markdown-pdf";
 import { useBinaryFileWriteFeature } from "@/file-explorer/use-binary-file-write-feature";
@@ -165,6 +171,7 @@ const ThemedHistory = withUnistyles(History);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedSourceControl = withUnistyles(SourceControlPanelIcon);
 const ThemedWandStars = withUnistyles(WandStars);
+const ThemedMessageSquarePlus = withUnistyles(MessageSquarePlus);
 const ThemedDownload = withUnistyles(Download);
 const ThemedFileText = withUnistyles(FileText);
 const ThemedSave = withUnistyles(Save);
@@ -517,6 +524,7 @@ function PreviewOnlyView({
   onNavigateToFile,
   onViewChanges,
   onRefine,
+  onAddToChat,
 }: {
   serverId: string;
   workspaceId: string;
@@ -535,6 +543,8 @@ function PreviewOnlyView({
   onViewChanges: (() => void) | null;
   /** Opens the Refine job tab for this file; null when unavailable. */
   onRefine: (() => void) | null;
+  /** Attaches this file to the composer as a pill; null outside the project. */
+  onAddToChat: (() => void) | null;
 }) {
   const { t } = useTranslation();
   const draftOverride = useDraftOverride({ serverId, workspaceId, path: location.path });
@@ -565,10 +575,21 @@ function PreviewOnlyView({
   const [matchCount, setMatchCount] = useState(0);
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
 
-  // Find only makes sense over the syntax-highlighted text view: a rendered
-  // document (markdown, a mermaid diagram) has no line mapping to highlight,
-  // and images/binaries have no text. The button and strip stay hidden for those.
-  const findAvailable = fileInfo?.kind === "text" && !fileInfo.isRenderedDocument;
+  // Find works over anything the preview renders as words: the highlighted code
+  // view scans the file line by line, and a rendered document (markdown, a
+  // mermaid diagram) scans the text runs it puts on screen. Images and binaries
+  // have no text, so the button and strip stay hidden for those.
+  //
+  // An HTML file is the exception among rendered documents. It renders inside a
+  // web view, which owns its own content and its own find - reaching across
+  // that boundary is a different mechanism, not this one - so it gets no strip
+  // rather than a strip that always reports no matches.
+  const previewIsWebView = renderedDocumentKind(location.path) === "html";
+  const findAvailable = fileInfo?.kind === "text" && !previewIsWebView;
+  // Wrap is a property of the line-numbered code view only: rendered prose and
+  // images wrap by their own rules, and there is no horizontal scroller there
+  // for the toggle to turn off.
+  const wrapAvailable = fileInfo?.kind === "text" && !fileInfo.isRenderedDocument;
 
   const findQuery = useMemo<PreviewFindQuery | null>(
     () =>
@@ -651,6 +672,7 @@ function PreviewOnlyView({
           showLeadingSeparator={false}
         />
         <FileAiToolbarGroup
+          onAddToChat={onAddToChat}
           onRefine={onRefine}
           showLeadingSeparator={Boolean(handleOpenHistory || onViewChanges)}
         />
@@ -679,9 +701,7 @@ function PreviewOnlyView({
           />
         ) : null}
         <View style={styles.toolbarSpacer} />
-        {/* Wrap only means anything over the line-numbered code view; markdown
-            prose and images wrap by their own rules. */}
-        {findAvailable ? (
+        {wrapAvailable ? (
           <ToolbarIconButton
             label={t("editor.wordWrap")}
             testID="preview-wordwrap-toggle"
@@ -803,26 +823,47 @@ function FileExportToolbarGroup({
   );
 }
 
+/**
+ * The agent-facing cluster: hand this file to the chat, or rewrite it.
+ *
+ * "Add to chat" sits here rather than beside save and revert because it does
+ * not touch the file - it puts a reference to it in the composer, the same
+ * `file_context` pill the file explorer and the Changes pane produce. It is a
+ * whole-file reference; the range version is the editor's right-click, which
+ * has a selection to act on.
+ */
 function FileAiToolbarGroup({
+  onAddToChat,
   onRefine,
   showLeadingSeparator,
 }: {
+  onAddToChat: (() => void) | null;
   onRefine: (() => void) | null;
   showLeadingSeparator: boolean;
 }) {
   const { t } = useTranslation();
-  if (!onRefine) {
+  if (!onAddToChat && !onRefine) {
     return null;
   }
   return (
     <>
       {showLeadingSeparator ? <ToolbarSeparator /> : null}
-      <ToolbarIconButton
-        label={t("refine.open")}
-        testID="file-refine-open"
-        Icon={ThemedWandStars}
-        onPress={onRefine}
-      />
+      {onAddToChat ? (
+        <ToolbarIconButton
+          label={t("editor.addToChat.file")}
+          testID="file-add-to-chat"
+          Icon={ThemedMessageSquarePlus}
+          onPress={onAddToChat}
+        />
+      ) : null}
+      {onRefine ? (
+        <ToolbarIconButton
+          label={t("refine.open")}
+          testID="file-refine-open"
+          Icon={ThemedWandStars}
+          onPress={onRefine}
+        />
+      ) : null}
     </>
   );
 }
@@ -911,6 +952,7 @@ function EditorContextMenu({
   onPaste,
   onSelectAll,
   onSelectLine,
+  onAddSelectionToChat,
 }: {
   anchor: { x: number; y: number } | null;
   onClose: () => void;
@@ -921,6 +963,8 @@ function EditorContextMenu({
   onFindReferences: (() => void) | null;
   /** Null for the same reason: a rename with no server behind it is a find-and-replace. */
   onRenameSymbol: (() => void) | null;
+  /** Null when the file is outside the project, so there is no workspace path to reference. */
+  onAddSelectionToChat: (() => void) | null;
   onCut: () => void;
   onCopy: () => void;
   onPaste: () => void;
@@ -988,6 +1032,22 @@ function EditorContextMenu({
           </ContextMenuItem>
         ) : null}
         {canGoToDefinition || onFindReferences || onRenameSymbol ? <ContextMenuSeparator /> : null}
+        {/* Sits above the clipboard actions because it is the same shape as
+            copy - take what is selected and put it somewhere - and disabled by
+            the same test. With no selection there is no range to reference, and
+            the whole-file version is one click away in the toolbar. */}
+        {onAddSelectionToChat ? (
+          <>
+            <ContextMenuItem
+              testID="editor-context-add-selection-to-chat"
+              disabled={!hasSelection}
+              onSelect={onAddSelectionToChat}
+            >
+              {t("editor.addToChat.selection")}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        ) : null}
         <ContextMenuItem disabled={!hasSelection} onSelect={onCut} trailing={hints.cut}>
           {t("editor.contextMenu.cut")}
         </ContextMenuItem>
@@ -1282,6 +1342,8 @@ function EditorModeView({
   onNavigateToFile,
   onViewChanges,
   onRefine,
+  onAddToChat,
+  onAddSelectionToChat,
   onOpenExternalEditor,
   externalEditorLabel,
 }: {
@@ -1303,6 +1365,10 @@ function EditorModeView({
   onViewChanges: (() => void) | null;
   /** Opens the Refine job tab for this file; null when unavailable. */
   onRefine: (() => void) | null;
+  /** Attaches this file to the composer as a pill; null outside the project. */
+  onAddToChat: (() => void) | null;
+  /** Attaches the selected range as a pill; null outside the project. */
+  onAddSelectionToChat: (() => void) | null;
   /** Starts the host-owned editor after the clean-buffer guard passes. */
   onOpenExternalEditor: (() => void) | null;
   externalEditorLabel: string | null;
@@ -1988,7 +2054,7 @@ function EditorModeView({
           label={externalEditorLabel}
           onOpen={onOpenExternalEditor}
         />
-        <FileAiToolbarGroup onRefine={onRefine} showLeadingSeparator />
+        <FileAiToolbarGroup onAddToChat={onAddToChat} onRefine={onRefine} showLeadingSeparator />
         <FileExportToolbarGroup
           onExportHtml={onExportHtml}
           onExportPdf={onExportPdf}
@@ -2135,6 +2201,7 @@ function EditorModeView({
         onPaste={handleEditorPaste}
         onSelectAll={handleEditorSelectAll}
         onSelectLine={handleEditorSelectLine}
+        onAddSelectionToChat={onAddSelectionToChat}
       />
 
       <RenameSymbolDialog
@@ -2506,6 +2573,72 @@ export function FileTabPane({
     };
   }, [editGate.kind, location.path, serverId, workspaceRoot]);
 
+  // "Add to chat" - hand this file, or the selected range, to the composer as a
+  // removable pill.
+  //
+  // Written to the WORKSPACE attachment scope, which every chat composer in
+  // this workspace reads, rather than to one chat's own scope. That is what
+  // makes it work from here at all: the focused pane is this file, so there is
+  // no focused chat to aim at, and requiring one would take the action away
+  // exactly when the user is reading the code they want to ask about.
+  //
+  // In-project only, for the same reason as history, changes and Refine: the
+  // attachment carries a workspace-relative path, so a linked or outside-project
+  // file would point the agent at the wrong tree.
+  const attachmentScopeKey = useWorkspaceAttachmentScopeKey({
+    serverId,
+    workspaceId,
+    cwd: workspaceRoot,
+  });
+  const canAddToChat = editGate.kind === "free";
+  const onAddToChat = useMemo(() => {
+    if (!canAddToChat) {
+      return null;
+    }
+    return () => {
+      useWorkspaceAttachmentsStore.getState().addWorkspaceAttachment({
+        scopeKey: attachmentScopeKey,
+        attachment: createFileContextAttachment({ path: location.path, entryKind: "file" }),
+      });
+    };
+  }, [attachmentScopeKey, canAddToChat, location.path]);
+
+  // Read from the live controller rather than the cursor readout: the readout is
+  // a render behind, and the same reasoning as cut/copy applies - a range that
+  // is off by the user's last keystroke is worse than no range.
+  const onAddSelectionToChat = useMemo(() => {
+    if (!canAddToChat) {
+      return null;
+    }
+    return () => {
+      const controller = controllerRef.current;
+      if (!controller) {
+        return;
+      }
+      void controller
+        .getSelection()
+        .then((selection) => {
+          if (selection.isEmpty) {
+            return undefined;
+          }
+          useWorkspaceAttachmentsStore.getState().addWorkspaceAttachment({
+            scopeKey: attachmentScopeKey,
+            attachment: createFileContextAttachment({
+              path: location.path,
+              selection: {
+                startLine: selection.lineStart,
+                startColumn: selection.columnStart,
+                endLine: selection.lineEnd,
+                endColumn: selection.columnEnd,
+              },
+            }),
+          });
+          return undefined;
+        })
+        .catch(() => undefined);
+    };
+  }, [attachmentScopeKey, canAddToChat, controllerRef, location.path]);
+
   // Refine - the AI rewrite, as a reviewable job in its own tab.
   //
   // In-project only, for the same reason as history and changes: the job runs
@@ -2664,6 +2797,7 @@ export function FileTabPane({
         onNavigateToFile={onNavigateToFile}
         onViewChanges={onViewChanges}
         onRefine={onRefine}
+        onAddToChat={onAddToChat}
       />
     ) : (
       <EditorModeView
@@ -2683,6 +2817,8 @@ export function FileTabPane({
         onNavigateToFile={onNavigateToFile}
         onViewChanges={onViewChanges}
         onRefine={onRefine}
+        onAddToChat={onAddToChat}
+        onAddSelectionToChat={onAddSelectionToChat}
         onOpenExternalEditor={externalEditorAvailable ? openExternalEditor : null}
         externalEditorLabel={externalEditorLabel}
       />

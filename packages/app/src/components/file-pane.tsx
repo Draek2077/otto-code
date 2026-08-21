@@ -10,23 +10,21 @@ import { useQuery } from "@tanstack/react-query";
 import type { FileReadResult } from "@otto-code/client/internal/daemon-client";
 import {
   ScrollView as RNScrollView,
-  Pressable,
   Text,
-  TextInput,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import {
-  createMarkdownHeadingAnnotationRules,
+  createMarkdownDocumentAnnotationRules,
+  createSharedMarkdownRules,
   MarkdownRenderer,
-  type MarkdownHeadingAnnotationTarget,
+  type MarkdownDocumentAnnotationTarget,
 } from "@/components/markdown/renderer";
-import { Button } from "@/components/ui/button";
-import { X } from "@/components/icons/material-icons";
+import { findHighlightStyles } from "@/components/find-highlight-styles";
 import { HtmlFilePreview } from "@/components/html-file-preview";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
@@ -34,6 +32,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import {
   useWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachments,
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -48,16 +47,23 @@ import { toRenderedDocument } from "@/components/markdown/rendered-document";
 import type { WorkspaceImageSource } from "@/components/markdown/image-context";
 import { createWorkspaceImageBase } from "@/components/markdown/workspace-image-source";
 import {
+  buildRenderedFindIndex,
   findPreviewMatches,
   splitTokensForMatches,
   type MatchedTokenSegment,
   type PreviewFindQuery,
   type PreviewLineMatchRange,
 } from "@/components/file-preview-find";
+import { createMarkdownFindRules } from "@/components/markdown/find-rules";
+import { collectRenderedTextRuns } from "@/components/markdown/find-text-runs";
 import { isNative, isWeb } from "@/constants/platform";
 import { ImagePreview } from "@/components/image-preview";
 import { readImageDimensions, type ImageDimensions } from "@/components/image-dimensions";
-import type { AttachmentMetadata } from "@/attachments/types";
+import type { AttachmentMetadata, RenderedDocumentLocator } from "@/attachments/types";
+import {
+  collectAnnotatedHeadingComments,
+  collectAnnotatedHeadingSourceLines,
+} from "@/attachments/rendered-document-annotations";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import { persistAttachmentFromBytes } from "@/attachments/service";
 import { createPreviewAttachmentId, getFileNameFromPath } from "@/attachments/utils";
@@ -74,6 +80,7 @@ import {
   resolveFilePreviewState,
   type FilePreviewState,
 } from "@/components/file-pane-enabled";
+import { InlineReviewEditor } from "@/review/surface";
 
 interface CodeLineProps {
   tokens: HighlightToken[];
@@ -226,7 +233,9 @@ interface FilePreviewBodyProps {
   onPointerDownSync?: (pointer: PreviewPointerDown) => void;
   /** Ticking a rendered task list; `line` is already a line of the file. */
   onToggleTask?: MarkdownTaskToggle | null;
-  onAnnotateHeading?: (target: MarkdownHeadingAnnotationTarget, comment: string) => void;
+  onAnnotateDocumentItem?: (target: MarkdownDocumentAnnotationTarget, comment: string) => void;
+  annotatedHeadingSourceLines?: readonly number[];
+  annotatedHeadingComments?: ReadonlyMap<number, string>;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -240,6 +249,29 @@ function trimNonEmpty(value: string | null | undefined): string | null {
 interface FileLineSelection {
   lineStart: number;
   lineEnd: number;
+}
+
+function toRenderedDocumentLocator(
+  target: MarkdownDocumentAnnotationTarget,
+): RenderedDocumentLocator {
+  if (target.kind === "heading") {
+    return {
+      kind: target.kind,
+      level: target.level,
+      lineStart: target.lineStart,
+      lineEnd: target.lineEnd,
+      text: target.text,
+    };
+  }
+  if (target.kind === "fence") {
+    return {
+      kind: target.kind,
+      lineStart: target.lineStart,
+      lineEnd: target.lineEnd,
+      language: target.language,
+    };
+  }
+  return { kind: target.kind, lineStart: target.lineStart, lineEnd: target.lineEnd };
 }
 
 async function createFilePanePreview(file: FileReadResult | null): Promise<{
@@ -369,10 +401,10 @@ function CodeLineSegment({ segment }: { segment: MatchedTokenSegment }) {
   const style = useMemo(() => {
     const base = syntaxTokenStyleFor(segment.style);
     if (segment.highlight === "active") {
-      return [base, codeLineStyles.findMatchActive];
+      return [base, findHighlightStyles.active];
     }
     if (segment.highlight === "match") {
-      return [base, codeLineStyles.findMatch];
+      return [base, findHighlightStyles.match];
     }
     return base;
   }, [segment.highlight, segment.style]);
@@ -385,12 +417,6 @@ const codeLineStyles = StyleSheet.create((theme) => ({
   },
   highlightedLine: {
     backgroundColor: theme.colors.accentBorder,
-  },
-  findMatch: {
-    backgroundColor: theme.colors.terminal.selectionBackground,
-  },
-  findMatchActive: {
-    backgroundColor: theme.colors.borderAccent,
   },
   gutter: {
     alignItems: "flex-end",
@@ -483,6 +509,94 @@ function usePreviewFindHighlights({
   return matchRangesByLine;
 }
 
+const EMPTY_FIND_RANGES: ReadonlyMap<string, PreviewLineMatchRange[]> = new Map();
+
+/**
+ * Find-in-preview for a rendered document - the markdown/mermaid/AsciiDoc twin
+ * of {@link usePreviewFindHighlights}.
+ *
+ * Same query, same match semantics, same tones, same "3/17" ordering. What
+ * differs is what there is to count and where to scroll: rendered prose has no
+ * line grid, so the scan runs over the text runs the renderer will show, and
+ * the active match is placed by its position through the document's text
+ * rather than by a line number. That estimate is the one the outline already
+ * uses to jump around a rendered document, not a new invention.
+ */
+function useRenderedPreviewFindHighlights({
+  enabled,
+  body,
+  enableHtmlish,
+  hasWorkspaceImages,
+  findQuery,
+  activeMatchIndex,
+  onFindMatchCount,
+  scrollRef,
+  metricsRef,
+}: {
+  enabled: boolean;
+  body: string;
+  enableHtmlish: boolean;
+  hasWorkspaceImages: boolean;
+  findQuery: PreviewFindQuery | null;
+  activeMatchIndex: number;
+  onFindMatchCount?: (count: number) => void;
+  scrollRef: React.RefObject<RNScrollView | null>;
+  metricsRef: React.RefObject<PreviewScrollMetrics>;
+}): ReadonlyMap<string, PreviewLineMatchRange[]> {
+  // Parsing the document is the expensive half, so it is keyed on the document
+  // and on nothing else about the search - note `searching` rather than the
+  // query itself, which is a fresh object on every keystroke. Typing another
+  // letter re-scans the runs; it does not re-parse the markdown.
+  const searching = findQuery !== null;
+  const textRuns = useMemo(
+    () =>
+      enabled && searching
+        ? collectRenderedTextRuns({
+            text: body,
+            enableHtmlish,
+            remoteImages: "altText",
+            hasWorkspaceImages,
+          })
+        : null,
+    [enabled, searching, body, enableHtmlish, hasWorkspaceImages],
+  );
+
+  const index = useMemo(
+    () =>
+      textRuns && findQuery ? buildRenderedFindIndex(textRuns, findQuery, activeMatchIndex) : null,
+    [textRuns, findQuery, activeMatchIndex],
+  );
+
+  const onFindMatchCountRef = useRef(onFindMatchCount);
+  onFindMatchCountRef.current = onFindMatchCount;
+  const total = index?.total ?? 0;
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    onFindMatchCountRef.current?.(total);
+  }, [enabled, total]);
+
+  // Land the match a third of the way down, the same lead the code view gives
+  // it. `contentHeight` is the rendered height, so the fraction has to be
+  // applied to that rather than to a line count.
+  const activeFraction = index?.activeFraction ?? null;
+  useEffect(() => {
+    if (activeFraction === null) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      const metrics = metricsRef.current;
+      const targetTop = activeFraction * metrics.contentHeight;
+      const viewportLead = Math.min(metrics.clientHeight / 3, targetTop);
+      scrollRef.current?.scrollTo({ y: Math.max(0, targetTop - viewportLead), animated: false });
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [activeFraction, metricsRef, scrollRef]);
+
+  return index?.byContent ?? EMPTY_FIND_RANGES;
+}
+
 function isFilePreviewAvailable(
   state: FilePreviewState,
   preview: ExplorerFile | null,
@@ -534,7 +648,9 @@ function FilePreviewBody({
   onScrolledSync,
   onPointerDownSync,
   onToggleTask = null,
-  onAnnotateHeading,
+  onAnnotateDocumentItem,
+  annotatedHeadingSourceLines = [],
+  annotatedHeadingComments = new Map(),
 }: FilePreviewBodyProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -559,34 +675,21 @@ function FilePreviewBody({
     () => resolveRenderedDocument(documentKind, effectiveContent),
     [documentKind, effectiveContent],
   );
-  const [annotationTarget, setAnnotationTarget] = useState<MarkdownHeadingAnnotationTarget | null>(
+  const [annotationTarget, setAnnotationTarget] = useState<MarkdownDocumentAnnotationTarget | null>(
     null,
   );
   // A translated rendered body (for example converted AsciiDoc) has no honest
   // source map. Markdown's body offset is exact, including frontmatter.
   const annotationLineOffset = renderedDocument?.bodyLineOffset ?? null;
-  // HTML-ish documents are split into independently parsed fragments by the
-  // renderer. Until those fragments retain their original offsets, withhold
-  // annotations rather than attach a heading after HTML to the wrong line.
-  const annotationSupported = Boolean(
-    renderedDocument &&
-    annotationLineOffset !== null &&
-    !(renderedDocument.enableHtmlish && /<\/?[a-z][^>]*>/i.test(renderedDocument.body)),
-  );
-  const annotationRules = useMemo(
-    () =>
-      renderedDocument && annotationSupported && onAnnotateHeading
-        ? createMarkdownHeadingAnnotationRules({
-            text: renderedDocument.body,
-            onPress: setAnnotationTarget,
-          })
-        : undefined,
-    [annotationSupported, onAnnotateHeading, renderedDocument],
-  );
+  // A Markdown document remains source-addressable even when it contains a
+  // literal HTML example elsewhere. The heading target carries markdown-it's
+  // own source map; a document-wide HTML scan would wrongly disable the first
+  // heading of docs such as text-editor.md just because they document `<img>`.
+  const annotationSupported = Boolean(renderedDocument && annotationLineOffset !== null);
   const submitAnnotation = useCallback(
     (comment: string) => {
       if (!annotationTarget) return;
-      onAnnotateHeading?.(
+      onAnnotateDocumentItem?.(
         {
           ...annotationTarget,
           lineStart: annotationTarget.lineStart + (annotationLineOffset ?? 0),
@@ -596,9 +699,41 @@ function FilePreviewBody({
       );
       setAnnotationTarget(null);
     },
-    [annotationLineOffset, annotationTarget, onAnnotateHeading],
+    [annotationLineOffset, annotationTarget, onAnnotateDocumentItem],
   );
   const cancelAnnotation = useCallback(() => setAnnotationTarget(null), []);
+  const annotationRules = useMemo(
+    () =>
+      renderedDocument && annotationSupported
+        ? createMarkdownDocumentAnnotationRules({
+            text: renderedDocument.body,
+            onPress: onAnnotateDocumentItem ? setAnnotationTarget : undefined,
+            annotatedHeadingSourceLines: annotatedHeadingSourceLines.map(
+              (lineStart) => lineStart - (annotationLineOffset ?? 0),
+            ),
+            renderHeadingAnnotationEditor: (target) =>
+              annotationTarget?.kind === "heading" &&
+              annotationTarget.lineStart === target.lineStart ? (
+                <RenderedDocumentAnnotationCard
+                  initialComment={annotatedHeadingComments.get(target.lineStart) ?? ""}
+                  onCancel={cancelAnnotation}
+                  onSubmit={submitAnnotation}
+                />
+              ) : null,
+          })
+        : undefined,
+    [
+      annotationLineOffset,
+      annotationSupported,
+      annotatedHeadingSourceLines,
+      annotatedHeadingComments,
+      annotationTarget,
+      cancelAnnotation,
+      onAnnotateDocumentItem,
+      renderedDocument,
+      submitAnnotation,
+    ],
+  );
 
   /**
    * The renderer counts lines of the rendered body; the caller writes to the
@@ -794,6 +929,31 @@ function FilePreviewBody({
     lineHeight,
   });
 
+  const renderedMatchRanges = useRenderedPreviewFindHighlights({
+    enabled: Boolean(renderedDocument),
+    body: renderedDocument?.body ?? "",
+    enableHtmlish: renderedDocument?.enableHtmlish ?? false,
+    hasWorkspaceImages: Boolean(workspaceImages),
+    findQuery: findQuery ?? null,
+    activeMatchIndex,
+    onFindMatchCount,
+    scrollRef: previewScrollRef,
+    metricsRef: syncMetricsRef,
+  });
+
+  // Find layers over whatever the document was already rendering with, so the
+  // annotation targets keep working while a search is open.
+  const renderedRules = useMemo(
+    () =>
+      renderedMatchRanges.size > 0
+        ? createMarkdownFindRules(
+            annotationRules ?? createSharedMarkdownRules(),
+            renderedMatchRanges,
+          )
+        : annotationRules,
+    [annotationRules, renderedMatchRanges],
+  );
+
   useEffect(() => {
     if (!lineSelection) {
       return;
@@ -847,19 +1007,12 @@ function FilePreviewBody({
                   but it may show its own images, read back through the daemon. */}
               <MarkdownRenderer
                 text={body}
-                rules={annotationRules}
+                rules={renderedRules}
                 remoteImages="altText"
                 enableHtmlish={enableHtmlish}
                 workspaceImages={workspaceImages}
                 onToggleTask={handleToggleTask}
               />
-              {annotationTarget ? (
-                <RenderedDocumentAnnotationCard
-                  target={annotationTarget}
-                  onCancel={cancelAnnotation}
-                  onSubmit={submitAnnotation}
-                />
-              ) : null}
             </View>
           </RNScrollView>
           {scrollbar.overlay}
@@ -1067,26 +1220,41 @@ export function FilePreview({
     workspaceId,
     cwd: normalizedWorkspaceRoot,
   });
-  const focusedAgentId = useSessionStore(
-    (state) => state.sessions[serverId]?.focusedAgentId ?? null,
-  );
   const normalizedFilePath = useMemo(() => trimNonEmpty(location.path), [location.path]);
-  const handleAnnotateHeading = useCallback(
-    (target: MarkdownHeadingAnnotationTarget, comment: string) => {
-      if (!focusedAgentId || !normalizedFilePath || !comment.trim()) return;
+  const workspaceAttachments = useWorkspaceAttachments(attachmentScopeKey);
+  const annotatedHeadingSourceLines = useMemo(
+    () =>
+      collectAnnotatedHeadingSourceLines({
+        attachments: workspaceAttachments,
+        path: normalizedFilePath,
+      }),
+    [normalizedFilePath, workspaceAttachments],
+  );
+  const annotatedHeadingComments = useMemo(
+    () =>
+      collectAnnotatedHeadingComments({
+        attachments: workspaceAttachments,
+        path: normalizedFilePath,
+      }),
+    [normalizedFilePath, workspaceAttachments],
+  );
+  const handleAnnotateDocumentItem = useCallback(
+    (target: MarkdownDocumentAnnotationTarget, comment: string) => {
+      if (!normalizedFilePath || !comment.trim()) return;
+      const locator = toRenderedDocumentLocator(target);
       useWorkspaceAttachmentsStore.getState().addWorkspaceAttachment({
         scopeKey: attachmentScopeKey,
         attachment: {
           kind: "rendered_document",
-          id: `${normalizedFilePath}:heading:${target.lineStart}:${target.lineEnd}`,
+          id: `${normalizedFilePath}:${target.kind}:${target.lineStart}:${target.lineEnd}`,
           path: normalizedFilePath,
-          locator: { kind: "heading", ...target },
-          excerpt: `#${"#".repeat(Math.max(0, target.level - 1))} ${target.text}`,
+          locator,
+          excerpt: target.excerpt,
           comment: comment.trim(),
         },
       });
     },
-    [attachmentScopeKey, focusedAgentId, normalizedFilePath],
+    [attachmentScopeKey, normalizedFilePath],
   );
   const readTarget = useMemo(
     () =>
@@ -1215,69 +1383,32 @@ export function FilePreview({
         onScrolledSync={onScrolledSync}
         onPointerDownSync={onPointerDownSync}
         onToggleTask={onToggleTask}
-        onAnnotateHeading={focusedAgentId ? handleAnnotateHeading : undefined}
+        onAnnotateDocumentItem={handleAnnotateDocumentItem}
+        annotatedHeadingSourceLines={annotatedHeadingSourceLines}
+        annotatedHeadingComments={annotatedHeadingComments}
       />
     </View>
   );
 }
 
 function RenderedDocumentAnnotationCard({
-  target,
+  initialComment,
   onCancel,
   onSubmit,
 }: {
-  target: MarkdownHeadingAnnotationTarget;
+  initialComment: string;
   onCancel: () => void;
   onSubmit: (comment: string) => void;
 }) {
-  const [comment, setComment] = useState("");
-  const trimmed = comment.trim();
-  const handleSubmit = useCallback(() => onSubmit(trimmed), [onSubmit, trimmed]);
   return (
-    <View style={styles.annotationCard} testID="file-preview-annotation-card">
-      <View style={styles.annotationHeader}>
-        <Text style={styles.annotationTitle}>Add to chat context</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Cancel annotation"
-          onPress={onCancel}
-        >
-          <ThemedAnnotationClose size={16} uniProps={annotationCloseIconMapping} />
-        </Pressable>
-      </View>
-      <Text numberOfLines={2} style={styles.annotationTarget}>
-        {target.text || `Heading at lines ${target.lineStart}-${target.lineEnd}`}
-      </Text>
-      <ThemedAnnotationInput
-        autoFocus
-        multiline
-        value={comment}
-        onChangeText={setComment}
-        placeholder="What should the agent know about this item?"
-        accessibilityLabel="Document annotation note"
-        style={styles.annotationInput}
-        uniProps={annotationInputMapping}
-      />
-      <View style={styles.annotationActions}>
-        <Button variant="ghost" size="sm" onPress={onCancel}>
-          Cancel
-        </Button>
-        <Button variant="default" size="sm" onPress={handleSubmit} disabled={!trimmed}>
-          Add to chat
-        </Button>
-      </View>
-    </View>
+    <InlineReviewEditor
+      initialBody={initialComment}
+      onCancel={onCancel}
+      onSave={onSubmit}
+      testID="file-preview-annotation-editor"
+    />
   );
 }
-
-const ThemedAnnotationInput = withUnistyles(TextInput);
-const ThemedAnnotationClose = withUnistyles(X);
-const annotationInputMapping = (theme: { colors: { foregroundMuted: string } }) => ({
-  placeholderTextColor: theme.colors.foregroundMuted,
-});
-const annotationCloseIconMapping = (theme: { colors: { foregroundMuted: string } }) => ({
-  color: theme.colors.foregroundMuted,
-});
 
 const styles = StyleSheet.create((theme) => {
   return {
@@ -1288,27 +1419,6 @@ const styles = StyleSheet.create((theme) => {
       // file previews retain the same reading surface.
       backgroundColor: theme.colors.surfaceCode,
     },
-    annotationCard: {
-      margin: theme.spacing[3],
-      padding: theme.spacing[3],
-      borderRadius: theme.borderRadius.md,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      backgroundColor: theme.colors.surface1,
-      gap: theme.spacing[2],
-    },
-    annotationHeader: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
-    annotationTitle: { flex: 1, color: theme.colors.foreground, fontWeight: "600" },
-    annotationTarget: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
-    annotationInput: {
-      minHeight: 72,
-      padding: theme.spacing[2],
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      borderRadius: theme.borderRadius.sm,
-      color: theme.colors.foreground,
-    },
-    annotationActions: { flexDirection: "row", justifyContent: "flex-end", gap: theme.spacing[2] },
     centerState: {
       flex: 1,
       alignItems: "center",

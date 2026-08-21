@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRenderedFindIndex,
   findPreviewMatches,
   MAX_PREVIEW_FIND_MATCHES,
+  splitTextForMatches,
   splitTokensForMatches,
   type PreviewFindQuery,
 } from "./file-preview-find";
@@ -119,5 +121,90 @@ describe("splitTokensForMatches", () => {
       { text: " bb ", style: null, highlight: null },
       { text: "aa", style: null, highlight: "active" },
     ]);
+  });
+});
+
+describe("splitTextForMatches", () => {
+  it("returns the whole run untouched when there are no matches", () => {
+    expect(splitTextForMatches("hello world", [])).toEqual([
+      { text: "hello world", highlight: null },
+    ]);
+  });
+
+  it("cuts matches out as their own segments and marks the active one", () => {
+    expect(
+      splitTextForMatches("the cat sat on the cat", [
+        { start: 4, end: 7, active: true },
+        { start: 19, end: 22, active: false },
+      ]),
+    ).toEqual([
+      { text: "the ", highlight: null },
+      { text: "cat", highlight: "active" },
+      { text: " sat on the ", highlight: null },
+      { text: "cat", highlight: "match" },
+    ]);
+  });
+
+  it("drops a range that starts past the end of the run", () => {
+    expect(splitTextForMatches("short", [{ start: 99, end: 102, active: false }])).toEqual([
+      { text: "short", highlight: null },
+    ]);
+  });
+});
+
+describe("buildRenderedFindIndex", () => {
+  const runs = ["Alpha and beta", "beta again", "nothing here"];
+
+  it("counts matches across every run in reading order", () => {
+    expect(buildRenderedFindIndex(runs, query({ search: "beta" }), 0).total).toBe(2);
+  });
+
+  it("marks only the active match, in reading order across runs", () => {
+    const index = buildRenderedFindIndex(runs, query({ search: "beta" }), 1);
+    expect(index.byContent.get("Alpha and beta")).toEqual([{ start: 10, end: 14, active: false }]);
+    expect(index.byContent.get("beta again")).toEqual([{ start: 0, end: 4, active: true }]);
+  });
+
+  it("places the active match as a fraction of the document's rendered text", () => {
+    // "Alpha and beta" is 14 chars of a 36-char document; the second hit starts
+    // right after it.
+    const index = buildRenderedFindIndex(runs, query({ search: "beta" }), 1);
+    expect(index.activeFraction).toBeCloseTo(14 / 36, 5);
+  });
+
+  it("has no active match, and so no scroll target, once the index runs past the end", () => {
+    const index = buildRenderedFindIndex(runs, query({ search: "beta" }), 9);
+    expect(index.activeFraction).toBeNull();
+    expect([...index.byContent.values()].flat().every((range) => !range.active)).toBe(true);
+  });
+
+  it("shares one entry between runs that read identically", () => {
+    const index = buildRenderedFindIndex(["same", "same"], query({ search: "same" }), 0);
+    expect(index.total).toBe(2);
+    expect(index.byContent.size).toBe(1);
+  });
+
+  it("honors case, whole-word and regexp the way the code view does", () => {
+    expect(
+      buildRenderedFindIndex(["Foo foo"], query({ search: "foo", caseSensitive: true }), 0).total,
+    ).toBe(1);
+    expect(
+      buildRenderedFindIndex(["cat catalog"], query({ search: "cat", wholeWord: true }), 0).total,
+    ).toBe(1);
+    expect(
+      buildRenderedFindIndex(["a1 b2"], query({ search: "[a-z][0-9]", regexp: true }), 0).total,
+    ).toBe(2);
+  });
+
+  it("returns nothing for an empty or half-typed query", () => {
+    expect(buildRenderedFindIndex(runs, query(), 0).total).toBe(0);
+    expect(buildRenderedFindIndex(runs, query({ search: "(", regexp: true }), 0).total).toBe(0);
+  });
+
+  it("caps the match list the same way the code view does", () => {
+    const many = Array.from({ length: MAX_PREVIEW_FIND_MATCHES + 50 }, () => "x");
+    expect(buildRenderedFindIndex(many, query({ search: "x" }), 0).total).toBe(
+      MAX_PREVIEW_FIND_MATCHES,
+    );
   });
 });

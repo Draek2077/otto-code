@@ -20,7 +20,12 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
-import { ChevronDown, ChevronRight } from "@/components/icons/material-icons";
+import {
+  Chat,
+  ChevronDown,
+  ChevronRight,
+  MessageSquarePlus,
+} from "@/components/icons/material-icons";
 import Markdown, {
   MarkdownIt,
   type ASTNode,
@@ -43,15 +48,14 @@ import {
   type MarkdownInlineImagePart,
 } from "./html-ish";
 import { MarkdownFence } from "./fence";
-import { applyTaskListMarkers, TASK_LINE_ATTRIBUTE, TASK_STATE_ATTRIBUTE } from "./task-lists";
+import { TASK_LINE_ATTRIBUTE, TASK_STATE_ATTRIBUTE } from "./task-lists";
 import {
   MarkdownTaskCheckbox,
   MarkdownTaskProvider,
   type MarkdownTaskToggle,
 } from "./task-context";
-import { ALERT_ATTRIBUTE, applyGithubAlerts, type GithubAlertKind } from "./github-alerts";
-import { applyFootnotes } from "./footnotes";
-import { applyMath, MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "./math";
+import { ALERT_ATTRIBUTE, type GithubAlertKind } from "./github-alerts";
+import { MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "./math";
 import { MathFormula } from "./math-formula";
 import { resolveInlineImageSize, type InlineImageDimensions } from "./inline-image-size";
 import { parseSvgIntrinsicSize } from "./svg-intrinsic-size";
@@ -63,14 +67,82 @@ import {
 } from "./image-context";
 import { groupMarkdownParts, type MarkdownPartGroup } from "./part-groups";
 import { recoverMisnestedMarkdownFence } from "./fence-recovery";
+import { defaultMarkdownParser } from "./parser";
+import {
+  collectMarkdownDocumentAnnotationTargets,
+  type MarkdownDocumentAnnotationTarget,
+} from "./annotation-locators";
 
 export type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
+export type { MarkdownDocumentAnnotationTarget } from "./annotation-locators";
 
-export interface MarkdownHeadingAnnotationTarget {
-  level: number;
-  lineStart: number;
-  lineEnd: number;
-  text: string;
+const ENABLED_ANNOTATION_ACCESSIBILITY_STATE = { disabled: false };
+const DISABLED_ANNOTATION_ACCESSIBILITY_STATE = { disabled: true };
+
+function annotationAccessibilityLabel(
+  target: MarkdownDocumentAnnotationTarget,
+  annotated: boolean,
+): string {
+  const verb = annotated ? "Edit comment on" : "Annotate";
+  if (target.kind === "heading") {
+    return `${verb} heading: ${target.text || `level ${target.level}`}`;
+  }
+  if (target.kind === "fence") {
+    return `${verb} code block${target.language ? `: ${target.language}` : ""}`;
+  }
+  return `${verb} ${target.kind}`;
+}
+
+function HeadingAnnotationAction({
+  target,
+  annotated,
+  onPress,
+  annotationEditor,
+  children,
+  style,
+}: {
+  target: Extract<MarkdownDocumentAnnotationTarget, { kind: "heading" }>;
+  annotated: boolean;
+  onPress?: (target: MarkdownDocumentAnnotationTarget) => void;
+  annotationEditor?: ReactNode;
+  children: ReactNode[];
+  style: StyleProp<ViewStyle>;
+}) {
+  const disabled = !onPress;
+  return (
+    <View style={[style, annotationStyles.heading]}>
+      {children}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={
+          disabled
+            ? `Open or focus a chat to ${annotationAccessibilityLabel(target, annotated).toLowerCase()}`
+            : annotationAccessibilityLabel(target, annotated)
+        }
+        accessibilityState={
+          disabled
+            ? DISABLED_ANNOTATION_ACCESSIBILITY_STATE
+            : ENABLED_ANNOTATION_ACCESSIBILITY_STATE
+        }
+        disabled={disabled}
+        // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- target is node-specific
+        onPress={() => onPress?.(target)}
+        // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- Pressable state is supplied by its render prop
+        style={({ pressed }) => [
+          annotationStyles.headingAction,
+          disabled && annotationStyles.headingActionDisabled,
+          pressed && annotationStyles.headingActionPressed,
+        ]}
+      >
+        {annotated ? (
+          <ThemedAnnotatedHeadingIcon size={15} uniProps={annotatedHeadingIconMapping} />
+        ) : (
+          <ThemedHeadingCommentIcon size={15} uniProps={annotationActionIconMapping} />
+        )}
+      </Pressable>
+      {annotationEditor}
+    </View>
+  );
 }
 
 interface MarkdownWithStableRendererProps {
@@ -85,6 +157,39 @@ interface MarkdownWithStableRendererProps {
 
 const MarkdownWithStableRenderer = Markdown as ComponentType<MarkdownWithStableRendererProps>;
 const ThemedMarkdown = withUnistyles(MarkdownWithStableRenderer);
+const ThemedHeadingCommentIcon = withUnistyles(MessageSquarePlus);
+const ThemedAnnotatedHeadingIcon = withUnistyles(Chat);
+
+const annotationActionIconMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.xs,
+});
+
+const annotatedHeadingIconMapping = (theme: Theme) => ({
+  color: theme.colors.palette.blue[500],
+});
+
+const annotationStyles = StyleSheet.create((theme) => ({
+  heading: {
+    position: "relative",
+    paddingRight: 28,
+  },
+  headingAction: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.sm,
+    backgroundColor: theme.colors.surface1,
+  },
+  headingActionDisabled: {
+    opacity: 0.55,
+  },
+  headingActionPressed: { backgroundColor: theme.colors.surfaceHover },
+}));
 
 function markdownStyleMapping(theme: Theme): Partial<MarkdownWithStableRendererProps> {
   return { style: createMarkdownStyles(theme) };
@@ -94,46 +199,34 @@ function compactMarkdownStyleMapping(theme: Theme): Partial<MarkdownWithStableRe
   return { style: createCompactMarkdownStyles(theme) };
 }
 
-const defaultMarkdownParser = applyMath(
-  applyFootnotes(
-    applyGithubAlerts(applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true }))),
-  ),
-);
+export { defaultMarkdownParser };
 
 /**
- * Adds a press target only to headings whose markdown-it source map is known.
- * Other rendered nodes deliberately remain unannotatable: a visual item is not
- * useful context if we cannot honestly lead the agent back to its source.
+ * Adds press targets only to block kinds whose markdown-it source map is
+ * known. Other rendered nodes deliberately remain unannotatable: a visual
+ * item is not useful context if we cannot honestly lead the agent back to its
+ * source.
  */
-export function createMarkdownHeadingAnnotationRules(input: {
+export function createMarkdownDocumentAnnotationRules(input: {
   text: string;
-  onPress: (target: MarkdownHeadingAnnotationTarget) => void;
+  onPress?: (target: MarkdownDocumentAnnotationTarget) => void;
+  annotatedHeadingSourceLines?: readonly number[];
+  /** Rendered directly below the matching heading, never at document end. */
+  renderHeadingAnnotationEditor?: (
+    target: Extract<MarkdownDocumentAnnotationTarget, { kind: "heading" }>,
+  ) => ReactNode;
 }): RenderRules {
-  const targets = new Map<number, MarkdownHeadingAnnotationTarget>();
-  const tokens = defaultMarkdownParser.parse(input.text, {});
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (!token || token.type !== "heading_open" || !token.map || !/^h[1-6]$/.test(token.tag)) {
-      continue;
-    }
-    const inline = tokens[index + 1];
-    const level = Number.parseInt(token.tag.slice(1), 10);
-    if (!Number.isInteger(level) || !inline) {
-      continue;
-    }
-    targets.set(index, {
-      level,
-      lineStart: token.map[0] + 1,
-      lineEnd: token.map[1],
-      text: inline.content.trim(),
-    });
-  }
+  const targets = collectMarkdownDocumentAnnotationTargets({
+    text: input.text,
+    markdownit: defaultMarkdownParser,
+  });
+  const annotatedHeadingSourceLines = new Set(input.annotatedHeadingSourceLines);
 
   const rules = createSharedMarkdownRules();
   for (const level of [1, 2, 3, 4, 5, 6]) {
     rules[`heading${level}`] = (node, children, _parent, styles) => {
       const target = targets.get(node.tokenIndex);
-      if (!target) {
+      if (!target || target.kind !== "heading") {
         return (
           <View key={node.key} style={styles[`_VIEW_SAFE_heading${level}`]}>
             {children}
@@ -141,16 +234,15 @@ export function createMarkdownHeadingAnnotationRules(input: {
         );
       }
       return (
-        <Pressable
-          key={node.key}
-          accessibilityRole="button"
-          accessibilityLabel={`Annotate heading: ${target.text || `level ${level}`}`}
-          // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- target is node-specific
-          onPress={() => input.onPress(target)}
+        <HeadingAnnotationAction
+          target={target}
+          annotated={annotatedHeadingSourceLines.has(target.lineStart)}
+          onPress={input.onPress}
+          annotationEditor={input.renderHeadingAnnotationEditor?.(target)}
           style={styles[`_VIEW_SAFE_heading${level}`]}
         >
           {children}
-        </Pressable>
+        </HeadingAnnotationAction>
       );
     };
   }
