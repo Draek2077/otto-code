@@ -1375,8 +1375,8 @@ export const en = {
       },
       commit: {
         type: {
-          selectorLabel: "Commit type",
-          none: "None",
+          selectorLabel: "Type",
+          none: "none",
           noneDescription: "No type prefix",
           featDescription: "New feature",
           fixDescription: "Bug fix",

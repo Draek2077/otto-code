@@ -363,7 +363,26 @@ export function handoffCreatedAgentUserMessageToStream(params: {
 }): ApplyStreamEventResult {
   const { tail, head, message } = params;
   const items = [...tail, ...head];
-  const userIndex = items.findIndex((item) => item.kind === "user_message");
+  const userIndexes = items.flatMap((item, index) =>
+    item.kind === "user_message" && !item.optimistic ? [index] : [],
+  );
+  const userIndex =
+    userIndexes.find((index) => {
+      const item = items[index];
+      return item?.kind === "user_message" && item.clientMessageId === message.id;
+    }) ??
+    userIndexes.find((index) => items[index]?.id === message.id) ??
+    (message.text.length > 0
+      ? userIndexes.find((index) => {
+          const item = items[index];
+          return item?.kind === "user_message" && item.text === message.text;
+        })
+      : undefined) ??
+    // Codex can prepend user-shaped bootstrap entries before the submitted
+    // multimodal prompt reaches the timeline. The submitted entry is last;
+    // choosing the first one orphaned its local image metadata.
+    userIndexes.at(-1) ??
+    -1;
   if (userIndex < 0) {
     return appendOptimisticUserMessageToStream({
       tail,
@@ -374,7 +393,7 @@ export function handoffCreatedAgentUserMessageToStream(params: {
   }
 
   const userMessage = items[userIndex];
-  if (!userMessage || userMessage.kind !== "user_message" || userMessage.optimistic) {
+  if (!userMessage || userMessage.kind !== "user_message") {
     return { tail, head, changedTail: false, changedHead: false };
   }
 

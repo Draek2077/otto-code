@@ -32,15 +32,15 @@ test("commit type selector is visible, opens, and prefixes the commit message", 
   // 1) The chip row renders above the message input by default.
   const selector = page.getByTestId("changes-commit-type-selector");
   await expect(selector).toBeVisible();
-  await expect(selector).toContainText("Commit type");
-  await expect(selector).toContainText("None");
+  await expect(selector).toContainText("Type");
+  await expect(selector).toContainText("none");
 
   // 2) Clicking opens the combobox with the conventional types.
   await selector.click();
   const fixOption = page.getByTestId("changes-commit-type-option-fix");
   await expect(fixOption).toBeVisible();
   await expect(page.getByTestId("changes-commit-type-option-feat")).toBeVisible();
-  await expect(page.getByTestId("changes-commit-type-option-none")).toContainText("None");
+  await expect(page.getByTestId("changes-commit-type-option-none")).toContainText("none");
 
   // Visual proof of the open picker for the QA report.
   await moneyShot(page, "the commit type picker opens with none + all git-cz types");
@@ -48,7 +48,7 @@ test("commit type selector is visible, opens, and prefixes the commit message", 
   // 3) Choosing `fix` updates the chip.
   await fixOption.click();
   await expect(selector).toContainText("fix");
-  await expect(selector).not.toContainText("None");
+  await expect(selector).not.toContainText("none");
 
   // 4) The message box stays untainted: no prefix badge is rendered inside it.
   await expect(page.getByTestId("changes-commit-type-prefix")).toHaveCount(0);
