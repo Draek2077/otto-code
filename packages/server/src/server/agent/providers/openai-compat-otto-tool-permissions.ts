@@ -41,9 +41,9 @@ const READ_ONLY_TOOLS = new Set([
   "preview_logs",
   // Agent/terminal/schedule/provider observation.
   "speak",
-  "get_agent_status",
-  "get_agent_activity",
-  "list_agents",
+  "get_chat_status",
+  "get_chat_activity",
+  "list_chats",
   "list_terminals",
   "capture_terminal",
   "list_schedules",
@@ -59,7 +59,7 @@ const READ_ONLY_TOOLS = new Set([
   "inspect_artifact",
   // Suggesting/withdrawing a background task only draws or removes a card - the
   // work starts when the user clicks Start, which is where the real gate lives.
-  "spawn_task",
+  "suggest_task",
   "dismiss_task",
 ]);
 
@@ -99,7 +99,7 @@ const INTERACT_TOOLS = new Set([
 // - browser_evaluate: arbitrary JS in the page.
 // - browser_upload: reads an arbitrary file from disk into a page.
 // - create_terminal / send_terminal_keys / kill_terminal: shell execution.
-// - create_agent / send_agent_prompt / update_agent / set_agent_mode /
+// - create_chat / send_chat_prompt / update_chat / set_chat_mode /
 //   respond_to_permission: can grant or exercise more authority than this
 //   session has (e.g. spawning a bypassPermissions agent).
 // - schedule mutation, worktree mutation, agent lifecycle (cancel/kill/archive).

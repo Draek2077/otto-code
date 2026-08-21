@@ -15,7 +15,7 @@ describe("personality role tiers", () => {
   });
 
   test("a personality whose roles are entirely focused cannot launch", () => {
-    // advisor is a read-only worker now (was wrongly coordinator-tier); the new
+    // advisor is read-only now (was wrongly coordinator-tier); the new
     // thinking/making roles are focused too.
     expect(personalityCanLaunch({ roles: ["advisor"] })).toBe(false);
     expect(personalityCanLaunch({ roles: ["researcher"] })).toBe(false);
@@ -35,8 +35,8 @@ describe("personality role tiers", () => {
     );
   });
 
-  test("the retired worker alias resolves to focused coder", () => {
-    expect(personalityCanLaunch({ roles: ["worker"] })).toBe(false);
+  test("unknown roles cannot acquire coordinator privileges", () => {
+    expect(personalityCanLaunch({ roles: ["unknown-role"] })).toBe(false);
   });
 
   test("a roleless personality defaults to focused and cannot launch", () => {
@@ -58,32 +58,32 @@ describe("composeRoleFocusDirective", () => {
   test("the orchestrator gets the conductor method directive", () => {
     const directive = composeRoleFocusDirective(["orchestrator"]);
     expect(directive).toContain("sole conductor");
-    expect(directive).toContain("start_run");
+    expect(directive).toContain("start_orchestration");
     expect(directive).toContain("Choose tools because the task needs their specific capability");
-    expect(directive).toContain("Use create_agent only");
-    expect(directive).toContain("Use spawn_task only");
-    expect(directive).not.toContain("Prefer start_run");
+    expect(directive).toContain("Use create_chat only");
+    expect(directive).toContain("Use suggest_task only");
+    expect(directive).not.toContain("Prefer start_orchestration");
   });
 
   test("a non-orchestrator coordinator gets the lighter delegate nudge", () => {
     const directive = composeRoleFocusDirective(["chatter"]);
     expect(directive).toContain("coordinator");
     expect(directive).toContain("do the work directly");
-    expect(directive).toContain("hand off genuinely multi-agent work to the team's orchestrator");
-    expect(directive).not.toContain("start_run");
+    expect(directive).toContain("hand off genuinely multi-chat work to the team's orchestrator");
+    expect(directive).not.toContain("start_orchestration");
   });
 
-  test("focused workers are told to stay on task", () => {
+  test("focused personalities are told to stay on task", () => {
     const directive = composeRoleFocusDirective(["coder"]);
-    expect(directive).toContain("focused worker");
+    expect(directive).toContain("focused personality");
     expect(directive).toContain("stay on it");
-    expect(directive).toContain("don't spawn sub-agents");
+    expect(directive).toContain("don't create child chats");
   });
 
-  test("the reclassified advisor gets the focused-worker directive", () => {
+  test("the reclassified advisor gets the focused-personality directive", () => {
     const directive = composeRoleFocusDirective(["advisor"]);
-    expect(directive).toContain("focused worker");
-    expect(directive).toContain("don't spawn sub-agents");
+    expect(directive).toContain("focused personality");
+    expect(directive).toContain("don't create child chats");
   });
 
   test("roleless spawns get no directive", () => {

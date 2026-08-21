@@ -4,7 +4,7 @@ How a chat is created, runs, becomes a subagent, gets archived, and disappears f
 
 **Chat vs agent.** A **chat** is the wrapper you interact with and view through - the durable conversation surface with a tab, a title, a timeline, and an archive gesture. An **agent** is the AI session running inside it: one provider, one model, one effort, one running process. You archive a chat; you stop an agent. This doc is about the chat.
 
-Code identifiers and wire names stay historical and are **not** renamed - `AgentManager`, `agentId`, `AgentSnapshotPayload`, `otto.parent-agent-id`, `create_agent`, `archiveAgent`. Only human-facing language distinguishes the two. Workspaces and worktrees are a separate concern with their own lifecycle - see [workspace-lifecycle.md](workspace-lifecycle.md); the only coupling is that archiving a workspace archives the chats it owns.
+Internal identifiers and wire payload fields stay historical where needed for protocol compatibility - `AgentManager`, `agentId`, `AgentSnapshotPayload`, and `otto.parent-agent-id`. Otto's public MCP tool names use chat language: `create_chat`, `archive_chat`, and the other chat lifecycle tools. Workspaces and worktrees are a separate concern with their own lifecycle - see [workspace-lifecycle.md](workspace-lifecycle.md); the only coupling is that archiving a workspace archives the chats it owns.
 
 ## States
 
@@ -86,14 +86,14 @@ without acting, the budget catches a single message that never stops at all.
 
 ## Delivery - how a prompt reaches a busy agent
 
-Every prompt entrypoint (composer, MCP `send_agent_prompt`, CLI, chat mentions, schedule fires, notify-on-finish) funnels through `sendPromptToAgent` → `startAgentRun`, which takes a `delivery` mode. It only matters when the target is **busy**; against an idle agent both modes run the prompt immediately.
+Every prompt entrypoint (composer, MCP `send_chat_prompt`, CLI, chat mentions, schedule fires, notify-on-finish) funnels through `sendPromptToAgent` → `startAgentRun`, which takes a `delivery` mode. It only matters when the target is **busy**; against an idle chat both modes run the prompt immediately.
 
 | `delivery`            | Busy target                                                              |
 | --------------------- | ------------------------------------------------------------------------ |
 | `interrupt` (default) | Cancel the in-flight turn, run this now **in the same provider session** |
 | `queue`               | Let the turn finish; run this as the next turn                           |
 
-`interrupt` is the wire default. UI label: **Interrupt** / **Queue** (Settings → Default send, and the composer's Queue track). `cancel_agent` remains interrupt-only - abort the run, keep the agent alive.
+`interrupt` is the wire default. UI label: **Interrupt** / **Queue** (Settings → Default send, and the composer's Queue track). `cancel_chat` remains interrupt-only - abort the current turn and keep the chat available.
 
 The whole feature lives in the turn lifecycle **above** every provider adapter, so it behaves identically for Claude, Codex, Copilot, OpenCode, Pi, and the openai-compatible provider. There are no per-provider adapters.
 
@@ -104,7 +104,7 @@ The default is the wire default, not the right answer for every sender. A person
 | Entrypoint                                   | Delivery            | Why                                                                                                                                                                           |
 | -------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Composer, CLI `otto agent send`              | user's choice       | Settings → Default send; the alternate send action does the other one                                                                                                         |
-| MCP `send_agent_prompt`                      | caller's choice     | Explicit `delivery` arg, `interrupt` default - the calling agent knows whether its prompt is a correction or a follow-up                                                      |
+| MCP `send_chat_prompt`                       | caller's choice     | Explicit `delivery` arg, `interrupt` default - the calling chat knows whether its prompt is a correction or a follow-up                                                       |
 | **Chat @mention**                            | **`queue`**         | A room mention is a message, not an emergency. Interrupting discarded work on behalf of someone who only meant to say something - and `@everyone` did it to a roomful at once |
 | **Notify-on-finish**                         | **`queue`**         | "Your child finished" is a report. Interrupting killed the turn the parent ran while the child worked, and a fan-out of N children interrupted it N times in a row            |
 | Schedule fire → existing chat                | neither (**fails**) | `executeSchedule` pre-checks `hasInFlightRun` and fails the run with "already has an active run"; it has never interrupted. Open question - see below                         |
@@ -167,7 +167,7 @@ Clearing the composer is a user action (select-all, delete), never Otto's.
 
 ## Relationships
 
-A chat's agent can launch other chats via the agent-scoped `create_agent` MCP tool. Agent-scoped creation is always asynchronous. `relationship` and `workspace` are separate decisions:
+A chat can launch other chats via the chat-scoped `create_chat` MCP tool. Chat-scoped creation is always asynchronous. `relationship` and `workspace` are separate decisions:
 
 - `relationship` decides whether the new chat belongs under the caller.
 - `workspace` decides where the new chat lives and whether a new workspace/worktree is created.

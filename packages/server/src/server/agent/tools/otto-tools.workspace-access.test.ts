@@ -49,7 +49,7 @@ describe("otto tool catalog workspace-access gate", () => {
     for (const tool of ["create_terminal", "send_terminal_keys", "kill_terminal"]) {
       expect(names.has(tool)).toBe(false);
     }
-    for (const tool of ["capture_terminal", "create_worktree", "create_artifact", "create_agent"]) {
+    for (const tool of ["capture_terminal", "create_worktree", "create_artifact", "create_chat"]) {
       expect(names.has(tool)).toBe(true);
     }
   });
@@ -78,7 +78,7 @@ describe("otto tool catalog workspace-access gate", () => {
     }
     // The orchestration axis is separate: a "none" reviewer node still
     // reports, coordinates, and reads artifact state.
-    for (const tool of ["create_agent", "wait_for_agents", "list_artifacts", "inspect_artifact"]) {
+    for (const tool of ["create_chat", "wait_for_chats", "list_artifacts", "inspect_artifact"]) {
       expect(names.has(tool)).toBe(true);
     }
   });

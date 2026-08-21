@@ -321,7 +321,7 @@ function buildSnapshotEntry(entry: ConfigureProviderEntry): ProviderSnapshotEntr
   };
 }
 
-// Shared helper used by ~60 create_agent / update_agent / list_agents tests that
+// Shared helper used by ~60 create_chat / update_chat / list_chats tests that
 // only need a "normal" provider catalog (claude, codex, opencode). OpenCode
 // create-config behavior delegates to the production provider client.
 //
@@ -857,7 +857,7 @@ describe("browser MCP tools", () => {
         arguments: {},
       });
       const listAgentsResult = await client.callTool({
-        name: "list_agents",
+        name: "list_chats",
         arguments: {},
       });
 
@@ -884,7 +884,7 @@ describe("browser MCP tools", () => {
 
       const listedTools = await client.listTools();
       expect(listedTools.tools.map((tool) => tool.name)).toEqual(
-        expect.arrayContaining(["browser_list_tabs", "list_agents"]),
+        expect.arrayContaining(["browser_list_tabs", "list_chats"]),
       );
       for (const tool of listedTools.tools) {
         expect(tool, `${tool.name} outputSchema`).not.toHaveProperty("outputSchema");
@@ -1131,7 +1131,7 @@ describe("terminal MCP tools", () => {
   });
 });
 
-describe("create_agent MCP tool", () => {
+describe("create_chat MCP tool", () => {
   const logger = createTestLogger();
   const existingCwd = process.cwd();
   const detachedDirectoryWorkspace = (path = existingCwd) => ({
@@ -1171,7 +1171,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     expect(tool).toBeDefined();
 
     // Title is optional by design: omitting it lets Otto derive one from the prompt.
@@ -1203,7 +1203,7 @@ describe("create_agent MCP tool", () => {
     expect(ok.success).toBe(true);
   });
 
-  it("accepts a bare create_agent with no initialPrompt", async () => {
+  it("accepts a bare create_chat with no initialPrompt", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -1212,7 +1212,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     const parsed = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
       settings: { modeId: "default" },
@@ -1259,7 +1259,7 @@ describe("create_agent MCP tool", () => {
       logger,
     });
 
-    await registeredTool(server, "create_agent").handler({
+    await registeredTool(server, "create_chat").handler({
       title: "Top-level agent",
       provider: "codex/gpt-5.4",
       initialPrompt: "Do work",
@@ -1283,7 +1283,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     const parsed = await tool.inputSchema.safeParseAsync({
       relationship: { kind: "detached" },
@@ -1306,7 +1306,7 @@ describe("create_agent MCP tool", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     await expect(
       tool.handler({
@@ -1344,7 +1344,7 @@ describe("create_agent MCP tool", () => {
       callerAgentId: "parent-agent",
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     await expect(
       tool.handler({
@@ -1356,7 +1356,7 @@ describe("create_agent MCP tool", () => {
     ).rejects.toThrow("Caller agent parent-agent has no current workspace");
   });
 
-  it("attaches create_agent to an existing workspace id", async () => {
+  it("attaches create_chat to an existing workspace id", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
       id: "existing-workspace-agent",
@@ -1376,7 +1376,7 @@ describe("create_agent MCP tool", () => {
       ],
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     const response = await tool.handler({
       ...detachedExistingWorkspace("wks_existing"),
@@ -1414,7 +1414,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     const input = {
       ...detachedDirectoryWorkspace(existingCwd),
       title: "Feature test",
@@ -1440,7 +1440,7 @@ describe("create_agent MCP tool", () => {
     );
   });
 
-  it("returns create_agent structured content with full provider modes", async () => {
+  it("returns create_chat structured content with full provider modes", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
       id: "mode-agent",
@@ -1467,7 +1467,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     const response = await tool.handler({
       ...detachedDirectoryWorkspace(existingCwd),
       title: "Mode test",
@@ -1505,7 +1505,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     // `provider` is optional at the schema level because a personality can
     // supply the brain instead. "One of provider/personality" is enforced at
@@ -1578,7 +1578,7 @@ describe("create_agent MCP tool", () => {
     ).rejects.toThrow("Unrecognized key");
   });
 
-  it("accepts worktree workspace intent in create_agent input validation", async () => {
+  it("accepts worktree workspace intent in create_chat input validation", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -1586,7 +1586,7 @@ describe("create_agent MCP tool", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     const parsed = await tool.inputSchema.safeParseAsync({
       ...detachedWorktreeWorkspace(existingCwd, {
@@ -1633,7 +1633,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     await expect(
       tool.handler({
@@ -1663,7 +1663,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await tool.handler({
       ...detachedDirectoryWorkspace(existingCwd),
       title: "  Fix auth bug  ",
@@ -1699,7 +1699,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await tool.handler({
       ...detachedDirectoryWorkspace(existingCwd),
       title: "  Fix auth  ",
@@ -1734,7 +1734,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await tool.handler({
       ...detachedDirectoryWorkspace(existingCwd),
       title: "Config test",
@@ -1760,7 +1760,7 @@ describe("create_agent MCP tool", () => {
     );
   });
 
-  it("registers and broadcasts a workspace when create_agent creates a worktree", async () => {
+  it("registers and broadcasts a workspace when create_chat creates a worktree", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const tempDir = await mkdtemp(join(tmpdir(), "otto-mcp-worktree-"));
     const repoDir = join(tempDir, "repo");
@@ -1809,7 +1809,7 @@ describe("create_agent MCP tool", () => {
         }),
         logger,
       });
-      const tool = registeredTool(server, "create_agent");
+      const tool = registeredTool(server, "create_chat");
       await tool.handler({
         ...detachedWorktreeWorkspace(repoDir, {
           kind: "branch-off",
@@ -1850,7 +1850,7 @@ describe("create_agent MCP tool", () => {
     }
   });
 
-  it("creates a create_agent branch-off worktree without invoking the legacy metadata branch rename", async () => {
+  it("creates a create_chat branch-off worktree without invoking the legacy metadata branch rename", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const tempDir = await mkdtemp(join(tmpdir(), "otto-mcp-agent-worktree-name-context-"));
     const repoDir = join(tempDir, "repo");
@@ -1900,7 +1900,7 @@ describe("create_agent MCP tool", () => {
         >,
         logger,
       });
-      const tool = registeredTool(server, "create_agent");
+      const tool = registeredTool(server, "create_chat");
       await tool.handler({
         ...detachedWorktreeWorkspace(repoDir, {
           kind: "branch-off",
@@ -1980,7 +1980,7 @@ describe("create_agent MCP tool", () => {
         }),
         logger,
       });
-      const tool = registeredTool(server, "create_agent");
+      const tool = registeredTool(server, "create_chat");
       await tool.handler({
         ...detachedWorktreeWorkspace(repoDir, {
           kind: "branch-off",
@@ -2082,7 +2082,7 @@ describe("create_agent MCP tool", () => {
         },
         logger,
       });
-      const createAgentTool = registeredTool(server, "create_agent");
+      const createAgentTool = registeredTool(server, "create_chat");
       await createAgentTool.handler({
         ...detachedWorktreeWorkspace(repoDir, {
           kind: "branch-off",
@@ -2121,7 +2121,7 @@ describe("create_agent MCP tool", () => {
     }
   });
 
-  it("uses create_agent title for the agent while still auto-titling the worktree workspace", async () => {
+  it("uses create_chat title for the agent while still auto-titling the worktree workspace", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const tempDir = await mkdtemp(join(tmpdir(), "otto-mcp-agent-title-workspace-title-"));
     const repoDir = join(tempDir, "repo");
@@ -2172,7 +2172,7 @@ describe("create_agent MCP tool", () => {
         }),
         logger,
       });
-      const tool = registeredTool(server, "create_agent");
+      const tool = registeredTool(server, "create_chat");
       await tool.handler({
         ...detachedWorktreeWorkspace(repoDir, {
           kind: "branch-off",
@@ -2280,7 +2280,7 @@ describe("create_agent MCP tool", () => {
         },
         logger,
       });
-      const tool = registeredTool(server, "create_agent");
+      const tool = registeredTool(server, "create_chat");
       await tool.handler({
         ...detachedDirectoryWorkspace(workspaceDir),
         title: "Directory agent",
@@ -2312,7 +2312,7 @@ describe("create_agent MCP tool", () => {
     }
   });
 
-  it("auto-titles without renaming a create_agent checkout worktree from the initial prompt", async () => {
+  it("auto-titles without renaming a create_chat checkout worktree from the initial prompt", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const tempDir = await mkdtemp(join(tmpdir(), "otto-mcp-agent-checkout-name-context-"));
     const repoDir = join(tempDir, "repo");
@@ -2385,7 +2385,7 @@ describe("create_agent MCP tool", () => {
         >,
         logger,
       });
-      const tool = registeredTool(server, "create_agent");
+      const tool = registeredTool(server, "create_chat");
       await tool.handler({
         ...detachedWorktreeWorkspace(repoDir, {
           kind: "checkout-branch",
@@ -2425,7 +2425,7 @@ describe("create_agent MCP tool", () => {
     }
   });
 
-  it("passes create_agent GitHub PR worktrees through workspace creation without metadata branch rename", async () => {
+  it("passes create_chat GitHub PR worktrees through workspace creation without metadata branch rename", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const startedAgentSetupIds: string[] = [];
     const createOttoWorktree = vi.fn(
@@ -2493,7 +2493,7 @@ describe("create_agent MCP tool", () => {
       >,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await tool.handler({
       ...detachedWorktreeWorkspace(REPO_CWD, {
         kind: "checkout-pr",
@@ -3041,7 +3041,7 @@ describe("create_agent MCP tool", () => {
     ]);
   });
 
-  it("accepts custom provider IDs in create_agent input validation", async () => {
+  it("accepts custom provider IDs in create_chat input validation", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -3049,7 +3049,7 @@ describe("create_agent MCP tool", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     const parsed = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
@@ -3097,7 +3097,7 @@ describe("create_agent MCP tool", () => {
       logger,
     });
 
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await tool.handler({
       ...subagentCurrentWorkspace("subdir"),
       title: "Child",
@@ -3141,7 +3141,7 @@ describe("create_agent MCP tool", () => {
       logger,
     });
 
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await expect(
       tool.handler({
         ...subagentCurrentWorkspace(),
@@ -3160,7 +3160,7 @@ describe("create_agent MCP tool", () => {
     });
     expect(parsed.success).toBe(true);
     if (!parsed.success) {
-      throw new Error("Expected caller create_agent input to parse");
+      throw new Error("Expected caller create_chat input to parse");
     }
     // notifyOnFinish is no longer schema-defaulted (WP-E moved the default to
     // the handler so it can honor the daemon agentBehaviors.notifyOnFinishDefault
@@ -3205,7 +3205,7 @@ describe("create_agent MCP tool", () => {
       logger,
     });
 
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     const response = await tool.handler({
       ...subagentCurrentWorkspace(),
       title: "Child",
@@ -3246,7 +3246,7 @@ describe("create_agent MCP tool", () => {
       logger,
     });
 
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await tool.handler({
       ...detachedCurrentWorkspace(),
       title: "Detached",
@@ -3304,7 +3304,7 @@ describe("create_agent MCP tool", () => {
       providerSnapshotManager: providerSnapshot.manager,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     const input = {
       ...subagentCurrentWorkspace(),
       title: "Child",
@@ -3357,7 +3357,7 @@ describe("create_agent MCP tool", () => {
         providerSnapshotManager: createOpenCodeManager().manager,
         logger,
       });
-      const tool = registeredTool(server, "create_agent");
+      const tool = registeredTool(server, "create_chat");
       const result = await tool.handler({
         ...subagentCurrentWorkspace(),
         title: "Child",
@@ -3392,7 +3392,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await tool.handler({
       ...detachedDirectoryWorkspace(existingCwd),
       title: "Injected config test",
@@ -3426,7 +3426,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     await expect(
       tool.handler({
@@ -3440,7 +3440,7 @@ describe("create_agent MCP tool", () => {
     expect(spies.agentManager.createAgent).not.toHaveBeenCalled();
   });
 
-  it("validates create_agent modes against the shared provider snapshot", async () => {
+  it("validates create_chat modes against the shared provider snapshot", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
       id: "child-agent",
@@ -3474,7 +3474,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     await tool.handler({
       ...detachedDirectoryWorkspace(existingCwd),
@@ -3513,7 +3513,7 @@ describe("create_agent MCP tool", () => {
       ensureWorkspaceForCreate,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
 
     await tool.handler({
       ...detachedDirectoryWorkspace(existingCwd),
@@ -3561,7 +3561,7 @@ describe("create_agent MCP tool", () => {
       providerSnapshotManager: providerSnapshot.manager,
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await tool.handler({
       ...subagentCurrentWorkspace(),
       title: "Child",
@@ -3609,7 +3609,7 @@ describe("create_agent MCP tool", () => {
       callerAgentId: "parent-agent",
       logger,
     });
-    const tool = registeredTool(server, "create_agent");
+    const tool = registeredTool(server, "create_chat");
     await tool.handler({
       ...subagentCurrentWorkspace(),
       title: "Child",
@@ -3626,7 +3626,7 @@ describe("create_agent MCP tool", () => {
   });
 });
 
-describe("send_agent_prompt MCP tool", () => {
+describe("send_chat_prompt MCP tool", () => {
   const logger = createTestLogger();
   const existingCwd = process.cwd();
 
@@ -3661,14 +3661,14 @@ describe("send_agent_prompt MCP tool", () => {
       logger,
     });
 
-    const tool = registeredTool(server, "send_agent_prompt");
+    const tool = registeredTool(server, "send_chat_prompt");
     const parsed = await tool.inputSchema.safeParseAsync({
       agentId: "child-agent",
       prompt: "Follow up",
     });
     expect(parsed.success).toBe(true);
     if (!parsed.success) {
-      throw new Error("Expected caller send_agent_prompt input to parse");
+      throw new Error("Expected caller send_chat_prompt input to parse");
     }
     // background still schema-defaults to true for agent-scoped sends;
     // notifyOnFinish is no longer schema-defaulted (WP-E moved that default to
@@ -3708,14 +3708,14 @@ describe("send_agent_prompt MCP tool", () => {
       logger,
     });
 
-    const tool = registeredTool(server, "send_agent_prompt");
+    const tool = registeredTool(server, "send_chat_prompt");
     const parsed = await tool.inputSchema.safeParseAsync({
       agentId: "child-agent",
       prompt: "Follow up",
     });
     expect(parsed.success).toBe(true);
     if (!parsed.success) {
-      throw new Error("Expected top-level send_agent_prompt input to parse");
+      throw new Error("Expected top-level send_chat_prompt input to parse");
     }
     expect(parsed.data).toMatchObject({
       background: false,
@@ -3762,7 +3762,7 @@ describe("send_agent_prompt MCP tool", () => {
       logger,
     });
 
-    const tool = registeredTool(server, "send_agent_prompt");
+    const tool = registeredTool(server, "send_chat_prompt");
     await invokeToolWithParsedInput(tool, {
       agentId: "child-agent",
       prompt: "Follow up",
@@ -3777,7 +3777,7 @@ describe("send_agent_prompt MCP tool", () => {
   });
 });
 
-describe("update_agent MCP tool", () => {
+describe("update_chat MCP tool", () => {
   const logger = createTestLogger();
 
   it("does not register the replaced feature-specific MCP tool", async () => {
@@ -3800,7 +3800,7 @@ describe("update_agent MCP tool", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       logger,
     });
-    const tool = registeredTool(server, "update_agent");
+    const tool = registeredTool(server, "update_chat");
     const input = {
       agentId: "agent-1",
       name: "Updated agent",
@@ -3837,7 +3837,7 @@ describe("update_agent MCP tool", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       logger,
     });
-    const tool = registeredTool(server, "update_agent");
+    const tool = registeredTool(server, "update_chat");
 
     const response = await tool.handler({ agentId: "agent-1" });
 
@@ -3858,7 +3858,7 @@ describe("update_agent MCP tool", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       logger,
     });
-    const tool = registeredTool(server, "update_agent");
+    const tool = registeredTool(server, "update_chat");
 
     await expect(
       tool.handler({
@@ -5141,7 +5141,7 @@ describe("speak MCP tool", () => {
 describe("agent snapshot MCP serialization", () => {
   const logger = createTestLogger();
 
-  it("returns compact list items from list_agents", async () => {
+  it("returns compact list items from list_chats", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.listAgents = vi.fn().mockReturnValue([
       createManagedAgent({
@@ -5160,7 +5160,7 @@ describe("agent snapshot MCP serialization", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       logger,
     });
-    const tool = registeredTool(server, "list_agents");
+    const tool = registeredTool(server, "list_chats");
     const response = await tool.handler({});
     const structured = z
       .object({ agents: z.array(z.record(z.string(), z.unknown())) })
@@ -5197,7 +5197,7 @@ describe("agent snapshot MCP serialization", () => {
     expect(structured.agents[0]).not.toHaveProperty("pendingPermissions");
   });
 
-  it("returns archived agent snapshots from storage for get_agent_status", async () => {
+  it("returns archived agent snapshots from storage for get_chat_status", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const record = createStoredRecord({
       id: "archived-agent",
@@ -5212,7 +5212,7 @@ describe("agent snapshot MCP serialization", () => {
       logger,
       providerSnapshotManager: createClaudeOnlyManager(),
     });
-    const tool = registeredTool(server, "get_agent_status");
+    const tool = registeredTool(server, "get_chat_status");
     const response = await tool.handler({ agentId: "archived-agent" });
 
     expect(response.structuredContent).toEqual({
@@ -5227,7 +5227,7 @@ describe("agent snapshot MCP serialization", () => {
     expect(spies.agentStorage.get).toHaveBeenCalledWith("archived-agent");
   });
 
-  it("returns full-detail snapshots from get_agent_status", async () => {
+  it("returns full-detail snapshots from get_chat_status", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentStorage.get.mockResolvedValue({ title: "Full detail agent" });
     spies.agentManager.getAgent.mockReturnValue(
@@ -5283,14 +5283,14 @@ describe("agent snapshot MCP serialization", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       logger,
     });
-    const tool = registeredTool(server, "get_agent_status");
+    const tool = registeredTool(server, "get_chat_status");
     const response = await tool.handler({ agentId: "full-detail-agent" });
     const snapshot = z.record(z.string(), z.unknown()).parse(response.structuredContent.snapshot);
 
     const parsed = AgentSnapshotPayloadSchema.safeParse(snapshot);
     if (!parsed.success) {
       throw new Error(
-        `get_agent_status response failed AgentSnapshotPayloadSchema: ${JSON.stringify(parsed.error.issues, null, 2)}`,
+        `get_chat_status response failed AgentSnapshotPayloadSchema: ${JSON.stringify(parsed.error.issues, null, 2)}`,
       );
     }
     expect(response.structuredContent.status).toBe("idle");
@@ -5340,7 +5340,7 @@ describe("agent snapshot MCP serialization", () => {
     expect(snapshot.pendingPermissions).toEqual([]);
   });
 
-  it("does not expose internal stored agents from get_agent_status", async () => {
+  it("does not expose internal stored agents from get_chat_status", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.getAgent.mockReturnValue(null);
     spies.agentStorage.get.mockResolvedValue(
@@ -5356,14 +5356,14 @@ describe("agent snapshot MCP serialization", () => {
       logger,
       providerSnapshotManager: createClaudeOnlyManager(),
     });
-    const tool = registeredTool(server, "get_agent_status");
+    const tool = registeredTool(server, "get_chat_status");
 
     await expect(tool.handler({ agentId: "internal-agent" })).rejects.toThrow(
       "Agent internal-agent not found",
     );
   });
 
-  it("defaults list_agents to caller cwd and excludes archived agents", async () => {
+  it("defaults list_chats to caller cwd and excludes archived agents", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const now = new Date().toISOString();
     spies.agentManager.getAgent.mockReturnValue(
@@ -5399,7 +5399,7 @@ describe("agent snapshot MCP serialization", () => {
       providerSnapshotManager: createClaudeOnlyManager(),
       callerAgentId: "caller-agent",
     });
-    const tool = registeredTool(server, "list_agents");
+    const tool = registeredTool(server, "list_chats");
     const response = await tool.handler({});
 
     const agentIds = agentsOf(response).map((agent) => agent.id);
@@ -5407,7 +5407,7 @@ describe("agent snapshot MCP serialization", () => {
     expect(new Set(agentIds)).toEqual(new Set(["in-cwd", "in-child-cwd", "stored-in-cwd"]));
   });
 
-  it("allows explicit cwd, status, archive, time, and limit filters for list_agents", async () => {
+  it("allows explicit cwd, status, archive, time, and limit filters for list_chats", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const now = Date.now();
     const recent = new Date(now - 60 * 60 * 1000).toISOString();
@@ -5449,7 +5449,7 @@ describe("agent snapshot MCP serialization", () => {
       logger,
       providerSnapshotManager: createClaudeOnlyManager(),
     });
-    const tool = registeredTool(server, "list_agents");
+    const tool = registeredTool(server, "list_chats");
     const response = await tool.handler({
       cwd: TARGET_CWD,
       includeArchived: true,
@@ -5488,7 +5488,7 @@ describe("agent snapshot MCP serialization", () => {
       logger,
       providerSnapshotManager: createClaudeOnlyManager(),
     });
-    const tool = registeredTool(server, "list_agents");
+    const tool = registeredTool(server, "list_chats");
     const response = await tool.handler({ includeArchived: true });
     const agentIds = agentsOf(response).map((agent) => agent.id);
 
@@ -5529,7 +5529,7 @@ describe("agent snapshot MCP serialization", () => {
       logger,
       providerSnapshotManager: createClaudeOnlyManager(),
     });
-    const tool = registeredTool(server, "list_agents");
+    const tool = registeredTool(server, "list_chats");
     const response = await tool.handler({ cwd: REPO_CWD, includeArchived: true });
     const item = agentsOf(response)[0];
 
@@ -5560,7 +5560,7 @@ describe("agent snapshot MCP serialization", () => {
     expect(item).not.toHaveProperty("pendingPermissions");
   });
 
-  it("sorts list_agents by attention, status priority, then activity", async () => {
+  it("sorts list_chats by attention, status priority, then activity", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const now = Date.now();
     spies.agentManager.listAgents.mockReturnValue([
@@ -5607,7 +5607,7 @@ describe("agent snapshot MCP serialization", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       logger,
     });
-    const tool = registeredTool(server, "list_agents");
+    const tool = registeredTool(server, "list_chats");
     const response = await tool.handler({});
 
     expect(agentsOf(response).map((agent) => agent.id)).toEqual([
@@ -5620,7 +5620,7 @@ describe("agent snapshot MCP serialization", () => {
     ]);
   });
 
-  it("emits list_agents payloads that satisfy the agent list schema", async () => {
+  it("emits list_chats payloads that satisfy the agent list schema", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const now = new Date().toISOString();
     spies.agentManager.listAgents.mockReturnValue([createManagedAgent()]);
@@ -5640,13 +5640,13 @@ describe("agent snapshot MCP serialization", () => {
       logger,
       providerSnapshotManager: createClaudeOnlyManager(),
     });
-    const tool = registeredTool(server, "list_agents");
+    const tool = registeredTool(server, "list_chats");
     const response = await tool.handler({ includeArchived: true });
 
     const parsed = z.array(AgentListItemPayloadSchema).safeParse(response.structuredContent.agents);
     if (!parsed.success) {
       throw new Error(
-        `list_agents response failed AgentListItemPayloadSchema: ${JSON.stringify(parsed.error.issues, null, 2)}`,
+        `list_chats response failed AgentListItemPayloadSchema: ${JSON.stringify(parsed.error.issues, null, 2)}`,
       );
     }
   });
@@ -5710,7 +5710,7 @@ describe("agent snapshot MCP serialization", () => {
     ]);
   });
 
-  it("loads archived agents before reading get_agent_activity", async () => {
+  it("loads archived agents before reading get_chat_activity", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const record = createStoredRecord({ id: "archived-activity-agent" });
     const snapshot = {
@@ -5737,7 +5737,7 @@ describe("agent snapshot MCP serialization", () => {
       logger,
       providerSnapshotManager: createClaudeOnlyManager(),
     });
-    const tool = registeredTool(server, "get_agent_activity");
+    const tool = registeredTool(server, "get_chat_activity");
     const response = await tool.handler({ agentId: "archived-activity-agent" });
 
     expect(response.structuredContent).toEqual(
@@ -5754,7 +5754,7 @@ describe("agent snapshot MCP serialization", () => {
     );
   });
 
-  it("get_agent_activity limit counts projected messages, not raw deltas", async () => {
+  it("get_chat_activity limit counts projected messages, not raw deltas", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const snapshot = createManagedAgent({ id: "live-activity-agent", currentModeId: "default" });
     spies.agentManager.getAgent.mockReturnValue(snapshot);
@@ -5774,14 +5774,14 @@ describe("agent snapshot MCP serialization", () => {
       logger: createTestLogger(),
       providerSnapshotManager: createClaudeOnlyManager(),
     });
-    const tool = registeredTool(server, "get_agent_activity");
+    const tool = registeredTool(server, "get_chat_activity");
     const response = await tool.handler({ agentId: "live-activity-agent", limit: 1 });
 
     const content = String(response.structuredContent.content);
     expect(content).toContain("Hello world. How are you?");
   });
 
-  it("get_agent_activity limit=2 returns the last two projected entries whole", async () => {
+  it("get_chat_activity limit=2 returns the last two projected entries whole", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const snapshot = createManagedAgent({ id: "live-activity-agent-2", currentModeId: "default" });
     spies.agentManager.getAgent.mockReturnValue(snapshot);
@@ -5803,7 +5803,7 @@ describe("agent snapshot MCP serialization", () => {
       logger: createTestLogger(),
       providerSnapshotManager: createClaudeOnlyManager(),
     });
-    const tool = registeredTool(server, "get_agent_activity");
+    const tool = registeredTool(server, "get_chat_activity");
     const response = await tool.handler({ agentId: "live-activity-agent-2", limit: 2 });
 
     const content = String(response.structuredContent.content);

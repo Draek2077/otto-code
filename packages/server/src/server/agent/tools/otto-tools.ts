@@ -159,21 +159,21 @@ export interface OttoToolHostDependencies {
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
   /**
-   * Daemon-owned orchestration runtime. Enables the start_run / get_run_status /
-   * wait_for_agents tools so an orchestrator agent can declare a multi-agent
+   * Daemon-owned orchestration runtime. Enables the start_orchestration /
+   * get_orchestration_status / wait_for_chats tools so an orchestrator chat can declare a multi-chat
    * plan the daemon executes. Absent on hosts that don't wire orchestration.
    */
   runService?: RunService | null;
   providerSnapshotManager: ProviderSnapshotManager;
   /**
    * Reads the live Agent Personalities roster from the daemon config. Enables
-   * spawn-by-personality in create_agent and the list_personalities tool. Absent
+   * chat creation by personality in create_chat and the list_personalities tool. Absent
    * on hosts that don't wire personalities.
    */
   readAgentPersonalities?: () => AgentPersonality[];
   /**
    * Reads the live Agent Teams section (teams + active team id) from the
-   * daemon config. Lets create_agent stamp the frozen team layer onto member
+   * daemon config. Lets create_chat stamp the frozen team layer onto member
    * spawns. Absent on hosts that don't wire teams - spawns are then teamless,
    * exactly the no-active-team behavior.
    */
@@ -752,7 +752,7 @@ const EFFORT_INPUT_DESCRIPTION =
   "Effort level (off/minimal/low/medium/high/xhigh/max), clamped to the model's nearest option, or an exact thinkingOptions id from list_models.";
 
 // Lets a caller start an agent with no task in hand - "just open a new chat".
-// When create_agent omits initialPrompt, the new agent gets this generic ask so
+// When create_chat omits initialPrompt, the new chat gets this generic ask so
 // it immediately greets the user and asks what to work on, instead of the caller
 // having to invent a reason up front (which otherwise stalls the spawn while the
 // caller goes back to ask "what should it do?"). A missing title falls back the
@@ -762,7 +762,7 @@ const DEFAULT_BARE_AGENT_INITIAL_PROMPT =
 const DEFAULT_BARE_AGENT_TITLE = "New chat";
 
 /**
- * Default window for `get_agent_activity` when the caller omits `limit`. Bounds
+ * Default window for `get_chat_activity` when the caller omits `limit`. Bounds
  * an otherwise-unbounded child-transcript dump; the arg stays opt-in for more.
  */
 const GET_AGENT_ACTIVITY_DEFAULT_LIMIT = 50;
@@ -776,7 +776,7 @@ const GET_AGENT_ACTIVITY_DEFAULT_LIMIT = 50;
 const GET_AGENT_ACTIVITY_MAX_LIMIT = 500;
 
 /**
- * Per-agent cap on the final message `wait_for_agents` returns. A 32-way gather
+ * Per-chat cap on the final message `wait_for_chats` returns. A 32-way gather
  * returned every child's last message verbatim, so one barrier could carry tens
  * of thousands of tokens into the conductor's context.
  */
@@ -796,7 +796,7 @@ export function capWaitForAgentsMessage(message: string): string {
     text: message,
     headChars: WAIT_FOR_AGENTS_MESSAGE_HEAD_CHARS,
     tailChars: WAIT_FOR_AGENTS_MESSAGE_TAIL_CHARS,
-    note: "call get_agent_activity for the rest",
+    note: "call get_chat_activity for the rest",
   });
 }
 
@@ -865,7 +865,7 @@ function resolveEffortAgainstModels(params: {
 /**
  * Fold a resolved personality's prompt + frozen snapshot into a partial agent
  * config, or undefined when there's nothing to carry. Kept top-level so the
- * create_agent handler stays under the complexity budget.
+ * create_chat handler stays under the complexity budget.
  */
 function buildPersonalityAgentConfig(brain: {
   systemPrompt?: string;
@@ -1135,7 +1135,7 @@ function resolveOrchestrationPolicy(
 // everything allowed. "deterministic" - the daemon does all linking, so the
 // node loses every orchestration-shaped tool (the agents + schedules groups)
 // plus preview and browser control. "autonomous" - full toolset EXCEPT
-// start_run: orchestrations never nest orchestrations.
+// start_orchestration: orchestrations never nest.
 function buildOrchestrationPolicyGate(
   policy: "deterministic" | "autonomous" | null,
 ): (name: string) => boolean {
@@ -1143,7 +1143,7 @@ function buildOrchestrationPolicyGate(
     if (!policy) {
       return true;
     }
-    if (name === "start_run") {
+    if (name === "start_orchestration") {
       return false;
     }
     if (policy === "autonomous") {
@@ -1467,7 +1467,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     teamSnapshot?: ResolvedTeamSnapshot;
   }
 
-  // Turn the create_agent brain inputs - a personality name and/or explicit
+  // Turn the create_chat personality inputs - a personality name and/or explicit
   // provider/settings - into the concrete provider/model/effort/mode/prompt to
   // spawn with. A personality expands to its resolved snapshot; explicit sibling
   // fields override it per-field (no heuristic substitution). Without a
@@ -2014,11 +2014,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   }
 
   registerTool(
-    "create_agent",
+    "create_chat",
     {
-      title: "Create agent",
+      title: "Create chat",
       description:
-        "Create an agent. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a personality name. Title and initialPrompt are optional - omit both to open a bare new chat that greets the user. Prefer a personality when the host has them (list_personalities). Don't guess the provider - call list_providers/list_models if unsure.",
+        "Start an Otto chat session immediately. A chat can be independent or a child chat. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a personality name. Title and initialPrompt are optional. Prefer a personality profile when available; call list_personalities before choosing one.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -2169,7 +2169,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "List personalities",
         description:
-          "List the Agent Personalities on this host - named templates binding a provider/model, effort, mode, prompt, and roles. Pass a name to create_agent's `personality` to spawn it (availability is resolved per workspace; unavailable ones can't be spawned there). Any agent may call this to pick a teammate. Each entry's `guidance`, `tier`, and `canLaunch` fields explain when to choose it.",
+          "List the personality profiles on this host - named templates binding a provider/model, effort, mode, prompt, and roles. Pass a name to create_chat's `personality` to start it (availability is resolved per workspace; unavailable profiles can't be started there). Any chat may call this to choose a collaborator. Each entry's `guidance`, `tier`, and `canLaunch` fields explain when to choose it.",
         inputSchema: {
           cwd: z
             .string()
@@ -2177,11 +2177,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             .describe(
               "Workspace directory to resolve availability against. Defaults to your current cwd.",
             ),
-          role: z
-            .string()
+          roles: z
+            .array(z.string())
             .optional()
             .describe(
-              "Only return personalities carrying this role (for example writer, coder, judger, advisor).",
+              "Only return personalities carrying at least one of these roles (for example writer, coder, judger, advisor).",
             ),
         },
         outputSchema: {
@@ -2195,7 +2195,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               available: z.boolean(),
               tier: z
                 .string()
-                .describe("coordinator (delegates/orchestrates) or focused (worker)."),
+                .describe("coordinator (delegates/orchestrates) or focused (stays on one task)."),
               canLaunch: z
                 .boolean()
                 .describe(
@@ -2218,13 +2218,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             ),
         },
       },
-      async (args: { cwd?: string; role?: string }) => {
-        const roleFilter = args.role?.trim();
+      async (args: { cwd?: string; roles?: string[] }) => {
+        const roleFilters = (args.roles ?? []).map((role) => role.trim()).filter(Boolean);
         const caller = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
         const cwd = args.cwd?.trim() || caller?.cwd || undefined;
         const entries = await providerSnapshotManager.listProviders({ cwd, wait: true });
         // With a team active, the bench is the team: only members are listed
-        // (create_agent by explicit name still resolves the full roster - an
+        // (create_chat by explicit name still resolves the full roster - an
         // off-team specialist can be pulled in deliberately, without the team
         // prompt). No active team = the full roster, exactly as before.
         const activeTeam = getActiveAgentTeam(readAgentTeams?.());
@@ -2232,8 +2232,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .filter((personality) => !activeTeam || isTeamMember(activeTeam, personality.id))
           .filter(
             (personality) =>
-              !roleFilter ||
-              (isPersonalityRole(roleFilter) && personalityHasRole(personality, roleFilter)),
+              roleFilters.length === 0 ||
+              roleFilters.some(
+                (role) => isPersonalityRole(role) && personalityHasRole(personality, role),
+              ),
           )
           .map((personality) => {
             const resolution = resolvePersonality(personality, entries);
@@ -2288,7 +2290,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
                   activeTeam: {
                     id: activeTeam.id,
                     name: activeTeam.name,
-                    note: `Team "${activeTeam.name}" is active; this list is its bench. create_agent with an off-team personality name still works but spawns without the team prompt.`,
+                    note: `Team "${activeTeam.name}" is active; this list is its bench. create_chat with an off-team personality name still works but starts without the team prompt.`,
                   },
                 }
               : {}),
@@ -2315,7 +2317,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         worktree: CreateAgentFromMcpInput["worktree"];
       };
 
-  // Resolve the effective notifyOnFinish for a create_agent call. Agent-scoped
+  // Resolve the effective notifyOnFinish for a create_chat call. Chat-scoped
   // omissions fall back to the daemon agentBehaviors.notifyOnFinishDefault toggle
   // (default true); top-level omissions stay false (top-level sends can't be
   // notified - there's no caller agent to notify). Explicit args always win.
@@ -2402,7 +2404,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
 
     if (!cwd?.trim()) {
       if (legacyWorktreeTarget) {
-        throw new Error("cwd is required for legacy top-level create_agent calls");
+        throw new Error("cwd is required for top-level create_chat calls");
       }
       // No placement at all: a top-level caller that just says "make me an
       // agent" gets a fresh local workspace at the daemon's own directory,
@@ -2574,11 +2576,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   }
 
   registerTool(
-    "send_agent_prompt",
+    "send_chat_prompt",
     {
-      title: "Send agent prompt",
+      title: "Send chat prompt",
       description:
-        "Send a task to a running agent. Agent-scoped callers run in background by default; top-level callers wait by default.",
+        "Send a prompt to an active chat. Chat-scoped callers continue in the background by default; top-level callers wait by default.",
       inputSchema: sendAgentPromptInputSchema,
       outputSchema: {
         success: z.boolean(),
@@ -2660,10 +2662,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       const currentSnapshot = agentManager.getAgent(agentId);
 
       const queuedGuidance = dispatch.queued
-        ? "The agent was busy, so your prompt is queued and will run as its next turn. Nothing was interrupted."
+        ? "The chat was busy, so your prompt is queued and will run as its next turn. Nothing was interrupted."
         : null;
       const notifyGuidance = shouldNotifyOnFinish
-        ? "You will get notified when the prompted agent finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives."
+        ? "You will get notified when the prompted chat finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives."
         : null;
       const guidance = [queuedGuidance, notifyGuidance].filter(Boolean).join(" ");
       const responseData = {
@@ -2684,11 +2686,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   registerTool(
-    "get_agent_status",
+    "get_chat_status",
     {
-      title: "Get agent status",
+      title: "Get chat status",
       description:
-        "Return the latest snapshot for an agent, including lifecycle state, capabilities, and pending permissions.",
+        "Return the latest snapshot for a chat, including lifecycle state, capabilities, and pending permissions.",
       inputSchema: {
         agentId: z.string(),
       },
@@ -2734,10 +2736,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   registerTool(
-    "list_agents",
+    "list_chats",
     {
-      title: "List agents",
-      description: "List recent agents as compact metadata.",
+      title: "List chats",
+      description: "List recent chats as compact metadata.",
       inputSchema: {
         includeArchived: z.boolean().optional().default(false),
         cwd: z.string().optional(),
@@ -2793,10 +2795,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   registerTool(
-    "cancel_agent",
+    "cancel_chat",
     {
-      title: "Cancel agent run",
-      description: "Abort the agent's current run but keep the agent alive for future tasks.",
+      title: "Cancel chat",
+      description: "Stop the chat's current turn but keep the chat available for future work.",
       inputSchema: {
         agentId: z.string(),
       },
@@ -2916,12 +2918,12 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   registerTool(
-    "spawn_task",
+    "suggest_task",
     {
       title: "Suggest a task",
       description:
-        "Suggest a task. Flag an out-of-scope issue as a follow-up task the user can start later " +
-        "as its own agent.\n\n" +
+        "Create a deferred suggested-task card. Flag an out-of-scope issue as follow-up work the user can start later " +
+        "in its own chat. This does not start work.\n\n" +
         "Call this on your own initiative, without being asked, whenever you notice something " +
         "worth doing that would bloat the current change: dead code, stale docs, missing test " +
         "coverage, a confirmed TODO, a refactor, or a bug spotted in passing. Noticing it is the " +
@@ -2939,13 +2941,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .string()
           .describe(
             "A short imperative action phrase, under 60 chars, starting with a verb - the card " +
-              'label and the spawned session\'s title. E.g. "Fix the flaky auth test", "Add ' +
+              'label and the future chat\'s title. E.g. "Fix the flaky auth test", "Add ' +
               'parser tests".',
           ),
         prompt: z
           .string()
           .describe(
-            "The self-contained initial message for the spawned session - NOT shown to the user " +
+            "The self-contained initial message for the future chat - NOT shown to the user " +
               "directly. Include file paths and enough context to do the task without this " +
               "conversation.",
           ),
@@ -2968,7 +2970,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     },
     async ({ title, prompt, tldr, cwd }) => {
       if (!callerAgentId) {
-        throw new Error("spawn_task must be called from an agent session");
+        throw new Error("suggest_task must be called from a chat session");
       }
       const resolvedCwd = cwd ? resolveScopedCwd(cwd) : undefined;
       const taskId = agentManager.spawnSuggestedTask({
@@ -2990,7 +2992,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Dismiss a suggested task",
       description:
-        "Withdraw a suggested-task card you created with spawn_task, when it's now stale, " +
+        "Withdraw a suggested-task card you created with suggest_task, when it's now stale, " +
         "superseded, or already handled (to replace one, spawn the new card first, then dismiss the " +
         "old task_id). Only cards the user hasn't acted on can be withdrawn; if it was already " +
         "started or dismissed, the result says so - don't retry.",
@@ -3866,11 +3868,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   }
 
   registerTool(
-    "archive_agent",
+    "archive_chat",
     {
-      title: "Archive agent",
+      title: "Archive chat",
       description:
-        "Archive an agent (soft-delete). The agent is interrupted if running and removed from the active list.",
+        "Stop and archive a chat. It is removed from the active list but remains recoverable in the archive.",
       inputSchema: { agentId: z.string() },
       outputSchema: { success: z.boolean() },
     },
@@ -3881,10 +3883,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   registerTool(
-    "kill_agent",
+    "delete_chat",
     {
-      title: "Kill agent",
-      description: "Terminate an agent session permanently.",
+      title: "Delete chat",
+      description: "Permanently terminate and delete a chat session.",
       inputSchema: {
         agentId: z.string(),
       },
@@ -3902,16 +3904,16 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   registerTool(
-    "update_agent",
+    "update_chat",
     {
-      title: "Update agent",
-      description: "Update an agent name, labels, and/or runtime settings.",
+      title: "Update chat",
+      description: "Update a chat name, labels, and/or runtime settings.",
       inputSchema: {
         agentId: z.string(),
         name: z.string().optional(),
         labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
         settings: UpdateAgentSettingsInputSchema.optional().describe(
-          "Runtime settings to apply to the agent.",
+          "Runtime settings to apply to the chat.",
         ),
       },
       outputSchema: {
@@ -5557,10 +5559,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   registerTool(
-    "get_agent_activity",
+    "get_chat_activity",
     {
-      title: "Get agent activity",
-      description: "Return recent agent timeline entries as a curated summary.",
+      title: "Get chat activity",
+      description: "Return recent chat timeline entries as a curated summary.",
       inputSchema: {
         agentId: z.string(),
         limit: z
@@ -5622,11 +5624,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   registerTool(
-    "set_agent_mode",
+    "set_chat_mode",
     {
-      title: "Set agent session mode",
+      title: "Set chat mode",
       description:
-        "Switch the agent's session mode (plan, bypassPermissions, read-only, auto, etc.).",
+        "Switch the chat's permission/runtime mode (plan, bypassPermissions, read-only, auto, etc.).",
       inputSchema: {
         agentId: z.string(),
         modeId: z.string(),
@@ -5650,7 +5652,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "List pending permissions",
       description:
-        "Return all pending permission requests across all agents with the normalized payloads.",
+        "Return all pending permission requests across Otto chats with normalized payloads.",
       inputSchema: {},
       outputSchema: {
         permissions: z.array(
@@ -5683,8 +5685,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     "respond_to_permission",
     {
       title: "Respond to permission",
-      description:
-        "Approve or deny a pending permission request with an AgentManager-compatible response payload.",
+      description: "Approve or deny a pending permission request for an Otto chat.",
       inputSchema: {
         agentId: z.string(),
         requestId: z.string(),
@@ -5710,14 +5711,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   // ── Orchestration runtime tools ───────────────────────────────────────────
-  // wait_for_agents: the multi-agent gather barrier the daemon lacked. Useful on
+  // wait_for_chats: the multi-chat gather barrier the daemon lacked. Useful on
   // its own (a conductor hand-tracking children) and reused by the run runtime.
   registerTool(
-    "wait_for_agents",
+    "wait_for_chats",
     {
-      title: "Wait for agents",
+      title: "Wait for chats",
       description:
-        "Block until every listed agent reaches a terminal state (idle/error) or needs permission, then return each one's final message. The gather barrier for fan-out work.",
+        "Wait until every listed chat reaches a terminal state (idle/error) or needs permission, then return each chat's final message. The gather barrier for fan-out work.",
       inputSchema: {
         agentIds: z.array(z.string()).min(1).max(32),
         timeoutSeconds: z
@@ -5792,7 +5793,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     };
 
     // Spawn one candidate child agent from a personality, parented to the
-    // conductor, in the conductor's workspace. Mirrors the create_agent spawn.
+    // conductor, in the conductor's workspace. Mirrors the create_chat flow.
     const spawnRunChild = async (input: {
       personalityName: string;
       task: string;
@@ -5844,11 +5845,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     };
 
     registerTool(
-      "start_run",
+      "start_orchestration",
       {
-        title: "Start orchestration run",
+        title: "Start orchestration",
         description:
-          "Use when active work needs a declared multi-agent plan with daemon-managed fan-out, gathering, judging, loops, or approval gates. The daemon executes typed phases (research/plan/implement/design/verify/gate/deliver), fans out candidates, judges them, loops until enough pass, and pauses at gates for approval. Each phase dispatches to the active team's member for its role - fails loudly if the team lacks one. Blocks until the run finishes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Do not use for a discrete task that can be completed directly or by one dedicated agent.",
+          "Use when active work needs a declared multi-chat plan with daemon-managed fan-out, gathering, judging, loops, or approval gates. The daemon executes typed phases (research/plan/implement/design/verify/gate/deliver), fans out candidates, judges them, loops until enough pass, and pauses at gates for approval. Each phase dispatches to the active team's personality profile for its role and fails clearly if the team lacks one. Waits until the orchestration completes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Do not use for a discrete task that can be completed directly or by one dedicated chat.",
         inputSchema: RunPlanSchema,
         outputSchema: {
           runId: z.string(),
@@ -5922,7 +5923,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           ...(workspaceId ? { workspaceId } : {}),
           ...(activeTeam ? { teamId: activeTeam.id, teamName: activeTeam.name } : {}),
         });
-        // A start_run plan gathers its workers inside the daemon, rather than
+        // An orchestration plan gathers its chats inside the daemon, rather than
         // letting every worker notify the conductor. Restore one aggregate
         // hand-back only if the original tool turn has gone away; the normal
         // path receives the result below without an extra turn. This lifecycle
@@ -5985,11 +5986,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     );
 
     registerTool(
-      "get_run_status",
+      "get_orchestration_status",
       {
-        title: "Get run status",
+        title: "Get orchestration status",
         description:
-          "Return the current projection of an orchestration run - its phases, statuses, and structured judge verdicts.",
+          "Return the current projection of an orchestration - its phases, statuses, and structured judge verdicts.",
         inputSchema: {
           runId: z.string(),
         },

@@ -199,7 +199,7 @@ async function makeCwd(prefix: string): Promise<string> {
 async function createTopLevelAgent(args?: Partial<StructuredContent>): Promise<string> {
   const cwd = typeof args?.cwd === "string" ? args.cwd : await makeCwd("agent-cwd");
   const { cwd: _cwd, ...rest } = args ?? {};
-  const payload = await callToolStructured(topLevelClient, "create_agent", {
+  const payload = await callToolStructured(topLevelClient, "create_chat", {
     relationship: { kind: "detached" },
     workspace: { kind: "create", source: { kind: "directory", path: cwd } },
     title: "Parity agent",
@@ -213,7 +213,7 @@ async function createTopLevelAgent(args?: Partial<StructuredContent>): Promise<s
 }
 
 async function createChildAgent(args?: Partial<StructuredContent>): Promise<string> {
-  const payload = await callToolStructured(agentScopedClient, "create_agent", {
+  const payload = await callToolStructured(agentScopedClient, "create_chat", {
     relationship: { kind: "subagent" },
     workspace: { kind: "current" },
     title: "Parity child",
@@ -230,7 +230,7 @@ async function archiveAgentIfPresent(agentId: string | null | undefined): Promis
     return;
   }
   try {
-    await topLevelClient.callTool({ name: "archive_agent", args: { agentId } });
+    await topLevelClient.callTool({ name: "archive_chat", args: { agentId } });
   } catch {
     // ignore cleanup errors
   }
@@ -288,7 +288,7 @@ beforeAll(async () => {
   daemonHandle = await createTestOttoDaemon({ agentClients: createRecordingAgentClients() });
   topLevelClient = await createMcpClient(`http://127.0.0.1:${daemonHandle.port}/mcp/agents`);
 
-  const parentPayload = await callToolStructured(topLevelClient, "create_agent", {
+  const parentPayload = await callToolStructured(topLevelClient, "create_chat", {
     relationship: { kind: "detached" },
     workspace: { kind: "create", source: { kind: "directory", path: parentAgentCwd } },
     title: "MCP parity parent",
@@ -327,7 +327,7 @@ describe("Suite A: Core Fixes", () => {
     expect(AGENT_WAIT_TIMEOUT_MS).toBe(30_000);
   });
 
-  test("create_agent with callerAgentId sets the parent agent label", async () => {
+  test("create_chat with callerAgentId sets the parent agent label", async () => {
     let agentId: string | null = null;
     try {
       agentId = await createChildAgent();
@@ -340,7 +340,7 @@ describe("Suite A: Core Fixes", () => {
     }
   });
 
-  test("create_agent with detached relationship omits the parent agent label", async () => {
+  test("create_chat with detached relationship omits the parent agent label", async () => {
     let agentId: string | null = null;
     try {
       agentId = await createChildAgent({ relationship: { kind: "detached" } });
@@ -394,7 +394,7 @@ describe("Suite A: Core Fixes", () => {
     }
   });
 
-  test("create_agent accepts provider/model syntax", async () => {
+  test("create_chat accepts provider/model syntax", async () => {
     let agentId: string | null = null;
     try {
       agentId = await createTopLevelAgent({ provider: "claude/claude-test-model" });
@@ -405,14 +405,14 @@ describe("Suite A: Core Fixes", () => {
     }
   });
 
-  test("create_agent accepts provider features over MCP", async () => {
+  test("create_chat accepts provider features over MCP", async () => {
     let agentId: string | null = null;
     try {
       agentId = await createTopLevelAgent({ settings: { features: { test_feature: true } } });
       const internalSnapshot = daemonHandle.daemon.agentManager.getAgent(agentId);
       expect(internalSnapshot?.config.featureValues).toEqual({ test_feature: true });
 
-      const status = await callToolStructured(topLevelClient, "get_agent_status", { agentId });
+      const status = await callToolStructured(topLevelClient, "get_chat_status", { agentId });
       const snapshot = z.record(z.string(), z.unknown()).parse(status.snapshot);
       expectAgentFeatureValue(snapshot, "test_feature", true);
     } finally {
@@ -420,7 +420,7 @@ describe("Suite A: Core Fixes", () => {
     }
   });
 
-  test("agent-scoped create_agent accepts provider features over MCP", async () => {
+  test("agent-scoped create_chat accepts provider features over MCP", async () => {
     let agentId: string | null = null;
     try {
       agentId = await createChildAgent({
@@ -430,7 +430,7 @@ describe("Suite A: Core Fixes", () => {
       const internalSnapshot = daemonHandle.daemon.agentManager.getAgent(agentId);
       expect(internalSnapshot?.config.featureValues).toEqual({ test_feature: true });
 
-      const status = await callToolStructured(topLevelClient, "get_agent_status", { agentId });
+      const status = await callToolStructured(topLevelClient, "get_chat_status", { agentId });
       const snapshot = z.record(z.string(), z.unknown()).parse(status.snapshot);
       expectAgentFeatureValue(snapshot, "test_feature", true);
     } finally {
@@ -438,11 +438,11 @@ describe("Suite A: Core Fixes", () => {
     }
   });
 
-  test("update_agent updates provider features over MCP", async () => {
+  test("update_chat updates provider features over MCP", async () => {
     let agentId: string | null = null;
     try {
       agentId = await createTopLevelAgent({ settings: { features: { test_feature: false } } });
-      const updated = await callToolStructured(topLevelClient, "update_agent", {
+      const updated = await callToolStructured(topLevelClient, "update_chat", {
         agentId,
         settings: { features: { test_feature: true } },
       });
@@ -450,7 +450,7 @@ describe("Suite A: Core Fixes", () => {
       const internalSnapshot = daemonHandle.daemon.agentManager.getAgent(agentId);
       expect(internalSnapshot?.config.featureValues).toEqual({ test_feature: true });
 
-      const status = await callToolStructured(topLevelClient, "get_agent_status", { agentId });
+      const status = await callToolStructured(topLevelClient, "get_chat_status", { agentId });
       const snapshot = z.record(z.string(), z.unknown()).parse(status.snapshot);
       expectAgentFeatureValue(snapshot, "test_feature", true);
     } finally {
@@ -481,7 +481,7 @@ describe("Suite A: Core Fixes", () => {
     );
   });
 
-  test("create_agent accepts labels param", async () => {
+  test("create_chat accepts labels param", async () => {
     let agentId: string | null = null;
     try {
       agentId = await createTopLevelAgent({ labels: { team: "infra" } });
@@ -492,12 +492,12 @@ describe("Suite A: Core Fixes", () => {
     }
   });
 
-  test("archive_agent archives an agent", async () => {
+  test("archive_chat archives an agent", async () => {
     let agentId: string | null = null;
     try {
       agentId = await createTopLevelAgent();
       const archivedAgentId = agentId;
-      await callToolStructured(topLevelClient, "archive_agent", { agentId });
+      await callToolStructured(topLevelClient, "archive_chat", { agentId });
       agentId = null;
 
       const agents = daemonHandle.daemon.agentManager.listAgents();
@@ -507,11 +507,11 @@ describe("Suite A: Core Fixes", () => {
     }
   });
 
-  test("update_agent updates name and labels", async () => {
+  test("update_chat updates name and labels", async () => {
     let agentId: string | null = null;
     try {
       agentId = await createTopLevelAgent();
-      await callToolStructured(topLevelClient, "update_agent", {
+      await callToolStructured(topLevelClient, "update_chat", {
         agentId,
         name: "Renamed parity agent",
         labels: { team: "infra", surface: "mcp" },

@@ -10,7 +10,10 @@ import {
   isDelegatedAgent,
   PARENT_AGENT_ID_LABEL,
 } from "@otto-code/protocol/agent-labels";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
+import {
+  normalizePersonalityRoles,
+  OTTO_WORK_VOCABULARY_DIRECTIVE,
+} from "@otto-code/protocol/agent-personalities";
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import { composeTeamAndPersonalityPrompt } from "./agent-teams.js";
 import { deltaAgentUsage } from "./subagent-usage.js";
@@ -455,7 +458,7 @@ export interface AgentManagerOptions {
   /**
    * Fires once per agent spawned with a bound personality (fire-and-forget
    * usage telemetry). Lives at the createAgent choke point so composer, MCP
-   * create_agent, and schedule spawns all count.
+   * create_chat, and scheduled chat starts all count.
    */
   onPersonalitySpawn?: (personalityId: string) => void;
   /**
@@ -755,7 +758,7 @@ interface BackgroundShellTaskEntry {
   archivedAt?: string;
 }
 
-// A suggested task an agent surfaced via the `spawn_task` tool. The `prompt` is
+// A suggested task a chat surfaced via the `suggest_task` tool. The `prompt` is
 // held here (never sent to clients) and used verbatim when the user starts the
 // task. Resolved (started/dismissed) entries are retained so `dismiss_task` and
 // the start RPC stay idempotent, but are filtered out of the emitted list so the
@@ -976,7 +979,7 @@ interface ManagedAgentBase {
    */
   pendingSteerDrain: boolean;
   /**
-   * Set when a cancel (the composer's stop button, ESC, `cancel_agent`) lands
+   * Set when a cancel (the composer's stop button, ESC, `cancel_chat`) lands
    * while messages are queued. Stop means stop, so the cancelled turn's
    * finalize must not drain the queue into a fresh turn - but the entries
    * survive, so the Queue track still shows them and the user can edit or send
@@ -992,7 +995,7 @@ interface ManagedAgentBase {
   lastUsage?: AgentUsage;
   /**
    * Lifetime token total for this agent, tracked the same way regardless of
-   * how it was spawned (create_agent, personality/team spawn, schedule run,
+   * how it was started (create_chat, personality/team chat, schedule fire,
    * or Run orchestration) or which provider runs it. See
    * `accumulateAgentTokens` for the per-provider rollup rule. Ephemeral like
    * `lastUsage` - not persisted, resets on daemon restart.
@@ -1015,7 +1018,7 @@ interface ManagedAgentBase {
    */
   usageWatermark?: TurnUsageWatermark;
   /**
-   * Sub-agents-track liveness for a NATIVE child agent (create_agent and the
+   * Sub-chats-track liveness for a native child chat (create_chat and the
    * other spawn paths): cumulative tool invocations and the tool it is running
    * or ran last, both derived from its own timeline because there is no provider
    * task report to read (observed rows get theirs from the provider - see
@@ -1451,7 +1454,7 @@ export class AgentManager {
   // processes, so unlike observedSubagents there's no Agent-shaped payload;
   // the daemon pushes the full per-parent list on every change.
   private readonly backgroundShellTasks = new Map<string, BackgroundShellTaskEntry>();
-  // Suggested tasks (spawn_task chips): taskId -> current state, keyed globally.
+  // Suggested tasks (suggest_task chips): taskId -> current state, keyed globally.
   // Pushed as the full per-parent pending list on every change.
   private readonly suggestedTasks = new Map<string, SuggestedTaskEntry>();
   // Synchronous reservation for in-flight suggested-task starts: a start awaits
@@ -2771,7 +2774,7 @@ export class AgentManager {
     return { archivedAt };
   }
 
-  // Children created via the MCP `create_agent` tool carry the parent-agent-id
+  // Children created via the MCP `create_chat` tool carry the parent-agent-id
   // label pointing back at the caller. Archiving the parent cascades to those
   // children so subagent fleets don't outlive their orchestrator. Detached
   // handoff agents omit this label, so they stand outside the cascade.
@@ -5970,7 +5973,7 @@ export class AgentManager {
   /**
    * Fold a native child agent's own tool call into its track-row liveness
    * counters. Observed rows get these from the provider's task report; a native
-   * (create_agent) child has no such report, so its transcript IS the source -
+   * (create_chat) child has no such report, so its transcript IS the source -
    * the one signal every provider produces. Returns true only when the readout
    * actually changed, so a tool call's running → completed transitions don't
    * re-emit and the row never strobes.
@@ -6822,7 +6825,7 @@ export class AgentManager {
     }
   }
 
-  // --- Suggested tasks (spawn_task / dismiss_task chips) --------------------
+  // --- Suggested tasks (suggest_task / dismiss_task chips) ------------------
 
   private currentSuggestedTasksFor(parentAgentId: string): SuggestedTaskInfo[] {
     const tasks: SuggestedTaskInfo[] = [];
@@ -7464,13 +7467,15 @@ export class AgentManager {
     const launchConfig = await this.applyInstructionFiles(
       await this.applyProjectKnowledge(
         await this.applyPersonalityMemory(
-          this.applyDaemonAppendSystemPrompt(
-            withRuntimeOttoMcpServer({
-              config: storedConfig,
-              agentId,
-              mcpBaseUrl: this.mcpBaseUrl,
-              mcpAuthToken: this.mcpAuthToken,
-            }),
+          this.applyOttoWorkVocabulary(
+            this.applyDaemonAppendSystemPrompt(
+              withRuntimeOttoMcpServer({
+                config: storedConfig,
+                agentId,
+                mcpBaseUrl: this.mcpBaseUrl,
+                mcpAuthToken: this.mcpAuthToken,
+              }),
+            ),
           ),
         ),
       ),
@@ -7501,6 +7506,28 @@ export class AgentManager {
       config.cwd,
     );
     return systemPrompt === config.systemPrompt ? config : { ...config, systemPrompt };
+  }
+
+  /**
+   * Runtime-only vocabulary for sessions that actually receive Otto's native
+   * catalog. Tool descriptions explain individual calls; this compact brief
+   * explains the shared task/chat/orchestration model without spending tokens
+   * in providers that cannot use those tools.
+   */
+  private applyOttoWorkVocabulary(config: AgentSessionConfig): AgentSessionConfig {
+    if (
+      !this.ottoToolsEnabled ||
+      !this.getProviderCapabilities(config.provider)?.supportsNativeOttoTools
+    ) {
+      return config;
+    }
+    const existing = config.systemPrompt?.trim();
+    return {
+      ...config,
+      systemPrompt: existing
+        ? `${existing}\n\n${OTTO_WORK_VOCABULARY_DIRECTIVE}`
+        : OTTO_WORK_VOCABULARY_DIRECTIVE,
+    };
   }
 
   /**

@@ -2,7 +2,7 @@
 
 Claude Desktop's **suggested background task** system, brought into Otto with the same agent-facing mechanism and nomenclature, rendered natively in the session UI and wired into Otto's own agent-creation and worktree machinery.
 
-An agent surfaces a suggestion by calling `spawn_task`; a **card** appears for the user in that session; the user starts it one of four ways or dismisses it. Either way the spawning agent's current turn continues uninterrupted. Gated behind `server_info.features.suggestedTasks`.
+A chat creates a deferred suggestion by calling `suggest_task`; a **card** appears for the user in that chat; the user starts it one of four ways or dismisses it. Either way the suggesting chat's current turn continues uninterrupted. Gated behind `server_info.features.suggestedTasks`.
 
 Because Otto injects its native tool catalog into every provider, registering the two tools once in `createOttoToolCatalog` (`packages/server/src/server/agent/tools/otto-tools.ts`) makes them available to Claude (over the injected `/mcp/agents` server) **and** to the openai-compatible provider (natively via `launchContext.ottoTools`) with zero per-provider work - the two-tool contract ships for all providers by construction.
 
@@ -10,10 +10,10 @@ Because Otto injects its native tool catalog into every provider, registering th
 
 Matches Claude Desktop exactly - same tool names and field names:
 
-- **`spawn_task`** - `title` (under 60 chars, imperative verb phrase; becomes the card label and spawned session title), `prompt` (self-contained initial message; **never sent to the client**, stays server-side and is used verbatim on start), `tldr` (1–2 sentence summary shown in the card), `cwd` (optional absolute path to a different project root, honoring `lockedCwd`/`allowCustomCwd` via `resolveScopedCwd`). Returns `{ task_id }`.
+- **`suggest_task`** - `title` (under 60 chars, imperative verb phrase; becomes the card label and future chat title), `prompt` (self-contained initial message; **never sent to the client**, stays server-side and is used verbatim when the user starts it), `tldr` (1–2 sentence summary shown in the card), `cwd` (optional absolute path to a different project root, honoring `lockedCwd`/`allowCustomCwd` via `resolveScopedCwd`). Returns `{ task_id }`.
 - **`dismiss_task`** - `task_id`, optional `reason`. Idempotent: if the task was already started or dismissed it reports that and no-ops.
 
-**Names deliberately match Claude Desktop** - `spawn_task`/`dismiss_task`, differing only by the MCP prefix each harness imposes (`mcp__otto__` vs `mcp__ccd_session__`). If Claude Desktop's wording changes, re-sync rather than diverging; cross-harness fluency is the goal.
+The Otto name is deliberate: `suggest_task`/`dismiss_task` make the deferred lifecycle explicit. A suggestion card never starts a chat by itself.
 
 The tools land in the existing **`agents`** tool group by default (they match no prefix in `ottoToolGroupForName`), so no new toggle was required.
 
@@ -26,11 +26,11 @@ Hard-won lesson: the tool was never broken or missing, yet models rarely called 
 
 The description is now written **trigger-first**: it opens with the imperative ("Suggest a task. Flag an out-of-scope issue…"), states that _noticing_ is the trigger and that the model should not wait for permission or merely mention the idea in prose, and enumerates the user phrasings that mean this tool ("suggest a task", "make that a task", "queue that up", "spin that off", "flag that for later", …). When tuning discoverability, edit the description before reaching for prompt-level guidance.
 
-Two runtime facts also gate the feature independent of the code: the **daemon must be rebuilt and restarted** (the app half hot-reloads, the daemon half does not), and **`mcp.injectIntoAgents` must be on** (it defaults to `false`, though it is usually enabled if browser/preview/create_agent tools work).
+Two runtime facts also gate the feature independent of the code: the **daemon must be rebuilt and restarted** (the app half hot-reloads, the daemon half does not), and **`mcp.injectIntoAgents` must be on** (it defaults to `false`, though it is usually enabled if browser/preview/create_chat tools work).
 
 ## Auto-approval
 
-`spawn_task`/`dismiss_task` **bypass the permission prompt in every mode, including Always-ask.** The rationale: they only draw or withdraw a card - nothing runs until the user clicks Start, so the **Start button is the gate**, not the act of suggesting. This matches Claude Desktop, where a suggestion just appears. The tool call still shows in the transcript, so "see everything" visibility is preserved.
+`suggest_task`/`dismiss_task` **bypass the permission prompt in every mode, including Always-ask.** The rationale: they only draw or withdraw a card - nothing starts until the user clicks Start, so the **Start button is the gate**, not the act of suggesting. The tool call still shows in the transcript, so "see everything" visibility is preserved.
 
 Implemented at one chokepoint per provider: an `AUTO_APPROVED_OTTO_TOOL_NAMES` early-return in `handlePermissionRequest` (`claude/agent.ts`), plus the bare names in `READ_ONLY_TOOLS` in `openai-compat-otto-tool-permissions.ts`.
 
@@ -47,7 +47,7 @@ Only **one** links the new agent to the parent. The whole switch is the `detache
 
 `callerAgentId` stays set even when detached, so the new agent still inherits the parent's cwd/workspace/brain - only the label is dropped. `notifyOnFinish` tracks `detached` (a detached chat isn't watchable via the track). A worktree _must_ have its own branch, so `branch-off` auto-creates a fresh one off HEAD; the user never picks a branch and the parent's branch is never reused.
 
-Start orchestration reuses the same commands the MCP tools and the app's own create flows already use - there is **no parallel spawner**. Since `create_agent` requires an explicit provider/personality with no silent inheritance, the start handler resolves the parent agent's brain and passes it explicitly, so a started task feels like a continuation of the agent that suggested it.
+Starting a suggested task reuses the same commands the MCP tools and the app's own create flows already use - there is **no parallel chat creator**. Since `create_chat` requires an explicit provider/personality with no silent inheritance, the start handler resolves the parent chat's settings and passes them explicitly, so a started task feels like a continuation of the chat that suggested it.
 
 Start-mode labels follow the glossary - **New chat / Sub-agent / Worktree / In session** - never "checkout". The device-local `suggestedTasksDefaultMode` setting (default `new_chat`) picks the split-button primary; bulk start falls back to `new_chat` when the default is `in_session`.
 

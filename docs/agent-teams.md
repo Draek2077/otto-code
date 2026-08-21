@@ -48,7 +48,7 @@ agentTeams.activeTeamId?: string | null   // host-scoped; null/absent = no team 
 
 ### Why the active team is host-scoped daemon config (not device-local)
 
-The team prompt is applied **daemon-side at spawn** - MCP `create_agent`, schedule runs, and mini-tasks all spawn with no client attached, so the daemon must know the active team on its own. Host config also gives the switcher its "instant everywhere" behavior for free: a patch from any client hot-reloads to every connected client via `status:daemon_config_changed`, same as every other config edit. A device-local active team would fork reality between phone and desktop and leave headless spawns teamless.
+The team prompt is applied **daemon-side when a chat starts** - MCP `create_chat`, scheduled chats, and mini-tasks all start with no client attached, so the daemon must know the active team on its own. Host config also gives the switcher its "instant everywhere" behavior for free: a patch from any client hot-reloads to every connected client via `status:daemon_config_changed`, same as every other config edit. A device-local active team would fork reality between phone and desktop and leave headless chats teamless.
 
 ## Prompt composition
 
@@ -61,7 +61,7 @@ The personality-owned prompt composes top to bottom as **team prompt** (frames t
 Deliberate boundaries of the rule:
 
 - **Raw spawns (no personality) get no team prompt.** Teams are compositions of personalities; picking a raw provider/model is an explicit step outside the roster.
-- **Non-member personality spawns get no team prompt.** Pickers only offer members while a team is active, so this arises only via an explicit MCP `create_agent personality:"X"` - explicit is explicit; the spawn succeeds without the team layer.
+- **Non-member personality chats get no team prompt.** Pickers only offer members while a team is active, so this arises only via an explicit MCP `create_chat personality:"X"` - explicit is explicit; the chat starts without the team layer.
 - **`respectGlobalAppendPrompt: false` does NOT suppress the team prompt.** That toggle governs the daemon-global append only. Putting a personality on a team opts it into the team frame; the team prompt is part of the identity stack, not the global append.
 - **Empty/whitespace `teamPrompt` stacks nothing** - a team can be purely organizational (picker scoping) with no prompt.
 - **Caller-authored prompts still win.** When the caller sets an explicit `systemPrompt`, neither the personality prompt nor the team prompt composes in - team prompt only rides the personality-owned prompt path.
@@ -79,7 +79,7 @@ The three daemon spawn paths that compose the team layer - interactive create (`
 
 - **Pickers** (`use-personality-selection.ts` / `combined-model-selector.tsx`): with a team active, the personalities section shows only members - **strict, no off-team group**. One exception: a schedule form editing a schedule already bound to an off-team personality keeps that bound entry selectable (it was valid when authored). The running-agent switcher also filters its pinned roster to team members, but the display-only entry for the _current_ personality keeps working when it's off-team so the trigger never lies.
 - **Writer mini-task routing** (`resolveStructuredGenerationProviders`): available Writer **team members** are prepended ahead of available non-team Writers, which stay ahead of the legacy chain. This is a preference ladder, not an availability gate - an all-out-of-commission team must not break commit-message generation. (This is the one place "no fallback" does not apply; it never applied to mini-task routing.)
-- **MCP `list_personalities`**: with a team active, returns members only, plus a note naming the active team (so an Orchestrator knows its bench). `create_agent` by explicit personality name still resolves the full roster - an Orchestrator can pull in an off-team specialist deliberately, it just won't carry the team prompt.
+- **MCP `list_personalities`**: with a team active, returns members only, plus a note naming the active team (so an orchestrator knows its bench). `create_chat` by explicit personality name still resolves the full roster - an orchestrator can pull in an off-team specialist deliberately, it just won't carry the team prompt.
 - **Role-matched daemon lookups** (Writer routing, `checkout.git.commit_agent`, etc.): prefer team members with the role, fall back to the full roster - same ladder as Writer routing.
 
 Availability stays per-personality - a team is never "out of commission"; its members individually are.

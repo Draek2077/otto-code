@@ -69,9 +69,9 @@ function createToolCatalog(): OttoToolCatalog {
   return {
     tools: new Map([
       [
-        "create_agent",
+        "create_chat",
         {
-          name: "create_agent",
+          name: "create_chat",
           description: "Create a Otto agent.",
           handler: async () => ({ content: [] }),
         },
@@ -93,9 +93,7 @@ describe("OMP agent client and session", () => {
       modeId: "ask",
       argv: ["omp", "--mode", "rpc-ui", "--approval-mode", "always-ask"],
     });
-    expect(omp.registeredHostTools()).toEqual([
-      [expect.objectContaining({ name: "create_agent" })],
-    ]);
+    expect(omp.registeredHostTools()).toEqual([[expect.objectContaining({ name: "create_chat" })]]);
     expect(omp.capabilities()).toMatchObject({
       supportsMcpServers: false,
       supportsNativeOttoTools: true,

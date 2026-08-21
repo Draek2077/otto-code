@@ -35,17 +35,17 @@ function structured<T>(result: { structuredContent?: unknown }): T {
   return result.structuredContent as T;
 }
 
-describe("get_agent_activity limit ceiling", () => {
+describe("get_chat_activity limit ceiling", () => {
   test("rejects a limit above the ceiling instead of dumping the whole transcript", async () => {
     const catalog = buildCatalog({});
 
     await expect(
-      catalog.executeTool("get_agent_activity", { agentId: "a", limit: 501 }),
+      catalog.executeTool("get_chat_activity", { agentId: "a", limit: 501 }),
     ).rejects.toThrow();
   });
 
   test("accepts a limit at the ceiling", () => {
-    const shape = buildCatalog({}).getTool("get_agent_activity")?.inputSchema as z.ZodRawShape;
+    const shape = buildCatalog({}).getTool("get_chat_activity")?.inputSchema as z.ZodRawShape;
     const schema = z.object(shape);
 
     expect(schema.safeParse({ agentId: "a", limit: 500 }).success).toBe(true);
@@ -54,7 +54,7 @@ describe("get_agent_activity limit ceiling", () => {
   });
 });
 
-describe("wait_for_agents last-message cap", () => {
+describe("wait_for_chats last-message cap", () => {
   function waitCatalog(lastMessage: string): OttoToolCatalog {
     return buildCatalog({
       agentManager: {
@@ -65,7 +65,7 @@ describe("wait_for_agents last-message cap", () => {
 
   test("caps each agent's final message head/tail and points at the full copy", async () => {
     const message = `${"H".repeat(3_200)}${"M".repeat(50_000)}${"T".repeat(800)}`;
-    const result = await waitCatalog(message).executeTool("wait_for_agents", {
+    const result = await waitCatalog(message).executeTool("wait_for_chats", {
       agentIds: ["agent-1"],
     });
 
@@ -75,11 +75,11 @@ describe("wait_for_agents last-message cap", () => {
     expect(capped.length).toBeLessThan(4_200);
     expect(capped.startsWith("H".repeat(3_200))).toBe(true);
     expect(capped.endsWith("T".repeat(800))).toBe(true);
-    expect(capped).toContain("call get_agent_activity for the rest");
+    expect(capped).toContain("call get_chat_activity for the rest");
   });
 
   test("leaves a short final message verbatim", async () => {
-    const result = await waitCatalog("All tests pass.").executeTool("wait_for_agents", {
+    const result = await waitCatalog("All tests pass.").executeTool("wait_for_chats", {
       agentIds: ["agent-1"],
     });
 

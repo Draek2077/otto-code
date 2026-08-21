@@ -33,7 +33,7 @@ function readString(value: unknown): string | undefined {
 //
 // Only tools whose bare id does NOT title-case cleanly on its own need an entry
 // here: lowercase compound names ("websearch") a splitter can't segment, or
-// ones we want to word deliberately. Well-formed snake_case ("spawn_task") and
+// ones we want to word deliberately. Well-formed snake_case ("suggest_task") and
 // camelCase ("WebSearch") names are handled by the algorithmic humanizer below
 // and do NOT need listing.
 //
@@ -58,7 +58,7 @@ const KNOWN_TOOL_DISPLAY_NAMES: Record<string, string> = {
 };
 
 // Split camelCase / PascalCase and separator-delimited identifiers into words,
-// then Title-Case them: "WebSearch" -> "Web Search", "spawn_task" -> "Spawn
+// then Title-Case them: "WebSearch" -> "Web Search", "suggest_task" -> "Suggest
 // Task", "HTTPServer" -> "HTTP Server".
 function titleCaseToolId(value: string): string {
   return value
@@ -76,8 +76,8 @@ function humanizeToolName(name: string): string {
   if (!trimmed) {
     return name;
   }
-  // Strip the transport namespace first ("mcp__otto__spawn_task" ->
-  // "spawn_task", "otto.list_agents" -> "list_agents") so both the known-tool
+  // Strip the transport namespace first ("mcp__otto__suggest_task" ->
+  // "suggest_task", "otto.list_chats" -> "list_chats") so both the known-tool
   // lookup and the fallback operate on the bare tool id.
   const leaf = getMcpToolLeafName(trimmed) ?? getOttoToolLeafName(trimmed);
   if (leaf) {
@@ -91,8 +91,8 @@ function humanizeToolName(name: string): string {
  * shows a tool/action name without a full timeline item to run through
  * {@link buildToolCallDisplayModel} (the visualizer's action labels, sub-agent
  * activity rows). Strips the MCP/Otto namespace, consults the known-tool
- * registry, then title-cases as a fallback - so "mcp__otto__spawn_task",
- * "otto.spawn_task", and a bare "spawn_task" all render as "Spawn Task".
+ * registry, then title-cases as a fallback - so "mcp__otto__suggest_task",
+ * "otto.suggest_task", and a bare "suggest_task" all render as "Suggest Task".
  */
 export function getToolDisplayName(name: string): string {
   return humanizeToolName(name);

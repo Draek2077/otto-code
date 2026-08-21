@@ -4,7 +4,7 @@ import { z } from "zod";
  * Otto suggested-task wire schemas: the tasks.suggested.* start and dismiss RPCs and the suggested-task payloads. Fork-only capability, so it owns its schemas; messages.ts re-exports them.
  */
 
-// A suggested task an agent surfaced via the `spawn_task` tool (Claude Desktop
+// A suggested task a chat surfaced via the `suggest_task` tool (Claude Desktop
 // parity). Renders as a chip in the parent agent's session; the user starts it
 // (new worktree / local / this session) or dismisses it. The `prompt` is
 // deliberately NOT part of this wire shape - it stays server-side and is only

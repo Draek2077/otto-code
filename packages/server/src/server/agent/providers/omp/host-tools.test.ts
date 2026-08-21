@@ -131,7 +131,7 @@ describe("OMP host tools", () => {
   test("marks every caller-scoped Otto tool essential for direct invocation", () => {
     const catalog = createCatalog([
       {
-        name: "create_agent",
+        name: "create_chat",
         title: "Create agent",
         description: "Create a Otto agent.",
         inputSchema: { initialPrompt: z.string().describe("Prompt for the new agent.") },
@@ -146,7 +146,7 @@ describe("OMP host tools", () => {
 
     expect(serializeOmpHostTools(catalog)).toEqual([
       {
-        name: "create_agent",
+        name: "create_chat",
         label: "Create agent",
         description: "Create a Otto agent.",
         loadMode: "essential",
@@ -164,7 +164,7 @@ describe("OMP host tools", () => {
   test("routes calls and progress through the typed OMP runtime", async () => {
     const omp = await OmpHostToolHarness.withTools([
       {
-        name: "create_agent",
+        name: "create_chat",
         description: "Create a Otto agent.",
         handler: async (input, context) => {
           context.sendUpdate?.({ content: [{ type: "text", text: "creating" }] });
@@ -177,7 +177,7 @@ describe("OMP host tools", () => {
       omp.call({
         id: "host-1",
         toolCallId: "tool-1",
-        toolName: "create_agent",
+        toolName: "create_chat",
         arguments: { initialPrompt: "Inspect the bug" },
       }),
     ).resolves.toEqual({

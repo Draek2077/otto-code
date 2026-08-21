@@ -63,6 +63,6 @@ describe("ottoToolGroupForName", () => {
   });
 
   test("falls back to agents for lifecycle tools", () => {
-    expect(ottoToolGroupForName("create_agent")).toBe("agents");
+    expect(ottoToolGroupForName("create_chat")).toBe("agents");
   });
 });

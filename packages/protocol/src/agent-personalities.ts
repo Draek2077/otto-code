@@ -7,15 +7,6 @@ import { PERSONALITY_ROLES, type AgentPersonality, type PersonalityRole } from "
 
 const ROLE_SET: ReadonlySet<string> = new Set(PERSONALITY_ROLES);
 
-// Retired role names, mapped to their canonical replacement. "worker" was split
-// into "writer" (fast small-text generation) and "coder" (sub-agent coding); a
-// personality that still carries the old tag resolves to "coder", the closer
-// heir of what a worker did. Normalization applies these before filtering so
-// personalities persisted before the split keep a real role.
-const LEGACY_ROLE_ALIASES: Readonly<Record<string, PersonalityRole>> = {
-  worker: "coder",
-};
-
 export function isPersonalityRole(value: string): value is PersonalityRole {
   return ROLE_SET.has(value);
 }
@@ -23,8 +14,8 @@ export function isPersonalityRole(value: string): value is PersonalityRole {
 /**
  * Filter an arbitrary role array (roles ride the wire as plain strings) down to
  * the known set, deduped and returned in canonical `PERSONALITY_ROLES` order.
- * Retired role names are mapped through `LEGACY_ROLE_ALIASES`; anything else
- * unknown (e.g. a role from a newer peer) is dropped rather than trusted.
+ * Unknown roles (for example, a role from a newer peer) are dropped rather
+ * than trusted.
  */
 export function normalizePersonalityRoles(roles: readonly string[] | undefined): PersonalityRole[] {
   if (!roles || roles.length === 0) {
@@ -32,7 +23,7 @@ export function normalizePersonalityRoles(roles: readonly string[] | undefined):
   }
   const present = new Set<PersonalityRole>();
   for (const raw of roles) {
-    const canonical = LEGACY_ROLE_ALIASES[raw] ?? (isPersonalityRole(raw) ? raw : null);
+    const canonical = isPersonalityRole(raw) ? raw : null;
     if (canonical) {
       present.add(canonical);
     }
@@ -48,7 +39,7 @@ export function personalityHasRole(
 }
 
 // Two behavioral tiers, not a hard gate. Coordinators delegate - they converse,
-// plan, and launch other agents/personalities. Focused workers lift a single
+// plan, and launch other chats/personality profiles. Focused personalities lift a single
 // thing someone is waiting on and should stay on task. A personality that
 // carries ANY coordinator role counts as a coordinator (a chatter+coder can
 // both code and delegate). Every agent keeps the same tools; the tier only
@@ -79,7 +70,7 @@ export const PERSONALITY_ROLE_INFO: Readonly<Record<PersonalityRole, Personality
     guidance:
       "Creates and manages schedules; may orchestrate recurring or multi-step jobs. Pick for scheduling.",
   },
-  // ── Thinking workers (read-only, structured findings) ─────────────────────
+  // ── Thinking specialists (read-only, structured findings) ────────────────
   researcher: {
     tier: "focused",
     guidance:
@@ -100,7 +91,7 @@ export const PERSONALITY_ROLE_INFO: Readonly<Record<PersonalityRole, Personality
     guidance:
       "Read-only second opinion - weighs the trade-offs and returns one recommendation. Pick for advice; never edits and does not fan out.",
   },
-  // ── Making workers (produce code, design, or text) ────────────────────────
+  // ── Making specialists (produce code, design, or text) ───────────────────
   coder: {
     tier: "focused",
     guidance:
@@ -120,7 +111,7 @@ export const PERSONALITY_ROLE_INFO: Readonly<Record<PersonalityRole, Personality
   orchestrator: {
     tier: "coordinator",
     guidance:
-      "The sole conductor - plans team-shaped work, dispatches typed tasks to the right teammates, gathers, and synthesizes. Pick to run a multi-agent workflow.",
+      "The sole conductor - plans team-shaped work, dispatches typed tasks to the right teammates, gathers, and synthesizes. Pick to coordinate a multi-chat workflow.",
   },
 };
 
@@ -163,19 +154,22 @@ export function summarizePersonalityForSelection(
 
 // The conductor's standing directive - the distilled `/epic` method taught to
 // the sole orchestrator role at spawn. It chooses direct work, a dedicated
-// worker, a follow-up task, or a Run by the task's actual needs rather than
+// chat, a suggested task, or an orchestration by the task's actual needs rather than
 // treating orchestration as the default. Kept here as one exported constant so
 // the wording is testable and shared. See projects/agent-orchestration/agent-orchestration.md.
+export const OTTO_WORK_VOCABULARY_DIRECTIVE =
+  "Otto work vocabulary: a suggested task is deferred work for the user and does not start work; a chat is an active Otto chat session; a child chat is created by another chat; a personality profile is a reusable provider, model, mode, effort, and behavior template; an orchestration coordinates multiple chats; a schedule starts a background chat when due; a heartbeat sends a reminder or prompt and does not start a chat. Use suggest_task for concrete work to preserve for later, create_chat to start one chat now, and start_orchestration only for managed multi-chat coordination. Use list_personalities, optionally filtered by roles, before choosing a personality profile. Never substitute a harness-native agent-spawn tool for suggest_task, and when a user names an Otto tool exactly, use that exact Otto tool.";
+
 export const ORCHESTRATOR_METHOD_DIRECTIVE =
   "You are the orchestrator - the team's sole conductor. Choose tools because the task needs their specific capability, never because a tool is available or named. " +
-  "Do a small, self-contained task directly. Use create_agent only for an independently executable piece of active work that benefits from a dedicated worker. Use spawn_task only to preserve a concrete, out-of-scope follow-up for later. Use start_run only when the active work needs a declared multi-agent plan with daemon-managed fan-out, gathering, judging, loops, or approval gates. " +
-  "For work that genuinely needs orchestration: (1) if the shape is unclear, dispatch a researcher to survey and a planner to draft a typed plan; (2) declare that plan as a Run with start_run - phases typed research/plan/implement/design/verify/gate/deliver, fanning out candidates where several angles help and attaching a judger to grade them, looping until enough pass; (3) put a gate before irreversible or costly steps so the user approves; (4) synthesize the passing results into the deliverable. " +
+  "Do a small, self-contained task directly. Use create_chat only for an independently executable piece of active work that benefits from its own chat. Use suggest_task only to preserve a concrete, out-of-scope follow-up for later. Use start_orchestration only when the active work needs a declared multi-chat plan with daemon-managed fan-out, gathering, judging, loops, or approval gates. " +
+  "For work that genuinely needs orchestration: (1) if the shape is unclear, dispatch research and planning chats; (2) declare the plan with start_orchestration - phases typed research/plan/implement/design/verify/gate/deliver, fanning out where several angles help and attaching a judger to grade them, looping until enough pass; (3) put a gate before irreversible or costly steps so the user approves; (4) synthesize the passing results into the deliverable. " +
   "Every phase maps to a teammate's role; if the active team lacks a role a phase needs, say so plainly and stop rather than papering over the gap.";
 
 /**
  * The in-context "role directive" injected into a personality's system prompt at
  * spawn. The orchestrator gets the full conductor method; other coordinators
- * (chatter/artificer/scheduler) get a lighter delegate nudge; focused workers
+ * (chatter/artificer/scheduler) get a lighter delegate nudge; focused personalities
  * are told to stay on the task someone is waiting on. Roleless spawns get
  * nothing. This is guidance, not a gate - the tools stay available either way.
  */
@@ -191,9 +185,9 @@ export function composeRoleFocusDirective(
     return `${ORCHESTRATOR_METHOD_DIRECTIVE} (Your roles: ${roleList}.)`;
   }
   if (normalized.some((role) => PERSONALITY_ROLE_INFO[role].tier === "coordinator")) {
-    return `You are a coordinator personality (roles: ${roleList}). You front interactive work and may delegate when the task benefits from it: use list_personalities to see who else is available, then either do the work directly, spawn a dedicated worker for an independent active piece, or hand off genuinely multi-agent work to the team's orchestrator.`;
+    return `You are a coordinator personality (roles: ${roleList}). You front interactive work and may delegate when the task benefits from it: use list_personalities to see who else is available, then either do the work directly, create a child chat for an independent active piece, or hand off genuinely multi-chat work to the team's orchestrator.`;
   }
-  return `You are a focused worker personality (roles: ${roleList}). Someone is waiting on this specific task - stay on it and finish it. You can still call list_personalities to see the roster, but don't spawn sub-agents or start side workflows unless it is genuinely essential to completing this job.`;
+  return `You are a focused personality (roles: ${roleList}). Someone is waiting on this specific task - stay on it and finish it. You can still call list_personalities to see the roster, but don't create child chats or start side workflows unless it is genuinely essential to completing this job.`;
 }
 
 export type PersonalityUnavailableCode =

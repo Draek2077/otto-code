@@ -137,32 +137,32 @@ describe("shared tool-call display mapping", () => {
 
   it("humanizes Otto MCP tool names (Claude Code format)", () => {
     const display = buildToolCallDisplayModel({
-      name: "mcp__otto__create_agent",
+      name: "mcp__otto__create_chat",
       status: "running",
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("Create Agent");
+    expect(display.displayName).toBe("Create Chat");
   });
 
   it("humanizes Otto MCP tool names (Codex format)", () => {
     const display = buildToolCallDisplayModel({
-      name: "otto.create_agent",
+      name: "otto.create_chat",
       status: "running",
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("Create Agent");
+    expect(display.displayName).toBe("Create Chat");
   });
 
-  it("humanizes list_agents Otto tool", () => {
+  it("humanizes list_chats Otto tool", () => {
     const display = buildToolCallDisplayModel({
-      name: "mcp__otto__list_agents",
+      name: "mcp__otto__list_chats",
       status: "running",
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("List Agents");
+    expect(display.displayName).toBe("List Chats");
   });
 
   it("humanizes a non-Otto MCP tool by dropping its namespace", () => {
@@ -187,9 +187,9 @@ describe("shared tool-call display mapping", () => {
 
   describe("getToolDisplayName", () => {
     it("strips the MCP/Otto namespace and title-cases the leaf", () => {
-      expect(getToolDisplayName("mcp__otto__spawn_task")).toBe("Spawn Task");
-      expect(getToolDisplayName("otto.list_agents")).toBe("List Agents");
-      expect(getToolDisplayName("spawn_task")).toBe("Spawn Task");
+      expect(getToolDisplayName("mcp__otto__suggest_task")).toBe("Suggest Task");
+      expect(getToolDisplayName("otto.list_chats")).toBe("List Chats");
+      expect(getToolDisplayName("suggest_task")).toBe("Suggest Task");
     });
 
     it("splits camelCase / PascalCase tool ids into words", () => {

@@ -1227,7 +1227,7 @@ function isPermissionUpdate(value: AgentPermissionUpdate): value is PermissionUp
 // (including Always-ask) so the model never has to ask permission to suggest.
 // The suggestion still appears in the transcript, so full visibility is kept.
 const AUTO_APPROVED_OTTO_TOOL_NAMES = new Set<string>([
-  "mcp__otto__spawn_task",
+  "mcp__otto__suggest_task",
   "mcp__otto__dismiss_task",
 ]);
 
