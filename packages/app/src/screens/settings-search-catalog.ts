@@ -250,8 +250,8 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
   app(
     "file-editor",
     "File editor",
-    "Choose Otto, Vim, Neovim, or a custom file editor",
-    "nvim vimrc external terminal editor",
+    "Choose Otto, Vim, Neovim, or a custom file editor, with a Markdown Otto editor override",
+    "nvim vimrc external terminal editor markdown preview built-in",
     "editor",
     true,
   ),

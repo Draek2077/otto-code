@@ -20,6 +20,7 @@ describe("Settings search catalog", () => {
     );
     expect(searchSettingsCatalog("private key").map((item) => item.id)).toContain("git-fetch");
     expect(searchSettingsCatalog("vimrc").map((item) => item.id)).toContain("file-editor");
+    expect(searchSettingsCatalog("markdown").map((item) => item.id)).toContain("file-editor");
   });
 
   it("returns no results for an empty query", () => {
