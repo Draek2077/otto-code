@@ -134,10 +134,13 @@ function FooterNavTooltipContent({ label }: { label: string }) {
 }
 
 /**
- * The Home / Settings / Metrics icon row shared by the workspace sidebar footer
- * and the settings sidebar footer, so the app's primary navigation stays
- * reachable (and visually identical) on both surfaces. The testIDs are shared
- * on purpose: the two sidebars are never mounted at the same time.
+ * The footer icon bar shared by the workspace sidebar and the settings sidebar,
+ * so the app's primary navigation stays reachable (and visually identical) on
+ * both surfaces. The testIDs are shared on purpose: the two sidebars are never
+ * mounted at the same time.
+ *
+ * Two groups, split apart: the destinations you navigate to (Home, Brain,
+ * Metrics) lead, and the app-level controls (the host picker, Settings) trail.
  */
 export function SidebarFooterNavRow({
   theme,
@@ -148,18 +151,21 @@ export function SidebarFooterNavRow({
   onBrain,
   activeItem,
   settingsButtonRef,
+  children,
 }: {
   theme: SidebarTheme;
   labels: { home: string; settings: string; stats: string };
   onHome: () => void;
   onSettings: () => void;
   onStats: () => void;
-  // Absent on the workspace sidebar footer, which shows Brain in its own slot
-  // next to the host picker instead (see left-sidebar.tsx). Settings still
-  // renders it here since it has no equivalent second row.
+  // Absent on the settings sidebar footer, which has no Brain destination of
+  // its own to mark.
   onBrain?: () => void;
   activeItem?: SidebarFooterNavItem;
   settingsButtonRef?: Ref<View>;
+  // Extra trailing controls, rendered in the trailing group before Settings -
+  // the workspace sidebar puts its host picker here.
+  children?: ReactNode;
 }) {
   // The Brain button reports the local AI host's state rather than being a
   // static glyph: it is the only always-visible surface the brain has, and a
@@ -179,75 +185,89 @@ export function SidebarFooterNavRow({
   const brainLabel = resolveBrainRailLabel(brainRail);
 
   return (
-    <View style={styles.footerIconRow}>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild triggerRefProp="buttonRef">
-          <FooterIconButton
-            onPress={onHome}
-            testID="sidebar-home"
-            accessibilityLabel={labels.home}
-            icon={Home}
-            theme={theme}
-            active={activeItem === "home"}
-          />
-        </TooltipTrigger>
-        <TooltipContent side="top" align="center" offset={8}>
-          <FooterNavTooltipContent label={labels.home} />
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild triggerRefProp="buttonRef">
-          <FooterIconButton
-            buttonRef={settingsButtonRef}
-            onPress={onSettings}
-            testID="sidebar-settings"
-            accessibilityLabel={labels.settings}
-            icon={Settings}
-            theme={theme}
-            active={activeItem === "settings"}
-          />
-        </TooltipTrigger>
-        <TooltipContent side="top" align="center" offset={8}>
-          <FooterNavTooltipContent label={labels.settings} />
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild triggerRefProp="buttonRef">
-          <FooterIconButton
-            onPress={onStats}
-            testID="sidebar-stats"
-            accessibilityLabel={labels.stats}
-            icon={Gauge}
-            theme={theme}
-            active={activeItem === "stats"}
-          />
-        </TooltipTrigger>
-        <TooltipContent side="top" align="center" offset={8}>
-          <FooterNavTooltipContent label={labels.stats} />
-        </TooltipContent>
-      </Tooltip>
-      {onBrain ? (
+    <View style={styles.footerBar}>
+      <View style={styles.footerIconRow}>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild triggerRefProp="buttonRef">
             <FooterIconButton
-              onPress={onBrain}
-              testID="sidebar-brain"
-              accessibilityLabel={brainLabel}
-              renderIcon={renderBrainIcon}
+              onPress={onHome}
+              testID="sidebar-home"
+              accessibilityLabel={labels.home}
+              icon={Home}
               theme={theme}
-              active={activeItem === "brain"}
+              active={activeItem === "home"}
             />
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <FooterNavTooltipContent label={brainLabel} />
+            <FooterNavTooltipContent label={labels.home} />
           </TooltipContent>
         </Tooltip>
-      ) : null}
+        {onBrain ? (
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild triggerRefProp="buttonRef">
+              <FooterIconButton
+                onPress={onBrain}
+                testID="sidebar-brain"
+                accessibilityLabel={brainLabel}
+                renderIcon={renderBrainIcon}
+                theme={theme}
+                active={activeItem === "brain"}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={8}>
+              <FooterNavTooltipContent label={brainLabel} />
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild triggerRefProp="buttonRef">
+            <FooterIconButton
+              onPress={onStats}
+              testID="sidebar-stats"
+              accessibilityLabel={labels.stats}
+              icon={Gauge}
+              theme={theme}
+              active={activeItem === "stats"}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <FooterNavTooltipContent label={labels.stats} />
+          </TooltipContent>
+        </Tooltip>
+      </View>
+      <View style={styles.footerIconRow}>
+        {children}
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild triggerRefProp="buttonRef">
+            <FooterIconButton
+              buttonRef={settingsButtonRef}
+              onPress={onSettings}
+              testID="sidebar-settings"
+              accessibilityLabel={labels.settings}
+              icon={Settings}
+              theme={theme}
+              active={activeItem === "settings"}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <FooterNavTooltipContent label={labels.settings} />
+          </TooltipContent>
+        </Tooltip>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
+  // Fills whichever footer container mounts it, so the two groups sit against
+  // opposite edges of the sidebar.
+  footerBar: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
   footerIconRow: {
     flexDirection: "row",
     alignItems: "center",

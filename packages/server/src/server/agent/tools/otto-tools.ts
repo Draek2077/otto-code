@@ -2694,7 +2694,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Send chat prompt",
       description:
-        "Send a prompt to an active chat. Chat-scoped callers continue in the background by default; top-level callers wait by default.",
+        "Send a prompt to an active, existing Otto chat by its agentId. Use list_chats first when you need to identify a collaborator. Chat-scoped callers continue in the background by default; top-level callers wait by default. Use delivery queue to preserve a busy chat's current turn, or interrupt only when the new prompt must take precedence.",
       inputSchema: sendAgentPromptInputSchema,
       outputSchema: {
         success: z.boolean(),
@@ -2853,7 +2853,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     "list_chats",
     {
       title: "List chats",
-      description: "List recent chats as compact metadata.",
+      description:
+        "List recent existing Otto chats as compact metadata. Use this to find a collaborator's agentId before send_chat_prompt; filter to the current workspace by default.",
       inputSchema: {
         includeArchived: z.boolean().optional().default(false),
         cwd: z.string().optional(),

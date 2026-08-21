@@ -385,7 +385,7 @@ and labels it stale. Only a profile with no measurement uses the theoretical bud
 
 ## A benchmark records what it was measured with
 
-One JSON file per run under the brain's `results/`, and **every value the run was measured with goes
+One JSON file per run under `$OTTO_HOME/otto-brain/results/`, and **every value the run was measured with goes
 in it**. A bad score is far more often a bad setup than a bad model, and the difference is only ever
 visible from the settings. None of it is recoverable after the fact, so it is written at save time.
 

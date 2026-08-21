@@ -1992,8 +1992,9 @@ function SettingsSidebar({
           {sidebarBody}
         </ScrollView>
 
-        {/* Same Home / Settings / Metrics bar as the workspace sidebar footer,
-            so Home and Metrics remain one click away from inside settings. */}
+        {/* Same footer icon bar as the workspace sidebar, so Home and Metrics
+            remain one click away from inside settings. No Brain button here:
+            this sidebar has no Brain destination of its own to mark. */}
         <View style={sidebarStyles.footer}>
           <SidebarFooterNavRow
             theme={theme}

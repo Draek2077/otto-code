@@ -30,8 +30,6 @@ import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
-import { resolveBrainRailLabel } from "@/components/brain/brain-state";
-import { BrainStateIcon } from "@/components/brain/brain-state-icon";
 import { resolveBrainRailRoute, useBrainRail } from "@/components/brain/use-brain-rail-state";
 import {
   SIDEBAR_RESIZE_ACTIVATION_OFFSET,
@@ -637,24 +635,10 @@ function SidebarFooter({
   handleOpenHostSettings: (serverId: string) => void;
 }) {
   const settingsAnchorRef = useTutorialAnchor("settings");
-  // Home and Metrics mark themselves the same way Settings already does on its
-  // own screen (which renders its own footer row and hardcodes "settings").
+  // Home, Brain and Metrics mark themselves the same way Settings already does
+  // on its own screen (which renders its own footer row and hardcodes
+  // "settings").
   const activeFooterItem = resolveSidebarFooterActiveItem(usePathname());
-  // The Brain button reports the local AI host's state rather than being a
-  // static glyph. It lives here, in the
-  // spot the Create Project icon used to occupy, rather than in
-  // SidebarFooterNavRow: that row is shared with the Settings sidebar footer,
-  // which has no second row to put it in.
-  const brainRail = useBrainRail();
-  const brainState = brainRail.state;
-  const isCompact = useIsCompactFormFactor();
-  const renderBrainIcon = useCallback(
-    ({ size }: { size: number }) => (
-      <BrainStateIcon state={brainState} size={size} theme={theme} compact={isCompact} />
-    ),
-    [brainState, theme, isCompact],
-  );
-  const brainLabel = resolveBrainRailLabel(brainRail);
 
   return (
     <View style={styles.sidebarFooter}>
@@ -664,32 +648,17 @@ function SidebarFooter({
         onHome={handleHome}
         onSettings={handleSettings}
         onStats={handleStats}
+        onBrain={handleBrain}
         activeItem={activeFooterItem}
         settingsButtonRef={settingsAnchorRef}
-      />
-      <View style={styles.footerIconRow}>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild triggerRefProp="buttonRef">
-            <FooterIconButton
-              onPress={handleBrain}
-              testID="sidebar-brain"
-              accessibilityLabel={brainLabel}
-              renderIcon={renderBrainIcon}
-              theme={theme}
-              active={activeFooterItem === "brain"}
-            />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <HeaderIconTooltipContent label={brainLabel} />
-          </TooltipContent>
-        </Tooltip>
+      >
         <SidebarHostPicker
           theme={theme}
           switchHostLabel={labels.switchHost}
           onAddHost={handleAddHost}
           onOpenHostSettings={handleOpenHostSettings}
         />
-      </View>
+      </SidebarFooterNavRow>
     </View>
   );
 }
@@ -1348,12 +1317,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[3],
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
-  },
-  footerIconRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    flexShrink: 0,
   },
   tooltipRow: {
     flexDirection: "row",

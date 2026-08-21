@@ -28,7 +28,7 @@ import type { IconComponent } from "@/components/icons/material-icons";
  * NOT scaled: their size is derived from the brain they sit in, so they follow it
  * already and scaling them here would apply the factor twice.
  */
-export const BRAIN_GLYPH_SCALE = 1.25;
+export const BRAIN_GLYPH_SCALE = 1.1;
 
 /** The drawn size for a brain glyph laid out in a `size` box. */
 export function brainGlyphExtent(size: number): number {
@@ -54,7 +54,7 @@ export function withBrainGlyphScale(Icon: IconComponent, name: string): IconComp
       View,
       {
         // react-native-web's View defaults to `overflow: hidden`, which would
-        // crop the fifth that hangs outside. Native defaults to visible.
+        // crop the part that hangs outside. Native defaults to visible.
         style: [{ width: size, height: size, overflow: "visible" as const }, style],
       },
       createElement(

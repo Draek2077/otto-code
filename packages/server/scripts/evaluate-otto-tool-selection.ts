@@ -51,7 +51,18 @@ interface Scenario {
   expected: readonly string[];
   forbidden?: readonly string[];
   maxExpectedCalls?: number;
+  /**
+   * Chats that exist before the evaluated chat starts. Their tool traces are
+   * scored too, so this can prove a hand-off rather than only its first hop.
+   */
+  existingChats?: readonly ExistingChatScenario[];
   costly?: boolean;
+}
+
+interface ExistingChatScenario {
+  title: string;
+  expected: readonly string[];
+  forbidden?: readonly string[];
 }
 
 interface CaseResult {
@@ -63,6 +74,13 @@ interface CaseResult {
   expected: readonly string[];
   toolCalls: string[];
   toolCallIds: string[];
+  existingChats?: Array<{
+    title: string;
+    expected: readonly string[];
+    toolCalls: string[];
+    toolCallIds: string[];
+  }>;
+  failures?: string[];
   passed: boolean;
   finalMessage: string | null;
   error?: string;
@@ -142,6 +160,25 @@ const COSTLY_SCENARIOS: readonly Scenario[] = [
     forbidden: ["create_chat"],
     costly: true,
   },
+  {
+    id: "existing-chat-research-handoff",
+    prompt:
+      "There are already two Otto chats in this workspace named Evaluation Research and Evaluation Execution. Do not create any chats or start an orchestration. First use list_chats to find their exact IDs. Send only Evaluation Research a background prompt asking it to research the parser boundary, then independently find Evaluation Execution and send it the resulting implementation brief. Do not prompt Evaluation Execution yourself. Wait for Evaluation Research to finish, then report that the hand-off was requested.",
+    expected: ["list_chats", "send_chat_prompt", "wait_for_chats"],
+    forbidden: ["create_chat", "start_orchestration"],
+    existingChats: [
+      {
+        title: "Evaluation Research",
+        expected: ["list_chats", "send_chat_prompt"],
+        forbidden: ["create_chat", "start_orchestration"],
+      },
+      {
+        title: "Evaluation Execution",
+        expected: [],
+      },
+    ],
+    costly: true,
+  },
 ];
 
 function parseArgs(argv: readonly string[]): Args {
@@ -216,13 +253,45 @@ function ottoToolName(item: AgentTimelineItem): string | null {
   return name;
 }
 
-function scoreScenario(scenario: Scenario, toolCalls: readonly string[]): boolean {
-  const allExpectedPresent = scenario.expected.every((tool) => toolCalls.includes(tool));
-  const noForbiddenCall = !(scenario.forbidden ?? []).some((tool) => toolCalls.includes(tool));
-  const expectedCalls = toolCalls.filter((tool) => scenario.expected.includes(tool)).length;
-  const underExpectedCallLimit =
-    scenario.maxExpectedCalls === undefined || expectedCalls <= scenario.maxExpectedCalls;
-  return allExpectedPresent && noForbiddenCall && underExpectedCallLimit;
+function scoreToolCalls(
+  expected: readonly string[],
+  forbidden: readonly string[] | undefined,
+  maxExpectedCalls: number | undefined,
+  toolCalls: readonly string[],
+): string[] {
+  const failures: string[] = [];
+  const missing = expected.filter((tool) => !toolCalls.includes(tool));
+  if (missing.length > 0) failures.push(`missing: ${missing.join(", ")}`);
+  const unexpected = (forbidden ?? []).filter((tool) => toolCalls.includes(tool));
+  if (unexpected.length > 0) failures.push(`forbidden: ${unexpected.join(", ")}`);
+  const expectedCalls = toolCalls.filter((tool) => expected.includes(tool)).length;
+  if (maxExpectedCalls !== undefined && expectedCalls > maxExpectedCalls) {
+    failures.push(`too many expected calls: ${expectedCalls} > ${maxExpectedCalls}`);
+  }
+  return failures;
+}
+
+function scoreScenario(
+  scenario: Scenario,
+  toolCalls: readonly string[],
+  existingChats: ReadonlyMap<string, readonly string[]>,
+): string[] {
+  const failures = scoreToolCalls(
+    scenario.expected,
+    scenario.forbidden,
+    scenario.maxExpectedCalls,
+    toolCalls,
+  );
+  for (const chat of scenario.existingChats ?? []) {
+    const chatFailures = scoreToolCalls(
+      chat.expected,
+      chat.forbidden,
+      undefined,
+      existingChats.get(chat.title) ?? [],
+    );
+    failures.push(...chatFailures.map((failure) => `${chat.title}: ${failure}`));
+  }
+  return failures;
 }
 
 function collectOttoToolCalls(timeline: readonly AgentTimelineItem[]): {
@@ -327,7 +396,20 @@ async function runCase(input: {
 }): Promise<CaseResult> {
   const { client, daemon, personality, profile, scenario, cwd, timeoutMs } = input;
   let agentId: string | undefined;
+  const existingAgents: Array<{ id: string; scenario: ExistingChatScenario }> = [];
   try {
+    for (const existingChat of scenario.existingChats ?? []) {
+      const agent = await client.createAgent({
+        provider: personality.provider,
+        ...(personality.model ? { model: personality.model } : {}),
+        personality: personality.id,
+        ...(personality.modeId ? { modeId: personality.modeId } : {}),
+        ...(personality.thinkingOptionId ? { thinkingOptionId: personality.thinkingOptionId } : {}),
+        cwd,
+        title: existingChat.title,
+      });
+      existingAgents.push({ id: agent.id, scenario: existingChat });
+    }
     const agent = await client.createAgent({
       provider: personality.provider,
       ...(personality.model ? { model: personality.model } : {}),
@@ -343,6 +425,20 @@ async function runCase(input: {
     const { names: toolCalls, callIds: toolCallIds } = collectOttoToolCalls(
       daemon.agentManager.getTimeline(agent.id),
     );
+    const existingChatResults = existingAgents.map(({ id, scenario: existingChat }) => {
+      const calls = collectOttoToolCalls(daemon.agentManager.getTimeline(id));
+      return {
+        title: existingChat.title,
+        expected: existingChat.expected,
+        toolCalls: calls.names,
+        toolCallIds: calls.callIds,
+      };
+    });
+    const failures = scoreScenario(
+      scenario,
+      toolCalls,
+      new Map(existingChatResults.map((chat) => [chat.title, chat.toolCalls])),
+    );
     const finalMessage = await daemon.agentManager.getLastAssistantMessage(agent.id);
     return {
       profile,
@@ -353,7 +449,9 @@ async function runCase(input: {
       expected: scenario.expected,
       toolCalls,
       toolCallIds,
-      passed: scoreScenario(scenario, toolCalls),
+      ...(existingChatResults.length > 0 ? { existingChats: existingChatResults } : {}),
+      ...(failures.length > 0 ? { failures } : {}),
+      passed: failures.length === 0,
       finalMessage,
     };
   } catch (error) {
@@ -372,6 +470,9 @@ async function runCase(input: {
     };
   } finally {
     if (agentId) await client.deleteAgent(agentId).catch(() => undefined);
+    await Promise.all(
+      existingAgents.map(({ id }) => client.deleteAgent(id).catch(() => undefined)),
+    );
   }
 }
 
@@ -424,9 +525,13 @@ async function main(): Promise<void> {
       home: args.home,
       workspace,
       tooling,
-      scenarios: scenarios.map(({ id, expected, costly }) => ({
+      scenarios: scenarios.map(({ id, expected, existingChats, costly }) => ({
         id,
         expected,
+        existingChats: existingChats?.map((chat) => ({
+          title: chat.title,
+          expected: chat.expected,
+        })),
         costly: Boolean(costly),
       })),
       results,
