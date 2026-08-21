@@ -403,11 +403,13 @@ function scaleFromBackdrop(backdrop: string, hex: string, gain: number): string 
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
-/** The three tokens `resolveInkOverrides` reads off a built palette. */
+/** The tokens `resolveInkOverrides` reads off a built palette. */
 export interface InkSource {
   surface0: string;
   foreground: string;
   foregroundMuted: string;
+  accent: string;
+  accentBright: string;
 }
 
 /**
@@ -422,6 +424,9 @@ export interface InkOverrides {
     primary: string;
     secondaryForeground: string;
     mutedForeground: string;
+    accent: string;
+    accentBright: string;
+    success: string;
   };
   terminal: {
     foreground: string;
@@ -441,11 +446,29 @@ export interface InkOverrides {
  * mixing toward a shared extreme does not (both inks converge on it, and on the
  * soft end they actually invert).
  *
+ * ACCENT IS READING INK TOO, and that is not obvious. The accent is not only a
+ * brand fill: selected workspace and Explorer tab labels, toggled title-bar
+ * icons, links, and the commit checkboxes all paint straight from `accent` /
+ * `accentBright`, so a user who softens their text and watches those stay at
+ * full strength is looking at a bug. That was invisible while every accent
+ * carried a hue - a bright blue among softened greys still reads as "the accent
+ * doing its job" - and became impossible to miss on the monochrome Obsidian /
+ * Ivory pair, where the accent is literally #ffffff / #000000 and those
+ * elements are the brightest things on screen at every slider position.
+ *
+ * Scaling the accent from the app background rather than mixing it toward
+ * white/black is what keeps this safe on the tinted themes: the gain preserves
+ * each channel's sign and order, so a softened accent stays recognisably the
+ * same colour instead of collapsing to grey. `accentForeground` and
+ * `accentFillInk` are deliberately NOT scaled - they are ink sitting on the
+ * accent FILL, not on the app background, so `surface0` is the wrong backdrop
+ * to pivot them on.
+ *
  * Applied to a fully-BUILT palette, after the semantic builders have flattened
- * `foreground`/`foregroundMuted` into their aliases - hence the aliases are
- * restated here rather than following automatically. Both builders define them
- * as those two tokens verbatim; if that ever stops being true, this list is the
- * place it has to be reconciled.
+ * `foreground`/`foregroundMuted`/`accent` into their aliases - hence the
+ * aliases are restated here rather than following automatically. Both builders
+ * define them as those tokens verbatim (`success` IS `accent`); if that ever
+ * stops being true, this list is the place it has to be reconciled.
  */
 export function resolveInkOverrides(source: InkSource, contrast: number): InkOverrides {
   const gain = fontContrastGain(contrast);
@@ -455,6 +478,12 @@ export function resolveInkOverrides(source: InkSource, contrast: number): InkOve
     gain === 1
       ? source.foregroundMuted
       : scaleFromBackdrop(source.surface0, source.foregroundMuted, gain);
+  const accent =
+    gain === 1 ? source.accent : scaleFromBackdrop(source.surface0, source.accent, gain);
+  const accentBright =
+    gain === 1
+      ? source.accentBright
+      : scaleFromBackdrop(source.surface0, source.accentBright, gain);
   return {
     colors: {
       foreground,
@@ -463,6 +492,11 @@ export function resolveInkOverrides(source: InkSource, contrast: number): InkOve
       primary: foreground,
       secondaryForeground: foreground,
       mutedForeground: foregroundMuted,
+      accent,
+      accentBright,
+      // `success` is defined as `accent` verbatim in both builders; leaving it
+      // unscaled would paint the same colour two different ways on one screen.
+      success: accent,
     },
     // Terminal body text, caret, and selected text are reading ink too. The
     // ANSI slots (including `terminal.black`) are NOT - those are color
