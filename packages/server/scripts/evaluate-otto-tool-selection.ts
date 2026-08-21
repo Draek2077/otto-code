@@ -16,7 +16,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pino from "pino";
-import { createOttoDaemon } from "../src/server/bootstrap.js";
+import { createOttoDaemon, type OttoDaemonConfig } from "../src/server/bootstrap.js";
+import { loadPersistedConfig } from "../src/server/persisted-config.js";
 import { DaemonClient } from "../src/server/test-utils/daemon-client.js";
 import type { AgentTimelineItem } from "../src/server/agent/agent-sdk-types.js";
 
@@ -29,6 +30,7 @@ interface Args {
   cwd: string;
   timeoutMs: number;
   profiles: ProfileKey[];
+  scenarios?: string[];
   includeCostly: boolean;
   keep: boolean;
   output?: string;
@@ -48,6 +50,7 @@ interface Scenario {
   prompt: string;
   expected: readonly string[];
   forbidden?: readonly string[];
+  maxExpectedCalls?: number;
   costly?: boolean;
 }
 
@@ -59,6 +62,7 @@ interface CaseResult {
   scenario: string;
   expected: readonly string[];
   toolCalls: string[];
+  toolCallIds: string[];
   passed: boolean;
   finalMessage: string | null;
   error?: string;
@@ -83,6 +87,7 @@ const SAFE_SCENARIOS: readonly Scenario[] = [
       "The parser documentation is out of scope. Create a deferred follow-up for adding it, but do not start a separate chat and do not edit files. Use the appropriate Otto tool now.",
     expected: ["suggest_task"],
     forbidden: ["create_chat", "start_orchestration"],
+    maxExpectedCalls: 1,
   },
   {
     id: "direct-work",
@@ -159,6 +164,14 @@ function parseArgs(argv: readonly string[]): Args {
     cwd: get("--cwd") ?? REPO_ROOT,
     timeoutMs: Number(get("--timeout") ?? "180") * 1000,
     profiles,
+    ...(get("--scenarios")
+      ? {
+          scenarios: get("--scenarios")!
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean),
+        }
+      : {}),
     includeCostly: argv.includes("--include-costly"),
     keep: argv.includes("--keep"),
     ...(get("--output") ? { output: path.resolve(get("--output")!) } : {}),
@@ -206,7 +219,24 @@ function ottoToolName(item: AgentTimelineItem): string | null {
 function scoreScenario(scenario: Scenario, toolCalls: readonly string[]): boolean {
   const allExpectedPresent = scenario.expected.every((tool) => toolCalls.includes(tool));
   const noForbiddenCall = !(scenario.forbidden ?? []).some((tool) => toolCalls.includes(tool));
-  return allExpectedPresent && noForbiddenCall;
+  const expectedCalls = toolCalls.filter((tool) => scenario.expected.includes(tool)).length;
+  const underExpectedCallLimit =
+    scenario.maxExpectedCalls === undefined || expectedCalls <= scenario.maxExpectedCalls;
+  return allExpectedPresent && noForbiddenCall && underExpectedCallLimit;
+}
+
+function collectOttoToolCalls(timeline: readonly AgentTimelineItem[]): {
+  names: string[];
+  callIds: string[];
+} {
+  const calls = new Map<string, string>();
+  for (const [index, item] of timeline.entries()) {
+    const name = ottoToolName(item);
+    if (!name) continue;
+    const callId = item.type === "tool_call" ? item.callId : null;
+    calls.set(callId || `unidentified-${index}`, name);
+  }
+  return { names: [...calls.values()], callIds: [...calls.keys()] };
 }
 
 async function seedHome(
@@ -221,23 +251,46 @@ async function seedHome(
   return { root, ottoHome, staticDir };
 }
 
+function buildEvaluationDaemonConfig(ottoHome: string, staticDir: string): OttoDaemonConfig {
+  // createOttoDaemon reads the persisted daemon settings itself, but the
+  // personality roster and provider overrides are explicit bootstrap inputs.
+  // Preserve them from the copied home rather than falling back to starter
+  // personalities, which would silently evaluate the wrong provider/model.
+  const persisted = loadPersistedConfig(ottoHome);
+  const persistedDaemon = persisted.daemon;
+  const persistedAgents = persisted.agents;
+  return {
+    listen: "127.0.0.1:0",
+    ottoHome,
+    corsAllowedOrigins: [],
+    hostnames: true,
+    mcpEnabled: true,
+    mcpInjectIntoAgents: persistedDaemon?.mcp?.injectIntoAgents,
+    mcpToolGroups: persistedDaemon?.mcp?.toolGroups,
+    browserToolsEnabled: persistedDaemon?.browserTools?.enabled,
+    agentBehaviors: persistedDaemon?.agentBehaviors,
+    autoArchiveAfterMerge: persistedDaemon?.autoArchiveAfterMerge,
+    enableTerminalAgentHooks: persistedDaemon?.enableTerminalAgentHooks,
+    appendSystemPrompt: persistedDaemon?.appendSystemPrompt,
+    staticDir,
+    mcpDebug: false,
+    isDev: true,
+    agentClients: {},
+    agentStoragePath: path.join(ottoHome, "agents"),
+    relayEnabled: false,
+    relayEndpoint: "relay.otto-code.me:443",
+    appBaseUrl: "https://app.otto-code.me",
+    providerOverrides: persistedAgents?.providers,
+    agentPersonalities: persistedAgents?.agentPersonalities,
+    agentTeams: persistedAgents?.agentTeams,
+    modelTierOverrides: persistedAgents?.modelTierOverrides,
+    savedProviderEndpoints: persistedAgents?.savedProviderEndpoints,
+  };
+}
+
 async function startDaemon(ottoHome: string, staticDir: string) {
   const daemon = await createOttoDaemon(
-    {
-      listen: "127.0.0.1:0",
-      ottoHome,
-      corsAllowedOrigins: [],
-      hostnames: true,
-      mcpEnabled: true,
-      staticDir,
-      mcpDebug: false,
-      isDev: true,
-      agentClients: {},
-      agentStoragePath: path.join(ottoHome, "agents"),
-      relayEnabled: false,
-      relayEndpoint: "relay.otto-code.me:443",
-      appBaseUrl: "https://app.otto-code.me",
-    },
+    buildEvaluationDaemonConfig(ottoHome, staticDir),
     pino({ level: "warn" }),
   );
   await daemon.start();
@@ -287,10 +340,9 @@ async function runCase(input: {
     });
     agentId = agent.id;
     await client.waitForAgentUpsert(agent.id, (snapshot) => isTerminal(snapshot.status), timeoutMs);
-    const toolCalls = daemon.agentManager
-      .getTimeline(agent.id)
-      .map(ottoToolName)
-      .filter((name): name is string => Boolean(name));
+    const { names: toolCalls, callIds: toolCallIds } = collectOttoToolCalls(
+      daemon.agentManager.getTimeline(agent.id),
+    );
     const finalMessage = await daemon.agentManager.getLastAssistantMessage(agent.id);
     return {
       profile,
@@ -300,6 +352,7 @@ async function runCase(input: {
       scenario: scenario.id,
       expected: scenario.expected,
       toolCalls,
+      toolCallIds,
       passed: scoreScenario(scenario, toolCalls),
       finalMessage,
     };
@@ -312,6 +365,7 @@ async function runCase(input: {
       scenario: scenario.id,
       expected: scenario.expected,
       toolCalls: [],
+      toolCallIds: [],
       passed: false,
       finalMessage: null,
       error: error instanceof Error ? error.message : String(error),
@@ -323,7 +377,20 @@ async function runCase(input: {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const scenarios = [...SAFE_SCENARIOS, ...(args.includeCostly ? COSTLY_SCENARIOS : [])];
+  const availableScenarios = [...SAFE_SCENARIOS, ...(args.includeCostly ? COSTLY_SCENARIOS : [])];
+  const scenarios = args.scenarios
+    ? availableScenarios.filter((scenario) => args.scenarios!.includes(scenario.id))
+    : availableScenarios;
+  const unknownScenarios = (args.scenarios ?? []).filter(
+    (scenario) => !availableScenarios.some((available) => available.id === scenario),
+  );
+  if (unknownScenarios.length > 0) {
+    throw new Error(
+      `Unknown scenario(s): ${unknownScenarios.join(", ")}. Available: ${availableScenarios
+        .map((scenario) => scenario.id)
+        .join(", ")}`,
+    );
+  }
   const { root, ottoHome, staticDir } = await seedHome(args.home);
   const workspace = await mkdtemp(path.join(os.tmpdir(), "otto-tool-selection-workspace-"));
   const { daemon, port } = await startDaemon(ottoHome, staticDir);
