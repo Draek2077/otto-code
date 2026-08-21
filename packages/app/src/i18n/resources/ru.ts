@@ -3541,6 +3541,8 @@ export const ru: TranslationResources = {
           terracotta: "Терракота",
           horizon: "Горизонт",
           powder: "Пудра",
+          ivory: "Слоновая кость",
+          obsidian: "Обсидиан",
           light: "Свет",
           pureBlack: "Чистый чёрный",
           auto: "Система",

@@ -9,6 +9,7 @@ import {
   horizonTheme,
   powderTheme,
   pastelTheme,
+  ivoryTheme,
   darkTheme,
   darkEvergreenTheme,
   darkZincTheme,
@@ -16,6 +17,7 @@ import {
   darkClaudeTheme,
   darkGhosttyTheme,
   darkCyberpunkTheme,
+  darkObsidianTheme,
   resolveInkOverrides,
   type LightThemeName,
   type DarkThemeName,
@@ -33,6 +35,7 @@ export const LIGHT_VARIANT_THEMES: Record<LightThemeName, typeof daylightTheme> 
   horizon: horizonTheme,
   powder: powderTheme,
   pastel: pastelTheme,
+  ivory: ivoryTheme,
 };
 
 export const DARK_VARIANT_THEMES: Record<DarkThemeName, typeof darkTheme> = {
@@ -43,6 +46,7 @@ export const DARK_VARIANT_THEMES: Record<DarkThemeName, typeof darkTheme> = {
   claude: darkClaudeTheme,
   ghostty: darkGhosttyTheme,
   cyberpunk: darkCyberpunkTheme,
+  obsidian: darkObsidianTheme,
 };
 
 export interface ColorSchemeInput {

@@ -3487,6 +3487,8 @@ export const ar: TranslationResources = {
           terracotta: "طين محروق",
           horizon: "الأفق",
           powder: "مسحوق",
+          ivory: "عاجي",
+          obsidian: "سبج",
           light: "ضوء",
           pureBlack: "أسود خالص",
           auto: "نظام",

@@ -3549,6 +3549,8 @@ export const ptBR: TranslationResources = {
           terracotta: "Terracota",
           horizon: "Horizonte",
           powder: "Pó",
+          ivory: "Marfim",
+          obsidian: "Obsidiana",
           light: "Claro",
           pureBlack: "Preto puro",
           auto: "Sistema",

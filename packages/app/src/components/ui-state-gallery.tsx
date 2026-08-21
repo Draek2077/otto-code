@@ -99,6 +99,8 @@ const THEME_LABELS: Record<ThemeVariantName, string> = {
   claude: "Ember",
   ghostty: "Slate",
   cyberpunk: "Neo Tokyo",
+  ivory: "Ivory",
+  obsidian: "Obsidian",
 };
 
 const BUTTON_VARIANTS = [

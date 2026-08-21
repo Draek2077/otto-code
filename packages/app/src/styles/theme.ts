@@ -12,11 +12,13 @@ import {
   evergreenDarkColors,
   graphiteDarkColors,
   horizonColors,
+  ivoryColors,
   lightShadow,
   meadowColors,
   neotokyoDarkColors,
   neutralDarkColors,
   nightfallDarkColors,
+  obsidianDarkColors,
   powderColors,
   pureBlackDarkColors,
   sherbetColors,
@@ -28,7 +30,8 @@ import type { ThemeVariantName } from "./theme-palettes";
 // inherited from upstream Paseo. `light`/`dark` predate the fork, but the theme
 // variants (`zinc`/`midnight`/`claude`/`ghostty`, added in 2f77674c5, plus
 // `daylight`/`evergreen`/`cyberpunk`/`pastel`, plus
-// `meadow`/`terracotta`/`horizon`/`powder`) were created in Otto. During
+// `meadow`/`terracotta`/`horizon`/`powder`, plus the monochrome
+// `ivory`/`obsidian` pair) were created in Otto. During
 // upstream merges, resolve
 // conflicts in this file in favor of the Otto side - do not pull theme changes
 // from Paseo.
@@ -217,6 +220,7 @@ export const darkClaudeTheme = buildDarkTheme(emberDarkColors);
 export const darkGhosttyTheme = buildDarkTheme(slateDarkColors);
 export const darkCyberpunkTheme = buildDarkTheme(neotokyoDarkColors);
 export const darkPureBlackTheme = buildDarkTheme(pureBlackDarkColors);
+export const darkObsidianTheme = buildDarkTheme(obsidianDarkColors);
 
 export const daylightTheme = buildLightTheme(daylightColors);
 export const pastelTheme = buildLightTheme(sherbetColors);
@@ -224,6 +228,7 @@ export const meadowTheme = buildLightTheme(meadowColors);
 export const terracottaTheme = buildLightTheme(terracottaColors);
 export const horizonTheme = buildLightTheme(horizonColors);
 export const powderTheme = buildLightTheme(powderColors);
+export const ivoryTheme = buildLightTheme(ivoryColors);
 
 // Seed for the `black` Unistyles key: the neutral dark variant on black chat
 // surfaces. Runtime repaints replace it with the user's dark-variant pick.
@@ -265,6 +270,7 @@ export const THEME_SWATCHES: Record<ThemeVariantName, string> = {
   terracotta: "#dd5b25",
   horizon: "#1a63e6",
   powder: "#6d7ed8",
+  ivory: "#ffffff", // Ivory is white paper - the swatch ring is what makes it visible
   dark: "#3f3f46", // the neutral dark surface - Twilight is picked for being untinted
   evergreen: "#16a066",
   zinc: "#808080", // Graphite's swatch stays grey: the theme is monochrome, the cyan is only its accent
@@ -272,6 +278,7 @@ export const THEME_SWATCHES: Record<ThemeVariantName, string> = {
   claude: "#f2662f",
   ghostty: "#6ba6ff",
   cyberpunk: "#ff5ad1",
+  obsidian: "#000000", // Obsidian is true black, the mirror of Ivory
 };
 
 // Compatibility catalog for upstream's theme shortcut and picker contract.

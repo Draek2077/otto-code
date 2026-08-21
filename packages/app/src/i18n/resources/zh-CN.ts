@@ -3448,6 +3448,8 @@ export const zhCN: TranslationResources = {
           terracotta: "赤陶",
           horizon: "地平线",
           powder: "粉霜",
+          ivory: "象牙白",
+          obsidian: "曜石黑",
           light: "Light",
           pureBlack: "纯黑",
           auto: "系统",

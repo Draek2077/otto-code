@@ -82,12 +82,16 @@ function getThemeLabel(t: TFunction, value: ThemeVariantName): string {
     terracotta: "settings.appearance.theme.options.terracotta",
     horizon: "settings.appearance.theme.options.horizon",
     powder: "settings.appearance.theme.options.powder",
+    ivory: "settings.appearance.theme.options.ivory",
+    obsidian: "settings.appearance.theme.options.obsidian",
   };
   return t(labelKeys[value]);
 }
 
 // Each list leads with the spectrum's neutral default (Daylight/Twilight),
-// followed by its tinted variants. Only one list is ever shown at a time,
+// followed by its tinted variants, and ends with the monochrome pair
+// (Ivory/Obsidian) - those carry no hue at all, so they sit apart from the
+// tinted run rather than inside it. Only one list is ever shown at a time,
 // scoped to the current mode (see `AppearanceSection`'s `effectiveSpectrum`).
 const LIGHT_THEMES: readonly LightThemeName[] = [
   "daylight",
@@ -96,6 +100,7 @@ const LIGHT_THEMES: readonly LightThemeName[] = [
   "horizon",
   "powder",
   "pastel",
+  "ivory",
 ];
 const DARK_THEMES: readonly DarkThemeName[] = [
   "dark",
@@ -105,6 +110,7 @@ const DARK_THEMES: readonly DarkThemeName[] = [
   "claude",
   "ghostty",
   "cyberpunk",
+  "obsidian",
 ];
 
 // Platform default stacks can be the bare native tokens ("normal"/"monospace");

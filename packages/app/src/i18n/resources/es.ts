@@ -3569,6 +3569,8 @@ export const es: TranslationResources = {
           terracotta: "Terracota",
           horizon: "Horizonte",
           powder: "Polvo",
+          ivory: "Marfil",
+          obsidian: "Obsidiana",
           light: "Luz",
           pureBlack: "Negro puro",
           auto: "Sistema",

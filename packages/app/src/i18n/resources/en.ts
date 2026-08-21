@@ -3517,6 +3517,8 @@ export const en = {
           terracotta: "Terracotta",
           horizon: "Horizon",
           powder: "Powder",
+          ivory: "Ivory",
+          obsidian: "Obsidian",
           light: "Light",
           pureBlack: "Obsidian",
           auto: "System",

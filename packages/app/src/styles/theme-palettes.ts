@@ -117,7 +117,14 @@ export const baseColors = {
 // Light spectrum: the neutral default (Daylight, first) plus tinted variants.
 // The plain neutral "Light" theme was retired - Daylight is now the sole
 // neutral light theme and the light half of the System pair.
-export type LightThemeName = "daylight" | "meadow" | "terracotta" | "horizon" | "powder" | "pastel";
+export type LightThemeName =
+  | "daylight"
+  | "meadow"
+  | "terracotta"
+  | "horizon"
+  | "powder"
+  | "pastel"
+  | "ivory";
 
 // Dark spectrum: the neutral default (`dark`, displayed as "Twilight", first)
 // plus tinted variants.
@@ -128,7 +135,8 @@ export type DarkThemeName =
   | "midnight"
   | "claude"
   | "ghostty"
-  | "cyberpunk";
+  | "cyberpunk"
+  | "obsidian";
 
 // Any selectable theme variant, light or dark. Used for swatches and label
 // lookups that operate across both spectrums.
@@ -797,6 +805,46 @@ export const powderColors = buildLightSemanticColors({
   spinnerSecondary: "#7b5fd0", // periwinkle violet
 });
 
+// Ivory - the monochrome light theme, and the light half of the black/white
+// pair with Obsidian. There is exactly one hue budget here and it is spent on
+// nothing: the accent is pure black, so every selected tab, focus ring, link,
+// CTA and interaction wash is ink on paper.
+//
+// Backgrounds are the ONLY place Ivory keeps a ramp, and it is four steps of
+// near-white about eight levels apart - just enough to read as depth without
+// becoming grey: content (#ffffff / #fbfbfb), title bar (#f7f7f7, the derived
+// surface1/rail blend), the tab-and-gutter rail (#f3f3f3), and the primary
+// sidebar (#ebebeb, the deepest layer). The elevated steps (surface2/3/4) are
+// the same axis continued for cards, inputs and bubbles.
+//
+// Everything else is the black/white axis: text is pure black, muted text and
+// borders are that black held back rather than tinted. Diff, status, syntax
+// and terminal ANSI colors stay colored on purpose - those are signals a user
+// reads for meaning, not chrome, and a monochrome error state is a bug.
+export const ivoryColors = buildLightSemanticColors({
+  surface0: "#ffffff", // content canvas - paper
+  surface1: "#fbfbfb", // workspace
+  surface2: "#f2f2f2", // elevated: badges, inputs, sheets
+  surface3: "#dcdcdc",
+  surface4: "#c2c2c2",
+  surfaceDiffEmpty: "#f8f8f8",
+  surfaceSidebar: "#f3f3f3", // tab rail and gutters
+  surfaceSidebarPanel: "#ebebeb", // primary sidebar - the deepest layer
+  surfaceControlTrack: "#e9e9e9",
+  foreground: "#000000", // pure ink; the font-contrast slider only softens from here
+  foregroundMuted: "#5a5a5a",
+  scrollbarHandle: "#2e2e2e",
+  border: "#d2d2d2",
+  // Outlined controls match the structural divider lines, as on Daylight.
+  borderAccent: "#d2d2d2",
+  accent: "#000000", // the whole point: the accent is ink
+  accentBright: "#000000",
+  accentForeground: "#ffffff", // white on a black fill
+  destructive: "#b04138", // the one deliberate hue - danger must not read as chrome
+  spinnerPrimary: "#000000", // namesake ink
+  spinnerSecondary: "#777777", // its half-tone, so the glow still has two steps
+});
+
 // ---------------------------------------------------------------------------
 // Dark theme variant builder
 // ---------------------------------------------------------------------------
@@ -809,6 +857,17 @@ interface DarkThemeConfig {
   surface4: string;
   surfaceDiffEmpty: string;
   surfaceSidebar: string;
+  // Optional, same escape hatch the light builder already carries: the primary
+  // sidebar surface is normally DERIVED from the rail (`deepenHex`), which
+  // works while a theme has headroom below its rail. A near-black theme like
+  // Obsidian does not - the derived step lands a hair off pure black instead of
+  // on it - so it authors the panel directly.
+  surfaceSidebarPanel?: string;
+  // Optional override for the shared dark reading ink (`darkForeground`, an
+  // off-white). Only a theme whose whole point is the ink itself - Obsidian's
+  // pure-white-on-black - should set this; every other dark variant must keep
+  // the shared value so all dark text moves together.
+  foreground?: string;
   foregroundMuted: string;
   scrollbarHandle: string;
   border: string;
@@ -851,7 +910,8 @@ const darkTerminalAnsi = {
 } as const;
 
 export function buildDarkSemanticColors(tint: DarkThemeConfig) {
-  const sidebarPanel = deepenHex(tint.surfaceSidebar);
+  const sidebarPanel = tint.surfaceSidebarPanel ?? deepenHex(tint.surfaceSidebar);
+  const foreground = tint.foreground ?? darkForeground;
   const interactiveHover = accentWash(tint.accent, 0.14);
   const interactiveSelected = accentWash(tint.accent, 0.09);
   const interactivePressed = accentWash(tint.accent, 0.2);
@@ -892,7 +952,7 @@ export function buildDarkSemanticColors(tint: DarkThemeConfig) {
     // Code-showing surfaces - see the light builder's note.
     surfaceCode: deepenHex(tint.surface0),
 
-    foreground: darkForeground,
+    foreground,
     foregroundMuted: tint.foregroundMuted,
     foregroundExtraMuted: blendHex(tint.foregroundMuted, tint.surface0, 0.35),
 
@@ -927,11 +987,11 @@ export function buildDarkSemanticColors(tint: DarkThemeConfig) {
     // Legacy aliases (for gradual migration)
     background: tint.surface0,
     popover: tint.surface2,
-    popoverForeground: darkForeground,
-    primary: darkForeground,
+    popoverForeground: foreground,
+    primary: foreground,
     primaryForeground: tint.surface0,
     secondary: tint.surface2,
-    secondaryForeground: darkForeground,
+    secondaryForeground: foreground,
     muted: tint.surface2,
     mutedForeground: tint.foregroundMuted,
     accentBorder: tint.borderAccent,
@@ -945,11 +1005,11 @@ export function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     terminal: {
       background: tint.surface0,
-      foreground: darkForeground,
-      cursor: darkForeground,
+      foreground,
+      cursor: foreground,
       cursorAccent: tint.surface0,
       selectionBackground: "rgba(255, 255, 255, 0.2)",
-      selectionForeground: darkForeground,
+      selectionForeground: foreground,
       black: tint.terminalBlack ?? tint.surfaceSidebar,
       ...darkTerminalAnsi,
       brightBlack: tint.terminalBrightBlack ?? tint.surface3,
@@ -1146,6 +1206,43 @@ export const neotokyoDarkColors = buildDarkSemanticColors({
   destructive: "#d94848", // clearly red so errors never blur into the magenta accent
   spinnerPrimary: "#ff5ad1", // namesake neon magenta
   spinnerSecondary: "#3ae8f5", // neon cyan counterlight
+});
+
+// Obsidian - the monochrome dark theme, and the dark half of the black/white
+// pair with Ivory. Mirror image of Ivory: the accent is pure white, so every
+// selected tab, focus ring, link, CTA and interaction wash is light on black.
+//
+// The four background layers are the mirror too, about eight levels apart:
+// the primary sidebar bottoms out on true #000000, the tab-and-gutter rail
+// sits at #070707, the title bar lands at #0f0f0f (the derived surface1/rail
+// blend), and content runs #121212 / #161616. That inverts the usual dark
+// convention - elsewhere the rail is DARKER than the content canvas, but a
+// theme whose sidebar is literally black has nowhere below it to put the
+// canvas, so the canvas rises instead.
+//
+// Reading ink is pure #ffffff rather than the shared off-white every other
+// dark variant uses (`darkForeground`); that override is the theme. Diff,
+// status, syntax and terminal ANSI colors stay colored - see Ivory's note.
+export const obsidianDarkColors = buildDarkSemanticColors({
+  surface0: "#121212", // content canvas
+  surface1: "#161616", // workspace
+  surface2: "#1c1c1c", // elevated: badges, inputs, sheets
+  surface3: "#2b2b2b",
+  surface4: "#3d3d3d",
+  surfaceDiffEmpty: "#171717",
+  surfaceSidebar: "#070707", // tab rail and gutters
+  surfaceSidebarPanel: "#000000", // primary sidebar - true black, the deepest layer
+  foreground: "#ffffff", // pure white; the font-contrast slider only softens from here
+  foregroundMuted: "#a6a6a6",
+  scrollbarHandle: "#7a7a7a",
+  border: "#303030",
+  borderAccent: "#3f3f3f",
+  accent: "#ffffff", // the whole point: the accent is light
+  accentBright: "#ffffff",
+  accentForeground: "#000000", // black on a white fill
+  destructive: "#c44a4a", // the one deliberate hue - danger must not read as chrome
+  spinnerPrimary: "#ffffff", // namesake white
+  spinnerSecondary: "#8a8a8a", // its half-tone, so the glow still has two steps
 });
 
 // Breakpoint-shaped value for a geometry style property (padding, minHeight, gap, ...)
@@ -1422,6 +1519,20 @@ export const BLACK_VARIANT_OVERRIDES: Record<
     foregroundMuted: "#b2b6d6",
     scrollbarHandle: "#8185b0",
   }),
+  // Obsidian - already black; the ramp only has to re-step off a true-black
+  // canvas instead of Obsidian's own #121212 one. Ink stays pure white, which
+  // it inherits from the variant (this override object never sets foreground).
+  obsidian: buildBlackVariantColors({
+    surface1: "#0d0d0d",
+    surface2: "#191919",
+    surface3: "#2a2a2a",
+    surface4: "#3c3c3c",
+    surfaceDiffEmpty: "#0a0a0a",
+    border: "#2c2c2c",
+    borderAccent: "#3b3b3b",
+    foregroundMuted: "#adadad",
+    scrollbarHandle: "#828282",
+  }),
 };
 
 // When the app is in a LIGHT theme with Black tab background on, the chat
@@ -1559,5 +1670,27 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     destructive: "#c44a55",
     spinnerPrimary: "#7da3e8", // namesake powder blue, lifted
     spinnerSecondary: "#a98ee8", // periwinkle violet, lifted
+  }),
+  // Ivory - inverts wholesale into Obsidian: the black chat pane of the
+  // monochrome light theme IS the monochrome dark theme, on true black.
+  ivory: buildBlackFromLightColors({
+    surface0: "#000000",
+    surface1: "#0d0d0d",
+    surface2: "#191919",
+    surface3: "#2a2a2a",
+    surface4: "#3c3c3c",
+    surfaceDiffEmpty: "#0a0a0a",
+    surfaceSidebar: "#050505",
+    foreground: "#ffffff",
+    foregroundMuted: "#adadad",
+    scrollbarHandle: "#828282",
+    border: "#2c2c2c",
+    borderAccent: "#3b3b3b",
+    accent: "#ffffff",
+    accentBright: "#ffffff",
+    accentForeground: "#000000",
+    destructive: "#c44a4a",
+    spinnerPrimary: "#ffffff",
+    spinnerSecondary: "#8a8a8a",
   }),
 };

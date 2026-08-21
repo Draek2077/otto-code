@@ -3583,6 +3583,8 @@ export const fr: TranslationResources = {
           terracotta: "Terre cuite",
           horizon: "Horizon",
           powder: "Poudre",
+          ivory: "Ivoire",
+          obsidian: "Obsidienne",
           light: "Lumière",
           pureBlack: "Noir pur",
           auto: "Système",

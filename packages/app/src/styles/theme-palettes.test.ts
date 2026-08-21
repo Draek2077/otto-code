@@ -5,10 +5,12 @@ import {
   evergreenDarkColors,
   graphiteDarkColors,
   horizonColors,
+  ivoryColors,
   meadowColors,
   neotokyoDarkColors,
   neutralDarkColors,
   nightfallDarkColors,
+  obsidianDarkColors,
   powderColors,
   sherbetColors,
   slateDarkColors,
@@ -22,6 +24,7 @@ const themePalettes = [
   terracottaColors,
   horizonColors,
   powderColors,
+  ivoryColors,
   neutralDarkColors,
   evergreenDarkColors,
   graphiteDarkColors,
@@ -29,6 +32,7 @@ const themePalettes = [
   emberDarkColors,
   slateDarkColors,
   neotokyoDarkColors,
+  obsidianDarkColors,
 ];
 
 describe("theme interaction surfaces", () => {

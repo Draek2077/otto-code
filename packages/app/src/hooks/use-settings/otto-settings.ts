@@ -498,6 +498,7 @@ const LIGHT_THEME_NAMES: readonly LightThemeName[] = [
   "horizon",
   "powder",
   "pastel",
+  "ivory",
 ];
 
 const DARK_THEME_NAMES: readonly DarkThemeName[] = [
@@ -508,6 +509,7 @@ const DARK_THEME_NAMES: readonly DarkThemeName[] = [
   "claude",
   "ghostty",
   "cyberpunk",
+  "obsidian",
 ];
 
 const VALID_LIGHT_THEMES = new Set<string>(LIGHT_THEME_NAMES);

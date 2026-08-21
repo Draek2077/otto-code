@@ -3531,6 +3531,8 @@ export const ja: TranslationResources = {
           terracotta: "テラコッタ",
           horizon: "ホライズン",
           powder: "パウダー",
+          ivory: "アイボリー",
+          obsidian: "オブシディアン",
           light: "ライト",
           pureBlack: "ピュアブラック",
           auto: "システム",
