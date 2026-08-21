@@ -2,12 +2,11 @@
 id: "paseo-v031-upstream-integration"
 kind: "requirement"
 title: "Integrate the latest stable Paseo release"
-status: "confirmed"
-tags: ["upstream", "paseo", "integration", "v0-3-1"]
+status: "superseded"
+tags: ["upstream","paseo","integration","v0-3-1"]
 created_at: "2026-08-10T01:33:47.519Z"
-updated_at: "2026-08-10T01:47:29.530Z"
+updated_at: "2026-08-21T13:40:57.434Z"
 ---
-
 # Integrate the latest stable Paseo release
 
 <!-- compiled_truth -->
@@ -50,3 +49,6 @@ Execution is gated: first create an isolated worktree, merge v0.3.1, resolve by 
   kind: "decision"
   summary: "The user identified prior false-positive rebranding, especially in website attribution, as a release-blocking risk."
   source: "User statement, 2026-08-09"
+- time: "2026-08-21T13:40:57.434Z"
+  kind: "reversal"
+  summary: "Paseo shipped v0.4.0 on 2026-08-13, four days after this page fixed v0.3.1 as the target, so the release, the SHA and every measured number here are stale. Replaced by [[paseo-v040-upstream-integration]], which retargets the merge at b44bb63cf, carries the mandatory safeguards forward unchanged, and records the per-capability take-theirs or take-ours decisions the user made on 2026-08-21. The tooling defect this page called out, that Otto's release tags collide with Paseo's and hide upstream releases from scripts/upstream-status.mjs, was fixed in commit 46ab043ac. New status: superseded."
