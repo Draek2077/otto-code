@@ -43,6 +43,7 @@ import { useZoomRecorderStatus } from "@/desktop/use-zoom-recorder-status";
 import { MeetingTranscriptLibrary } from "@/meetings/meeting-transcript-library";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import { getZoomMeetingTitlebarState } from "@/screens/workspace/zoom-meetings-titlebar-state";
+import { shouldShowZoomTeamChatTitlebar } from "@/screens/workspace/zoom-team-chat-titlebar-visibility";
 import { CommunicationsRoom } from "@/screens/workspace/communications-room";
 import type { DaemonClient } from "@otto-code/client";
 import type {
@@ -217,7 +218,9 @@ function canStartZoomTeamChatSignIn({
 }
 
 function zoomTeamChatAccessibilityLabel(notificationCount: number, enabled: boolean): string {
-  if (!enabled) return "Open Chat. Disabled.";
+  // "Offline", not "Disabled": the status picker already calls this state
+  // Offline, and docs/glossary.md forbids two labels for one state.
+  if (!enabled) return "Open Chat. Offline.";
   return notificationCount > 0
     ? `Open Chat. ${notificationCount} notification${notificationCount === 1 ? "" : "s"}.`
     : "Open Chat";
@@ -231,7 +234,7 @@ function zoomTeamChatTooltip(
   enabled: boolean,
   pendingPresence: boolean,
 ): string {
-  if (!enabled) return "Chat: Disabled";
+  if (!enabled) return "Chat: Offline";
   if (pendingPresence) return "Chat: Pending";
   if (unreadCount > 0) return "Chat: Notification";
   return `Chat: ${
@@ -1173,7 +1176,7 @@ export function WorkspaceTeamChatButton({
         );
         const chatConnectionState = resolveZoomTeamChatConnectionState(zoom?.connectionState);
         const chatEnabled = chatConnectionState.isConnected && zoom?.enabled !== false;
-        setChatConnectionLabel(chatEnabled ? chatConnectionState.label : "Disabled");
+        setChatConnectionLabel(chatEnabled ? chatConnectionState.label : "Offline");
         setIsChatConnected(chatConnectionState.isConnected);
         setIsChatEnabled(chatEnabled);
         if (supportsChatHome && chatConnectionState.isConnected) {
@@ -1347,7 +1350,7 @@ export function WorkspaceTeamChatButton({
           setPendingPresenceStatus(presence.pendingStatus ?? null);
           setIsChatEnabled(presence.enabled ?? nextStatus !== "offline");
           setChatConnectionLabel(
-            (presence.enabled ?? nextStatus !== "offline") ? "Connected" : "Disabled",
+            (presence.enabled ?? nextStatus !== "offline") ? "Connected" : "Offline",
           );
           const presenceUpdateError =
             presence.pendingStatus ||
@@ -1532,10 +1535,9 @@ export function WorkspaceTeamChatButton({
     },
     [client, favoriteUpdatingIds, refreshChatSearch, supportsChatFavorites],
   );
-  // Chat's availability switch is a product-level setting. Unlike Zoom
-  // presence, turning it off removes the title-bar surface entirely; Settings
-  // remains the single place to turn the integration back on.
-  if (!isDesktop || !isChatEnabled) {
+  // Connection earns the title-bar surface, not availability. The rule and the
+  // reason it keeps getting reverted live in zoom-team-chat-titlebar-visibility.ts.
+  if (!shouldShowZoomTeamChatTitlebar({ isDesktop, isChatConnected, isChatEnabled })) {
     return null;
   }
 
