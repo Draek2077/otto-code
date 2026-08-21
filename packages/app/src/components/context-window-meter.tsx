@@ -13,7 +13,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { useAgentContextUsage } from "@/hooks/use-agent-context-usage";
-import { baseColors, compactUp, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import { themeColorRef } from "@/styles/theme-color-ref";
 import type { AgentContextUsage } from "@otto-code/protocol/messages";
 import { formatTokenCount } from "./context-window-meter.utils";
@@ -40,7 +40,9 @@ interface ContextWindowMeterInnerProps extends ContextWindowMeterProps {
    * pure-black pane.
    */
   meterTrackColor: string;
-  meterDestructiveColor: string;
+  meterSuccessColor: string;
+  meterWarningColor: string;
+  meterDangerColor: string;
 }
 
 const SVG_SIZE = 14;
@@ -102,22 +104,24 @@ function strokeStyleProps(stroke: string): { style: { stroke: string } } {
   return { style: { stroke } };
 }
 
-// The amber/green steps come from `baseColors`, the static palette shared
-// verbatim by every registered theme (including the black chat mirror), so
-// concrete values are safe. Track and destructive vary per theme and arrive
-// as cascade-following refs via the props documented above.
+// These are semantic status colors, not raw palette shades: their contrast is
+// calibrated separately for light and dark surfaces. They arrive as
+// cascade-following refs so the black chat scope keeps the same meaning and
+// contrast as every other status treatment.
 function getMeterColors(
   percentage: number,
   trackColor: string,
-  destructiveColor: string,
+  successColor: string,
+  warningColor: string,
+  dangerColor: string,
 ): { progress: string; track: string } {
   if (percentage >= 60) {
-    return { progress: destructiveColor, track: trackColor };
+    return { progress: dangerColor, track: trackColor };
   }
   if (percentage >= 40) {
-    return { progress: baseColors.amber[500], track: trackColor };
+    return { progress: warningColor, track: trackColor };
   }
-  return { progress: baseColors.green[500], track: trackColor };
+  return { progress: successColor, track: trackColor };
 }
 
 function formatCategoryPercentage(tokens: number, maxTokens: number): string {
@@ -210,7 +214,9 @@ function ContextWindowMeterInner({
   agentId,
   provider,
   meterTrackColor,
-  meterDestructiveColor,
+  meterSuccessColor,
+  meterWarningColor,
+  meterDangerColor,
 }: ContextWindowMeterInnerProps) {
   const { t } = useTranslation();
   // react-native-svg needs explicit dimensions - unistyles breakpoint styles
@@ -274,7 +280,13 @@ function ContextWindowMeterInner({
   const clampedPercentage = clampPercentage(percentage);
   const roundedPercentage = Math.round(percentage);
   const dashOffset = CIRCUMFERENCE - (clampedPercentage / 100) * CIRCUMFERENCE;
-  const colors = getMeterColors(clampedPercentage, meterTrackColor, meterDestructiveColor);
+  const colors = getMeterColors(
+    clampedPercentage,
+    meterTrackColor,
+    meterSuccessColor,
+    meterWarningColor,
+    meterDangerColor,
+  );
   const formattedSessionCost =
     typeof totalCostUsd === "number" ? formatSessionCost(totalCostUsd) : null;
 
@@ -355,7 +367,9 @@ function ContextWindowMeterInner({
 // against the `ScopedTheme` captured at mount.
 export const ContextWindowMeter = withUnistyles(ContextWindowMeterInner, (theme: Theme) => ({
   meterTrackColor: themeColorRef(theme, "surface3"),
-  meterDestructiveColor: themeColorRef(theme, "destructive"),
+  meterSuccessColor: themeColorRef(theme, "statusSuccess"),
+  meterWarningColor: themeColorRef(theme, "statusWarning"),
+  meterDangerColor: themeColorRef(theme, "statusDanger"),
 }));
 
 const styles = StyleSheet.create((theme) => ({
