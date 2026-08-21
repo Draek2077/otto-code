@@ -78,12 +78,15 @@ const ThemedX = withUnistyles(X);
 const ThemedEye = withUnistyles(Eye);
 const ThemedZap = withUnistyles(Zap);
 const ThemedBrainCap = withUnistyles(Brain);
-const ThemedBrainModelFamilyIcon = withUnistyles(BrainModelFamilyIcon, (theme) => ({
+const ThemedBrainModelFamilyIcon = withUnistyles(BrainModelFamilyIcon);
+const ThemedSpinner = withUnistyles(LoadingSpinner);
+
+const mutedModelFamilyIconMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
-}));
-const ThemedSpinner = withUnistyles(LoadingSpinner, (theme) => ({
-  color: theme.colors.foregroundMuted,
-}));
+});
+const servingModelFamilyIconMapping = (theme: Theme) => ({
+  color: theme.colors.palette.green[400],
+});
 
 const smallIcon = (theme: Theme) => ({ color: theme.colors.foreground, size: theme.iconSize.sm });
 const dangerIcon = (theme: Theme) => ({
@@ -131,10 +134,7 @@ const reasoningIconMapping = (theme: Theme) => ({
   color: theme.colors.terminal.green,
   size: theme.iconSize.xs,
 });
-const activeIconMapping = (theme: Theme) => ({
-  color: theme.colors.palette.green[400],
-  size: theme.iconSize.xs,
-});
+const MODEL_FAMILY_ICON_SIZE = 16;
 
 // Shared between the pinned header and every row. One source, or they drift.
 // The four right-hand columns are pinned to an exact pixel width
@@ -288,16 +288,32 @@ function CapabilityIcons({ model }: { model: BrainInventoryModel }) {
 }
 
 /**
- * The row marker is state, not decoration: dots only mean resident-and-ready.
- * It is also the row's only spinner - every in-flight operation on the model
- * (load, unload, queue wait, calibrate, sweep, benchmark) reports through it,
- * so the status line underneath stays plain text.
+ * The family mark is state, not decoration: resident models use the serving
+ * color, and every in-flight operation replaces that mark with a same-sized
+ * spinner. This keeps the status line underneath plain text.
  */
-function ModelStateMarker({ state, busy }: { state: string; busy: boolean }) {
-  if (busy) return <ThemedSpinner size={10} />;
-  if (state === "loaded") return <View style={styles.loadedDot} />;
-  if (state === "active") return <ThemedPlay uniProps={activeIconMapping} />;
-  return null;
+function ModelFamilyStateIcon({
+  family,
+  state,
+  busy,
+}: {
+  family: string | null | undefined;
+  state: BrainInventoryModel["state"];
+  busy: boolean;
+}) {
+  if (busy) return <ThemedSpinner size={MODEL_FAMILY_ICON_SIZE} />;
+
+  return (
+    <ThemedBrainModelFamilyIcon
+      family={family}
+      size={MODEL_FAMILY_ICON_SIZE}
+      uniProps={
+        state === "loaded" || state === "active"
+          ? servingModelFamilyIconMapping
+          : mutedModelFamilyIconMapping
+      }
+    />
+  );
 }
 
 /** A compact action whose visible label lives in its desktop tooltip. */
@@ -353,7 +369,11 @@ function ModelDetailHeader({
   return (
     <View style={styles.detailHeader}>
       <View style={styles.detailTitleRow}>
-        <ThemedBrainModelFamilyIcon family={model.family} size={22} />
+        <ThemedBrainModelFamilyIcon
+          family={model.family}
+          size={22}
+          uniProps={mutedModelFamilyIconMapping}
+        />
         <Text style={styles.detailTitle} numberOfLines={2}>
           {model.displayName}
         </Text>
@@ -442,8 +462,7 @@ function ModelRow({
     >
       <View style={styles.cellName}>
         <View style={styles.nameRow}>
-          <ModelStateMarker state={model.state} busy={busy} />
-          <ThemedBrainModelFamilyIcon family={model.family} size={16} />
+          <ModelFamilyStateIcon family={model.family} state={model.state} busy={busy} />
           <Text style={styles.nameText} numberOfLines={1}>
             {model.displayName}
           </Text>
@@ -868,7 +887,7 @@ function ModelActions({
         <Alert
           variant="warning"
           title="Calibration needed"
-          description="This model has no current VRAM measurement. Calibrate to refresh the budget."
+          description="This model's last VRAM measurement is stale. Calibrate to refresh the budget."
         />
       ) : null}
       <AdaptiveRenameModal
@@ -1295,12 +1314,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-  },
-  loadedDot: {
-    width: 6,
-    height: 6,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.palette.green[400],
   },
   nameText: {
     fontSize: theme.fontSize.sm,
