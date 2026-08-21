@@ -1275,6 +1275,7 @@ function GitFetchCard({ serverId }: { serverId: string }) {
             onChange={handleFetchIntervalChange}
             placeholder="Every 3 minutes"
             emptyText="No fetch intervals available."
+            triggerStyle={styles.rowPickerTrigger}
             triggerTestID="host-page-git-fetch-interval"
           />
         </View>
@@ -2115,6 +2116,7 @@ function WindowsTerminalShellSection({ serverId }: { serverId: string }) {
             placeholder="System default"
             emptyText="No terminal shells detected."
             disabled={isSaving}
+            triggerStyle={styles.rowPickerTrigger}
             triggerTestID="windows-terminal-shell-select"
           />
         </View>
@@ -2246,6 +2248,13 @@ const terminalProfileStyles = StyleSheet.create((theme) => ({
 }));
 
 const styles = StyleSheet.create((theme) => ({
+  // A picker sitting as the trailing control of a settings row. The desktop
+  // popover never renders narrower than the trigger it was measured from, so
+  // the trigger has to be wide enough to read the longest option, not just the
+  // selected one.
+  rowPickerTrigger: {
+    minWidth: 180,
+  },
   identityEditButton: {
     padding: theme.spacing[1],
     borderRadius: theme.borderRadius.md,

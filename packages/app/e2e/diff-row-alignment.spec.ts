@@ -26,6 +26,12 @@ const cleanupTasks: CleanupTask[] = [];
 const APP_SETTINGS_KEY = "@otto:app-settings";
 const CHANGES_PREFERENCES_KEY = "@otto:changes-preferences";
 
+// One changed line, far wider than the Changes pane, in a language the
+// Structural presentation can parse.
+const LONG_LINE_NEEDLE = "wrap-me-".repeat(40);
+const LONG_LINE_BEFORE = `export const banner = "start";\n`;
+const LONG_LINE_AFTER = `export const banner = "${LONG_LINE_NEEDLE}end";\n`;
+
 const BEFORE = `import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 interface UseMountedTabSetInput {
@@ -434,6 +440,25 @@ test("changes diff keeps unwrapped gutter and code rows aligned after code size 
   await expectVisibleDiffRowsAligned(page);
 });
 
+test("changes diff wraps long structural rows inside the pane", async ({ page }) => {
+  const workspace = await createWorkspaceWithLongChangedLine();
+  await useCodeFont(page, 12);
+  await useWrappedStructuralDiffLines(page);
+  await openWorkspaceChangesForLongLine(page, workspace);
+
+  // Falling back to Line presentation would pass the width assertion for the
+  // wrong reason - Line rows have always wrapped.
+  await expect(page.getByTestId("structural-diff").first()).toBeVisible();
+
+  const body = await readDiffBodyOverflow(page, LONG_LINE_NEEDLE);
+  const report = JSON.stringify(body, null, 2);
+  // Nothing runs past the pane, and the changed line is taller than one line -
+  // it soft-wrapped rather than being clipped.
+  expect(body.widestDescendant, report).toBeLessThanOrEqual(body.width + 1);
+  expect(body.longLineWidth, report).toBeLessThanOrEqual(body.width + 1);
+  expect(body.longLineHeight, report).toBeGreaterThan(body.longLineLineHeight * 1.5);
+});
+
 async function useCodeFont(page: Page, codeFontSize: number): Promise<void> {
   await page.addInitScript(
     ({ settingsKey, fontSize }) => {
@@ -474,6 +499,60 @@ async function useUnwrappedDiffLines(page: Page): Promise<void> {
     },
     { preferencesKey: CHANGES_PREFERENCES_KEY },
   );
+}
+
+async function useWrappedStructuralDiffLines(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ preferencesKey }) => {
+      localStorage.setItem(
+        preferencesKey,
+        JSON.stringify({
+          presentation: "structural",
+          layout: "unified",
+          viewMode: "flat",
+          wrapLines: true,
+          hideWhitespace: false,
+        }),
+      );
+    },
+    { preferencesKey: CHANGES_PREFERENCES_KEY },
+  );
+}
+
+async function readDiffBodyOverflow(
+  page: Page,
+  needle: string,
+): Promise<{
+  width: number;
+  widestDescendant: number;
+  longLineWidth: number;
+  longLineHeight: number;
+  longLineLineHeight: number;
+}> {
+  return page.getByTestId("diff-file-0-body").evaluate((body, text) => {
+    const width = body.getBoundingClientRect().width;
+    let widestDescendant = 0;
+    // The innermost element still holding the whole changed line: the code
+    // element itself, not a row or column wrapper around it.
+    let longLine: Element | null = null;
+    for (const node of body.querySelectorAll("*")) {
+      widestDescendant = Math.max(widestDescendant, node.getBoundingClientRect().width);
+      if (node.textContent?.includes(text)) {
+        longLine = node;
+      }
+    }
+    if (!longLine) {
+      throw new Error("The changed line is not rendered in the diff body");
+    }
+    const box = longLine.getBoundingClientRect();
+    return {
+      width,
+      widestDescendant,
+      longLineWidth: box.width,
+      longLineHeight: box.height,
+      longLineLineHeight: Number.parseFloat(getComputedStyle(longLine).lineHeight),
+    };
+  }, needle);
 }
 
 async function expectFlatFileList(page: Page): Promise<void> {
@@ -563,6 +642,42 @@ async function readVisibleDiffRowGeometry(page: Page): Promise<{
       rows,
     };
   });
+}
+
+async function createWorkspaceWithLongChangedLine(): Promise<DirtyWorkspace> {
+  const repo = await createTempGitRepo("diff-wrap-", {
+    files: [{ path: "src/banner.ts", content: LONG_LINE_BEFORE }],
+  });
+  const client = await connectSeedClient();
+  cleanupTasks.push({
+    run: async () => {
+      await client.close().catch(() => undefined);
+      await repo.cleanup().catch(() => undefined);
+    },
+  });
+
+  await writeFile(path.join(repo.path, "src/banner.ts"), LONG_LINE_AFTER);
+  const createdWorkspace = await client.createWorkspace({
+    source: { kind: "directory", path: repo.path },
+  });
+  if (!createdWorkspace.workspace) {
+    throw new Error(createdWorkspace.error ?? `Failed to create workspace ${repo.path}`);
+  }
+  return { id: createdWorkspace.workspace.id, repoPath: repo.path };
+}
+
+async function openWorkspaceChangesForLongLine(
+  page: Page,
+  workspace: DirtyWorkspace,
+): Promise<void> {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.id));
+  await waitForWorkspaceTabsVisible(page);
+  await page.getByRole("button", { name: "Open explorer" }).click();
+  await expect(page.getByTestId("explorer-tab-changes")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("banner.ts")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("diff-file-0").click();
+  await expect(page.getByTestId("diff-file-0-body")).toBeVisible({ timeout: 30_000 });
 }
 
 async function createWorkspaceWithMountedTabDiff(

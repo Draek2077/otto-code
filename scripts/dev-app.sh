@@ -21,6 +21,11 @@ echo "  Daemon:  ${DAEMON_ENDPOINT}"
 echo "  Home:    ${OTTO_HOME}"
 echo "══════════════════════════════════════════════════════"
 
+# Metro reads the workspace packages from their compiled dist, and snapshots
+# its file map at startup - a stale dist there is an unresolvable import for the
+# whole session. No-op when everything is already built.
+node "$SCRIPT_DIR/ensure-app-deps.mjs"
+
 # Bump Metro's Node heap to 8 GB. Long edit-while-live sessions grow Metro's
 # in-memory module graph + transform cache until it walks into V8's ~4 GB default
 # old-space ceiling and dies with "Ineffective mark-compacts near heap limit".

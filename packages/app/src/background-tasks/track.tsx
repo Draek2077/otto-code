@@ -43,6 +43,12 @@ export interface BackgroundTasksTrackProps {
   onStopTask: (id: string) => void;
   /** Clear the given rows off the track. Serves every clear control here. */
   onClearTasks: (ids: readonly string[]) => void;
+  /**
+   * Open state is owned by the parent because auto-clear is suppressed while
+   * the track is open: rows the user is looking at are theirs to deal with.
+   */
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
 }
 
 const BACKGROUND_TASKS_LIST_MAX_HEIGHT = 200;
@@ -51,15 +57,16 @@ export function BackgroundTasksTrack({
   rows,
   onStopTask,
   onClearTasks,
+  expanded,
+  onExpandedChange,
 }: BackgroundTasksTrackProps): ReactElement {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [failedExpanded, setFailedExpanded] = useState(false);
 
   const toggleExpanded = useCallback(() => {
-    setExpanded((current) => !current);
-  }, []);
+    onExpandedChange(!expanded);
+  }, [expanded, onExpandedChange]);
   const toggleCompletedExpanded = useCallback(() => {
     setCompletedExpanded((current) => !current);
   }, []);

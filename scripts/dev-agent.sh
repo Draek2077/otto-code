@@ -44,6 +44,11 @@ echo "════════════════════════�
 export OTTO_RELAY_ENABLED="${OTTO_RELAY_ENABLED:-false}"
 export OTTO_CORS_ORIGINS="${OTTO_CORS_ORIGINS:-*}"
 
+# Metro reads the workspace packages from their compiled dist, and snapshots
+# its file map at startup - a stale dist there is an unresolvable import for the
+# whole session. No-op when everything is already built.
+node "$SCRIPT_DIR/ensure-app-deps.mjs"
+
 exec concurrently \
   --names "daemon,web" \
   --prefix-colors "cyan,magenta" \

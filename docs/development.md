@@ -569,6 +569,8 @@ npm run build:app-deps     # highlight -> protocol -> client -> expo-two-way-aud
 
 Use `npm run build:server` whenever you have changed any daemon/server-facing package and need clean cross-package types or runtime behavior.
 
+Every dev entry point that starts Metro (`npm run dev:win`, `npm run dev:app`, and the two agent-lane scripts) runs `scripts/ensure-app-deps.mjs` first. It compares the newest source file against the newest emitted file for `protocol`, `client`, and `highlight`, and runs `build:app-deps` only when one of them is stale, so a warm start stays instant. The guard exists because Metro snapshots its file map at startup and reads these packages through their compiled `dist`: starting Metro while a `dist` is missing or mid-rebuild yields `Unable to resolve "@otto-code/protocol/<module>"` for the rest of the session, and the watch build filling the directory in afterwards does not always clear it. If you do hit it, restart Metro.
+
 The app Metro config disables Watchman and uses Metro's node crawler for exports. Keep that invariant unless you have verified production app exports on machines with and without Watchman installed; distro Watchman builds can differ in capabilities and change Metro's crawl behavior.
 
 For tighter loops, you can rebuild a single workspace:

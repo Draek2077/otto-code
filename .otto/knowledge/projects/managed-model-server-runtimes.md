@@ -3,15 +3,14 @@ id: "managed-model-server-runtimes"
 kind: "project"
 title: "Managed Model-Server Runtime Platform"
 status: "confirmed"
-tags: ["brain", "model-serving", "runtime", "llama-cpp", "vllm", "sglang", "architecture"]
+tags: ["brain","model-serving","runtime","llama-cpp","vllm","sglang","architecture"]
 delivery_status: "charter"
 progress_completed: 0
 progress_total: 5
 progress_unit: "delivery phases"
 created_at: "2026-08-11T03:27:25.532Z"
-updated_at: "2026-08-11T03:27:25.532Z"
+updated_at: "2026-08-21T02:09:41.906Z"
 ---
-
 # Managed Model-Server Runtime Platform
 
 <!-- compiled_truth -->
@@ -148,6 +147,88 @@ Every supported runtime must provide or implement:
 
 Start with Phase 0 and Phase 1. Do not begin vLLM implementation until the contract, capability matrix, and llama.cpp extraction plan have passed architecture review.
 
+## Refined implementation strategy — contract-first, pressure-tested
+
+The delivery sequence is **contract-first, pressure-tested**:
+
+- Extract llama.cpp behind the first typed `ModelServerRuntimeDriver` before adding a supported second runtime.
+- Define the initial contract from seams already proven in the current implementation, then expand it only when the llama.cpp migration or a narrowly scoped vLLM/SGLang validation spike proves a new boundary is required.
+- Do not add vLLM/SGLang through scattered `if (runtime === …)` paths, and do not design a speculative maximal interface that merely re-labels llama.cpp mechanics as generic abstractions.
+- Normalize observable Otto outcomes and declared capabilities, not native mechanisms. For example, every driver reports readiness, model capabilities, operational status, and benchmark provenance; its CLI flags, metrics endpoint, artifact layout, KV/cache mechanism, and tuning controls remain driver-owned.
+
+### Durable host vs. runtime-driver ownership
+
+The Brain host remains the stable Otto product surface:
+
+- public OpenAI-compatible endpoint, auth/TLS, remote trust, daemon integration, status and log events;
+- model-selection policy and fair request scheduling;
+- management RPCs, operation coordination, and UI composition;
+- common benchmark task definitions, result/report shape, and agent integration.
+
+Each runtime driver owns:
+
+- runtime installation, verification, versioning, platform/accelerator support, and removal;
+- artifact acquisition/import, inventory, bundle compatibility, and model identity;
+- native launch/configuration, readiness probes, shutdown, crash diagnosis, and raw logs;
+- normalized capability declaration plus driver-specific settings schema and defaults;
+- telemetry/introspection adapters, including active/queued work and memory/capacity data where the engine exposes them;
+- runtime-specific capacity estimator/calibration, sweep methodology where applicable, and benchmark configuration/provenance.
+
+### Vertical extraction sequence
+
+#### Phase 0A — Runtime inventory and semantic contract tests
+
+- Inventory the current llama.cpp behavior by surface: runtime management, GGUF/bundle lifecycle, profile controls, launch, readiness, router behavior, scheduler, status, calibration, sweep, and benchmarks.
+- Express existing user-observable guarantees as driver-agnostic semantic tests before moving implementation. Tests must cover install/verify, model load/switch/unload, failure/recovery, health/status, agentic OpenAI-compatible tool use, security, remote operation, and benchmark result persistence.
+- Publish an initial capability matrix: **required**, **optional**, and **driver-specific**.
+
+**Exit:** the current llama.cpp contract is explicit enough to detect behavioral regression without prescribing how another engine implements it.
+
+#### Phase 1A — Extract llama.cpp in vertical slices
+
+Migrate llama.cpp as the first concrete driver in dependency order:
+
+1. runtime discovery, installation, verification, and executable launch;
+2. GGUF and bundle discovery/download/compatibility;
+3. process lifecycle, readiness, logs, crash detection, and native introspection;
+4. profile translation, native settings validation, and capabilities;
+5. capacity estimation, measured calibration, reasoning sweep, and benchmark setup;
+6. llama-server slot telemetry, pinning/erasure, and any native concurrency adapter.
+
+Keep the host API and UI behavior unchanged during each slice. The llama driver is the only place that may know llama-server command flags, GGUF metadata, `/slots`, `/props`, or llama-specific cache and GPU-layer semantics.
+
+**Exit:** llama.cpp has feature parity behind the driver boundary; shared host code contains no unbounded llama-specific branches.
+
+#### Phase 2A — Generalize shared host and UI from capabilities
+
+- Replace globally shaped `Model`, `Profile`, calibration, and runtime types with portable host records plus driver-owned payloads.
+- Keep shared pages and concepts: Library, Models, Benchmark, Logs, host controls, bundles, and model lifecycle.
+- Render driver-specific controls only from advertised settings/capabilities. Do not fabricate mappings such as llama.cpp GPU layers or KV quantization for vLLM/SGLang.
+- Make reports comparable at the task/outcome level while preserving runtime, version, artifact, native configuration, and measurement provenance.
+
+**Exit:** the UI retains one Brain point of view and a second driver can use it without a parallel management plane.
+
+#### Phase 3A — Narrow validation spikes
+
+Before supported vLLM/SGLang delivery, add narrowly scoped internal spikes at the applicable layer to validate uncertain seams, such as artifact compatibility, readiness/metrics, concurrency signals, and capacity measurement. A spike may revise the driver contract but is not a supported runtime, does not expose unfinished UI, and must not introduce legacy fallback paths.
+
+**Exit:** each proposed vLLM/SGLang driver seam is supported by observed native behavior rather than assumed llama.cpp equivalence.
+
+#### Phase 4 — Managed vLLM driver
+
+Implement vLLM against the established contract and explicit first support matrix. Its native settings, Hugging Face-style artifacts, launch/lifecycle, batching/parallelism/cache behavior, telemetry, and capacity strategy are driver-owned. It is supported only after semantic host-contract and driver integration tests pass.
+
+#### Phase 5 — Managed SGLang driver
+
+Implement SGLang against the same host contract, reusing only confirmed shared primitives. Its lifecycle, artifacts, metrics, optimization settings, capacity strategy, and any scheduling adapter are independently driver-owned and proven by the same semantic acceptance suite.
+
+### Design guardrails
+
+- The shared host owns **policy**; a driver owns **engine mechanics**.
+- A capability missing from a runtime is represented explicitly, not emulated through an inaccurate setting or hidden fallback.
+- A calibration, sweep, or operational measurement is comparable only at a normalized report level; its native method and inputs remain attached as provenance.
+- A driver contract method is added when it represents a real cross-runtime host need, not just because llama.cpp currently has an endpoint or flag.
+
 ## Timeline
 
 - time: "2026-08-11T03:27:25.532Z"
@@ -157,3 +238,7 @@ Start with Phase 0 and Phase 1. Do not begin vLLM implementation until the contr
 - time: "2026-08-11T03:27:25.532Z"
   kind: "evidence"
   summary: "User explicitly confirmed the direction and requested this full project charter in chat on 2026-08-10. Current implementation evidence: packages/brain/src/runtime, packages/brain/src/service, packages/server/src/server/brain, and docs/custom-providers.md."
+- time: "2026-08-21T02:09:41.906Z"
+  kind: "decision"
+  summary: "User requested the charter be refined with the agreed contract-first, pressure-tested runtime-abstraction plan on 2026-08-20."
+  source: "User direction in chat, 2026-08-20; supporting baseline: [[finding-2026-08-20-brain-runtime-portability-baseline]]."

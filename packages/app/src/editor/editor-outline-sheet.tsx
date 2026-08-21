@@ -240,9 +240,10 @@ function OutlineRow({
   onSelect: (line: number) => void;
 }) {
   const handlePress = useCallback(() => onSelect(entry.line), [onSelect, entry.line]);
-  // Headings indent by level, so the outline reads as the document's shape
-  // rather than a flat list of titles. Code symbols are all depth 0.
-  const indentStyle = useMemo(() => ({ paddingLeft: entry.depth * HEADING_INDENT }), [entry.depth]);
+  // Move the marker and title together, so heading depth reads in the titles
+  // themselves rather than only in the marker column. Margin preserves the
+  // marker's full fixed width; padding would squeeze H1–H6 and truncate H2.
+  const indentStyle = useMemo(() => ({ marginLeft: entry.depth * HEADING_INDENT }), [entry.depth]);
   return (
     <Pressable
       onPress={handlePress}
@@ -250,7 +251,7 @@ function OutlineRow({
       testID={`editor-outline-symbol-${entry.name}`}
       accessibilityRole="button"
     >
-      <Text style={[styles.glyph, indentStyle]} dataSet={CODE_SURFACE_DATASET}>
+      <Text style={[styles.glyph, indentStyle]} numberOfLines={1} dataSet={CODE_SURFACE_DATASET}>
         {entry.glyph}
       </Text>
       <Text style={styles.symbolName} numberOfLines={1} dataSet={CODE_SURFACE_DATASET}>
@@ -311,7 +312,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   glyph: {
-    width: 16,
+    // Heading markers are two characters (H1–H6); 16px lets them wrap in the
+    // monospace face used by the outline.
+    width: 24,
     textAlign: "center",
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,

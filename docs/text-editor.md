@@ -319,7 +319,7 @@ Fixtures: `test-documents/image.png` (raster path, with a fully transparent quad
 
 **Find in the read-only preview** mirrors the editor's find strip minus replace (there is no buffer to write to). It does **not** go through CodeMirror - the preview renders a token stream per line, so find is a pure text scan (`file-preview-find.ts`: `findPreviewMatches` + `splitTokensForMatches`, both unit-tested) whose match semantics (case / whole-word / regexp) match `@codemirror/search` so the same query finds the same things in both views. Matched runs are re-cut out of the syntax tokens and tinted (base tint for every hit, stronger for the active one), the count feeds the strip, and next/previous scrolls the active hit into view. It is gated to the **syntax-highlighted text preview only** (`PreviewOnlyView` shows the button when `fileInfo.kind === "text" && !isMarkdown`): rendered markdown has no line-mapped text to highlight and images/binaries have no text, so those keep no find button - switch to the editor to search a markdown file. Matching caps at `MAX_PREVIEW_FIND_MATCHES` (shown as `999+`) so a one-letter query over a huge file can't build a million-entry array.
 
-**Rendered-document annotations** attach a specific rendered Markdown heading to the focused chat. The attachment carries the workspace-relative file path, heading level and source line range, rendered heading excerpt, and the user's note; at send time it tells the agent to read the current file as well, so the durable locator and current source stay together. The initial surface is intentionally limited to Markdown headings, where markdown-it supplies an exact source map (including frontmatter offsets). Converted documents, HTML, images, diagrams, and nodes without a source map do not expose an annotation affordance rather than pretending a visual location has a reliable source anchor.
+**Rendered-document annotations** attach a source-backed rendered Markdown item to the current workspace context. For now, every source-mapped Markdown heading exposes a compact comment glyph; after an attachment is saved, it becomes a blue Chat glyph beside the heading. The inline editor reuses the Changes diff-comment shape, and removing its Composer pill removes the corresponding heading glyph. Each attachment retains a renderer-specific locator, exact source line range (including frontmatter offsets), source excerpt, and the user's note. It follows the same workspace-scoped attachment semantics as Browser: saving it remains possible from a File tab, and the workspace Composer shows the pill when its chat is active. Paragraph, blockquote, and fenced-code locators are retained for future renderer entry points, but do not currently expose an action. A Markdown document remains annotatable when it merely documents literal HTML in prose or code. Converted AsciiDoc, standalone Mermaid, isolated HTML, images, and an item inside a renderer-created HTML fragment do not expose an annotation affordance: their visual output cannot yet be traced to an honest source item.
 
 ## Markdown: the format the editor edits
 
@@ -502,8 +502,10 @@ which uses Otto's built-in editor. Selecting Vim, Neovim, or a custom command op
 directly in that real host executable inside the File Editor terminal. Vim and Neovim are offered
 only when the daemon host reports the matching executable as available through the existing terminal
 compatibility diagnostic; a custom command is still launched through the same host-owned terminal
-stack. Rendered text documents, including Markdown, open in the selected editor too; binary and
-media formats keep their normal preview behavior.
+stack. Rendered text documents, including Markdown, open in the selected editor too by default.
+The **Always use Otto editor for Markdown files** setting keeps `.md` files in Otto's built-in editor
+and preview while the selected external editor continues to open other source and rendered documents.
+Binary and media formats keep their normal preview behavior.
 
 The terminal is pane-owned: choosing Vim or Neovim replaces the file's content in the existing File
 tab and does not create a second workspace terminal tab. The setting is desktop-only, is independent
@@ -532,6 +534,34 @@ standard Otto editor, which reads the file from disk. Otto never overwrites an e
 of this transition. Launch failures, missing executables, host disconnects, and deleted files remain
 visible as explicit state. Direct Neovim RPC embedding and Difftastic integration are separate
 future work.
+
+## Add to chat - handing the file, or a range, to the composer
+
+Two entry points, both producing the ordinary `file_context` attachment pill that the file explorer,
+project search and the Changes pane already produce (`packages/app/src/attachments/file-context.ts`):
+
+- **The toolbar button** (`file-add-to-chat`, in `FileAiToolbarGroup`, so both the editor and preview
+  toolbars carry it) attaches the whole file.
+- **The editor's right-click "Add selection to chat"** (`editor-context-add-selection-to-chat`)
+  attaches the selected range, read live from `getSelection` rather than from the cursor readout,
+  which is a render behind. `EditorSelection` reports `columnStart`/`columnEnd` alongside the lines
+  for exactly this, so the pill shows `file.ts:12:5-40:18` - the range the gutter was showing.
+
+Three things this deliberately does **not** do:
+
+- **It does not send the selected text.** The attachment is a reference: path plus range, one line of
+  prompt instead of the excerpt, and it cannot go stale if the agent edits the file before the turn
+  runs. See [token-economy.md](token-economy.md).
+- **It does not require a focused chat.** Both write to the _workspace_ attachment scope, which every
+  chat composer in the workspace reads. The focused pane is the file, so `focusedAgentId` is null by
+  construction here - gating on it (as the file explorer does, where a chat can be focused beside the
+  sidebar) would remove the action exactly when the user is reading the code they want to ask about.
+- **It does not offer itself outside the project.** Same restriction as history, Changes and Refine:
+  the attachment carries a workspace-relative path, so a linked or outside-project file would point
+  the agent at the wrong tree.
+
+Every producer builds its dedupe id through `buildFileContextAttachmentId`, so the toolbar, the file
+explorer and an `@` mention naming one file yield one pill and one X.
 
 ## AI Refactor - the safe core
 

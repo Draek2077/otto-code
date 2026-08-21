@@ -185,6 +185,7 @@ function renderDropdownSurface(input: {
   scrollable: boolean;
   scrollViewportStyle: StyleProp<ViewStyle>;
   content: ReactElement;
+  header: ReactElement | null;
   surfaceNativeID: string;
   onExited: () => void;
   scrollViewRef?: Ref<ScrollView>;
@@ -198,6 +199,7 @@ function renderDropdownSurface(input: {
     scrollable,
     scrollViewportStyle,
     content,
+    header,
     surfaceNativeID,
     onExited,
     scrollViewRef,
@@ -236,6 +238,7 @@ function renderDropdownSurface(input: {
         }
       })}
     >
+      {header}
       {body}
     </FloatingSurface>
   );
@@ -506,6 +509,7 @@ export function DropdownMenuContent({
   fullWidth = false,
   horizontalPadding = 16,
   scrollable = false,
+  stickyHeader,
   scrollViewRef,
   onScroll,
   onContentSizeChange,
@@ -521,6 +525,11 @@ export function DropdownMenuContent({
   fullWidth?: boolean;
   horizontalPadding?: number;
   scrollable?: boolean;
+  /**
+   * Rendered above the scroll viewport instead of inside it, so it stays put
+   * while `children` scroll. Only meaningful together with `scrollable`.
+   */
+  stickyHeader?: ReactNode;
   scrollViewRef?: Ref<ScrollView>;
   onScroll?: ScrollViewProps["onScroll"];
   onContentSizeChange?: ScrollViewProps["onContentSizeChange"];
@@ -534,22 +543,34 @@ export function DropdownMenuContent({
   const [closing, setClosing] = useState(false);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<Size | null>(null);
+  const [headerSize, setHeaderSize] = useState<Size | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [actualPlacement, setActualPlacement] = useState<Placement>(side);
+  const headerHeight = stickyHeader ? (headerSize?.height ?? 0) : 0;
   const visibleContentSize = useMemo(() => {
     if (!contentSize) return null;
-    if (!scrollable) return contentSize;
+
+    // The sticky header sits outside the scroll viewport, so it is measured
+    // separately and has to be folded back into the surface size that placement
+    // is computed from.
+    const surfaceWidth = Math.max(contentSize.width, headerSize?.width ?? 0);
+    if (!scrollable) {
+      return { width: surfaceWidth, height: contentSize.height + headerHeight };
+    }
 
     const { height: screenHeight } = Dimensions.get("window");
     const viewportMaxHeight = Math.max(screenHeight - 16, 0);
     const resolvedMaxHeight =
       typeof maxHeight === "number" ? Math.min(maxHeight, viewportMaxHeight) : viewportMaxHeight;
+    // maxHeight caps the whole surface, so the scrollable half gets whatever the
+    // header leaves behind.
+    const scrollMaxHeight = Math.max(resolvedMaxHeight - headerHeight, 0);
 
     return {
-      width: contentSize.width,
-      height: Math.min(contentSize.height, resolvedMaxHeight),
+      width: surfaceWidth,
+      height: Math.min(contentSize.height, scrollMaxHeight) + headerHeight,
     };
-  }, [contentSize, scrollable, maxHeight]);
+  }, [contentSize, headerHeight, headerSize?.width, scrollable, maxHeight]);
 
   // Keep Modal mounted during exit animation
   useEffect(() => {
@@ -654,6 +675,19 @@ export function DropdownMenuContent({
     [],
   );
 
+  const handleStickyHeaderLayout = useCallback(
+    (event: { nativeEvent: { layout: { width: number; height: number } } }) => {
+      const { width: w, height: h } = event.nativeEvent.layout;
+      setHeaderSize((current) => {
+        if (current && current.width === w && current.height === h) {
+          return current;
+        }
+        return { width: w, height: h };
+      });
+    },
+    [],
+  );
+
   const surfaceStyle = styles.content;
   const frameStyle = useMemo(() => {
     const { width: screenWidth } = Dimensions.get("window");
@@ -685,8 +719,8 @@ export function DropdownMenuContent({
     align,
   ]);
   const scrollViewportStyle = useMemo(
-    () => (visibleContentSize ? { height: visibleContentSize.height } : null),
-    [visibleContentSize],
+    () => (visibleContentSize ? { height: visibleContentSize.height - headerHeight } : null),
+    [visibleContentSize, headerHeight],
   );
 
   if (!modalVisible) return null;
@@ -696,6 +730,16 @@ export function DropdownMenuContent({
       {children}
     </View>
   );
+
+  const header = stickyHeader ? (
+    <View
+      collapsable={false}
+      onLayout={handleStickyHeaderLayout}
+      testID={testID ? `${testID}-sticky-header` : undefined}
+    >
+      {stickyHeader}
+    </View>
+  ) : null;
 
   return (
     <Modal
@@ -722,6 +766,7 @@ export function DropdownMenuContent({
               scrollable,
               scrollViewportStyle,
               content,
+              header,
               surfaceNativeID,
               scrollViewRef,
               onScroll,

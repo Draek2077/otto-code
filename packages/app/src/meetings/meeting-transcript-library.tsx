@@ -239,6 +239,43 @@ export function MeetingTranscriptLibrary({
     refreshVoid,
   ]);
 
+  // Pinned so the title, recorder control, and search stay visible while the
+  // entry list scrolls underneath them.
+  const popupHeader = useMemo(
+    () => (
+      <View style={styles.popupHeaderSection}>
+        <View style={styles.popupHeader}>
+          <Text style={styles.popupTitle}>Meeting notes</Text>
+          <Button
+            variant={recorderConflict ? "default" : "outline"}
+            size="xs"
+            leftIcon={recorderActionIcon}
+            iconSize={ICON_SIZE.sm}
+            textStyle={styles.recorderToggleText}
+            onPress={recorderConflict ? takeOverRecorder : togglePaused}
+          >
+            {recorderActionLabel}
+          </Button>
+        </View>
+        <TitlebarPopupSearchField
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search transcriptions"
+          accessibilityLabel="Search meeting notes"
+        />
+      </View>
+    ),
+    [
+      recorderActionIcon,
+      recorderActionLabel,
+      recorderConflict,
+      search,
+      setSearch,
+      takeOverRecorder,
+      togglePaused,
+    ],
+  );
+
   const editorHeader = useMemo<SheetHeader>(
     () => ({
       title: "Edit meeting notes",
@@ -272,29 +309,9 @@ export function MeetingTranscriptLibrary({
         maxHeight={420}
         scrollable
         testID="meeting-transcript-library-popup"
+        stickyHeader={popupHeader}
       >
-        <View style={styles.popup}>
-          <View style={styles.popupHeader}>
-            <Text style={styles.popupTitle}>Meeting notes</Text>
-            <Button
-              variant={recorderConflict ? "default" : "outline"}
-              size="xs"
-              leftIcon={recorderActionIcon}
-              iconSize={ICON_SIZE.sm}
-              textStyle={styles.recorderToggleText}
-              onPress={recorderConflict ? takeOverRecorder : togglePaused}
-            >
-              {recorderActionLabel}
-            </Button>
-          </View>
-          <TitlebarPopupSearchField
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search transcriptions"
-            accessibilityLabel="Search meeting notes"
-          />
-          {popupContent}
-        </View>
+        <View style={styles.popup}>{popupContent}</View>
       </DropdownMenuContent>
       <AdaptiveModalSheet
         header={editorHeader}
@@ -419,6 +436,9 @@ function MeetingTranscriptRow({
 
 const styles = StyleSheet.create((theme) => ({
   popup: {
+    gap: 0,
+  },
+  popupHeaderSection: {
     gap: 0,
     paddingTop: theme.spacing[2],
   },

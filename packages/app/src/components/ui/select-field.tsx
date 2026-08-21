@@ -380,13 +380,25 @@ const styles = StyleSheet.create((theme) => {
     controlDisabled: {
       ...geometry.controlDisabled,
     },
+    // `flexBasis: "auto"` (not `flex: 1`'s implicit basis of 0) is load-bearing:
+    // with a 0 basis the label contributes nothing to the trigger's intrinsic
+    // width, so on native (Yoga does not grow flexible children inside an
+    // auto-width parent) a `field={false}` trigger sitting in a settings row
+    // collapses to padding + chevron and renders as a single ellipsized
+    // character. The desktop popover takes its minimum width from the measured
+    // trigger, so the option list collapses with it. It still grows into the
+    // free space and still shrinks to an ellipsis when the row is tight.
     triggerText: {
-      flex: 1,
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: "auto",
       minWidth: 0,
       color: theme.colors.foreground,
     },
     placeholderText: {
-      flex: 1,
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: "auto",
       minWidth: 0,
       color: theme.colors.foregroundMuted,
     },

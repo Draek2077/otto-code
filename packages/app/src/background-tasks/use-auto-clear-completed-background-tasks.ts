@@ -18,6 +18,10 @@ export interface UseAutoClearCompletedBackgroundTasksInput {
   rows: readonly BackgroundShellTaskRow[];
   /** Which terminal group this driver sweeps. Mount one per group. */
   group: TerminalBackgroundTaskGroup;
+  /**
+   * The setting, and the track's open state. Callers pass false while the track
+   * is open so a row cannot vanish from under the reader.
+   */
   enabled: boolean;
 }
 

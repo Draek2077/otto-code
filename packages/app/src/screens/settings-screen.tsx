@@ -1012,7 +1012,8 @@ function GeneralSection({
               <Text style={settingsStyles.rowHint}>
                 Automatically remove finished background shell tasks from a chat&apos;s track once
                 they settle, instead of leaving them for a manual clear. Their output stays in the
-                chat.
+                chat. Clearing pauses while the track is open, so rows you are reading stay put
+                until you close it.
               </Text>
             </View>
             <Switch
@@ -1028,7 +1029,7 @@ function GeneralSection({
               <Text style={settingsStyles.rowHint}>
                 Do the same for background shell tasks that failed. Off by default and separate from
                 the setting above, so tidying away the ones that succeeded never sweeps a failure
-                you haven&apos;t read yet.
+                you haven&apos;t read yet. It pauses on an open track too.
               </Text>
             </View>
             <Switch

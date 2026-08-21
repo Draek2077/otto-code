@@ -786,13 +786,14 @@ export function DiffLineRow({
   const lineContainerStyle = React.useMemo(
     () => [
       styles.line,
+      wrap && styles.lineWrap,
       line.type === "header" && styles.headerLine,
       line.type === "add" && styles.addLine,
       line.type === "remove" && styles.removeLine,
       line.type === "context" && styles.contextLine,
       structuralTone === "formatting" && styles.formattingLine,
     ],
-    [line.type, structuralTone],
+    [line.type, structuralTone, wrap],
   );
   const plainLineTextStyle = React.useMemo(
     () => [
@@ -1008,6 +1009,16 @@ const styles = StyleSheet.create((theme) => {
       flexDirection: "row",
       paddingHorizontal: 0,
       paddingVertical: 0,
+    },
+    // Structural rows sit inside a flex *row* (StructuralDiffOneSided), where a
+    // View defaults to flex-shrink 0 and flex-basis auto - so the row took its
+    // max-content width, the text inside was never width-constrained, and
+    // "Wrap long lines" had nothing to wrap against. Line presentation escaped
+    // this only because its rows are direct children of a column. Shrinking is
+    // safe in both: `minWidth: 100%` floors the width at the container, and
+    // `minHeight` floors the height when the parent is a column.
+    lineWrap: {
+      flexShrink: 1,
     },
     lineNumberGutter: {
       flexDirection: "row",

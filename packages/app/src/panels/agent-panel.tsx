@@ -1757,6 +1757,10 @@ function ActiveAgentComposer({
     serverId,
     parentAgentId: agentId,
   });
+  // An open track suspends every auto-clear driver: rows the user has pulled
+  // open are rows they are reading, and sweeping them out from under the cursor
+  // is the behavior that made this a bug report. Closing it resumes the sweep.
+  const [backgroundTasksExpanded, setBackgroundTasksExpanded] = useState(false);
   // One driver per terminal group: completed and failed rows auto-clear on
   // independent settings, so neither can sweep the other's rows.
   const autoClearCompletedBackgroundTasks = useAutoClearCompletedBackgroundTasksSetting();
@@ -1765,7 +1769,7 @@ function ActiveAgentComposer({
     parentAgentId: agentId,
     rows: backgroundTaskRows,
     group: "completed",
-    enabled: autoClearCompletedBackgroundTasks,
+    enabled: autoClearCompletedBackgroundTasks && !backgroundTasksExpanded,
   });
   const autoClearFailedBackgroundTasks = useAutoClearFailedBackgroundTasksSetting();
   useAutoClearCompletedBackgroundTasks({
@@ -1773,7 +1777,7 @@ function ActiveAgentComposer({
     parentAgentId: agentId,
     rows: backgroundTaskRows,
     group: "failed",
-    enabled: autoClearFailedBackgroundTasks,
+    enabled: autoClearFailedBackgroundTasks && !backgroundTasksExpanded,
   });
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
@@ -1938,6 +1942,8 @@ function ActiveAgentComposer({
           rows={backgroundTaskRows}
           onStopTask={handleStopBackgroundTask}
           onClearTasks={handleClearCompletedBackgroundTasks}
+          expanded={backgroundTasksExpanded}
+          onExpandedChange={setBackgroundTasksExpanded}
         />
       ) : null}
       {/* Front of the fan: a card mid-entrance or mid-dismissal overflows its own

@@ -215,7 +215,6 @@ const styles = StyleSheet.create((theme) => ({
   bar: {
     width: "100%",
     alignItems: "center",
-    backgroundColor: theme.colors.surfaceChrome,
     // A toolbar, not a banner: one hairline rule and no fill, so it reads at the
     // same weight as the browser/editor toolbars rather than as a notification.
     borderTopWidth: theme.borderWidth[1],

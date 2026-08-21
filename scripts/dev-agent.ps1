@@ -46,6 +46,12 @@ Write-Host @"
 ======================================================
 "@
 
+# Metro reads the workspace packages from their compiled dist, and snapshots
+# its file map at startup - a stale dist there is an unresolvable import for the
+# whole session. No-op when everything is already built.
+node "$ScriptDir\ensure-app-deps.mjs"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 # Metro's heap, same reasoning as scripts/dev.ps1.
 $MetroNodeOptions = if ($env:NODE_OPTIONS) { "$($env:NODE_OPTIONS) --max-old-space-size=8192" } else { "--max-old-space-size=8192" }
 
