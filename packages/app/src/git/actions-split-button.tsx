@@ -125,24 +125,24 @@ export function GitActionsSplitButton({
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.splitButtonPrimary,
       Boolean(fill) && styles.fillItem,
-      // `surfaceToggleHover` matches `headerIconSlotStyle.slotHovered`, so every
+      // The canonical hover wash matches `headerIconSlotStyle.slotHovered`, so every
       // hoverable thing in the workspace header row lands on one backdrop. The
       // sidebar-tools and mobile diff-toolbar copies of this button inherit it
       // too - same control, same chrome.
       (Boolean(hovered) || pressed) &&
-        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceToggleHover }),
+        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceInteractiveHover }),
       primaryDisabled && styles.splitButtonPrimaryDisabled,
     ],
-    [fill, primaryDisabled, theme.colors.surfaceToggleHover],
+    [fill, primaryDisabled, theme.colors.surfaceInteractiveHover],
   );
 
   const caretTriggerStyle = useCallback(
     ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
       styles.splitButtonCaret,
       (hovered || pressed || open) &&
-        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceToggleHover }),
+        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceInteractiveHover }),
     ],
-    [theme.colors.surfaceToggleHover],
+    [theme.colors.surfaceInteractiveHover],
   );
 
   // With nothing to show, render nothing rather than an empty row. In the
@@ -269,9 +269,6 @@ const styles = StyleSheet.create((theme) => ({
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 0,
-    // Cap the stretched sidebar-tools variant so a wide sidebar doesn't
-    // produce oversized buttons; the row centers the capped buttons instead.
-    maxWidth: 150,
   },
   splitButtonPrimary: {
     paddingHorizontal: theme.spacing[3],

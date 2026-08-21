@@ -26,6 +26,7 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 });
 
 type SidebarHeaderRowVariant = "header" | "compact";
+type SidebarHeaderRowContentAlignment = "start" | "center";
 
 interface SidebarHeaderRowProps {
   icon: IconComponent;
@@ -42,6 +43,8 @@ interface SidebarHeaderRowProps {
    * sit in a header group whose wrapper owns the single divider.
    */
   variant?: SidebarHeaderRowVariant;
+  contentAlignment?: SidebarHeaderRowContentAlignment;
+  allowLabelWrap?: boolean;
   shortcutKeys?: ShortcutKey[][] | null;
   containerStyle?: StyleProp<ViewStyle>;
 }
@@ -55,6 +58,8 @@ export function SidebarHeaderRow({
   nativeID,
   accessibilityLabel,
   variant = "header",
+  contentAlignment = "start",
+  allowLabelWrap = false,
   shortcutKeys = null,
   containerStyle: containerStyleOverride,
 }: SidebarHeaderRowProps) {
@@ -72,9 +77,10 @@ export function SidebarHeaderRow({
     ({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.button,
       variant === "compact" && styles.buttonCompact,
+      contentAlignment === "center" && styles.buttonContentCentered,
       (Boolean(hovered) || isActive) && styles.buttonHovered,
     ],
-    [isActive, variant],
+    [contentAlignment, isActive, variant],
   );
 
   const renderChildren = useCallback(
@@ -85,14 +91,18 @@ export function SidebarHeaderRow({
           <ThemedIcon
             uniProps={isHighlighted ? foregroundColorMapping : foregroundMutedColorMapping}
           />
-          <SidebarHeaderRowLabel label={label} isHighlighted={isHighlighted} />
+          <SidebarHeaderRowLabel
+            label={label}
+            isHighlighted={isHighlighted}
+            allowWrap={allowLabelWrap}
+          />
           {shortcutKeys && Boolean(state.hovered) ? (
             <Shortcut chord={shortcutKeys} style={styles.shortcut} />
           ) : null}
         </>
       );
     },
-    [ThemedIcon, isActive, label, shortcutKeys],
+    [ThemedIcon, allowLabelWrap, isActive, label, shortcutKeys],
   );
 
   return (
@@ -115,16 +125,18 @@ export function SidebarHeaderRow({
 function SidebarHeaderRowLabel({
   label,
   isHighlighted,
+  allowWrap,
 }: {
   label: string;
   isHighlighted: boolean;
+  allowWrap: boolean;
 }) {
   const labelStyle = useMemo(
     () => [styles.label, isHighlighted && styles.labelHighlighted],
     [isHighlighted],
   );
   return (
-    <Text style={labelStyle} numberOfLines={1} ellipsizeMode="tail">
+    <Text style={labelStyle} numberOfLines={allowWrap ? undefined : 1} ellipsizeMode="tail">
       {label}
     </Text>
   );
@@ -167,8 +179,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1.5],
     paddingHorizontal: theme.spacing[2],
   },
+  buttonContentCentered: {
+    justifyContent: "center",
+  },
   buttonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   label: {
     flexShrink: 1,

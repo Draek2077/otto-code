@@ -550,11 +550,14 @@ export function getInlineReviewThreadViewportStyle({
 export function InlineReviewEditor({
   initialBody,
   onCancel,
+  onDelete,
   onSave,
   testID,
 }: {
   initialBody: string;
   onCancel: () => void;
+  /** Optional because only some editor hosts own an already-saved comment. */
+  onDelete?: () => void;
   onSave: (body: string) => void;
   testID?: string;
 }) {
@@ -581,12 +584,12 @@ export function InlineReviewEditor({
     focus.restore();
   }, [focus]);
   const handleSave = useCallback(() => onSave(trimmedBody), [onSave, trimmedBody]);
-  const handleSavePressIn = useCallback(
+  const handleEditorActionPressIn = useCallback(
     (event: GestureResponderEvent) => {
-      // A web button takes focus on pointer-down, before its click handler runs. That
+      // A web action takes focus on pointer-down, before its click handler runs. That
       // blurs the editor and restores the workspace pane, which can consume the first
-      // Save click. The button does not need focus to receive the click, so retain the
-      // editor focus until onPress submits the comment.
+      // action click. The action does not need focus, so retain the editor focus until
+      // it finishes saving or deleting the comment.
       if (isWeb && isFocused) {
         event.preventDefault();
       }
@@ -657,6 +660,19 @@ export function InlineReviewEditor({
         style={inputStyle}
       />
       <View style={styles.editorActions}>
+        {onDelete ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("review.comment.delete")}
+            testID={testID ? `${testID}-delete` : undefined}
+            hitSlop={SMALL_ACTION_HIT_SLOP}
+            onPressIn={handleEditorActionPressIn}
+            onPress={onDelete}
+            style={iconButtonDestructiveStyle}
+          >
+            <ThemedTrash2 size={14} uniProps={destructiveIconColorMapping} />
+          </Pressable>
+        ) : null}
         <Button
           accessibilityLabel={t("review.comment.cancelAccessibility")}
           testID={testID ? `${testID}-cancel` : undefined}
@@ -673,7 +689,7 @@ export function InlineReviewEditor({
           testID={testID ? `${testID}-save` : undefined}
           hitSlop={SMALL_ACTION_HIT_SLOP}
           disabled={!canSave}
-          onPressIn={handleSavePressIn}
+          onPressIn={handleEditorActionPressIn}
           onPress={handleSave}
           variant="default"
           size="xs"

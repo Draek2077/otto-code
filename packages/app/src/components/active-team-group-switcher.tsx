@@ -158,10 +158,12 @@ export function ActiveTeamGroupSwitcher({
   entries,
   variant,
   onBeforeNavigate,
+  isSidebarContentCentered,
 }: {
   entries: HostActiveTeamEntry[];
   variant: ActiveTeamSwitcherVariant;
   onBeforeNavigate?: () => void;
+  isSidebarContentCentered: boolean;
 }): ReactElement {
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
@@ -212,6 +214,7 @@ export function ActiveTeamGroupSwitcher({
           open={open}
           accessibilityLabel={`Active teams: ${activeCount} of ${entries.length} hosts`}
           onPress={handleToggle}
+          isSidebarContentCentered={isSidebarContentCentered}
         />
       </View>
       <Combobox
@@ -248,6 +251,7 @@ function GroupTrigger({
   open,
   accessibilityLabel,
   onPress,
+  isSidebarContentCentered,
 }: {
   variant: ActiveTeamSwitcherVariant;
   entries: HostActiveTeamEntry[];
@@ -256,13 +260,15 @@ function GroupTrigger({
   open: boolean;
   accessibilityLabel: string;
   onPress: () => void;
+  isSidebarContentCentered: boolean;
 }): ReactElement {
   const sidebarStyle = useCallback(
     ({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.sidebarButton,
+      isSidebarContentCentered && styles.sidebarButtonContentCentered,
       (Boolean(hovered) || open) && styles.sidebarButtonHovered,
     ],
-    [open],
+    [isSidebarContentCentered, open],
   );
   const headerStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -535,8 +541,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
   },
+  sidebarButtonContentCentered: {
+    justifyContent: "center",
+  },
   sidebarButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   sidebarLabel: {
     flexShrink: 1,

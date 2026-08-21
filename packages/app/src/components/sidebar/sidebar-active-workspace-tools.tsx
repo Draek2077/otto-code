@@ -26,14 +26,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 const EMPTY_TERMINAL_IDS: string[] = [];
 
-// Width budget for a single labeled split button, plus the row's fixed chrome
-// (container padding + inter-button gaps). The threshold is derived from how
-// many buttons will actually render rather than assuming all three: a
-// workspace with no scripts (or a native build, where open-in-editor never
-// renders) otherwise stayed icon-only until the sidebar was far wider than the
-// remaining buttons needed. Three buttons still resolve to the previous 380.
-const LABELED_TOOL_WIDTH = 120;
-const TOOLS_ROW_CHROME_WIDTH = 20;
+// Minimum comfortable width for a labeled split button, plus the row's fixed
+// chrome (container padding + inter-button gaps). The threshold is derived
+// from the buttons that can actually render, so a workspace without scripts
+// does not become icon-only prematurely.
+const LABELED_TOOL_MIN_WIDTH = 128;
+const TOOLS_ROW_CHROME_WIDTH = 48;
 
 /**
  * Shows the scripts / open-in-editor / Git actions controls for whichever
@@ -142,7 +140,8 @@ export function SidebarActiveWorkspaceTools() {
   // flashes ellipsized labels on the first frame.
   const labeledToolCount =
     1 + ((workspaceEntry?.scripts.length ?? 0) > 0 ? 1 : 0) + (isWeb ? 1 : 0);
-  const isCompact = containerWidth < labeledToolCount * LABELED_TOOL_WIDTH + TOOLS_ROW_CHROME_WIDTH;
+  const isCompact =
+    containerWidth < labeledToolCount * LABELED_TOOL_MIN_WIDTH + TOOLS_ROW_CHROME_WIDTH;
 
   const handleOpenUrlInBrowserTab = useCallback(
     (url: string) => {
@@ -223,6 +222,8 @@ function WorkspaceToolTooltip({
 
 const styles = StyleSheet.create((theme) => ({
   container: {
+    width: "100%",
+    alignSelf: "stretch",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

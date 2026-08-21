@@ -13,6 +13,7 @@ import {
 } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LayoutChangeEvent } from "react-native";
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { useRevealActiveWorkspace } from "@/components/sidebar/use-reveal-active-workspace";
 import {
@@ -308,9 +309,9 @@ export const LeftSidebar = memo(function LeftSidebar() {
       sessions: t("sidebar.sections.sessions"),
       schedules: t("sidebar.sections.schedules"),
       artifacts: t("sidebar.sections.artifacts"),
-      // Temporary label (English-only) until Orchestrations get a permanent
+      // Temporary label (English-only) until Workflows get a permanent
       // home; avoids adding a locale key for a dev-facing entry.
-      runs: "Orchestrations",
+      runs: "Workflows",
       // Temporary label (English-only), same rationale as `runs` above.
       kanban: "Kanban",
       closeSidebar: t("sidebar.actions.closeSidebar"),
@@ -492,6 +493,29 @@ interface SidebarNavigationGridProps {
   onViewRuns: () => void;
   onViewSchedules: () => void;
   onViewKanban: () => void;
+  isSingleColumn: boolean;
+}
+
+const SIDEBAR_NAVIGATION_TWO_COLUMN_MIN_WIDTH = 272;
+
+function SidebarNavigationHeader({
+  onBeforeNavigate,
+  ...navigationGridProps
+}: Omit<SidebarNavigationGridProps, "isSingleColumn"> & { onBeforeNavigate?: () => void }) {
+  const [isSingleColumn, setIsSingleColumn] = useState(false);
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    setIsSingleColumn(event.nativeEvent.layout.width < SIDEBAR_NAVIGATION_TWO_COLUMN_MIN_WIDTH);
+  }, []);
+
+  return (
+    <View onLayout={handleLayout}>
+      <SidebarActiveTeamSwitchers
+        onBeforeNavigate={onBeforeNavigate}
+        contentAlignment={isSingleColumn ? "start" : "center"}
+      />
+      <SidebarNavigationGrid {...navigationGridProps} isSingleColumn={isSingleColumn} />
+    </View>
+  );
 }
 
 function SidebarNavigationGrid({
@@ -506,6 +530,7 @@ function SidebarNavigationGrid({
   onViewRuns,
   onViewSchedules,
   onViewKanban,
+  isSingleColumn,
 }: SidebarNavigationGridProps) {
   return (
     <View style={styles.sidebarNavigationGrid}>
@@ -517,43 +542,71 @@ function SidebarNavigationGrid({
         testID="sidebar-sessions"
         variant="compact"
         containerStyle={styles.sidebarNavigationItemFullWidth}
+        contentAlignment={isSingleColumn ? "start" : "center"}
+        allowLabelWrap
       />
-      <SidebarHeaderRow
-        icon={FileText}
-        label={labels.artifacts}
-        onPress={onViewArtifacts}
-        isActive={isArtifactsActive}
-        testID="sidebar-artifacts"
-        variant="compact"
-        containerStyle={styles.sidebarNavigationItem}
-      />
-      <SidebarHeaderRow
-        icon={Network}
-        label={labels.runs}
-        onPress={onViewRuns}
-        isActive={isRunsActive}
-        testID="sidebar-runs"
-        variant="compact"
-        containerStyle={styles.sidebarNavigationItem}
-      />
-      <SidebarHeaderRow
-        icon={CalendarClock}
-        label={labels.schedules}
-        onPress={onViewSchedules}
-        isActive={isSchedulesActive}
-        testID="sidebar-schedules"
-        variant="compact"
-        containerStyle={styles.sidebarNavigationItem}
-      />
-      <SidebarHeaderRow
-        icon={Columns2}
-        label={labels.kanban}
-        onPress={onViewKanban}
-        isActive={isKanbanActive}
-        testID="sidebar-kanban"
-        variant="compact"
-        containerStyle={styles.sidebarNavigationItem}
-      />
+      <View
+        style={[
+          styles.sidebarNavigationGridRow,
+          isSingleColumn && styles.sidebarNavigationGridRowSingleColumn,
+        ]}
+      >
+        <SidebarHeaderRow
+          icon={FileText}
+          label={labels.artifacts}
+          onPress={onViewArtifacts}
+          isActive={isArtifactsActive}
+          testID="sidebar-artifacts"
+          variant="compact"
+          allowLabelWrap
+          containerStyle={
+            isSingleColumn ? styles.sidebarNavigationItem : styles.sidebarNavigationItemLeft
+          }
+        />
+        <SidebarHeaderRow
+          icon={Columns2}
+          label={labels.kanban}
+          onPress={onViewKanban}
+          isActive={isKanbanActive}
+          testID="sidebar-kanban"
+          variant="compact"
+          allowLabelWrap
+          containerStyle={
+            isSingleColumn ? styles.sidebarNavigationItem : styles.sidebarNavigationItemRight
+          }
+        />
+      </View>
+      <View
+        style={[
+          styles.sidebarNavigationGridRow,
+          isSingleColumn && styles.sidebarNavigationGridRowSingleColumn,
+        ]}
+      >
+        <SidebarHeaderRow
+          icon={CalendarClock}
+          label={labels.schedules}
+          onPress={onViewSchedules}
+          isActive={isSchedulesActive}
+          testID="sidebar-schedules"
+          variant="compact"
+          allowLabelWrap
+          containerStyle={
+            isSingleColumn ? styles.sidebarNavigationItem : styles.sidebarNavigationItemLeft
+          }
+        />
+        <SidebarHeaderRow
+          icon={Network}
+          label={labels.runs}
+          onPress={onViewRuns}
+          isActive={isRunsActive}
+          testID="sidebar-runs"
+          variant="compact"
+          allowLabelWrap
+          containerStyle={
+            isSingleColumn ? styles.sidebarNavigationItem : styles.sidebarNavigationItemRight
+          }
+        />
+      </View>
     </View>
   );
 }
@@ -714,9 +767,9 @@ function MobileSidebar({
     () => ({
       paddingTop: insetsTop,
       paddingBottom: insetsBottom,
-      backgroundColor: theme.colors.surfaceSidebar,
+      backgroundColor: theme.colors.surfaceSidebarPanel,
     }),
-    [insetsTop, insetsBottom, theme.colors.surfaceSidebar],
+    [insetsTop, insetsBottom, theme.colors.surfaceSidebarPanel],
   );
 
   return (
@@ -727,8 +780,8 @@ function MobileSidebar({
     >
       <View style={styles.sidebarContent} pointerEvents="auto">
         <View style={styles.sidebarHeaderGroup}>
-          <SidebarActiveTeamSwitchers onBeforeNavigate={closeSidebar} />
-          <SidebarNavigationGrid
+          <SidebarNavigationHeader
+            onBeforeNavigate={closeSidebar}
             labels={labels}
             isSessionsActive={isSessionsActive}
             isArtifactsActive={isArtifactsActive}
@@ -972,8 +1025,7 @@ function DesktopSidebar({
           )}
           {showTopSpacer ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
-            <SidebarActiveTeamSwitchers />
-            <SidebarNavigationGrid
+            <SidebarNavigationHeader
               labels={labels}
               isSessionsActive={isSessionsActive}
               isArtifactsActive={isArtifactsActive}
@@ -1161,16 +1213,28 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   sidebarNavigationGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: 2,
   },
+  sidebarNavigationGridRow: {
+    width: "100%",
+    flexDirection: "row",
+  },
+  sidebarNavigationGridRowSingleColumn: {
+    flexDirection: "column",
+  },
   sidebarNavigationItem: {
-    flexGrow: 1,
-    flexBasis: 0,
+    flex: 1,
+  },
+  sidebarNavigationItemLeft: {
+    flex: 1,
+    paddingRight: theme.spacing[1],
+  },
+  sidebarNavigationItemRight: {
+    flex: 1,
+    paddingLeft: theme.spacing[1],
   },
   sidebarNavigationItemFullWidth: {
-    flexBasis: "100%",
+    width: "100%",
   },
   workspacesSectionHeader: {
     flexDirection: "row",
@@ -1211,7 +1275,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   workspacesHeaderIconButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   workspacesHeaderShortcutAnchor: {
     position: "relative",
@@ -1239,12 +1303,12 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   desktopSidebarBorder: {
     borderRightWidth: 1,
     borderRightColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   sidebarDragArea: {
     position: "relative",

@@ -1033,9 +1033,6 @@ const styles = StyleSheet.create((theme) => ({
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 0,
-    // Cap the stretched sidebar-tools variant so a wide sidebar doesn't
-    // produce oversized buttons; the row centers the capped buttons instead.
-    maxWidth: 150,
   },
   splitButton: {
     flexDirection: "row",
@@ -1066,10 +1063,10 @@ const styles = StyleSheet.create((theme) => ({
   // Matches `headerIconSlotStyle.slotHovered` - this trigger sits in the same
   // header row as the toggles it borrows its chrome from.
   ghostButtonHovered: {
-    backgroundColor: theme.colors.surfaceToggleHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   splitButtonPrimaryHovered: {
-    backgroundColor: theme.colors.surfaceToggleHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   // Zero-size anchor for the collapsed mode - exists only so the dropdown has a
   // position to open from; must never take layout space or catch pointers.

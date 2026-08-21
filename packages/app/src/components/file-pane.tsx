@@ -234,6 +234,7 @@ interface FilePreviewBodyProps {
   /** Ticking a rendered task list; `line` is already a line of the file. */
   onToggleTask?: MarkdownTaskToggle | null;
   onAnnotateDocumentItem?: (target: MarkdownDocumentAnnotationTarget, comment: string) => void;
+  onDeleteDocumentItem?: (target: MarkdownDocumentAnnotationTarget) => void;
   annotatedHeadingSourceLines?: readonly number[];
   annotatedHeadingComments?: ReadonlyMap<number, string>;
 }
@@ -649,6 +650,7 @@ function FilePreviewBody({
   onPointerDownSync,
   onToggleTask = null,
   onAnnotateDocumentItem,
+  onDeleteDocumentItem,
   annotatedHeadingSourceLines = [],
   annotatedHeadingComments = new Map(),
 }: FilePreviewBodyProps) {
@@ -702,21 +704,38 @@ function FilePreviewBody({
     [annotationLineOffset, annotationTarget, onAnnotateDocumentItem],
   );
   const cancelAnnotation = useCallback(() => setAnnotationTarget(null), []);
+  const deleteAnnotation = useCallback(() => {
+    if (!annotationTarget) return;
+
+    onDeleteDocumentItem?.({
+      ...annotationTarget,
+      lineStart: annotationTarget.lineStart + (annotationLineOffset ?? 0),
+      lineEnd: annotationTarget.lineEnd + (annotationLineOffset ?? 0),
+    });
+    setAnnotationTarget(null);
+  }, [annotationLineOffset, annotationTarget, onDeleteDocumentItem]);
+  const handleAnnotationOpenChange = useCallback(
+    (target: MarkdownDocumentAnnotationTarget, open: boolean) => {
+      setAnnotationTarget(open ? target : null);
+    },
+    [],
+  );
   const annotationRules = useMemo(
     () =>
       renderedDocument && annotationSupported
         ? createMarkdownDocumentAnnotationRules({
             text: renderedDocument.body,
-            onPress: onAnnotateDocumentItem ? setAnnotationTarget : undefined,
+            onAnnotationOpenChange: onAnnotateDocumentItem ? handleAnnotationOpenChange : undefined,
             annotatedHeadingSourceLines: annotatedHeadingSourceLines.map(
               (lineStart) => lineStart - (annotationLineOffset ?? 0),
             ),
-            renderHeadingAnnotationEditor: (target) =>
+            renderHeadingAnnotationPopover: (target) =>
               annotationTarget?.kind === "heading" &&
               annotationTarget.lineStart === target.lineStart ? (
                 <RenderedDocumentAnnotationCard
                   initialComment={annotatedHeadingComments.get(target.lineStart) ?? ""}
                   onCancel={cancelAnnotation}
+                  onDelete={deleteAnnotation}
                   onSubmit={submitAnnotation}
                 />
               ) : null,
@@ -729,6 +748,8 @@ function FilePreviewBody({
       annotatedHeadingComments,
       annotationTarget,
       cancelAnnotation,
+      deleteAnnotation,
+      handleAnnotationOpenChange,
       onAnnotateDocumentItem,
       renderedDocument,
       submitAnnotation,
@@ -1256,6 +1277,22 @@ export function FilePreview({
     },
     [attachmentScopeKey, normalizedFilePath],
   );
+  const handleDeleteDocumentItem = useCallback(
+    (target: MarkdownDocumentAnnotationTarget) => {
+      if (!normalizedFilePath) return;
+      const attachmentId = `${normalizedFilePath}:${target.kind}:${target.lineStart}:${target.lineEnd}`;
+      const { attachmentsByScope, setWorkspaceAttachments } =
+        useWorkspaceAttachmentsStore.getState();
+      const attachments = attachmentsByScope[attachmentScopeKey] ?? [];
+      setWorkspaceAttachments({
+        scopeKey: attachmentScopeKey,
+        attachments: attachments.filter(
+          (attachment) => attachment.kind !== "rendered_document" || attachment.id !== attachmentId,
+        ),
+      });
+    },
+    [attachmentScopeKey, normalizedFilePath],
+  );
   const readTarget = useMemo(
     () =>
       normalizedFilePath
@@ -1384,6 +1421,7 @@ export function FilePreview({
         onPointerDownSync={onPointerDownSync}
         onToggleTask={onToggleTask}
         onAnnotateDocumentItem={handleAnnotateDocumentItem}
+        onDeleteDocumentItem={handleDeleteDocumentItem}
         annotatedHeadingSourceLines={annotatedHeadingSourceLines}
         annotatedHeadingComments={annotatedHeadingComments}
       />
@@ -1394,16 +1432,19 @@ export function FilePreview({
 function RenderedDocumentAnnotationCard({
   initialComment,
   onCancel,
+  onDelete,
   onSubmit,
 }: {
   initialComment: string;
   onCancel: () => void;
+  onDelete: () => void;
   onSubmit: (comment: string) => void;
 }) {
   return (
     <InlineReviewEditor
       initialBody={initialComment}
       onCancel={onCancel}
+      onDelete={initialComment.trim() ? onDelete : undefined}
       onSave={onSubmit}
       testID="file-preview-annotation-editor"
     />

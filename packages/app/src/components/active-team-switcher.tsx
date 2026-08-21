@@ -72,14 +72,22 @@ const chevronMapping = (theme: Theme) => ({
  */
 export function SidebarActiveTeamSwitchers({
   onBeforeNavigate,
+  contentAlignment = "center",
 }: {
   onBeforeNavigate?: () => void;
+  contentAlignment?: "start" | "center";
 }): ReactElement | null {
   const placement = useSettings((settings) => settings.teamSwitcherPlacement);
   if (placement !== "sidebar") {
     return null;
   }
-  return <ActiveTeamSwitchers variant="sidebar" onBeforeNavigate={onBeforeNavigate} />;
+  return (
+    <ActiveTeamSwitchers
+      variant="sidebar"
+      onBeforeNavigate={onBeforeNavigate}
+      isSidebarContentCentered={contentAlignment === "center"}
+    />
+  );
 }
 
 /**
@@ -108,9 +116,11 @@ export function HeaderActiveTeamSwitchers(): ReactElement | null {
 export function ActiveTeamSwitchers({
   variant,
   onBeforeNavigate,
+  isSidebarContentCentered = true,
 }: {
   variant: ActiveTeamSwitcherVariant;
   onBeforeNavigate?: () => void;
+  isSidebarContentCentered?: boolean;
 }): ReactElement {
   const hosts = useHosts();
   const [reports, setReports] = useState<HostTeamReports>(EMPTY_REPORTS);
@@ -145,6 +155,7 @@ export function ActiveTeamSwitchers({
           entries={groupedEntries}
           variant={variant}
           onBeforeNavigate={onBeforeNavigate}
+          isSidebarContentCentered={isSidebarContentCentered}
         />
       ) : null}
       {hosts.map((host) => (
@@ -157,6 +168,7 @@ export function ActiveTeamSwitchers({
           grouped={isGrouped || isSettling}
           onReport={reportEntry}
           onBeforeNavigate={onBeforeNavigate}
+          isSidebarContentCentered={isSidebarContentCentered}
         />
       ))}
     </>
@@ -256,6 +268,7 @@ function ActiveTeamSwitcher({
   grouped,
   onReport,
   onBeforeNavigate,
+  isSidebarContentCentered,
 }: {
   serverId: string;
   hostCount: number;
@@ -264,6 +277,7 @@ function ActiveTeamSwitcher({
   grouped: boolean;
   onReport: (serverId: string, report: HostTeamReport | null) => void;
   onBeforeNavigate?: () => void;
+  isSidebarContentCentered: boolean;
 }): ReactElement | null {
   const isConnected = useHostRuntimeIsConnected(serverId);
   const hasFeature = useAgentTeamsFeature(serverId);
@@ -358,6 +372,7 @@ function ActiveTeamSwitcher({
           accessibilityLabel={accessibilityLabel}
           onPress={handleToggle}
           testID={`active-team-switcher-${serverId}`}
+          isSidebarContentCentered={isSidebarContentCentered}
         />
       </View>
       <Combobox
@@ -385,6 +400,7 @@ function SwitcherTrigger({
   accessibilityLabel,
   onPress,
   testID,
+  isSidebarContentCentered,
 }: {
   variant: ActiveTeamSwitcherVariant;
   label: string;
@@ -395,13 +411,15 @@ function SwitcherTrigger({
   accessibilityLabel: string;
   onPress: () => void;
   testID: string;
+  isSidebarContentCentered: boolean;
 }): ReactElement {
   const sidebarStyle = useCallback(
     ({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.sidebarButton,
+      isSidebarContentCentered && styles.sidebarButtonContentCentered,
       (Boolean(hovered) || open) && styles.sidebarButtonHovered,
     ],
-    [open],
+    [isSidebarContentCentered, open],
   );
   const headerStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -525,8 +543,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
   },
+  sidebarButtonContentCentered: {
+    justifyContent: "center",
+  },
   sidebarButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   sidebarLabel: {
     flexShrink: 1,

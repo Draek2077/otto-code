@@ -297,9 +297,6 @@ const styles = StyleSheet.create((theme) => ({
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 0,
-    // Cap the stretched sidebar-tools variant so a wide sidebar doesn't
-    // produce oversized buttons; the row centers the capped buttons instead.
-    maxWidth: 150,
   },
   splitButtonPrimary: {
     paddingLeft: theme.spacing[3],
@@ -316,7 +313,7 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   splitButtonPrimaryHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
   splitButtonPrimaryDisabled: {
     opacity: 0.6,
@@ -351,6 +348,6 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   splitButtonCaretHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceInteractiveHover,
   },
 }));

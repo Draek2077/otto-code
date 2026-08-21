@@ -444,6 +444,33 @@ describe("InlineReviewEditor", () => {
     expect(onSave).toHaveBeenCalledWith("ready");
   });
 
+  it("shows the destructive delete action only when its host owns a saved comment", () => {
+    const onDelete = vi.fn();
+    const { getByTestId } = render(
+      <InlineReviewEditor
+        initialBody="ready"
+        onCancel={vi.fn()}
+        onDelete={onDelete}
+        onSave={vi.fn()}
+        testID="editor"
+      />,
+    );
+
+    fireEvent.click(getByTestId("editor-delete"));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    const { queryByTestId: queryWithoutDelete } = render(
+      <InlineReviewEditor
+        initialBody="ready"
+        onCancel={vi.fn()}
+        onSave={vi.fn()}
+        testID="editor"
+      />,
+    );
+    expect(queryWithoutDelete("editor-delete")).toBeNull();
+  });
+
   it("handles Escape cancel and Mod+Enter save from the focused textarea", () => {
     const onCancel = vi.fn();
     const onSave = vi.fn();

@@ -35,6 +35,11 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import { MarkdownFenceBlock } from "@/components/markdown/fence/index";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-text";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
@@ -101,51 +106,65 @@ function annotationAccessibilityLabel(
 function HeadingAnnotationAction({
   target,
   annotated,
-  onPress,
-  annotationEditor,
+  onOpenChange,
+  annotationPopover,
   children,
   style,
 }: {
   target: Extract<MarkdownDocumentAnnotationTarget, { kind: "heading" }>;
   annotated: boolean;
-  onPress?: (target: MarkdownDocumentAnnotationTarget) => void;
-  annotationEditor?: ReactNode;
+  onOpenChange?: (target: MarkdownDocumentAnnotationTarget, open: boolean) => void;
+  annotationPopover?: ReactNode;
   children: ReactNode[];
   style: StyleProp<ViewStyle>;
 }) {
-  const disabled = !onPress;
+  const disabled = !onOpenChange;
+  const open = annotationPopover != null;
   return (
     <View style={[style, annotationStyles.heading]}>
       {children}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={
-          disabled
-            ? `Open or focus a chat to ${annotationAccessibilityLabel(target, annotated).toLowerCase()}`
-            : annotationAccessibilityLabel(target, annotated)
-        }
-        accessibilityState={
-          disabled
-            ? DISABLED_ANNOTATION_ACCESSIBILITY_STATE
-            : ENABLED_ANNOTATION_ACCESSIBILITY_STATE
-        }
-        disabled={disabled}
+      <DropdownMenu
+        open={open}
         // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- target is node-specific
-        onPress={() => onPress?.(target)}
-        // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- Pressable state is supplied by its render prop
-        style={({ pressed }) => [
-          annotationStyles.headingAction,
-          disabled && annotationStyles.headingActionDisabled,
-          pressed && annotationStyles.headingActionPressed,
-        ]}
+        onOpenChange={(nextOpen) => onOpenChange?.(target, nextOpen)}
       >
-        {annotated ? (
-          <ThemedAnnotatedHeadingIcon size={15} uniProps={annotatedHeadingIconMapping} />
-        ) : (
-          <ThemedHeadingCommentIcon size={15} uniProps={annotationActionIconMapping} />
-        )}
-      </Pressable>
-      {annotationEditor}
+        <DropdownMenuTrigger
+          accessibilityRole="button"
+          accessibilityLabel={
+            disabled
+              ? `Open or focus a chat to ${annotationAccessibilityLabel(target, annotated).toLowerCase()}`
+              : annotationAccessibilityLabel(target, annotated)
+          }
+          accessibilityState={
+            disabled
+              ? DISABLED_ANNOTATION_ACCESSIBILITY_STATE
+              : ENABLED_ANNOTATION_ACCESSIBILITY_STATE
+          }
+          disabled={disabled}
+          // eslint-disable-next-line react-perf/jsx-no-new-function-as-prop -- Pressable state is supplied by its render prop
+          style={({ pressed }) => [
+            annotationStyles.headingAction,
+            disabled && annotationStyles.headingActionDisabled,
+            pressed && annotationStyles.headingActionPressed,
+          ]}
+        >
+          {annotated ? (
+            <View style={annotationStyles.annotatedHeadingIcon}>
+              <ThemedAnnotatedHeadingIcon size={15} uniProps={annotatedHeadingIconMapping} />
+            </View>
+          ) : (
+            <ThemedHeadingCommentIcon size={15} uniProps={annotationActionIconMapping} />
+          )}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          minWidth={320}
+          offset={6}
+          testID="file-preview-annotation-popover"
+        >
+          {annotationPopover}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </View>
   );
 }
@@ -167,7 +186,6 @@ const ThemedAnnotatedHeadingIcon = withUnistyles(Chat);
 
 const annotationActionIconMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
-  size: theme.iconSize.xs,
 });
 
 const annotatedHeadingIconMapping = (theme: Theme) => ({
@@ -194,6 +212,9 @@ const annotationStyles = StyleSheet.create((theme) => ({
     opacity: 0.55,
   },
   headingActionPressed: { backgroundColor: theme.colors.surfaceHover },
+  // `Chat` is globally nudged down to correct its normal optical baseline.
+  // In this fixed icon button it shares a centre with MessageSquarePlus instead.
+  annotatedHeadingIcon: { transform: [{ translateY: -1 }] },
 }));
 
 function markdownStyleMapping(theme: Theme): Partial<MarkdownWithStableRendererProps> {
@@ -222,10 +243,10 @@ function markdownNodeText(node: ASTNode): string {
  */
 export function createMarkdownDocumentAnnotationRules(input: {
   text: string;
-  onPress?: (target: MarkdownDocumentAnnotationTarget) => void;
+  onAnnotationOpenChange?: (target: MarkdownDocumentAnnotationTarget, open: boolean) => void;
   annotatedHeadingSourceLines?: readonly number[];
-  /** Rendered directly below the matching heading, never at document end. */
-  renderHeadingAnnotationEditor?: (
+  /** Rendered in a popup anchored to the matching heading's annotation button. */
+  renderHeadingAnnotationPopover?: (
     target: Extract<MarkdownDocumentAnnotationTarget, { kind: "heading" }>,
   ) => ReactNode;
 }): RenderRules {
@@ -255,8 +276,8 @@ export function createMarkdownDocumentAnnotationRules(input: {
         <HeadingAnnotationAction
           target={target}
           annotated={annotatedHeadingSourceLines.has(target.lineStart)}
-          onPress={input.onPress}
-          annotationEditor={input.renderHeadingAnnotationEditor?.(target)}
+          onOpenChange={input.onAnnotationOpenChange}
+          annotationPopover={input.renderHeadingAnnotationPopover?.(target)}
           style={styles[`_VIEW_SAFE_heading${level}`]}
         >
           {children}
