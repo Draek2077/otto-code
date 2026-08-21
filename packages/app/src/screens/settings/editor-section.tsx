@@ -174,6 +174,11 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
     (value: string) => void updateSettings({ fileEditorCustomCommand: value }),
     [updateSettings],
   );
+  const handleAlwaysUseOttoEditorForMarkdownChange = useCallback(
+    (alwaysUseOttoEditorForMarkdown: boolean) =>
+      void updateSettings({ alwaysUseOttoEditorForMarkdown }),
+    [updateSettings],
+  );
   useEffect(() => {
     if (isNative || capturingAction === null) {
       return;
@@ -332,6 +337,24 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
                   accessibilityLabel="Custom file editor command"
                   testID="external-file-editor-command"
                   style={styles.externalEditorInput}
+                />
+              </View>
+            ) : null}
+            {externalEditorSupported && settings.fileEditorMode !== "off" ? (
+              <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+                <View style={settingsStyles.rowContent}>
+                  <Text style={settingsStyles.rowTitle}>
+                    Always use Otto editor for Markdown files
+                  </Text>
+                  <Text style={settingsStyles.rowHint}>
+                    Keep .md files in Otto for editing and previewing
+                  </Text>
+                </View>
+                <Switch
+                  value={settings.alwaysUseOttoEditorForMarkdown}
+                  onValueChange={handleAlwaysUseOttoEditorForMarkdownChange}
+                  accessibilityLabel="Always use Otto editor for Markdown files"
+                  testID="always-use-otto-editor-for-markdown-toggle"
                 />
               </View>
             ) : null}

@@ -106,7 +106,7 @@ import { useGoToDefinition, type GoToDefinitionTarget } from "@/editor/use-go-to
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
 import { useHostFeature } from "@/runtime/host-features";
 import { ExternalFileEditorPane } from "@/components/external-file-editor-pane";
-import type { FileEditorMode } from "@/editor/external-file-editor";
+import { shouldOpenInSelectedFileEditor, type FileEditorMode } from "@/editor/external-file-editor";
 import { revealFileInChanges, revealFileInFiles, useChangedFilePaths } from "@/git/changes-reveal";
 import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import type { FileHistoryRange } from "@/git/file-history/use-file-history-data";
@@ -2478,12 +2478,17 @@ export function FileTabPane({
   });
 
   // Markdown and the other rendered document formats are still text files.
-  // When Vim/Neovim is the user's selected File editor, open those sources in
-  // the terminal too. Preview-first binary/media formats remain in preview.
+  // When Vim/Neovim is the user's selected File editor, they open in the
+  // terminal too unless Markdown is explicitly kept in Otto. Preview-first
+  // binary/media formats remain in preview.
   const opensInSelectedFileEditor =
     externalEditorAvailable &&
-    (defaultFileViewMode(location.path) === "editor" ||
-      renderedDocumentKind(location.path) !== null);
+    shouldOpenInSelectedFileEditor({
+      path: location.path,
+      defaultViewIsEditor: defaultFileViewMode(location.path) === "editor",
+      renderedDocument: renderedDocumentKind(location.path) !== null,
+      alwaysUseOttoEditorForMarkdown: settings.alwaysUseOttoEditorForMarkdown,
+    });
 
   useEffect(() => {
     if (opensInSelectedFileEditor && autoOpenedExternalEditorPathRef.current !== location.path) {
@@ -2499,6 +2504,7 @@ export function FileTabPane({
     opensInSelectedFileEditor,
     settings.fileEditorCustomCommand,
     settings.fileEditorMode,
+    settings.alwaysUseOttoEditorForMarkdown,
   ]);
 
   const openExternalEditor = useCallback(() => {
