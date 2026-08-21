@@ -221,7 +221,9 @@ const styles = StyleSheet.create((theme) => ({
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
+    // Match the editor status bar while preserving the requested half-pixel
+    // height adjustment across the two vertical edges.
+    paddingVertical: theme.spacing[1] + 0.25,
   },
   row: {
     flexDirection: "row",
