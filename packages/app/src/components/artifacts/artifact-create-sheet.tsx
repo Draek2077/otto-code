@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { ChevronDown, Folder, Psychology } from "@/components/icons/material-icons";
+import { ChevronDown, Folder, Psychology, Robot } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
@@ -673,6 +673,7 @@ function OpenArtifactCreateSheet({
         </Button>
         <Button
           style={styles.footerButton}
+          leftIcon={Robot}
           variant="default"
           onPress={handleSubmitPress}
           disabled={!canSubmit}

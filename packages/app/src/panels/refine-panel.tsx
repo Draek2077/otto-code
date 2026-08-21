@@ -3,14 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
-import {
-  Check,
-  CheckSquare,
-  Compress,
-  RotateCw,
-  WandStars,
-  X,
-} from "@/components/icons/material-icons";
+import { Check, CheckSquare, Robot, RotateCw, X } from "@/components/icons/material-icons";
 import { DiffViewer } from "@/components/diff-viewer";
 import { TreeChevron } from "@/components/tree-primitives";
 import { Button } from "@/components/ui/button";
@@ -115,7 +108,7 @@ function useRefinePanelDescriptor(target: RefineTarget): PanelDescriptor {
     tooltip: i18n.t("refine.tab.title", { job: jobTitle(job), file: tail }),
     subtitle: describeExtraFiles(extra, preset),
     titleState: "ready",
-    icon: job === "compact" ? Compress : WandStars,
+    icon: Robot,
     statusBucket: null,
   };
 }

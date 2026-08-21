@@ -6,7 +6,7 @@ import {
   FileText,
   MessageSquare,
   MoreVertical,
-  RotateCw,
+  Robot,
   Star,
   StarFilled,
   Trash2,
@@ -36,7 +36,7 @@ import type { AggregatedArtifact } from "@/artifacts/use-artifacts";
 const ThemedEye = withUnistyles(Eye);
 const ThemedFileText = withUnistyles(FileText);
 const ThemedMessageSquare = withUnistyles(MessageSquare);
-const ThemedRotateCw = withUnistyles(RotateCw);
+const ThemedRobot = withUnistyles(Robot);
 const ThemedX = withUnistyles(X);
 const ThemedTrash2 = withUnistyles(Trash2);
 
@@ -54,7 +54,7 @@ function stopPressInPropagation(event: { stopPropagation?: () => void }) {
 const viewLeading = <ThemedEye size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const chatLeading = <ThemedMessageSquare size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const editLeading = <ThemedFileText size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
-const regenerateLeading = <ThemedRotateCw size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
+const regenerateLeading = <ThemedRobot size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const cancelLeading = <ThemedX size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const deleteLeading = <ThemedTrash2 size={MENU_ICON_SIZE} uniProps={destructiveColorMapping} />;
 

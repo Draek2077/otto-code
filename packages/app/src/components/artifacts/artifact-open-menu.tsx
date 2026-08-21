@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { FileText, Plus, TriangleAlert } from "@/components/icons/material-icons";
+import { FileText, Robot, TriangleAlert } from "@/components/icons/material-icons";
 import { ThemedBlobLoader } from "@/components/blob-loader";
 import type { Theme } from "@/styles/theme";
 import {
@@ -120,7 +120,7 @@ export function ArtifactOpenMenu({
 
   const handleOpenCreate = useCallback(() => setCreateOpen(true), []);
   const handleCloseCreate = useCallback(() => setCreateOpen(false), []);
-  const createLeading = useMemo(() => <Plus size={16} color={styles.icon.color} />, []);
+  const createLeading = useMemo(() => <Robot size={16} color={styles.icon.color} />, []);
 
   if (!supportsArtifacts) {
     return null;

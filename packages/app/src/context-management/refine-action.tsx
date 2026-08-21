@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ContextNode, ContextReport } from "@otto-code/protocol/messages";
-import { Compress } from "@/components/icons/material-icons";
+import { Robot } from "@/components/icons/material-icons";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { withUnistyles } from "react-native-unistyles";
 import { openRefineTab } from "@/refine/open-refine-tab";
@@ -9,10 +9,7 @@ import { presetForContextFile } from "@/refine/refine-presets";
 import { selectReferencesWithinBudget } from "@/refine/refine-reference-budget";
 import { useRefineFeature } from "@/refine/use-refine-feature";
 
-// Compress, not the wand Refine wears. Both open the same job, so a shared glyph
-// read as one button rendered twice; the arrows say what this preset actually
-// asks for - the same document, smaller.
-const ThemedCompress = withUnistyles(Compress);
+const ThemedRobot = withUnistyles(Robot);
 
 /**
  * Context Management's compaction action - the call site
@@ -87,7 +84,7 @@ export function ContextRefineAction({
     <ToolbarIconButton
       label={t("refine.compactOpen")}
       testID="context-refine-open"
-      Icon={ThemedCompress}
+      Icon={ThemedRobot}
       onPress={open}
       disabled={!selectedNode}
     />

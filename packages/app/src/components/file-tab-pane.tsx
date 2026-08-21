@@ -27,7 +27,7 @@ import {
   Terminal,
   TriangleAlert,
   Undo2,
-  WandStars,
+  Robot,
   WrapText,
   X,
 } from "@/components/icons/material-icons";
@@ -175,7 +175,7 @@ const ThemedList = withUnistyles(List);
 const ThemedHistory = withUnistyles(History);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedSourceControl = withUnistyles(SourceControlPanelIcon);
-const ThemedWandStars = withUnistyles(WandStars);
+const ThemedRobot = withUnistyles(Robot);
 const ThemedMessageSquarePlus = withUnistyles(MessageSquarePlus);
 const ThemedDownload = withUnistyles(Download);
 const ThemedFileText = withUnistyles(FileText);
@@ -897,7 +897,7 @@ function FileAiToolbarGroup({
         <ToolbarIconButton
           label={t("refine.open")}
           testID="file-refine-open"
-          Icon={ThemedWandStars}
+          Icon={ThemedRobot}
           onPress={onRefine}
         />
       ) : null}

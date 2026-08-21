@@ -569,7 +569,7 @@ Refactoring is delegated to an agent, not a static analyzer - Otto's home-field 
 
 The flow (`packages/app/src/editor/`):
 
-1. The editor's "Refactor with AI" (Sparkles) action reads the current selection via the `getSelection` editor command for scope.
+1. The editor's "Refactor with AI" (Robot) action reads the current selection via the `getSelection` editor command for scope.
 2. It opens a small JetBrains-style dialog (`refactor-dialog.tsx`) showing the scope (file + line range + selected-code preview), an instruction field, and a scope-guard note (_change only within scope; no unrelated reformatting, no dependency changes, no drive-by fixes_).
 3. On confirm, it composes a scope-guarded prompt via the **pure, unit-tested `refactor-prompt.ts`** (`buildRefactorPrompt`) and opens a **pre-filled draft tab** through the draft store (`use-ai-refactor.ts`, using `buildDraftStoreKey` / `generateDraftId`).
 

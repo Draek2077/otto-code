@@ -32,7 +32,7 @@ import {
 } from "@otto-code/protocol/agent-personalities";
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 import { isUserSelectableMode } from "@otto-code/protocol/provider-manifest";
-import { ChevronDown, Pencil, Plus, Trash2 } from "@/components/icons/material-icons";
+import { ChevronDown, Pencil, Plus, Robot, Trash2 } from "@/components/icons/material-icons";
 import { BlobLoader } from "@/components/blob-loader";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { Button } from "@/components/ui/button";
@@ -1794,6 +1794,7 @@ function ProfileGeneratorField({
       <Button
         variant="secondary"
         size="sm"
+        leftIcon={Robot}
         onPress={onGenerate}
         disabled={isGenerating || !hasName}
         testID="agent-personality-generate-profile"
@@ -1918,6 +1919,7 @@ function VoiceCuesEditor({
         <Button
           variant="secondary"
           size="sm"
+          leftIcon={Robot}
           onPress={onGenerate}
           disabled={isGenerating}
           testID="agent-personality-generate-cues"

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
+import { Robot } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import type { Theme } from "@/styles/theme";
@@ -94,6 +95,7 @@ export function RefactorDialog({
             <Button
               variant="default"
               size="sm"
+              leftIcon={Robot}
               onPress={handleConfirm}
               disabled={!isRefactorInstructionValid(instruction)}
               testID="refactor-dialog-confirm"
