@@ -89,6 +89,7 @@ someone to run it by hand.
 | Agent stream rendering (tool calls, text)                                          | ✅     | `agent-stream-ui.spec.ts`                    | T1   | -   |
 | Timeline pagination / backfill                                                     | ✅     | `agent-timeline-pagination.spec.ts`          | T1   | -   |
 | User message UI contract                                                           | ✅     | `user-message-contract.ui-contract.spec.ts`  | T1   | -   |
+| Sent LaTeX renders as math; currency stays prose; copy keeps the TeX               | ✅     | `user-message-contract.ui-contract.spec.ts`  | T1   | -   |
 | Question prompt pagination (AskUserQuestion-style)                                 | ✅     | `question-prompt-pagination.spec.ts`         | T1   | -   |
 | Agent title handoff to tab                                                         | ✅     | `workspace-agent-title-handoff.spec.ts`      | T1   | -   |
 | Agent tab rename                                                                   | ✅     | `workspace-agent-tab-rename.spec.ts`         | T1   | -   |
@@ -104,6 +105,8 @@ someone to run it by hand.
 | Friendly tool display names (canonical map + MCP humanizer)                        | ✅     | `tool-display-names.spec.ts`                 | T1   | -   |
 | Steer queue (queued steering drains at idle)                                       | ❌     | charter not shipped; spec lands with feature | T1   | P2  |
 | Add a changed file to the chat composer                                            | 🟡     | `add-changed-file-to-chat.spec.ts`           | T1   | -   |
+| Add the open file, or a selected row:column range, from the File Editor            | 🟡     | `add-file-to-chat-from-editor.spec.ts`       | T1   | -   |
+| Picking an `@` mention attaches a pill instead of inserting a quoted path          | 🟡     | `add-file-to-chat-from-editor.spec.ts`       | T1   | -   |
 | Tool-call shimmer while a call is running                                          | 🟡     | `tool-call-shimmer.spec.ts`                  | T1   | -   |
 
 ## 5. Agent lifecycle & control

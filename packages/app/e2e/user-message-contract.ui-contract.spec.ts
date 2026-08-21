@@ -73,8 +73,10 @@ test.describe("User message UI contract", () => {
       repoPrefix: "user-message-markdown-e2e-",
       title: "User message markdown e2e",
     });
-    // A quoted file mention (what the composer's autocomplete inserts) plus a
-    // tagged fence: the two halves of "render my prompt like the agent's reply".
+    // A quoted path plus a tagged fence: the two halves of "render my prompt
+    // like the agent's reply". Typed, not picked - picking a file now attaches a
+    // pill instead of inserting quoted text - but the rendering contract for a
+    // quoted path someone typed themselves is unchanged.
     const prompt = [
       'Guard "src/user-message-e2e.ts" before it ships.',
       "",
@@ -106,6 +108,48 @@ test.describe("User message UI contract", () => {
       expect(rendered).not.toContain("\u201D");
 
       // Display is not the message. Copy still yields the exact typed string.
+      await bubble.getByRole("button", { name: "Copy message" }).click();
+      await expect.poll(() => readClipboardText(page), { timeout: 10_000 }).toBe(prompt);
+    } finally {
+      await session.cleanup();
+    }
+  });
+
+  test("renders sent LaTeX as math while copy keeps the TeX", async ({ context, page }) => {
+    const session = await seedMockAgentWorkspace({
+      repoPrefix: "user-message-math-e2e-",
+      title: "User message math e2e",
+    });
+    // Display math, inline math, and the currency line that must not become a
+    // formula. The user's parser takes `applyMath` and nothing else, so this is
+    // the whole of what math in a prompt has to get right.
+    const prompt = [
+      "$$",
+      "\\int_{a}^{b} f(x) \\, dx = F(b) - F(a)",
+      "$$",
+      "",
+      "The area $A = \\pi r^2$ grows, and it cost $5 and $10.",
+    ].join("\n");
+
+    try {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+      await openAgentRoute(page, session);
+      await expectComposerVisible(page);
+
+      await submitMessage(page, prompt);
+      const bubble = page.getByTestId("user-message").first();
+      await expect(bubble).toBeVisible({ timeout: 15_000 });
+
+      // KaTeX emits MathML on web, so real <math> elements are the proof that
+      // the formula was laid out rather than printed. Two of them: the display
+      // block and the inline one.
+      await expect(bubble.locator("math")).toHaveCount(2, { timeout: 15_000 });
+      // The delimiters are gone, so nothing rendered as literal TeX...
+      await expect(bubble).not.toContainText("$$");
+      // ...but the currency did not become a formula.
+      await expect(bubble).toContainText("it cost $5 and $10.");
+
+      // Display is not the message: the agent receives the TeX that was typed.
       await bubble.getByRole("button", { name: "Copy message" }).click();
       await expect.poll(() => readClipboardText(page), { timeout: 10_000 }).toBe(prompt);
     } finally {

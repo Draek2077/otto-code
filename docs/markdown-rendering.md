@@ -178,11 +178,22 @@ never a decision.
 
 It does **not** share the assistant's parser, and that is the part to preserve:
 
-|               | Assistant                                | User                          |
-| ------------- | ---------------------------------------- | ----------------------------- |
-| `typographer` | on                                       | **off**                       |
-| Plugins       | task lists, footnotes, alerts, math      | none                          |
-| Rules         | the `message.tsx` copy (file-link aware) | `createSharedMarkdownRules()` |
+|               | Assistant                                    | User                          |
+| ------------- | -------------------------------------------- | ----------------------------- |
+| `typographer` | on                                           | **off**                       |
+| Plugins       | task lists, footnotes, math (**not** alerts) | math only                     |
+| Rules         | the `message.tsx` copy (file-link aware)     | `createSharedMarkdownRules()` |
+
+The assistant's chain is `createAssistantMarkdownParser()`
+(`markdown/assistant-parser.ts`), its own module rather than a const inside `message.tsx` precisely
+because it is the place a shared extension silently fails to reach: math shipped to the viewer first
+and did not reach chat for a release. Alerts still do not, because the assistant rules carry no
+`blockquote` rule to draw one.
+
+**Math is the one plugin both sides take**, because a formula you send should look the way it will
+look coming back. The currency guards are what make that safe in a prompt, and they are the reason
+no other plugin followed it across: footnotes, task lists and alerts are parse cost per bubble for
+constructs prompts do not use.
 
 `typographer` is the load-bearing difference. It rewrites `"` into curly quotes, `--` into an en
 dash and `...` into an ellipsis. That is right for prose a model wrote and wrong for text a person
@@ -366,7 +377,22 @@ offset keeps their checkboxes read-only rather than writing to a line that means
 
 ## Math
 
-`$x^2$` inline and `$$...$$` as a block, rendered with KaTeX.
+`$x^2$` inline and `$$...$$` as a block, rendered with KaTeX. In the file viewer, the preview, the
+HTML/PDF export and in agent replies.
+
+**Chat is a second wiring site, not a free ride.** Every other surface picks math up from
+`defaultMarkdownParser` + `createSharedMarkdownRules()`; chat parses with its own chain and its own
+rules copy (see [above](#both-sides-of-chat-parse-with-different-parsers)), so both halves are
+registered there by hand and `assistant-parser.test.ts` is what stops the parse half from being
+dropped again. The user's own bubble takes the parse half too, and gets the render half
+free from the shared rules it already spreads.
+
+**A display formula holds an assistant block open.** An assistant reply is cut into blocks on blank
+lines
+by `utils/split-markdown-blocks.ts` before it reaches the renderer, so a `$$ … $$` that contains a
+blank line (an `aligned` environment, usually) would arrive as two blocks with an unclosed `$$` each
+and render as raw TeX. `$$` therefore holds a block open the way a code fence does. The single-line
+`$$x$$` form opens nothing. A user prompt is rendered whole and never sees this splitter.
 
 **Math is the one extension here that needs a render rule.** Task lists, alerts and footnotes all
 rewrite into node types markdown already has, which is why the HTML export got them for free. A

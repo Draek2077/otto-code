@@ -74,8 +74,9 @@ import {
   withMarkdownLinkColor,
   type MarkdownStyles,
 } from "@/components/markdown/renderer";
-import { applyTaskListMarkers } from "@/components/markdown/task-lists";
-import { applyFootnotes } from "@/components/markdown/footnotes";
+import { createAssistantMarkdownParser } from "@/components/markdown/assistant-parser";
+import { applyMath, MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "@/components/markdown/math";
+import { MathFormula } from "@/components/markdown/math-formula";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import { TodoTaskList, useTodoCounts } from "@/components/todo-task-list";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
@@ -518,14 +519,21 @@ function UserMessageImagePill({ image, onOpen, accessibilityLabel }: UserMessage
  * OFF so quotes, dashes and apostrophes render exactly as typed. The composer
  * inserts file mentions as quoted, backslash-escaped paths
  * (`formatQuotedFileMentionPath`), and smart quotes would show the user
- * something they did not write. Plugins (footnotes, task lists, math, alerts)
- * are left off: prompts don't use them, and every one is parse cost per bubble.
+ * something they did not write.
+ *
+ * Math is the one plugin it does take, because a formula you send should look
+ * the way it will look coming back. Its currency guards are what make that
+ * safe in a prompt: "it cost $5 and $10" stays prose. Footnotes, task lists
+ * and alerts stay off - prompts don't use them, and each is parse cost per
+ * bubble. The render rules for math are already in
+ * `createSharedMarkdownRules()`.
  *
  * Display is not the sent text. `TurnCopyButton` and `RewindMenu` read the raw
  * `message` string, so copy, rewind and the agent all keep byte fidelity no
- * matter what this renders.
+ * matter what this renders - a formula reaches the model as the TeX that was
+ * typed.
  */
-const userMessageMarkdownParser = MarkdownIt({ linkify: true });
+const userMessageMarkdownParser = applyMath(MarkdownIt({ linkify: true }));
 
 const userMessageMarkdownStylesheet = StyleSheet.create((theme) => ({
   // Every block owns its bottom margin, so the last one stacks on the bubble's
@@ -1925,20 +1933,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     revealBudget === undefined || revealBudget >= message.length
       ? message
       : sliceAtSafeBoundary(message, revealBudget);
-  const markdownParser = useMemo(() => {
-    const parser = applyFootnotes(
-      applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true })),
-    );
-    const defaultValidateLink = parser.validateLink.bind(parser);
-    parser.validateLink = (url: string) => {
-      if (url.trim().toLowerCase().startsWith("file://")) {
-        return true;
-      }
-
-      return defaultValidateLink(url);
-    };
-    return parser;
-  }, []);
+  const markdownParser = useMemo(() => createAssistantMarkdownParser(), []);
 
   const fileLinkActions = useAssistantFileLinkActions();
   const handleMarkdownLinkPress = useStableEvent((url: string) => {
@@ -2194,6 +2189,29 @@ export const AssistantMessage = memo(function AssistantMessage({
         >
           {children}
         </MarkdownParagraphView>
+      ),
+      // Math is the one extension that needs a render rule as well as a parse
+      // rule; these mirror the shared renderer's so a formula looks the same in
+      // a reply as it does in the file viewer. Inline math on native still
+      // shows its TeX source (see docs/markdown-rendering.md) - a webview
+      // cannot live inside a <Text>.
+      [MATH_INLINE_TOKEN]: (
+        node: ASTNode,
+        _children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <MathFormula key={node.key} tex={node.content ?? ""} display={false} style={styles.text} />
+      ),
+      [MATH_BLOCK_TOKEN]: (
+        node: ASTNode,
+        _children: ReactNode[],
+        _parent: ASTNode[],
+        styles: MarkdownStyles,
+      ) => (
+        <View key={node.key} style={styles._VIEW_SAFE_paragraph}>
+          <MathFormula tex={node.content ?? ""} display style={styles.text} />
+        </View>
       ),
       link: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
         <AssistantMarkdownLink
