@@ -13,6 +13,10 @@ import { ChatSeamFade } from "@/components/chat-seam-fade";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
 import { AgentStreamView } from "@/agent-stream/view";
+import {
+  resolveBlackChatCanvasStyle,
+  useBlackChatScope,
+} from "@/components/black-chat-scope-context";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
@@ -340,6 +344,7 @@ export function WorkspaceDraftAgentTab({
   onOpenImportSheet,
 }: WorkspaceDraftAgentTabProps) {
   const { t } = useTranslation();
+  const isBlackChat = useBlackChatScope();
   const insets = useSafeAreaInsets();
   const [pendingWakeWordAutoStart, setPendingWakeWordAutoStart] = useState(() =>
     useWakeWordAutoStartStore.getState().consumePending({ serverId, workspaceId, draftId }),
@@ -650,7 +655,10 @@ export function WorkspaceDraftAgentTab({
     [composerState.agentControls, handleDropdownCloseFocus, isSubmitting],
   );
   return (
-    <FileDropZone style={styles.container} onLayout={onTabLayout}>
+    <FileDropZone
+      style={[styles.container, resolveBlackChatCanvasStyle(isBlackChat)]}
+      onLayout={onTabLayout}
+    >
       <View style={styles.contentContainer}>
         {isSubmitting && draftAgent ? (
           <View style={styles.streamContainer}>

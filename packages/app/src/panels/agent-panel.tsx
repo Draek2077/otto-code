@@ -24,6 +24,10 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
 import { BlackChatScope } from "@/components/black-chat-scope";
+import {
+  resolveBlackChatCanvasStyle,
+  useBlackChatScope,
+} from "@/components/black-chat-scope-context";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
@@ -248,12 +252,16 @@ export function buildChatAgentFromState(
 function renderChatAgentNonReadyView(args: {
   viewState: AgentScreenViewState;
   effectiveAgent: AgentScreenAgent | null;
+  isBlackChat: boolean;
   t: TFunction;
 }): React.ReactElement | null {
-  const { viewState, effectiveAgent, t } = args;
+  const { viewState, effectiveAgent, isBlackChat, t } = args;
   if (viewState.tag === "not_found") {
     return (
-      <View style={styles.container} testID="agent-not-found">
+      <View
+        style={[styles.container, resolveBlackChatCanvasStyle(isBlackChat)]}
+        testID="agent-not-found"
+      >
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{t("agentPanel.states.notFound")}</Text>
         </View>
@@ -262,7 +270,10 @@ function renderChatAgentNonReadyView(args: {
   }
   if (viewState.tag === "error") {
     return (
-      <View style={styles.container} testID="agent-load-error">
+      <View
+        style={[styles.container, resolveBlackChatCanvasStyle(isBlackChat)]}
+        testID="agent-load-error"
+      >
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{t("agentPanel.states.failedToLoad")}</Text>
           <Text style={styles.statusText}>{viewState.message}</Text>
@@ -272,7 +283,10 @@ function renderChatAgentNonReadyView(args: {
   }
   if (viewState.tag === "boot" || !effectiveAgent) {
     return (
-      <View style={styles.container} testID="agent-loading">
+      <View
+        style={[styles.container, resolveBlackChatCanvasStyle(isBlackChat)]}
+        testID="agent-loading"
+      >
         <View style={styles.errorContainer}>
           <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
         </View>
@@ -800,6 +814,7 @@ function ChatAgentContent({
   connectionStatus: HostRuntimeConnectionStatus;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
+  const isBlackChat = useBlackChatScope();
   const { t } = useTranslation();
   const isPaneVisible = useRetainedPanelActive();
   const { api: toastApi, toast: toastState, dismiss: dismissToast } = useToastHost();
@@ -1192,6 +1207,7 @@ function ChatAgentContent({
   const nonReadyView = renderChatAgentNonReadyView({
     viewState,
     effectiveAgent,
+    isBlackChat,
     t,
   });
   if (nonReadyView) return nonReadyView;
@@ -1278,6 +1294,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const isBlackChat = useBlackChatScope();
   const suggestedTaskRows = useSuggestedTasksForParent({ serverId, parentAgentId: agentId });
   const hasSuggestedTasks = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.suggestedTasks === true,
@@ -1351,8 +1368,11 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   );
 
   return (
-    <View style={styles.root} onLayout={onPaneLayout}>
-      <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
+    <View style={[styles.root, resolveBlackChatCanvasStyle(isBlackChat)]} onLayout={onPaneLayout}>
+      <FileDropZone
+        style={[styles.container, resolveBlackChatCanvasStyle(isBlackChat)]}
+        disabled={isArchivingCurrentAgent}
+      >
         {contentContainer}
 
         {showHistorySyncError ? (
@@ -1993,9 +2013,10 @@ function AgentSessionUnavailableState({
   isUnknownDaemon?: boolean;
   t: TFunction;
 }) {
+  const isBlackChat = useBlackChatScope();
   if (isUnknownDaemon) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, resolveBlackChatCanvasStyle(isBlackChat)]}>
         <View style={styles.centerState}>
           <Text style={styles.errorText}>
             {t("agentPanel.unavailable.unknownHost", { serverLabel })}
@@ -2010,7 +2031,7 @@ function AgentSessionUnavailableState({
   const isPreparingSession = connectionStatus === "online";
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, resolveBlackChatCanvasStyle(isBlackChat)]}>
       <View style={styles.centerState}>
         {isConnecting || isPreparingSession ? (
           <>

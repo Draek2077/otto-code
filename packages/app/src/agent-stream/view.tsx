@@ -117,6 +117,10 @@ import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import {
+  resolveBlackChatCanvasStyle,
+  useBlackChatScope,
+} from "@/components/black-chat-scope-context";
 import { generateDraftId } from "@/stores/draft-keys";
 import {
   buildDraftWorkspaceAttachmentScopeKey,
@@ -479,6 +483,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     ref,
   ) {
     const { t } = useTranslation();
+    const isBlackChat = useBlackChatScope();
     const router = useRouter();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
@@ -1456,7 +1461,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           toast={toast}
         >
           <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>
-            <View ref={streamContainerHostRef} style={stylesheet.container}>
+            <View
+              ref={streamContainerHostRef}
+              style={[stylesheet.container, resolveBlackChatCanvasStyle(isBlackChat)]}
+            >
               <MessageOuterSpacingProvider disableOuterSpacing>
                 {streamRenderStrategy.render({
                   agentId,

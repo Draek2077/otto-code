@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { BlackChatScopeProvider } from "@/components/black-chat-scope-context";
 import { BLACK_CHAT_SCOPE_CLASS } from "@/styles/black-chat-scope";
 
 interface BlackChatScopeProps {
@@ -32,12 +33,15 @@ const SCOPE_WRAPPER_STYLE: CSSProperties = { display: "contents" };
  * variant's colors; every `StyleSheet.create`-based color still does.
  */
 export function BlackChatScope({ enabled, children }: BlackChatScopeProps) {
-  if (!enabled) {
-    return children;
-  }
   return (
-    <div className={BLACK_CHAT_SCOPE_CLASS} style={SCOPE_WRAPPER_STYLE}>
-      {children}
-    </div>
+    <BlackChatScopeProvider enabled={enabled}>
+      {enabled ? (
+        <div className={BLACK_CHAT_SCOPE_CLASS} style={SCOPE_WRAPPER_STYLE}>
+          {children}
+        </div>
+      ) : (
+        children
+      )}
+    </BlackChatScopeProvider>
   );
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ScopedTheme } from "react-native-unistyles";
+import { BlackChatScopeProvider } from "@/components/black-chat-scope-context";
 
 interface BlackChatScopeProps {
   enabled: boolean;
@@ -15,8 +16,9 @@ interface BlackChatScopeProps {
  * CSS variables on a wrapper element.
  */
 export function BlackChatScope({ enabled, children }: BlackChatScopeProps) {
-  if (!enabled) {
-    return children;
-  }
-  return <ScopedTheme name="black">{children}</ScopedTheme>;
+  return (
+    <BlackChatScopeProvider enabled={enabled}>
+      {enabled ? <ScopedTheme name="black">{children}</ScopedTheme> : children}
+    </BlackChatScopeProvider>
+  );
 }
