@@ -64,6 +64,12 @@ interface CaseResult {
   error?: string;
 }
 
+interface ToolingConfiguration {
+  mcpServerEnabled: true;
+  injectIntoAgents: true;
+  toolGroups: string[] | "all";
+}
+
 const PROFILE_MATCHERS: Record<ProfileKey, { provider: string; model: RegExp }> = {
   luna: { provider: "codex", model: /luna/i },
   sonnet: { provider: "claude", model: /sonnet/i },
@@ -161,6 +167,32 @@ function parseArgs(argv: readonly string[]): Args {
 
 function isTerminal(status: string): boolean {
   return status === "idle" || status === "error";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * The MCP server is always enabled for the isolated daemon, but injecting it
+ * into chats is a persisted host choice. Do not silently turn it on: an eval
+ * with no Otto catalog would report model failures that are really bad setup.
+ */
+function verifyToolingConfiguration(config: unknown): ToolingConfiguration {
+  const root = asRecord(config);
+  const daemon = asRecord(root?.daemon) ?? root;
+  const mcp = asRecord(daemon?.mcp);
+  if (mcp?.injectIntoAgents !== true) {
+    throw new Error(
+      "Otto tool injection is disabled in the selected home. Set daemon.mcp.injectIntoAgents to true before running this evaluation.",
+    );
+  }
+  const groups = Array.isArray(mcp.toolGroups)
+    ? mcp.toolGroups.filter((group): group is string => typeof group === "string")
+    : "all";
+  return { mcpServerEnabled: true, injectIntoAgents: true, toolGroups: groups };
 }
 
 function ottoToolName(item: AgentTimelineItem): string | null {
@@ -301,6 +333,7 @@ async function main(): Promise<void> {
     await client.connect();
     await client.fetchAgents({ subscribe: { subscriptionId: "tool-selection-eval" } });
     const { config } = await client.getDaemonConfig();
+    const tooling = verifyToolingConfiguration(config);
     const personalities = (config.agentPersonalities?.personalities ?? []) as Personality[];
     const results: CaseResult[] = [];
     for (const profile of args.profiles) {
@@ -323,6 +356,7 @@ async function main(): Promise<void> {
       generatedAt: new Date().toISOString(),
       home: args.home,
       workspace,
+      tooling,
       scenarios: scenarios.map(({ id, expected, costly }) => ({
         id,
         expected,
