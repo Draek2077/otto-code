@@ -74,6 +74,7 @@ import {
   MarkdownRenderer,
   type MarkdownStyles,
 } from "@/components/markdown/renderer";
+import { isLastMarkdownTableChild } from "@/components/markdown/table-layout";
 import { colorMarkdownLinkChildren } from "@/components/markdown/link-children";
 import { createAssistantMarkdownParser } from "@/components/markdown/assistant-parser";
 import { applyMath, MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "@/components/markdown/math";
@@ -2067,8 +2068,15 @@ export const AssistantMessage = memo(function AssistantMessage({
           {children}
         </View>
       ),
-      tr: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
-        <View key={node.key} style={styles._VIEW_SAFE_tr} dataSet={markdownCopyDataSet.tr}>
+      tr: (node: ASTNode, children: ReactNode[], parent: ASTNode[], styles: MarkdownStyles) => (
+        <View
+          key={node.key}
+          style={[
+            styles._VIEW_SAFE_tr,
+            isLastMarkdownTableChild(node, parent, "tbody") && styles._VIEW_SAFE_tableLastRow,
+          ]}
+          dataSet={markdownCopyDataSet.tr}
+        >
           {children}
         </View>
       ),
@@ -2322,20 +2330,26 @@ export const AssistantMessage = memo(function AssistantMessage({
           </View>
         );
       },
-      th: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+      th: (node: ASTNode, children: ReactNode[], parent: ASTNode[], styles: MarkdownStyles) => (
         <MarkdownTableCellText key={node.key}>
           <View
-            style={styles._VIEW_SAFE_th}
+            style={[
+              styles._VIEW_SAFE_th,
+              isLastMarkdownTableChild(node, parent, "tr") && styles._VIEW_SAFE_tableLastCell,
+            ]}
             dataSet={markdownCopyTableCellDataSet("th", node.attributes?.style)}
           >
             {children}
           </View>
         </MarkdownTableCellText>
       ),
-      td: (node: ASTNode, children: ReactNode[], _parent: ASTNode[], styles: MarkdownStyles) => (
+      td: (node: ASTNode, children: ReactNode[], parent: ASTNode[], styles: MarkdownStyles) => (
         <MarkdownTableCellText key={node.key}>
           <View
-            style={styles._VIEW_SAFE_td}
+            style={[
+              styles._VIEW_SAFE_td,
+              isLastMarkdownTableChild(node, parent, "tr") && styles._VIEW_SAFE_tableLastCell,
+            ]}
             dataSet={markdownCopyTableCellDataSet("td", node.attributes?.style)}
           >
             {children}

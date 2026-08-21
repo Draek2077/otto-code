@@ -93,4 +93,17 @@ describe("createMarkdownStyles", () => {
     });
     expect(compactStyles.code_inline).not.toHaveProperty("lineHeight");
   });
+
+  it("gives the table shell sole ownership of its rounded outside border", () => {
+    const styles = createMarkdownStyles(darkTheme);
+
+    expect(styles.table).toMatchObject({
+      borderWidth: 1,
+      borderRadius: darkTheme.borderRadius.md,
+      overflow: "hidden",
+    });
+    expect(styles.th).not.toHaveProperty("borderBottomWidth");
+    expect(styles.tableLastRow).toEqual({ borderBottomWidth: 0 });
+    expect(styles.tableLastCell).toEqual({ borderRightWidth: 0 });
+  });
 });
