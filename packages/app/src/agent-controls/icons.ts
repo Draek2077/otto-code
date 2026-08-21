@@ -1,7 +1,6 @@
 import type { ComponentType } from "react";
 import {
   Bot,
-  Brain,
   ListTodo,
   Settings2,
   Shield,
@@ -13,6 +12,7 @@ import {
   ShieldQuestionMark,
   Zap,
 } from "lucide-react-native";
+import { Psychology } from "@/components/icons/material-icons";
 import {
   getModeVisuals,
   type AgentProviderDefinition,
@@ -25,7 +25,7 @@ export interface AgentControlIconProps {
 
 export type AgentControlIcon = ComponentType<AgentControlIconProps>;
 
-export const ThinkingIcon = Brain;
+export const ThinkingIcon = Psychology;
 export const PlanModeIcon = ListTodo;
 
 const MODE_ICONS: Record<string, AgentControlIcon> = {
