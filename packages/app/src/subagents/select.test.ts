@@ -1,6 +1,12 @@
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { afterEach, describe, expect, it } from "vitest";
-import { hasRunningObservedSubagent, selectSubagentsForParent } from "./select";
+import {
+  hasRunningObservedSubagent,
+  selectProviderSubagentIdsShadowedByObservedAgents,
+  selectProviderSubagentsForParent,
+  selectSubagentsForParent,
+} from "./select";
+import { useProviderSubagentStore } from "./provider-store";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 
 const SERVER_ID = "server-1";
@@ -58,6 +64,7 @@ function setAgents(agents: Agent[]): void {
 
 afterEach(() => {
   useSessionStore.getState().clearSession(SERVER_ID);
+  useProviderSubagentStore.getState().replaceList(SERVER_ID, "parent", []);
 });
 
 describe("selectSubagentsForParent", () => {
@@ -358,6 +365,111 @@ describe("selectSubagentsForParent", () => {
         EMPTY_PENDING_ARCHIVE_IDS,
       ),
     );
+  });
+});
+
+describe("provider and observed subagent reconciliation", () => {
+  it("keeps one row when Claude reports the same Task through both projections", () => {
+    setAgents([
+      makeAgent({ id: "parent" }),
+      makeAgent({
+        id: "parent::sub::task-call-1",
+        parentAgentId: "parent",
+        provider: "claude",
+        attend: "observed",
+        title: "Resolve i18n merge conflicts",
+      }),
+      makeAgent({
+        id: "parent::sub::task-call-2",
+        parentAgentId: "parent",
+        provider: "claude",
+        attend: "observed",
+        title: "Resolve test and e2e merge conflicts",
+      }),
+      makeAgent({
+        id: "parent::sub::task-call-archived",
+        parentAgentId: "parent",
+        provider: "claude",
+        attend: "observed",
+        title: "Archived task",
+        archivedAt: new Date("2026-03-08T12:00:00.000Z"),
+      }),
+    ]);
+    useProviderSubagentStore.getState().replaceList(SERVER_ID, "parent", [
+      {
+        id: "task-call-1",
+        parentAgentId: "parent",
+        provider: "claude",
+        title: "Claude subagent",
+        description: null,
+        status: "running",
+        createdAt: "2026-03-08T10:01:00.000Z",
+        updatedAt: "2026-03-08T10:02:00.000Z",
+        toolCallId: "task-call-1",
+        cwd: null,
+      },
+      {
+        id: "provider-only",
+        parentAgentId: "parent",
+        provider: "codex",
+        title: "Codex child",
+        description: null,
+        status: "running",
+        createdAt: "2026-03-08T10:03:00.000Z",
+        updatedAt: "2026-03-08T10:04:00.000Z",
+        toolCallId: "provider-only-call",
+        cwd: null,
+      },
+      {
+        id: "provider-id-differs",
+        parentAgentId: "parent",
+        provider: "claude",
+        title: "Claude subagent",
+        description: null,
+        status: "completed",
+        createdAt: "2026-03-08T10:05:00.000Z",
+        updatedAt: "2026-03-08T10:06:00.000Z",
+        toolCallId: "task-call-2",
+        cwd: null,
+      },
+      {
+        id: "archived-provider-twin",
+        parentAgentId: "parent",
+        provider: "claude",
+        title: "Claude subagent",
+        description: null,
+        status: "completed",
+        createdAt: "2026-03-08T10:07:00.000Z",
+        updatedAt: "2026-03-08T10:08:00.000Z",
+        toolCallId: "task-call-archived",
+        cwd: null,
+      },
+    ]);
+
+    const shadowedIds = selectProviderSubagentIdsShadowedByObservedAgents(
+      useSessionStore.getState(),
+      { serverId: SERVER_ID, parentAgentId: "parent" },
+    );
+    const providerRows = selectProviderSubagentsForParent(
+      useProviderSubagentStore.getState(),
+      { serverId: SERVER_ID, parentAgentId: "parent" },
+      true,
+      new Set(shadowedIds),
+    );
+
+    const observedRows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      { serverId: SERVER_ID, parentAgentId: "parent" },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
+
+    expect(shadowedIds).toEqual(["task-call-1", "task-call-2", "task-call-archived"]);
+    expect(providerRows.map((row) => row.id)).toEqual(["provider-only"]);
+    expect([...observedRows, ...providerRows].map((row) => row.id)).toEqual([
+      "parent::sub::task-call-1",
+      "parent::sub::task-call-2",
+      "provider-only",
+    ]);
   });
 });
 
