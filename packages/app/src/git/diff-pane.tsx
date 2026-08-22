@@ -314,7 +314,6 @@ interface DiffFileSectionProps {
   revealTargetName?: string;
   onDownload?: (path: string) => void;
   onDuplicate?: (path: string) => void;
-  onRevert?: (path: string, oldPath?: string) => void;
   onHeaderHeightChange?: (path: string, height: number) => void;
   onShowContextMenu?: (input: DiffContextMenuRequest) => void;
   testID?: string;
@@ -931,7 +930,6 @@ function DiffFileActionsContextMenuContent({
   revealTargetName,
   onDownload,
   onDuplicate,
-  onRevert,
   testID,
 }: Pick<
   DiffFileSectionProps,
@@ -944,7 +942,6 @@ function DiffFileActionsContextMenuContent({
   | "revealTargetName"
   | "onDownload"
   | "onDuplicate"
-  | "onRevert"
   | "testID"
 >) {
   const handleOpenFile = useCallback(() => onOpenFile?.(file.path), [file.path, onOpenFile]);
@@ -957,11 +954,6 @@ function DiffFileActionsContextMenuContent({
   const handleReveal = useCallback(() => onReveal?.(file.path), [file.path, onReveal]);
   const handleDownload = useCallback(() => onDownload?.(file.path), [file.path, onDownload]);
   const handleDuplicate = useCallback(() => onDuplicate?.(file.path), [file.path, onDuplicate]);
-  const handleRevert = useCallback(
-    () => onRevert?.(file.path, file.oldPath),
-    [file.oldPath, file.path, onRevert],
-  );
-
   return (
     <FileActionsContextMenuContent
       fileKind="file"
@@ -974,7 +966,6 @@ function DiffFileActionsContextMenuContent({
       onDownload={onDownload ? handleDownload : undefined}
       onAddToChat={onAddToChat ? handleAddToChat : undefined}
       onDuplicate={!file.isDeleted && onDuplicate ? handleDuplicate : undefined}
-      onRevert={onRevert ? handleRevert : undefined}
       testIDPrefix={testID}
     />
   );
@@ -1003,7 +994,6 @@ const DiffFileHeader = memo(function DiffFileHeader({
   revealTargetName,
   onDownload,
   onDuplicate,
-  onRevert,
   onHeaderHeightChange,
   onShowContextMenu,
   testID,
@@ -1231,7 +1221,6 @@ const DiffFileHeader = memo(function DiffFileHeader({
             revealTargetName={revealTargetName}
             onDownload={onDownload}
             onDuplicate={onDuplicate}
-            onRevert={onRevert}
             testID={testID}
           />
         ) : null}
@@ -1725,7 +1714,6 @@ interface SharedDiffViewProps {
         revealTargetName?: string;
         onDownload?: (path: string) => void;
         onDuplicate?: (path: string) => void;
-        onRevert?: (path: string, oldPath?: string) => void;
         onExpandedPathsChange: (paths: string[]) => void;
         onCollapsedFoldersChange: (paths: string[]) => void;
       }
@@ -1785,7 +1773,6 @@ export function SharedDiffView({ files, displayPreferences, mode }: SharedDiffVi
   const revealTargetName = mode.kind === "working_tree" ? mode.revealTargetName : undefined;
   const onDownload = mode.kind === "working_tree" ? mode.onDownload : undefined;
   const onDuplicate = mode.kind === "working_tree" ? mode.onDuplicate : undefined;
-  const onRevert = mode.kind === "working_tree" ? mode.onRevert : undefined;
   // Keep selection independent from expansion so future keyboard actions (such as R to rename)
   // can target the current VCS file or folder without changing its open state.
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -2153,7 +2140,6 @@ export function SharedDiffView({ files, displayPreferences, mode }: SharedDiffVi
             onReveal={onReveal}
             revealTargetName={revealTargetName}
             onDuplicate={onDuplicate}
-            onRevert={onRevert}
             testID={`diff-folder-${item.dirPath}`}
           />
         );
@@ -2178,7 +2164,6 @@ export function SharedDiffView({ files, displayPreferences, mode }: SharedDiffVi
             revealTargetName={revealTargetName}
             onDownload={onDownload}
             onDuplicate={onDuplicate}
-            onRevert={onRevert}
             onHeaderHeightChange={handleHeaderHeightChange}
             testID={`diff-file-${item.fileIndex}`}
           />
@@ -2222,7 +2207,6 @@ export function SharedDiffView({ files, displayPreferences, mode }: SharedDiffVi
       revealTargetName,
       onDownload,
       onDuplicate,
-      onRevert,
       selectedPath,
     ],
   );

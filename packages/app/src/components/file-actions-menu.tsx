@@ -12,7 +12,6 @@ import {
   MessageSquarePlus,
   Pencil,
   Trash2,
-  Undo2,
   type LucideIcon,
 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -51,7 +50,6 @@ interface FileActionsContextMenuContentProps {
   onCollapseFolder?: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
-  onRevert?: () => void;
   onDelete?: () => void;
   /** Optional metadata block rendered above the actions (e.g. size/modified). */
   header?: ReactNode;
@@ -77,7 +75,6 @@ export function FileActionsContextMenuContent({
   onCollapseFolder,
   onRename,
   onDuplicate,
-  onRevert,
   onDelete,
   header,
   testIDPrefix,
@@ -185,16 +182,6 @@ export function FileActionsContextMenuContent({
             section: "sharing",
           }
         : null,
-      onRevert
-        ? {
-            key: "revert",
-            label: t("workspace.fileActions.revert"),
-            icon: Undo2,
-            onSelect: onRevert,
-            destructive: true,
-            section: "destructive",
-          }
-        : null,
       onDelete
         ? {
             key: "delete",
@@ -230,7 +217,6 @@ export function FileActionsContextMenuContent({
     onOpenFile,
     onRename,
     onReveal,
-    onRevert,
     revealTargetName,
     t,
     testIDPrefix,

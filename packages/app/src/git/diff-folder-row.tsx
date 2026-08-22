@@ -41,7 +41,6 @@ interface DiffFolderRowProps {
   onReveal?: (path: string) => void;
   revealTargetName?: string;
   onDuplicate?: (path: string) => void;
-  onRevert?: (path: string) => void;
   testID?: string;
 }
 
@@ -70,7 +69,6 @@ export function DiffFolderRow({
   onReveal,
   revealTargetName,
   onDuplicate,
-  onRevert,
   testID,
 }: DiffFolderRowProps) {
   const iconSize = useIconSize();
@@ -118,10 +116,6 @@ export function DiffFolderRow({
   const handleDuplicate = useCallback(() => {
     onDuplicate?.(dirPath);
   }, [dirPath, onDuplicate]);
-
-  const handleRevert = useCallback(() => {
-    onRevert?.(dirPath);
-  }, [dirPath, onRevert]);
 
   const leftStyle = useMemo(
     () => [styles.left, inlineUnistylesStyle({ paddingLeft: treeRowPaddingLeft(depth) })],
@@ -174,7 +168,6 @@ export function DiffFolderRow({
           onReveal={onReveal ? handleReveal : undefined}
           revealTargetName={revealTargetName}
           onDuplicate={onDuplicate ? handleDuplicate : undefined}
-          onRevert={onRevert ? handleRevert : undefined}
           testIDPrefix={testID}
         />
       </ContextMenu>
