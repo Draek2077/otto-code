@@ -57,7 +57,7 @@ describe("native terminal selection", () => {
     }).toEqual({
       selection: {
         start: { row, col: 7 },
-        end: { row, col: 18 },
+        end: { row, col: 17 },
         coordinateEpoch: terminal.getBufferBounds().coordinateEpoch,
       },
       text: "OTTO_TARGET",

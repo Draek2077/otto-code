@@ -32,7 +32,7 @@ const pr202: ForgeSearchItem = {
   ...pr101,
   number: 202,
   title: "Attach second PR",
-  url: "https://github.com/acme/paseo/pull/202",
+  url: "https://github.com/acme/otto/pull/202",
   headRefName: "feature-two",
 };
 
@@ -300,12 +300,12 @@ describe("useComposerGithubAutoAttach", () => {
     });
 
     act(() => {
-      result.current.setText("Review https://github.com/acme/paseo/pull/101");
+      result.current.setText("Review https://github.com/acme/otto/pull/101");
     });
     await flushDebounce();
     act(() => {
       result.current.setText(
-        "Review https://github.com/acme/paseo/pull/101 and https://github.com/acme/paseo/pull/202",
+        "Review https://github.com/acme/otto/pull/101 and https://github.com/acme/otto/pull/202",
       );
     });
     expect(result.current.isResolving).toBe(true);
@@ -345,12 +345,12 @@ describe("useComposerGithubAutoAttach", () => {
 
     act(() => {
       result.current.setText(
-        "Refs https://github.com/acme/paseo/pull/101 and https://github.com/acme/paseo/pull/202",
+        "Refs https://github.com/acme/otto/pull/101 and https://github.com/acme/otto/pull/202",
       );
     });
     act(() => {
       result.current.setText(
-        "Refs https://github.com/acme/paseo/pull/202 and https://github.com/acme/paseo/pull/101",
+        "Refs https://github.com/acme/otto/pull/202 and https://github.com/acme/otto/pull/101",
       );
     });
     await flushDebounce();
@@ -380,13 +380,13 @@ describe("useComposerGithubAutoAttach", () => {
 
     act(() => {
       result.current.setText(
-        "Refs https://github.com/acme/paseo/pull/101 and https://github.com/acme/paseo/pull/202",
+        "Refs https://github.com/acme/otto/pull/101 and https://github.com/acme/otto/pull/202",
       );
     });
     await flushDebounce();
     act(() => {
       result.current.setText(
-        "Refs https://github.com/acme/paseo/pull/202 and https://github.com/acme/paseo/pull/101",
+        "Refs https://github.com/acme/otto/pull/202 and https://github.com/acme/otto/pull/101",
       );
     });
     await flushDebounce();
@@ -432,7 +432,7 @@ describe("useComposerGithubAutoAttach", () => {
 
     act(() => {
       result.current.setText(
-        "Refs https://github.com/acme/paseo/pull/101 and https://github.com/acme/paseo/pull/202",
+        "Refs https://github.com/acme/otto/pull/101 and https://github.com/acme/otto/pull/202",
       );
     });
     await flushDebounce();
@@ -442,7 +442,7 @@ describe("useComposerGithubAutoAttach", () => {
       await Promise.resolve();
     });
     act(() => {
-      result.current.setText("Still https://github.com/acme/paseo/pull/101");
+      result.current.setText("Still https://github.com/acme/otto/pull/101");
     });
     await flushDebounce();
 
@@ -468,7 +468,7 @@ describe("useComposerGithubAutoAttach", () => {
     });
 
     act(() => {
-      result.current.setText("Review https://github.com/acme/paseo/pull/101");
+      result.current.setText("Review https://github.com/acme/otto/pull/101");
     });
     await flushDebounce();
 
@@ -478,7 +478,7 @@ describe("useComposerGithubAutoAttach", () => {
     expect(result.current.isResolving).toBe(false);
 
     act(() => {
-      result.current.setText("Review https://github.com/acme/paseo/pull/101");
+      result.current.setText("Review https://github.com/acme/otto/pull/101");
     });
     expect(result.current.isResolving).toBe(true);
     await flushDebounce();
@@ -513,7 +513,7 @@ describe("useComposerGithubAutoAttach", () => {
 
     act(() => {
       result.current.setText(
-        "Refs https://github.com/acme/paseo/pull/101 and https://github.com/acme/paseo/pull/202",
+        "Refs https://github.com/acme/otto/pull/101 and https://github.com/acme/otto/pull/202",
       );
     });
     await flushDebounce();
@@ -551,13 +551,13 @@ describe("useComposerGithubAutoAttach", () => {
     const { result } = renderHook(() => useHarness(client), { wrapper: createWrapper() });
 
     act(() => {
-      result.current.setText("Review https://github.com/acme/paseo/pull/101");
+      result.current.setText("Review https://github.com/acme/otto/pull/101");
     });
     await flushDebounce();
 
     act(() => {
       result.current.setAttachments([{ kind: "forge_issue", item: issue202 }]);
-      result.current.setText("Review https://github.com/acme/paseo/pull/101 please");
+      result.current.setText("Review https://github.com/acme/otto/pull/101 please");
     });
 
     expect(result.current.isResolving).toBe(true);

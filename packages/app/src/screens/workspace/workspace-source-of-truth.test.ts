@@ -104,7 +104,7 @@ describe("workspace source of truth consumption", () => {
     ).toEqual({
       kind: "ready",
       title: "feat/workspace-sot",
-      subtitle: "Draek2077/otto-code",
+      subtitle: "otto-code-ai/otto-code",
       isSubtitleDistinct: true,
       isGitCheckout: false,
       currentBranchName: null,
@@ -144,7 +144,7 @@ describe("workspace source of truth consumption", () => {
     ).toEqual({
       kind: "ready",
       title: "feat/workspace-sot",
-      subtitle: "Draek2077/otto-code",
+      subtitle: "otto-code-ai/otto-code",
       isSubtitleDistinct: true,
       isGitCheckout: true,
       currentBranchName: "feat/workspace-sot",
@@ -184,7 +184,7 @@ describe("workspace source of truth consumption", () => {
     ).toEqual({
       kind: "ready",
       title: "feat/workspace-sot",
-      subtitle: "Draek2077/otto-code",
+      subtitle: "otto-code-ai/otto-code",
       isSubtitleDistinct: true,
       isGitCheckout: false,
       currentBranchName: null,
