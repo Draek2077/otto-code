@@ -39,7 +39,7 @@ describe("Hub commands", () => {
       },
     });
     connect?.outputHelp();
-    assert.match(help, /active stored login.*https:\/\/hub\.otto\.sh/u);
+    assert.match(help, /active stored login.*https:\/\/hub\.otto-code\.me/u);
   });
 
   it("login stores the durable credential and marks its normalized origin active", async () => {
