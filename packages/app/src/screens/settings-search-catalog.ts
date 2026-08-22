@@ -304,21 +304,49 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "cli skills zoom meeting",
     "integrations",
   ),
+  app(
+    "notifications",
+    "Notifications",
+    "Choose when Otto shows desktop notifications",
+    "alerts badges sounds desktop",
+    "notifications",
+  ),
 
   // Host: connection, agents, and tools
+  host(
+    "host-configuration",
+    "Host configuration",
+    "View and manage this host",
+    "daemon server status version name update",
+    "host",
+  ),
+  host(
+    "projects",
+    "Projects",
+    "Manage projects on this host",
+    "project workspace repository kanban",
+    "projects",
+  ),
   host(
     "connections",
     "Connections",
     "Manage this device's connection to the host",
-    "pair device qr remote endpoint",
+    "remote endpoint relay socket reconnect",
     "connections",
+  ),
+  host(
+    "pair-device",
+    "Pair device",
+    "Pair another device with this host",
+    "pairing pair device qr code phone mobile",
+    "pair-device",
   ),
   host(
     "personalities",
     "Agent personalities",
     "Create reusable agent templates",
     "agents model prompt role voice",
-    "agents",
+    "teams",
   ),
   host(
     "teams",
@@ -333,7 +361,6 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Configure host-wide agent defaults",
     "notifications progress todo prompts",
     "agents",
-    true,
   ),
   host(
     "otto-tools",
@@ -341,7 +368,6 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Choose which tools agents can use",
     "tools preview browser schedules artifacts mcp",
     "tools",
-    true,
   ),
   host(
     "mcp-tools",
@@ -349,7 +375,13 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Configure injected MCP tool groups",
     "model context protocol tools inject",
     "tools",
-    true,
+  ),
+  host(
+    "metadata-generation",
+    "Metadata generation",
+    "Configure AI-generated workspace metadata",
+    "title description summary generate workspace",
+    "metadata",
   ),
 
   // Host: providers and integrations
@@ -359,7 +391,6 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Configure agent providers, models, and connections",
     "model api key server url agent inference llm",
     "providers",
-    true,
   ),
   host(
     "provider-models",
@@ -367,7 +398,6 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Manage provider models and model defaults",
     "catalog model effort thinking compact",
     "providers",
-    true,
   ),
   host(
     "git-hosting",
@@ -399,7 +429,6 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Configure MCP connectors and their tools",
     "integration mcp command url token",
     "tools",
-    true,
   ),
 
   // Host: code, Brain, storage, and terminal
@@ -409,7 +438,6 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Configure language servers and code navigation",
     "lsp definition references diagnostics language",
     "code",
-    true,
   ),
   host(
     "dotnet-solutions",
@@ -417,7 +445,6 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Configure .NET solution discovery",
     "dotnet sln csharp msbuild",
     "code",
-    true,
   ),
   host(
     "brain",
@@ -425,7 +452,6 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Configure the local or remote model host",
     "local model llama remote tls gpu",
     "brain",
-    true,
   ),
   host(
     "brain-security",
@@ -433,7 +459,13 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Configure remote Brain authentication and TLS",
     "security certificate token encrypted",
     "brain",
-    true,
+  ),
+  host(
+    "provider-usage",
+    "Provider usage",
+    "View provider usage and refresh its current limits",
+    "usage quota rate limit tokens cost credits",
+    "usage",
   ),
   host(
     "storage",

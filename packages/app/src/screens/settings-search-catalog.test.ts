@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SETTINGS_SEARCH_ITEMS, searchSettingsCatalog } from "./settings-search-catalog";
+import { HOST_SECTION_SLUGS, SETTINGS_SECTION_SLUGS } from "@/utils/host-routes";
 
 describe("Settings search catalog", () => {
   it("assigns every entry a unique id and a real settings scope", () => {
@@ -25,5 +26,24 @@ describe("Settings search catalog", () => {
 
   it("returns no results for an empty query", () => {
     expect(searchSettingsCatalog("  ")).toEqual([]);
+  });
+
+  it("keeps every current Settings panel discoverable", () => {
+    const indexedAppSections = new Set(
+      SETTINGS_SEARCH_ITEMS.filter((item) => !item.host).map((item) => item.section),
+    );
+    const indexedHostSections = new Set(
+      SETTINGS_SEARCH_ITEMS.filter((item) => item.host).map((item) => item.section),
+    );
+
+    expect([...indexedAppSections].sort()).toEqual([...SETTINGS_SECTION_SLUGS].sort());
+    expect([...indexedHostSections].sort()).toEqual([...HOST_SECTION_SLUGS].sort());
+  });
+
+  it("follows the current host Settings destinations", () => {
+    expect(searchSettingsCatalog("pair device").map((item) => item.id)).toEqual(["pair-device"]);
+    expect(SETTINGS_SEARCH_ITEMS.find((item) => item.id === "personalities")?.section).toBe(
+      "teams",
+    );
   });
 });

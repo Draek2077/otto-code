@@ -1,6 +1,5 @@
-// The settings search overview: the local search item list (merged with
-// the generated settings-search-catalog), the overview surface, and its
-// result rows, with their own stylesheet. Extracted from
+// The settings search overview renders the canonical catalog, result rows,
+// and their stylesheet. Extracted from
 // settings-screen.tsx, which renders the overview from its desktop
 // content at one registration point.
 import { useCallback, useMemo, useState } from "react";
@@ -276,13 +275,7 @@ export function SettingsSearchOverview({
   const clearQuery = useCallback(() => setQuery(""), []);
   const normalizedQuery = query.trim().toLowerCase();
   const results = useMemo(() => {
-    // The inline list predates the complete catalog and remains only while
-    // this large screen is incrementally decomposed. The catalog overwrites
-    // duplicate ids, making it the effective source of truth now.
-    const items = new Map(
-      [...SETTINGS_SEARCH_ITEMS, ...SETTINGS_SEARCH_CATALOG].map((item) => [item.id, item]),
-    );
-    return [...items.values()].filter((item) => {
+    return SETTINGS_SEARCH_CATALOG.filter((item) => {
       if (!normalizedQuery) return false;
       return `${item.title} ${item.description} ${item.keywords} ${item.scope}`
         .toLowerCase()
