@@ -5,16 +5,22 @@ import { type DocsNavNode } from "~/docs";
 
 interface DocsNavProps {
   nodes: DocsNavNode[];
+  basePath: string;
   mobile?: boolean;
   onNavigate?: () => void;
 }
 
 const ACTIVE_OPTIONS_EXACT = { exact: true };
 
-function nodeContainsHref(node: DocsNavNode, href: string): boolean {
-  if (node.type === "page") return node.href === href;
-  if (node.type === "group" && node.href === href) return true;
-  return node.children.some((child) => nodeContainsHref(child, href));
+function docsHref(href: string, basePath: string): string {
+  return `${basePath}${href.slice("/docs".length)}`;
+}
+
+function nodeContainsHref(node: DocsNavNode, href: string, basePath: string): boolean {
+  if (node.type === "page") return docsHref(node.href, basePath) === href;
+  if (node.type === "group" && node.href !== undefined)
+    return docsHref(node.href, basePath) === href;
+  return node.children.some((child) => nodeContainsHref(child, href, basePath));
 }
 
 function clsx(...classes: (string | false | null | undefined)[]): string {
@@ -39,21 +45,24 @@ function useScrollIntoViewWhenActive(isActive: boolean) {
 
 function PageLink({
   node,
+  basePath,
   mobile,
   onNavigate,
 }: {
   node: Extract<DocsNavNode, { type: "page" }>;
+  basePath: string;
   mobile?: boolean;
   onNavigate?: () => void;
 }) {
   const location = useLocation();
-  const isActive = location.pathname === node.href;
+  const href = docsHref(node.href, basePath);
+  const isActive = location.pathname === href;
   const ref = useScrollIntoViewWhenActive(isActive);
 
   return (
     <Link
       ref={ref}
-      to={node.href}
+      to={href}
       activeOptions={ACTIVE_OPTIONS_EXACT}
       onClick={onNavigate}
       data-docs-nav-active={isActive ? "" : undefined}
@@ -72,17 +81,23 @@ function PageLink({
 
 function GroupNode({
   node,
+  basePath,
   mobile,
   onNavigate,
 }: {
   node: Extract<DocsNavNode, { type: "group" }>;
+  basePath: string;
   mobile?: boolean;
   onNavigate?: () => void;
 }) {
   const location = useLocation();
   const currentHref = location.pathname;
-  const containsActive = useMemo(() => nodeContainsHref(node, currentHref), [node, currentHref]);
-  const isActive = node.href === currentHref;
+  const containsActive = useMemo(
+    () => nodeContainsHref(node, currentHref, basePath),
+    [basePath, node, currentHref],
+  );
+  const href = node.href === undefined ? undefined : docsHref(node.href, basePath);
+  const isActive = href === currentHref;
   const ref = useScrollIntoViewWhenActive(isActive);
   const [isOpen, setIsOpen] = useState(containsActive);
   const toggle = useCallback(() => setIsOpen((open) => !open), []);
@@ -121,7 +136,7 @@ function GroupNode({
 
   return (
     <div>
-      {node.href === undefined ? (
+      {href === undefined ? (
         <button type="button" onClick={toggle} aria-expanded={isOpen} className={rowClassName}>
           <span>{node.label}</span>
           {hasChildren && chevron}
@@ -129,7 +144,7 @@ function GroupNode({
       ) : (
         <Link
           ref={ref}
-          to={node.href}
+          to={href}
           activeOptions={ACTIVE_OPTIONS_EXACT}
           onClick={handleClick}
           aria-expanded={hasChildren ? isOpen : undefined}
@@ -142,7 +157,12 @@ function GroupNode({
       )}
       {isOpen && hasChildren && (
         <div className="ml-3 pl-3 border-l border-border space-y-0.5">
-          <NavTree nodes={node.children} mobile={mobile} onNavigate={onNavigate} />
+          <NavTree
+            nodes={node.children}
+            basePath={basePath}
+            mobile={mobile}
+            onNavigate={onNavigate}
+          />
         </div>
       )}
     </div>
@@ -151,22 +171,24 @@ function GroupNode({
 
 function CategoryNode({
   node,
+  basePath,
   mobile,
   onNavigate,
 }: {
   node: Extract<DocsNavNode, { type: "category" }>;
+  basePath: string;
   mobile?: boolean;
   onNavigate?: () => void;
 }) {
   return (
     <div className={mobile ? "space-y-1" : "space-y-1 mt-6 first:mt-0"}>
       <div className="px-3 py-2 text-xs font-medium text-foreground">{node.label}</div>
-      <NavTree nodes={node.children} mobile={mobile} onNavigate={onNavigate} />
+      <NavTree nodes={node.children} basePath={basePath} mobile={mobile} onNavigate={onNavigate} />
     </div>
   );
 }
 
-function NavTree({ nodes, mobile, onNavigate }: DocsNavProps) {
+function NavTree({ nodes, basePath, mobile, onNavigate }: DocsNavProps) {
   return (
     <div className="space-y-0.5">
       {nodes.map((node) => {
@@ -175,6 +197,7 @@ function NavTree({ nodes, mobile, onNavigate }: DocsNavProps) {
             <CategoryNode
               key={`category-${node.label}`}
               node={node}
+              basePath={basePath}
               mobile={mobile}
               onNavigate={onNavigate}
             />
@@ -185,23 +208,30 @@ function NavTree({ nodes, mobile, onNavigate }: DocsNavProps) {
             <GroupNode
               key={`group-${node.segment}`}
               node={node}
+              basePath={basePath}
               mobile={mobile}
               onNavigate={onNavigate}
             />
           );
         }
         return (
-          <PageLink key={`page-${node.href}`} node={node} mobile={mobile} onNavigate={onNavigate} />
+          <PageLink
+            key={`page-${node.href}`}
+            node={node}
+            basePath={basePath}
+            mobile={mobile}
+            onNavigate={onNavigate}
+          />
         );
       })}
     </div>
   );
 }
 
-export function DocsNav({ nodes, mobile, onNavigate }: DocsNavProps) {
+export function DocsNav({ nodes, basePath, mobile, onNavigate }: DocsNavProps) {
   return (
     <div className={mobile ? undefined : "-ml-3"}>
-      <NavTree nodes={nodes} mobile={mobile} onNavigate={onNavigate} />
+      <NavTree nodes={nodes} basePath={basePath} mobile={mobile} onNavigate={onNavigate} />
     </div>
   );
 }

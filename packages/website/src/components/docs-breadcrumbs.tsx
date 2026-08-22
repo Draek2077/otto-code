@@ -5,16 +5,17 @@ import { type Doc, type DocsNavNode, getDocBreadcrumbGroups } from "~/docs";
 interface DocsBreadcrumbsProps {
   doc: Doc;
   tree: DocsNavNode[];
+  basePath: string;
 }
 
-export function DocsBreadcrumbs({ doc, tree }: DocsBreadcrumbsProps) {
+export function DocsBreadcrumbs({ doc, tree, basePath }: DocsBreadcrumbsProps) {
   const groups = getDocBreadcrumbGroups(doc, tree);
 
   return (
     <nav aria-label="Breadcrumb" className="not-prose mb-6">
       <ol className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         <li>
-          <Link to="/docs" className="hover:text-foreground transition-colors">
+          <Link to={basePath} className="hover:text-foreground transition-colors">
             Docs
           </Link>
         </li>

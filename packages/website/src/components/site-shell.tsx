@@ -8,12 +8,11 @@ interface SiteShellProps {
 }
 
 export function SiteShell({ children, width }: SiteShellProps) {
-  const mainClasses =
-    width === "prose" ? "max-w-prose p-6 md:p-12 mx-auto" : "max-w-5xl p-6 md:p-20 mx-auto";
+  const mainClasses = width === "prose" ? "site-frame site-frame-prose" : "site-frame";
   return (
     <div className="min-h-screen bg-background">
       <main className={mainClasses}>
-        <div className="mb-12">
+        <div className="site-header-slot">
           <SiteHeader />
         </div>
         {children}

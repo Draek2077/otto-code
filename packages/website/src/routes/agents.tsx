@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { CursorFieldProvider } from "~/components/butterfly";
-import { SiteFooter } from "~/components/site-footer";
-import { SiteHeader } from "~/components/site-header";
+import { SiteShell } from "~/components/site-shell";
 import { AGENT_PAGES } from "~/data/agent-pages";
 import { pageMeta } from "~/meta";
 import "~/styles.css";
@@ -19,12 +18,9 @@ export const Route = createFileRoute("/agents")({
 function AgentsPage() {
   return (
     <CursorFieldProvider>
-      <div className="bg-background">
-        <div className="p-6 md:px-32 md:pt-20 max-w-7xl mx-auto">
-          <nav className="mb-16">
-            <SiteHeader />
-          </nav>
-          <header className="space-y-4 max-w-2xl">
+      <SiteShell width="default">
+        <header className="max-w-2xl">
+          <div className="space-y-4">
             <h1 className="text-3xl md:text-5xl font-medium tracking-tight">
               Every agent Otto supports
             </h1>
@@ -32,10 +28,10 @@ function AgentsPage() {
               Otto runs the native CLI for {AGENT_PAGES.length} coding agents. Your skills, your
               config, your MCP servers, all intact. Drive any of them from your phone.
             </p>
-          </header>
-        </div>
+          </div>
+        </header>
 
-        <main className="px-6 md:px-32 pb-24 max-w-7xl mx-auto">
+        <section className="mt-16">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {AGENT_PAGES.map((agent) => (
               <Link
@@ -56,10 +52,8 @@ function AgentsPage() {
             </a>{" "}
             in <code className="font-mono text-white/60">~/.otto/config.json</code>.
           </p>
-        </main>
-
-        <SiteFooter />
-      </div>
+        </section>
+      </SiteShell>
     </CursorFieldProvider>
   );
 }

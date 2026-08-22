@@ -54,10 +54,10 @@ function Download() {
 
   return (
     <SiteShell width="default">
-      <div className="mb-10 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+      <header className="page-intro flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mb-2">Download</h1>
-          <p className="text-muted-foreground">
+          <h1 className="page-intro-title">Downloads</h1>
+          <p className="page-intro-subtitle">
             v{version}
             <span className="mx-2 text-muted-foreground/40">·</span>
             <Link
@@ -69,12 +69,12 @@ function Download() {
           </p>
         </div>
         {beta && <ChannelSwitch onBeta={onBeta} />}
-      </div>
+      </header>
 
       {onBeta && <BetaNotice />}
 
       {/* Desktop */}
-      <section className="rounded-xl border border-border bg-card/40 p-6 md:p-8 mb-6">
+      <section className="mt-8 mb-6 rounded-xl border border-border bg-card/40 p-6 md:p-8">
         <div className="flex items-start justify-between mb-8">
           <div>
             <h2 className="text-2xl font-semibold">Desktop</h2>

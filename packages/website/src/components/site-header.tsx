@@ -18,22 +18,22 @@ export function SiteHeader() {
           Blog
         </a>
         <a
-          href="/docs"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Docs
-        </a>
-        <a
           href="/changelog"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          Changelog
+          Releases
         </a>
         <a
           href="/download"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          Download
+          Downloads
+        </a>
+        <a
+          href="/docs"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Docs
         </a>
         <a
           href="/sponsor"

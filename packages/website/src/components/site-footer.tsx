@@ -7,7 +7,7 @@ interface SiteFooterProps {
 
 export function SiteFooter({ width = "default" }: SiteFooterProps) {
   const widthClasses =
-    width === "prose" ? "max-w-prose p-6 md:p-12 md:pt-0" : "max-w-5xl p-6 md:p-20 md:pt-0";
+    width === "prose" ? "site-footer-frame site-frame-prose" : "site-footer-frame";
   const alternatives = getAlternativePages();
   return (
     <footer className={`${widthClasses} mx-auto`}>
@@ -22,16 +22,28 @@ export function SiteFooter({ width = "default" }: SiteFooterProps) {
               Blog
             </a>
             <a
+              href="/changelog"
+              className="block text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Releases
+            </a>
+            <a
+              href="/download"
+              className="block text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Downloads
+            </a>
+            <a
               href="/docs"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
               Docs
             </a>
             <a
-              href="/changelog"
+              href="/sponsor"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              Changelog
+              Support
             </a>
             <a
               href="/hub"
@@ -56,12 +68,6 @@ export function SiteFooter({ width = "default" }: SiteFooterProps) {
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
               Security
-            </a>
-            <a
-              href="/sponsor"
-              className="block text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Support
             </a>
           </div>
         </div>

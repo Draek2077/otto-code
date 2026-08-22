@@ -223,6 +223,10 @@ await writeFile(
   wrap(colored(face, "white")).replace("<svg ", '<svg width="32" height="32" ') + "\n",
 );
 await writeFile(
+  path.join(websitePublic, "logo-wink.svg"),
+  wrap(colored(faceWinkSmall, "white")).replace("<svg ", '<svg width="32" height="32" ') + "\n",
+);
+await writeFile(
   path.join(websitePublic, "favicon.svg"),
   tileSvg(faceSmall, null).replace("<svg ", '<svg width="48" height="48" ') + "\n",
 );
@@ -231,7 +235,7 @@ for (const size of [16, 32, 48]) {
   websiteIcoPngs.push({ size, data: await pngBuffer(tileSvg(faceSmall, null), size) });
 }
 await writeFile(path.join(websitePublic, "favicon.ico"), buildIco(websiteIcoPngs));
-console.log("wrote packages/website/public/favicon.ico + logo.svg + favicon.svg");
+console.log("wrote packages/website/public/favicon.ico + logo.svg + logo-wink.svg + favicon.svg");
 
 // Tray icons (packages/desktop/src/features/tray.ts loads these by name at runtime).
 // Windows/Linux: colored tile, matching the taskbar/app-indicator convention.

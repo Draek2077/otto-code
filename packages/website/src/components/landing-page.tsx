@@ -68,7 +68,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
     <CursorFieldProvider>
       {/* Hero section with background image */}
       <div className="relative bg-cover bg-center bg-no-repeat">
-        <div className="relative p-6 pb-10 md:px-32 md:pt-20 md:pb-12 max-w-7xl mx-auto">
+        <div className="relative site-frame site-frame-hero">
           <Nav />
           <Hero title={title} subtitle={subtitle} />
           <GetStarted />
@@ -79,11 +79,9 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
           initial={FADE_IN_UP_40}
           animate={FADE_IN}
           transition={EASE_OUT_08_DELAY_05}
-          className="relative px-6 md:px-8 pb-8 md:pb-16"
+          className="relative site-frame site-frame-visual"
         >
-          <div className="max-w-7xl mx-auto">
-            <HeroVisual />
-          </div>
+          <HeroVisual />
         </motion.div>
       </div>
 
@@ -93,7 +91,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
       {/* Content section. Order and grouping: see
           projects/marketing-strategy/website-showcase.md */}
       <div className="bg-background">
-        <main className="p-6 md:p-20 md:pt-40 max-w-5xl mx-auto">
+        <main className="site-frame site-frame-content">
           <div className="space-y-24">
             <VisualizerSection />
             <PreviewVerificationSection />

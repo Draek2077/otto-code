@@ -15,9 +15,14 @@ export const Route = createFileRoute("/sponsor")({
 function Sponsor() {
   return (
     <SiteShell width="default">
-      <h1 className="text-3xl font-medium tracking-tight mb-8">Support</h1>
+      <header className="page-intro">
+        <h1 className="page-intro-title">Support</h1>
+        <p className="page-intro-subtitle">
+          Otto is independent and open source. Support the projects that make it possible.
+        </p>
+      </header>
 
-      <div className="space-y-6 text-white/70 leading-relaxed max-w-2xl">
+      <div className="mt-8 max-w-2xl space-y-6 leading-relaxed text-white/70">
         <p>
           Otto is an independent open-source fork of{" "}
           <a

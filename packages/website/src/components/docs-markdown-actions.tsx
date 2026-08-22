@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 
 interface DocsMarkdownActionsProps {
   content: string;
-  markdownHref: string;
+  markdownHref?: string;
 }
 
 export function DocsMarkdownActions({ content, markdownHref }: DocsMarkdownActionsProps) {
@@ -29,15 +29,17 @@ export function DocsMarkdownActions({ content, markdownHref }: DocsMarkdownActio
         {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
         {copied ? "Copied" : "Copy as markdown"}
       </button>
-      <a
-        href={markdownHref}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-      >
-        <FileTextIcon size={14} />
-        View as markdown
-      </a>
+      {markdownHref && (
+        <a
+          href={markdownHref}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          <FileTextIcon size={14} />
+          View as markdown
+        </a>
+      )}
     </div>
   );
 }

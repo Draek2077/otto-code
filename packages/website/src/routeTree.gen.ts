@@ -36,6 +36,7 @@ import { Route as GeminiRouteImport } from "./routes/gemini";
 import { Route as FastAgentRouteImport } from "./routes/fast-agent";
 import { Route as FactoryDroidRouteImport } from "./routes/factory-droid";
 import { Route as DownloadRouteImport } from "./routes/download";
+import { Route as DocsAppRouteImport } from "./routes/docs-app";
 import { Route as DocsRouteImport } from "./routes/docs";
 import { Route as DiracRouteImport } from "./routes/dirac";
 import { Route as DimcodeRouteImport } from "./routes/dimcode";
@@ -59,8 +60,10 @@ import { Route as AgoragenticRouteImport } from "./routes/agoragentic";
 import { Route as AgentsRouteImport } from "./routes/agents";
 import { Route as IndexRouteImport } from "./routes/index";
 import { Route as DocsIndexRouteImport } from "./routes/docs/index";
+import { Route as DocsAppIndexRouteImport } from "./routes/docs-app/index";
 import { Route as BlogIndexRouteImport } from "./routes/blog/index";
 import { Route as DocsSplatRouteImport } from "./routes/docs/$";
+import { Route as DocsAppSplatRouteImport } from "./routes/docs-app/$";
 import { Route as BlogSplatRouteImport } from "./routes/blog/$";
 import { Route as AlternativesSupersetRouteImport } from "./routes/alternatives/superset";
 import { Route as AlternativesOpencodeDesktopRouteImport } from "./routes/alternatives/opencode-desktop";
@@ -205,6 +208,11 @@ const DownloadRoute = DownloadRouteImport.update({
   path: "/download",
   getParentRoute: () => rootRouteImport,
 } as any);
+const DocsAppRoute = DocsAppRouteImport.update({
+  id: "/docs-app",
+  path: "/docs-app",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const DocsRoute = DocsRouteImport.update({
   id: "/docs",
   path: "/docs",
@@ -320,6 +328,11 @@ const DocsIndexRoute = DocsIndexRouteImport.update({
   path: "/",
   getParentRoute: () => DocsRoute,
 } as any);
+const DocsAppIndexRoute = DocsAppIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => DocsAppRoute,
+} as any);
 const BlogIndexRoute = BlogIndexRouteImport.update({
   id: "/",
   path: "/",
@@ -329,6 +342,11 @@ const DocsSplatRoute = DocsSplatRouteImport.update({
   id: "/$",
   path: "/$",
   getParentRoute: () => DocsRoute,
+} as any);
+const DocsAppSplatRoute = DocsAppSplatRouteImport.update({
+  id: "/$",
+  path: "/$",
+  getParentRoute: () => DocsAppRoute,
 } as any);
 const BlogSplatRoute = BlogSplatRouteImport.update({
   id: "/$",
@@ -396,6 +414,7 @@ export interface FileRoutesByFullPath {
   "/dimcode": typeof DimcodeRoute;
   "/dirac": typeof DiracRoute;
   "/docs": typeof DocsRouteWithChildren;
+  "/docs-app": typeof DocsAppRouteWithChildren;
   "/download": typeof DownloadRoute;
   "/factory-droid": typeof FactoryDroidRoute;
   "/fast-agent": typeof FastAgentRoute;
@@ -431,8 +450,10 @@ export interface FileRoutesByFullPath {
   "/alternatives/opencode-desktop": typeof AlternativesOpencodeDesktopRoute;
   "/alternatives/superset": typeof AlternativesSupersetRoute;
   "/blog/$": typeof BlogSplatRoute;
+  "/docs-app/$": typeof DocsAppSplatRoute;
   "/docs/$": typeof DocsSplatRoute;
   "/blog/": typeof BlogIndexRoute;
+  "/docs-app/": typeof DocsAppIndexRoute;
   "/docs/": typeof DocsIndexRoute;
 }
 export interface FileRoutesByTo {
@@ -491,8 +512,10 @@ export interface FileRoutesByTo {
   "/alternatives/opencode-desktop": typeof AlternativesOpencodeDesktopRoute;
   "/alternatives/superset": typeof AlternativesSupersetRoute;
   "/blog/$": typeof BlogSplatRoute;
+  "/docs-app/$": typeof DocsAppSplatRoute;
   "/docs/$": typeof DocsSplatRoute;
   "/blog": typeof BlogIndexRoute;
+  "/docs-app": typeof DocsAppIndexRoute;
   "/docs": typeof DocsIndexRoute;
 }
 export interface FileRoutesById {
@@ -519,6 +542,7 @@ export interface FileRoutesById {
   "/dimcode": typeof DimcodeRoute;
   "/dirac": typeof DiracRoute;
   "/docs": typeof DocsRouteWithChildren;
+  "/docs-app": typeof DocsAppRouteWithChildren;
   "/download": typeof DownloadRoute;
   "/factory-droid": typeof FactoryDroidRoute;
   "/fast-agent": typeof FastAgentRoute;
@@ -554,8 +578,10 @@ export interface FileRoutesById {
   "/alternatives/opencode-desktop": typeof AlternativesOpencodeDesktopRoute;
   "/alternatives/superset": typeof AlternativesSupersetRoute;
   "/blog/$": typeof BlogSplatRoute;
+  "/docs-app/$": typeof DocsAppSplatRoute;
   "/docs/$": typeof DocsSplatRoute;
   "/blog/": typeof BlogIndexRoute;
+  "/docs-app/": typeof DocsAppIndexRoute;
   "/docs/": typeof DocsIndexRoute;
 }
 export interface FileRouteTypes {
@@ -583,6 +609,7 @@ export interface FileRouteTypes {
     | "/dimcode"
     | "/dirac"
     | "/docs"
+    | "/docs-app"
     | "/download"
     | "/factory-droid"
     | "/fast-agent"
@@ -618,8 +645,10 @@ export interface FileRouteTypes {
     | "/alternatives/opencode-desktop"
     | "/alternatives/superset"
     | "/blog/$"
+    | "/docs-app/$"
     | "/docs/$"
     | "/blog/"
+    | "/docs-app/"
     | "/docs/";
   fileRoutesByTo: FileRoutesByTo;
   to:
@@ -678,8 +707,10 @@ export interface FileRouteTypes {
     | "/alternatives/opencode-desktop"
     | "/alternatives/superset"
     | "/blog/$"
+    | "/docs-app/$"
     | "/docs/$"
     | "/blog"
+    | "/docs-app"
     | "/docs";
   id:
     | "__root__"
@@ -705,6 +736,7 @@ export interface FileRouteTypes {
     | "/dimcode"
     | "/dirac"
     | "/docs"
+    | "/docs-app"
     | "/download"
     | "/factory-droid"
     | "/fast-agent"
@@ -740,8 +772,10 @@ export interface FileRouteTypes {
     | "/alternatives/opencode-desktop"
     | "/alternatives/superset"
     | "/blog/$"
+    | "/docs-app/$"
     | "/docs/$"
     | "/blog/"
+    | "/docs-app/"
     | "/docs/";
   fileRoutesById: FileRoutesById;
 }
@@ -768,6 +802,7 @@ export interface RootRouteChildren {
   DimcodeRoute: typeof DimcodeRoute;
   DiracRoute: typeof DiracRoute;
   DocsRoute: typeof DocsRouteWithChildren;
+  DocsAppRoute: typeof DocsAppRouteWithChildren;
   DownloadRoute: typeof DownloadRoute;
   FactoryDroidRoute: typeof FactoryDroidRoute;
   FastAgentRoute: typeof FastAgentRoute;
@@ -995,6 +1030,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DownloadRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/docs-app": {
+      id: "/docs-app";
+      path: "/docs-app";
+      fullPath: "/docs-app";
+      preLoaderRoute: typeof DocsAppRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/docs": {
       id: "/docs";
       path: "/docs";
@@ -1156,6 +1198,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DocsIndexRouteImport;
       parentRoute: typeof DocsRoute;
     };
+    "/docs-app/": {
+      id: "/docs-app/";
+      path: "/";
+      fullPath: "/docs-app/";
+      preLoaderRoute: typeof DocsAppIndexRouteImport;
+      parentRoute: typeof DocsAppRoute;
+    };
     "/blog/": {
       id: "/blog/";
       path: "/";
@@ -1169,6 +1218,13 @@ declare module "@tanstack/react-router" {
       fullPath: "/docs/$";
       preLoaderRoute: typeof DocsSplatRouteImport;
       parentRoute: typeof DocsRoute;
+    };
+    "/docs-app/$": {
+      id: "/docs-app/$";
+      path: "/$";
+      fullPath: "/docs-app/$";
+      preLoaderRoute: typeof DocsAppSplatRouteImport;
+      parentRoute: typeof DocsAppRoute;
     };
     "/blog/$": {
       id: "/blog/$";
@@ -1253,6 +1309,19 @@ const DocsRouteChildren: DocsRouteChildren = {
 
 const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren);
 
+interface DocsAppRouteChildren {
+  DocsAppSplatRoute: typeof DocsAppSplatRoute;
+  DocsAppIndexRoute: typeof DocsAppIndexRoute;
+}
+
+const DocsAppRouteChildren: DocsAppRouteChildren = {
+  DocsAppSplatRoute: DocsAppSplatRoute,
+  DocsAppIndexRoute: DocsAppIndexRoute,
+};
+
+const DocsAppRouteWithChildren =
+  DocsAppRoute._addFileChildren(DocsAppRouteChildren);
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsRoute: AgentsRoute,
@@ -1276,6 +1345,7 @@ const rootRouteChildren: RootRouteChildren = {
   DimcodeRoute: DimcodeRoute,
   DiracRoute: DiracRoute,
   DocsRoute: DocsRouteWithChildren,
+  DocsAppRoute: DocsAppRouteWithChildren,
   DownloadRoute: DownloadRoute,
   FactoryDroidRoute: FactoryDroidRoute,
   FastAgentRoute: FastAgentRoute,
