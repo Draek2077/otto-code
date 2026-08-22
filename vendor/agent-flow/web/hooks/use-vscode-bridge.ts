@@ -282,13 +282,22 @@ export function useVSCodeBridge(): BridgeHookResult {
           }
           return [...prev, session]
         })
-        // Auto-select newly started session.
-        // Set switch-pending flag to prevent the animation frame from processing
-        // events in the wrong simulation state before useLayoutEffect swaps it.
-        sessionSwitchPendingRef.current = true
-        pendingEventsRef.current.length = 0
-        selectedSessionIdRef.current = session.id
-        setSelectedSessionId(session.id)
+        // OTTO PATCH (OTTO-PATCHES.md): only arm the switch-pending gate when
+        // the selection actually CHANGES. The flag's only clearer is the
+        // selection-change useLayoutEffect in index.tsx — arming it for an
+        // already-selected session (a host re-post after a lagging
+        // session-state echo) left it set forever, silently diverting every
+        // later live event for that chat into the background-activity
+        // bucket: the canvas froze mid-chat until the tab was reopened.
+        if (selectedSessionIdRef.current !== session.id) {
+          // Auto-select newly started session.
+          // Set switch-pending flag to prevent the animation frame from processing
+          // events in the wrong simulation state before useLayoutEffect swaps it.
+          sessionSwitchPendingRef.current = true
+          pendingEventsRef.current.length = 0
+          selectedSessionIdRef.current = session.id
+          setSelectedSessionId(session.id)
+        }
       } else if (type === 'updated') {
         const { sessionId, label } = data as { sessionId: string; label: string }
         setSessions(prev => prev.map(s =>
@@ -320,9 +329,20 @@ export function useVSCodeBridge(): BridgeHookResult {
   /** Switch session selection. Does NOT flush events — call flushSessionEvents
    *  from useLayoutEffect after the simulation state has been saved/swapped. */
   const selectSession = useCallback((sessionId: string | null) => {
+    // OTTO PATCH (OTTO-PATCHES.md): a re-select of the ALREADY-selected
+    // session must not arm the switch gate — its only clearer is
+    // index.tsx's selection-change layout effect, which never runs without
+    // a change, so the gate stayed set and every later live event for this
+    // chat was dropped from the canvas (same freeze as the session-started
+    // guard above). Clearing pending here is still correct: a real switch's
+    // flush replays from the per-session buffer anyway.
+    pendingEventsRef.current.length = 0
+    if (selectedSessionIdRef.current === sessionId) {
+      setSelectedSessionId(sessionId)
+      return
+    }
     // Block event delivery to pending until the simulation state is swapped
     sessionSwitchPendingRef.current = true
-    pendingEventsRef.current.length = 0
     selectedSessionIdRef.current = sessionId
     setSelectedSessionId(sessionId)
     if (sessionId) {

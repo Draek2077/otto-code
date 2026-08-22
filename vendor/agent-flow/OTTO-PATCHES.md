@@ -1628,3 +1628,35 @@ action union; `visualizer-surface.tsx` owns the enter/exit sequence
 (`config.showMockData` + `cold-restart`, with the event adapter gated off while
 it runs) and `visualizer-toolbar.tsx` renders the Demo button. Needs
 `npm run build:visualizer`.
+
+
+## 2026-08-21 — visualizer stops reflecting its linked chat mid-session
+
+Report: the Visualizer sometimes showed "Waiting for chat activity"/stale
+state while its linked chat was clearly active, and once it happened the
+canvas never recovered for that chat period. Two page-side defects:
+
+**1. The stuck session-switch gate (persistent).** The bridge armed
+`sessionSwitchPendingRef` unconditionally in both the `session-started`
+handler and `selectSession`, but the flag is ONLY cleared by index.tsx's
+selection-change useLayoutEffect. A re-select of an already-selected session
+(host re-post racing its own lagging `session-state` echo; clicking the
+already-selected chat in the toolbar dropdown) changed nothing, so no layout
+effect ran, the gate stayed set forever, and every later live event for that
+chat was diverted to the background-activity bucket — the canvas froze until
+the tab was fully reopened.
+
+**2. Paused-simulation event loss (intermittent).** The rAF loop snapshotted
+and consumed pending host events BEFORE the `isPlaying` check — a paused sim
+(or one whose frames were stalled by a hidden webview) took the events out of
+`pendingEventsRef` and discarded them unprocessed; a dropped `agent_spawn`
+left that node absent from the graph for the whole chat.
+
+- `web/hooks/use-vscode-bridge.ts` — `session-started` arms the gate only when
+  `selectedSessionIdRef.current !== session.id`; `selectSession` clears
+  pending but returns early (no gate) when re-selecting the current id.
+- `web/hooks/use-agent-simulation.ts` — snapshot-and-consume only while the
+  simulation is playing; accumulated events are picked up by the next playing
+  frame instead of being dropped.
+
+Otto-side counterpart: none (page-only fix). Needs `npm run build:visualizer`.

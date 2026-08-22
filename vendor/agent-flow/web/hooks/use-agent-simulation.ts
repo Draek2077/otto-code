@@ -188,8 +188,16 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
 
     // Snapshot and consume external events OUTSIDE the main processing
     // to avoid React strict mode double-invocation clearing them
+    // OTTO PATCH (OTTO-PATCHES.md): NOT while paused. The snapshot-and-consume
+    // used to run before the isPlaying check, so a paused simulation (or one
+    // whose rAF was stalled — e.g. a hidden webview, where requestAnimationFrame
+    // doesn't fire and frames only resume after the host's reset+replay) took
+    // the events out of pendingEventsRef and then discarded them unprocessed:
+    // an agent_spawn dropped this way left that node absent from the graph for
+    // the whole chat. Leaving the queue intact lets a resumed frame (or the
+    // session-switch flush's buffer replay) pick them up.
     let capturedEvents: SimulationEvent[] | null = null
-    if (externalEvents && externalEvents.length > 0 && !useMockData) {
+    if (externalEvents && externalEvents.length > 0 && !useMockData && frameRef.current.isPlaying) {
       capturedEvents = externalEvents.slice()
       onExternalEventsConsumed?.()
     }
