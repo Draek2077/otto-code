@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import type {
@@ -9,6 +10,8 @@ import type { AssistantForkTarget } from "@/components/assistant-fork-menu";
 import type { ToastApi } from "@/components/toast-host";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { getHostProjectId, type HostProjectListItem } from "@/projects/host-project-model";
+import { useHostProjects } from "@/projects/host-projects";
 import { useHostFeature } from "@/runtime/host-features";
 import { generateDraftId } from "@/stores/draft-keys";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
@@ -110,6 +113,29 @@ function buildForkDraftSetup(agent: ForkAgentSource): WorkspaceDraftTabSetup | u
   };
 }
 
+/**
+ * The placement only carries the cross-host projectKey, which is not a per-host
+ * projectId (see projects/project-id-is-not-project-key.test.ts): sending it as
+ * one fails workspace creation for any project with a real minted id. Resolve
+ * the host's own id from the project list, and when the project is unknown here
+ * return undefined so the daemon resolves it from sourceDirectory.
+ */
+function resolveForkRouteProjectId(input: {
+  projectKey: string | null | undefined;
+  hostProjects: readonly HostProjectListItem[];
+  serverId: string;
+}): string | undefined {
+  const projectKey = input.projectKey?.trim();
+  if (!projectKey) {
+    return undefined;
+  }
+  const hostProject = input.hostProjects.find((project) => project.projectKey === projectKey);
+  if (!hostProject) {
+    return undefined;
+  }
+  return getHostProjectId(hostProject, input.serverId) ?? undefined;
+}
+
 function buildForkDraftTabTarget(
   setup: WorkspaceDraftTabSetup | undefined,
   draftId: string,
@@ -131,6 +157,8 @@ export function useForkAgent(
   const router = useRouter();
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const supportsAgentForkContext = useHostFeature(serverId, "agentForkContext") && !readOnly;
+  const hostServerIds = useMemo(() => [serverId], [serverId]);
+  const hostProjects = useHostProjects(hostServerIds);
 
   return useStableEvent(async ({ agentId, agent, workspaceId, target, boundary }) => {
     try {
@@ -187,7 +215,11 @@ export function useForkAgent(
           serverId,
           sourceDirectory,
           displayName: agent.projectPlacement?.projectName,
-          projectId: agent.projectPlacement?.projectKey,
+          projectId: resolveForkRouteProjectId({
+            projectKey: agent.projectPlacement?.projectKey,
+            hostProjects,
+            serverId,
+          }),
           draftId,
         }),
       );
