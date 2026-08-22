@@ -1,4 +1,5 @@
 import type { MarkdownPhase } from "../types";
+import type { MermaidDiagramTheme } from "./theme";
 
 export type DiagramColorScheme = "light" | "dark";
 
@@ -9,13 +10,14 @@ export interface DiagramDimensions {
 
 export interface RenderedDiagram extends DiagramDimensions {
   source: string;
-  colorScheme: DiagramColorScheme;
+  /** The palette the render was produced under - see MermaidDiagramTheme.key. */
+  themeKey: string;
 }
 
 export interface MermaidRenderInput {
   source: string;
   phase: MarkdownPhase;
-  colorScheme: DiagramColorScheme;
+  diagramTheme: MermaidDiagramTheme;
   rejected: boolean;
   cached: RenderedDiagram | null;
 }
@@ -24,13 +26,15 @@ export interface MermaidRenderRequest {
   revision: number;
   source: string;
   colorScheme: DiagramColorScheme;
+  themeKey: string;
+  themeVariables: Record<string, string>;
 }
 
 export interface MermaidRenderModel {
   revision: number;
   source: string;
   phase: MarkdownPhase;
-  colorScheme: DiagramColorScheme;
+  diagramTheme: MermaidDiagramTheme;
   status: "pending" | "rendered" | "failed" | "rejected";
   visible: RenderedDiagram | null;
 }
@@ -41,7 +45,7 @@ export type MermaidRenderAction =
       type: "rendered";
       revision: number;
       source: string;
-      colorScheme: DiagramColorScheme;
+      themeKey: string;
       dimensions: DiagramDimensions;
     }
   | { type: "renderFailed"; revision: number };
@@ -50,7 +54,7 @@ function reduceRendered(
   state: MermaidRenderModel,
   action: Extract<MermaidRenderAction, { type: "rendered" }>,
 ): MermaidRenderModel {
-  if (action.colorScheme !== state.colorScheme) {
+  if (action.themeKey !== state.diagramTheme.key) {
     return state;
   }
   if (action.revision !== state.revision || action.source !== state.source) {
@@ -67,7 +71,7 @@ function reduceRendered(
       ...state,
       visible: {
         source: action.source,
-        colorScheme: action.colorScheme,
+        themeKey: action.themeKey,
         ...action.dimensions,
       },
     };
@@ -77,7 +81,7 @@ function reduceRendered(
     status: "rendered",
     visible: {
       source: action.source,
-      colorScheme: action.colorScheme,
+      themeKey: action.themeKey,
       ...action.dimensions,
     },
   };
@@ -89,7 +93,7 @@ export function createMermaidRenderModel(input: MermaidRenderInput): MermaidRend
       revision: 1,
       source: input.source,
       phase: input.phase,
-      colorScheme: input.colorScheme,
+      diagramTheme: input.diagramTheme,
       status: "rejected",
       visible: input.phase === "complete" ? null : input.cached,
     };
@@ -98,7 +102,7 @@ export function createMermaidRenderModel(input: MermaidRenderInput): MermaidRend
     revision: 1,
     source: input.source,
     phase: input.phase,
-    colorScheme: input.colorScheme,
+    diagramTheme: input.diagramTheme,
     status: "pending",
     visible: input.cached,
   };
@@ -124,7 +128,8 @@ export function reduceMermaidRenderModel(
   }
 
   const { input } = action;
-  const isSameRender = input.source === state.source && input.colorScheme === state.colorScheme;
+  const isSameRender =
+    input.source === state.source && input.diagramTheme.key === state.diagramTheme.key;
   if (isSameRender) {
     if (input.phase === state.phase) {
       return state;
@@ -142,7 +147,7 @@ export function reduceMermaidRenderModel(
       revision: state.revision + 1,
       source: input.source,
       phase: input.phase,
-      colorScheme: input.colorScheme,
+      diagramTheme: input.diagramTheme,
       status: "rejected",
       visible: input.phase === "complete" ? null : (input.cached ?? state.visible),
     };
@@ -152,7 +157,7 @@ export function reduceMermaidRenderModel(
     revision: state.revision + 1,
     source: input.source,
     phase: input.phase,
-    colorScheme: input.colorScheme,
+    diagramTheme: input.diagramTheme,
     status: "pending",
     visible: input.cached ?? state.visible,
   };
@@ -165,6 +170,8 @@ export function getMermaidRenderRequest(state: MermaidRenderModel): MermaidRende
   return {
     revision: state.revision,
     source: state.source,
-    colorScheme: state.colorScheme,
+    colorScheme: state.diagramTheme.colorScheme,
+    themeKey: state.diagramTheme.key,
+    themeVariables: state.diagramTheme.variables,
   };
 }

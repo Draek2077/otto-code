@@ -23,11 +23,12 @@ import {
   type MermaidRuntimeRenderMessage,
 } from "./runtime/messages";
 import { MermaidRuntimeRequestDriver } from "./runtime/request-driver";
+import { buildMermaidDiagramTheme, type MermaidDiagramTheme } from "./theme";
 import { useMermaidRenderModel } from "./use-render-model";
 import { getDiagramBoxStyle } from "./presentation";
 
 interface MermaidFenceHostImplProps extends MarkdownFenceRendererProps {
-  colorScheme?: "light" | "dark";
+  diagramTheme: MermaidDiagramTheme;
 }
 
 const WEBVIEW_SOURCE = { html: mermaidRuntimeHtml };
@@ -40,7 +41,7 @@ interface MermaidWebViewProps {
   onRendered: (message: {
     revision: number;
     source: string;
-    colorScheme: "light" | "dark";
+    themeKey: string;
     height: number;
     width: number;
   }) => void;
@@ -69,6 +70,8 @@ function MermaidWebView({
         revision: current.revision,
         source: current.source,
         colorScheme: current.colorScheme,
+        themeVariables: current.themeVariables,
+        themeKey: current.themeKey,
         interactive,
       };
       const payload = serializeMermaidRuntimeRenderMessage(message);
@@ -138,7 +141,7 @@ const webViewStyles = RNStyleSheet.create({
 
 interface MermaidDiagramViewerProps {
   code: string;
-  colorScheme: "light" | "dark";
+  diagramTheme: MermaidDiagramTheme;
   onClose: () => void;
   inheritedStyles: TextStyle;
   textStyle: TextStyle;
@@ -146,7 +149,7 @@ interface MermaidDiagramViewerProps {
 
 function MermaidDiagramViewer({
   code,
-  colorScheme,
+  diagramTheme,
   onClose,
   inheritedStyles,
   textStyle,
@@ -157,20 +160,20 @@ function MermaidDiagramViewer({
   const { request, rendered, renderFailed } = useMermaidRenderModel({
     source: code,
     phase: "complete",
-    colorScheme,
+    diagramTheme,
   });
   const handleRendered = useCallback(
     (message: {
       revision: number;
       source: string;
-      colorScheme: "light" | "dark";
+      themeKey: string;
       height: number;
       width: number;
     }) => {
       rendered({
         revision: message.revision,
         source: message.source,
-        colorScheme: message.colorScheme,
+        themeKey: message.themeKey,
         dimensions: { height: message.height, width: message.width },
       });
     },
@@ -275,20 +278,20 @@ function MermaidFenceHostImpl({
   phase,
   inheritedStyles,
   textStyle,
-  colorScheme = "dark",
+  diagramTheme,
 }: MermaidFenceHostImplProps) {
   const { t } = useTranslation();
   const { state, request, rendered, renderFailed } = useMermaidRenderModel({
     source: code,
     phase,
-    colorScheme,
+    diagramTheme,
   });
   const [hasRuntimeContent, setHasRuntimeContent] = useState(false);
   const handleRendered = useCallback(
     (message: {
       revision: number;
       source: string;
-      colorScheme: "light" | "dark";
+      themeKey: string;
       height: number;
       width: number;
     }) => {
@@ -296,7 +299,7 @@ function MermaidFenceHostImpl({
       rendered({
         revision: message.revision,
         source: message.source,
-        colorScheme: message.colorScheme,
+        themeKey: message.themeKey,
         dimensions: { height: message.height, width: message.width },
       });
     },
@@ -349,7 +352,7 @@ function MermaidFenceHostImpl({
       {viewerOpen && canShowDiagram && visible ? (
         <MermaidDiagramViewer
           code={visible.source}
-          colorScheme={visible.colorScheme}
+          diagramTheme={diagramTheme}
           onClose={closeViewer}
           inheritedStyles={inheritedStyles}
           textStyle={textStyle}
@@ -371,9 +374,9 @@ const previewStyles = RNStyleSheet.create({
   preview: { overflow: "hidden" },
 });
 
-const mapColorScheme = (theme: Theme) => ({ colorScheme: theme.colorScheme });
+const mapDiagramTheme = (theme: Theme) => ({ diagramTheme: buildMermaidDiagramTheme(theme) });
 const ThemedMermaidFenceHost = withUnistyles(MermaidFenceHostImpl);
 
 export function MermaidFenceHost(props: MarkdownFenceRendererProps) {
-  return <ThemedMermaidFenceHost {...props} uniProps={mapColorScheme} />;
+  return <ThemedMermaidFenceHost {...props} uniProps={mapDiagramTheme} />;
 }

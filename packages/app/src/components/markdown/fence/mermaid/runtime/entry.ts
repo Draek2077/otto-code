@@ -21,12 +21,22 @@ function sendToHost(message: MermaidRuntimeMessage): void {
   }
 }
 
-function initializeMermaid(colorScheme: "light" | "dark"): void {
+function initializeMermaid(
+  colorScheme: "light" | "dark",
+  themeVariables: Record<string, string>,
+): void {
+  // `base` is the only built-in theme that honours `themeVariables`, so the app
+  // palette rides in as concrete values (mermaid's khroma color math NaNs on
+  // anything var()-shaped). Without variables, fall back to the stock scheme
+  // theme so an empty payload still renders legibly.
+  const hasAppTheme = Object.keys(themeVariables).length > 0;
+  const stockTheme = colorScheme === "dark" ? "dark" : "default";
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
     suppressErrorRendering: true,
-    theme: colorScheme === "dark" ? "dark" : "default",
+    theme: hasAppTheme ? "base" : stockTheme,
+    ...(hasAppTheme ? { themeVariables } : {}),
     secure: [
       "secure",
       "securityLevel",
@@ -61,7 +71,7 @@ let isDrainScheduled = false;
 
 async function render(message: MermaidRuntimeRenderMessage): Promise<void> {
   try {
-    initializeMermaid(message.colorScheme);
+    initializeMermaid(message.colorScheme, message.themeVariables);
     const { svg } = await mermaid.render(`otto-mermaid-${message.revision}`, message.source);
     if (message.revision !== latestRevision) {
       return;
@@ -77,7 +87,7 @@ async function render(message: MermaidRuntimeRenderMessage): Promise<void> {
       type: "rendered",
       revision: message.revision,
       source: message.source,
-      colorScheme: message.colorScheme,
+      themeKey: message.themeKey,
       height: Math.ceil(rect?.height ?? host.scrollHeight),
       width: Math.ceil(rect?.width ?? host.scrollWidth),
     });

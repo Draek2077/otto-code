@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import MarkdownIt from "markdown-it";
 import { toMermaidFenceDocument } from "./mermaid-document";
-import { isMermaidFenceLanguage } from "./mermaid-contract";
 
 function fenceTokens(document: string) {
   return new MarkdownIt().parse(document, {}).filter((token) => token.type === "fence");
@@ -13,7 +12,7 @@ describe("toMermaidFenceDocument", () => {
     const [fence, ...rest] = fenceTokens(document);
 
     expect(rest).toHaveLength(0);
-    expect(isMermaidFenceLanguage(fence?.info)).toBe(true);
+    expect(fence?.info.trim()).toBe("mermaid");
     expect(fence?.content).toBe("graph TD\n  A --> B\n");
   });
 
@@ -38,7 +37,7 @@ describe("toMermaidFenceDocument", () => {
     const [fence, ...rest] = fenceTokens(toMermaidFenceDocument(""));
 
     expect(rest).toHaveLength(0);
-    expect(isMermaidFenceLanguage(fence?.info)).toBe(true);
+    expect(fence?.info.trim()).toBe("mermaid");
     expect(fence?.content.trim()).toBe("");
   });
 });

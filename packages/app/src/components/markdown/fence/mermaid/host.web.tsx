@@ -18,11 +18,12 @@ import type { MermaidRenderRequest } from "./render-model";
 import { mermaidRuntimeHtml } from "./runtime/html.gen";
 import { parseMermaidRuntimeMessage, type MermaidRuntimeRenderMessage } from "./runtime/messages";
 import { MermaidRuntimeRequestDriver } from "./runtime/request-driver";
+import { buildMermaidDiagramTheme, type MermaidDiagramTheme } from "./theme";
 import { useMermaidRenderModel } from "./use-render-model";
 import { getDiagramBoxStyle } from "./presentation";
 
 interface MermaidFenceHostImplProps extends MarkdownFenceRendererProps {
-  colorScheme?: "light" | "dark";
+  diagramTheme: MermaidDiagramTheme;
 }
 
 interface MermaidIframeRuntimeProps {
@@ -31,7 +32,7 @@ interface MermaidIframeRuntimeProps {
   onRendered: (message: {
     revision: number;
     source: string;
-    colorScheme: "light" | "dark";
+    themeKey: string;
     height: number;
     width: number;
   }) => void;
@@ -69,6 +70,8 @@ function MermaidIframeRuntime({
       revision: current.revision,
       source: current.source,
       colorScheme: current.colorScheme,
+      themeVariables: current.themeVariables,
+      themeKey: current.themeKey,
       interactive: false,
     };
     target.postMessage(message, "*");
@@ -124,20 +127,20 @@ function MermaidFenceHostImpl({
   phase,
   inheritedStyles,
   textStyle,
-  colorScheme = "dark",
+  diagramTheme,
 }: MermaidFenceHostImplProps) {
   const { t } = useTranslation();
   const { state, request, rendered, renderFailed } = useMermaidRenderModel({
     source: code,
     phase,
-    colorScheme,
+    diagramTheme,
   });
   const [hasRuntimeContent, setHasRuntimeContent] = useState(false);
   const handleRendered = useCallback(
     (message: {
       revision: number;
       source: string;
-      colorScheme: "light" | "dark";
+      themeKey: string;
       height: number;
       width: number;
     }) => {
@@ -145,7 +148,7 @@ function MermaidFenceHostImpl({
       rendered({
         revision: message.revision,
         source: message.source,
-        colorScheme: message.colorScheme,
+        themeKey: message.themeKey,
         dimensions: { height: message.height, width: message.width },
       });
     },
@@ -482,9 +485,9 @@ const measuringRuntimeStyle: React.CSSProperties = {
   pointerEvents: "none",
   overflow: "hidden",
 };
-const mapColorScheme = (theme: Theme) => ({ colorScheme: theme.colorScheme });
+const mapDiagramTheme = (theme: Theme) => ({ diagramTheme: buildMermaidDiagramTheme(theme) });
 const ThemedMermaidFenceHost = withUnistyles(MermaidFenceHostImpl);
 
 export function MermaidFenceHost(props: MarkdownFenceRendererProps) {
-  return <ThemedMermaidFenceHost {...props} uniProps={mapColorScheme} />;
+  return <ThemedMermaidFenceHost {...props} uniProps={mapDiagramTheme} />;
 }

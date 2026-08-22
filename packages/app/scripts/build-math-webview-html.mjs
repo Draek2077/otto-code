@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 // Bundles the math webview payload the same way the mermaid, editor and terminal
-// payloads are built (build-mermaid-webview-html.mjs is the reference).
+// payloads are built (the mermaid fence runtime bundle uses the same pattern).
 //
 // Unlike those, this one also inlines a stylesheet and a font set: the payload
 // uses KaTeX's HTML output, which is only legible with katex.min.css and the

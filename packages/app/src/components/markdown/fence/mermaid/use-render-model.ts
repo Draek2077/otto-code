@@ -3,22 +3,22 @@ import {
   createMermaidRenderModel,
   getMermaidRenderRequest,
   reduceMermaidRenderModel,
-  type DiagramColorScheme,
   type DiagramDimensions,
   type RenderedDiagram,
 } from "./render-model";
 import { containsUnsafeMermaidSource } from "./source-policy";
+import type { MermaidDiagramTheme } from "./theme";
 import type { MarkdownPhase } from "../types";
 
 const renderCache = new Map<string, RenderedDiagram>();
 const RENDER_CACHE_LIMIT = 50;
 
-function cacheKey(source: string, colorScheme: DiagramColorScheme): string {
-  return `${colorScheme}\u0000${source}`;
+function cacheKey(source: string, themeKey: string): string {
+  return `${themeKey}\u0000${source}`;
 }
 
-function readCachedRender(source: string, colorScheme: DiagramColorScheme): RenderedDiagram | null {
-  return renderCache.get(cacheKey(source, colorScheme)) ?? null;
+function readCachedRender(source: string, themeKey: string): RenderedDiagram | null {
+  return renderCache.get(cacheKey(source, themeKey)) ?? null;
 }
 
 function cacheRender(rendered: RenderedDiagram): void {
@@ -28,27 +28,27 @@ function cacheRender(rendered: RenderedDiagram): void {
       renderCache.delete(oldest);
     }
   }
-  renderCache.set(cacheKey(rendered.source, rendered.colorScheme), rendered);
+  renderCache.set(cacheKey(rendered.source, rendered.themeKey), rendered);
 }
 
 export function useMermaidRenderModel({
   source,
   phase,
-  colorScheme,
+  diagramTheme,
 }: {
   source: string;
   phase: MarkdownPhase;
-  colorScheme: DiagramColorScheme;
+  diagramTheme: MermaidDiagramTheme;
 }) {
   const renderInput = useMemo(
     () => ({
       source,
       phase,
-      colorScheme,
+      diagramTheme,
       rejected: containsUnsafeMermaidSource(source),
-      cached: readCachedRender(source, colorScheme),
+      cached: readCachedRender(source, diagramTheme.key),
     }),
-    [colorScheme, phase, source],
+    [diagramTheme, phase, source],
   );
   const [state, dispatch] = useReducer(
     reduceMermaidRenderModel,
@@ -64,12 +64,12 @@ export function useMermaidRenderModel({
     (response: {
       revision: number;
       source: string;
-      colorScheme: DiagramColorScheme;
+      themeKey: string;
       dimensions: DiagramDimensions;
     }) => {
       const cached: RenderedDiagram = {
         source: response.source,
-        colorScheme: response.colorScheme,
+        themeKey: response.themeKey,
         ...response.dimensions,
       };
       cacheRender(cached);
@@ -77,7 +77,7 @@ export function useMermaidRenderModel({
         type: "rendered",
         revision: response.revision,
         source: response.source,
-        colorScheme: response.colorScheme,
+        themeKey: response.themeKey,
         dimensions: response.dimensions,
       });
     },

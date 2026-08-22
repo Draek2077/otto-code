@@ -1,6 +1,6 @@
 import type { RenderedDocumentKind } from "@/components/file-pane-render-mode";
 import { asciiDocToMarkdown } from "@/components/markdown/asciidoc/asciidoc-to-markdown";
-import { toMermaidFenceDocument } from "@/components/markdown/mermaid/mermaid-document";
+import { toMermaidFenceDocument } from "@/components/markdown/fence/mermaid/mermaid-document";
 import { splitMarkdownFrontmatter } from "@/components/markdown-frontmatter";
 
 export interface RenderedDocument {
