@@ -15,7 +15,7 @@ describe("buildClaudeSubagentSubtitle", () => {
   });
 
   it("uses the manifest label for dated and context-window model variants", () => {
-    expect(buildClaudeSubagentSubtitle({ model: "claude-opus-4-8[1m]" })).toBe("Opus 4.8 1M");
+    expect(buildClaudeSubagentSubtitle({ model: "claude-opus-4-6[1m]" })).toBe("Opus 4.6 1M");
   });
 
   it("keeps unknown compatible-provider model names visible", () => {
