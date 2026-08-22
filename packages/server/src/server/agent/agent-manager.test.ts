@@ -1033,19 +1033,15 @@ test("normalizeConfig leaves Claude mode omitted", async () => {
   expect(snapshot.config.modeId).toBe(getAgentProviderDefinition("claude").defaultModeId);
 });
 
-test("normalizeConfig does not ask the provider to synthesize an omitted mode", async () => {
+test("normalizeConfig uses a capability-aware provider mode default", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-mode-default-test-"));
   class CapabilityAwareClient extends TestAgentClient {
-    resolveDefaultModeCalls = 0;
-
     override async resolveDefaultModeId(input: ResolveAgentDefaultModeInput): Promise<string> {
-      this.resolveDefaultModeCalls += 1;
       return input.env?.CLAUDE_CODE_USE_BEDROCK === "1" ? "default" : "auto";
     }
   }
-  const client = new CapabilityAwareClient();
   const manager = new AgentManager({
-    clients: { codex: client },
+    clients: { codex: new CapabilityAwareClient() },
     logger,
   });
 
@@ -1054,8 +1050,7 @@ test("normalizeConfig does not ask the provider to synthesize an omitted mode", 
     env: { CLAUDE_CODE_USE_BEDROCK: "1" },
   });
 
-  expect(snapshot.config.modeId).toBeUndefined();
-  expect(client.resolveDefaultModeCalls).toBe(0);
+  expect(snapshot.config.modeId).toBe("default");
 });
 
 test("createAgent forwards request env into the spawned provider process", async () => {
@@ -2944,7 +2939,6 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
       },
     },
   });
-  expect(client.lastResumeOverrides).not.toHaveProperty("modeId");
   expect(client.lastResumeLaunchContext).toEqual({
     agentId: resumed.id,
     env: {
