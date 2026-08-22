@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/website",
-  "version": "0.8.12",
+  "version": "0.8.13",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
