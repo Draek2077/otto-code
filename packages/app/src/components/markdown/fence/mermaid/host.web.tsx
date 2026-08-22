@@ -15,7 +15,6 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import type { Theme } from "@/styles/theme";
 import type { MarkdownFenceRendererProps } from "../types";
 import type { MermaidRenderRequest } from "./render-model";
-import { mermaidRuntimeHtml } from "./runtime/html.gen";
 import { parseMermaidRuntimeMessage, type MermaidRuntimeRenderMessage } from "./runtime/messages";
 import { MermaidRuntimeRequestDriver } from "./runtime/request-driver";
 import { buildMermaidDiagramTheme, type MermaidDiagramTheme } from "./theme";
@@ -39,6 +38,15 @@ interface MermaidIframeRuntimeProps {
   onRenderFailed: (revision: number) => void;
 }
 
+let mermaidRuntimeHtmlPromise: Promise<string> | null = null;
+
+function loadMermaidRuntimeHtml(): Promise<string> {
+  mermaidRuntimeHtmlPromise ??= import("./runtime/html.gen").then(
+    (module) => module.mermaidRuntimeHtml,
+  );
+  return mermaidRuntimeHtmlPromise;
+}
+
 function MermaidIframeRuntime({
   request,
   height,
@@ -47,7 +55,21 @@ function MermaidIframeRuntime({
 }: MermaidIframeRuntimeProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const driverRef = useRef<MermaidRuntimeRequestDriver | null>(null);
+  const [runtimeHtml, setRuntimeHtml] = useState<string | null>(null);
   driverRef.current ??= new MermaidRuntimeRequestDriver();
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadMermaidRuntimeHtml().then((html) => {
+      if (!cancelled) {
+        setRuntimeHtml(html);
+      }
+      return null;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const iframeStyle = useMemo<React.CSSProperties>(
     () => ({
       display: "block",
@@ -112,7 +134,7 @@ function MermaidIframeRuntime({
       title=""
       aria-hidden
       sandbox="allow-scripts"
-      srcDoc={mermaidRuntimeHtml}
+      srcDoc={runtimeHtml ?? ""}
       tabIndex={-1}
       style={iframeStyle}
     />
