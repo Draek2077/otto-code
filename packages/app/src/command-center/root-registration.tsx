@@ -15,7 +15,7 @@ import {
 import { withUnistyles } from "react-native-unistyles";
 import { getIsElectronRuntime } from "@/constants/layout";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
-import { useOpenAddProject } from "@/hooks/use-open-add-project";
+import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { resolveShortcutKeysForAction } from "@/keyboard/keyboard-shortcuts";
@@ -95,7 +95,7 @@ export function CommandCenterRootActions() {
   const { t } = useTranslation();
   const { overrides } = useKeyboardShortcutOverrides();
   const shortcutsAvailable = useKeyboardShortcutsAvailable();
-  const openAddProject = useOpenAddProject();
+  const openProjectPicker = useOpenProjectPicker();
   const settingsRoute = useMemo<Href>(() => buildSettingsRoute(), []);
   const homeRoute = useMemo<Href>(() => buildOpenProjectRoute(), []);
   const sessionsRoute = useMemo<Href>(() => buildSessionsRoute(), []);
@@ -120,7 +120,7 @@ export function CommandCenterRootActions() {
         visibility: "query",
         run: () => {
           clearCommandCenterFocusRestoreElement();
-          openAddProject();
+          openProjectPicker();
         },
         presentation: {
           kind: "action",
@@ -266,7 +266,7 @@ export function CommandCenterRootActions() {
   }, [
     groupMode,
     homeRoute,
-    openAddProject,
+    openProjectPicker,
     overrides,
     schedulesRoute,
     sessionsRoute,
