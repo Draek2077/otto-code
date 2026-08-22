@@ -99,7 +99,7 @@ export async function expectReconnectingToastVisible(
   await expect(toast).toBeVisible({
     timeout: options?.timeout ?? 30_000,
   });
-  await expect(toast).toHaveText("Reconnecting");
+  await expect(toast).toHaveText("Reconnecting...");
   await expect(toast.getByTestId("agent-reconnecting-status-dot")).toBeVisible();
 }
 
