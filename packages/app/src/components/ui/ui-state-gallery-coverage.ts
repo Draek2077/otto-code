@@ -43,7 +43,29 @@ export const UI_STATE_GALLERY_EXEMPTIONS: Readonly<Record<string, string>> = {
   "dropdown-trigger.tsx": "Structural chevron wrapper around the covered DropdownMenuTrigger.",
   "floating-panel-portal.tsx": "Portal infrastructure with no standalone visual chrome.",
   "floating.tsx": "Surface infrastructure exercised by live dropdown and tooltip fixtures.",
+  "highlighted-text.tsx":
+    "Search-match styling used inline in diff and agent list results, not a gallery fixture.",
   "isolated-bottom-sheet-modal/index.tsx": "Lifecycle wrapper with no standalone visual chrome.",
+  "menu/menu-item.tsx":
+    "Menu engine internals rendered live through the covered DropdownMenuItem fixture.",
+  "menu/menu-overlay.tsx":
+    "Positioning and portal engine rendered beneath the covered DropdownMenuContent fixture.",
+  "menu/menu-root.tsx":
+    "State and trigger engine behind the covered DropdownMenu and DropdownMenuTrigger fixtures.",
+  "menu/menu-sub.tsx":
+    "Submenu variant of the covered MenuItem engine; no gallery fixture opens a submenu page.",
+  "menu/menu-surface.tsx":
+    "Popover and sheet engine rendered through the covered DropdownMenuContent fixture.",
+  "overlay-scrollbar/use-overlay-flat-list-scrollbar.tsx":
+    "Native/base stub with no visual chrome; the web override renders the actual thumb.",
+  "overlay-scrollbar/use-overlay-flat-list-scrollbar.web.tsx":
+    "Scroll-thumb hook for host FlatLists such as the workspace tree; no gallery list hosts it.",
+  "press-highlight.native.tsx":
+    "Native highlight overlay behind the covered context menu; unreachable in the web gallery.",
+  "press-highlight.tsx":
+    "Web pass-through to Pressable behind the covered context menu; no chrome of its own.",
+  "search-field.tsx":
+    "Standalone filter field used in app screens; the gallery shows the titlebar variant.",
   "tabbed-modal-sheet.tsx": "Composition of the gallery's modal surface and segmented controls.",
   "text-area.tsx": "Unstyled platform pass-through; field chrome is caller-owned.",
   "text-area.web.tsx": "Web scrolling implementation of the unstyled TextArea pass-through.",

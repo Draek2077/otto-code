@@ -133,6 +133,7 @@ vi.mock("react-native-unistyles", () => ({
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
   useUnistyles: () => ({ theme, rt: { breakpoint: "lg" } }),
+  withUnistyles: (component: unknown) => component,
 }));
 
 vi.mock("@/components/icons/material-icons", () => {

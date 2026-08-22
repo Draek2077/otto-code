@@ -51,11 +51,12 @@ function createCollectingStore(): AttachmentStore & { collected: Array<ReadonlyS
   };
 }
 
-async function flushScheduledGc(): Promise<void> {
-  // The GC runs in a microtask and then awaits the store, so two turns of the
-  // queue are enough to see the call it made.
-  await Promise.resolve();
-  await Promise.resolve();
+async function flushScheduledGc(store: { collected: unknown[] }): Promise<void> {
+  // GC now serializes behind a persistence barrier (service.ts), so a fixed
+  // number of microtask turns is no longer enough to see the call it made.
+  await vi.waitFor(() => {
+    expect(store.collected.length).toBeGreaterThan(0);
+  });
 }
 
 describe("draft attachment garbage collection", () => {
@@ -81,7 +82,7 @@ describe("draft attachment garbage collection", () => {
       draftKey: "workspace-1",
       draft: { text: "next message", attachments: [] },
     });
-    await flushScheduledGc();
+    await flushScheduledGc(store);
 
     const [referencedIds] = store.collected;
     expect(referencedIds).toBeDefined();
