@@ -13,6 +13,7 @@
 import { isWeb } from "@/constants/platform";
 import { collectResourceMetrics } from "./collect-resource-metrics";
 import { FrameRateSampler, type FrameWindowStats } from "./frame-rate-sampler";
+import { startLongFrameAttribution, stopLongFrameAttribution } from "./long-frame-attribution";
 import { installRuntimeCounters } from "./runtime-counters";
 import type { ResourceSample } from "./resource-trend";
 
@@ -68,6 +69,9 @@ class ResourceMonitor {
     if (shouldSampleFrames && typeof requestAnimationFrame === "function") {
       this.frameSampler = new FrameRateSampler();
       this.scheduleFrame();
+      // Same gate as the sampler: the sampler counts the long frames, the
+      // attribution names the scripts inside them. No-op where LoAF is absent.
+      startLongFrameAttribution();
     }
 
     this.timer = setInterval(() => {
@@ -87,6 +91,7 @@ class ResourceMonitor {
     }
     this.frameHandle = null;
     this.frameSampler = null;
+    stopLongFrameAttribution();
   }
 
   reset(): void {

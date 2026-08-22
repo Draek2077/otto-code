@@ -4,6 +4,7 @@ import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 import { isElectronRuntime } from "@/desktop/host";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { collectQueryHotspots, collectTrafficHotspots } from "./collect-resource-metrics";
+import { getLongFrameReport, type LongFrameReport } from "./long-frame-attribution";
 import { resourceMonitor } from "./resource-monitor";
 import { analyzeResourceTrend, type ResourceSample } from "./resource-trend";
 
@@ -21,6 +22,18 @@ interface PersistedPerformanceCapture {
   stoppedAt: string;
   samples: ResourceSample[];
   trend: ReturnType<typeof analyzeResourceTrend>;
+  /**
+   * The monitor history that existed before the capture reset it. A capture is
+   * usually taken seconds after the symptom, so the growth that led up to it
+   * lives here, not in the capture-window samples.
+   */
+  preCapture: {
+    samples: number;
+    durationMs: number;
+    trend: ReturnType<typeof analyzeResourceTrend>;
+  } | null;
+  /** What ran inside the long frames: capture-window entries + session totals. */
+  longFrames: LongFrameReport;
   hotspots: {
     traffic: ReturnType<typeof collectTrafficHotspots>;
     queries: ReturnType<typeof collectQueryHotspots>;
@@ -37,6 +50,7 @@ const state: PerformanceCaptureState = {
   lastSavedPath: null,
   error: null,
 };
+let preCaptureSnapshot: PersistedPerformanceCapture["preCapture"] = null;
 const listeners = new Set<Listener>();
 
 function notify(): void {
@@ -58,6 +72,17 @@ export function canPersistPerformanceCaptures(): boolean {
 export function startPerformanceCapture(): void {
   if (state.active || state.saving) return;
   resourceMonitor.start();
+  // Snapshot the always-on history before reset wipes it: its growth trend is
+  // the leak evidence, and the capture window alone is too short to re-derive it.
+  const history = resourceMonitor.getSamples();
+  preCaptureSnapshot =
+    history.length >= 2
+      ? {
+          samples: history.length,
+          durationMs: history[history.length - 1].at - history[0].at,
+          trend: analyzeResourceTrend(history),
+        }
+      : null;
   resourceMonitor.reset();
   resourceMonitor.takeSample();
   state.active = true;
@@ -81,6 +106,8 @@ export async function stopPerformanceCapture(): Promise<void> {
       stoppedAt: new Date().toISOString(),
       samples,
       trend: analyzeResourceTrend(samples),
+      preCapture: preCaptureSnapshot,
+      longFrames: getLongFrameReport(state.startedAt),
       hotspots: {
         traffic: collectTrafficHotspots(24),
         queries: collectQueryHotspots(24),

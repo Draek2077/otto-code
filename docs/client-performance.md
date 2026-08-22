@@ -29,6 +29,8 @@ its heap, or what it does with what the daemon sends it. None of those were meas
 | `resource-metrics.ts`         | Shapes those readings into the flat metric record (pins the metric namespace)                                  |
 | `resource-trend.ts`           | Least-squares fit over the sample ring → **ranked growth**, the leak finder                                    |
 | `resource-monitor.ts`         | The singleton: rAF loop + census interval + bounded ring buffer                                                |
+| `long-frame-attribution.ts`   | Long Animation Frames observer → per-script breakdown of every >50ms frame, bounded ring + session aggregate   |
+| `performance-capture.ts`      | The Metrics bar's Capture: samples + trend + hotspots + long frames + daemon diagnostics, saved as one JSON    |
 | `runtime-counters.ts`         | Patches the timer globals to count live intervals and pending timeouts                                         |
 | `format-resource-report.ts`   | Renders it as the `label: value` text the rest of `diagnostics/` produces                                      |
 
@@ -103,6 +105,31 @@ intentionally displayed in the footer as time-series context rather than resourc
 - **`EventTarget.prototype.addEventListener` is deliberately not patched.** Hotter path, and
   double-adds of an identical listener are DOM no-ops but would still be counted - wrong in exactly
   the case you would want to trust it.
+
+## Long-frame attribution (what the stutter _is_)
+
+The frame sampler and the census can prove the app is janking and rule causes out, but neither can
+name the code inside a 300ms frame. `long-frame-attribution.ts` closes that gap with the Long
+Animation Frames API (`PerformanceObserver` type `long-animation-frame`, Chromium 123+ - present in
+Electron and desktop Chrome, feature-detected and silently absent elsewhere). Every frame over 50ms
+arrives with its script breakdown: source URL, function name, character position, duration, and any
+forced style/layout time.
+
+Two bounded views, started and stopped with the monitor's frame sampler:
+
+- a **ring of recent long frames** (capacity 500) with the top 5 scripts per frame - what the user
+  just felt;
+- a **session aggregate keyed by script source** (capacity 200, overflow folds into `(other)`) -
+  what has been janking all session, surviving the ring rolling over.
+
+A performance capture persists both: `longFrames.entries` is the capture window, `longFrames.aggregate`
+is the whole session. Read `blockingMs` as the felt cost (time beyond the 50ms budget), and a high
+`styleAndLayoutMs` with cheap scripts as "the DOM write was cheap, the layout it forced was not".
+
+The capture also persists `preCapture`: the growth trend over the monitor history that existed
+_before_ the capture reset the ring. A capture is usually taken seconds after the symptom, so the
+climb that led to it lives there - without it, a short capture reports an empty trend and the 6h of
+always-on history is thrown away at the moment it matters.
 
 ## Reading `traffic.handlerMs` correctly
 
