@@ -38,6 +38,23 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
       isolation: z.enum(["local", "worktree"]).optional(),
       title: z.string().trim().min(1).nullable().optional(),
       providerOptions: z.record(z.string(), z.json()).optional(),
+      // COMPAT(flatProviderConfigFields): schedules persisted before v0.4.0 carry
+      // these flat provider fields instead of providerOptions, and Zod strips
+      // unknown keys - without them a stored schedule silently loses its
+      // approval/sandbox/network settings on the next rewrite. Re-added
+      // 2026-08-22; drop together with the AgentSessionConfigSchema copies when
+      // the client floor >= 0.8.13 (target 2027-02-22).
+      approvalPolicy: z.string().trim().min(1).optional(),
+      sandboxMode: z.string().trim().min(1).optional(),
+      networkAccess: z.boolean().optional(),
+      webSearch: z.boolean().optional(),
+      extra: z
+        .object({
+          codex: z.record(z.string(), z.unknown()).optional(),
+          claude: z.record(z.string(), z.unknown()).optional(),
+        })
+        .partial()
+        .optional(),
       featureValues: z.record(z.string(), z.unknown()).optional(),
       systemPrompt: z.string().optional(),
       mcpServers: z.record(z.string(), z.unknown()).optional(),

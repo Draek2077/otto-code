@@ -1081,6 +1081,22 @@ const AgentSessionConfigSchema = z.object({
   title: z.string().trim().min(1).max(MAX_EXPLICIT_AGENT_TITLE_CHARS).optional().nullable(),
   providerOptions: ProviderOptionsSchema.optional(),
   toolPolicy: ToolPolicySchema.optional(),
+  // COMPAT(flatProviderConfigFields): pre-v0.4.0 clients and persisted state carry
+  // these flat provider fields instead of providerOptions, and Zod strips unknown
+  // keys, so dropping them silently discarded approval/sandbox/network settings.
+  // Re-added 2026-08-22; keep accepting until the client floor >= 0.8.13, then
+  // drop together with the schedule-target copies (target 2027-02-22).
+  approvalPolicy: z.string().optional(),
+  sandboxMode: z.string().optional(),
+  networkAccess: z.boolean().optional(),
+  webSearch: z.boolean().optional(),
+  extra: z
+    .object({
+      codex: z.record(z.string(), z.unknown()).optional(),
+      claude: z.record(z.string(), z.unknown()).optional(),
+    })
+    .partial()
+    .optional(),
   systemPrompt: z.string().optional(),
   mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 });

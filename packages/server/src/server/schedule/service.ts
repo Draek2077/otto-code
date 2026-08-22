@@ -1511,6 +1511,14 @@ function buildScheduleAgentConfig(
     thinkingOptionId: config.thinkingOptionId,
     title: config.title,
     providerOptions: config.providerOptions,
+    // COMPAT(flatProviderConfigFields): schedules persisted before v0.4.0 carry
+    // these flat provider fields instead of providerOptions; the provider
+    // adapters still honor them on AgentSessionConfig, so forward them as-is.
+    approvalPolicy: config.approvalPolicy,
+    sandboxMode: config.sandboxMode,
+    networkAccess: config.networkAccess,
+    webSearch: config.webSearch,
+    extra: config.extra,
     featureValues: config.featureValues,
     systemPrompt: config.systemPrompt,
     mcpServers: config.mcpServers as AgentSessionConfig["mcpServers"],
