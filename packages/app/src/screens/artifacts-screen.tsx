@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { FilePlus, Plus } from "@/components/icons/material-icons";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ArtifactGrid } from "@/components/artifacts/artifact-grid";
 import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
+import { HostFilter } from "@/components/hosts/host-filter";
+import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import {
   ArtifactCreateSheet,
@@ -26,6 +28,10 @@ import {
   buildScheduleProjectTargets,
 } from "@/schedules/schedule-project-targets";
 import { useProjects } from "@/hooks/use-projects";
+import {
+  resolveInitialAggregateProjectScope,
+  usePreferredWorkspaceProjectScope,
+} from "@/hooks/use-preferred-workspace-project-scope";
 import { useHosts } from "@/runtime/host-runtime";
 import type { ArtifactStatus } from "@otto-code/protocol/artifacts/types";
 
@@ -69,9 +75,11 @@ function ArtifactsScreenContent(): ReactElement {
   const { toggleStar, deleteArtifact, regenerateArtifact, cancelArtifact } = useArtifactMutations();
   const { projects } = useProjects();
   const hosts = useHosts();
-  const showHost = hosts.length > 1;
+  const preferredWorkspaceScope = usePreferredWorkspaceProjectScope();
 
+  const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
+  const hasExplicitScopeSelection = useRef(false);
   const [statusFilter, setStatusFilter] = useState<ArtifactStatusFilter>("all");
   const [form, setForm] = useState<ArtifactFormState>({ mode: "closed" });
   const [viewingArtifact, setViewingArtifact] = useState<AggregatedArtifact | null>(null);
@@ -100,6 +108,15 @@ function ArtifactsScreenContent(): ReactElement {
   );
   const closeForm = useCallback(() => setForm({ mode: "closed" }), []);
 
+  useEffect(() => {
+    if (
+      selectedHost !== ALL_HOSTS_OPTION_ID &&
+      !hosts.some((host) => host.serverId === selectedHost)
+    ) {
+      setSelectedHost(ALL_HOSTS_OPTION_ID);
+    }
+  }, [hosts, selectedHost]);
+
   const scheduleProjectTargets = useMemo(() => buildScheduleProjectTargets(projects), [projects]);
   const projectNameByCwd = useMemo(
     () => buildProjectNameByCwd(scheduleProjectTargets),
@@ -119,15 +136,37 @@ function ArtifactsScreenContent(): ReactElement {
     return Array.from(byId.values());
   }, [scheduleProjectTargets]);
 
+  useEffect(() => {
+    const initialScope = resolveInitialAggregateProjectScope({
+      hasExplicitSelection: hasExplicitScopeSelection.current,
+      preferredScope: preferredWorkspaceScope,
+      availableHostIds: hosts.map((host) => host.serverId),
+      projectTargets: scheduleProjectTargets,
+    });
+    if (!initialScope) return;
+    setSelectedHost(initialScope.serverId);
+    setProjectFilter(initialScope.cwd);
+  }, [hosts, preferredWorkspaceScope, scheduleProjectTargets]);
+
+  const handleSelectHost = useCallback((serverId: string) => {
+    hasExplicitScopeSelection.current = true;
+    setSelectedHost(serverId);
+  }, []);
+  const handleProjectFilterChange = useCallback((cwd: string | undefined) => {
+    hasExplicitScopeSelection.current = true;
+    setProjectFilter(cwd);
+  }, []);
+
   const visibleArtifacts = useMemo(
     () =>
       artifacts.filter(
         (artifact) =>
+          (selectedHost === ALL_HOSTS_OPTION_ID || artifact.serverId === selectedHost) &&
           (projectFilter === undefined ||
             artifactBelongsToWorkspace(artifact.projectId, projectFilter)) &&
           (statusFilter === "all" || artifact.status === statusFilter),
       ),
-    [artifacts, projectFilter, statusFilter],
+    [artifacts, projectFilter, selectedHost, statusFilter],
   );
 
   const handleStar = useCallback(
@@ -170,11 +209,14 @@ function ArtifactsScreenContent(): ReactElement {
         hasAny={artifacts.length > 0}
         isInitialLoad={isInitialLoad}
         showLoadError={isError && artifacts.length === 0}
-        showHost={showHost}
+        hosts={hosts}
+        selectedHost={selectedHost}
+        onSelectHost={handleSelectHost}
+        showHostColumn={hosts.length > 1 && selectedHost === ALL_HOSTS_OPTION_ID}
         projectNameByCwd={projectNameByCwd}
         projectOptions={projectOptions}
         projectFilter={projectFilter}
-        onProjectFilterChange={setProjectFilter}
+        onProjectFilterChange={handleProjectFilterChange}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
         onRetry={refetch}
@@ -204,7 +246,10 @@ interface ArtifactsBodyProps {
   hasAny: boolean;
   isInitialLoad: boolean;
   showLoadError: boolean;
-  showHost: boolean;
+  hosts: ReturnType<typeof useHosts>;
+  selectedHost: string;
+  onSelectHost: (serverId: string) => void;
+  showHostColumn: boolean;
   projectNameByCwd: ReadonlyMap<string, string>;
   projectOptions: ProjectFilterOption[];
   projectFilter: string | undefined;
@@ -227,7 +272,10 @@ function ArtifactsBody({
   hasAny,
   isInitialLoad,
   showLoadError,
-  showHost,
+  hosts,
+  selectedHost,
+  onSelectHost,
+  showHostColumn,
   projectNameByCwd,
   projectOptions,
   projectFilter,
@@ -291,11 +339,23 @@ function ArtifactsBody({
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
-        <View style={styles.projectFilterSlot}>
-          <ProjectFilter
-            options={projectOptions}
-            value={projectFilter}
-            onChange={onProjectFilterChange}
+        <View style={styles.filterControls}>
+          {hosts.length > 1 ? (
+            <HostFilter hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
+          ) : null}
+          <View style={styles.projectFilterSlot}>
+            <ProjectFilter
+              options={projectOptions}
+              value={projectFilter}
+              onChange={onProjectFilterChange}
+            />
+          </View>
+          <SegmentedControl
+            size="sm"
+            value={statusFilter}
+            onValueChange={onStatusFilterChange}
+            options={STATUS_FILTER_OPTIONS}
+            testID="artifacts-status-filter"
           />
         </View>
         <Button
@@ -308,15 +368,6 @@ function ArtifactsBody({
           New artifact
         </Button>
       </View>
-      <View style={styles.statusRow}>
-        <SegmentedControl
-          size="sm"
-          value={statusFilter}
-          onValueChange={onStatusFilterChange}
-          options={STATUS_FILTER_OPTIONS}
-          testID="artifacts-status-filter"
-        />
-      </View>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -326,7 +377,7 @@ function ArtifactsBody({
         {artifacts.length > 0 ? (
           <ArtifactGrid
             artifacts={artifacts}
-            showHost={showHost}
+            showHost={showHostColumn}
             projectNameByCwd={projectNameByCwd}
             onView={onView}
             onViewGenerationChat={onViewGenerationChat}
@@ -366,9 +417,18 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     gap: theme.spacing[3],
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[4],
+  },
+  filterControls: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
   },
   projectFilterSlot: {
     flexShrink: 1,
@@ -379,12 +439,6 @@ const styles = StyleSheet.create((theme) => ({
   newButton: {
     minHeight: 32,
     paddingHorizontal: theme.spacing[4],
-  },
-  statusRow: {
-    flexDirection: "row",
-    justifyContent: { xs: "center", md: "flex-start" },
-    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
-    paddingTop: theme.spacing[3],
   },
   scroll: {
     flex: 1,

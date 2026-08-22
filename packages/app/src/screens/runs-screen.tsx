@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -37,6 +37,8 @@ import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/s
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ExecutorRow, ProjectNameLine } from "@/components/project-row";
 import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
+import { HostFilter } from "@/components/hosts/host-filter";
+import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
 import {
   buildProjectNameByCwd,
@@ -46,6 +48,10 @@ import {
 import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { formatDuration } from "@/utils/time";
 import { useProjects } from "@/hooks/use-projects";
+import {
+  resolveInitialAggregateProjectScope,
+  usePreferredWorkspaceProjectScope,
+} from "@/hooks/use-preferred-workspace-project-scope";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore, type Agent, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
@@ -339,13 +345,25 @@ function RunsScreenContent(): ReactElement {
   const hosts = useHosts();
   const { projects } = useProjects();
   const sessions = useSessionStore((state) => state.sessions);
+  const preferredWorkspaceScope = usePreferredWorkspaceProjectScope();
 
   const [newOrchestrationOpen, setNewOrchestrationOpen] = useState(false);
   const [editPrefill, setEditPrefill] = useState<NewOrchestrationPrefill | null>(null);
   const [status, setStatus] = useState<RunStatusFilter>("all");
+  const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
+  const hasExplicitScopeSelection = useRef(false);
   const [runsByHost, setRunsByHost] = useState<Record<string, Run[]>>({});
   const [loadingByHost, setLoadingByHost] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (
+      selectedHost !== ALL_HOSTS_OPTION_ID &&
+      !hosts.some((host) => host.serverId === selectedHost)
+    ) {
+      setSelectedHost(ALL_HOSTS_OPTION_ID);
+    }
+  }, [hosts, selectedHost]);
 
   const handleHostRuns = useCallback((serverId: string, hostRuns: Run[], hostLoading: boolean) => {
     setRunsByHost((prev) =>
@@ -384,8 +402,38 @@ function RunsScreenContent(): ReactElement {
     return Array.from(byId.values());
   }, [scheduleProjectTargets]);
 
+  useEffect(() => {
+    const initialScope = resolveInitialAggregateProjectScope({
+      hasExplicitSelection: hasExplicitScopeSelection.current,
+      preferredScope: preferredWorkspaceScope,
+      availableHostIds: hosts.map((host) => host.serverId),
+      projectTargets: scheduleProjectTargets,
+    });
+    if (!initialScope) return;
+    setSelectedHost(initialScope.serverId);
+    setProjectFilter(initialScope.cwd);
+  }, [hosts, preferredWorkspaceScope, scheduleProjectTargets]);
+
+  const handleSelectHost = useCallback((serverId: string) => {
+    hasExplicitScopeSelection.current = true;
+    setSelectedHost(serverId);
+  }, []);
+  const handleProjectFilterChange = useCallback((cwd: string | undefined) => {
+    hasExplicitScopeSelection.current = true;
+    setProjectFilter(cwd);
+  }, []);
+
   const filter = useMemo(() => ({ status, cwd: projectFilter }), [status, projectFilter]);
-  const filtered = useMemo(() => applyRunFilters(runs, filter), [runs, filter]);
+  const filtered = useMemo(
+    () =>
+      applyRunFilters(
+        selectedHost === ALL_HOSTS_OPTION_ID
+          ? runs
+          : runs.filter((run) => run.serverId === selectedHost),
+        filter,
+      ),
+    [runs, filter, selectedHost],
+  );
 
   // The user-initiated front door (projects/orchestration-graphs). Dev builds
   // only for now, then gated on any connected host advertising the capability;
@@ -432,9 +480,12 @@ function RunsScreenContent(): ReactElement {
         isLoading={isLoading}
         status={status}
         onStatusChange={setStatus}
+        hosts={hosts}
+        selectedHost={selectedHost}
+        onSelectHost={handleSelectHost}
         projectOptions={projectOptions}
         projectFilter={projectFilter}
-        onProjectFilterChange={setProjectFilter}
+        onProjectFilterChange={handleProjectFilterChange}
         projectNameByCwd={projectNameByCwd}
         canCreate={canCreateOrchestration}
         onCreate={openNewOrchestration}
@@ -450,6 +501,9 @@ interface RunsScreenBodyProps {
   isLoading: boolean;
   status: RunStatusFilter;
   onStatusChange: (status: RunStatusFilter) => void;
+  hosts: ReturnType<typeof useHosts>;
+  selectedHost: string;
+  onSelectHost: (serverId: string) => void;
   projectOptions: ProjectFilterOption[];
   projectFilter: string | undefined;
   onProjectFilterChange: (projectId: string | undefined) => void;
@@ -481,6 +535,9 @@ function RunsScreenBody({
   isLoading,
   status,
   onStatusChange,
+  hosts,
+  selectedHost,
+  onSelectHost,
   projectOptions,
   projectFilter,
   onProjectFilterChange,
@@ -523,11 +580,23 @@ function RunsScreenBody({
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
-        <View style={styles.projectFilterSlot}>
-          <ProjectFilter
-            options={projectOptions}
-            value={projectFilter}
-            onChange={onProjectFilterChange}
+        <View style={styles.filterControls}>
+          {hosts.length > 1 ? (
+            <HostFilter hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
+          ) : null}
+          <View style={styles.projectFilterSlot}>
+            <ProjectFilter
+              options={projectOptions}
+              value={projectFilter}
+              onChange={onProjectFilterChange}
+            />
+          </View>
+          <SegmentedControl
+            size="sm"
+            value={status}
+            onValueChange={onStatusChange}
+            options={STATUS_FILTER_OPTIONS}
+            testID="runs-status-filter"
           />
         </View>
         {canCreate ? (
@@ -541,15 +610,6 @@ function RunsScreenBody({
             New Orchestration
           </Button>
         ) : null}
-      </View>
-      <View style={styles.statusRow}>
-        <SegmentedControl
-          size="sm"
-          value={status}
-          onValueChange={onStatusChange}
-          options={STATUS_FILTER_OPTIONS}
-          testID="runs-status-filter"
-        />
       </View>
       <ScrollView
         style={styles.scroll}
@@ -1078,9 +1138,18 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     gap: theme.spacing[3],
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[4],
+  },
+  filterControls: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
   },
   projectFilterSlot: {
     flexShrink: 1,
@@ -1091,12 +1160,6 @@ const styles = StyleSheet.create((theme) => ({
   newButton: {
     minHeight: 32,
     paddingHorizontal: theme.spacing[4],
-  },
-  statusRow: {
-    flexDirection: "row",
-    justifyContent: { xs: "center", md: "flex-start" },
-    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
-    paddingTop: theme.spacing[3],
   },
   scroll: {
     flex: 1,

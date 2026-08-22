@@ -8,6 +8,10 @@ import { StyleSheet } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
+import {
+  useActiveWorkspaceSelection,
+  useLastWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -36,7 +40,11 @@ import { useProjects } from "@/hooks/use-projects";
 import { buildProjectSettingsRoute } from "@/utils/host-routes";
 import { KANBAN_NOT_CONFIGURED } from "@otto-code/protocol/kanban";
 import type { KanbanCard, KanbanColumn, KanbanRemediation } from "@otto-code/protocol/kanban";
-import { resolveKanbanScreenBodyState, type KanbanScreenBodyState } from "./kanban-screen-state";
+import {
+  resolveKanbanProjectSelection,
+  resolveKanbanScreenBodyState,
+  type KanbanScreenBodyState,
+} from "./kanban-screen-state";
 
 // ── Shared types ────────────────────────────────────────────────────────────
 
@@ -76,8 +84,13 @@ interface KanbanHostProject {
 function useKanbanSelectionState(
   kanbanHosts: { serverId: string; label: string }[],
   projects: ReturnType<typeof useProjects>["projects"],
+  preferredProject: { serverId: string; projectId: string } | null,
 ) {
   const [selectedHost, setSelectedHost] = useState<string | null>(null);
+  // A persisted last-workspace preference can hydrate after this screen has
+  // made an automatic fallback selection. Keep that fallback replaceable until
+  // the reader deliberately picks a host, project, or board here.
+  const hasExplicitKanbanSelection = useRef(false);
   // Last selection per host, kept in component state only (no persisted
   // setting in this phase). Switching hosts and back restores the choice.
   const [selections, setSelections] = useState<Record<string, KanbanSelection>>({});
@@ -97,7 +110,10 @@ function useKanbanSelectionState(
     });
   }, []);
 
-  const selectHost = useCallback((hostId: string) => setSelectedHost(hostId), []);
+  const selectHost = useCallback((hostId: string) => {
+    hasExplicitKanbanSelection.current = true;
+    setSelectedHost(hostId);
+  }, []);
 
   const hostProjects = useMemo(() => {
     if (!selectedHost) return [];
@@ -127,6 +143,7 @@ function useKanbanSelectionState(
 
   const selectProject = useCallback(
     (projectId: string) => {
+      hasExplicitKanbanSelection.current = true;
       setSelections((prev) => {
         const entry = hostProjects.find((project) => project.projectId === projectId);
         if (!entry) return prev;
@@ -147,6 +164,7 @@ function useKanbanSelectionState(
   const selectBoard = useCallback(
     (boardId: string) => {
       if (!selectedHost) return;
+      hasExplicitKanbanSelection.current = true;
       setSelections((prev) => {
         const current = prev[selectedHost];
         if (!current) return prev;
@@ -156,36 +174,53 @@ function useKanbanSelectionState(
     [selectedHost],
   );
 
-  // Auto-select host when exactly one is kanban-capable.
+  // Prefer the host behind the workspace the reader just left. This is an
+  // initial context default only: once a valid Kanban selection exists, it is
+  // never replaced by a later workspace observation.
   useEffect(() => {
+    if (selectedHost && kanbanHosts.some((host) => host.serverId === selectedHost)) {
+      return;
+    }
     if (
-      kanbanHosts.length === 1 &&
-      (!selectedHost || !kanbanHosts.some((h) => h.serverId === selectedHost))
+      preferredProject &&
+      kanbanHosts.some((host) => host.serverId === preferredProject.serverId)
     ) {
+      setSelectedHost(preferredProject.serverId);
+      return;
+    }
+    if (kanbanHosts.length === 1) {
       setSelectedHost(kanbanHosts[0].serverId);
     }
-  }, [kanbanHosts, selectedHost]);
+  }, [kanbanHosts, preferredProject, selectedHost]);
 
   // Auto-select project when the host changes: restores the host's last
-  // selection if it still exists, otherwise picks the first project.
+  // selection if it still exists, otherwise uses the project from the last
+  // workspace before falling back to the first project.
   useEffect(() => {
     if (!selectedHost) return;
     const existing = selections[selectedHost];
-    if (existing && hostProjectMap.get(existing.projectId)) {
-      return;
-    }
-    const first = hostProjects[0];
-    if (!first) {
+    const projectId = resolveKanbanProjectSelection({
+      selectedProjectId: hasExplicitKanbanSelection.current ? (existing?.projectId ?? null) : null,
+      preferredProjectId:
+        preferredProject?.serverId === selectedHost ? preferredProject.projectId : null,
+      availableProjectIds: hostProjects.map((project) => project.projectId),
+    });
+    if (projectId === null) {
       updateSelection(selectedHost, null);
       return;
     }
+    if (existing?.projectId === projectId) {
+      return;
+    }
+    const project = hostProjectMap.get(projectId);
+    if (!project) return;
     updateSelection(selectedHost, {
       serverId: selectedHost,
-      projectId: first.projectId,
-      projectKey: first.projectKey,
+      projectId: project.projectId,
+      projectKey: project.projectKey,
       boardId: null,
     });
-  }, [selectedHost, hostProjects, hostProjectMap, selections, updateSelection]);
+  }, [selectedHost, hostProjects, hostProjectMap, preferredProject, selections, updateSelection]);
 
   return {
     selectedHost,
@@ -531,6 +566,8 @@ export function KanbanScreen(): ReactElement {
   const hosts = useHosts();
   const sessions = useSessionStore((state) => state.sessions);
   const { projects, refetch: refetchProjects } = useProjects();
+  const activeWorkspaceSelection = useActiveWorkspaceSelection();
+  const lastWorkspaceSelection = useLastWorkspaceSelection();
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -547,6 +584,15 @@ export function KanbanScreen(): ReactElement {
     [hosts, sessions],
   );
 
+  const preferredProject = useMemo(() => {
+    const workspaceSelection = activeWorkspaceSelection ?? lastWorkspaceSelection;
+    if (!workspaceSelection) return null;
+    const projectId = sessions[workspaceSelection.serverId]?.workspaces.get(
+      workspaceSelection.workspaceId,
+    )?.projectId;
+    return projectId ? { serverId: workspaceSelection.serverId, projectId } : null;
+  }, [activeWorkspaceSelection, lastWorkspaceSelection, sessions]);
+
   const {
     selectedHost,
     selection,
@@ -556,7 +602,7 @@ export function KanbanScreen(): ReactElement {
     selectProject,
     selectBoard,
     updateSelection,
-  } = useKanbanSelectionState(kanbanHosts, projects);
+  } = useKanbanSelectionState(kanbanHosts, projects, preferredProject);
 
   const { boards, boardProviderId, state, remediation, remediationTarget } =
     useKanbanBoardResolution({
@@ -1341,8 +1387,8 @@ const styles = StyleSheet.create((theme) => ({
     textAlign: "center",
     maxWidth: 360,
   },
-  // Host/project/board filters share one row, matching the Sessions/Schedules
-  // controls row (docs/design.md filter-bar convention).
+  // Host/project/board filters use the same top inset and unseparated canvas
+  // as the other aggregate-page toolbars.
   controlsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1352,9 +1398,7 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.spacing[3],
       md: theme.spacing[6],
     },
-    paddingVertical: theme.spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    paddingTop: theme.spacing[4],
   },
   filterTrigger: {
     flexDirection: "row",

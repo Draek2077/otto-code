@@ -22,6 +22,31 @@ export type KanbanScreenBodyState =
   | { kind: "board" };
 
 /**
+ * Chooses a project without surprising someone who has already made a Kanban
+ * selection. A workspace-derived preference only supplies the initial project;
+ * a valid selection and then the host's first project remain the fallbacks.
+ */
+export function resolveKanbanProjectSelection(input: {
+  selectedProjectId: string | null;
+  preferredProjectId: string | null;
+  availableProjectIds: readonly string[];
+}): string | null {
+  if (
+    input.selectedProjectId !== null &&
+    input.availableProjectIds.includes(input.selectedProjectId)
+  ) {
+    return input.selectedProjectId;
+  }
+  if (
+    input.preferredProjectId !== null &&
+    input.availableProjectIds.includes(input.preferredProjectId)
+  ) {
+    return input.preferredProjectId;
+  }
+  return input.availableProjectIds[0] ?? null;
+}
+
+/**
  * Maps the selection and board-load state to the body the screen renders.
  * Precedence, in order:
  * - No hosts at all: `no-hosts` (even while loading; there is nothing to wait

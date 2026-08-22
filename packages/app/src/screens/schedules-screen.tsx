@@ -1,10 +1,20 @@
-import { useCallback, useMemo, useState, useSyncExternalStore, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactElement,
+} from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { CalendarPlus, Plus } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
+import { HostFilter } from "@/components/hosts/host-filter";
+import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { ScheduleFormSheet } from "@/components/schedules/schedule-form-sheet";
 import { ScheduleGrid, type ScheduleRowView } from "@/components/schedules/schedule-grid";
 import {
@@ -16,6 +26,10 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useAggregatedAgents } from "@/hooks/use-aggregated-agents";
 import { useProjects } from "@/hooks/use-projects";
+import {
+  resolveInitialAggregateProjectScope,
+  usePreferredWorkspaceProjectScope,
+} from "@/hooks/use-preferred-workspace-project-scope";
 import {
   useSchedules,
   type AggregatedSchedule,
@@ -68,6 +82,7 @@ function SchedulesScreenContent(): ReactElement {
   const { agents } = useAggregatedAgents({ includeArchived: true });
   const { projects } = useProjects();
   const hosts = useHosts();
+  const preferredWorkspaceScope = usePreferredWorkspaceProjectScope();
   const runtime = getHostRuntimeStore();
   const runtimeVersion = useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
@@ -92,7 +107,9 @@ function SchedulesScreenContent(): ReactElement {
   }, [hosts, runtime, runtimeVersion]);
 
   const [form, setForm] = useState<FormState>({ mode: "closed" });
+  const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
+  const hasExplicitScopeSelection = useRef(false);
   const [statusFilter, setStatusFilter] = useState<ScheduleStatusFilter>("all");
   const [transcriptTarget, setTranscriptTarget] =
     useState<TranscriptViewDialogProps["target"]>(null);
@@ -103,6 +120,15 @@ function SchedulesScreenContent(): ReactElement {
   }, []);
   const closeForm = useCallback(() => setForm({ mode: "closed" }), []);
   const closeTranscript = useCallback(() => setTranscriptTarget(null), []);
+
+  useEffect(() => {
+    if (
+      selectedHost !== ALL_HOSTS_OPTION_ID &&
+      !hosts.some((host) => host.serverId === selectedHost)
+    ) {
+      setSelectedHost(ALL_HOSTS_OPTION_ID);
+    }
+  }, [hosts, selectedHost]);
 
   const agentsByKey = useMemo(() => {
     const map = new Map<string, ScheduleTargetAgent>();
@@ -134,6 +160,27 @@ function SchedulesScreenContent(): ReactElement {
     return Array.from(byId.values());
   }, [scheduleProjectTargets]);
 
+  useEffect(() => {
+    const initialScope = resolveInitialAggregateProjectScope({
+      hasExplicitSelection: hasExplicitScopeSelection.current,
+      preferredScope: preferredWorkspaceScope,
+      availableHostIds: hosts.map((host) => host.serverId),
+      projectTargets: scheduleProjectTargets,
+    });
+    if (!initialScope) return;
+    setSelectedHost(initialScope.serverId);
+    setProjectFilter(initialScope.cwd);
+  }, [hosts, preferredWorkspaceScope, scheduleProjectTargets]);
+
+  const handleSelectHost = useCallback((serverId: string) => {
+    hasExplicitScopeSelection.current = true;
+    setSelectedHost(serverId);
+  }, []);
+  const handleProjectFilterChange = useCallback((cwd: string | undefined) => {
+    hasExplicitScopeSelection.current = true;
+    setProjectFilter(cwd);
+  }, []);
+
   // Resolve every schedule's derived state and target line once, then partition
   // by the host and status filters. Sorted newest-first for a stable order
   // across hosts.
@@ -153,10 +200,11 @@ function SchedulesScreenContent(): ReactElement {
   }, [schedules, agentsByKey, projectNameByCwd, agentDirReadyHosts]);
 
   const visibleRows = useMemo<ScheduleRowView[]>(() => {
-    const singleHost = hosts.length <= 1;
+    const singleHost = selectedHost !== ALL_HOSTS_OPTION_ID || hosts.length <= 1;
     return resolvedRows
       .filter(
-        ({ resolved }) =>
+        ({ schedule, resolved }) =>
+          (selectedHost === ALL_HOSTS_OPTION_ID || schedule.serverId === selectedHost) &&
           (projectFilter === undefined ||
             (resolved.cwd !== null && artifactBelongsToWorkspace(resolved.cwd, projectFilter))) &&
           (statusFilter === "all" || resolved.bucket === statusFilter),
@@ -177,7 +225,15 @@ function SchedulesScreenContent(): ReactElement {
         serverName: schedule.serverName,
         singleHost,
       }));
-  }, [resolvedRows, projectFilter, statusFilter, hosts.length, projectNameByCwd]);
+  }, [resolvedRows, projectFilter, selectedHost, statusFilter, hosts.length, projectNameByCwd]);
+
+  const visibleHostErrors = useMemo(
+    () =>
+      selectedHost === ALL_HOSTS_OPTION_ID
+        ? hostErrors
+        : hostErrors.filter((error) => error.serverId === selectedHost),
+    [hostErrors, selectedHost],
+  );
 
   const showLoadError = isError && schedules.length === 0;
 
@@ -186,15 +242,18 @@ function SchedulesScreenContent(): ReactElement {
       <MenuHeader title="Schedules" />
       <SchedulesScreenBody
         rows={visibleRows}
-        hostErrors={hostErrors}
+        hostErrors={visibleHostErrors}
         hasSchedules={schedules.length > 0}
         isInitialLoad={isInitialLoad}
         showLoadError={showLoadError}
+        hosts={hosts}
+        selectedHost={selectedHost}
+        onSelectHost={handleSelectHost}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
         projectOptions={projectOptions}
         projectFilter={projectFilter}
-        onProjectFilterChange={setProjectFilter}
+        onProjectFilterChange={handleProjectFilterChange}
         onRetry={refetch}
         onCreate={openCreate}
         onEdit={openEdit}
@@ -218,6 +277,9 @@ function SchedulesScreenBody({
   hasSchedules,
   isInitialLoad,
   showLoadError,
+  hosts,
+  selectedHost,
+  onSelectHost,
   statusFilter,
   onStatusFilterChange,
   projectOptions,
@@ -233,6 +295,9 @@ function SchedulesScreenBody({
   hasSchedules: boolean;
   isInitialLoad: boolean;
   showLoadError: boolean;
+  hosts: ReturnType<typeof useHosts>;
+  selectedHost: string;
+  onSelectHost: (serverId: string) => void;
   statusFilter: ScheduleStatusFilter;
   onStatusFilterChange: (value: ScheduleStatusFilter) => void;
   projectOptions: ProjectFilterOption[];
@@ -292,11 +357,23 @@ function SchedulesScreenBody({
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
-        <View style={styles.projectFilterSlot}>
-          <ProjectFilter
-            options={projectOptions}
-            value={projectFilter}
-            onChange={onProjectFilterChange}
+        <View style={styles.filterControls}>
+          {hosts.length > 1 ? (
+            <HostFilter hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
+          ) : null}
+          <View style={styles.projectFilterSlot}>
+            <ProjectFilter
+              options={projectOptions}
+              value={projectFilter}
+              onChange={onProjectFilterChange}
+            />
+          </View>
+          <SegmentedControl
+            size="sm"
+            value={statusFilter}
+            onValueChange={onStatusFilterChange}
+            options={STATUS_FILTER_OPTIONS}
+            testID="schedules-status-filter"
           />
         </View>
         <Button
@@ -308,15 +385,6 @@ function SchedulesScreenBody({
         >
           New schedule
         </Button>
-      </View>
-      <View style={styles.statusRow}>
-        <SegmentedControl
-          size="sm"
-          value={statusFilter}
-          onValueChange={onStatusFilterChange}
-          options={STATUS_FILTER_OPTIONS}
-          testID="schedules-status-filter"
-        />
       </View>
       <ScrollView
         style={styles.scroll}
@@ -372,9 +440,18 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     gap: theme.spacing[3],
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[4],
+  },
+  filterControls: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
   },
   projectFilterSlot: {
     flexShrink: 1,
@@ -385,12 +462,6 @@ const styles = StyleSheet.create((theme) => ({
   newButton: {
     minHeight: 32,
     paddingHorizontal: theme.spacing[4],
-  },
-  statusRow: {
-    flexDirection: "row",
-    justifyContent: { xs: "center", md: "flex-start" },
-    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
-    paddingTop: theme.spacing[3],
   },
   scroll: {
     flex: 1,

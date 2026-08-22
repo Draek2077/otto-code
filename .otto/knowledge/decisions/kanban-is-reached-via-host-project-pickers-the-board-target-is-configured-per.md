@@ -3,27 +3,22 @@ id: "kanban-is-reached-via-host-project-pickers-the-board-target-is-configured-p
 kind: "decision"
 title: "Kanban is reached via host + project pickers; the board target is configured per project in Project Settings"
 status: "confirmed"
-tags: ["kanban", "github-projects-v2", "jira", "project-settings", "access-model"]
+tags: ["kanban","github-projects-v2","jira","project-settings","access-model"]
 created_at: "2026-08-17T04:17:29.825Z"
-updated_at: "2026-08-17T05:43:21.626Z"
+updated_at: "2026-08-22T15:37:18.127Z"
 ---
-
 # Kanban is reached via host + project pickers; the board target is configured per project in Project Settings
 
 <!-- compiled_truth -->
 
-The Kanban surface is scoped to a project, not to a host or provider. The /kanban screen shows a host picker then a project picker for that host; the (host, project) pair determines which tracking board to display. Projects with no kanban target configured show an empty watermark state with a link into that project's settings.
+The Kanban surface is scoped to a project, not to a host or provider. The /kanban screen shows a host picker then a project picker for that host; the (host, project) pair determines which tracking board to display. On entry, it first resolves that pair from the active workspace or the last workspace the reader viewed when that host is Kanban-capable and the project is still available. A valid explicit Kanban selection remains authoritative; without usable workspace context, the screen follows its normal host/project fallback. Projects with no Kanban target configured show an empty watermark state with a link into that project's settings.
 
-Credential model (resolved 2026-08-16, user directive): Kanban reuses the host's existing workspace/git-hosting authentication and has no token slots of its own. The split follows the provider's native tooling:
+Kanban reuses the host's existing workspace/git-hosting authentication and has no token slots of its own:
 
-- **GitHub (PRs and Projects v2/Kanban): the GitHub CLI owns auth.** There is no `gitHosting.providers.github.token` and none is added. The GitHub Kanban provider obtains its credential from `gh` (the same CLI the git-hosting GitHub service authenticates through) and calls the Projects v2 GraphQL API with it. Settings' GitHub card reports `gh` auth status and the scopes Projects v2 needs (`read:project`, `project`, plus `repo` for private card content), with `gh auth refresh -s read:project,project` as the remedy when a scope is missing.
-- **Jira and Bitbucket: Atlassian through the REST APIs, one credential set.** `gitHosting.providers` holds a single Atlassian credential (account email + API token, HTTP Basic) shared by the Bitbucket git-hosting service and the Jira Kanban provider, plus a non-secret Jira site URL (`https://<site>.atlassian.net`) because Basic-auth Jira Cloud calls are site-addressed rather than going through `api.atlassian.com/ex/jira`. The settings card is re-framed from "Bitbucket Cloud" to "Atlassian" with Jira and Bitbucket sub-sections over that one credential.
+- **GitHub (PRs and Projects v2/Kanban): the GitHub CLI owns auth.** There is no `gitHosting.providers.github.token` and none is added. The GitHub Kanban provider obtains its credential from `gh`; Settings' GitHub card reports `gh` auth status and the scopes Projects v2 needs (`read:project`, `project`, plus `repo` for private card content), with `gh auth refresh -s read:project,project` as the remedy when a scope is missing.
+- **Jira and Bitbucket: Atlassian through the REST APIs, one credential set.** `gitHosting.providers` holds a single Atlassian credential (account email + API token, HTTP Basic) shared by the Bitbucket git-hosting service and the Jira Kanban provider, plus a non-secret Jira site URL because Basic-auth Jira Cloud calls are site-addressed.
 
-The separate `kanban.providers.{github,jira}.token` config is retired.
-
-Project->provider link: a NON-secret identifier lives per project in project settings (a .otto project config field, safe because it is not a secret - equivalent to a URL). GitHub: board number/URL, or absent meaning "derive boards from the repo's git remote." Jira: board id (or board URL, id parsed out). Because a GitHub board can be org-scoped and span repos, two projects may point at the same board; the field is just a pointer, no uniqueness enforced.
-
-This replaces the original design where the screen fanned out host x provider and the memory mock was the default view.
+Project-to-provider links are non-secret identifiers held per project in Project Settings. GitHub accepts a board number/URL, or derives boards from the repo remote when absent. Jira accepts a board id or URL. A GitHub board may be organization-scoped and shared by several projects, so no uniqueness constraint is imposed.
 
 ## Timeline
 
@@ -43,3 +38,7 @@ This replaces the original design where the screen fanned out host x provider an
   summary: "The recorded credential model (\"Kanban providers read gitHosting.providers.{github, bitbucketCloud/atlassian}\") could not be implemented as literally written: the codebase has no GitHub token slot at all (the git-hosting GitHub service authenticates via the gh CLI's global config), and the only stored Atlassian credential is the Bitbucket Basic-auth email+apiToken pair with no Jira site URL. The prior build session stalled at this fork. The user resolved it by directive: GitHub PRs and GitHub Projects authenticate through the GitHub CLI, while Jira and Bitbucket are Atlassian over the REST APIs sharing one credential set. This records the resolution so the fork is not re-litigated."
   source: "User directive in chat, 2026-08-16, after reviewing the prior session's Phase 2 blocker. Code grounding: packages/server/src/services/git-hosting/resolver.ts:16"
   affects: ["kanban-board-platform-is-merged-but-the-github-path-is-unreachable-without-hand","github-atlassian-jira-token-scopes-required-for-the-kanban-providers"]
+- time: "2026-08-22T15:37:18.127Z"
+  kind: "decision"
+  summary: "The user established that Kanban should open to the project context they were just viewing, not an arbitrary first project."
+  source: "User direction in chat, 2026-08-22; implemented and unit-tested in packages/app/src/screens/kanban-screen.tsx."

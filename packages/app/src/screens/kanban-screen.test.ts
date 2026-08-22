@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveKanbanScreenBodyState } from "./kanban-screen-state";
+import { resolveKanbanProjectSelection, resolveKanbanScreenBodyState } from "./kanban-screen-state";
 
 const base = {
   isLoading: false,
@@ -82,5 +82,37 @@ describe("resolveKanbanScreenBodyState", () => {
       kind: "error",
       message: "boom",
     });
+  });
+});
+
+describe("resolveKanbanProjectSelection", () => {
+  it("uses the project from the workspace the reader just left", () => {
+    expect(
+      resolveKanbanProjectSelection({
+        selectedProjectId: null,
+        preferredProjectId: "otto",
+        availableProjectIds: ["other", "otto"],
+      }),
+    ).toBe("otto");
+  });
+
+  it("keeps an explicit Kanban project selection authoritative", () => {
+    expect(
+      resolveKanbanProjectSelection({
+        selectedProjectId: "other",
+        preferredProjectId: "otto",
+        availableProjectIds: ["other", "otto"],
+      }),
+    ).toBe("other");
+  });
+
+  it("falls back to the first project when there is no usable workspace context", () => {
+    expect(
+      resolveKanbanProjectSelection({
+        selectedProjectId: null,
+        preferredProjectId: "missing",
+        availableProjectIds: ["other", "otto"],
+      }),
+    ).toBe("other");
   });
 });

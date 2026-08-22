@@ -1,9 +1,9 @@
 /* oxlint-disable complexity -- this screen owns the cross-host search, archive, storage, and paginated empty-state matrix. */
-import { useMemo, useState, useCallback, useEffect, type ReactElement } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef, type ReactElement } from "react";
 import { View, Text } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { router } from "expo-router";
-import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronLeft, Trash2 } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -15,7 +15,13 @@ import { SearchField } from "@/components/ui/search-field";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
+import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
 import { type AgentHistoryHostError, useAgentHistory } from "@/hooks/use-agent-history";
+import { useProjects } from "@/hooks/use-projects";
+import {
+  resolveInitialAggregateProjectScope,
+  usePreferredWorkspaceProjectScope,
+} from "@/hooks/use-preferred-workspace-project-scope";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useClearArchivedAgents } from "@/history/use-clear-archived-agents";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
@@ -23,6 +29,8 @@ import { useFetchQuery } from "@/data/query";
 import { formatFileSize } from "@/utils/format-file-size";
 import { useSessionStore } from "@/stores/session-store";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
+import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
+import { buildScheduleProjectTargets } from "@/schedules/schedule-project-targets";
 
 /** Long enough that a typed word is one request, short enough to feel live. */
 const SEARCH_DEBOUNCE_MS = 200;
@@ -32,6 +40,10 @@ type ArchiveFilter = "all" | "active" | "archived";
 const ThemedDestructiveTrash = withUnistyles(Trash2, (theme) => ({
   color: theme.colors.destructive,
   size: theme.iconSize.sm,
+}));
+
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner, (theme) => ({
+  color: theme.colors.foregroundMuted,
 }));
 
 const sessionsHostOptionTestID = (serverId: string) => `sessions-host-filter-item-${serverId}`;
@@ -66,8 +78,10 @@ function resolveEmptyText(input: {
   t: TFunction;
   isSearching: boolean;
   isAllHosts: boolean;
+  hasProjectFilter: boolean;
 }): string {
   if (input.isSearching) return input.t("sessions.noMatches");
+  if (input.hasProjectFilter) return "No sessions for this project";
   if (input.isAllHosts) return input.t("sessions.empty");
   return "No sessions for this host";
 }
@@ -83,10 +97,13 @@ export function SessionsScreen() {
 }
 
 function SessionsScreenContent() {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const hosts = useHosts();
+  const { projects } = useProjects();
+  const preferredWorkspaceScope = usePreferredWorkspaceProjectScope();
   const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
+  const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
+  const hasExplicitScopeSelection = useRef(false);
   const [searchInput, setSearchInput] = useState("");
   const search = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS).trim();
   const historyServerId = selectedHost === ALL_HOSTS_OPTION_ID ? null : selectedHost;
@@ -160,6 +177,42 @@ function SessionsScreenContent() {
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>("all");
   const destructiveTrash = useMemo(() => <ThemedDestructiveTrash />, []);
+  const scheduleProjectTargets = useMemo(() => buildScheduleProjectTargets(projects), [projects]);
+
+  // Reuse the same project roots as Artifacts, Schedules, and Workflows. A
+  // project stays selectable even when it has no History rows, which makes the
+  // picker a dependable way to narrow the all-host view instead of a summary
+  // of whatever happens to be loaded.
+  const projectOptions = useMemo<ProjectFilterOption[]>(() => {
+    const byId = new Map<string, ProjectFilterOption>();
+    for (const target of scheduleProjectTargets) {
+      if (!byId.has(target.cwd)) {
+        byId.set(target.cwd, { id: target.cwd, label: target.projectName });
+      }
+    }
+    return Array.from(byId.values());
+  }, [scheduleProjectTargets]);
+
+  useEffect(() => {
+    const initialScope = resolveInitialAggregateProjectScope({
+      hasExplicitSelection: hasExplicitScopeSelection.current,
+      preferredScope: preferredWorkspaceScope,
+      availableHostIds: hosts.map((host) => host.serverId),
+      projectTargets: scheduleProjectTargets,
+    });
+    if (!initialScope) return;
+    setSelectedHost(initialScope.serverId);
+    setProjectFilter(initialScope.cwd);
+  }, [hosts, preferredWorkspaceScope, scheduleProjectTargets]);
+
+  const handleSelectHost = useCallback((serverId: string) => {
+    hasExplicitScopeSelection.current = true;
+    setSelectedHost(serverId);
+  }, []);
+  const handleProjectFilterChange = useCallback((cwd: string | undefined) => {
+    hasExplicitScopeSelection.current = true;
+    setProjectFilter(cwd);
+  }, []);
 
   const handleRefresh = useCallback(() => {
     setIsManualRefresh(true);
@@ -167,18 +220,25 @@ function SessionsScreenContent() {
   }, [refreshAll]);
 
   // `useAgentHistory` owns the order: recency at rest, relevance under a query.
+  // Local project/archive filters retain that order while narrowing the rows.
   const filteredAgents = useMemo(
     () =>
-      archiveFilter === "all"
-        ? agents
-        : agents.filter((agent) =>
-            archiveFilter === "archived" ? Boolean(agent.archivedAt) : !agent.archivedAt,
-          ),
-    [agents, archiveFilter],
+      agents.filter(
+        (agent) =>
+          (projectFilter === undefined || artifactBelongsToWorkspace(agent.cwd, projectFilter)) &&
+          (archiveFilter === "all" ||
+            (archiveFilter === "archived" ? Boolean(agent.archivedAt) : !agent.archivedAt)),
+      ),
+    [agents, archiveFilter, projectFilter],
   );
   const emptyText = useMemo(() => {
     if (isSearching) {
-      return resolveEmptyText({ t, isSearching: true, isAllHosts: false });
+      return resolveEmptyText({
+        t,
+        isSearching: true,
+        isAllHosts: false,
+        hasProjectFilter: projectFilter !== undefined,
+      });
     }
     if (archiveFilter === "archived") return t("sessions.emptyArchived");
     if (archiveFilter === "active") return t("sessions.emptyActive");
@@ -186,8 +246,9 @@ function SessionsScreenContent() {
       t,
       isSearching: false,
       isAllHosts: selectedHost === ALL_HOSTS_OPTION_ID,
+      hasProjectFilter: projectFilter !== undefined,
     });
-  }, [archiveFilter, isSearching, selectedHost, t]);
+  }, [archiveFilter, isSearching, projectFilter, selectedHost, t]);
   const showHostFilter = hosts.length > 1;
   const showHostColumn = selectedHost === ALL_HOSTS_OPTION_ID;
   const showLoadError = isError && filteredAgents.length === 0;
@@ -267,26 +328,21 @@ function SessionsScreenContent() {
       <View style={styles.historyHeader}>
         <View style={styles.controlsRow}>
           <View style={styles.controlsFilters}>
-            {isSearchSupported ? (
-              <SearchField
-                value={searchInput}
-                onChangeText={setSearchInput}
-                placeholder={t("sessions.searchPlaceholder")}
-                clearAccessibilityLabel={t("sessions.actions.clearSearch")}
-                testID="sessions-search-input"
-                clearTestID="sessions-search-clear"
-              />
-            ) : null}
             {showHostFilter ? (
               <HostFilter
                 hosts={hosts}
                 selectedHost={selectedHost}
-                onSelectHost={setSelectedHost}
+                onSelectHost={handleSelectHost}
                 optionDescriptions={hostOptionDescriptions}
                 triggerTestID="sessions-host-filter-trigger"
                 hostOptionTestID={sessionsHostOptionTestID}
               />
             ) : null}
+            <ProjectFilter
+              options={projectOptions}
+              value={projectFilter}
+              onChange={handleProjectFilterChange}
+            />
             <SegmentedControl
               options={archiveFilterOptions}
               value={archiveFilter}
@@ -311,12 +367,24 @@ function SessionsScreenContent() {
             </Button>
           ) : null}
         </View>
+        {isSearchSupported ? (
+          <View style={styles.searchRow}>
+            <SearchField
+              value={searchInput}
+              onChangeText={setSearchInput}
+              placeholder={t("sessions.searchPlaceholder")}
+              clearAccessibilityLabel={t("sessions.actions.clearSearch")}
+              testID="sessions-search-input"
+              clearTestID="sessions-search-clear"
+            />
+          </View>
+        ) : null}
         <AgentListColumnHeader showHostColumn={showHostColumn} />
       </View>
       {hostErrors.length > 0 ? <SessionHostErrorsBanner errors={hostErrors} t={t} /> : null}
       {isInitialLoad ? (
         <View style={styles.loadingContainer}>
-          <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
+          <ThemedLoadingSpinner size="large" />
         </View>
       ) : null}
       {!isInitialLoad && showLoadError ? (
@@ -369,8 +437,9 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.surface0,
   },
-  // Search, host, and archive controls share one row, with the destructive
-  // action pinned to the far corner at every breakpoint.
+  // Navigation and filter controls lead the page; the destructive action stays
+  // in the opposite corner. Search is intentionally a second, dedicated row
+  // so it does not compete with scope selection.
   controlsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -394,6 +463,14 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     flexWrap: "wrap",
     gap: theme.spacing[3],
+  },
+  searchRow: {
+    flexDirection: "row",
+    paddingHorizontal: {
+      xs: theme.spacing[3],
+      md: theme.spacing[6],
+    },
+    paddingTop: theme.spacing[3],
   },
   clearArchivedText: {
     color: theme.colors.destructive,
