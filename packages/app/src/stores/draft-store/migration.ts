@@ -45,7 +45,11 @@ const LegacyReviewAttachmentSchema = z.strictObject({
   commentCount: z.number().int().nonnegative(),
   attachment: z.strictObject({
     type: z.literal("review"),
-    mimeType: z.literal("application/paseo-review"),
+    // Otto builds have always persisted "application/otto-review" (review/store.ts);
+    // "application/paseo-review" covers stores written by an upstream build. A miss
+    // here is destructive: one unmatched attachment fails the whole-store parse and
+    // the migration falls back to an empty store, discarding every draft.
+    mimeType: z.enum(["application/otto-review", "application/paseo-review"]),
     cwd: z.string(),
     mode: z.enum(["uncommitted", "base"]),
     baseRef: z.string().nullable().optional(),
