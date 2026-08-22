@@ -25,7 +25,7 @@ import {
   type MarkdownDocumentAnnotationTarget,
 } from "@/components/markdown/renderer";
 import { findHighlightStyles } from "@/components/find-highlight-styles";
-import { HtmlFilePreview } from "@/components/html-file-preview";
+import { FileHtmlPreview } from "@/file-pane/html-preview";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -1003,12 +1003,7 @@ function FilePreviewBody({
 
   if (preview.kind === "text") {
     if (documentKind === "html") {
-      return (
-        <HtmlFilePreview
-          content={effectiveContent}
-          title={getFileNameFromPath(filePath) ?? filePath}
-        />
-      );
+      return <FileHtmlPreview html={effectiveContent} testID="file-html-preview" />;
     }
 
     if (renderedDocument) {
