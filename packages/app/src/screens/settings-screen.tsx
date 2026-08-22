@@ -45,7 +45,7 @@ import {
   FolderGit2,
   SquareTerminal,
   Smartphone,
-  Sparkles,
+  Robot,
   Waypoints,
   Workspaces,
   Wrench,
@@ -283,7 +283,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
   { id: "code", labelKey: "settings.hostSections.code", icon: DataObject },
   { id: "brain", labelKey: "settings.hostSections.brain", icon: Brain },
-  { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Sparkles },
+  { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Robot },
   // Git-provider settings are collapsed into "Workspaces" as a "Git" panel - too
   // few options to warrant its own sidebar category. See HostWorkspacesPage.
   // Everything in that page (PR auto-archive, Git providers) is developer-only,
