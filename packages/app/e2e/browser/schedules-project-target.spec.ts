@@ -203,7 +203,11 @@ test.describe("Schedules project target", () => {
     await expect(page.getByTestId("schedule-model-trigger")).toContainText("Ten second stream", {
       timeout: 30_000,
     });
-    await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
+    // "Ten second stream" declares thinking options (low/medium/high, default
+    // low), so the effort picker hydrates to that default.
+    await expect(page.getByTestId("schedule-thinking-trigger")).toContainText("Low", {
+      timeout: 30_000,
+    });
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-mode")).toHaveCount(0);
     await expect(page.getByTestId("cadence-interval-value")).toHaveCount(0);
@@ -222,7 +226,7 @@ test.describe("Schedules project target", () => {
     const modelTrigger = page.getByTestId("schedule-model-trigger");
     await expect(modelTrigger).toContainText("Ten second stream");
     await expectSettled(modelTrigger);
-    await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
+    await expect(page.getByTestId("schedule-thinking-trigger")).toContainText("Low");
     // No mode field: schedule runs are always unattended, so the form never
     // offers a mode picker (an attended mode would fail at the first prompt).
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
@@ -324,7 +328,9 @@ test.describe("Schedules project target", () => {
     await expect(projectTrigger).toBeVisible();
     // Choosing a host preselects the last-used model (valid on this host).
     await expect(modelTrigger).toContainText("Ten second stream", { timeout: 30_000 });
-    await expect(thinkingTrigger).toHaveCount(0);
+    // "Ten second stream" declares thinking options (low/medium/high, default
+    // low), so the effort picker hydrates to that default.
+    await expect(thinkingTrigger).toContainText("Low", { timeout: 30_000 });
     await expect(modeTrigger).toHaveCount(0);
     await expectSettled(hostTrigger);
 
@@ -338,7 +344,7 @@ test.describe("Schedules project target", () => {
     await selectModelByLabel(page, "Ten second stream");
     await expect(modelTrigger).toContainText("Ten second stream");
     await expectSettled(modelTrigger);
-    await expect(thinkingTrigger).toHaveCount(0);
+    await expect(thinkingTrigger).toContainText("Low");
     await expect(modeTrigger).toHaveCount(0);
 
     await hostTrigger.click();

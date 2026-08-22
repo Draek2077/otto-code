@@ -62,7 +62,9 @@ export async function expectQueuedMessageButton(page: Page): Promise<void> {
 }
 
 export async function cancelAgent(page: Page): Promise<void> {
-  const stopButton = page.getByRole("button", { name: /stop|cancel/i }).first();
+  const stopButton = page
+    .getByRole("button", { name: /stop agent|canceling agent|interrupt agent|send and interrupt/i })
+    .first();
   await expect(stopButton).toBeVisible({ timeout: 10_000 });
   await stopButton.click();
 }
@@ -229,7 +231,13 @@ export async function startRunningMockAgent(
   await page.goto(agentUrl);
   await expectComposerVisible(page);
   await client.sendAgentMessage(agent.id, opts.prompt);
-  await expect(page.getByRole("button", { name: /stop|cancel/i }).first()).toBeVisible({
+  await expect(
+    page
+      .getByRole("button", {
+        name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+      })
+      .first(),
+  ).toBeVisible({
     timeout: 30_000,
   });
   return {

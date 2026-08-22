@@ -6,6 +6,7 @@ import { daemonWsRoutePattern } from "./daemon-port";
 import { projectEquivalenceViewKey } from "./project-view-key";
 import { expectWorkspaceHeader } from "./workspace-ui";
 import { withProjectOwnership } from "./project-ownership";
+import { openCommandCenter } from "./command-center";
 
 type NewWorkspaceDaemonClient = Pick<
   InternalDaemonClient,
@@ -235,7 +236,8 @@ export async function openNewWorkspaceComposer(
 }
 
 export async function openGlobalNewWorkspaceComposer(page: Page): Promise<void> {
-  await page.getByTestId("sidebar-global-new-workspace").click();
+  const panel = await openCommandCenter(page);
+  await panel.getByText("New workspace", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/new(?:\?.*)?$/, {
     timeout: 30_000,

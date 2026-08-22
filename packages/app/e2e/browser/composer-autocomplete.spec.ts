@@ -7,6 +7,7 @@ import {
 } from "../support/helpers/mock-agent";
 import { expectWorkspaceTabVisible, openSessions } from "../support/helpers/archive-tab";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
+import { openGlobalNewWorkspaceComposer } from "../support/helpers/new-workspace";
 import { getServerId } from "../support/helpers/server-id";
 import { switchWorkspaceViaSidebar } from "../support/helpers/workspace-ui";
 
@@ -146,11 +147,6 @@ async function installListCommandsStub(page: Page): Promise<void> {
       ws.send(message);
     });
   });
-}
-
-async function openAppWideNewWorkspace(page: Page): Promise<void> {
-  await page.getByTestId("sidebar-global-new-workspace").first().click();
-  await page.waitForURL((url) => url.pathname === "/new", { timeout: 30_000 });
 }
 
 async function openSettingsThenBackToWorkspace(page: Page): Promise<void> {
@@ -388,7 +384,7 @@ test.describe("Composer autocomplete", () => {
       await openAgentRoute(page, first);
       await expectComposerVisible(page, { timeout: 30_000 });
 
-      await openAppWideNewWorkspace(page);
+      await openGlobalNewWorkspaceComposer(page);
       await switchWorkspaceViaSidebar({ page, serverId, workspaceId: second.workspaceId });
       await expectComposerVisible(page, { timeout: 30_000 });
       await expectSingleCurrentWorkspaceDeckEntry(page, {
@@ -414,7 +410,7 @@ test.describe("Composer autocomplete", () => {
         workspaceId: third.workspaceId,
       });
 
-      await openAppWideNewWorkspace(page);
+      await openGlobalNewWorkspaceComposer(page);
       await switchWorkspaceViaSidebar({ page, serverId, workspaceId: first.workspaceId });
       await expectComposerVisible(page, { timeout: 30_000 });
       await expectSingleCurrentWorkspaceDeckEntry(page, {

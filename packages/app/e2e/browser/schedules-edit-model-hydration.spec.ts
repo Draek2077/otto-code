@@ -139,7 +139,9 @@ test.describe("Schedules", () => {
     await expectSettled(projectTrigger);
     await expect(modelTrigger).toContainText("Ten second stream", { timeout: 30_000 });
     await expectSettled(modelTrigger);
-    await expect(thinkingTrigger).toHaveCount(0);
+    // "Ten second stream" declares thinking options (low/medium/high, default
+    // low), so the effort picker hydrates instead of staying hidden.
+    await expect(thinkingTrigger).toContainText("Low", { timeout: 30_000 });
     // No mode field: schedule runs are always unattended, so the form never
     // offers a mode picker.
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
@@ -234,7 +236,11 @@ test.describe("Schedules", () => {
     await expect(page.getByTestId("schedule-model-trigger")).toContainText("Ten second stream", {
       timeout: 30_000,
     });
-    await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
+    // "Ten second stream" declares thinking options (low/medium/high, default
+    // low), so the pristine form hydrates the effort picker to that default.
+    await expect(page.getByTestId("schedule-thinking-trigger")).toContainText("Low", {
+      timeout: 30_000,
+    });
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-interval-value")).toHaveCount(0);
   });

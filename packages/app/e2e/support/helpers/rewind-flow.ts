@@ -318,7 +318,11 @@ export async function assertFileContains(filePath: string, text: string): Promis
 
 export async function assertComposerIdle(handle: Pick<AgentHandle, "page">): Promise<void> {
   await expectComposerEditable(handle.page);
-  await expect(handle.page.getByRole("button", { name: /stop|cancel/i })).toHaveCount(0, {
+  await expect(
+    handle.page.getByRole("button", {
+      name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+    }),
+  ).toHaveCount(0, {
     timeout: 30_000,
   });
   await expect(handle.page.getByTestId("turn-working-indicator")).toHaveCount(0, {

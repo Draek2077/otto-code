@@ -32,7 +32,7 @@ async function expectThinkingSelected(page: Page, label: string): Promise<void> 
 
 async function expectModeSelected(page: Page, label: string): Promise<void> {
   await expect(
-    page.getByRole("button", { name: `Select agent mode (${label})` }).filter({ visible: true }),
+    page.getByRole("button", { name: `Select chat mode (${label})` }).filter({ visible: true }),
   ).toBeVisible({ timeout: 30_000 });
 }
 

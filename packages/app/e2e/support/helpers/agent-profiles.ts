@@ -555,7 +555,7 @@ export async function expectComposerModel(page: Page, modelLabel: string): Promi
 
 export async function expectComposerMode(page: Page, modeLabel: string): Promise<void> {
   await expect(
-    page.getByRole("button", { name: `Select agent mode (${modeLabel})`, exact: true }).first(),
+    page.getByRole("button", { name: `Select chat mode (${modeLabel})`, exact: true }).first(),
   ).toBeVisible({ timeout: 30_000 });
 }
 

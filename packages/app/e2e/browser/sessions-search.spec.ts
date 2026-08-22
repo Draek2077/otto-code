@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../support/fixtures";
 import { connectSeedClient } from "../support/helpers/seed-client";
@@ -22,6 +23,7 @@ const TITLES = {
   billing: `${NONCE} Add Stripe billing`,
   unbilled: `${NONCE} Unbilled usage report`,
   terminal: `${NONCE} Terminal resize fix`,
+  otherProject: `${NONCE} Secondary project session`,
 } as const;
 
 async function search(page: Page, query: string): Promise<void> {
@@ -44,6 +46,8 @@ test.describe("History search", () => {
   let client: Awaited<ReturnType<typeof connectSeedClient>>;
   let tempRepo: { path: string; cleanup: () => Promise<void> };
   let projectId: string;
+  let otherTempRepo: { path: string; cleanup: () => Promise<void> };
+  let otherProjectId: string;
 
   test.describe.configure({ timeout: 300_000 });
 
@@ -62,11 +66,27 @@ test.describe("History search", () => {
     for (const title of [TITLES.terminal, TITLES.unbilled, TITLES.billing]) {
       await createIdleAgent(client, { cwd: tempRepo.path, workspaceId, title });
     }
+
+    otherTempRepo = await createTempGitRepo("sessions-search-other-");
+    const otherCreated = await client.createWorkspace({
+      source: { kind: "directory", path: otherTempRepo.path },
+    });
+    if (!otherCreated.workspace) {
+      throw new Error(otherCreated.error ?? `Failed to create workspace ${otherTempRepo.path}`);
+    }
+    otherProjectId = otherCreated.workspace.projectId;
+    await createIdleAgent(client, {
+      cwd: otherTempRepo.path,
+      workspaceId: otherCreated.workspace.id,
+      title: TITLES.otherProject,
+    });
   });
 
   test.afterAll(async () => {
+    await client?.removeProject(otherProjectId).catch(() => undefined);
     await client?.removeProject(projectId).catch(() => undefined);
     await client?.close().catch(() => undefined);
+    await otherTempRepo?.cleanup();
     await tempRepo?.cleanup();
   });
 
@@ -77,7 +97,12 @@ test.describe("History search", () => {
     await openSessions(page);
 
     // Seeded newest-first, and at rest history is chronological.
-    await expectVisibleTitles(page, [TITLES.billing, TITLES.unbilled, TITLES.terminal]);
+    await expectVisibleTitles(page, [
+      TITLES.otherProject,
+      TITLES.billing,
+      TITLES.unbilled,
+      TITLES.terminal,
+    ]);
     await expect(page.getByText("Today", { exact: true })).toHaveCount(1, { timeout: 30_000 });
 
     await search(page, `${NONCE} billing`);
@@ -89,7 +114,12 @@ test.describe("History search", () => {
 
     await page.getByTestId("sessions-search-clear").click();
     await expect(page.getByTestId("sessions-search-input")).toHaveValue("");
-    await expectVisibleTitles(page, [TITLES.billing, TITLES.unbilled, TITLES.terminal]);
+    await expectVisibleTitles(page, [
+      TITLES.otherProject,
+      TITLES.billing,
+      TITLES.unbilled,
+      TITLES.terminal,
+    ]);
     await expect(page.getByText("Today", { exact: true })).toHaveCount(1, { timeout: 30_000 });
   });
 
@@ -137,6 +167,25 @@ test.describe("History search", () => {
     await expect(page.getByText("No sessions match")).toBeVisible({ timeout: 30_000 });
 
     await page.getByText("Clear search").click();
+    await expectVisibleTitles(page, [
+      TITLES.otherProject,
+      TITLES.billing,
+      TITLES.unbilled,
+      TITLES.terminal,
+    ]);
+  });
+
+  test("project picker narrows the all-host list before a free-form search", async ({ page }) => {
+    await resetSeededPageState(page);
+    await openSessions(page);
+
+    await page.getByTestId("project-filter-trigger").click();
+    await page.getByText(path.basename(tempRepo.path), { exact: true }).click();
+
     await expectVisibleTitles(page, [TITLES.billing, TITLES.unbilled, TITLES.terminal]);
+    await expect(rowTitles(page).filter({ hasText: TITLES.otherProject })).toHaveCount(0);
+
+    await search(page, `${NONCE} billing`);
+    await expectVisibleTitles(page, [TITLES.billing]);
   });
 });

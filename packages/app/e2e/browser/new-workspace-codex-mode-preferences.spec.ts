@@ -96,7 +96,7 @@ async function readCodexModePreference(page: Page): Promise<unknown> {
 // toContainText is case-sensitive, so the assertions below match the rendered
 // text. selectMode stays case-insensitive and takes the manifest spelling.
 async function selectMode(page: Page, label: string): Promise<void> {
-  const modeControl = page.getByRole("button", { name: /^Select agent mode \(/ });
+  const modeControl = page.getByRole("button", { name: /^Select chat mode \(/ });
   await expect(modeControl).toBeVisible({ timeout: 30_000 });
   await modeControl.click();
 
@@ -180,7 +180,7 @@ test.describe("New workspace Codex mode preferences", () => {
       await selectNewWorkspaceProject(page, targetProject);
 
       await expect(
-        page.getByRole("button", { name: "Select agent mode (Default permissions)" }),
+        page.getByRole("button", { name: "Select chat mode (Default permissions)" }),
       ).toBeVisible({ timeout: 30_000 });
       await expectThinkingOptionsFit(page);
       await selectMode(page, "Full Access");
@@ -228,7 +228,7 @@ test.describe("New workspace Codex mode preferences", () => {
         agentId: agent.id,
       });
       await expect(
-        page.getByRole("button", { name: "Select agent mode (Default permissions)" }),
+        page.getByRole("button", { name: "Select chat mode (Default permissions)" }),
       ).toBeVisible({ timeout: 30_000 });
 
       await selectMode(page, "Full Access");
@@ -245,7 +245,7 @@ test.describe("New workspace Codex mode preferences", () => {
       });
 
       await expect(
-        page.getByRole("button", { name: "Select agent mode (Full access)" }),
+        page.getByRole("button", { name: "Select chat mode (Full access)" }),
       ).toBeVisible({ timeout: 30_000 });
     } finally {
       await seeded.cleanup();

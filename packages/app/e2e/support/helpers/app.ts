@@ -11,7 +11,7 @@ export const gotoHome = async (page: Page) => {
   const entryButton = page
     .getByText("Add a project", { exact: true })
     .or(page.getByText("Add project", { exact: true }))
-    .or(page.getByText("New agent", { exact: true }))
+    .or(page.getByText("New chat", { exact: true }))
     .first();
 
   await expect

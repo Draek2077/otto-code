@@ -109,9 +109,9 @@ test.describe("Model B sidebar shape", () => {
         timeout: 30_000,
       });
 
-      // The global new-workspace button is the universal entry - present for both
-      // kinds regardless of their per-row affordance.
-      await expect(page.getByTestId("sidebar-global-new-workspace")).toBeVisible({
+      // Command Center's "New workspace" action is the universal entry - present
+      // for both kinds regardless of their per-row affordance.
+      await expect(page.getByTestId("sidebar-command-center-search")).toBeVisible({
         timeout: 30_000,
       });
     } finally {

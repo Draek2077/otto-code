@@ -55,7 +55,7 @@ test("workspace file search stays geometrically stable through delayed loading a
   try {
     await delayDirectorySuggestionResponses(page, 800);
     await gotoWorkspace(page, seeded.workspaceId);
-    await page.keyboard.press("Meta+P");
+    await page.keyboard.press("Meta+K");
 
     const panel = page.getByTestId("command-center-panel");
     await expect(panel).toBeVisible({ timeout: 30_000 });
@@ -95,7 +95,7 @@ test("dropping the files scope leaves the search row the same height", async ({ 
 
   try {
     await gotoWorkspace(page, seeded.workspaceId);
-    await page.keyboard.press("Meta+P");
+    await page.keyboard.press("Meta+K");
 
     const panel = page.getByTestId("command-center-panel");
     await expect(panel).toBeVisible({ timeout: 30_000 });
