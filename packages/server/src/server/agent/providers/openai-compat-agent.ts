@@ -36,12 +36,16 @@ import type {
 import { z } from "zod";
 
 import {
+  ASK_USER_QUESTION_TOOL_NAME,
+  ASK_USER_QUESTION_TOOL_SPEC,
   buildCompatToolPreviewDetail,
   buildOpenAIToolsPayload,
   COMPAT_TOOL_SPECS,
   executeCompatTool,
   findCompatToolSpec,
   isPathInsideWorkspace,
+  formatAskUserQuestionAnswers,
+  parseAskUserQuestionArgs,
   type CompatToolSpec,
 } from "./openai-compat-tools.js";
 import type { OttoToolCatalog, OttoToolDefinition, OttoToolResult } from "../tools/types.js";
@@ -3806,6 +3810,12 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
     const args = parsed.args;
 
+    // The question tool is its own dispatch path: the permission prompt IS the
+    // execution, so it never reaches the approval gate or executeCompatTool.
+    if (call.name === ASK_USER_QUESTION_TOOL_NAME) {
+      return this.executeAskUserQuestionToolCall(turn, call, args);
+    }
+
     // Otto catalog tools are dispatched to the catalog, not the builtin coding
     // tools. Builtins take precedence on name; plan mode offers neither actions
     // nor Otto tools, so a plan-mode call for one falls through to "not available".
@@ -3852,17 +3862,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         detail: previewDetail,
       });
       if (response.behavior === "deny") {
-        this.emitToolItem(turn, call, "failed", previewDetail, "Denied by user");
-        if (response.interrupt) {
-          turn.abort.abort();
-        }
-        const message = response.message?.trim();
-        return {
-          text: message
-            ? `The user declined this tool call: ${message}`
-            : "The user declined this tool call.",
-          isError: true,
-        };
+        return this.deniedToolCallOutcome(turn, call, previewDetail, response);
       }
     }
 
@@ -3885,6 +3885,93 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       outcome.isError ? outcome.output : null,
     );
     return { text: outcome.output, isError: outcome.isError };
+  }
+
+  /**
+   * Shared deny handling for every prompting dispatch path: surface the failed
+   * tool item, honor an interrupt, and phrase the denial for the model.
+   */
+  private deniedToolCallOutcome(
+    turn: ActiveTurn,
+    call: AccumulatedToolCall,
+    detail: ToolCallDetail,
+    response: Extract<AgentPermissionResponse, { behavior: "deny" }>,
+  ): ToolCallOutcome {
+    this.emitToolItem(turn, call, "failed", detail, "Denied by user");
+    if (response.interrupt) {
+      turn.abort.abort();
+    }
+    const message = response.message?.trim();
+    return {
+      text: message
+        ? `The user declined this tool call: ${message}`
+        : "The user declined this tool call.",
+      isError: true,
+    };
+  }
+
+  /**
+   * ask_user_question rides the permission plumbing end to end: the request is
+   * kind "question" so the client renders Otto's shared question UI (the same
+   * one Claude's AskUserQuestion and opencode's questions use), and the user's
+   * answers come back through respondToPermission as updatedInput.answers keyed
+   * by question header. Allow becomes the tool result; deny means the user
+   * dismissed the questions, which ends the turn - they chose to take over in
+   * chat, so there is nothing for the model to continue with.
+   */
+  private async executeAskUserQuestionToolCall(
+    turn: ActiveTurn,
+    call: AccumulatedToolCall,
+    args: Record<string, unknown>,
+  ): Promise<ToolCallOutcome> {
+    const detail: ToolCallDetail = { type: "unknown", input: args, output: null };
+    // Defense in depth: dontAsk never advertises this tool, but a model that
+    // hallucinates the call still gets the standard unattended denial.
+    if (this.modeId === "dontAsk") {
+      this.emitToolItem(turn, call, "failed", detail, DONT_ASK_DENIAL_NOTE);
+      return { text: dontAskDenialText(call.name), isError: true };
+    }
+    const parsed = parseAskUserQuestionArgs(args);
+    if ("error" in parsed) {
+      this.emitToolItem(turn, call, "failed", detail, parsed.error);
+      return { text: `Error: ${parsed.error}`, isError: true };
+    }
+
+    const first = parsed.questions[0]!;
+    const response = await this.requestPermission(turn, {
+      name: ASK_USER_QUESTION_TOOL_NAME,
+      kind: "question",
+      title: parsed.questions.length === 1 ? first.header : "Questions",
+      description: first.question,
+      args: {
+        questions: parsed.questions.map((item) => ({
+          question: item.question,
+          header: item.header,
+          options: item.options,
+          ...(item.multiSelect ? { multiSelect: true } : {}),
+          // "Other" is host-provided in Otto's question UI, never a
+          // model-supplied option - same contract as the Claude provider.
+          allowOther: true,
+        })),
+      },
+      detail,
+    });
+
+    if (response.behavior === "deny") {
+      // Dismissal ends the turn through the standard cancel path
+      // (settleTurnFailure sees the abort and emits turn_canceled); the
+      // recorded tool result keeps the conversation wire-valid for the next
+      // turn, which the user starts themselves in chat.
+      this.emitToolItem(turn, call, "canceled", detail, null);
+      turn.abort.abort();
+      return { text: "The user dismissed the questions and ended the turn.", isError: true };
+    }
+
+    const text =
+      formatAskUserQuestionAnswers(response.updatedInput, parsed.questions) ??
+      "The user acknowledged the questions but no answer was recorded. Proceed with your best judgment.";
+    this.emitToolItem(turn, call, "completed", { ...detail, output: text }, null);
+    return { text };
   }
 
   /**
@@ -3930,17 +4017,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         detail,
       });
       if (response.behavior === "deny") {
-        this.emitToolItem(turn, call, "failed", detail, "Denied by user");
-        if (response.interrupt) {
-          turn.abort.abort();
-        }
-        const message = response.message?.trim();
-        return {
-          text: message
-            ? `The user declined this tool call: ${message}`
-            : "The user declined this tool call.",
-          isError: true,
-        };
+        return this.deniedToolCallOutcome(turn, call, detail, response);
       }
     }
 
@@ -4011,17 +4088,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         detail,
       });
       if (response.behavior === "deny") {
-        this.emitToolItem(turn, call, "failed", detail, "Denied by user");
-        if (response.interrupt) {
-          turn.abort.abort();
-        }
-        const message = response.message?.trim();
-        return {
-          text: message
-            ? `The user declined this tool call: ${message}`
-            : "The user declined this tool call.",
-          isError: true,
-        };
+        return this.deniedToolCallOutcome(turn, call, detail, response);
       }
       // The user saw the resolved command and allowed it - stop prompting for
       // this exact command on later starts.
@@ -4116,13 +4183,15 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       description: string;
       args: Record<string, unknown>;
       detail: ToolCallDetail;
+      /** Defaults to "tool" (an approval prompt); "question" renders the shared question UI. */
+      kind?: AgentPermissionRequest["kind"];
     },
   ): Promise<AgentPermissionResponse> {
     const request: AgentPermissionRequest = {
       id: randomUUID(),
       provider: this.provider,
       name: input.name,
-      kind: "tool",
+      kind: input.kind ?? "tool",
       title: input.title,
       description: input.description,
       input: input.args,
@@ -4152,6 +4221,10 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     const toolSpecs = this.availableToolSpecs();
     const toolsPayload = [
       ...buildOpenAIToolsPayload(toolSpecs),
+      // The question tool needs an attendant: dontAsk runs have nobody to
+      // answer, so the model is never told it exists there. Every other mode
+      // (including read-only plan, where asking is exactly right) offers it.
+      ...(this.modeId !== "dontAsk" ? buildOpenAIToolsPayload([ASK_USER_QUESTION_TOOL_SPEC]) : []),
       ...this.buildOttoToolPayload(),
       ...this.buildMcpToolPayload(),
     ];

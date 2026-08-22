@@ -152,10 +152,14 @@ function buildPinnedDispatcher(target: ValidatedTarget): Agent {
  */
 export type CompatToolKind = "read" | "edit" | "execute" | "network";
 
-export interface CompatToolSpec {
+/** The OpenAI function-calling surface of a tool, without Otto's gating class. */
+export interface OpenAIFunctionSpec {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+}
+
+export interface CompatToolSpec extends OpenAIFunctionSpec {
   kind: CompatToolKind;
 }
 
@@ -321,7 +325,218 @@ export const COMPAT_TOOL_SPECS: CompatToolSpec[] = [
   },
 ];
 
-export function buildOpenAIToolsPayload(specs: CompatToolSpec[]): unknown[] {
+/**
+ * The human-in-the-loop question tool. It lives outside COMPAT_TOOL_SPECS on
+ * purpose: it has no CompatToolKind (asking is neither a read nor an action
+ * against the machine), never goes through the tool-approval gate - the
+ * question prompt IS the user interaction - and is executed by the agent's
+ * permission plumbing rather than executeCompatTool. The session hides it in
+ * dontAsk mode, where there is nobody to answer.
+ *
+ * The wire shape mirrors Otto's shared question UI (kind "question"
+ * permission requests) at full depth: up to 3 questions per call, each either
+ * single-select (2-3 options plus the host-provided free-form "Other") or
+ * multi-select checkboxes (2-4 options plus the host-provided custom entry).
+ */
+export const ASK_USER_QUESTION_TOOL_NAME = "ask_user_question";
+
+const MAX_ASK_USER_QUESTIONS = 3;
+const MAX_SINGLE_SELECT_OPTIONS = 3;
+const MAX_MULTI_SELECT_OPTIONS = 4;
+
+export const ASK_USER_QUESTION_TOOL_SPEC: OpenAIFunctionSpec = {
+  name: ASK_USER_QUESTION_TOOL_NAME,
+  description:
+    "Ask the user one or more multiple-choice questions and wait for their answers. Use this only " +
+    "when you are blocked on decisions you cannot resolve from the request, the code, or a " +
+    "sensible default - not for confirmations or choices with an obvious answer. Never include an " +
+    "'Other' option: the user always gets a free-form answer field automatically. If the user " +
+    "dismisses the questions the turn ends immediately so they can respond in chat.",
+  parameters: {
+    type: "object",
+    properties: {
+      questions: {
+        type: "array",
+        description: "1 to 3 questions to ask together.",
+        items: {
+          type: "object",
+          properties: {
+            question: {
+              type: "string",
+              description:
+                "The complete question to ask. Clear, specific, ends with a question mark.",
+            },
+            header: {
+              type: "string",
+              description:
+                "Very short topic label for the question, at most a few words (e.g. 'Approach'). Must be unique within the call.",
+            },
+            options: {
+              type: "array",
+              description:
+                "Distinct answer choices: 2-3 for a single-select question, 2-4 when multi_select is true.",
+              items: {
+                type: "object",
+                properties: {
+                  label: { type: "string", description: "Short display text for this choice" },
+                  description: {
+                    type: "string",
+                    description: "Optional explanation of what this choice means or implies",
+                  },
+                },
+                required: ["label"],
+              },
+            },
+            multi_select: {
+              type: "boolean",
+              description:
+                "Render checkboxes and let the user select several options (default false, meaning pick exactly one)",
+            },
+          },
+          required: ["question", "header", "options"],
+        },
+      },
+    },
+    required: ["questions"],
+  },
+};
+
+export interface AskUserQuestionItem {
+  question: string;
+  header: string;
+  options: Array<{ label: string; description?: string }>;
+  multiSelect: boolean;
+}
+
+export interface AskUserQuestionArgs {
+  questions: AskUserQuestionItem[];
+}
+
+/**
+ * Validate a model-supplied ask_user_question call. Local models are the
+ * primary callers, so failures return an instructive error string the model
+ * can correct on the next round instead of throwing.
+ */
+export function parseAskUserQuestionArgs(
+  args: Record<string, unknown>,
+): AskUserQuestionArgs | { error: string } {
+  if (
+    !Array.isArray(args.questions) ||
+    args.questions.length < 1 ||
+    args.questions.length > MAX_ASK_USER_QUESTIONS
+  ) {
+    return {
+      error: `ask_user_question requires a 'questions' array with 1 to ${MAX_ASK_USER_QUESTIONS} entries`,
+    };
+  }
+  const questions: AskUserQuestionItem[] = [];
+  const seenHeaders = new Set<string>();
+  for (const entry of args.questions) {
+    const item = parseAskUserQuestionItem(entry);
+    if ("error" in item) {
+      return item;
+    }
+    // Answers round-trip keyed by header, so a duplicate would make one
+    // question's answer unreadable.
+    if (seenHeaders.has(item.header)) {
+      return { error: `ask_user_question headers must be unique; '${item.header}' repeats` };
+    }
+    seenHeaders.add(item.header);
+    questions.push(item);
+  }
+  return { questions };
+}
+
+function parseAskUserQuestionItem(entry: unknown): AskUserQuestionItem | { error: string } {
+  const record = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : null;
+  const question = typeof record?.question === "string" ? record.question.trim() : "";
+  if (!question) {
+    return { error: "every ask_user_question entry needs a non-empty 'question' string" };
+  }
+  const header = typeof record?.header === "string" ? record.header.trim() : "";
+  if (!header) {
+    return {
+      error:
+        "every ask_user_question entry needs a non-empty 'header' string (a short topic label)",
+    };
+  }
+  const multiSelect = record?.multi_select === true;
+  const maxOptions = multiSelect ? MAX_MULTI_SELECT_OPTIONS : MAX_SINGLE_SELECT_OPTIONS;
+  const rawOptions = record?.options;
+  if (!Array.isArray(rawOptions) || rawOptions.length < 2 || rawOptions.length > maxOptions) {
+    return {
+      error: multiSelect
+        ? `a multi-select question takes 2 to ${MAX_MULTI_SELECT_OPTIONS} options (a custom write-in choice is added automatically)`
+        : `a single-select question takes 2 to ${MAX_SINGLE_SELECT_OPTIONS} options (an 'Other' free-form choice is added automatically)`,
+    };
+  }
+  const options = parseAskUserQuestionOptions(rawOptions);
+  if ("error" in options) {
+    return options;
+  }
+  return { question, header, options: options.options, multiSelect };
+}
+
+function parseAskUserQuestionOptions(
+  rawOptions: unknown[],
+): { options: Array<{ label: string; description?: string }> } | { error: string } {
+  const options: Array<{ label: string; description?: string }> = [];
+  for (const optionEntry of rawOptions) {
+    const optionRecord =
+      optionEntry && typeof optionEntry === "object"
+        ? (optionEntry as Record<string, unknown>)
+        : null;
+    const label = typeof optionRecord?.label === "string" ? optionRecord.label.trim() : "";
+    if (!label) {
+      return { error: "every ask_user_question option needs a non-empty 'label' string" };
+    }
+    const description =
+      typeof optionRecord?.description === "string" ? optionRecord.description.trim() : "";
+    options.push({ label, ...(description ? { description } : {}) });
+  }
+  return { options };
+}
+
+/**
+ * Render the user's answers out of the question UI's permission response as
+ * the tool result. The shared UI serializes answers as a record keyed by
+ * question header (multi-select answers arrive comma-joined; a free-form
+ * "Other" arrives as the typed text); the question text is accepted as a
+ * fallback key for parity with the Claude provider's normalizer. Returns null
+ * when no question received an answer.
+ */
+export function formatAskUserQuestionAnswers(
+  updatedInput: Record<string, unknown> | undefined,
+  questions: AskUserQuestionItem[],
+): string | null {
+  const answers =
+    updatedInput?.answers &&
+    typeof updatedInput.answers === "object" &&
+    !Array.isArray(updatedInput.answers)
+      ? (updatedInput.answers as Record<string, unknown>)
+      : null;
+  if (!answers) {
+    return null;
+  }
+  const lines: string[] = [];
+  for (const item of questions) {
+    let answer: string | null = null;
+    for (const key of [item.header, item.question]) {
+      const value = answers[key];
+      if (typeof value === "string" && value.trim().length > 0) {
+        answer = value.trim();
+        break;
+      }
+    }
+    lines.push(`- ${item.header}: ${answer ?? "(no answer)"}`);
+  }
+  if (lines.every((line) => line.endsWith(": (no answer)"))) {
+    return null;
+  }
+  return `The user answered:\n${lines.join("\n")}`;
+}
+
+export function buildOpenAIToolsPayload(specs: OpenAIFunctionSpec[]): unknown[] {
   return specs.map((spec) => ({
     type: "function",
     function: {

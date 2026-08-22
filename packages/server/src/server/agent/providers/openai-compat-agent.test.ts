@@ -1223,6 +1223,89 @@ async function startTwoToolCallEndpoint(): Promise<TestEndpoint & { requests: Re
 }
 
 /**
+ * Fake server whose first completion round streams an ask_user_question tool
+ * call and whose second round streams a plain text answer. Pass argsJson to
+ * override the question arguments (e.g. to exercise validation failures).
+ */
+async function startQuestionEndpoint(
+  argsJson?: string,
+): Promise<TestEndpoint & { requests: RecordedRequest[] }> {
+  const requests: RecordedRequest[] = [];
+  const args =
+    argsJson ??
+    JSON.stringify({
+      questions: [
+        {
+          question: "Which validation library should the importer use?",
+          header: "Validation",
+          options: [
+            { label: "Zod" },
+            { label: "Hand-rolled checks", description: "No new dependency" },
+          ],
+        },
+        {
+          question: "Which importer formats should be supported?",
+          header: "Formats",
+          multi_select: true,
+          options: [{ label: "CSV" }, { label: "JSON" }, { label: "XML" }],
+        },
+      ],
+    });
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "test-model-a" }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        requests.push(JSON.parse(body) as RecordedRequest);
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        if (requests.length === 1) {
+          res.write(
+            sseChunk({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "call_q",
+                        function: { name: "ask_user_question", arguments: args },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+            }),
+          );
+        } else {
+          res.write(
+            sseChunk({ choices: [{ delta: { content: "Understood." }, finish_reason: "stop" }] }),
+          );
+        }
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}`, requests };
+}
+
+/**
  * Fake server that streams `callsPerRound` identical grep_search calls (each
  * with an invalid regex, so every one fails deterministically) on every
  * completion round and never a final answer. Replicates the 2,912-call
@@ -1829,6 +1912,147 @@ describe("OpenAICompatAgentSession tool loop", () => {
     expect(failedItem).toBeDefined();
   });
 
+  test("ask_user_question pauses the turn and feeds the answer back to the model", async () => {
+    const endpoint = await startQuestionEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "default",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => {
+      events.push(event);
+      if (event.type === "permission_requested") {
+        void session.respondToPermission(event.request.id, {
+          behavior: "allow",
+          updatedInput: { answers: { Validation: "Zod", Formats: "CSV, JSON" } },
+        });
+      }
+    });
+
+    await session.run("Build the importer");
+
+    const request = events.flatMap((event) =>
+      event.type === "permission_requested" ? [event.request] : [],
+    )[0];
+    expect(request?.kind).toBe("question");
+    expect(request?.name).toBe("ask_user_question");
+    const questions = (request?.input?.questions ?? []) as unknown[];
+    expect(questions).toHaveLength(2);
+    expect(questions[0]).toEqual(
+      expect.objectContaining({
+        question: "Which validation library should the importer use?",
+        header: "Validation",
+        allowOther: true,
+      }),
+    );
+    expect(questions[1]).toEqual(
+      expect.objectContaining({ header: "Formats", multiSelect: true, allowOther: true }),
+    );
+
+    const toolMessage = endpoint.requests[1]!.messages.find((message) => message.role === "tool");
+    expect(String(toolMessage?.content)).toBe(
+      "The user answered:\n- Validation: Zod\n- Formats: CSV, JSON",
+    );
+    const completedItem = events.find(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "tool_call" &&
+        event.item.status === "completed",
+    );
+    expect(completedItem).toBeDefined();
+  });
+
+  test("dismissing ask_user_question ends the turn and returns control to the user", async () => {
+    const endpoint = await startQuestionEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "default",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => {
+      events.push(event);
+      if (event.type === "permission_requested") {
+        void session.respondToPermission(event.request.id, { behavior: "deny" });
+      }
+    });
+
+    const result = await session.run("Build the importer");
+
+    // Dismissal cancels the turn - the model gets no follow-up round; the
+    // user continues themselves in chat.
+    expect(result.canceled).toBe(true);
+    expect(events.some((event) => event.type === "turn_canceled")).toBe(true);
+    expect(endpoint.requests).toHaveLength(1);
+    const canceledItem = events.find(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "tool_call" &&
+        event.item.status === "canceled",
+    );
+    expect(canceledItem).toBeDefined();
+  });
+
+  test("dontAsk hides ask_user_question and denies a stray call", async () => {
+    const endpoint = await startQuestionEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "dontAsk",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Build the importer");
+
+    const toolNames = (endpoint.requests[0]?.tools ?? []).map(
+      (tool) => (tool as { function: { name: string } }).function.name,
+    );
+    expect(toolNames).not.toContain("ask_user_question");
+    // The scripted model calls it anyway; the unattended denial answers with
+    // no permission traffic, like any other prompting tool in dontAsk.
+    expect(events.some((event) => event.type === "permission_requested")).toBe(false);
+    const toolMessage = endpoint.requests[1]!.messages.find((message) => message.role === "tool");
+    expect(String(toolMessage?.content)).toContain("Don't Ask mode");
+  });
+
+  test("invalid ask_user_question arguments come back as a correctable tool error", async () => {
+    const endpoint = await startQuestionEndpoint(
+      // Four options on a single-select question - only multi-select takes 4.
+      JSON.stringify({
+        questions: [
+          {
+            question: "Pick one?",
+            header: "Pick",
+            options: [{ label: "A" }, { label: "B" }, { label: "C" }, { label: "D" }],
+          },
+        ],
+      }),
+    );
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "default",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Build the importer");
+
+    expect(events.some((event) => event.type === "permission_requested")).toBe(false);
+    const toolMessage = endpoint.requests[1]!.messages.find((message) => message.role === "tool");
+    expect(String(toolMessage?.content)).toContain("2 to 3 options");
+  });
+
   test("plan mode only offers read tools", async () => {
     const endpoint = await startToolEndpoint();
     const client = createClient(endpoint.baseUrl);
@@ -1844,7 +2068,14 @@ describe("OpenAICompatAgentSession tool loop", () => {
     const toolNames = (endpoint.requests[0]?.tools ?? []).map(
       (tool) => (tool as { function: { name: string } }).function.name,
     );
-    expect(toolNames).toEqual(["read_file", "list_dir", "grep_search", "web_search", "web_fetch"]);
+    expect(toolNames).toEqual([
+      "read_file",
+      "list_dir",
+      "grep_search",
+      "web_search",
+      "web_fetch",
+      "ask_user_question",
+    ]);
   });
 
   test("disabling the web tool group hides web_search and web_fetch", async () => {
@@ -1870,8 +2101,9 @@ describe("OpenAICompatAgentSession tool loop", () => {
       (tool) => (tool as { function: { name: string } }).function.name,
     );
     // Plan mode already limits to read tools; disabling the web group drops
-    // web_search/web_fetch, leaving the three core read builtins.
-    expect(toolNames).toEqual(["read_file", "list_dir", "grep_search"]);
+    // web_search/web_fetch, leaving the three core read builtins plus the
+    // group-independent question tool.
+    expect(toolNames).toEqual(["read_file", "list_dir", "grep_search", "ask_user_question"]);
 
     await session.close();
   });
@@ -2381,7 +2613,14 @@ describe("OpenAICompatAgentSession MCP tools", () => {
 
     await session.run("Look around");
     const names = toolPayloadNames(endpoint.completionBodies[0] as unknown as RecordedRequest);
-    expect(names).toEqual(["read_file", "list_dir", "grep_search", "web_search", "web_fetch"]);
+    expect(names).toEqual([
+      "read_file",
+      "list_dir",
+      "grep_search",
+      "web_search",
+      "web_fetch",
+      "ask_user_question",
+    ]);
 
     await session.close();
   });
