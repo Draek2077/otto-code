@@ -189,7 +189,7 @@ export function SidebarFooterNavRow({
   // Every state - idle included - carries the state's own sentence, so the
   // tooltip reads "Brain - idle" at rest rather than dropping the state. With
   // two slots working the sentence names each half; three or more just count.
-  const brainLabel = resolveBrainActivityLabel(brainRail.activity);
+  const brainLabel = brainRail.label ?? resolveBrainActivityLabel(brainRail.activity);
 
   return (
     <View style={styles.footerBar}>

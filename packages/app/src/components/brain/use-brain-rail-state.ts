@@ -96,7 +96,12 @@ export function useBrainRail() {
     deriveBrainState(status),
     config?.brain.enabled,
   );
-  const activity: BrainRailActivity = deriveBrainActivity(status);
+  // A disabled Brain presents as disabled no matter what a stale status still
+  // says: the presentation's state and label own the picture, so the per-slot
+  // activity collapses to that single state instead of animating live slots.
+  const activity: BrainRailActivity = presentation.disabled
+    ? { kind: "single", state: presentation.state }
+    : deriveBrainActivity(status);
 
   return { ...presentation, activity, serverId };
 }

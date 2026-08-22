@@ -52,7 +52,9 @@ export function WorkspaceBrainButton() {
   const rail = useBrainRail();
   // Same wording rule as the sidebar footer: the sentence is the state's own.
   // Two active slots name each half; three or more just count themselves.
-  const label = resolveBrainActivityLabel(rail.activity);
+  // The presentation label wins when set: it carries the disabled wording,
+  // which no activity state can express.
+  const label = rail.label ?? resolveBrainActivityLabel(rail.activity);
   const { disabled, serverId } = rail;
 
   const handlePress = useCallback(() => {
