@@ -478,12 +478,10 @@ function HeaderIconTooltipContent({
 
 interface SidebarNavigationGridProps {
   labels: SidebarLabels;
-  isSessionsActive: boolean;
   isArtifactsActive: boolean;
   isRunsActive: boolean;
   isSchedulesActive: boolean;
   isKanbanActive: boolean;
-  onViewSessions: () => void;
   onViewArtifacts: () => void;
   onViewRuns: () => void;
   onViewSchedules: () => void;
@@ -515,12 +513,10 @@ function SidebarNavigationHeader({
 
 function SidebarNavigationGrid({
   labels,
-  isSessionsActive,
   isArtifactsActive,
   isRunsActive,
   isSchedulesActive,
   isKanbanActive,
-  onViewSessions,
   onViewArtifacts,
   onViewRuns,
   onViewSchedules,
@@ -529,17 +525,6 @@ function SidebarNavigationGrid({
 }: SidebarNavigationGridProps) {
   return (
     <View style={styles.sidebarNavigationGrid}>
-      <SidebarHeaderRow
-        icon={History}
-        label={labels.sessions}
-        onPress={onViewSessions}
-        isActive={isSessionsActive}
-        testID="sidebar-sessions"
-        variant="compact"
-        containerStyle={styles.sidebarNavigationItemFullWidth}
-        contentAlignment={isSingleColumn ? "start" : "center"}
-        allowLabelWrap
-      />
       <View
         style={[
           styles.sidebarNavigationGridRow,
@@ -741,12 +726,10 @@ function MobileSidebar({
           <SidebarNavigationHeader
             onBeforeNavigate={closeSidebar}
             labels={labels}
-            isSessionsActive={isSessionsActive}
             isArtifactsActive={isArtifactsActive}
             isRunsActive={isRunsActive}
             isSchedulesActive={isSchedulesActive}
             isKanbanActive={isKanbanActive}
-            onViewSessions={handleViewMore}
             onViewArtifacts={handleViewArtifacts}
             onViewRuns={handleViewRuns}
             onViewSchedules={handleViewSchedules}
@@ -756,6 +739,9 @@ function MobileSidebar({
         <WorkspacesSectionHeader
           onAddProject={handleOpenProject}
           addProjectLabel={labels.addProject}
+          onViewHistory={handleViewMore}
+          historyLabel={labels.sessions}
+          isHistoryActive={isSessionsActive}
         />
         <Pressable
           style={styles.mobileCloseButton}
@@ -968,12 +954,10 @@ function DesktopSidebar({
           <View style={styles.sidebarHeaderGroup}>
             <SidebarNavigationHeader
               labels={labels}
-              isSessionsActive={isSessionsActive}
               isArtifactsActive={isArtifactsActive}
               isRunsActive={isRunsActive}
               isSchedulesActive={isSchedulesActive}
               isKanbanActive={isKanbanActive}
-              onViewSessions={handleViewMore}
               onViewArtifacts={handleViewArtifacts}
               onViewRuns={handleViewRuns}
               onViewSchedules={handleViewSchedules}
@@ -984,6 +968,9 @@ function DesktopSidebar({
         <WorkspacesSectionHeader
           onAddProject={handleOpenProject}
           addProjectLabel={labels.addProject}
+          onViewHistory={handleViewMore}
+          historyLabel={labels.sessions}
+          isHistoryActive={isSessionsActive}
         />
 
         {isInitialLoad ? (
@@ -1035,9 +1022,15 @@ function DesktopSidebar({
 function WorkspacesSectionHeader({
   onAddProject,
   addProjectLabel,
+  onViewHistory,
+  historyLabel,
+  isHistoryActive,
 }: {
   onAddProject: () => void;
   addProjectLabel: string;
+  onViewHistory: () => void;
+  historyLabel: string;
+  isHistoryActive: boolean;
 }) {
   const { theme } = useUnistyles();
   const workspacesAnchorRef = useTutorialAnchor("workspaces");
@@ -1054,6 +1047,14 @@ function WorkspacesSectionHeader({
       (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
     ],
     [],
+  );
+  const historyIconButtonStyle = useCallback(
+    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.workspacesHeaderIconButton,
+      isHistoryActive && styles.workspacesHeaderIconButtonActive,
+      (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
+    ],
+    [isHistoryActive],
   );
 
   return (
@@ -1084,6 +1085,33 @@ function WorkspacesSectionHeader({
           </TooltipTrigger>
           <TooltipContent side="left" align="center" offset={8}>
             <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={addProjectLabel} />
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={historyLabel}
+              testID="sidebar-sessions"
+              style={historyIconButtonStyle}
+              onPress={onViewHistory}
+            >
+              {({ hovered, pressed }) => (
+                <View style={styles.workspacesHeaderShortcutAnchor}>
+                  <History
+                    size={iconSize.sm}
+                    color={
+                      hovered || pressed || isHistoryActive
+                        ? theme.colors.foreground
+                        : theme.colors.foregroundMuted
+                    }
+                  />
+                </View>
+              )}
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side="left" align="center" offset={8}>
+            <HeaderIconTooltipContent label={historyLabel} />
           </TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={300}>
@@ -1146,9 +1174,7 @@ const styles = StyleSheet.create((theme) => ({
   sidebarHeaderGroup: {
     paddingTop: theme.spacing[2],
     gap: theme.spacing[1],
-    // Distance from History's bottom edge to the divider. WorkspacesSectionHeader
-    // uses a slightly smaller paddingTop to balance the action buttons' centering
-    // offset so the divider reads as visually centered between the two.
+    // Keep the navigation group compact above the Workspaces section.
     paddingBottom: theme.spacing[1.5],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -1172,9 +1198,6 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     paddingHorizontal: 0,
   },
-  sidebarNavigationItemFullWidth: {
-    width: "100%",
-  },
   workspacesSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1186,9 +1209,8 @@ const styles = StyleSheet.create((theme) => ({
     // Align the trailing action pill's right edge with the New workspace and
     // project row pills (both 8px from the sidebar edge).
     paddingRight: theme.spacing[2],
-    // Less than sidebarHeaderGroup's paddingBottom: the 28px-tall action buttons
-    // center the title and add their own offset above it, so equal padding reads
-    // as a larger gap than History's. Trim paddingTop to balance it visually.
+    // The 28px-tall action buttons center the title and add their own offset
+    // above it, so trim the top padding to keep the section compact.
     paddingTop: theme.spacing[1],
     paddingBottom: theme.spacing[1],
   },
@@ -1215,6 +1237,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspacesHeaderIconButtonHovered: {
     backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  workspacesHeaderIconButtonActive: {
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
   },
   workspacesHeaderShortcutAnchor: {
     position: "relative",

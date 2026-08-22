@@ -5,13 +5,13 @@ title: "Sidebar navigation shortcuts use two columns"
 status: "confirmed"
 tags: ["ui","sidebar","mobile","android","workspaces","layout"]
 created_at: "2026-08-21T15:02:58.385Z"
-updated_at: "2026-08-21T22:02:07.275Z"
+updated_at: "2026-08-22T15:04:36.348Z"
 ---
 # Sidebar navigation shortcuts use two columns
 
 <!-- compiled_truth -->
 
-The sidebar keeps History as a full-width primary shortcut. In the two-column layout, its icon and label are centered. Below it, Artifacts, Kanban, Schedules, and Workflows are shown alphabetically in an explicit two-column maximum on desktop and the compact mobile sidebar. Workflows is a sidebar-only temporary display label; the wider product terminology remains unchanged. When the available sidebar width cannot support two compact rows, all five shortcuts collapse to one column and History returns to left alignment. Each shortcut retains a full compact-row touch target; labels wrap rather than truncate with an ellipsis. The top-menu New workspace shortcut is hidden. This returns vertical space to the Workspaces list.
+The sidebar's top navigation shortcut grid contains Artifacts, Kanban, Schedules, and Workflows in an explicit two-column maximum on desktop and the compact mobile sidebar. Workflows is a sidebar-only temporary display label; the wider product terminology remains unchanged. When the available sidebar width cannot support two compact rows, the four shortcuts collapse to one column and restore the top controls' left alignment. Each shortcut retains a full compact-row touch target; labels wrap rather than truncate with an ellipsis. The top-menu New workspace shortcut is hidden. History is instead an icon-only action in the Workspaces header immediately after New Project, using the History icon, localized label and tooltip, existing navigation behavior and test identifier, plus an active-state surface. This returns vertical space to the Workspaces list.
 
 ## Timeline
 
@@ -43,3 +43,7 @@ The sidebar keeps History as a full-width primary shortcut. In the two-column la
   kind: "evidence"
   summary: "User refinement, 2026-08-21: the top-left sidebar navigation uses a consistent 4px rhythm between the team picker and History, between navigation rows, and between the two columns. Implemented with theme.spacing[1] gaps on the navigation header/grid/rows; the previous split side paddings were removed so the column gap is exactly 4px."
   source: "packages/app/src/components/left-sidebar.tsx"
+- time: "2026-08-22T15:04:36.348Z"
+  kind: "decision"
+  summary: "User requested on 2026-08-22 that History move from the top-left navigation menu into the Workspaces action series after New Project. Implemented and verified in packages/app/src/components/left-sidebar.tsx with targeted formatting, lint, and app typecheck passing."
+  source: "User request, 2026-08-22; packages/app/src/components/left-sidebar.tsx"
