@@ -199,11 +199,11 @@ describe("supervisor durable logging", () => {
         if (!existsSync(marker)) {
           writeFileSync(marker, "started");
           setTimeout(() => {
-            process.send?.({ type: "paseo:shutdown", reason: "silent_worker_test_complete" });
+            process.send?.({ type: "otto:shutdown", reason: "silent_worker_test_complete" });
           }, 16_000);
           setInterval(() => {}, 1_000);
         } else {
-          process.send?.({ type: "paseo:shutdown", reason: "unexpected_silent_worker_restart" });
+          process.send?.({ type: "otto:shutdown", reason: "unexpected_silent_worker_restart" });
           setInterval(() => {}, 1_000);
         }
       `,
@@ -223,7 +223,7 @@ describe("supervisor durable logging", () => {
         timeoutMs: 15_000,
         workerSource: `
           process.on("SIGTERM", () => {});
-          process.send?.({ type: "paseo:shutdown", reason: "stalled_worker_shutdown" });
+          process.send?.({ type: "otto:shutdown", reason: "stalled_worker_shutdown" });
           setInterval(() => {}, 1_000);
         `,
       });
@@ -259,7 +259,7 @@ describe("supervisor durable logging", () => {
             process.send?.({ type: "paseo:restart", reason: "stdio_descendant" });
             setInterval(() => {}, 1000);
           } else {
-            process.send?.({ type: "paseo:shutdown", reason: "stdio_restart_complete" });
+            process.send?.({ type: "otto:shutdown", reason: "stdio_restart_complete" });
             setInterval(() => {}, 1000);
           }
         `,
