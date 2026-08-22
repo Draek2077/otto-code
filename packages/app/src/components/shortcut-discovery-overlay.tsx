@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -31,6 +32,7 @@ import { buildEffectiveBindings } from "@/keyboard/keyboard-shortcuts";
 import { buildShortcutDiscoveryEntries } from "@/keyboard/shortcut-discovery";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getShortcutOs } from "@/utils/shortcut-platform";
+import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
 
 type ShortcutDiscoveryAction = ReturnType<typeof buildShortcutDiscoveryEntries>[number]["action"];
 
@@ -280,7 +282,7 @@ export function ShortcutDiscoveryOverlay() {
     return null;
   }
 
-  return (
+  const overlay = (
     <View pointerEvents="box-none" style={styles.overlay} testID="shortcut-discovery-overlay">
       <View accessibilityLiveRegion="polite" pointerEvents="auto" style={styles.panel}>
         <Text style={styles.title}>{t("settings.shortcuts.dialogTitle")}</Text>
@@ -301,6 +303,13 @@ export function ShortcutDiscoveryOverlay() {
       </View>
     </View>
   );
+
+  // Electron browser tabs live in a body-level webview plane. Rendering this
+  // app-wide sheet under the normal React root lets that plane obscure any
+  // portion that crosses into a browser pane. The shared overlay root is
+  // explicitly above browser surfaces and keeps the sheet centered on the
+  // whole workspace, independent of the focused pane.
+  return typeof document !== "undefined" ? createPortal(overlay, getOverlayRoot()) : overlay;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -313,7 +322,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 1000,
+    zIndex: OVERLAY_Z.floating,
     alignItems: "center",
     justifyContent: "center",
     padding: theme.spacing[6],

@@ -3,11 +3,10 @@ id: "contextual-shortcut-discovery"
 kind: "requirement"
 title: "Contextual shortcut discovery reveals currently available commands"
 status: "confirmed"
-tags: ["keyboard", "shortcuts", "discoverability", "focus", "ux"]
+tags: ["keyboard","shortcuts","discoverability","focus","ux"]
 created_at: "2026-08-14T00:44:23.691Z"
-updated_at: "2026-08-14T05:09:32.391Z"
+updated_at: "2026-08-22T19:19:27.305Z"
 ---
-
 # Contextual shortcut discovery reveals currently available commands
 
 <!-- compiled_truth -->
@@ -142,4 +141,9 @@ This requirement is confirmed. The first vertical slice is built; broad UI ancho
   kind: "evidence"
   summary: "User screenshot showed top-edge reveal badges positioned beyond the floating surface when a trigger used a negative local offset. Portal placement now clamps every badge coordinate to a 4px inset inside the floating host on all four edges. Added pure regression tests for top and trailing-edge clamping. Targeted lint, formatting, app typecheck, and 232 focused tests passed."
   source: "implementation"
+  affects: ["contextual-shortcut-discovery"]
+- time: "2026-08-22T19:19:27.305Z"
+  kind: "evidence"
+  summary: "Fixed the centered shortcut-discovery fallback when an Electron browser tab occupies a split pane. Browser webviews are mounted in a body-level browser plane; the sheet previously stayed in the React root and could be painted beneath the webview. `ShortcutDiscoveryOverlay` now portals to the shared overlay root, whose plane is above browser surfaces, so the sheet remains whole and centered across the workspace. Targeted lint, app typecheck, focused shortcut-overlay tests, and `git diff --check` passed."
+  source: "Implementation and targeted verification, 2026-08-22"
   affects: ["contextual-shortcut-discovery"]
