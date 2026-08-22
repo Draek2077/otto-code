@@ -129,9 +129,9 @@ describe("teamRoleUnion", () => {
     expect(teamRoleUnion(crew, roster)).toEqual(["chatter", "scheduler", "writer", "orchestrator"]);
   });
 
-  test("normalizes legacy role names from members", () => {
+  test("drops retired role names from members", () => {
     const legacy = makePersonality({ id: "p-old", roles: ["worker"] });
-    expect(teamRoleUnion({ memberIds: ["p-old"] }, [legacy])).toEqual(["coder"]);
+    expect(teamRoleUnion({ memberIds: ["p-old"] }, [legacy])).toEqual([]);
   });
 });
 
