@@ -1005,7 +1005,6 @@ interface SheetAgentControlsContentProps {
 }
 
 function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const {
     provider,
@@ -1140,7 +1139,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           testID="agent-controls-features"
         >
           <ComposerToolbarGlyph size={glyphSize}>
-            <Settings2 size={glyphSize} color={theme.colors.foregroundMuted} />
+            <Settings2 size={glyphSize} color={styles.featuresIcon.color} />
           </ComposerToolbarGlyph>
         </Pressable>
       ) : null}
@@ -1864,6 +1863,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.4,
+  },
+  featuresIcon: {
+    color: theme.colors.foregroundMuted,
   },
   combinedSheetControls: {
     gap: theme.spacing[1],

@@ -22,13 +22,12 @@ import {
 // matched run and nothing else. Everything structural (headings, lists, links,
 // annotation targets) is left to whichever rules were already in play.
 
-const SEGMENT_HIGHLIGHT_STYLE = {
-  active: findHighlightStyles.active,
-  match: findHighlightStyles.match,
-} as const;
-
 function HighlightedSegment({ segment }: { segment: MatchedTextSegment }) {
-  const style = segment.highlight ? SEGMENT_HIGHLIGHT_STYLE[segment.highlight] : undefined;
+  const segmentHighlightStyle = {
+    active: findHighlightStyles.active,
+    match: findHighlightStyles.match,
+  } as const;
+  const style = segment.highlight ? segmentHighlightStyle[segment.highlight] : undefined;
   return <Text style={style}>{segment.text}</Text>;
 }
 
