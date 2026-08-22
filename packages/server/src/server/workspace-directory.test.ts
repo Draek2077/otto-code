@@ -686,6 +686,7 @@ describe("WorkspaceDirectory hidden workspaces", () => {
       projectRegistry: { list: async () => input.projects },
       workspaceRegistry: { list: async () => workspaces },
       listAgentPayloads: async () => [],
+      listProviderSubagentActivity: async () => [],
       listTerminalActivityContributions: async () => [],
       isProviderVisibleToClient: () => true,
       buildWorkspaceDescriptor: async ({ workspace }) => ({
@@ -857,6 +858,7 @@ describe("WorkspaceDirectory scoped descriptor rebuild", () => {
             scope.agentIds?.has(agent.id),
         );
       },
+      listProviderSubagentActivity: async () => [],
       listTerminalActivityContributions: async () => [],
       isProviderVisibleToClient: () => true,
       buildWorkspaceDescriptor: async ({ workspace }) => ({
