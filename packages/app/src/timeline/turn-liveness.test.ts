@@ -75,4 +75,14 @@ describe("turn activity", () => {
       turnId: null,
     });
   });
+
+  it("keeps the working indicator active while the agent status is running", () => {
+    const fallbackStart = new Date("2026-08-21T12:00:00.000Z");
+    expect(resolveTurnPresentation(TURN_LIVENESS_IDLE, false, true, fallbackStart)).toEqual({
+      isActive: true,
+      isCancelling: false,
+      startedAt: fallbackStart,
+      turnId: null,
+    });
+  });
 });

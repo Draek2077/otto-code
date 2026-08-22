@@ -29,6 +29,7 @@ import {
   Copy,
   Ellipsis,
   FileText,
+  GitBranch,
   Globe,
   Import as ImportIcon,
   PanelRight,
@@ -290,6 +291,7 @@ const EMPTY_UI_TABS: WorkspaceTab[] = [];
 const EMPTY_WORKSPACE_SCRIPTS: WorkspaceDescriptor["scripts"] = [];
 const EMPTY_PINNED_AGENT_IDS = new Set<string>();
 const EMPTY_SET = new Set<string>();
+const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL?.trim() || null;
 
 function getWorkspaceScripts(
   workspaceDescriptor: WorkspaceDescriptor | null | undefined,
@@ -333,6 +335,7 @@ const ThemedEllipsis = withUnistyles(Ellipsis);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedFileText = withUnistyles(FileText);
+const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
@@ -361,6 +364,7 @@ const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foregrou
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 // Matches the selected-tab icon accent in the desktop tabs row (WorkspaceTabIcon).
 const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright });
+const accentForegroundColorMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
 // Size-folding variants: `uniProps` mappings read the live theme, so folding
 // `theme.iconSize.*` into the mapping keeps these icons reactive to the compact
 // (mobile) icon-doubling patch - a plain `size={16}` prop is a frozen literal.
@@ -1734,6 +1738,19 @@ function WorkspaceHeaderTitleBar({
           onOpenContextManagement={onOpenContextManagement}
           onOpenProjectKnowledge={onOpenProjectKnowledge}
         />
+        {!isMobile && DEV_BUILD_LABEL ? (
+          <View
+            pointerEvents="none"
+            style={styles.devBuildBadge}
+            testID="dev-build-label"
+            accessibilityLabel={`Development build: ${DEV_BUILD_LABEL}`}
+          >
+            <ThemedGitBranch size={12} uniProps={accentForegroundColorMapping} />
+            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.devBuildBadgeText}>
+              {DEV_BUILD_LABEL}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <View style={styles.compactHeaderMenuCluster}>
         <WorkspaceTeamChatButton
@@ -5028,6 +5045,25 @@ const styles = StyleSheet.create((theme) => ({
       xs: 0,
       md: theme.spacing[2],
     },
+  },
+  devBuildBadge: {
+    maxWidth: "40%",
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: 2,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.accent,
+    flexShrink: 1,
+  },
+  devBuildBadgeText: {
+    minWidth: 0,
+    flexShrink: 1,
+    color: theme.colors.accentForeground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
   },
   // No width cap. A percentage cap resolves against the title group, whose own width comes from
   // this row's content, so it clips the project name while there is still room beside it.

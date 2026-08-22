@@ -343,6 +343,7 @@ export function WorkspaceDraftAgentTab({
   onOpenImportSheet,
 }: WorkspaceDraftAgentTabProps) {
   const { t } = useTranslation();
+  const isCompactFormFactor = useIsCompactFormFactor();
   const isBlackChat = useBlackChatScope();
   const insets = useSafeAreaInsets();
   const [pendingWakeWordAutoStart, setPendingWakeWordAutoStart] = useState(() =>
@@ -440,7 +441,6 @@ export function WorkspaceDraftAgentTab({
     };
   }, [pendingAutoSubmit, pendingCreateAttempt]);
   const allowsEmptyAutoSubmit = pendingAutoSubmit?.allowEmptyText === true;
-  const isCompactFormFactor = useIsCompactFormFactor();
   const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
     COMPACT_FORM_FACTOR_WIDTH,
     { initialIsBelow: isCompactFormFactor },

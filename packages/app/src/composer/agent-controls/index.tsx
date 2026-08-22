@@ -15,8 +15,6 @@ import {
   Text,
   Pressable,
   Keyboard,
-  useWindowDimensions,
-  type LayoutChangeEvent,
   type PressableStateCallbackType,
   type StyleProp,
   type ViewStyle,
@@ -24,6 +22,10 @@ import {
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
 import { Settings2 } from "@/components/icons/material-icons";
+import {
+  canFitCompactFeatures,
+  useComposerToolbarWidth,
+} from "@/composer/input/toolbar-width-context";
 import { getAgentFeatureIcon, ThinkingIcon } from "@/agent-controls/icons";
 import { formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
@@ -65,17 +67,15 @@ import {
   resolveAgentModelSelection,
 } from "@/composer/agent-controls/utils";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { readMeasuredWidth } from "@/hooks/use-container-width";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import { useAgentControlCommandCenterActions } from "@/command-center/agent-control-registration";
 import { isNative } from "@/constants/platform";
+import { compactUp } from "@/styles/theme";
 import {
-  resolveComposerControlDensity,
   resolveComposerControlPresentation,
   resolveComposerToolbarGlyphSize,
-  type ComposerControlDensity,
   type ComposerControlPresentation,
 } from "@/composer/agent-controls/layout";
 import { ComposerControlLayoutProvider } from "@/composer/agent-controls/layout-context";
@@ -473,13 +473,8 @@ function ControlledAgentControls({
   const { t } = useTranslation();
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
-  const { fontScale } = useWindowDimensions();
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
   const [openSelector, setOpenSelector] = useState<AgentControlSelector | null>(null);
-  const initialDensity: ComposerControlDensity = isCompact ? "tight" : "full";
-  const [density, setDensity] = useState<ComposerControlDensity>(initialDensity);
-  const densityRef = useRef<ComposerControlDensity>(initialDensity);
-  const availableWidthRef = useRef(0);
 
   const providerAnchorRef = useRef<View>(null);
   const _modelAnchorRef = useRef<View>(null);
@@ -515,66 +510,17 @@ function ControlledAgentControls({
     features,
     hasMode: modeControl !== null && modeControl !== undefined,
   });
-  const featureControls = useMemo(
-    () =>
-      (features ?? []).map((feature) => {
-        if (feature.type === "toggle") return { type: "toggle" as const };
-        const selectedOption = feature.options.find((option) => option.id === feature.value);
-        return {
-          type: "select" as const,
-          label: selectedOption?.label ?? feature.label,
-        };
-      }),
-    [features],
-  );
-  const controlPresence = useMemo(
-    () => ({
-      hasModel: canSelectModel,
-      hasThinking: canSelectThinking,
-      hasMode: modeControl !== null && modeControl !== undefined,
-      features: featureControls,
-      fontScale,
-    }),
-    [canSelectModel, canSelectThinking, featureControls, fontScale, modeControl],
-  );
-  const presentation = useMemo(() => resolveComposerControlPresentation(density), [density]);
+  // The composer owns responsive behavior: controls keep their full intrinsic
+  // geometry and the complete toolbar scales only after the row cannot fit.
+  // Do not collapse labels or aggregate features from a child measurement.
+  const presentation = useMemo(() => resolveComposerControlPresentation("full"), []);
   const layoutContextValue = useMemo(
     () => ({
-      glyphSize: resolveComposerToolbarGlyphSize(isNative ? "native" : "web"),
+      glyphSize: resolveComposerToolbarGlyphSize(isNative ? "native" : "web", isCompact),
       presentation,
     }),
-    [presentation],
+    [isCompact, presentation],
   );
-
-  const updateDensityForWidth = useCallback(
-    (availableWidth: number) => {
-      const nextDensity = resolveComposerControlDensity({
-        availableWidth,
-        currentDensity: densityRef.current,
-        controls: controlPresence,
-      });
-      if (nextDensity === densityRef.current) return;
-      densityRef.current = nextDensity;
-      setDensity(nextDensity);
-    },
-    [controlPresence],
-  );
-
-  const handleLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      const availableWidth = readMeasuredWidth(event);
-      if (availableWidth === null) return;
-      availableWidthRef.current = availableWidth;
-      updateDensityForWidth(availableWidth);
-    },
-    [updateDensityForWidth],
-  );
-
-  useEffect(() => {
-    if (availableWidthRef.current > 0) {
-      updateDensityForWidth(availableWidthRef.current);
-    }
-  }, [updateDensityForWidth]);
 
   const modelDisabled = disabled;
 
@@ -699,7 +645,7 @@ function ControlledAgentControls({
 
   return (
     <ComposerControlLayoutProvider value={layoutContextValue}>
-      <View style={styles.container} onLayout={handleLayout}>
+      <View style={styles.container}>
         {!isCompact ? (
           <DesktopAgentControlsContent
             provider={provider}
@@ -854,7 +800,6 @@ interface DesktopAgentControlsContentProps {
 const DESKTOP_SEARCH_THRESHOLD = 6;
 
 function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const {
     provider,
@@ -897,21 +842,11 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     handleProviderOpenChange,
     handleThinkingOpenChange,
     handleOpenChange,
-    handleNestedOpenChange,
     renderThinkingOption,
     modeControl,
     presentation,
-    glyphSize,
-    activeSheet,
-    handleOpenSheet,
-    handleCloseSheet,
     modelSelectorServerId,
   } = props;
-  const featuresSheetHeader = useMemo<SheetHeader>(
-    () => ({ title: t("agentControls.features.title") }),
-    [t],
-  );
-  const handleOpenFeatures = useCallback(() => handleOpenSheet("features"), [handleOpenSheet]);
   return (
     <>
       {providerOptions && providerOptions.length > 0 ? (
@@ -1015,51 +950,17 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
 
       {modeControl ? <AgentModeControl {...modeControl} onClose={onDropdownClose} /> : null}
 
-      {presentation.aggregateFeatures && features?.length ? (
-        <>
-          <Pressable
-            onPress={handleOpenFeatures}
-            disabled={disabled}
-            style={styles.modeIconBadge}
-            accessibilityRole="button"
-            accessibilityLabel={t("agentControls.features.open")}
-            testID="agent-controls-features"
-          >
-            <ComposerToolbarGlyph size={glyphSize}>
-              <Settings2 size={glyphSize} color={theme.colors.foregroundMuted} />
-            </ComposerToolbarGlyph>
-          </Pressable>
-          <AdaptiveModalSheet
-            header={featuresSheetHeader}
-            visible={activeSheet === "features"}
-            onClose={handleCloseSheet}
-            testID="agent-features-sheet"
-          >
-            {features.map((feature) => (
-              <SheetFeatureItem
-                key={`feature-${feature.id}`}
-                feature={feature}
-                disabled={disabled}
-                openSelector={openSelector}
-                handleOpenChange={handleNestedOpenChange}
-                onSetFeature={onSetFeature}
-              />
-            ))}
-          </AdaptiveModalSheet>
-        </>
-      ) : (
-        features?.map((feature) => (
-          <DesktopFeatureItem
-            key={`feature-${feature.id}`}
-            feature={feature}
-            disabled={disabled}
-            openSelector={openSelector}
-            handleOpenChange={handleOpenChange}
-            onSetFeature={onSetFeature}
-            onActionComplete={onDropdownClose}
-          />
-        ))
-      )}
+      {features?.map((feature) => (
+        <DesktopFeatureItem
+          key={`feature-${feature.id}`}
+          feature={feature}
+          disabled={disabled}
+          openSelector={openSelector}
+          handleOpenChange={handleOpenChange}
+          onSetFeature={onSetFeature}
+          onActionComplete={onDropdownClose}
+        />
+      ))}
     </>
   );
 }
@@ -1104,6 +1005,7 @@ interface SheetAgentControlsContentProps {
 }
 
 function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
+  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const {
     provider,
@@ -1142,8 +1044,16 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
   const thinkingAnchorRef = useRef<View | null>(null);
 
   const hasThinking = comboboxThinkingOptions.length > 0;
+  const toolbarWidth = useComposerToolbarWidth();
+  const showFeatures =
+    Boolean(features && features.length > 0) && canFitCompactFeatures(toolbarWidth);
+  const featuresSheetHeader = useMemo<SheetHeader>(
+    () => ({ title: t("agentControls.features.title") }),
+    [t],
+  );
 
   const handleOpenThinking = useCallback(() => handleOpenSheet("thinking"), [handleOpenSheet]);
+  const handleOpenFeatures = useCallback(() => handleOpenSheet("features"), [handleOpenSheet]);
   const handleThinkingSheetOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
@@ -1155,16 +1065,44 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     [handleCloseSheet, handleOpenSheet],
   );
 
-  const sheetControls = (
-    <View style={styles.combinedSheetControls} testID="agent-controls-combined-sheet-controls">
+  useEffect(() => {
+    if (!showFeatures && activeSheet === "features") {
+      handleCloseSheet();
+    }
+  }, [activeSheet, handleCloseSheet, showFeatures]);
+
+  return (
+    <View style={styles.container} testID="agent-controls-compact-toolbar">
+      {canSelectModel ? (
+        <CompactModelSheet
+          providers={modelSelectorProviders}
+          selectedProvider={provider}
+          selectedModel={selectedModelId ?? ""}
+          onSelect={handleSheetModelSelect}
+          profiles={agentProfiles}
+          onApplyProfile={onApplyAgentProfile}
+          onEditProfiles={onEditAgentProfiles}
+          isLoading={isModelLoading}
+          disabled={modelDisabled}
+          onOpen={onModelSelectorOpen}
+          onClose={onDropdownClose}
+          onRetryProvider={onRetryModelProvider}
+          isRetryingProvider={isRetryingModelProvider}
+          serverId={modelSelectorServerId}
+          glyphSize={glyphSize}
+          iconOnly
+        />
+      ) : null}
+
       {hasThinking ? (
         <>
           <AgentControlTrigger
             ref={thinkingAnchorRef}
             icon={ThinkingIcon}
-            surface="sheet"
+            surface="toolbar"
             label={t("agentControls.thinking.title")}
             value={displayThinking}
+            showToolbarLabel={false}
             open={activeSheet === "thinking"}
             onPress={handleOpenThinking}
             disabled={disabled || !canSelectThinking}
@@ -1188,42 +1126,44 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
         </>
       ) : null}
 
-      {modeControl ? <AgentModeControl {...modeControl} surface="sheet" /> : null}
+      {modeControl ? (
+        <AgentModeControl {...modeControl} iconOnly onClose={onDropdownClose} />
+      ) : null}
 
-      {(features ?? []).map((feature) => (
-        <SheetFeatureItem
-          key={`feature-${feature.id}`}
-          feature={feature}
+      {showFeatures ? (
+        <Pressable
+          onPress={handleOpenFeatures}
           disabled={disabled}
-          openSelector={openSelector}
-          handleOpenChange={handleOpenChange}
-          onSetFeature={onSetFeature}
-        />
-      ))}
+          style={styles.modeIconBadge}
+          accessibilityRole="button"
+          accessibilityLabel={t("agentControls.features.open")}
+          testID="agent-controls-features"
+        >
+          <ComposerToolbarGlyph size={glyphSize}>
+            <Settings2 size={glyphSize} color={theme.colors.foregroundMuted} />
+          </ComposerToolbarGlyph>
+        </Pressable>
+      ) : null}
+
+      <AdaptiveModalSheet
+        header={featuresSheetHeader}
+        visible={showFeatures && activeSheet === "features"}
+        onClose={handleCloseSheet}
+        testID="agent-features-sheet"
+      >
+        {(features ?? []).map((feature) => (
+          <SheetFeatureItem
+            key={`feature-${feature.id}`}
+            feature={feature}
+            disabled={disabled}
+            openSelector={openSelector}
+            handleOpenChange={handleOpenChange}
+            onSetFeature={onSetFeature}
+          />
+        ))}
+      </AdaptiveModalSheet>
     </View>
   );
-
-  return canSelectModel ? (
-    <CompactModelSheet
-      providers={modelSelectorProviders}
-      selectedProvider={provider}
-      selectedModel={selectedModelId ?? ""}
-      onSelect={handleSheetModelSelect}
-      profiles={agentProfiles}
-      onApplyProfile={onApplyAgentProfile}
-      onEditProfiles={onEditAgentProfiles}
-      isLoading={isModelLoading}
-      disabled={modelDisabled}
-      onOpen={onModelSelectorOpen}
-      onClose={onDropdownClose}
-      onRetryProvider={onRetryModelProvider}
-      isRetryingProvider={isRetryingModelProvider}
-      serverId={modelSelectorServerId}
-      glyphSize={glyphSize}
-    >
-      {sheetControls}
-    </CompactModelSheet>
-  ) : null;
 }
 
 function DesktopFeatureItem({
@@ -1872,22 +1812,18 @@ export function DraftAgentControls({
 
 const styles = StyleSheet.create((theme) => ({
   container: {
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-    overflow: "hidden",
   },
   modeBadge: {
-    height: 28,
+    height: compactUp(28),
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "transparent",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius["2xl"],
+    gap: compactUp(theme.spacing[1]),
+    paddingHorizontal: compactUp(theme.spacing[2]),
+    borderRadius: theme.borderRadius.full,
   },
   modelControl: {
     minWidth: 0,
@@ -1899,8 +1835,8 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   modeIconBadge: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 0,

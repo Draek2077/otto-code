@@ -3,11 +3,10 @@ id: "remote-brain-functionality-is-host-owned-and-connection-neutral"
 kind: "requirement"
 title: "Remote Brain functionality is host-owned and connection-neutral"
 status: "confirmed"
-tags: ["brain", "remote", "client", "capabilities"]
+tags: ["brain","remote","client","capabilities"]
 created_at: "2026-08-09T03:37:01.390Z"
-updated_at: "2026-08-09T03:37:01.390Z"
+updated_at: "2026-08-22T01:40:03.469Z"
 ---
-
 # Remote Brain functionality is host-owned and connection-neutral
 
 <!-- compiled_truth -->
@@ -22,3 +21,13 @@ A Brain page connected through a daemon that proxies a configured remote brain m
 - time: "2026-08-09T03:37:01.390Z"
   kind: "evidence"
   summary: "User direction on 2026-08-08; implemented through the brain management API, daemon proxy, and Brain page."
+- time: "2026-08-22T01:29:58.961Z"
+  kind: "evidence"
+  summary: "Brain Overview Runtime now prefers the runtime identity carried by the Brain host status, so a remote Brain is not judged by the connected daemon's local runtime config or inventory. The protocol declares the additive `runtime` status field, and focused runtime-management coverage verifies installed and `not installed` host states."
+  source: "Implementation and focused regression coverage, 2026-08-21"
+  affects: ["remote-brain"]
+- time: "2026-08-22T01:40:03.469Z"
+  kind: "evidence"
+  summary: "Remote runtime management now reconciles the dialog with the Brain host’s live runtime identity and inventory rather than the proxy daemon’s local runtime configuration. The action is unavailable unless a remote Brain both responds with runtime state and advertises writable remote configuration; when permitted, runtime-install jobs continue through the host-owned daemon-to-Brain route."
+  source: "Implementation and focused regression coverage, 2026-08-21"
+  affects: ["remote-brain"]

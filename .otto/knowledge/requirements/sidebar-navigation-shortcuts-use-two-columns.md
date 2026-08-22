@@ -5,7 +5,7 @@ title: "Sidebar navigation shortcuts use two columns"
 status: "confirmed"
 tags: ["ui","sidebar","mobile","android","workspaces","layout"]
 created_at: "2026-08-21T15:02:58.385Z"
-updated_at: "2026-08-21T15:34:57.896Z"
+updated_at: "2026-08-21T22:02:07.275Z"
 ---
 # Sidebar navigation shortcuts use two columns
 
@@ -39,3 +39,7 @@ The sidebar keeps History as a full-width primary shortcut. In the two-column la
   kind: "decision"
   summary: "User requested a sidebar-only temporary label of Workflows and alphabetical ordering below History, while deferring the product-wide terminology migration."
   source: "User requirement, 2026-08-21"
+- time: "2026-08-21T22:02:07.275Z"
+  kind: "evidence"
+  summary: "User refinement, 2026-08-21: the top-left sidebar navigation uses a consistent 4px rhythm between the team picker and History, between navigation rows, and between the two columns. Implemented with theme.spacing[1] gaps on the navigation header/grid/rows; the previous split side paddings were removed so the column gap is exactly 4px."
+  source: "packages/app/src/components/left-sidebar.tsx"

@@ -5,7 +5,7 @@ title: "Theme-aware UI state gallery"
 status: "confirmed"
 tags: ["ui","design-system","theme","visual-audit","accessibility","developer-tools"]
 created_at: "2026-08-21T16:33:33.252Z"
-updated_at: "2026-08-21T17:37:51.768Z"
+updated_at: "2026-08-22T01:02:42.866Z"
 ---
 # Theme-aware UI state gallery
 
@@ -49,3 +49,18 @@ The gallery renders production primitives and production state-style paths rathe
   kind: "decision"
   summary: "The user clarified that the Settings UI Gallery must be visible only in development builds. The Appearance section now gates both its entry row and mounted dialog with the build-time `isDev` gate in addition to Developer interface mode."
   source: "UI Gallery development-build visibility requirement on 2026-08-21"
+- time: "2026-08-22T00:50:18.292Z"
+  kind: "evidence"
+  summary: "The shared `Alert` primitive now gives its default variant the neutral elevated `surface3` fill and maps info, success, warning, and error variants to the semantic `statusInfoSurface`, `statusSuccessSurface`, `statusWarningSurface`, and `statusDangerSurface` fills, matching the status-pill treatment in the UI Gallery. Verification: targeted alert lint passed, the app workspace typecheck passed, and `git diff --check` passed."
+  source: "Alert surface alignment fix on 2026-08-21"
+  affects: ["interactive-state-colors-use-one-theme-accent-ladder"]
+- time: "2026-08-22T00:59:02.785Z"
+  kind: "evidence"
+  summary: "Follow-up visual audit found that success alerts retained a neutral border despite using the success tint surface. The shared `Alert` primitive now uses the semantic success foreground token for its border, matching the bright green tint treatment used by the other colored alert variants. Verification: targeted alert lint, app typecheck, formatting, and `git diff --check` passed."
+  source: "Alert semantic border correction on 2026-08-21"
+  affects: ["interactive-state-colors-use-one-theme-accent-ladder"]
+- time: "2026-08-22T01:02:42.866Z"
+  kind: "evidence"
+  summary: "The UI Gallery's split-button primary pressed state now carries the accent border through the menu-owned shared divider. `SplitButtonPrimary` propagates real and deterministic preview pressed state through the compound-control context, and `SplitButtonMenuTrigger` paints the divider with the accent while that state is active. Verification: targeted split-button lint, app typecheck, formatting, and `git diff --check` passed."
+  source: "Split-button pressed-divider correction on 2026-08-21"
+  affects: ["interactive-state-colors-use-one-theme-accent-ladder","daylight-outlined-controls-match-structural-borders"]

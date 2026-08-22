@@ -889,6 +889,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
 function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   const { theme } = useUnistyles();
+  const pathname = usePathname();
   // The explorer sidebar is the only surface that sits under the window controls
   // in a different color. Follow its *actual* painted state (owned by the
   // workspace screen) rather than predicting from route + open flag: during the
@@ -902,11 +903,12 @@ function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   // its gutter retains surfaceSidebar, while the explorer uses the deeper
   // sidebar-only surface. The caption strip follows whichever one is painted.
   const focusModeTabStripVisible = usePanelStore((state) => state.focusModeTabStripVisible);
-  // Everywhere else the strip beneath the caption buttons is a ScreenHeader, and
-  // that paints `surfaceChrome` (the blend between the workspace surface and the
-  // sidebar rail), not `surface0` - so the caption strip must use the same token
-  // or it lands a shade off the header it sits in, in every theme.
-  let backgroundColor = theme.colors.surfaceChrome;
+  // These routes deliberately use a borderless ScreenHeader so the page owns one continuous
+  // surface. The native caption buttons still sit above that header, so their backing strip must
+  // follow the route or Windows paints a second, visibly darker title bar over the home canvas.
+  const borderlessSurfaceRoute =
+    pathname === "/open-project" || pathname === "/new" || pathname === "/new-project";
+  let backgroundColor = borderlessSurfaceRoute ? theme.colors.surface0 : theme.colors.surfaceChrome;
   if (focusModeTabStripVisible) {
     backgroundColor = theme.colors.surfaceSidebar;
   }

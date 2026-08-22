@@ -2,17 +2,18 @@ import type { ComponentType } from "react";
 import {
   Bot,
   ListTodo,
+  LocalPolice,
+  PrivacyTip,
+  Psychology,
   Settings2,
-  Shield,
   ShieldAlert,
   ShieldCheck,
-  ShieldEllipsis,
   ShieldOff,
-  ShieldPlus,
+  ShieldPerson,
   ShieldQuestionMark,
+  ShieldToggle,
   Zap,
-} from "lucide-react-native";
-import { Psychology } from "@/components/icons/material-icons";
+} from "@/components/icons/material-icons";
 import {
   getModeVisuals,
   type AgentProviderDefinition,
@@ -30,13 +31,14 @@ export const PlanModeIcon = ListTodo;
 
 const MODE_ICONS: Record<string, AgentControlIcon> = {
   Bot,
-  Shield,
+  LocalPolice,
+  PrivacyTip,
   ShieldAlert,
   ShieldCheck,
-  ShieldEllipsis,
   ShieldOff,
-  ShieldPlus,
+  ShieldPerson,
   ShieldQuestionMark,
+  ShieldToggle,
 };
 
 const FEATURE_ICONS: Record<string, AgentControlIcon> = {
@@ -51,16 +53,16 @@ export function getAgentModeIcon(
   providerDefinitions: AgentProviderDefinition[],
 ): AgentControlIcon {
   const icon = getModeVisuals(provider, modeId, providerDefinitions)?.icon;
-  return (icon ? MODE_ICONS[icon] : undefined) ?? Bot;
+  return (icon ? MODE_ICONS[icon] : undefined) ?? ShieldQuestionMark;
 }
 
 export function getAgentModeOptionIcon(
   provider: string,
   modeId: string,
   providerDefinitions: AgentProviderDefinition[],
-): AgentControlIcon | undefined {
+): AgentControlIcon {
   const icon = getModeVisuals(provider, modeId, providerDefinitions)?.icon;
-  return icon ? MODE_ICONS[icon] : undefined;
+  return (icon ? MODE_ICONS[icon] : undefined) ?? ShieldQuestionMark;
 }
 
 export function getAgentFeatureIcon(icon?: string): AgentControlIcon {

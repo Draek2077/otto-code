@@ -9,6 +9,8 @@ import {
   useWindowDimensions,
   View,
   type PressableStateCallbackType,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
@@ -2073,10 +2075,26 @@ export default function SettingsScreen({
   // Only one of the three ScrollViews below is ever mounted at a time, so a
   // single ref + hook serves whichever branch renders.
   const showWebScrollbar = isWeb;
-  const scrollRef = useRef<ScrollView>(null);
-  const webScrollbar = useWebScrollViewScrollbar(scrollRef, {
+  const retainedScroll = useRetainedScrollOffset(
+    `settings:${settingsViewKey(view)}:${isCompactLayout ? "compact" : "desktop"}`,
+  );
+  const webScrollbar = useWebScrollViewScrollbar(retainedScroll.ref, {
     enabled: showWebScrollbar,
   });
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      retainedScroll.onScroll(event);
+      webScrollbar.onScroll(event);
+    },
+    [retainedScroll, webScrollbar],
+  );
+  const handleContentSizeChange = useCallback(
+    (width: number, height: number) => {
+      retainedScroll.onContentSizeChange(width, height);
+      webScrollbar.onContentSizeChange(width, height);
+    },
+    [retainedScroll, webScrollbar],
+  );
   const hosts = useHosts();
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
@@ -2702,12 +2720,12 @@ export default function SettingsScreen({
         <BackHeader title={t("settings.title")} onBack={handleBackToWorkspace} />
         <View style={styles.scrollView}>
           <ScrollView
-            ref={scrollRef}
+            ref={retainedScroll.ref}
             style={styles.scrollView}
             contentContainerStyle={insetBottomStyle}
             onLayout={webScrollbar.onLayout}
-            onScroll={webScrollbar.onScroll}
-            onContentSizeChange={webScrollbar.onContentSizeChange}
+            onScroll={handleScroll}
+            onContentSizeChange={handleContentSizeChange}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={!showWebScrollbar}
           >
@@ -2746,12 +2764,12 @@ export default function SettingsScreen({
         />
         <View style={styles.scrollView}>
           <ScrollView
-            ref={scrollRef}
+            ref={retainedScroll.ref}
             style={styles.scrollView}
             contentContainerStyle={insetBottomStyle}
             onLayout={webScrollbar.onLayout}
-            onScroll={webScrollbar.onScroll}
-            onContentSizeChange={webScrollbar.onContentSizeChange}
+            onScroll={handleScroll}
+            onContentSizeChange={handleContentSizeChange}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={!showWebScrollbar}
           >
@@ -2779,12 +2797,12 @@ export default function SettingsScreen({
   const desktopContentScroll = (
     <View style={styles.scrollView}>
       <ScrollView
-        ref={scrollRef}
+        ref={retainedScroll.ref}
         style={styles.scrollView}
         contentContainerStyle={insetBottomStyle}
         onLayout={webScrollbar.onLayout}
-        onScroll={webScrollbar.onScroll}
-        onContentSizeChange={webScrollbar.onContentSizeChange}
+        onScroll={handleScroll}
+        onContentSizeChange={handleContentSizeChange}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={!showWebScrollbar}
       >

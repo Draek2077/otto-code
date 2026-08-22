@@ -50,19 +50,19 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: 3,
   },
-  // Tinted from the one status token rather than a palette step, so the pill tracks the
-  // theme. `1a`/`33` are the 10%/20% alpha suffixes the identity table uses.
+  // Pass calibrated theme surface tokens straight through. Unistyles cannot
+  // resolve colors computed from a theme value inside StyleSheet.create.
   pillSuccess: {
-    backgroundColor: `${theme.colors.statusSuccess}1a`,
-    borderColor: `${theme.colors.statusSuccess}33`,
+    backgroundColor: theme.colors.statusSuccessSurface,
+    borderColor: theme.colors.statusSuccess,
   },
   pillWarning: {
-    backgroundColor: theme.colors.palette.yellow[900],
-    borderColor: theme.colors.palette.yellow[800],
+    backgroundColor: theme.colors.statusWarningSurface,
+    borderColor: theme.colors.statusWarning,
   },
   pillError: {
-    backgroundColor: `${theme.colors.statusDanger}1a`,
-    borderColor: `${theme.colors.statusDanger}33`,
+    backgroundColor: theme.colors.statusDangerSurface,
+    borderColor: theme.colors.statusDanger,
   },
   pillText: {
     fontSize: theme.fontSize.xs,
@@ -74,7 +74,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.statusSuccess,
   },
   pillTextWarning: {
-    color: theme.colors.palette.yellow[400],
+    color: theme.colors.statusWarning,
   },
   pillTextError: {
     color: theme.colors.statusDanger,

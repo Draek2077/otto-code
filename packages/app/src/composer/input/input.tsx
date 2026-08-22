@@ -217,17 +217,131 @@ export interface MessageInputRef {
   getNativeElement?: () => HTMLElement | null;
 }
 
-// Minimum separation between the left and right toolbar groups. `space-between`
-// keeps them at opposite ends while the row fits, but the uniform shrink below
-// switches to `flex-start` - and there the two groups butt together, leaving the
-// first right-side button (the auto-speech toggle) flush against the last
-// left-side control with nothing between them. It is counted into the row's
-// needed width so the shrink makes room for it rather than pushing it under
-// `buttonRow`'s `overflow: hidden`.
-//
-// Flat, not `compactUp`: the gaps *inside* each group are a flat 2 at every form
-// factor, and a compact-doubled group gap read as twice the separation it needs.
+// Keep a small separation between the left and right toolbar groups when the
+// row has enough room. Once it does not, the complete row scales uniformly.
 const TOOLBAR_GROUP_GAP = 8;
+
+interface ToolbarMeasurements {
+  key: string;
+  rowWidth: number;
+  leftWidth: number;
+  rightWidth: number;
+  rowReady: boolean;
+  leftReady: boolean;
+  rightReady: boolean;
+}
+
+type ToolbarMeasurementSlot = "row" | "left" | "right";
+
+function createToolbarMeasurements(key: string): ToolbarMeasurements {
+  return {
+    key,
+    rowWidth: 0,
+    leftWidth: 0,
+    rightWidth: 0,
+    rowReady: false,
+    leftReady: false,
+    rightReady: false,
+  };
+}
+
+function updateToolbarMeasurements(
+  previous: ToolbarMeasurements,
+  key: string,
+  slot: ToolbarMeasurementSlot,
+  width: number,
+): ToolbarMeasurements {
+  const current =
+    previous.key === key
+      ? previous
+      : {
+          ...previous,
+          key,
+          rowReady: false,
+        };
+  if (slot === "row") {
+    if (current.rowReady && current.rowWidth === width) return current;
+    return { ...current, rowWidth: width, rowReady: true };
+  }
+  if (slot === "left") {
+    if (current.leftReady && current.leftWidth === width) return current;
+    return { ...current, leftWidth: width, leftReady: true };
+  }
+  if (current.rightReady && current.rightWidth === width) return current;
+  return { ...current, rightWidth: width, rightReady: true };
+}
+
+function useToolbarScale({
+  windowWidth,
+  windowHeight,
+  isCompact,
+}: {
+  windowWidth: number;
+  windowHeight: number;
+  isCompact: boolean;
+}) {
+  const measurementKey = `${windowWidth}:${windowHeight}`;
+  const toolbarRowWidthRef = useRef(0);
+  const toolbarScaleRef = useRef(1);
+  const [measurements, setMeasurements] = useState<ToolbarMeasurements>(() =>
+    createToolbarMeasurements(measurementKey),
+  );
+
+  const updateMeasurement = useCallback(
+    (slot: ToolbarMeasurementSlot, width: number) => {
+      if (width < 0) return;
+      setMeasurements((previous) =>
+        updateToolbarMeasurements(previous, measurementKey, slot, width),
+      );
+    },
+    [measurementKey],
+  );
+  const handleRowLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const width = event.nativeEvent.layout.width;
+      toolbarRowWidthRef.current = width;
+      updateMeasurement("row", width);
+    },
+    [updateMeasurement],
+  );
+  const handleLeftLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      updateMeasurement("left", event.nativeEvent.layout.width);
+    },
+    [updateMeasurement],
+  );
+  const handleRightLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      updateMeasurement("right", event.nativeEvent.layout.width);
+    },
+    [updateMeasurement],
+  );
+
+  const measurementsReady =
+    measurements.key === measurementKey &&
+    measurements.rowReady &&
+    measurements.leftReady &&
+    measurements.rightReady &&
+    measurements.rowWidth > 0;
+  const scale = computeToolbarScale({
+    toolbarRowWidth: measurementsReady ? measurements.rowWidth : toolbarRowWidthRef.current,
+    toolbarNeededWidth: measurements.leftWidth + measurements.rightWidth + TOOLBAR_GROUP_GAP,
+    isCompact,
+  });
+  const appliedScale = measurementsReady ? scale : toolbarScaleRef.current;
+  useLayoutEffect(() => {
+    if (measurementsReady) toolbarScaleRef.current = scale;
+  }, [measurementsReady, scale]);
+
+  return {
+    toolbarRowWidth: toolbarRowWidthRef.current,
+    toolbarScale: appliedScale,
+    handleToolbarRowLayout: handleRowLayout,
+    handleToolbarLeftLayout: handleLeftLayout,
+    handleToolbarRightLayout: handleRightLayout,
+  };
+}
+
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
   TextInputKeyPressEventData & {
     metaKey?: boolean;
@@ -1653,6 +1767,26 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       opacity: 1 - overlayTransition.value,
     }));
 
+    const {
+      toolbarRowWidth,
+      toolbarScale,
+      handleToolbarRowLayout,
+      handleToolbarLeftLayout,
+      handleToolbarRightLayout,
+    } = useToolbarScale({
+      windowWidth,
+      windowHeight,
+      isCompact,
+    });
+    const toolbarContentStyle = useMemo(
+      () => [
+        styles.buttonRowContent,
+        toolbarScale < 1 ? styles.buttonRowContentScaled : styles.buttonRowContentFull,
+        toolbarScale < 1 ? { transform: [{ scale: toolbarScale }] } : null,
+      ],
+      [toolbarScale],
+    );
+
     const handleVoicePress = useCallback(
       () =>
         handleVoicePressImpl({
@@ -2058,45 +2192,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       [isDictating, isRealtimeVoiceForCurrentAgent, voice?.isMuted, buttonIconSize],
     );
 
-    const [toolbarRowWidth, setToolbarRowWidth] = useState(0);
-    const [toolbarLeftWidth, setToolbarLeftWidth] = useState(0);
-    const [toolbarRightWidth, setToolbarRightWidth] = useState(0);
-    // Android can now rotate, which changes both the row width and which
-    // controls are rendered in one native layout pass. The old measurements
-    // describe the previous orientation until every descendant has reported
-    // its new layout, so clear them and remount the measured content instead
-    // of briefly calculating a scale from mixed portrait/landscape geometry.
-    const toolbarMeasurementKey = `${windowWidth}:${windowHeight}`;
-    useLayoutEffect(() => {
-      setToolbarRowWidth(0);
-      setToolbarLeftWidth(0);
-      setToolbarRightWidth(0);
-    }, [toolbarMeasurementKey]);
-    const handleToolbarRowLayout = useCallback((event: LayoutChangeEvent) => {
-      setToolbarRowWidth(event.nativeEvent.layout.width);
-    }, []);
-    const handleToolbarLeftLayout = useCallback((event: LayoutChangeEvent) => {
-      setToolbarLeftWidth(event.nativeEvent.layout.width);
-    }, []);
-    const handleToolbarRightLayout = useCallback((event: LayoutChangeEvent) => {
-      setToolbarRightWidth(event.nativeEvent.layout.width);
-    }, []);
-    const toolbarNeededWidth = toolbarLeftWidth + toolbarRightWidth + TOOLBAR_GROUP_GAP;
-    const toolbarScale = computeToolbarScale({
-      toolbarRowWidth,
-      toolbarNeededWidth,
-      isCompact,
-    });
-    const isToolbarScaled = toolbarScale < 1;
-    const toolbarContentStyle = useMemo(
-      () => [
-        styles.buttonRowContent,
-        isToolbarScaled ? styles.buttonRowContentScaled : styles.buttonRowContentFull,
-        isToolbarScaled ? { transform: [{ scale: toolbarScale }] } : null,
-      ],
-      [isToolbarScaled, toolbarScale],
-    );
-
     return (
       <View ref={rootMergedRef} style={styles.container} testID="message-input-root">
         {/* Regular input */}
@@ -2135,10 +2230,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
           {/* Button row */}
           <View style={styles.buttonRow} onLayout={handleToolbarRowLayout}>
-            {/* The row's own width, for controls inside it that drop out rather
-                than shrink (see toolbar-width-context.ts). */}
             <ComposerToolbarWidthContext.Provider value={toolbarRowWidth}>
-              <View key={toolbarMeasurementKey} style={toolbarContentStyle}>
+              <View style={toolbarContentStyle}>
                 {/* Toolbar left: attachment button + usage ring + agent controls */}
                 <View style={styles.leftButtonGroup} onLayout={handleToolbarLeftLayout}>
                   {showAttachmentButton ? (
@@ -2323,15 +2416,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
   buttonRow: {
     marginHorizontal: -6,
     marginBottom: -6,
-    // Clips the pre-scale overflow while the uniform-shrink transform brings
-    // the row back within bounds.
     overflow: "hidden",
   },
   buttonRowContent: {
     flexDirection: "row",
     alignItems: "flex-end",
-    // Load-bearing only once the row is scaled and `space-between` gives way to
-    // `flex-start`; harmless while the groups sit at opposite ends.
     gap: TOOLBAR_GROUP_GAP,
   },
   buttonRowContentFull: {
@@ -2339,19 +2428,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
     justifyContent: "space-between",
   },
   buttonRowContentScaled: {
-    // Natural width (content-sized) so the scale transform, anchored left, pulls
-    // the whole row back inside the available width.
     alignSelf: "flex-start",
     justifyContent: "flex-start",
     transformOrigin: "left center",
   },
   leftButtonGroup: {
-    // No flexShrink: this group must report its true intrinsic width via
-    // onLayout so the toolbarScale overlap check below can see it coming.
-    // Letting flexbox itself shrink the group hides the overflow from that
-    // check (the box quietly compresses below its children's natural size)
-    // while the fixed-size buttons inside it still overflow and overlap -
-    // exactly the bug the check exists to prevent.
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "flex-end",

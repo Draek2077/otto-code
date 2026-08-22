@@ -213,7 +213,7 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Syntax theme",
     "Choose code highlighting colors",
     "editor code highlighting",
-    "appearance",
+    "editor",
     true,
   ),
   app(
@@ -221,7 +221,7 @@ export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     "Editor ruler",
     "Show a preferred code column",
     "column guide line length",
-    "appearance",
+    "editor",
     true,
   ),
   app(

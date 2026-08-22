@@ -31,6 +31,7 @@ import { BrainLibraryTab } from "./library-tab";
 import { BrainLogsTab } from "./logs-tab";
 import { BrainModelsTab } from "./models-tab";
 import { BrainOverviewTab } from "./overview-tab";
+import { resolveBrainAvailability, type BrainAvailabilityMessage } from "./brain-availability";
 import { useBrainCapabilities, useBrainStatus } from "./use-brain-data";
 
 type BrainTab = "overview" | "models" | "library" | "benchmarks" | "logs";
@@ -44,14 +45,22 @@ const TAB_OPTIONS: { value: BrainTab; label: string }[] = [
 ];
 
 /** Shown where a tab needs a brain capability the far side does not serve. */
-function CapabilityGap({ what }: { what: string }) {
-  return (
+function CapabilityGap({ what, inset = false }: { what: string; inset?: boolean }) {
+  const alert = (
     <Alert
       variant="info"
       title="Update the brain on this host"
       description={`This brain does not serve ${what}. Update it to use this tab.`}
     />
   );
+  return inset ? <View style={styles.alertInset}>{alert}</View> : alert;
+}
+
+function shouldInsetFullHeightAlert(
+  consoleSupported: boolean,
+  brainAvailability: BrainAvailabilityMessage | null,
+): boolean {
+  return !consoleSupported || brainAvailability !== null;
 }
 
 function BrainHostPanel({
@@ -75,6 +84,13 @@ function BrainHostPanel({
   // its own status query. This cheap one exists only to read `capabilities`.
   const statusQuery = useBrainStatus(serverId, { enabled: isConnected && consoleSupported });
   const capabilities = useBrainCapabilities(statusQuery.data ?? null);
+  const brainAvailability = resolveBrainAvailability({
+    isConnected,
+    status: statusQuery.data ?? null,
+    statusError: statusQuery.error,
+  });
+  const tabBrainAvailability: BrainAvailabilityMessage | null =
+    tab === "overview" ? null : brainAvailability;
   const canRestartRemotely = capabilities?.restart === true && capabilities.writable === true;
   const canWriteRemotely = capabilities?.writable === true;
   const canRunRemoteModelJobs = capabilities?.jobs === true && canWriteRemotely;
@@ -97,6 +113,15 @@ function BrainHostPanel({
   }, [tab, tabOptions]);
 
   const body = useMemo(() => {
+    if (tabBrainAvailability) {
+      return (
+        <Alert
+          variant="error"
+          title={tabBrainAvailability.title}
+          description={tabBrainAvailability.description}
+        />
+      );
+    }
     if (!consoleSupported) {
       return (
         <Alert
@@ -118,7 +143,11 @@ function BrainHostPanel({
             showStartStop={!isRemote}
             // Runtime reads and installs now reach the brain through host-owned
             // management routes, so remote and owning daemons report the same runtime.
-            canManageRuntime={manageSupported}
+            showRuntime={manageSupported}
+            // A remote Brain must grant configuration access before this client
+            // advertises a control that can change its runtime. The runtime
+            // status itself remains visible through `showRuntime`.
+            canManageRuntime={manageSupported && (!isRemote || canWriteRemotely)}
             canInstallRuntime={!isRemote || canWriteRemotely}
           />
         );
@@ -133,7 +162,7 @@ function BrainHostPanel({
             canRunJobs={manageSupported && (!isRemote || canRunRemoteModelJobs)}
           />
         ) : (
-          <CapabilityGap what="the model inventory" />
+          <CapabilityGap what="the model inventory" inset />
         );
       case "library":
         return (
@@ -162,6 +191,7 @@ function BrainHostPanel({
         );
     }
   }, [
+    tabBrainAvailability,
     capabilities,
     canRestartRemotely,
     canRunRemoteBench,
@@ -180,7 +210,12 @@ function BrainHostPanel({
     // This tab owns a split surface that must consume the remaining page
     // height. Giving it the page scroll would make its inner scroll regions
     // size to content instead of the visible viewport.
-    content = <View style={styles.fullHeightContent}>{body}</View>;
+    const alertOnly = shouldInsetFullHeightAlert(consoleSupported, tabBrainAvailability);
+    content = (
+      <View style={styles.fullHeightContent}>
+        {alertOnly ? <View style={styles.alertInset}>{body}</View> : body}
+      </View>
+    );
   } else if (tab === "logs") {
     content = (
       <View style={[styles.fullHeightContent, styles.paddedFullHeightContent]}>{body}</View>
@@ -338,6 +373,9 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   paddedFullHeightContent: {
+    padding: theme.spacing[4],
+  },
+  alertInset: {
     padding: theme.spacing[4],
   },
   placeholder: {

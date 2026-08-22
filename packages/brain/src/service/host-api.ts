@@ -60,7 +60,7 @@ import type {
   BrainStatusSnapshot,
 } from "./status-events.js";
 import type { Supervisor } from "./supervisor.js";
-import type { Scheduler } from "./scheduler.js";
+import type { ModelScheduler } from "./scheduler.js";
 import type { BrainRunLog } from "./run-log.js";
 import type { BrainLogArea } from "./log-format.js";
 
@@ -140,6 +140,8 @@ export interface HostCapabilities {
   jobs: boolean;
   /** POST /__host/restart delegates a restart to the service owner. */
   restart: boolean;
+  /** Multiple independently supervised model processes are supported. */
+  processPool: boolean;
 }
 
 /** A long-running operation owned by this brain host, not its caller. */
@@ -183,8 +185,9 @@ export interface HostApiDeps {
   queryGpuInfo: () => Promise<GpuInfo | null>;
   getRanking: () => RankedModel[];
   loadModel: (model: Model) => Promise<void>;
-  /** The single model queue shared by completions and resident operations. */
-  scheduler?: Scheduler | null;
+  unloadModels?: () => Promise<void>;
+  /** The process-pool scheduler shared by completions and resident operations. */
+  scheduler?: ModelScheduler<Supervisor> | null;
   /** Mirrors POST /__host/config's gate: may a network caller change things? */
   getAllowWrite: () => boolean;
   /** The managed models directory, for disk accounting. Null when unresolvable. */
@@ -387,18 +390,21 @@ function hostingProfilesFor(store: ProfilesStore, model: Model): HostingProfile[
 
 function stateOf(
   supervisor: Supervisor,
-  scheduler: Scheduler | null | undefined,
+  scheduler: ModelScheduler<Supervisor> | null | undefined,
   model: Model,
 ): InventoryRow["state"] {
-  const resident = supervisor.model?.id === model.id;
+  const residentSupervisor =
+    (typeof scheduler?.supervisorFor === "function" ? scheduler.supervisorFor(model.id) : null) ??
+    (supervisor.model?.id === model.id ? supervisor : null);
+  const resident = residentSupervisor !== null;
   if (resident) {
-    if (supervisor.state === "starting") return "loading";
-    if (supervisor.state === "stopping") return "unloading";
+    if (residentSupervisor.state === "starting") return "loading";
+    if (residentSupervisor.state === "stopping") return "unloading";
   }
   const stats = scheduler?.stats();
   if (stats?.active?.modelId === model.id) return "active";
   if ((stats?.waitingModelIds[model.id] ?? 0) > 0) return "queued";
-  if (resident && supervisor.state === "ready") return "loaded";
+  if (resident && residentSupervisor.state === "ready") return "loaded";
   return "not-loaded";
 }
 
@@ -416,7 +422,7 @@ export function buildInventoryRow(params: {
   gpu: GpuInfo | null;
   ranking: RankedModel[];
   supervisor: Supervisor;
-  scheduler?: Scheduler | null;
+  scheduler?: ModelScheduler<Supervisor> | null;
   runtimeBuild?: number | null;
 }): InventoryRow {
   const {
@@ -593,6 +599,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     writable: deps.getAllowWrite(),
     jobs: Boolean(deps.jobs),
     restart: Boolean(deps.restart),
+    processPool: true,
   });
 
   /** Refuse a write unless the owner opted into remote configuration. */
@@ -686,7 +693,11 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           // A setting is only unapplied when it was changed on the currently
           // resident model. Edits to an unloaded model take effect naturally
           // when it is next loaded and do not earn a misleading reload badge.
-          const requiresRestart = deps.supervisor.model?.id === model.id;
+          const requiresRestart = Boolean(
+            (typeof deps.scheduler?.supervisorFor === "function"
+              ? deps.scheduler.supervisorFor(model.id)
+              : null) ?? (deps.supervisor.model?.id === model.id ? deps.supervisor : null),
+          );
           if (requiresRestart) store.pendingReloadModelIds[model.id] = true;
           deps.saveProfiles(store);
           deps.log?.(
@@ -835,11 +846,15 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         deps.log?.("model", `loading ${model.displayName}`);
         await deps.loadModel(model);
         deps.log?.("model", `loaded ${model.displayName}`);
+        const resident =
+          (typeof deps.scheduler?.supervisorFor === "function"
+            ? deps.scheduler.supervisorFor(model.id)
+            : null) ?? deps.supervisor;
         sendJson(res, {
-          status: deps.supervisor.status(),
+          status: resident.status(),
           // What actually got used: loadModel fits the profile to VRAM, so the
           // context here may be lower than the one saved.
-          profile: deps.supervisor.profile,
+          profile: resident.profile,
         });
       } catch (error) {
         deps.log?.("model", `failed to load ${model.displayName}: ${errorMessage(error)}`);
@@ -852,7 +867,8 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     void (async () => {
       try {
         deps.log?.("model", "unloading resident model");
-        await deps.supervisor.stop();
+        if (deps.unloadModels) await deps.unloadModels();
+        else await deps.supervisor.stop();
         deps.log?.("model", "resident model unloaded");
         sendJson(res, { status: deps.supervisor.status() });
       } catch (error) {
@@ -862,7 +878,11 @@ export function createHostApi(deps: HostApiDeps): HostApi {
   };
 
   const handleDelete = (res: http.ServerResponse, model: Model): void => {
-    if (deps.supervisor.model?.id === model.id && deps.supervisor.state !== "stopped") {
+    const resident =
+      typeof deps.scheduler?.supervisorFor === "function"
+        ? deps.scheduler.supervisorFor(model.id)
+        : null;
+    if (resident && resident.state !== "stopped") {
       sendError(res, 409, "stop the model before deleting it");
       return;
     }
@@ -886,7 +906,11 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     model: Model,
     componentId: string,
   ): void => {
-    if (deps.supervisor.model?.id === model.id && deps.supervisor.state !== "stopped") {
+    const resident =
+      typeof deps.scheduler?.supervisorFor === "function"
+        ? deps.scheduler.supervisorFor(model.id)
+        : null;
+    if (resident && resident.state !== "stopped") {
       sendError(res, 409, "stop the model before removing a bundle component");
       return;
     }

@@ -16,7 +16,6 @@ import { resolveAssistantTurnForkBoundary, type AssistantTurnForkBoundary } from
 import { MessageFooter, LiveElapsed, type AssistantForkTarget } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
-import { AssistantForkMenu } from "@/components/assistant-fork-menu";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 
 /** Two glow colors for an agent's personality thinking spinner. */
@@ -30,17 +29,6 @@ export type AssistantTurnForkHandler = (input: {
   target: AssistantForkTarget;
   boundary: AssistantTurnForkBoundary;
 }) => Promise<void> | void;
-/**
- * Fork handler for the turn that is still streaming. It deliberately takes no
- * boundary: `selectForkContextRows` projects the entire timeline when neither
- * boundary field is given, which is what captures the partially streamed text
- * the user is watching. Pinning a boundary here would silently drop the live
- * response — the opposite of what a fork button next to the loader promises.
- *
- * Kept separate from `AssistantTurnForkHandler` (whose `boundary` stays
- * required) so the compiler keeps enforcing that completed turns always pin one.
- */
-export type InFlightTurnForkHandler = (target: AssistantForkTarget) => Promise<void> | void;
 
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
@@ -51,7 +39,6 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor,
   onForkAssistantTurn,
   spinner,
-  onForkInFlightTurn,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -61,7 +48,6 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   spinner?: PersonalitySpinnerColors;
-  onForkInFlightTurn?: InFlightTurnForkHandler;
 }) {
   if (isRunning) {
     return (
@@ -70,7 +56,6 @@ export const TurnFooter = memo(function TurnFooter({
           inFlightTurnStartedAt={inFlightTurnStartedAt}
           estimatedTokens={inFlightEstimatedTokens ?? null}
           spinner={spinner}
-          onForkInFlightTurn={onForkInFlightTurn}
         />
       </TurnFooterRow>
     );
@@ -167,32 +152,35 @@ const WorkingIndicator = memo(function WorkingIndicator({
   inFlightTurnStartedAt = null,
   estimatedTokens = null,
   spinner,
-  onForkInFlightTurn,
 }: {
   inFlightTurnStartedAt?: Date | null;
   estimatedTokens?: number | null;
   spinner?: PersonalitySpinnerColors;
-  onForkInFlightTurn?: InFlightTurnForkHandler;
 }) {
   const active = useRetainedPanelActive();
   return (
     <View style={stylesheet.turnFooterContent}>
       <TurnSpinner spinner={spinner} />
-      {/* Match the completed-turn footer: actions precede timing metadata. */}
-      {onForkInFlightTurn ? <AssistantForkMenu onFork={onForkInFlightTurn} /> : null}
-      {inFlightTurnStartedAt ? (
-        <LiveElapsed
-          startedAt={inFlightTurnStartedAt}
-          active={active}
-          style={stylesheet.workingElapsed}
-          testID="turn-working-elapsed"
-        />
-      ) : null}
-      {inFlightTurnStartedAt && estimatedTokens !== null && estimatedTokens > 0 ? (
-        <Text style={stylesheet.workingTokens} testID="turn-working-tokens">
-          {`• ${formatLiveTokenCount(estimatedTokens)} tokens`}
-        </Text>
-      ) : null}
+      <View style={stylesheet.workingMetadata}>
+        {inFlightTurnStartedAt ? (
+          <LiveElapsed
+            startedAt={inFlightTurnStartedAt}
+            active={active}
+            style={stylesheet.workingElapsed}
+            testID="turn-working-elapsed"
+          />
+        ) : null}
+        {inFlightTurnStartedAt && estimatedTokens !== null && estimatedTokens > 0 ? (
+          <View style={stylesheet.workingTokenSegment}>
+            <Text style={stylesheet.workingSeparator} testID="turn-working-separator">
+              •
+            </Text>
+            <Text style={stylesheet.workingTokens} testID="turn-working-tokens">
+              {`${formatLiveTokenCount(estimatedTokens)} tokens`}
+            </Text>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 });
@@ -201,12 +189,10 @@ function RunningTurnFooter({
   inFlightTurnStartedAt,
   estimatedTokens,
   spinner,
-  onForkInFlightTurn,
 }: {
   inFlightTurnStartedAt: Date | null;
   estimatedTokens: number | null;
   spinner?: PersonalitySpinnerColors;
-  onForkInFlightTurn?: InFlightTurnForkHandler;
 }) {
   return (
     <View style={stylesheet.turnFooterSlot} testID="turn-working-indicator">
@@ -214,7 +200,6 @@ function RunningTurnFooter({
         inFlightTurnStartedAt={inFlightTurnStartedAt}
         estimatedTokens={estimatedTokens}
         spinner={spinner}
-        onForkInFlightTurn={onForkInFlightTurn}
       />
     </View>
   );
@@ -308,10 +293,28 @@ const stylesheet = StyleSheet.create((theme) => ({
     justifyContent: "flex-start",
     gap: theme.spacing[3],
   },
+  // The spinner stays at the wider row gap, while the elapsed label, bullet,
+  // and token estimate share the compact gap. Keeping the bullet as its own
+  // segment prevents a one-sided flex gap plus a text-space from making its
+  // left side look wider than its right.
+  workingMetadata: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  workingTokenSegment: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
   workingElapsed: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontVariant: ["tabular-nums"],
+  },
+  workingSeparator: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   workingTokens: {
     color: theme.colors.foregroundMuted,

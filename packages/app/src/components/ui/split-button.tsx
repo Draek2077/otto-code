@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type PropsWithChildren,
@@ -29,6 +30,8 @@ interface SplitButtonContextValue {
   hasMenu: boolean;
   focusedSegment: SplitButtonSegment | null;
   setFocusedSegment: (segment: SplitButtonSegment | null) => void;
+  primaryPressed: boolean;
+  setPrimaryPressed: (pressed: boolean) => void;
 }
 
 const SplitButtonContext = createContext<SplitButtonContextValue | null>(null);
@@ -62,9 +65,10 @@ export function SplitButton({
   }
 >) {
   const [focusedSegment, setFocusedSegment] = useState<SplitButtonSegment | null>(null);
+  const [primaryPressed, setPrimaryPressed] = useState(false);
   const value = useMemo(
-    () => ({ hasMenu, focusedSegment, setFocusedSegment }),
-    [focusedSegment, hasMenu],
+    () => ({ hasMenu, focusedSegment, setFocusedSegment, primaryPressed, setPrimaryPressed }),
+    [focusedSegment, hasMenu, primaryPressed],
   );
 
   return (
@@ -85,11 +89,19 @@ export function SplitButtonPrimary({
   disabled,
   onFocus,
   onBlur,
+  onPressIn,
+  onPressOut,
   ...props
 }: Omit<PressableProps, "style"> & { style?: PrimaryStyleProp }) {
   const preview = useControlStatePreview();
-  const { hasMenu, focusedSegment, setFocusedSegment } =
+  const { hasMenu, focusedSegment, setFocusedSegment, setPrimaryPressed } =
     useSplitButtonContext("SplitButtonPrimary");
+
+  useEffect(() => {
+    if (preview?.pressed !== undefined) {
+      setPrimaryPressed(preview.pressed);
+    }
+  }, [preview?.pressed, setPrimaryPressed]);
 
   const pressableStyle = useCallback(
     (state: PressableStateCallbackType & { hovered?: boolean }) => {
@@ -119,6 +131,20 @@ export function SplitButtonPrimary({
     },
     [onBlur, setFocusedSegment],
   );
+  const handlePressIn = useCallback<NonNullable<PressableProps["onPressIn"]>>(
+    (event) => {
+      setPrimaryPressed(true);
+      onPressIn?.(event);
+    },
+    [onPressIn, setPrimaryPressed],
+  );
+  const handlePressOut = useCallback<NonNullable<PressableProps["onPressOut"]>>(
+    (event) => {
+      setPrimaryPressed(false);
+      onPressOut?.(event);
+    },
+    [onPressOut, setPrimaryPressed],
+  );
 
   return (
     <Pressable
@@ -126,6 +152,8 @@ export function SplitButtonPrimary({
       disabled={disabled}
       onFocus={handleFocus}
       onBlur={handleBlur}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       style={pressableStyle}
     />
   );
@@ -142,7 +170,8 @@ export function SplitButtonMenuTrigger({
   onBlur,
   ...props
 }: Omit<DropdownMenuTriggerProps, "style"> & { style?: MenuStyleProp }) {
-  const { focusedSegment, setFocusedSegment } = useSplitButtonContext("SplitButtonMenuTrigger");
+  const { focusedSegment, primaryPressed, setFocusedSegment } =
+    useSplitButtonContext("SplitButtonMenuTrigger");
 
   const triggerStyle = useCallback(
     (state: DropdownMenuTriggerState) => [
@@ -152,10 +181,11 @@ export function SplitButtonMenuTrigger({
       !disabled && state.hovered && !state.pressed ? styles.segmentHovered : null,
       !disabled && state.pressed ? styles.segmentPressed : null,
       !disabled && state.open ? styles.segmentOpen : null,
+      primaryPressed ? styles.menuPrimaryPressed : null,
       focusedSegment === "primary" && styles.menuPrimaryFocused,
       focusedSegment === "menu" && styles.focused,
     ],
-    [disabled, focusedSegment, style],
+    [disabled, focusedSegment, primaryPressed, style],
   );
   const handleFocus = useCallback<NonNullable<DropdownMenuTriggerProps["onFocus"]>>(
     (event) => {
@@ -242,6 +272,11 @@ const styles = StyleSheet.create((theme) => ({
   // The menu trigger owns the shared divider, so it completes the primary
   // segment's focus border when the primary action has keyboard focus.
   menuPrimaryFocused: {
+    borderLeftColor: theme.colors.accent,
+  },
+  // The menu trigger also owns the shared divider while the primary segment
+  // is pressed, so the accent outline continues across the compound control.
+  menuPrimaryPressed: {
     borderLeftColor: theme.colors.accent,
   },
 }));

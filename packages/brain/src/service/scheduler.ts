@@ -94,6 +94,23 @@ export interface SchedulerSupervisor {
 }
 
 /**
+ * The scheduler surface consumed by the router and host operations. A managed
+ * process pool implements the same contract while choosing which resident
+ * supervisor owns each submitted model.
+ */
+export interface ModelScheduler<TSupervisor extends SchedulerSupervisor = SchedulerSupervisor> {
+  submit(
+    model: Model,
+    run: (supervisor: TSupervisor) => Promise<unknown>,
+    options?: SchedulerSubmitOptions,
+  ): Promise<unknown>;
+  stats(): SchedulerStats;
+  forgetSlots(): void;
+  supervisorFor(modelId: string): TSupervisor | null;
+  supervisors(): TSupervisor[];
+}
+
+/**
  * The answer to a live slot measurement: how many sequence slots are free, and
  * optionally WHICH ones. `idle` drives admission (see CAPACITY); `ids` lets
  * `#pass` hand a distinct slot id to each job it admits, so the router can pin
@@ -126,8 +143,8 @@ export interface SlotMeasurement {
  */
 export type SlotEraser = (slotId: number) => Promise<void>;
 
-export interface SchedulerOptions {
-  supervisor: SchedulerSupervisor;
+export interface SchedulerOptions<TSupervisor extends SchedulerSupervisor = SchedulerSupervisor> {
+  supervisor: TSupervisor;
   loadModel: (model: Model) => Promise<void>;
   logger?: ((message: string) => void) | null;
   /**
@@ -208,7 +225,7 @@ export interface SchedulerSubmitOptions {
 }
 
 /** A queued request or host operation bound to a resolved catalog model. */
-export interface QueuedJob {
+export interface QueuedJob<TSupervisor extends SchedulerSupervisor = SchedulerSupervisor> {
   modelId: string;
   model: Model;
   kind: SchedulerJobKind;
@@ -225,7 +242,7 @@ export interface QueuedJob {
    * busy behavior would serialize the pair onto it while another slot sat empty.
    */
   slotId: number | null;
-  run: () => Promise<unknown>;
+  run: (supervisor: TSupervisor) => Promise<unknown>;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
 }
@@ -239,12 +256,14 @@ export interface SchedulerStats {
   active: { modelId: string; kind: Exclude<SchedulerJobKind, "completion"> } | null;
 }
 
-export class Scheduler {
-  supervisor: SchedulerSupervisor;
+export class Scheduler<
+  TSupervisor extends SchedulerSupervisor = SchedulerSupervisor,
+> implements ModelScheduler<TSupervisor> {
+  supervisor: TSupervisor;
   loadModel: (model: Model) => Promise<void>;
   logger: ((message: string) => void) | null;
   /** Submitted, not yet claimed by a turn. */
-  queue: QueuedJob[] = [];
+  queue: QueuedJob<TSupervisor>[] = [];
   lastTurnId: string | null = null;
   /**
    * Per model: the session whose jobs most recently filled its slots. That
@@ -253,7 +272,7 @@ export class Scheduler {
    */
   hotSessions = new Map<string, string>();
   /** The exclusive operation in flight, if any. Reported by `stats()`. */
-  activeJob: QueuedJob | null = null;
+  activeJob: QueuedJob<TSupervisor> | null = null;
   onChange: (() => void) | null;
   freeSlots: SchedulerOptions["freeSlots"];
   slotPollMs: number;
@@ -268,9 +287,9 @@ export class Scheduler {
   slotOwners = new Map<number, string | null>();
 
   /** Claimed by the current turn, waiting for a slot. Empty between turns. */
-  #batch: QueuedJob[] = [];
+  #batch: QueuedJob<TSupervisor>[] = [];
   /** Started, not yet settled. Invariant: every member's model is `#turnId`. */
-  #running = new Set<QueuedJob>();
+  #running = new Set<QueuedJob<TSupervisor>>();
   /** The model that owns the engine for this turn, or null between turns. */
   #turnId: string | null = null;
   /**
@@ -297,7 +316,7 @@ export class Scheduler {
     freeSlots = null,
     slotPollMs = 2500,
     eraseSlot = null,
-  }: SchedulerOptions) {
+  }: SchedulerOptions<TSupervisor>) {
     this.supervisor = supervisor;
     this.loadModel = loadModel; // async (model) => resolves once it is ready
     this.logger = logger; // optional (message: string) => void
@@ -336,7 +355,7 @@ export class Scheduler {
    */
   submit(
     model: Model,
-    run: () => Promise<unknown>,
+    run: (supervisor: TSupervisor) => Promise<unknown>,
     {
       kind = "completion",
       exclusive = kind !== "completion",
@@ -370,8 +389,8 @@ export class Scheduler {
    *  - Behind other jobs: those jobs take the turn; the operation (and
    *    everything behind it) stays queued until it is the head.
    */
-  #takeTurn(turnId: string): QueuedJob[] {
-    const taken: QueuedJob[] = [];
+  #takeTurn(turnId: string): QueuedJob<TSupervisor>[] {
+    const taken: QueuedJob<TSupervisor>[] = [];
     for (const job of this.queue) {
       if (job.modelId !== turnId) continue;
       if (taken.length > 0 && job.exclusive) break; // boundary waits its turn
@@ -381,9 +400,9 @@ export class Scheduler {
     return this.#take((job) => taken.includes(job));
   }
 
-  #take(pred: (job: QueuedJob) => boolean): QueuedJob[] {
-    const kept: QueuedJob[] = [];
-    const taken: QueuedJob[] = [];
+  #take(pred: (job: QueuedJob<TSupervisor>) => boolean): QueuedJob<TSupervisor>[] {
+    const kept: QueuedJob<TSupervisor>[] = [];
+    const taken: QueuedJob<TSupervisor>[] = [];
     for (const job of this.queue) (pred(job) ? taken : kept).push(job);
     this.queue = kept;
     if (taken.length > 0) this.#announce();
@@ -408,7 +427,7 @@ export class Scheduler {
    * (A batch never mixes an exclusive operation with other jobs - that split
    * happens in `#takeTurn` - so no boundary check is needed here.)
    */
-  #claimJob(turnId: string): QueuedJob | null {
+  #claimJob(turnId: string): QueuedJob<TSupervisor> | null {
     if (this.#batch.length === 0) return null;
     const warm = this.#warmSessions();
     const chosen =
@@ -462,7 +481,7 @@ export class Scheduler {
    * handoff erase must reach the engine's task queue BEFORE this job's
    * completion is posted (see OWNERSHIP), so the pass yields for the erase.
    */
-  async #start(job: QueuedJob): Promise<void> {
+  async #start(job: QueuedJob<TSupervisor>): Promise<void> {
     this.#running.add(job);
     if (job.exclusive) this.activeJob = job;
     // Name the slot this job is admitted to, from this pass's own sample,
@@ -504,7 +523,7 @@ export class Scheduler {
     void (async () => {
       try {
         job.onStart?.();
-        job.resolve(await job.run());
+        job.resolve(await job.run(this.supervisor));
       } catch (error) {
         job.reject(error);
       } finally {
@@ -582,6 +601,24 @@ export class Scheduler {
    */
   forgetSlots(): void {
     this.slotOwners.clear();
+  }
+
+  /** True only when this engine has no claimed, queued, or running work. */
+  get isIdle(): boolean {
+    return (
+      this.queue.length === 0 &&
+      this.#batch.length === 0 &&
+      this.#running.size === 0 &&
+      this.activeJob === null
+    );
+  }
+
+  supervisorFor(modelId: string): TSupervisor | null {
+    return this.supervisor.model?.id === modelId ? this.supervisor : null;
+  }
+
+  supervisors(): TSupervisor[] {
+    return [this.supervisor];
   }
 
   /** The relaunch reset: owners and the in-flight pin list are both slot-scoped. */

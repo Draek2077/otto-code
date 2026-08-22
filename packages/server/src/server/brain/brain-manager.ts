@@ -1425,6 +1425,8 @@ export class BrainManager {
       autoStart: brain.autoStart,
       listen: { ...existingListen, host: brain.listen.host, port: brain.listen.port },
       defaultModel: brain.defaultModel,
+      maxLoadedModels: brain.maxLoadedModels,
+      lockedModels: brain.lockedModels,
       runtime: { ...existingRuntime, ...(isRecord(brain.runtime) ? brain.runtime : {}) },
       lockModel: brain.lockModel,
       allowRemoteConfig: brain.allowRemoteConfig,
@@ -1869,6 +1871,8 @@ export function structuralSignature(brain: MutableBrainConfig): string {
     authMode: brain.authMode,
     authToken: brain.authToken,
     defaultModel: brain.defaultModel,
+    maxLoadedModels: brain.maxLoadedModels,
+    lockedModels: brain.lockedModels,
     lockModel: brain.lockModel,
     // llama-server resolves its executable from this at launch. Leaving it out
     // lets the config point at one runtime while the still-running host locks

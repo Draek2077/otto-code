@@ -82,7 +82,6 @@ import {
   CompletedTurnFooterRow,
   TurnFooter,
   type AssistantTurnForkHandler,
-  type InFlightTurnForkHandler,
   type TurnContentStrategy,
 } from "./turn-footer";
 import { layoutStream, type StreamLayoutItem } from "./layout";
@@ -566,19 +565,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         });
       },
     );
-
-    // The in-flight turn forks with no boundary at all: `selectForkContextRows`
-    // projects the whole timeline when neither boundary field is given, so the
-    // fork carries everything up to now, including the response still streaming
-    // in front of the user.
-    const handleForkInFlightTurn: InFlightTurnForkHandler = useStableEvent(async (target) => {
-      await forkAgent({
-        agentId,
-        agent: context,
-        workspaceId: context.workspaceId,
-        target,
-      });
-    });
 
     // Freeze stream presentation while either the retained panel or the app is hidden.
     // The current panel remains active while a browser tab sleeps, so both gates matter.
@@ -1069,20 +1055,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <TurnFooter
             isRunning={isTurnActive}
             inFlightTurnStartedAt={baseRenderModel.turnTiming.runningStartedAt}
+            inFlightEstimatedTokens={baseRenderModel.turnTiming.runningEstimatedTokens}
             host={bottomTurnFooterHost}
             strategy={streamRenderStrategy}
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
-            onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
             spinner={context.personalitySpinner ?? undefined}
           />
         ) : null,
       [
         handleForkAssistantTurn,
-        handleForkInFlightTurn,
         readOnly,
         isTurnActive,
         baseRenderModel.turnTiming.runningStartedAt,
+        baseRenderModel.turnTiming.runningEstimatedTokens,
         bottomTurnFooterHost,
         streamRenderStrategy,
         supportsAgentForkContextCursor,

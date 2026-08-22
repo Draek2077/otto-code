@@ -14,6 +14,10 @@ export interface ComposerInputModePresentation {
    * chips are all chat-agent affordances. A terminal prompt becomes argv. */
   showAttachments: boolean;
   showVoice: boolean;
+  /** The context-window usage ring only applies to chat agent requests. */
+  showUsageMeter: boolean;
+  /** The per-chat auto-speech toggle is another chat-only voice affordance. */
+  showAutoSpeechButton: boolean;
   showAutocomplete: boolean;
   showAgentControls: boolean;
   /** Argv is read character by character, so it gets the terminal's own font. */
@@ -26,6 +30,8 @@ const PRESENTATION_BY_MODE: Record<ComposerInputMode, ComposerInputModePresentat
   chat: {
     showAttachments: true,
     showVoice: true,
+    showUsageMeter: true,
+    showAutoSpeechButton: true,
     showAutocomplete: true,
     showAgentControls: true,
     isMonospace: false,
@@ -34,6 +40,8 @@ const PRESENTATION_BY_MODE: Record<ComposerInputMode, ComposerInputModePresentat
   terminal: {
     showAttachments: false,
     showVoice: false,
+    showUsageMeter: false,
+    showAutoSpeechButton: false,
     showAutocomplete: false,
     showAgentControls: false,
     isMonospace: true,

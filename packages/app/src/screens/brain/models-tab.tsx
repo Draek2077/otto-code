@@ -1100,11 +1100,13 @@ export function BrainModelsTab({
 
   if (query.error) {
     return (
-      <Alert
-        variant="error"
-        title="Could not read the model library"
-        description={query.error instanceof Error ? query.error.message : String(query.error)}
-      />
+      <View style={styles.alertInset}>
+        <Alert
+          variant="error"
+          title="Could not read the model library"
+          description={query.error instanceof Error ? query.error.message : String(query.error)}
+        />
+      </View>
     );
   }
 
@@ -1457,5 +1459,8 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     gap: theme.spacing[2],
     minHeight: 0,
+  },
+  alertInset: {
+    padding: theme.spacing[4],
   },
 }));

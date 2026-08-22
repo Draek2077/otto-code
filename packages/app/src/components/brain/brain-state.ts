@@ -196,7 +196,7 @@ export const BRAIN_STATE_VISUALS: Record<BrainState, BrainStateVisual> = {
   unreachable: {
     glyph: "brain",
     badge: null,
-    tone: "statusWarningMuted",
+    tone: "statusDanger",
     motion: null,
     peak: null,
     durationMs: 0,

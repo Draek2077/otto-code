@@ -11,7 +11,7 @@ const ThemedCircleDot = withUnistyles(CircleDot);
 
 const extraMutedIcon = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
 const mutedIcon = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const runningIcon = (theme: Theme) => ({ color: theme.colors.statusDotRunning });
+const runningIcon = (theme: Theme) => ({ color: theme.colors.statusInfo });
 
 function TaskStatusIcon({ isCompleted, isRunning }: { isCompleted: boolean; isRunning: boolean }) {
   if (isCompleted) {

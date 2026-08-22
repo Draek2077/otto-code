@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { useComposerControlLayout } from "@/composer/agent-controls/layout-context";
 import { ComposerToolbarGlyph } from "@/composer/agent-controls/glyph";
+import { compactUp } from "@/styles/theme";
 import type { AgentControlIcon } from "@/agent-controls/icons";
 
 type AgentControlTriggerProps = Omit<
@@ -44,7 +45,7 @@ export const AgentControlTrigger = forwardRef<View, AgentControlTriggerProps>(
     const { glyphSize } = useComposerControlLayout();
     const isSheet = surface === "sheet";
     const resolvedGlyphSize = isSheet ? 16 : glyphSize;
-    const resolvedIconColor = iconColor ?? styles.iconColor.color;
+    const resolvedIconColor = iconColor ?? styles.iconColor?.color ?? "currentColor";
     const showValue = isSheet || showToolbarLabel;
     const triggerStyle = useCallback(
       ({ pressed, hovered }: PressableStateCallbackType) => [
@@ -96,18 +97,19 @@ export const AgentControlTrigger = forwardRef<View, AgentControlTriggerProps>(
 
 const styles = StyleSheet.create((theme) => ({
   toolbarControl: {
-    height: 28,
+    height: compactUp(28),
     minWidth: 0,
     flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius["2xl"],
+    gap: compactUp(theme.spacing[1]),
+    paddingHorizontal: compactUp(theme.spacing[2]),
+    borderRadius: theme.borderRadius.full,
     backgroundColor: "transparent",
   },
   toolbarIconOnly: {
-    width: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     flexShrink: 0,
     paddingHorizontal: 0,
     justifyContent: "center",
@@ -127,7 +129,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     marginHorizontal: -theme.spacing[1],
     paddingHorizontal: theme.spacing[4],
-    borderRadius: theme.borderRadius["2xl"],
+    borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface1,
   },
   sheetRowInteractive: {

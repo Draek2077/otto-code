@@ -281,9 +281,13 @@ export const BrainConfigSchema = z
     // persisted fallback so users can set it once (config set hfToken <token>).
     hfToken: z.string().nullable().default(null),
     defaultModel: z.string().nullable().default(null),
-    // Pin the host to a single model: serve only the default/resident model and
-    // refuse completion requests that name a different one, instead of queuing a
-    // switch. For hosts that load one model and must not thrash between clients.
+    /** Maximum independently hosted llama-server model processes. */
+    maxLoadedModels: z.number().int().min(1).max(16).default(1),
+    /** Stable ids selected for residency while model locking is enabled. */
+    lockedModels: z.array(z.string()).default([]),
+    // Pin the host to the selected resident set and refuse completion requests
+    // that name a different model. With a one-process host this preserves the
+    // original single-model lock behavior.
     lockModel: z.boolean().default(false),
     // Sharing/control gates (off by default - a brain is not remotely
     // controllable until its owner opts in). `allowRemoteConfig`: a client with

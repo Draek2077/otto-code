@@ -216,23 +216,6 @@ const darkStatusColors = {
   statusOnline: "#d4d4d8", // zinc-300 - lighter than foregroundMuted (#b6b6bf)
 };
 
-// Small status dots need a brighter, more chromatic ladder than status text.
-// Keeping these as dedicated semantic tokens avoids coupling tiny indicators
-// to the lower-chroma colors used for readable labels and filled surfaces.
-const lightStatusDotColors = {
-  statusDotSuccess: "#299f51",
-  statusDotDanger: "#f12e2f",
-  statusDotWarning: "#b37824",
-  statusDotRunning: "#268ae0",
-};
-
-const darkStatusDotColors = {
-  statusDotSuccess: "#35c264",
-  statusDotDanger: "#f7796d",
-  statusDotWarning: "#db932e",
-  statusDotRunning: "#5caaf6",
-};
-
 // Usage-ledger figure tints - input tokens, output tokens, and cost in the
 // Metrics log. Deliberately desaturated: these sit at 12px next to muted text,
 // so they only need enough hue to separate the three columns at a glance. A
@@ -664,7 +647,6 @@ export function buildLightSemanticColors(tint: LightThemeConfig) {
 
     ...lightDiffColors,
     ...lightStatusColors,
-    ...lightStatusDotColors,
     ...lightUsageColors,
 
     terminal: {
@@ -1034,7 +1016,6 @@ export function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     ...darkDiffColors,
     ...darkStatusColors,
-    ...darkStatusDotColors,
     ...darkUsageColors,
 
     terminal: {

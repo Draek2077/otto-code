@@ -4667,6 +4667,10 @@ export const ServerInfoStatusPayloadSchema = z
         // older daemons, whose Brain config rejects the field.
         // COMPAT(brainRuntimeLogVerbosity): added in v0.8.10, drop the gate when daemon floor >= v0.8.10.
         brainRuntimeLogVerbosity: z.boolean().optional(),
+        // The Brain host can keep multiple independent model processes resident
+        // and exposes maxLoadedModels/lockedModels in local and remote settings.
+        // COMPAT(brainModelProcessPool): added in v0.8.12, remove after 2027-02-21.
+        brainModelProcessPool: z.boolean().optional(),
         // Daemon streams the brain's live status/telemetry via
         // subscribe_brain_status + brain_status_changed, and serves brain.evals.get.
         // Separate from brainControl because status/eval watching can ship after

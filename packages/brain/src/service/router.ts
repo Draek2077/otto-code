@@ -1,7 +1,7 @@
 import http from "node:http";
 
 import { chunkHasContent, chunkHasReasoning, readActivity, ReasoningTracker } from "./activity.js";
-import { Scheduler } from "./scheduler.js";
+import { Scheduler, type ModelScheduler } from "./scheduler.js";
 import type { Supervisor } from "./supervisor.js";
 import { slots as sampleSlots } from "../sysmon.js";
 import { makeVramFitPredicate, selectCodingModel } from "./model-selector.js";
@@ -315,28 +315,43 @@ function resolveCatalog(getCatalog: GetCatalog): Model[] {
  * the supervisor is running marked 'loaded'. Falls back to just the running
  * model when no catalog provider is wired in.
  */
-export function buildModelList(supervisor: Supervisor, getCatalog: GetCatalog): ModelEntry[] {
-  const loadedId = supervisor.model ? supervisor.model.id : null;
+export function buildModelList(
+  supervisor: Supervisor,
+  getCatalog: GetCatalog,
+  scheduler: ModelScheduler<Supervisor> | null = null,
+): ModelEntry[] {
+  const supervisors =
+    scheduler && typeof scheduler.supervisors === "function"
+      ? scheduler.supervisors()
+      : [supervisor];
+  const residentFor = (modelId: string): Supervisor | null =>
+    supervisors.find(
+      (candidate) => candidate.model?.id === modelId && candidate.state !== "stopped",
+    ) ?? null;
   const stateOf = (model: Model): ModelState => {
-    if (!loadedId || model.id !== loadedId) return "not-loaded";
-    if (supervisor.state === "ready") return "loaded";
-    if (supervisor.state === "starting") return "loading";
+    const resident = residentFor(model.id);
+    if (!resident) return "not-loaded";
+    if (resident.state === "ready") return "loaded";
+    if (resident.state === "starting") return "loading";
     return "not-loaded";
   };
 
   let catalog = resolveCatalog(getCatalog);
   // Guarantee the running model appears even if the snapshot predates it.
-  if (supervisor.model && !catalog.some((m) => m.id === loadedId)) {
-    catalog = [supervisor.model, ...catalog];
+  for (const resident of supervisors) {
+    if (resident.model && !catalog.some((model) => model.id === resident.model?.id)) {
+      catalog.unshift(resident.model);
+    }
   }
 
-  return catalog.map((model) =>
-    describeModel(model, {
+  return catalog.map((model) => {
+    const resident = residentFor(model.id);
+    return describeModel(model, {
       state: stateOf(model),
-      profile: model.id === loadedId ? supervisor.profile : null,
-      createdAt: model.id === loadedId ? supervisor.startedAt : null,
-    }),
-  );
+      profile: resident?.profile ?? null,
+      createdAt: resident?.startedAt ?? null,
+    });
+  });
 }
 
 /** Handle the model-discovery endpoints ourselves; returns true if it did. */
@@ -345,6 +360,7 @@ function handleModelsRoute(
   res: http.ServerResponse,
   supervisor: Supervisor,
   getCatalog: GetCatalog,
+  scheduler: ModelScheduler<Supervisor> | null = null,
 ): boolean {
   if (req.method !== "GET") return false;
   const url = (req.url || "").split("?")[0];
@@ -354,7 +370,7 @@ function handleModelsRoute(
     : null;
   if (!isList && single === null) return false;
 
-  const list = buildModelList(supervisor, getCatalog);
+  const list = buildModelList(supervisor, getCatalog, scheduler);
   let payload: unknown;
   if (single !== null) {
     const entry = list.find((e) => e.id === single);
@@ -843,21 +859,35 @@ export function decideModelGate(params: {
   lockModel: boolean;
   requestedName: string | null;
   pinned: Model | null;
+  pinnedModels?: Model[];
   resolved: Model | null;
 }): ModelGateResult {
-  const { lockModel, requestedName, pinned, resolved } = params;
+  const {
+    lockModel,
+    requestedName,
+    pinned,
+    pinnedModels = pinned ? [pinned] : [],
+    resolved,
+  } = params;
   if (lockModel) {
-    if (!pinned) {
-      return { ok: false, status: 503, message: "no model is loaded yet on this locked host" };
+    if (pinnedModels.length === 0) {
+      return { ok: false, status: 503, message: "no models are selected on this locked host" };
     }
-    if (requestedName && requestedName !== pinned.id && requestedName !== pinned.displayName) {
+    const selected = requestedName
+      ? pinnedModels.find(
+          (model) => model.id === requestedName || model.displayName === requestedName,
+        )
+      : pinnedModels[0];
+    if (!selected) {
       return {
         ok: false,
         status: 409,
-        message: `model switching is disabled on this host; only "${pinned.displayName}" is served`,
+        message: `model switching is disabled on this host; served models: ${pinnedModels
+          .map((model) => `"${model.displayName}"`)
+          .join(", ")}`,
       };
     }
-    return { ok: true, model: pinned };
+    return { ok: true, model: selected };
   }
   if (!resolved) {
     return {
@@ -875,10 +905,9 @@ interface ScheduleCompletionOptions {
   req: http.IncomingMessage;
   res: http.ServerResponse;
   agent: http.Agent;
-  supervisor: Supervisor;
   telemetry: Telemetry;
   logger?: Logger | null;
-  scheduler: Scheduler;
+  scheduler: ModelScheduler<Supervisor>;
   modelGate: (name: string | null) => ModelGateResult;
 }
 
@@ -887,7 +916,6 @@ function scheduleCompletion({
   req,
   res,
   agent,
-  supervisor,
   telemetry,
   logger,
   scheduler,
@@ -946,11 +974,11 @@ function scheduleCompletion({
     let slot: number | null = null;
     const queued = scheduler.submit(
       model,
-      () =>
+      (resident) =>
         proxyBuffered({
           agent,
           model,
-          supervisor,
+          supervisor: resident,
           telemetry,
           logger,
           req,
@@ -996,6 +1024,8 @@ export interface RouterOptions {
   getLockModel?: () => boolean;
   /** Live: the configured default model, the pin target before one is resident. */
   getDefaultModel?: () => string | null;
+  /** Live: the complete model set served while locking is enabled. */
+  getLockedModels?: () => string[];
   /**
    * Apply an editable config patch (write config.json, live-switch the model,
    * update the lock), for POST /__host/config. Absent = the write endpoint is
@@ -1031,7 +1061,7 @@ export interface RouterOptions {
    */
   statusEvents?: BrainStatusPublisher | null;
   /** A service shares this scheduler with host-owned model operations. */
-  scheduler?: Scheduler | null;
+  scheduler?: ModelScheduler<Supervisor> | null;
 }
 
 export function createRouter({
@@ -1047,6 +1077,7 @@ export function createRouter({
   getEvals = null,
   getLockModel = () => false,
   getDefaultModel = () => null,
+  getLockedModels = () => [],
   applyConfigPatch = null,
   getAllowConfigWrite = () => false,
   hostApi = null,
@@ -1150,10 +1181,20 @@ export function createRouter({
   // The single model this host will serve when switching is locked: the
   // resident model if one is up, else the configured default resolved through
   // the catalog. Null means nothing is loadable yet.
-  const pinnedModel = (): Model | null => {
-    if (supervisor.model) return supervisor.model;
-    const def = getDefaultModel();
-    return def ? resolveModel(def) : null;
+  const pinnedModels = (): Model[] => {
+    const configured = getLockedModels();
+    const names = configured.length > 0 ? configured : [getDefaultModel()].filter(Boolean);
+    const selected = names
+      .map((name) => resolveModel(name ?? null))
+      .filter((model): model is Model => model !== null);
+    if (selected.length > 0) return selected;
+    const residents =
+      scheduler && typeof scheduler.supervisors === "function"
+        ? scheduler.supervisors()
+        : [supervisor];
+    return residents
+      .map((candidate) => candidate.model)
+      .filter((model): model is Model => model !== null);
   };
 
   // Decide whether a completion for `name` may run. The lock/default are read
@@ -1164,7 +1205,8 @@ export function createRouter({
     return decideModelGate({
       lockModel: lock,
       requestedName: name,
-      pinned: lock ? pinnedModel() : null,
+      pinned: null,
+      pinnedModels: lock ? pinnedModels() : [],
       resolved: lock ? null : resolveModel(name),
     });
   };
@@ -1180,6 +1222,13 @@ export function createRouter({
    */
   const buildCheapStatus = async (): Promise<BrainStatusSnapshot> => {
     const schedulerStats = scheduler ? scheduler.stats() : null;
+    const residentSupervisors =
+      scheduler && typeof scheduler.supervisors === "function"
+        ? scheduler.supervisors()
+        : [supervisor];
+    const residents = residentSupervisors.filter(
+      (candidate) => candidate.model !== null && candidate.state !== "stopped",
+    );
     // Slots come from a loopback GET on the resident llama-server. That is
     // cheap enough to pay on every sample - unlike GPU sampling, which spawns
     // `nvidia-smi` and stays opt-in. Skipped entirely unless a model is
@@ -1198,6 +1247,7 @@ export function createRouter({
       // package version.
       apiVersion: HOST_API_VERSION,
       ...supervisor.status(),
+      residents: residents.map((resident) => resident.status()),
       telemetry: { ...telemetry.totals, warning: telemetry.warning },
       scheduler: schedulerStats,
       recent: telemetry.records.slice(-10),
@@ -1292,7 +1342,7 @@ export function createRouter({
 
     // Answer model discovery ourselves so ids are real names (not paths), the
     // whole catalog is listed, and each carries LM Studio's context fields.
-    if (handleModelsRoute(req, res, supervisor, getCatalog)) return;
+    if (handleModelsRoute(req, res, supervisor, getCatalog, scheduler)) return;
 
     // With a scheduler wired in, completion requests are queued and served in
     // turns - including loading/switching to the model they ask for - instead
@@ -1302,7 +1352,6 @@ export function createRouter({
         req,
         res,
         agent,
-        supervisor,
         telemetry,
         logger,
         scheduler,

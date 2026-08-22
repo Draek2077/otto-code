@@ -146,7 +146,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.xl,
+    // Match the composer's message input shell.
+    borderRadius: theme.borderRadius.md,
   },
   input: {
     flex: 1,

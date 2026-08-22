@@ -37,11 +37,12 @@ export function Alert({
 }: AlertProps) {
   const { theme } = useUnistyles();
   const accentColor = resolveAccentColor(variant, theme);
-  const borderColor = variant === "success" ? theme.colors.border : accentColor;
+  const backgroundColor = resolveBackgroundColor(variant, theme);
+  const borderColor = accentColor;
 
   const containerStyle = useMemo(
-    () => [styles.container, borderColor ? { borderColor } : null],
-    [borderColor],
+    () => [styles.container, { backgroundColor }, borderColor ? { borderColor } : null],
+    [backgroundColor, borderColor],
   );
 
   const titleStyle = useMemo(
@@ -86,6 +87,17 @@ function resolveAccentColor(
   return null;
 }
 
+function resolveBackgroundColor(
+  variant: AlertVariant,
+  theme: ReturnType<typeof useUnistyles>["theme"],
+): string {
+  if (variant === "info") return theme.colors.statusInfoSurface;
+  if (variant === "success") return theme.colors.statusSuccessSurface;
+  if (variant === "warning") return theme.colors.statusWarningSurface;
+  if (variant === "error") return theme.colors.statusDangerSurface;
+  return theme.colors.surface3;
+}
+
 const styles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "row",
@@ -93,7 +105,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
-    backgroundColor: "transparent",
     borderRadius: theme.borderRadius.xl,
     paddingVertical: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],

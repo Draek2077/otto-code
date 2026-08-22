@@ -11,6 +11,7 @@ import { ModelBrowser, useModelBrowser } from "@/components/model-browser";
 import { ComposerToolbarGlyph } from "@/composer/agent-controls/glyph";
 import type { ProviderSelectorProvider } from "@/provider-selection/provider-selection";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { compactUp } from "@/styles/theme";
 
 const SNAP_POINTS = ["80%", "90%"];
 const MODEL_LIST_TOP_INSET = 4;
@@ -35,7 +36,8 @@ interface CompactModelSheetProps {
   disabled?: boolean;
   serverId?: string | null;
   glyphSize: number;
-  children: ReactNode;
+  children?: ReactNode;
+  iconOnly?: boolean;
 }
 
 function shortModelLabel(label: string): string {
@@ -60,6 +62,7 @@ export function CompactModelSheet({
   serverId = null,
   glyphSize,
   children,
+  iconOnly = false,
 }: CompactModelSheetProps) {
   const { t } = useTranslation();
   const usesBottomSheet = useIsCompactFormFactor();
@@ -131,11 +134,12 @@ export function CompactModelSheet({
   const triggerStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType) => [
       styles.trigger,
+      iconOnly && styles.triggerIconOnly,
       hovered && styles.triggerHovered,
       (pressed || isOpen) && styles.triggerPressed,
       disabled && styles.triggerDisabled,
     ],
-    [disabled, isOpen],
+    [disabled, iconOnly, isOpen],
   );
 
   return (
@@ -157,9 +161,11 @@ export function CompactModelSheet({
             <ProviderIcon size={glyphSize} color={styles.providerIcon.color} />
           </ComposerToolbarGlyph>
         ) : null}
-        <Text style={styles.triggerText} numberOfLines={1}>
-          {shortModelLabel(browser.triggerLabel)}
-        </Text>
+        {iconOnly ? null : (
+          <Text style={styles.triggerText} numberOfLines={1}>
+            {shortModelLabel(browser.triggerLabel)}
+          </Text>
+        )}
       </ComboboxTrigger>
 
       <AdaptiveModalSheet
@@ -212,14 +218,14 @@ export function CompactModelSheet({
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    height: 28,
+    height: compactUp(28),
     minWidth: 0,
     flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius["2xl"],
+    gap: compactUp(theme.spacing[1]),
+    paddingHorizontal: compactUp(theme.spacing[2]),
+    borderRadius: theme.borderRadius.full,
     backgroundColor: "transparent",
   },
   triggerHovered: {
@@ -237,6 +243,13 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+  },
+  triggerIconOnly: {
+    width: compactUp(28),
+    height: compactUp(28),
+    flexShrink: 0,
+    justifyContent: "center",
+    paddingHorizontal: 0,
   },
   providerIcon: {
     color: theme.colors.foregroundMuted,

@@ -730,7 +730,6 @@ function StatusWorkspaceRowInner({
         const {
           showTrailing,
           showKebab: showKebabInSlot,
-          showScrim,
           renderSlot,
           reserveSlotWidth,
         } = resolveTrailingActionVisibility({
@@ -801,7 +800,6 @@ function StatusWorkspaceRowInner({
                     trailing={trailing}
                     showBase={showTrailing}
                     showKebab={showKebabInSlot}
-                    showScrim={showScrim}
                     reserveSlotWidth={reserveSlotWidth}
                     isPinned={isPinned}
                     onTogglePin={onTogglePin}
@@ -830,7 +828,6 @@ function StatusWorkspaceActionSlot({
   trailing,
   showBase,
   showKebab,
-  showScrim,
   reserveSlotWidth,
   isPinned,
   onTogglePin,
@@ -848,7 +845,6 @@ function StatusWorkspaceActionSlot({
   trailing: SidebarWorkspaceTrailing;
   showBase: boolean;
   showKebab: boolean;
-  showScrim: boolean;
   reserveSlotWidth: boolean;
   isPinned?: boolean;
   onTogglePin?: () => void;
@@ -868,7 +864,7 @@ function StatusWorkspaceActionSlot({
       <SidebarWorkspaceTrailingActionBase visible={showBase}>
         <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
       </SidebarWorkspaceTrailingActionBase>
-      <SidebarWorkspaceTrailingActionOverlay visible={kebab.showKebab} scrim={showScrim}>
+      <SidebarWorkspaceTrailingActionOverlay visible={kebab.showKebab}>
         {kebab.showKebab && onArchive ? (
           <SidebarWorkspaceMenu
             {...kebab.menuProps}

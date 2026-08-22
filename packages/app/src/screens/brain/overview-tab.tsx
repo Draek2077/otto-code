@@ -6,7 +6,7 @@
  * telemetry, because that costs an `nvidia-smi` spawn on the brain and nothing
  * else renders the numbers.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -47,6 +47,14 @@ import {
 } from "@/screens/settings/host-brain-models";
 import type { Theme } from "@/styles/theme";
 import { brainStatusQueryKey, formatGiB, formatPercent, useBrainStatus } from "./use-brain-data";
+import {
+  formatBrainRuntimeShortLabel,
+  isBrainRuntimeManagementAvailable,
+  resolveBrainHostRuntime,
+  resolveHostSelectedBrainRuntime,
+  type BrainRuntimePhase,
+} from "./runtime-management";
+import { resolveBrainOverviewError } from "./brain-availability";
 
 const ThemedPlay = withUnistyles(Play);
 const ThemedSquare = withUnistyles(Square);
@@ -659,11 +667,21 @@ function HostPanel({ status }: { status: BrainHostStatus | null }) {
 function RuntimePanel({
   serverId,
   isConnected,
+  status,
+  brainStatusKnown,
+  brainStatusError,
+  brainPhase,
+  canManage,
   canInstall,
   fillHeight,
 }: {
   serverId: string;
   isConnected: boolean;
+  status: BrainHostStatus | null;
+  brainStatusKnown: boolean;
+  brainStatusError: boolean;
+  brainPhase: BrainRuntimePhase;
+  canManage: boolean;
   canInstall: boolean;
   fillHeight?: boolean;
 }) {
@@ -691,18 +709,50 @@ function RuntimePanel({
     () => resolveSelectedBrainRuntime(runtimes, selectedPath),
     [runtimes, selectedPath],
   );
+  // The status belongs to the Brain host, while daemon config and the runtime
+  // inventory can describe the client machine. Prefer the host-owned value so
+  // a remote Brain never reports the local machine's runtime state.
+  const hostRuntime = resolveBrainHostRuntime(status?.runtime);
+  const hostMatchedRuntime = useMemo(
+    () => resolveHostSelectedBrainRuntime(runtimes, hostRuntime),
+    [runtimes, hostRuntime],
+  );
+  const runtimeManagementAvailable = isBrainRuntimeManagementAvailable({
+    managementAllowed: canManage,
+    hostConnected: isConnected,
+    brainStatusKnown,
+    brainStatusError,
+    brainPhase,
+    runtimeListAnswered: runtimesQuery.data !== undefined,
+    runtimeListError: runtimesQuery.isError,
+  });
+  useEffect(() => {
+    if (!runtimeManagementAvailable) {
+      setManagerVisible(false);
+    }
+  }, [runtimeManagementAvailable]);
   let runtimeName = "Runtime unavailable";
   let runtimeDetail = "No managed runtime installed";
   let runtimeHealthLabel = "Action needed";
   let runtimeHealthVariant: "success" | "warning" | "muted" = "warning";
-  if (runtimesQuery.data === undefined) {
+  if (hostRuntime) {
+    runtimeName = "llama.cpp";
+    // The hero shows the runtime's presentation label; the raw host identity
+    // only surfaces when the runtime is absent from the local inventory.
+    runtimeDetail = hostMatchedRuntime
+      ? (formatBrainRuntimeShortLabel(hostMatchedRuntime) ?? formatBrainRuntime(hostMatchedRuntime))
+      : hostRuntime;
+    runtimeHealthLabel = "Installed";
+    runtimeHealthVariant = "success";
+  } else if (runtimesQuery.data === undefined) {
     runtimeName = "Runtime status unknown";
     runtimeDetail = "Checking runtime";
     runtimeHealthLabel = "Status unknown";
     runtimeHealthVariant = "muted";
   } else if (selectedRuntime) {
     runtimeName = "llama.cpp";
-    runtimeDetail = formatBrainRuntime(selectedRuntime);
+    runtimeDetail =
+      formatBrainRuntimeShortLabel(selectedRuntime) ?? formatBrainRuntime(selectedRuntime);
     runtimeHealthLabel = "Installed";
     runtimeHealthVariant = "success";
   }
@@ -723,14 +773,16 @@ function RuntimePanel({
             {runtimeDetail}
           </Text>
         </View>
-        <Button
-          variant="outline"
-          size="sm"
-          onPress={handleOpenManager}
-          testID="brain-manage-runtime-button"
-        >
-          Manage runtime
-        </Button>
+        {runtimeManagementAvailable ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={handleOpenManager}
+            testID="brain-manage-runtime-button"
+          >
+            Manage runtime
+          </Button>
+        ) : null}
       </View>
       <RuntimeManagerSheet
         visible={managerVisible}
@@ -741,6 +793,7 @@ function RuntimePanel({
         loading={runtimesQuery.isLoading}
         busy={busy}
         canInstall={canInstall}
+        hostRuntime={hostRuntime}
         jobs={jobs}
         onStarted={handleJobStarted}
       />
@@ -752,6 +805,7 @@ export function BrainOverviewTab({
   serverId,
   isConnected,
   canControlLifecycle,
+  showRuntime,
   canManageRuntime,
   canInstallRuntime,
   showStartStop,
@@ -760,6 +814,8 @@ export function BrainOverviewTab({
   isConnected: boolean;
   /** False for a remote brain: it is started on the machine that hosts it. */
   canControlLifecycle: boolean;
+  /** The connected daemon implements host-owned runtime reads. */
+  showRuntime: boolean;
   canManageRuntime: boolean;
   canInstallRuntime: boolean;
   showStartStop: boolean;
@@ -774,6 +830,12 @@ export function BrainOverviewTab({
   const resources = readRecord(statusRecord, "resources");
   const telemetry = readRecord(statusRecord, "telemetry");
   const telemetryWarning = typeof telemetry?.warning === "string" ? telemetry.warning : null;
+  const statusError = resolveBrainOverviewError({
+    isConnected,
+    error: query.error,
+    phase,
+    lastError: status?.lastError,
+  });
 
   // A host we cannot reach tells us nothing about its brain, and every readout
   // below would otherwise fill in for it: no status reads as "Stopped", an
@@ -805,13 +867,15 @@ export function BrainOverviewTab({
 
   return (
     <View style={styles.container}>
-      {status?.lastError && phase === "failed" ? (
-        <Alert variant="error" title="The brain stopped" description={status.lastError} />
+      {statusError ? (
+        <Alert variant="error" title={statusError.title} description={statusError.description} />
       ) : null}
       {/* Telemetry advice is derived from observed traffic, not guesswork: the
           router counts responses that spent every token reasoning and returned
           no content, which is the failure the brain exists to prevent. */}
-      {telemetryWarning ? <Alert variant="warning" description={telemetryWarning} /> : null}
+      {!statusError && telemetryWarning ? (
+        <Alert variant="warning" description={telemetryWarning} />
+      ) : null}
 
       <View style={stackTopSections ? styles.topSectionsStacked : styles.topSections}>
         <View style={[styles.topSection, !stackTopSections && styles.topSectionWide]}>
@@ -824,28 +888,37 @@ export function BrainOverviewTab({
             fillHeight={!stackTopSections}
           />
         </View>
-        {canManageRuntime ? (
+        {showRuntime ? (
           <View style={[styles.topSection, !stackTopSections && styles.topSectionWide]}>
             <RuntimePanel
               serverId={serverId}
               isConnected={isConnected}
+              status={status}
+              brainStatusKnown={status !== null}
+              brainStatusError={query.isError}
+              brainPhase={phase}
+              canManage={canManageRuntime}
               canInstall={canInstallRuntime}
               fillHeight={!stackTopSections}
             />
           </View>
         ) : null}
       </View>
-      <VramPanel gpu={readRecord(resources, "gpu")} />
-      <ResourceTiles
-        resources={resources}
-        gpu={readRecord(resources, "gpu")}
-        slots={readRecord(statusRecord, "slots")}
-      />
-      <DetailSections telemetry={telemetry} status={status} />
-      <ModelActivityPanel
-        slots={readRecord(statusRecord, "slots")}
-        inference={readRecord(statusRecord, "inference")}
-      />
+      {!statusError ? (
+        <>
+          <VramPanel gpu={readRecord(resources, "gpu")} />
+          <ResourceTiles
+            resources={resources}
+            gpu={readRecord(resources, "gpu")}
+            slots={readRecord(statusRecord, "slots")}
+          />
+          <DetailSections telemetry={telemetry} status={status} />
+          <ModelActivityPanel
+            slots={readRecord(statusRecord, "slots")}
+            inference={readRecord(statusRecord, "inference")}
+          />
+        </>
+      ) : null}
     </View>
   );
 }

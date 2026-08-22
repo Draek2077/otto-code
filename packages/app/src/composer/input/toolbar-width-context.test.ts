@@ -12,9 +12,6 @@ describe("canFitCompactFeatures", () => {
     expect(canFitCompactFeatures(120)).toBe(false);
   });
 
-  // The first render happens before onLayout reports anything. Hiding on an
-  // unmeasured 0 and popping the button back in a frame later is the more
-  // jarring of the two mistakes.
   it("treats an unmeasured width as no constraint", () => {
     expect(canFitCompactFeatures(0)).toBe(true);
     expect(canFitCompactFeatures(-1)).toBe(true);

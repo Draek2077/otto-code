@@ -48,8 +48,9 @@ so development-only providers such as Mock Load Test are available. Packaged
 desktop launches always force the daemon to production mode.
 
 The web and desktop dev launchers pass the current Git branch to Metro as
-`EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL`. The expanded desktop sidebar shows it in
-the titlebar row. Production builds leave the variable unset and show no label.
+`EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL`. The desktop workspace title bar shows it as a pill
+immediately to the right of the workspace `...` menu. Production builds leave the variable
+unset and show no label.
 
 `npm run dev` is only a shorthand for `npm run dev:server`.
 

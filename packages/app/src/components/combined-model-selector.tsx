@@ -668,14 +668,13 @@ const styles = StyleSheet.create((theme) => ({
   // must scale together on compact breakpoints.
   trigger: {
     height: compactUp(28),
-    minWidth: 0,
-    flexShrink: 1,
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "transparent",
     gap: compactUp(theme.spacing[1]),
     paddingHorizontal: compactUp(theme.spacing[2]),
-    borderRadius: theme.borderRadius["2xl"],
+    borderRadius: theme.borderRadius.full,
   },
   triggerHovered: {
     backgroundColor: theme.colors.surfaceHover,

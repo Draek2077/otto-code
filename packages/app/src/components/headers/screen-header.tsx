@@ -59,13 +59,17 @@ export function ScreenHeader({
   );
   const leftCombinedStyle = useMemo(() => [styles.left, leftStyle], [leftStyle]);
   const rightCombinedStyle = useMemo(() => [styles.right, rightStyle], [rightStyle]);
+  const headerStyle = useMemo(
+    () => [styles.header, borderless && styles.headerBorderless],
+    [borderless],
+  );
   const borderLineStyle = useMemo(
     () => [styles.borderLine, borderless && styles.borderLineHidden],
     [borderless],
   );
 
   return (
-    <View style={styles.header}>
+    <View style={headerStyle}>
       <View style={innerStyle}>
         <View onLayout={onRowLayout} style={rowStyle}>
           <TitlebarDragRegion />
@@ -81,6 +85,12 @@ export function ScreenHeader({
 const styles = StyleSheet.create((theme) => ({
   header: {
     backgroundColor: theme.colors.surfaceChrome,
+  },
+  // A borderless header is used by screens whose content owns the whole page
+  // surface. Keep the drag strip and toggle, but do not introduce a second
+  // painted band above the content.
+  headerBorderless: {
+    backgroundColor: theme.colors.surface0,
   },
   inner: {},
   row: {

@@ -32,12 +32,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -136,6 +138,10 @@ function WorkspaceMenuItem({
   return <DropdownMenuItem {...props}>{children}</DropdownMenuItem>;
 }
 
+function WorkspaceMenuSeparator({ surface }: { surface: MenuSurface }) {
+  return surface === "context" ? <ContextMenuSeparator /> : <DropdownMenuSeparator />;
+}
+
 function SidebarWorkspaceMenuItems({
   surface,
   workspaceKey,
@@ -168,6 +174,9 @@ function SidebarWorkspaceMenuItems({
     if (!serverId || !workspaceId) return;
     openProjectKnowledgeTab({ serverId, workspaceId, navigate: true });
   }, [serverId, workspaceId]);
+  const hasIdentityActions = [onCopyPath, onCopyBranchName, onRename, onMarkAsRead].some(Boolean);
+  const hasManagementActions = Boolean(serverId && workspaceId);
+  const hasLocationActions = [onOpenBaseCheckout, onTogglePin, openInFileManagerPath].some(Boolean);
 
   return (
     <>
@@ -211,7 +220,10 @@ function SidebarWorkspaceMenuItems({
           Mark as read
         </WorkspaceMenuItem>
       ) : null}
-      {serverId && workspaceId ? (
+      {hasIdentityActions && hasManagementActions ? (
+        <WorkspaceMenuSeparator surface={surface} />
+      ) : null}
+      {hasManagementActions ? (
         <WorkspaceMenuItem
           surface={surface}
           testID={`sidebar-workspace-menu-context-management-${workspaceKey}`}
@@ -221,7 +233,7 @@ function SidebarWorkspaceMenuItems({
           {t("workspace.contextManagement.openAction")}
         </WorkspaceMenuItem>
       ) : null}
-      {serverId && workspaceId ? (
+      {hasManagementActions ? (
         <WorkspaceMenuItem
           surface={surface}
           leading={knowledgeLeadingIcon}
@@ -229,6 +241,9 @@ function SidebarWorkspaceMenuItems({
         >
           Manage knowledge
         </WorkspaceMenuItem>
+      ) : null}
+      {hasManagementActions && hasLocationActions ? (
+        <WorkspaceMenuSeparator surface={surface} />
       ) : null}
       {onOpenBaseCheckout ? (
         <WorkspaceMenuItem
@@ -255,6 +270,7 @@ function SidebarWorkspaceMenuItems({
         path={openInFileManagerPath}
         testID={`sidebar-workspace-menu-open-folder-${workspaceKey}`}
       />
+      {onArchive ? <WorkspaceMenuSeparator surface={surface} /> : null}
       {onArchive ? (
         <WorkspaceMenuItem
           surface={surface}

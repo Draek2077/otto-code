@@ -31,6 +31,7 @@ interface FileAction {
   icon: LucideIcon;
   onSelect: () => void;
   destructive?: boolean;
+  section?: "create" | "edit" | "path" | "sharing" | "destructive";
   separatorBefore?: boolean;
   testID?: string;
 }
@@ -91,6 +92,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.newFile"),
             icon: FilePlus,
             onSelect: onNewFile,
+            section: "create",
           }
         : null,
       onNewFolder
@@ -99,6 +101,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.newFolder"),
             icon: FolderPlus,
             onSelect: onNewFolder,
+            section: "create",
           }
         : null,
       onCollapseFolder
@@ -107,6 +110,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.collapseFolder"),
             icon: FolderMinus,
             onSelect: onCollapseFolder,
+            section: "create",
           }
         : null,
       availableFile && onOpenFile
@@ -115,6 +119,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.openFile"),
             icon: FileText,
             onSelect: onOpenFile,
+            section: "create",
           }
         : null,
       onRename
@@ -123,6 +128,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.rename"),
             icon: Pencil,
             onSelect: onRename,
+            section: "edit",
           }
         : null,
       onDuplicate
@@ -131,6 +137,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.duplicate"),
             icon: CopyPlus,
             onSelect: onDuplicate,
+            section: "edit",
           }
         : null,
       onCopyPath
@@ -139,6 +146,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.copyPath"),
             icon: Copy,
             onSelect: onCopyPath,
+            section: "path",
           }
         : null,
       onCopyRelativePath
@@ -147,6 +155,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.copyRelativePath"),
             icon: Copy,
             onSelect: onCopyRelativePath,
+            section: "path",
           }
         : null,
       onReveal && revealTargetName
@@ -155,6 +164,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.revealIn", { target: revealTargetName }),
             icon: FolderOpen,
             onSelect: onReveal,
+            section: "path",
           }
         : null,
       availableFile && onDownload
@@ -163,6 +173,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.download"),
             icon: Download,
             onSelect: onDownload,
+            section: "sharing",
           }
         : null,
       availableFile && onAddToChat
@@ -171,6 +182,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.addToChat"),
             icon: MessageSquarePlus,
             onSelect: onAddToChat,
+            section: "sharing",
           }
         : null,
       onRevert
@@ -180,6 +192,7 @@ export function FileActionsContextMenuContent({
             icon: Undo2,
             onSelect: onRevert,
             destructive: true,
+            section: "destructive",
           }
         : null,
       onDelete
@@ -189,6 +202,7 @@ export function FileActionsContextMenuContent({
             icon: Trash2,
             onSelect: onDelete,
             destructive: true,
+            section: "destructive",
           }
         : null,
     ];
@@ -196,7 +210,7 @@ export function FileActionsContextMenuContent({
     return availableActions.map((action, index) =>
       Object.assign(action, {
         separatorBefore: Boolean(
-          action.destructive && index > 0 && !availableActions[index - 1].destructive,
+          index > 0 && action.section !== availableActions[index - 1].section,
         ),
         testID: testIDPrefix ? `${testIDPrefix}-${action.key}` : undefined,
       }),

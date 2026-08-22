@@ -279,6 +279,8 @@ export const MutableBrainConfigSchema = z
       .passthrough()
       .default({ host: "127.0.0.1", port: 1234 }),
     defaultModel: z.string().nullable().default(null),
+    maxLoadedModels: z.number().int().min(1).max(16).default(1),
+    lockedModels: z.array(z.string()).default([]),
     runtime: z
       .object({
         source: z.enum(["auto", "managed", "lmstudio"]).default("auto"),
@@ -363,6 +365,8 @@ export const MutableBrainConfigPatchSchema = z
     remote: MutableBrainRemotePatchSchema,
     listen: MutableBrainListenPatchSchema,
     defaultModel: z.string().nullable(),
+    maxLoadedModels: z.number().int().min(1).max(16),
+    lockedModels: z.array(z.string()),
     runtime: z
       .object({
         source: z.enum(["auto", "managed", "lmstudio"]),
@@ -387,6 +391,8 @@ export const DEFAULT_MUTABLE_BRAIN_CONFIG = {
   remote: { host: "", port: 1234, secure: false, authToken: null, certFingerprint: null },
   listen: { host: "127.0.0.1", port: 1234 },
   defaultModel: null,
+  maxLoadedModels: 1,
+  lockedModels: [],
   runtime: { source: "auto" as const, path: null, logVerbosity: 3 },
   lockModel: false,
   allowRemoteConfig: false,

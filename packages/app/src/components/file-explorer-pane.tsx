@@ -29,6 +29,7 @@ import { isWeb } from "@/constants/platform";
 import * as Clipboard from "expo-clipboard";
 import { ChevronDown, Eye, EyeOff, FilePlus, FolderPlus, RotateCw } from "lucide-react-native";
 import { MaterialFileIcon } from "@/components/material-file-icon";
+import { Folder } from "@/components/icons/material-icons";
 import {
   TreeChevron,
   TreeIndentGuides,
@@ -76,6 +77,7 @@ import {
   showHiddenFilesAndRestoreExpandedDirectories,
   type ExplorerTreeRow,
 } from "@/file-explorer/tree";
+import { TREE_RAILS_ALL_CONTINUE, withTreeRail } from "@/components/tree-rail-mask";
 import { useWorkspaceFileDragSource } from "@/attachments/use-workspace-file-drag-source";
 import {
   useWorkspaceAttachmentScopeKey,
@@ -104,6 +106,7 @@ const ThemedEye = withUnistyles(Eye);
 const ThemedEyeOff = withUnistyles(EyeOff);
 const ThemedFilePlus = withUnistyles(FilePlus);
 const ThemedFolderPlus = withUnistyles(FolderPlus);
+const ThemedFolder = withUnistyles(Folder);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -136,6 +139,7 @@ interface TreeRowItemProps {
   workspaceId?: string | null;
   entry: ExplorerEntry;
   depth: number;
+  ancestorMask: number;
   isExpanded: boolean;
   isSelected: boolean;
   loading: boolean;
@@ -168,8 +172,14 @@ function iconButtonStyle({ hovered, pressed }: PressableStateCallbackType & { ho
 
 type ExplorerListRow =
   | { type: "entry"; row: ExplorerTreeRow }
-  | { type: "draft"; parentPath: string; kind: "file" | "directory"; depth: number }
-  | { type: "rename"; entry: ExplorerEntry; depth: number };
+  | {
+      type: "draft";
+      parentPath: string;
+      kind: "file" | "directory";
+      depth: number;
+      ancestorMask: number;
+    }
+  | { type: "rename"; entry: ExplorerEntry; depth: number; ancestorMask: number };
 
 type ExplorerPendingEdit =
   | { type: "create"; parentPath: string; kind: "file" | "directory" }
@@ -184,6 +194,7 @@ function listRowKeyExtractor(row: ExplorerListRow) {
 
 interface EntryNameInputRowProps {
   depth: number;
+  ancestorMask: number;
   kind: "file" | "directory";
   initialName?: string;
   onCommit: (name: string) => void;
@@ -192,6 +203,7 @@ interface EntryNameInputRowProps {
 
 function EntryNameInputRow({
   depth,
+  ancestorMask,
   kind,
   initialName = "",
   onCommit,
@@ -226,7 +238,7 @@ function EntryNameInputRow({
 
   return (
     <View style={[styles.entryRow, { paddingLeft: treeRowPaddingLeft(depth) }]}>
-      <TreeIndentGuides depth={depth} />
+      <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} />
       <View style={styles.entryInfo}>
         <View style={styles.entryIcon}>
           {kind === "directory" ? (
@@ -264,6 +276,7 @@ function TreeRowItem({
   workspaceId,
   entry,
   depth,
+  ancestorMask,
   isExpanded,
   isSelected,
   loading,
@@ -394,11 +407,17 @@ function TreeRowItem({
         aria-selected={isSelected}
         testID={testID}
       >
-        <TreeIndentGuides depth={depth} />
+        <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} />
         <View ref={dragSourceRef} style={styles.entryInfo}>
-          <View style={styles.entryIcon}>
+          <View style={[styles.entryIcon, isDirectory && styles.directoryEntryIcon]}>
             {isDirectory ? (
-              <DirectoryChevronIcon loading={loading} expanded={isExpanded} />
+              <>
+                <DirectoryChevronIcon loading={loading} expanded={isExpanded} />
+                <ThemedFolder
+                  size={WORKSPACE_TREE_ICON_SIZE}
+                  uniProps={foregroundMutedColorMapping}
+                />
+              </>
             ) : (
               <MaterialFileIcon fileName={entry.name} size={WORKSPACE_TREE_ICON_SIZE} />
             )}
@@ -1036,7 +1055,12 @@ export function FileExplorerPane({
   const listRows = useMemo<ExplorerListRow[]>(() => {
     const rows: ExplorerListRow[] = treeRows.map((row) =>
       pendingEdit?.type === "rename" && pendingEdit.entry.path === row.entry.path
-        ? { type: "rename", entry: row.entry, depth: row.depth }
+        ? {
+            type: "rename",
+            entry: row.entry,
+            depth: row.depth,
+            ancestorMask: row.ancestorMask,
+          }
         : { type: "entry", row },
     );
     if (pendingEdit?.type !== "create") {
@@ -1044,11 +1068,19 @@ export function FileExplorerPane({
     }
     let insertionIndex = 0;
     let depth = 0;
+    let ancestorMask = TREE_RAILS_ALL_CONTINUE;
     if (pendingEdit.parentPath !== ".") {
       const parentIndex = treeRows.findIndex((row) => row.entry.path === pendingEdit.parentPath);
       if (parentIndex >= 0) {
         insertionIndex = parentIndex + 1;
-        depth = treeRows[parentIndex].depth + 1;
+        const parentRow = treeRows[parentIndex];
+        depth = parentRow.depth + 1;
+        const nextRow = treeRows[insertionIndex];
+        ancestorMask = withTreeRail(
+          parentRow.ancestorMask,
+          depth,
+          nextRow !== undefined && nextRow.depth > parentRow.depth,
+        );
       }
     }
     rows.splice(insertionIndex, 0, {
@@ -1056,6 +1088,7 @@ export function FileExplorerPane({
       parentPath: pendingEdit.parentPath,
       kind: pendingEdit.kind,
       depth,
+      ancestorMask,
     });
     return rows;
   }, [pendingEdit, treeRows]);
@@ -1074,6 +1107,7 @@ export function FileExplorerPane({
         return (
           <EntryNameInputRow
             depth={info.item.depth}
+            ancestorMask={info.item.ancestorMask}
             kind={info.item.kind}
             onCommit={handleDraftCommit}
             onCancel={handleEditCancel}
@@ -1084,6 +1118,7 @@ export function FileExplorerPane({
         return (
           <EntryNameInputRow
             depth={info.item.depth}
+            ancestorMask={info.item.ancestorMask}
             kind={info.item.entry.kind}
             initialName={info.item.entry.name}
             onCommit={handleRenameCommit}
@@ -1642,6 +1677,7 @@ function TreeRowDispatcher({
       workspaceId={workspaceId}
       entry={entry}
       depth={depth}
+      ancestorMask={row.ancestorMask}
       isExpanded={isExpanded}
       isSelected={isSelected}
       loading={loading}
@@ -1940,6 +1976,10 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+  },
+  directoryEntryIcon: {
+    width: 32,
+    flexDirection: "row",
   },
   entryName: {
     flex: 1,

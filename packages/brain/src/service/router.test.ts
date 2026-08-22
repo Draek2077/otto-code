@@ -290,6 +290,17 @@ test("lock on: a request for the pinned model is served", () => {
   assert.deepEqual(gate, { ok: true, model: PINNED });
 });
 
+test("lock on: every model in the configured resident set is served", () => {
+  const gate = decideModelGate({
+    lockModel: true,
+    requestedName: "Model-B",
+    pinned: null,
+    pinnedModels: [PINNED, OTHER],
+    resolved: null,
+  });
+  assert.deepEqual(gate, { ok: true, model: OTHER });
+});
+
 test("lock on: an unnamed request rides the pinned model", () => {
   const gate = decideModelGate({
     lockModel: true,

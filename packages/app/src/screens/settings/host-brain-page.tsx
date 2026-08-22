@@ -511,6 +511,11 @@ function useBrainModels(serverId: string): string[] {
 // null models sort under one stable key so the "Automatic" option round-trips.
 const modelValueKey = (value: string | null): string => value ?? "__automatic__";
 
+function parseMaxLoadedModels(raw: string): number | null {
+  const value = Number.parseInt(raw, 10);
+  return Number.isInteger(value) && value >= 1 && value <= 16 ? value : null;
+}
+
 // A model chooser, never a text box: options are the detected models, disabled
 // (with a "start the brain" prompt) when none are detected. `includeAutomatic`
 // adds a null "Automatic" choice for fields that may be left unset.
@@ -556,29 +561,122 @@ function ModelPickerRow({
   );
 
   return (
-    <View style={rowStyle}>
-      <View style={settingsStyles.rowContent}>
+    <View style={[rowStyle, styles.modelPickerRow]}>
+      <View style={[settingsStyles.rowContent, styles.modelPickerCopy]}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
-      <SelectField<string | null>
-        field={false}
-        size="sm"
-        label={title}
-        value={value}
-        selectedDisplay={selectedDisplay}
-        options={options}
-        onChange={onChange}
-        placeholder={disabled ? "Start the brain to list models" : "Select a model"}
-        emptyText="No models detected"
-        disabled={disabled}
-        searchable
-        getValueKey={modelValueKey}
-        triggerStyle={styles.pickerTrigger}
-        triggerTestID={triggerTestID}
-      />
+      <View style={styles.modelPickerControl}>
+        <SelectField<string | null>
+          field={false}
+          size="sm"
+          label={title}
+          value={value}
+          selectedDisplay={selectedDisplay}
+          options={options}
+          onChange={onChange}
+          placeholder={disabled ? "Start the brain to list models" : "Select a model"}
+          emptyText="No models detected"
+          disabled={disabled}
+          searchable
+          getValueKey={modelValueKey}
+          triggerStyle={styles.modelPickerTrigger}
+          triggerTestID={triggerTestID}
+        />
+      </View>
     </View>
   );
+}
+
+function LockedModelPickerRow({
+  serverId,
+  index,
+  value,
+  onChange,
+  triggerTestID,
+}: {
+  serverId: string;
+  index: number;
+  value: string | null;
+  onChange: (index: number, next: string | null) => void;
+  triggerTestID: string;
+}) {
+  const handleChange = useCallback(
+    (next: string | null) => onChange(index, next),
+    [index, onChange],
+  );
+  return (
+    <ModelPickerRow
+      serverId={serverId}
+      title={`Locked model ${index + 1}`}
+      hint="This process stays resident while model locking is enabled."
+      value={value}
+      onChange={handleChange}
+      includeAutomatic={false}
+      showBorder
+      triggerTestID={triggerTestID}
+    />
+  );
+}
+
+function ModelProcessLimitRow({
+  supported,
+  value,
+  hint,
+  onCommit,
+  testID,
+}: {
+  supported: boolean;
+  value: number;
+  hint: string;
+  onCommit: (raw: string) => void;
+  testID: string;
+}) {
+  if (!supported) return null;
+  return (
+    <BrainTextRow
+      title="Model processes"
+      hint={hint}
+      value={String(value)}
+      placeholder="1"
+      showBorder
+      numeric
+      onCommit={onCommit}
+      testID={testID}
+    />
+  );
+}
+
+function LockedModelRows({
+  supported,
+  locked,
+  serverId,
+  maxLoadedModels,
+  lockedModels,
+  defaultModel,
+  onChange,
+  testIDPrefix,
+}: {
+  supported: boolean;
+  locked: boolean;
+  serverId: string;
+  maxLoadedModels: number;
+  lockedModels: string[];
+  defaultModel: string | null;
+  onChange: (index: number, next: string | null) => void;
+  testIDPrefix: string;
+}) {
+  if (!supported || !locked) return null;
+  return Array.from({ length: maxLoadedModels }, (_, index) => (
+    <LockedModelPickerRow
+      key={`${testIDPrefix}-locked-model-${index}`}
+      serverId={serverId}
+      index={index}
+      value={lockedModels[index] ?? (index === 0 ? defaultModel : null)}
+      onChange={onChange}
+      triggerTestID={`${testIDPrefix}-locked-model-${index + 1}-picker`}
+    />
+  ));
 }
 
 const TLS_MODE_OPTIONS: { value: TlsMode; label: string }[] = [
@@ -671,6 +769,7 @@ function BrainServerSection({ serverId }: { serverId: string }) {
   const { config, patchConfig } = useDaemonConfig(serverId);
   const remoteSupported = useHostFeature(serverId, "brainRemote");
   const runtimeLogVerbositySupported = useHostFeature(serverId, "brainRuntimeLogVerbosity");
+  const processPoolSupported = useHostFeature(serverId, "brainModelProcessPool");
   const brain = config?.brain ?? null;
 
   const patchBrain = useCallback(
@@ -747,6 +846,25 @@ function BrainServerSection({ serverId }: { serverId: string }) {
   const handleDefaultModel = useCallback(
     (next: string | null) => patchBrain({ defaultModel: next }),
     [patchBrain],
+  );
+  const handleMaxLoadedModels = useCallback(
+    (raw: string) => {
+      const maxLoadedModels = parseMaxLoadedModels(raw);
+      if (maxLoadedModels !== null) {
+        patchBrain({ maxLoadedModels });
+      }
+    },
+    [patchBrain],
+  );
+  const handleLockedModel = useCallback(
+    (index: number, next: string | null) => {
+      if (!brain) return;
+      const lockedModels = [...brain.lockedModels];
+      if (next) lockedModels[index] = next;
+      else lockedModels.splice(index, 1);
+      patchBrain({ lockedModels: lockedModels.filter(Boolean).slice(0, brain.maxLoadedModels) });
+    },
+    [brain, patchBrain],
   );
   const handleRuntimeLogVerbosity = useCallback(
     (logVerbosity: RuntimeLogVerbosity) => {
@@ -937,12 +1055,19 @@ function BrainServerSection({ serverId }: { serverId: string }) {
               showBorder
               triggerTestID="host-brain-default-model-picker"
             />
+            <ModelProcessLimitRow
+              supported={processPoolSupported}
+              value={brain.maxLoadedModels}
+              hint="Maximum models Brain may keep loaded at once. Each model owns a separate runtime process and request slots."
+              onCommit={handleMaxLoadedModels}
+              testID="host-brain-max-loaded-models-input"
+            />
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
                 <Text style={settingsStyles.rowTitle}>Lock model</Text>
                 <Text style={settingsStyles.rowHint}>
-                  Serve only this model. Requests for a different model are refused instead of
-                  switching, so many clients share one loaded model without thrashing.
+                  Keep the selected model set resident. Requests for a different model are refused
+                  instead of evicting one of the locked processes.
                 </Text>
               </View>
               <Switch
@@ -952,6 +1077,16 @@ function BrainServerSection({ serverId }: { serverId: string }) {
                 testID="host-brain-lock-model-switch"
               />
             </View>
+            <LockedModelRows
+              supported={processPoolSupported}
+              locked={lockModel.value}
+              serverId={serverId}
+              maxLoadedModels={brain.maxLoadedModels}
+              lockedModels={brain.lockedModels}
+              defaultModel={brain.defaultModel}
+              onChange={handleLockedModel}
+              testIDPrefix="host-brain"
+            />
           </>
         )}
       </View>
@@ -1472,6 +1607,15 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
   const defaultModel =
     typeof remoteConfig?.defaultModel === "string" ? remoteConfig.defaultModel : null;
   const lock = useOptimisticFlag(remoteConfig?.lockModel === true);
+  const maxLoadedModels =
+    typeof remoteConfig?.maxLoadedModels === "number" ? remoteConfig.maxLoadedModels : 1;
+  const lockedModels = useMemo(() => {
+    const selected = remoteConfig?.lockedModels;
+    return Array.isArray(selected)
+      ? selected.filter((value): value is string => typeof value === "string")
+      : [];
+  }, [remoteConfig?.lockedModels]);
+  const processPoolSupported = typeof remoteConfig?.maxLoadedModels === "number";
 
   const applyPatch = useCallback(
     (patch: Record<string, unknown>) => {
@@ -1502,6 +1646,24 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
       applyPatch({ lockModel: next });
     },
     [applyPatch, lock],
+  );
+  const handleMaxLoadedModels = useCallback(
+    (raw: string) => {
+      const next = parseMaxLoadedModels(raw);
+      if (next !== null) {
+        applyPatch({ maxLoadedModels: next, lockedModels: lockedModels.slice(0, next) });
+      }
+    },
+    [applyPatch, lockedModels],
+  );
+  const handleLockedModel = useCallback(
+    (index: number, next: string | null) => {
+      const selected = [...lockedModels];
+      if (next) selected[index] = next;
+      else selected.splice(index, 1);
+      applyPatch({ lockedModels: selected.filter(Boolean).slice(0, maxLoadedModels) });
+    },
+    [applyPatch, lockedModels, maxLoadedModels],
   );
 
   if (!active) {
@@ -1545,6 +1707,13 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
           showBorder={false}
           triggerTestID="host-brain-remote-default-model-picker"
         />
+        <ModelProcessLimitRow
+          supported={processPoolSupported}
+          value={maxLoadedModels}
+          hint="Maximum models the remote Brain may keep loaded at once."
+          onCommit={handleMaxLoadedModels}
+          testID="host-brain-remote-max-loaded-models-input"
+        />
         <View style={ROW_WITH_BORDER_STYLE}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>Lock model</Text>
@@ -1559,6 +1728,16 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
             testID="host-brain-remote-lock-model-switch"
           />
         </View>
+        <LockedModelRows
+          supported={processPoolSupported}
+          locked={lock.value}
+          serverId={serverId}
+          maxLoadedModels={maxLoadedModels}
+          lockedModels={lockedModels}
+          defaultModel={defaultModel}
+          onChange={handleLockedModel}
+          testIDPrefix="host-brain-remote"
+        />
       </>
     );
   }
@@ -1694,6 +1873,29 @@ const styles = StyleSheet.create((theme) => ({
   },
   pickerTrigger: {
     minWidth: 200,
+  },
+  modelPickerRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  modelPickerControl: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 360,
+    minWidth: 200,
+  },
+  modelPickerCopy: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 280,
+    minWidth: 200,
+  },
+  modelPickerTrigger: {
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
   },
   keyText: {
     color: theme.colors.foreground,

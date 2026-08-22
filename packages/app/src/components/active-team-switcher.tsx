@@ -558,7 +558,7 @@ const styles = StyleSheet.create((theme) => ({
       md: theme.fontSize.base,
     },
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.foregroundMuted,
+    color: theme.colors.foreground,
   },
   sidebarLabelHighlighted: {
     flexShrink: 1,

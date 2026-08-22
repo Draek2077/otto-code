@@ -331,6 +331,7 @@ export function ComboboxItem({
       const pressed = preview?.pressed ?? eventPressed;
       return [
         styles.comboboxItem,
+        IS_WEB && styles.comboboxItemNoFocusOutline,
         Boolean(trailingAction) && styles.comboboxItemWithAction,
         dense && styles.comboboxItemDense,
         hovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
@@ -388,7 +389,13 @@ export function ComboboxItem({
   if (!trailingAction) return item;
 
   return (
-    <View style={styles.comboboxItemActionRow}>
+    <View
+      style={[
+        styles.comboboxItemActionRow,
+        active && styles.comboboxItemActive,
+        active && styles.comboboxItemFocused,
+      ]}
+    >
       {item}
       <View style={styles.comboboxItemAction}>{trailingAction}</View>
     </View>
@@ -1861,6 +1868,10 @@ const styles = StyleSheet.create((theme) => ({
           marginBottom: theme.spacing[1],
         }),
   },
+  comboboxItemNoFocusOutline: {
+    outlineWidth: 0,
+    outlineColor: "transparent",
+  },
   comboboxItemDense: {
     minHeight: {
       xs: 36,
@@ -1909,6 +1920,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   comboboxItemActive: {
     backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
+  comboboxItemFocused: {
+    outlineWidth: 1,
+    outlineColor: theme.colors.accent,
+    outlineOffset: -1,
   },
   comboboxItemDisabled: {
     opacity: 0.55,

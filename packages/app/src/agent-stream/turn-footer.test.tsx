@@ -10,6 +10,9 @@ vi.mock("react-native", () => ({
   View: ({ children, testID }: { children?: React.ReactNode; testID?: string }) => (
     <div data-testid={testID}>{children}</div>
   ),
+  Text: ({ children, testID }: { children?: React.ReactNode; testID?: string }) => (
+    <span data-testid={testID}>{children}</span>
+  ),
 }));
 
 vi.mock("react-native-unistyles", () => ({
@@ -18,6 +21,7 @@ vi.mock("react-native-unistyles", () => ({
       typeof factory === "function"
         ? (factory as (theme: Record<string, unknown>) => unknown)({
             spacing: { 1: 4, 2: 8, 3: 12, 4: 16, 6: 24 },
+            fontSize: { sm: 14 },
             colors: {
               foregroundMuted: "#aaa",
               palette: { amber: { 500: "#f0b429", 700: "#b7791f" } },
@@ -30,13 +34,14 @@ vi.mock("react-native-unistyles", () => ({
 }));
 
 vi.mock("@/components/message", () => ({
+  MessageFooter: () => null,
   AssistantTurnFooter: () => null,
   LiveElapsed: () => <span data-testid="running-turn-timestamp" />,
   STREAM_METADATA_FONT_SIZE: 11,
 }));
 
-vi.mock("@/components/assistant-fork-menu", () => ({
-  AssistantForkMenu: () => <button data-testid="running-turn-fork" type="button" />,
+vi.mock("@/hooks/use-settings", () => ({
+  useAppSettings: () => ({ settings: { hideChatMessageDetails: false } }),
 }));
 
 vi.mock("@/components/synced-loader", () => ({
@@ -45,6 +50,15 @@ vi.mock("@/components/synced-loader", () => ({
 
 vi.mock("@/components/retained-panel", () => ({
   useRetainedPanelActive: () => true,
+}));
+
+vi.mock("@/components/blob-loader", () => ({
+  BlobLoader: () => <span data-testid="running-turn-loader" />,
+  ThemedBlobLoader: () => <span data-testid="running-turn-loader" />,
+}));
+
+vi.mock("@/components/chat-width-bounds", () => ({
+  ChatWidthBounds: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }));
 
 import { TurnFooter } from "./turn-footer";
@@ -73,7 +87,7 @@ describe("TurnFooter", () => {
     container = null;
   });
 
-  it("places the running-turn fork between the loader and timestamp", () => {
+  it("does not show a fork action while the turn is running", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -86,7 +100,6 @@ describe("TurnFooter", () => {
           host={null}
           strategy={unusedRunningTurnStrategy}
           supportsTimelineCursor
-          onForkInFlightTurn={vi.fn()}
         />,
       );
     });
@@ -96,10 +109,33 @@ describe("TurnFooter", () => {
       node.getAttribute("data-testid"),
     );
 
-    expect(controls).toEqual([
-      "running-turn-loader",
-      "running-turn-fork",
-      "running-turn-timestamp",
-    ]);
+    expect(controls).toEqual(["running-turn-loader", "running-turn-timestamp"]);
+    expect(footer?.querySelector('[data-testid="running-turn-fork"]')).toBeNull();
+  });
+
+  it("keeps the token separator independent from the token label", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        <TurnFooter
+          isRunning
+          inFlightTurnStartedAt={new Date("2026-08-01T10:00:00.000Z")}
+          inFlightEstimatedTokens={303_000}
+          host={null}
+          strategy={unusedRunningTurnStrategy}
+          supportsTimelineCursor
+        />,
+      );
+    });
+
+    const footer = container.querySelector('[data-testid="turn-working-indicator"]');
+
+    expect(footer?.querySelector('[data-testid="turn-working-separator"]')?.textContent).toBe("•");
+    expect(footer?.querySelector('[data-testid="turn-working-tokens"]')?.textContent).toBe(
+      "303.0k tokens",
+    );
   });
 });

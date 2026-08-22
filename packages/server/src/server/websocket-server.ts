@@ -2189,6 +2189,8 @@ export class VoiceAssistantWebSocketServer {
         // daemon floor >= v0.8.10. Daemon persists the llama.cpp `-lv` level and
         // passes it to every resident Brain runtime launch.
         brainRuntimeLogVerbosity: true,
+        // COMPAT(brainModelProcessPool): added in v0.8.12, remove after 2027-02-21.
+        brainModelProcessPool: true,
         // COMPAT(brainStatus): added in v0.7.5, remove gate after 2026-01-30 once
         // daemon floor >= v0.7.5. Daemon serves brain.evals.get (and the brain's
         // status fields on brain.host.status).

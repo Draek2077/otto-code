@@ -2609,7 +2609,8 @@ export function Composer({
             isPaneFocused={isPaneFocused}
             autoStartDictation={autoStartDictation}
             onAutoStartDictationConsumed={onAutoStartDictationConsumed}
-            leadingContent={contextWindowMeter}
+            leadingContent={mode.showUsageMeter ? contextWindowMeter : null}
+            showAutoSpeechButton={mode.showAutoSpeechButton}
             leftContent={leftContent}
             rightContent={rightContent}
             activeActionContent={activeActionContent}

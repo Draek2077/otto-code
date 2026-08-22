@@ -437,13 +437,18 @@ function compareAvailableModes(a: AgentMode[], b: AgentMode[]): boolean {
 export const AgentModeControl = memo(function AgentModeControl({
   surface = "toolbar",
   onClose,
+  iconOnly: iconOnlyOverride,
   ...value
-}: AgentModeControlValue & { surface?: "toolbar" | "sheet"; onClose?: () => void }) {
+}: AgentModeControlValue & {
+  surface?: "toolbar" | "sheet";
+  onClose?: () => void;
+  iconOnly?: boolean;
+}) {
   const { presentation } = useComposerControlLayout();
   return (
     <AgentModeControlView
       {...value}
-      iconOnly={surface === "toolbar" && !presentation.showModeLabel}
+      iconOnly={iconOnlyOverride ?? (surface === "toolbar" && !presentation.showModeLabel)}
       onClose={onClose}
     />
   );
@@ -562,7 +567,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: "transparent",
     gap: compactUp(theme.spacing[1]),
     paddingHorizontal: compactUp(theme.spacing[2]),
-    borderRadius: theme.borderRadius["2xl"],
+    borderRadius: theme.borderRadius.full,
   },
   iconChip: {
     width: compactUp(28),

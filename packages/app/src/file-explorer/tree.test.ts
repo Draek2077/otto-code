@@ -8,6 +8,7 @@ import {
   setExpandedDirectoryPath,
   showHiddenFilesAndRestoreExpandedDirectories,
 } from "./tree";
+import { treeRailContinuesAt } from "@/components/tree-rail-mask";
 
 function makeDirectoryEntry(name: string, path: string): ExplorerEntry {
   return {
@@ -45,14 +46,52 @@ describe("file explorer tree", () => {
     });
 
     expect(rows).toHaveLength(depth);
-    expect(rows[0]).toEqual({
+    expect(rows[0]).toMatchObject({
       entry: makeDirectoryEntry("directory-1", "directory-1"),
       depth: 0,
     });
-    expect(rows.at(-1)).toEqual({
+    expect(rows.at(-1)).toMatchObject({
       entry: makeDirectoryEntry(`directory-${depth}`, `directory-${depth}`),
       depth: depth - 1,
     });
+  });
+
+  it("closes the rail after the final visible child", () => {
+    const directories = new Map([
+      [
+        ".",
+        {
+          path: ".",
+          entries: [makeDirectoryEntry("app", "app"), makeDirectoryEntry("other", "other")],
+        },
+      ],
+      [
+        "app",
+        {
+          path: "app",
+          entries: [
+            { ...makeDirectoryEntry("first.txt", "app/first.txt"), kind: "file" as const },
+            { ...makeDirectoryEntry("last.txt", "app/last.txt"), kind: "file" as const },
+          ],
+        },
+      ],
+    ]);
+
+    const rows = flattenExplorerTree({
+      directories,
+      expandedPaths: new Set([".", "app"]),
+      sortOption: "name",
+      showHiddenFiles: true,
+    });
+
+    expect(rows.map((row) => row.entry.path)).toEqual([
+      "app",
+      "app/first.txt",
+      "app/last.txt",
+      "other",
+    ]);
+    expect(treeRailContinuesAt(rows[1].ancestorMask, 1)).toBe(true);
+    expect(treeRailContinuesAt(rows[2].ancestorMask, 1)).toBe(false);
   });
 
   it("flattens a large expanded directory without spreading its rows into the parent", () => {
@@ -81,8 +120,8 @@ describe("file explorer tree", () => {
     });
 
     expect(rows).toHaveLength(fileCount + 1);
-    expect(rows[0]).toEqual({ entry: child, depth: 0 });
-    expect(rows.at(-1)).toEqual({ entry: files[fileCount - 1], depth: 1 });
+    expect(rows[0]).toMatchObject({ entry: child, depth: 0 });
+    expect(rows.at(-1)).toMatchObject({ entry: files[fileCount - 1], depth: 1 });
   });
 
   it("restores five rendered directory levels rather than counting path segments", async () => {

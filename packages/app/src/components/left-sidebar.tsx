@@ -4,7 +4,6 @@ import {
   Columns2,
   FileText,
   FolderPlus,
-  GitBranch,
   History,
   Network,
   Search,
@@ -47,7 +46,7 @@ import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-pref
 import { Shortcut } from "@/components/ui/shortcut";
 import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSidebarSlide } from "@/hooks/use-sidebar-slide";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -96,8 +95,6 @@ import { resolveDesktopSidebarWidth } from "./desktop-sidebar-layout";
 export const SIDEBAR_TOP_SPACER_TRIM = 6;
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
-
-const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL?.trim() || null;
 
 interface SidebarSharedProps {
   theme: SidebarTheme;
@@ -506,7 +503,7 @@ function SidebarNavigationHeader({
   }, []);
 
   return (
-    <View onLayout={handleLayout}>
+    <View onLayout={handleLayout} style={styles.sidebarNavigationHeader}>
       <SidebarActiveTeamSwitchers
         onBeforeNavigate={onBeforeNavigate}
         contentAlignment={isSingleColumn ? "start" : "center"}
@@ -557,9 +554,7 @@ function SidebarNavigationGrid({
           testID="sidebar-artifacts"
           variant="compact"
           allowLabelWrap
-          containerStyle={
-            isSingleColumn ? styles.sidebarNavigationItem : styles.sidebarNavigationItemLeft
-          }
+          containerStyle={styles.sidebarNavigationItem}
         />
         <SidebarHeaderRow
           icon={Columns2}
@@ -569,9 +564,7 @@ function SidebarNavigationGrid({
           testID="sidebar-kanban"
           variant="compact"
           allowLabelWrap
-          containerStyle={
-            isSingleColumn ? styles.sidebarNavigationItem : styles.sidebarNavigationItemRight
-          }
+          containerStyle={styles.sidebarNavigationItem}
         />
       </View>
       <View
@@ -588,9 +581,7 @@ function SidebarNavigationGrid({
           testID="sidebar-schedules"
           variant="compact"
           allowLabelWrap
-          containerStyle={
-            isSingleColumn ? styles.sidebarNavigationItem : styles.sidebarNavigationItemLeft
-          }
+          containerStyle={styles.sidebarNavigationItem}
         />
         <SidebarHeaderRow
           icon={Network}
@@ -600,9 +591,7 @@ function SidebarNavigationGrid({
           testID="sidebar-runs"
           variant="compact"
           allowLabelWrap
-          containerStyle={
-            isSingleColumn ? styles.sidebarNavigationItem : styles.sidebarNavigationItemRight
-          }
+          containerStyle={styles.sidebarNavigationItem}
         />
       </View>
     </View>
@@ -974,24 +963,7 @@ function DesktopSidebar({
     <Animated.View style={desktopSidebarStyle}>
       <View style={desktopSidebarBorderStyle}>
         <View style={styles.sidebarDragArea}>
-          {DEV_BUILD_LABEL ? (
-            <View style={styles.desktopChromeRow}>
-              <TitlebarDragRegion />
-              <View
-                pointerEvents="none"
-                style={styles.devBuildBadge}
-                testID="dev-build-label"
-                accessibilityLabel={`Development build: ${DEV_BUILD_LABEL}`}
-              >
-                <GitBranch size={12} color={theme.colors.accentForeground} />
-                <Text numberOfLines={1} ellipsizeMode="tail" style={styles.devBuildBadgeText}>
-                  {DEV_BUILD_LABEL}
-                </Text>
-              </View>
-            </View>
-          ) : (
-            <TitlebarDragRegion />
-          )}
+          <TitlebarDragRegion />
           {showTopSpacer ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
             <SidebarNavigationHeader
@@ -1173,7 +1145,7 @@ const staticStyles = RNStyleSheet.create({
 const styles = StyleSheet.create((theme) => ({
   sidebarHeaderGroup: {
     paddingTop: theme.spacing[2],
-    gap: 2,
+    gap: theme.spacing[1],
     // Distance from History's bottom edge to the divider. WorkspacesSectionHeader
     // uses a slightly smaller paddingTop to balance the action buttons' centering
     // offset so the divider reads as visually centered between the two.
@@ -1182,25 +1154,23 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   sidebarNavigationGrid: {
-    gap: 2,
+    gap: theme.spacing[1],
+  },
+  sidebarNavigationHeader: {
+    gap: theme.spacing[1],
   },
   sidebarNavigationGridRow: {
     width: "100%",
     flexDirection: "row",
+    paddingHorizontal: theme.spacing[2],
+    gap: theme.spacing[1],
   },
   sidebarNavigationGridRowSingleColumn: {
     flexDirection: "column",
   },
   sidebarNavigationItem: {
     flex: 1,
-  },
-  sidebarNavigationItemLeft: {
-    flex: 1,
-    paddingRight: theme.spacing[1],
-  },
-  sidebarNavigationItemRight: {
-    flex: 1,
-    paddingLeft: theme.spacing[1],
+    paddingHorizontal: 0,
   },
   sidebarNavigationItemFullWidth: {
     width: "100%",
@@ -1281,33 +1251,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   sidebarDragArea: {
     position: "relative",
-  },
-  desktopChromeRow: {
-    position: "relative",
-    height: HEADER_INNER_HEIGHT,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    paddingHorizontal: theme.spacing[3],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: "transparent",
-  },
-  devBuildBadge: {
-    maxWidth: "60%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.accent,
-  },
-  devBuildBadgeText: {
-    minWidth: 0,
-    flexShrink: 1,
-    color: theme.colors.accentForeground,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
   },
   sidebarFooter: {
     flexDirection: "row",

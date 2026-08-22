@@ -574,9 +574,12 @@ export function selectAgentTurnPresentation(
   session: SessionState | undefined,
   agentId: string,
 ): TurnPresentation {
+  const agent = session?.agents.get(agentId);
   return resolveTurnPresentation(
     session?.agentTurnLiveness.get(agentId) ?? TURN_LIVENESS_IDLE,
     getActiveMessageSubmissions(session?.messageSubmissions.get(agentId)).length > 0,
+    agent?.status === "running",
+    agent?.lastUserMessageAt ?? null,
   );
 }
 

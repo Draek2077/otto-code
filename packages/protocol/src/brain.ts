@@ -151,6 +151,8 @@ export const BrainCapabilitiesSchema = z
     jobs: z.boolean().default(false),
     /** The brain can ask its owning daemon to restart it. */
     restart: z.boolean().default(false),
+    /** The host can keep multiple independently supervised model processes resident. */
+    processPool: z.boolean().default(false),
   })
   .passthrough();
 export type BrainCapabilities = z.infer<typeof BrainCapabilitiesSchema>;
@@ -163,6 +165,8 @@ export const BrainHostStatusSchema = z
     running: z.boolean(),
     pid: z.number().nullable().optional(),
     version: z.string().nullable().optional(),
+    /** The llama.cpp runtime resolved by the Brain host, or "not installed". */
+    runtime: z.string().nullable().optional(),
     /**
      * Which generation of the brain's management contract the far side speaks.
      *
@@ -178,6 +182,21 @@ export const BrainHostStatusSchema = z
     state: z.string().nullable().optional(),
     model: z.string().nullable().optional(),
     modelId: z.string().nullable().optional(),
+    /** Every independently hosted resident model process. */
+    residents: z
+      .array(
+        z
+          .object({
+            state: z.string(),
+            model: z.string().nullable().optional(),
+            modelId: z.string().nullable().optional(),
+            pid: z.number().nullable().optional(),
+            upstream: z.string().nullable().optional(),
+            vramBytes: z.number().nullable().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
     vramBytes: z.number().nullable().optional(),
     loadSeconds: z.number().nullable().optional(),
     startedAt: z.string().nullable().optional(),
@@ -415,7 +434,8 @@ export const BrainModelsListResponseSchema = z.object({
 
 // Read/write a *remote* brain's own config (its /__host/config). Only valid in
 // brain.mode "remote"; the config is the remote brain's effective config with
-// secrets redacted. Editable fields are model-related (defaultModel, lockModel);
+// secrets redacted. Editable fields are model-related (defaultModel,
+// maxLoadedModels, lockedModels, lockModel);
 // network/TLS/auth stay host-owned. Gated by features.brainRemote.
 export const BrainRemoteConfigSchema = z.record(z.string(), z.unknown());
 export type BrainRemoteConfig = z.infer<typeof BrainRemoteConfigSchema>;

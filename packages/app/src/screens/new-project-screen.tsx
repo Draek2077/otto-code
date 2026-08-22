@@ -252,8 +252,7 @@ export function NewProjectScreen({
     form.mode === "open"
       ? t("newProject.fields.folderPlaceholder")
       : t("newProject.fields.parentFolderPlaceholder");
-  const submitLabel =
-    form.mode === "open" ? t("newProject.actions.open") : t("newProject.actions.create");
+  const submitLabel = t("newProject.actions.create");
   const blockerMessage = blocker ? t(`newProject.blockers.${blocker}`) : null;
   // A newer daemon may report a step this build has no label for, so fall back
   // to the generic "working" line rather than printing a raw id.
@@ -297,12 +296,6 @@ export function NewProjectScreen({
             />
 
             <NewProjectDetailFields form={form} disabled={isSubmitting} onUpdate={update} />
-
-            {pathPreview ? (
-              <Text style={styles.pathPreview} testID="new-project-path-preview">
-                {pathPreview}
-              </Text>
-            ) : null}
 
             {/* One status line, not a step log: the sequence is build detail
                 the user did not ask to watch. Failures still get the full
@@ -403,11 +396,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     justifyContent: "flex-end",
     marginTop: theme.spacing[1],
-  },
-  pathPreview: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontFamily: theme.fontFamily.mono,
   },
   statusRow: {
     flexDirection: "row",

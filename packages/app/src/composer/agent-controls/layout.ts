@@ -129,6 +129,10 @@ export function resolveComposerControlPresentation(
   };
 }
 
-export function resolveComposerToolbarGlyphSize(platform: "web" | "native"): number {
+export function resolveComposerToolbarGlyphSize(
+  platform: "web" | "native",
+  isCompact = false,
+): number {
+  if (isCompact) return platform === "native" ? 24 : 20;
   return platform === "native" ? 20 : 16;
 }

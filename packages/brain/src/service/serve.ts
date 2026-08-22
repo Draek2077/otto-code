@@ -42,7 +42,8 @@ import { createCpuSampler, sample as sampleSystem, slots as sampleSlots } from "
 import { createHostApi, type HostJob, type HostJobRunner } from "./host-api.js";
 import { errorMessage } from "./http-util.js";
 import { createRouter, createSlotEraser, Telemetry } from "./router.js";
-import { Scheduler } from "./scheduler.js";
+import { Scheduler, type ModelScheduler } from "./scheduler.js";
+import { ModelProcessPool } from "./process-pool.js";
 import { BrainLogPublisher, BrainStatusPublisher } from "./status-events.js";
 import { Supervisor } from "./supervisor.js";
 import * as tailscale from "./tailscale.js";
@@ -90,6 +91,7 @@ interface ResidentJobUpdate {
 }
 
 type ResidentJobRunner = (
+  supervisor: Supervisor,
   kind: "calibrate" | "sweep" | "bench",
   target: string | null,
   update: ResidentJobUpdate,
@@ -139,7 +141,7 @@ class ServiceJobRunner implements HostJobRunner {
   constructor(
     private readonly onPullCompleted: () => void,
     private readonly runResidentJob: ResidentJobRunner,
-    private readonly scheduler: Scheduler,
+    private readonly scheduler: ModelScheduler<Supervisor>,
     private readonly resolveTarget: (target: string | null) => Model | null,
     private readonly log: (area: BrainLogArea, line: string) => void,
   ) {}
@@ -235,10 +237,11 @@ class ServiceJobRunner implements HostJobRunner {
       void this.scheduler
         .submit(
           model,
-          () =>
+          (supervisor) =>
             controller.signal.aborted
               ? Promise.reject(new Error("Operation canceled."))
               : this.runResidentJob(
+                  supervisor,
                   kind,
                   model.id,
                   {
@@ -623,40 +626,46 @@ export async function startService({
   supervisor.on("log", (line: string) => log("server", line));
   supervisor.on("crashed", (error: string) => log("model", `FATAL ${error}`));
 
-  // Serialize model switches: the router queues request-driven switches, but the
-  // config path (POST /__host/config) calls loadModel directly. Chaining here
-  // guarantees two switches (e.g. a config write racing a request-driven switch)
-  // can never overlap two supervisor.start() calls, whichever caller triggers them.
-  let modelSwitchChain: Promise<void> = Promise.resolve();
-  const loadModelUnsafe = async (target: Model): Promise<void> => {
+  const loadModelInto = async (
+    resident: Supervisor,
+    target: Model,
+    reservedElsewhereBytes: number,
+  ): Promise<number> => {
     // A runtime can be installed from the Library tab after this service starts.
     // Resolve it at load time so the user does not have to restart the brain.
-    supervisor.runtime = resolveRuntime(config, env);
-    if (!supervisor.runtime) {
+    resident.runtime = resolveRuntime(config, env);
+    if (!resident.runtime) {
       throw new Error("no llama.cpp runtime available; install one from the Library tab");
     }
     const gpuInfo = await queryGpu();
     let fitProfile = forModel(store, target, config.defaults);
+    let reservationBytes = 0;
     if (gpuInfo) {
       const fit = vram.fitToBudget({
         model: target,
         profile: fitProfile,
         calibration: getCalibrationForBudget(store, target, fitProfile),
-        totalVramBytes: gpuInfo.totalBytes,
+        // Every resident process keeps its complete budget reserved. Fit this
+        // process against the capacity left after those independent allocations.
+        totalVramBytes: Math.max(0, gpuInfo.totalBytes - reservedElsewhereBytes),
       });
       if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? "does not fit");
       fitProfile = fit.profile;
+      reservationBytes = fit.budget.totalBytes;
     }
-    await supervisor.start(target, fitProfile);
+    await resident.start(target, fitProfile);
     delete store.pendingReloadModelIds[target.id];
     store.lastModelId = target.id;
     saveProfilesStore(store, paths);
+    return reservationBytes;
   };
-  const loadModel = (target: Model): Promise<void> => {
-    const run = modelSwitchChain.then(() => loadModelUnsafe(target));
-    // Keep the chain alive even if this switch fails, so a later switch still runs.
-    modelSwitchChain = run.catch(() => undefined);
-    return run;
+  let processPool: ModelProcessPool | null = null;
+  const loadModel = async (target: Model): Promise<void> => {
+    if (processPool) {
+      await processPool.preload(target);
+      return;
+    }
+    await loadModelInto(supervisor, target, 0);
   };
 
   // Apply an editable config patch from POST /__host/config: mutate the live
@@ -681,13 +690,41 @@ export async function startService({
       if (typeof p.lockModel !== "boolean") throw new Error("lockModel must be a boolean");
       config.lockModel = p.lockModel;
     }
+    if ("maxLoadedModels" in p) {
+      const next = p.maxLoadedModels;
+      if (!Number.isInteger(next) || (next as number) < 1 || (next as number) > 16) {
+        throw new Error("maxLoadedModels must be an integer from 1 to 16");
+      }
+      config.maxLoadedModels = next as number;
+    }
+    if ("lockedModels" in p) {
+      const next = p.lockedModels;
+      if (!Array.isArray(next) || !next.every((value) => typeof value === "string")) {
+        throw new Error("lockedModels must be an array of model ids");
+      }
+      config.lockedModels = [...new Set(next)].slice(0, config.maxLoadedModels);
+    }
+    if (config.lockedModels.length > config.maxLoadedModels) {
+      config.lockedModels = config.lockedModels.slice(0, config.maxLoadedModels);
+    }
     const persisted = loadPersistedConfig(paths);
     persisted.defaultModel = config.defaultModel;
     persisted.lockModel = config.lockModel;
+    persisted.maxLoadedModels = config.maxLoadedModels;
+    persisted.lockedModels = config.lockedModels;
     saveBrainConfig(persisted, paths);
+    await processPool?.configure(config.maxLoadedModels);
     if (switchTo) {
       const target = catalog.find((m) => m.displayName === switchTo || m.id === switchTo);
       if (target) await loadModel(target);
+    }
+    if (config.lockModel) {
+      for (const id of config.lockedModels) {
+        const target = catalog.find(
+          (candidate) => candidate.id === id || candidate.displayName === id,
+        );
+        if (target) await loadModel(target);
+      }
     }
     return redactConfig(config);
   };
@@ -701,7 +738,7 @@ export async function startService({
   // /__host/events. One instance, so `capabilities.events` and the stream can
   // never disagree about whether this brain publishes.
   const statusEvents = new BrainStatusPublisher();
-  const runResidentJob: ResidentJobRunner = async (kind, target, update, signal) => {
+  const runResidentJob: ResidentJobRunner = async (supervisor, kind, target, update, signal) => {
     const ensureActive = (): void => {
       if (signal.aborted) throw new Error("Operation canceled.");
     };
@@ -833,49 +870,61 @@ export async function startService({
     update.percent(100);
     supervisor.recordLog(`operation benchmark: saved result for ${targetModel.displayName}`);
   };
-  const scheduler = new Scheduler({
-    supervisor,
-    loadModel,
-    logger: (message) => log("api", `WARN ${message}`),
+  const attachSupervisorLogs = (resident: Supervisor): void => {
+    if (resident === supervisor) return;
+    resident.on("log", (line: string) => log("server", line));
+    resident.on("crashed", (error: string) => log("model", `FATAL ${error}`));
+    resident.on("state", () => statusEvents.notify());
+  };
+  const createPooledSupervisor = (index: number): Supervisor => {
+    const resident = new Supervisor({
+      runtime: resolveRuntime(config, env),
+      internalPort: supervisor.internalPort + index,
+      paths,
+      getProfilesStore: () => store,
+      logVerbosity: config.runtime.logVerbosity,
+    });
+    attachSupervisorLogs(resident);
+    return resident;
+  };
+  const createResidentScheduler = (
+    resident: Supervisor,
+    loadResidentModel: (model: Model) => Promise<void>,
+    onChange: () => void,
+  ): Scheduler<Supervisor> =>
+    new Scheduler<Supervisor>({
+      supervisor: resident,
+      loadModel: loadResidentModel,
+      logger: (message) => log("api", `WARN ${message}`),
+      onChange,
+      freeSlots: async () => {
+        if (resident.state !== "ready") return null;
+        try {
+          const slots = await sampleSlots({ host: resident.host, port: resident.internalPort });
+          return slots ? { idle: slots.idle, ids: slots.idleSlots } : null;
+        } catch {
+          return null;
+        }
+      },
+      eraseSlot: createSlotEraser(resident.host, resident.internalPort),
+    });
+  const scheduler = new ModelProcessPool({
+    initialSupervisor: supervisor,
+    maxModels: config.maxLoadedModels,
+    createSupervisor: createPooledSupervisor,
+    createScheduler: createResidentScheduler,
+    loadModel: loadModelInto,
+    logger: (message) => log("model", message),
     onChange: () => statusEvents.notify(),
-    // Live admission: the engine's own /slots report is the source of truth
-    // for how many sequence slots are actually free right now. The profile's
-    // parallelSlots sizes the KV pool at launch; this keeps dispatch honest
-    // while llama-server is mid-eviction or saturated, and degrades to the
-    // static count when the sample is unavailable.
-    // Answers with the free slots NAMED, not just counted. The count gates
-    // admission; the ids let the scheduler pin each admitted completion to a
-    // distinct slot (`id_slot`), which is what lets the proxy attribute a
-    // request's stage - "thinking" above all, which llama-server cannot report -
-    // to the exact slot row the Overview panel draws. Handing back only a count
-    // (as this did before) leaves every request unpinned and the panel unable to
-    // say which slot is thinking and which is emitting tokens.
-    freeSlots: async () => {
-      if (supervisor.state !== "ready") return null;
-      try {
-        const slots = await sampleSlots({
-          host: supervisor.host,
-          port: supervisor.internalPort,
-        });
-        return slots ? { idle: slots.idle, ids: slots.idleSlots } : null;
-      } catch {
-        return null;
-      }
-    },
-    // Erase a slot's retained KV when it is handed to a different chat, so one
-    // chat's KV never bleeds into the next chat's thinking. The scheduler
-    // decides the handoff from the owner map; this is the engine-side wipe on
-    // the private port, resolved once the engine acknowledges it (see
-    // Scheduler.OWNERSHIP). The router that shares this scheduler clears the
-    // owner map on the supervisor's `starting` state.
-    eraseSlot: createSlotEraser(supervisor.host, supervisor.internalPort),
   });
+  processPool = scheduler;
   const jobs = new ServiceJobRunner(
     rescanCatalog,
     runResidentJob,
     scheduler,
     (target) => {
-      const modelId = target ?? supervisor.model?.id ?? store.lastModelId ?? null;
+      const modelId =
+        target ?? scheduler.residentSupervisors()[0]?.model?.id ?? store.lastModelId ?? null;
       return modelId
         ? (catalog.find(
             (candidate) => candidate.id === modelId || candidate.displayName === modelId,
@@ -904,6 +953,7 @@ export async function startService({
       }
     },
     loadModel,
+    unloadModels: () => scheduler.unload(),
     scheduler,
     // The same gate as POST /__host/config. Deleting someone's model files over
     // the network is strictly more dangerous than changing their default model,
@@ -935,6 +985,7 @@ export async function startService({
       getEvals: collectEvals,
       getLockModel: () => config.lockModel,
       getDefaultModel: () => config.defaultModel,
+      getLockedModels: () => config.lockedModels,
       applyConfigPatch,
       getAllowConfigWrite: allowWrite,
       hostApi,
@@ -988,11 +1039,17 @@ export async function startService({
   }
   certManager?.start();
 
-  if (model && profile && runtime) {
-    await supervisor.start(model, profile);
-    delete store.pendingReloadModelIds[model.id];
-    store.lastModelId = model.id;
-    saveProfilesStore(store, paths);
+  if (runtime && config.lockModel && config.lockedModels.length > 0) {
+    for (const lockedId of config.lockedModels.slice(0, config.maxLoadedModels)) {
+      const locked = catalog.find(
+        (candidate) => candidate.id === lockedId || candidate.displayName === lockedId,
+      );
+      if (locked) await scheduler.preload(locked);
+    }
+  } else if (model && profile && runtime) {
+    // Default model remains one auto-load. Additional process slots stay empty
+    // until a request names another model.
+    await scheduler.preload(model);
   } else if (!runtime) {
     log("server", "ready: no llama.cpp runtime installed; use the Library tab to download one");
   } else {
@@ -1011,13 +1068,19 @@ export async function startService({
   );
   log(
     "server",
-    `ready: ${supervisor.model?.displayName ?? "no model loaded"} on ${bindHost}:${port}; run log ${runLog.path}`,
+    `ready: ${
+      scheduler
+        .residentSupervisors()
+        .map((resident) => resident.model?.displayName)
+        .filter(Boolean)
+        .join(", ") || "no model loaded"
+    } on ${bindHost}:${port}; run log ${runLog.path}`,
   );
 
   const stop = async (): Promise<void> => {
     certManager?.stop();
     log("server", "Brain service stopping");
-    await supervisor.stop();
+    await scheduler.stop();
     // Publish the terminal outcome before closing the SSE responses below.
     // Once the listener is closed, the daemon can still report the child exit,
     // but it cannot receive this service-owned, durable session-log entry.

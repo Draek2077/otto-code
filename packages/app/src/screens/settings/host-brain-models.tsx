@@ -34,6 +34,7 @@ import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { getDesktopHost } from "@/desktop/host";
 import type { Theme } from "@/styles/theme";
 import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
+import { resolveHostSelectedBrainRuntime } from "../brain/runtime-management";
 import { activeBrainQuantJob, selectInitialBrainQuant } from "./brain-quant-selection";
 import { describeRuntimeRemovalError, isRuntimeRemovalAccessDenied } from "./brain-runtime-removal";
 
@@ -355,6 +356,7 @@ export function RuntimeManagerSheet({
   loading,
   busy,
   canInstall = true,
+  hostRuntime = null,
   jobs,
   onStarted,
 }: {
@@ -368,6 +370,8 @@ export function RuntimeManagerSheet({
   busy: boolean;
   /** A remote brain may report its runtime without granting install access. */
   canInstall?: boolean;
+  /** The selected Brain host's live runtime identity, when it has one. */
+  hostRuntime?: string | null;
   jobs: BrainJob[];
   onStarted: (job: BrainJob) => void;
 }) {
@@ -375,15 +379,24 @@ export function RuntimeManagerSheet({
   const queryClient = useQueryClient();
   const { config, patchConfig } = useDaemonConfig(serverId);
   const isLocalDaemon = useIsLocalDaemon(serverId);
+  const isRemoteBrain = config?.brain.mode === "remote";
   const [build, setBuild] = useState("");
   const [showSpecificBuild, setShowSpecificBuild] = useState(false);
   const selectedRuntime = config?.brain?.runtime?.path ?? "auto";
   const activeRuntime = useMemo(
     () =>
-      resolveSelectedBrainRuntime(runtimes, selectedRuntime === "auto" ? null : selectedRuntime),
-    [runtimes, selectedRuntime],
+      isRemoteBrain
+        ? resolveHostSelectedBrainRuntime(runtimes, hostRuntime)
+        : resolveSelectedBrainRuntime(
+            runtimes,
+            selectedRuntime === "auto" ? null : selectedRuntime,
+          ),
+    [hostRuntime, isRemoteBrain, runtimes, selectedRuntime],
   );
-  const { installed, missing } = selectedRuntimeInstallState(answered, activeRuntime);
+  const hostHasRuntime = Boolean(hostRuntime?.trim());
+  const { installed, missing } = isRemoteBrain
+    ? { installed: answered && hostHasRuntime, missing: answered && !hostHasRuntime }
+    : selectedRuntimeInstallState(answered, activeRuntime);
   const job = useMemo(() => jobs.find((j) => j.kind === "runtime-install"), [jobs]);
   const installedBuildOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
@@ -533,8 +546,11 @@ export function RuntimeManagerSheet({
   const handleShowSpecificBuild = useCallback(() => setShowSpecificBuild(true), []);
 
   const detail = useMemo(
-    () => describeRuntimeState({ activeRuntime, answered, loading }),
-    [activeRuntime, answered, loading],
+    () =>
+      isRemoteBrain && hostHasRuntime
+        ? (hostRuntime?.trim() ?? "")
+        : describeRuntimeState({ activeRuntime, answered, loading }),
+    [activeRuntime, answered, hostHasRuntime, hostRuntime, isRemoteBrain, loading],
   );
   const latestActionLabel = latestRuntimeActionLabel(missing);
   const runtimeFamilyOptions = useMemo<SelectFieldOption<string>[]>(
@@ -576,24 +592,34 @@ export function RuntimeManagerSheet({
       desktopMaxWidth={560}
       testID="brain-runtime-manager"
     >
-      <View style={styles.managerSection}>
-        <Text style={styles.managerLabel}>Runtime</Text>
-        <Text style={styles.managerHint}>
-          Automatic uses the newest compatible installed build. Choose llama.cpp only to pin a
-          build.
-        </Text>
-        <SelectField
-          field={false}
-          label="Runtime family"
-          size="sm"
-          value={runtimeFamilyValue}
-          options={runtimeFamilyOptions}
-          onChange={handleRuntimeFamilyChange}
-          selectedDisplay={runtimeFamilyDisplay}
-          placeholder="Choose a runtime"
-          emptyText="No managed runtimes are available."
-        />
-      </View>
+      {isRemoteBrain ? (
+        <View style={styles.managerSection}>
+          <Text style={styles.managerLabel}>Remote runtime</Text>
+          <Text style={styles.managerHint}>
+            This is the runtime selected on the Brain host. Installing a build updates that host; it
+            never changes the connecting daemon’s local runtime.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.managerSection}>
+          <Text style={styles.managerLabel}>Runtime</Text>
+          <Text style={styles.managerHint}>
+            Automatic uses the newest compatible installed build. Choose llama.cpp only to pin a
+            build.
+          </Text>
+          <SelectField
+            field={false}
+            label="Runtime family"
+            size="sm"
+            value={runtimeFamilyValue}
+            options={runtimeFamilyOptions}
+            onChange={handleRuntimeFamilyChange}
+            selectedDisplay={runtimeFamilyDisplay}
+            placeholder="Choose a runtime"
+            emptyText="No managed runtimes are available."
+          />
+        </View>
+      )}
 
       <View style={styles.managerSection}>
         <Text style={styles.managerLabel}>llama.cpp</Text>
@@ -670,7 +696,7 @@ export function RuntimeManagerSheet({
                   Install build
                 </Button>
               </View>
-              {installedBuildOptions.length > 0 ? (
+              {!isRemoteBrain && installedBuildOptions.length > 0 ? (
                 <SelectField
                   field={false}
                   label="Installed build"

@@ -20,6 +20,7 @@ import {
 } from "@/editor/vim-mappings";
 import type { FileEditorMode } from "@/editor/external-file-editor";
 import { SettingsSection } from "./settings-section";
+import { SyntaxSettingsSection } from "./syntax-settings-section";
 
 const VIM_ACTION_LABELS: Record<VimMappingAction, string> = {
   save: "Save",
@@ -361,6 +362,8 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
           </View>
         </SettingsSection>
       ) : null}
+
+      <SyntaxSettingsSection />
     </>
   );
 }

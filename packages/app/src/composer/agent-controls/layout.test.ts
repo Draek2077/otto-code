@@ -164,5 +164,7 @@ describe("composer control layout", () => {
     });
     expect(resolveComposerToolbarGlyphSize("web")).toBe(16);
     expect(resolveComposerToolbarGlyphSize("native")).toBe(20);
+    expect(resolveComposerToolbarGlyphSize("web", true)).toBe(20);
+    expect(resolveComposerToolbarGlyphSize("native", true)).toBe(24);
   });
 });

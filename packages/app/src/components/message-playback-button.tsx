@@ -270,9 +270,10 @@ export function MessagePlaybackButton({
     (hovered: boolean): ReactElement => {
       let icon: ReactElement;
       if (status === "loading") {
-        // ActivityIndicator's box is larger than a 16px glyph; the fixed slot +
-        // scale keep it exactly the icon's footprint so the row can't jump.
-        icon = <ThemedSpinner uniProps={spinnerMapping} size="small" style={styles.spinner} />;
+        // Give ActivityIndicator the slot's actual size. Using the platform
+        // "small" preset can leave a larger intrinsic box on some renderers,
+        // even when a transform makes the painted spinner look smaller.
+        icon = <ThemedSpinner uniProps={spinnerMapping} size={PLAYBACK_ICON_SIZE} />;
       } else if (isSpeaking) {
         icon = <ThemedStop uniProps={activeIconMapping} size={PLAYBACK_ICON_SIZE} />;
       } else {
@@ -329,10 +330,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-  },
-  // RN ActivityIndicator "small" is ~20px; scale it down to the 16px glyph.
-  spinner: {
-    transform: [{ scale: PLAYBACK_ICON_SIZE / 20 }],
   },
   tooltipText: {
     color: theme.colors.foreground,

@@ -1,5 +1,6 @@
 import type { ExplorerDirectory, ExplorerEntry } from "@/stores/session-store";
 import type { SortOption } from "@/stores/panel-store/state";
+import { TREE_RAILS_ALL_CONTINUE, withTreeRail } from "@/components/tree-rail-mask";
 import { filterVisibleExplorerEntries } from "./visibility";
 
 export const MAX_AUTO_EXPANDED_DIRECTORY_DEPTH = 5;
@@ -7,6 +8,8 @@ export const MAX_AUTO_EXPANDED_DIRECTORY_DEPTH = 5;
 export interface ExplorerTreeRow {
   entry: ExplorerEntry;
   depth: number;
+  /** Which ancestor rails continue below this row. */
+  ancestorMask: number;
 }
 
 interface FlattenExplorerTreeInput {
@@ -54,7 +57,13 @@ export function flattenExplorerTree({
   }
 
   const rows: ExplorerTreeRow[] = [];
-  const pending = rowsForDirectory(root, 0, sortOption, showHiddenFiles).toReversed();
+  const pending = entriesForDirectory(root, sortOption, showHiddenFiles)
+    .map((entry, index, entries) => ({
+      entry,
+      depth: 0,
+      ancestorMask: withTreeRail(TREE_RAILS_ALL_CONTINUE, 0, index !== entries.length - 1),
+    }))
+    .toReversed();
 
   while (pending.length > 0) {
     const row = pending.pop();
@@ -71,9 +80,14 @@ export function flattenExplorerTree({
     if (!childDirectory) {
       continue;
     }
-    const childRows = rowsForDirectory(childDirectory, row.depth + 1, sortOption, showHiddenFiles);
+    const childDepth = row.depth + 1;
+    const childRows = entriesForDirectory(childDirectory, sortOption, showHiddenFiles);
     for (let index = childRows.length - 1; index >= 0; index -= 1) {
-      pending.push(childRows[index]);
+      pending.push({
+        entry: childRows[index],
+        depth: childDepth,
+        ancestorMask: withTreeRail(row.ancestorMask, childDepth, index !== childRows.length - 1),
+      });
     }
   }
 
@@ -173,15 +187,13 @@ export function setExpandedDirectoryPath({
   return Array.from(nextPaths);
 }
 
-function rowsForDirectory(
+function entriesForDirectory(
   directory: ExplorerDirectory,
-  depth: number,
   sortOption: SortOption,
   showHiddenFiles: boolean,
-): ExplorerTreeRow[] {
+): ExplorerEntry[] {
   const visibleEntries = filterVisibleExplorerEntries(directory.entries, showHiddenFiles);
-  const sortedEntries = sortExplorerEntries(visibleEntries, sortOption);
-  return sortedEntries.map((entry) => ({ entry, depth }));
+  return sortExplorerEntries(visibleEntries, sortOption);
 }
 
 function sortExplorerEntries(entries: ExplorerEntry[], sortOption: SortOption): ExplorerEntry[] {

@@ -95,6 +95,7 @@ export function statusChangeKey(snapshot: BrainStatusSnapshot): string {
     state: snapshot.state ?? null,
     model: snapshot.model ?? null,
     modelId: snapshot.modelId ?? null,
+    residents: snapshot.residents ?? null,
     pid: snapshot.pid ?? null,
     vramBytes: snapshot.vramBytes ?? null,
     loadSeconds: snapshot.loadSeconds ?? null,

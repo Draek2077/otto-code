@@ -13,7 +13,7 @@ const { theme } = vi.hoisted(() => ({
       foreground: "#foreground",
       foregroundMuted: "#muted",
       foregroundExtraMuted: "#extra-muted",
-      statusDotRunning: "#running",
+      statusInfo: "#running",
     },
   },
 }));

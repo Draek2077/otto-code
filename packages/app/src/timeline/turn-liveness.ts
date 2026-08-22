@@ -57,6 +57,8 @@ export interface TurnPresentation {
 export function resolveTurnPresentation(
   liveness: TurnLiveness,
   hasActiveSubmission: boolean,
+  isAgentRunning = false,
+  fallbackStartedAt: Date | null = null,
 ): TurnPresentation {
   if (liveness.phase === "open") {
     return {
@@ -67,9 +69,13 @@ export function resolveTurnPresentation(
     };
   }
   return {
-    isActive: hasActiveSubmission,
+    // Some hosts can publish the agent's running status before the active-turn
+    // snapshot, or omit that optional snapshot entirely. Keep the conversation
+    // working indicator mounted through that handoff instead of letting it
+    // disappear as soon as the optimistic submission is acknowledged.
+    isActive: hasActiveSubmission || isAgentRunning,
     isCancelling: liveness.cancellationRequestId !== null,
-    startedAt: null,
+    startedAt: isAgentRunning || hasActiveSubmission ? fallbackStartedAt : null,
     turnId: null,
   };
 }

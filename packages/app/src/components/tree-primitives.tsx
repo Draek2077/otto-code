@@ -25,10 +25,10 @@ export const WORKSPACE_TREE_ICON_LABEL_GAP = SPACING[2];
  */
 export const WORKSPACE_FILE_ROW_TRAILING_PADDING = SPACING[4] + 2;
 
-// Length of the horizontal tick that branches off the deepest rail into a nested
-// row. Kept just short of the row's own content padding (8px in the explorer and
-// graph trees, 12px in the Changes tree) so the tick never runs under the icon.
-const TREE_CONNECTOR_WIDTH = 8;
+// The rail is centered on the disclosure slot. The connector stops at the child
+// slot's leading edge, leaving the child chevron clear instead of running through it.
+const TREE_ICON_CENTER_OFFSET = WORKSPACE_TREE_ICON_SIZE / 2;
+const TREE_CONNECTOR_WIDTH = TREE_INDENT_PER_LEVEL - TREE_ICON_CENTER_OFFSET;
 
 /** Left padding for a tree row at `depth`. Shared by folder rows and file headers
  * in the Changes tree so their indentation can't drift apart. */
@@ -43,7 +43,7 @@ const foregroundExtraMutedIconColorMapping = (theme: Theme) => ({
 const ThemedChevronRight = withUnistyles(ChevronRight);
 
 function indentGuideLeft(index: number): number {
-  return SPACING[3] + index * TREE_INDENT_PER_LEVEL + 4;
+  return SPACING[3] + index * TREE_INDENT_PER_LEVEL + TREE_ICON_CENTER_OFFSET;
 }
 
 /**

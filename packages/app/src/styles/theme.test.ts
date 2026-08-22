@@ -48,10 +48,10 @@ describe("Pure black theme", () => {
 });
 
 describe("Theme semantic contracts", () => {
-  it("provides extra-muted ink, status-dot colors, and half spacing", () => {
+  it("provides extra-muted ink, semantic status colors, and half spacing", () => {
     expect(SPACING[0.5]).toBe(2);
     expect(daylightTheme.colors.foregroundExtraMuted).toMatch(/^#/);
-    expect(daylightTheme.colors.statusDotSuccess).toBe("#299f51");
-    expect(darkPureBlackTheme.colors.statusDotRunning).toBe("#5caaf6");
+    expect(daylightTheme.colors.statusSuccess).toBe("#15803d");
+    expect(darkPureBlackTheme.colors.statusInfo).toBe("#38bdf8");
   });
 });

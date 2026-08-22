@@ -76,19 +76,19 @@ interface ScheduleRowProps extends ScheduleRowActions {
 
 function stateBadge(state: ScheduleDerivedState): {
   label: string;
-  variant: "success" | "error" | "muted";
+  variant: "success" | "warning" | "error";
 } {
   switch (state) {
     case "active":
       return { label: "Active", variant: "success" };
     case "paused":
-      return { label: "Paused", variant: "muted" };
+      return { label: "Paused", variant: "warning" };
     case "failed":
       return { label: "Failed", variant: "error" };
     case "expired":
-      return { label: "Expired", variant: "muted" };
+      return { label: "Expired", variant: "warning" };
     case "finished":
-      return { label: "Finished", variant: "muted" };
+      return { label: "Finished", variant: "success" };
     case "targetGone":
       return { label: "Target gone", variant: "error" };
   }

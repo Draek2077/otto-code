@@ -190,6 +190,10 @@ describe("brain state visuals", () => {
     }
   });
 
+  it("uses the danger tint for an unreachable Brain", () => {
+    expect(BRAIN_STATE_VISUALS.unreachable.tone).toBe("statusDanger");
+  });
+
   it("gives every travelling state a peak colour and a real duration", () => {
     for (const state of states) {
       const visual = BRAIN_STATE_VISUALS[state];

@@ -349,6 +349,9 @@ export function EntryContextMenu({
                 {t("workspace.git.diff.viewChanges")}
               </ContextMenuItem>
             ) : null}
+            {onToggleContextEntry || (entry.kind === "file" && isChanged && onViewChanges) ? (
+              <ContextMenuSeparator />
+            ) : null}
             <ContextMenuItem leading={copyLeading} onSelect={handleCopy}>
               {t("workspace.fileExplorer.context.copyPath")}
             </ContextMenuItem>

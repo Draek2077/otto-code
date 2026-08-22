@@ -157,10 +157,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   closeButton: {
     position: "absolute",
-    // Half outside the frame's corner, so the badge floats on the image edge
-    // rather than sitting flush inside it.
-    top: -16,
-    right: -16,
+    // Let the badge straddle the image corner by the same amount on both
+    // axes, without pulling it far into the surrounding dark margin.
+    top: -8,
+    right: -8,
     width: 32,
     height: 32,
     borderRadius: 16,

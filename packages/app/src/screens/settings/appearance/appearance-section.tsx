@@ -10,11 +10,6 @@ import { UiStateGallery } from "@/components/ui-state-gallery";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
-  SYNTAX_THEME_OPTIONS,
-  type SyntaxThemeId,
-  type SyntaxThemeOption,
-} from "@otto-code/highlight";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -24,11 +19,9 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import {
   MAX_CODE_FONT_SIZE,
   MAX_TERMINAL_FONT_SIZE,
-  MAX_RULER_COLUMN,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
-  MIN_RULER_COLUMN,
   MIN_UI_FONT_SIZE,
   parseClampedFontSize,
   sanitizeFontFamily,
@@ -50,8 +43,6 @@ import { isDev, isNative } from "@/constants/platform";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { settingsStyles } from "@/styles/settings";
 import { TEXT_EFFECT_THEME_IDS, type TextEffectThemeId } from "@/styles/text-effects";
-import { AppearancePreview } from "./appearance-preview";
-import { DiffPresentationPreview } from "../diff-presentation-preview";
 
 // ---------------------------------------------------------------------------
 // Theme-reactive leaf icons (withUnistyles + uniProps color mapping - no
@@ -405,174 +396,6 @@ function FontContrastRow({ draftPercent, onChangeDraft, onCommit }: FontContrast
 }
 
 // ---------------------------------------------------------------------------
-// Line-length ruler column (numbers-only input, clamps on commit)
-// ---------------------------------------------------------------------------
-
-interface RulerColumnRowProps {
-  value: number;
-  disabled: boolean;
-  onCommit: (column: number) => void;
-}
-
-function RulerColumnRow({ value, disabled, onCommit }: RulerColumnRowProps) {
-  const [draft, setDraft] = useState(String(value));
-
-  // Resync from the committed value when it changes elsewhere - including the
-  // clamp rewriting what was typed ("999" comes back as "240").
-  useEffect(() => {
-    setDraft(String(value));
-  }, [value]);
-
-  const handleChangeText = useCallback((text: string) => {
-    // Digits only: clamping happens on commit, but nothing else should ever
-    // reach the field in the first place.
-    setDraft(text.replace(/[^0-9]/g, ""));
-  }, []);
-
-  const handleCommit = useCallback(() => {
-    const parsed = parseClampedFontSize(draft, {
-      min: MIN_RULER_COLUMN,
-      max: MAX_RULER_COLUMN,
-    });
-    if (parsed === null) {
-      setDraft(String(value)); // unparseable (e.g. emptied) - snap back
-      return;
-    }
-    setDraft(String(parsed));
-    onCommit(parsed);
-  }, [draft, onCommit, value]);
-
-  return (
-    <View style={responsiveRowStyle(true)}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Ruler column</Text>
-        <Text style={settingsStyles.rowHint}>
-          {`Where the marker sits, in characters. Between ${MIN_RULER_COLUMN} and ${MAX_RULER_COLUMN}.`}
-        </Text>
-      </View>
-      <TextInput
-        value={draft}
-        onChangeText={handleChangeText}
-        onBlur={handleCommit}
-        onSubmitEditing={handleCommit}
-        editable={!disabled}
-        keyboardType="number-pad"
-        inputMode="numeric"
-        maxLength={3}
-        style={styles.rulerColumnInput}
-        accessibilityLabel="Ruler column"
-        testID="settings-ruler-column-input"
-      />
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Syntax highlight theme picker (commits immediately)
-// ---------------------------------------------------------------------------
-
-function syntaxLabelForId(id: SyntaxThemeId): string {
-  const option = SYNTAX_THEME_OPTIONS.find((entry) => entry.id === id);
-  return option ? option.label : id;
-}
-
-interface SyntaxMenuItemProps {
-  option: SyntaxThemeOption;
-  selected: boolean;
-  onChange: (id: SyntaxThemeId) => void;
-}
-
-function SyntaxMenuItem({ option, selected, onChange }: SyntaxMenuItemProps) {
-  const handleSelect = useCallback(() => {
-    onChange(option.id);
-  }, [onChange, option.id]);
-  return (
-    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
-      {option.label}
-    </DropdownMenuItem>
-  );
-}
-
-interface SyntaxRowProps {
-  value: SyntaxThemeId;
-  onChange: (id: SyntaxThemeId) => void;
-}
-
-function SyntaxRow({ value, onChange }: SyntaxRowProps) {
-  const { t } = useTranslation();
-  const selectedLabel = syntaxLabelForId(value);
-  return (
-    <View style={settingsStyles.row}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>
-          {t("settings.appearance.syntax.highlightTheme")}
-        </Text>
-        <Text style={settingsStyles.rowHint}>
-          {t("settings.appearance.syntax.highlightThemeHint")}
-        </Text>
-      </View>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          style={dropdownTriggerStyle}
-          accessibilityLabel={t("settings.appearance.syntax.highlightThemeAccessibility", {
-            value: selectedLabel,
-          })}
-        >
-          <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown uniProps={mutedColorMapping} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" align="end" width={200}>
-          {SYNTAX_THEME_OPTIONS.map((option) => (
-            <SyntaxMenuItem
-              key={option.id}
-              option={option}
-              selected={value === option.id}
-              onChange={onChange}
-            />
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </View>
-  );
-}
-
-function ReplacementPresentationRow({
-  value,
-  onChange,
-}: {
-  value: AppSettings["structuralReplacementPresentation"];
-  onChange: (value: AppSettings["structuralReplacementPresentation"]) => void;
-}) {
-  const options = useMemo<
-    SegmentedControlOption<AppSettings["structuralReplacementPresentation"]>[]
-  >(
-    () => [
-      { value: "new-token", label: "New token" },
-      { value: "before-after", label: "Old → new" },
-    ],
-    [],
-  );
-  return (
-    <View style={settingsStyles.rowResponsive}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Compact replacements</Text>
-        <Text style={settingsStyles.rowHint}>
-          Show a small Structural replacement as the new token only, or as adjacent old and new
-          tokens.
-        </Text>
-      </View>
-      <SegmentedControl
-        size="sm"
-        value={value}
-        onValueChange={onChange}
-        options={options}
-        testID="settings-structural-replacement-presentation"
-      />
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Chat width picker (Default / Wide / Full)
 // ---------------------------------------------------------------------------
 
@@ -731,7 +554,7 @@ function MessageTimestampRow({ value, onChange }: MessageTimestampRowProps) {
 
 // ---------------------------------------------------------------------------
 // Text effects picker - theme for the "working" text sweep on activity labels
-// (see styles/text-effects.ts). Commits immediately, like SyntaxRow.
+// (see styles/text-effects.ts). Commits immediately, like other pickers.
 // ---------------------------------------------------------------------------
 
 function getTextEffectLabel(t: TFunction, value: TextEffectThemeId): string {
@@ -1079,41 +902,6 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
-  const handleSyntaxThemeChange = useCallback(
-    (syntaxTheme: SyntaxThemeId) => {
-      void updateSettings({ syntaxTheme });
-    },
-    [updateSettings],
-  );
-
-  const handleFormattingDiffHighlightsChange = useCallback(
-    (formattingDiffHighlights: boolean) => {
-      void updateSettings({ formattingDiffHighlights });
-    },
-    [updateSettings],
-  );
-
-  const handleStructuralReplacementPresentationChange = useCallback(
-    (structuralReplacementPresentation: AppSettings["structuralReplacementPresentation"]) => {
-      void updateSettings({ structuralReplacementPresentation });
-    },
-    [updateSettings],
-  );
-
-  const handleRulerEnabledChange = useCallback(
-    (rulerEnabled: boolean) => {
-      void updateSettings({ rulerEnabled });
-    },
-    [updateSettings],
-  );
-
-  const handleRulerColumnCommit = useCallback(
-    (rulerColumn: number) => {
-      void updateSettings({ rulerColumn });
-    },
-    [updateSettings],
-  );
-
   const handleCompactSidebarTopSpacingChange = useCallback(
     (compactSidebarTopSpacing: boolean) => {
       void updateSettings({ compactSidebarTopSpacing });
@@ -1244,16 +1032,6 @@ export function AppearanceSection() {
       }
     },
     [settings.fontContrast, updateSettings],
-  );
-
-  // Live-while-dragging: the in-progress draft drives the preview without
-  // committing to the global theme until the slider is released.
-  const previewOverrides = useMemo(
-    () => ({
-      monoFontFamily: monoFontDraft,
-      codeFontSize: codeSizeDraft,
-    }),
-    [codeSizeDraft, monoFontDraft],
   );
 
   return (
@@ -1530,42 +1308,6 @@ export function AppearanceSection() {
             onChangeDraft={setContrastDraft}
             onCommit={commitContrast}
           />
-        </View>
-      </SettingsSection>
-      <SettingsSection title={t("settings.appearance.syntax.title")}>
-        <View style={settingsStyles.card}>
-          <SyntaxRow value={settings.syntaxTheme} onChange={handleSyntaxThemeChange} />
-          <LayoutToggleRow
-            title="Formatting-only changes"
-            hint="Show whitespace-only changes with a neutral theme color in diff review. Turn off to hide them entirely."
-            accessibilityLabel="Formatting-only changes"
-            value={settings.formattingDiffHighlights}
-            withBorder
-            onValueChange={handleFormattingDiffHighlightsChange}
-            testID="settings-formatting-diff-highlights-switch"
-          />
-          <ReplacementPresentationRow
-            value={settings.structuralReplacementPresentation}
-            onChange={handleStructuralReplacementPresentationChange}
-          />
-          <DiffPresentationPreview showFormattingChanges={settings.formattingDiffHighlights} />
-          <LayoutToggleRow
-            title="Line-length ruler"
-            hint="Draw a faint vertical line behind the code in the editor, marking a maximum line length."
-            accessibilityLabel="Line-length ruler"
-            value={settings.rulerEnabled}
-            withBorder
-            onValueChange={handleRulerEnabledChange}
-            testID="settings-ruler-enabled-switch"
-          />
-          <RulerColumnRow
-            value={settings.rulerColumn}
-            disabled={!settings.rulerEnabled}
-            onCommit={handleRulerColumnCommit}
-          />
-        </View>
-        <View style={styles.preview}>
-          <AppearancePreview overrides={previewOverrides} />
         </View>
       </SettingsSection>
     </View>

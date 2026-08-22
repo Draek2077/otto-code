@@ -9,6 +9,7 @@ import {
   selectAgentTurnPresentation,
   selectAgentTimelineState,
   useSessionStore,
+  type Agent,
   type AgentFileExplorerState,
   type WorkspaceDescriptor,
 } from "./session-store";
@@ -272,6 +273,21 @@ describe("agent timeline state", () => {
       activeTurn: null,
     });
     expect(store.getSession("test-server")?.agentTurnLiveness.has("agent-1")).toBe(false);
+  });
+
+  it("keeps presentation active from a running agent when no turn snapshot is available", () => {
+    initializeTestSession();
+    const store = useSessionStore.getState();
+    const startedAt = new Date("2026-08-21T12:00:00.000Z");
+    store.setAgents(
+      "test-server",
+      new Map([["agent-1", { status: "running", lastUserMessageAt: startedAt } as Agent]]),
+    );
+
+    expect(selectAgentTurnPresentation(store.getSession("test-server"), "agent-1")).toMatchObject({
+      isActive: true,
+      startedAt,
+    });
   });
 });
 
