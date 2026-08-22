@@ -12,7 +12,6 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { access } from "node:fs/promises";
-import { watch } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -179,13 +178,16 @@ async function backupArtifacts(targets: SkillTargets): Promise<string[][]> {
 }
 
 async function waitForTransactionDirectory(parent: string): Promise<void> {
-  const events = watch(parent);
-  try {
-    for await (const event of events) {
-      if (event.filename?.startsWith(".otto-skills-transaction-")) return;
+  const pollIntervalMs = 25;
+  const timeoutMs = 5000;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const entries = await readdir(parent).catch(() => []);
+    if (entries.some((entry) => entry.startsWith(".otto-skills-transaction-"))) return;
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for a transaction directory under ${parent}`);
     }
-  } finally {
-    await events.return?.();
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
 }
 

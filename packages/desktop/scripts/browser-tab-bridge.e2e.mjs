@@ -244,7 +244,7 @@ async function createCallerAgent(daemonPort) {
   const client = await experimental_createMCPClient({ transport });
   try {
     const response = await client.callTool({
-      name: "create_agent",
+      name: "create_chat",
       args: {
         relationship: { kind: "detached" },
         workspace: { kind: "existing", workspaceId: workspaceIds[0] },
@@ -258,9 +258,9 @@ async function createCallerAgent(daemonPort) {
     const result = response.structuredContent;
     assert(
       result && typeof result === "object",
-      `create_agent returned no structured payload: ${JSON.stringify(response)}`,
+      `create_chat returned no structured payload: ${JSON.stringify(response)}`,
     );
-    assert(typeof result.agentId === "string", "create_agent returned no caller agent id");
+    assert(typeof result.agentId === "string", "create_chat returned no caller agent id");
     assert(
       result.workspaceId === workspaceIds[0],
       `MCP caller attached to unexpected workspace ${result.workspaceId}`,
