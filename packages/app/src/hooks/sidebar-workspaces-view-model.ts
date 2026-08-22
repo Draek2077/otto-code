@@ -8,7 +8,10 @@ import type {
   WorkspaceStructureProject,
 } from "@/projects/workspace-structure";
 import { projectDisplayNameFromProjectId } from "@/utils/project-display-name";
-import { aggregateSidebarStateBuckets } from "@/utils/sidebar-agent-state";
+import {
+  aggregateSidebarStateBuckets,
+  getWorkspaceStatusDotPriority,
+} from "@/utils/sidebar-agent-state";
 import { shortenPath } from "@/utils/shorten-path";
 import type { WorkspaceAgentActivity } from "@/utils/workspace-agent-activity";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
@@ -55,6 +58,8 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   archiveUnpushedCommitCount: number | null;
   scripts: WorkspaceDescriptor["scripts"];
   hasRunningScripts: boolean;
+  /** Separate from `statusBucket`: a workspace can need input while another root chat runs. */
+  hasActiveChat: boolean;
 }
 
 export interface SidebarProjectEntry {
@@ -190,6 +195,7 @@ export function createSidebarWorkspaceEntry(input: {
     archiveUnpushedCommitCount: input.workspace.gitRuntime?.aheadOfOrigin ?? null,
     scripts: input.workspace.scripts,
     hasRunningScripts: input.workspace.scripts.some((script) => script.lifecycle === "running"),
+    hasActiveChat: input.workspaceAgentActivity?.get(input.workspace.id)?.hasActiveChat ?? false,
   };
 }
 
@@ -231,10 +237,6 @@ function deriveEffectiveWorkspaceStatus(input: {
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
   workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
 }): EffectiveWorkspaceStatus {
-  if (input.workspace.status !== "done") {
-    return { status: input.workspace.status, enteredAt: input.workspace.statusEnteredAt };
-  }
-
   const pendingStartedAt = getPendingInitialAgentCreateStartedAt({
     serverId: input.serverId,
     workspaceId: input.workspace.id,
@@ -245,7 +247,11 @@ function deriveEffectiveWorkspaceStatus(input: {
   }
 
   const rootAgentActivity = input.workspaceAgentActivity?.get(input.workspace.id);
-  if (rootAgentActivity && rootAgentActivity.status !== "done") {
+  if (
+    rootAgentActivity &&
+    getWorkspaceStatusDotPriority(rootAgentActivity.status) <
+      getWorkspaceStatusDotPriority(input.workspace.status)
+  ) {
     return rootAgentActivity;
   }
 

@@ -3,8 +3,10 @@ import {
   BRAIN_STATE_LABELS,
   BRAIN_STATE_VISUALS,
   BRAIN_DISABLED_LABEL,
+  deriveBrainActivity,
   deriveBrainState,
   isBusyBrainState,
+  resolveBrainActivityLabel,
   resolveBrainRailLabel,
   resolveBrainRailPresentation,
   type BrainState,
@@ -299,6 +301,159 @@ describe("resolveBrainRailLabel", () => {
   it("lets the disabled wording win over the state's own", () => {
     expect(resolveBrainRailLabel(resolveBrainRailPresentation("generating", false))).toBe(
       BRAIN_DISABLED_LABEL,
+    );
+  });
+});
+
+describe("deriveBrainActivity", () => {
+  const thread = (slot: number, phase: "prefill" | "decode") => ({ slot, phase });
+
+  it("stays single for everything that is not slot work", () => {
+    expect(deriveBrainActivity(null)).toEqual({ kind: "single", state: "off" });
+    expect(deriveBrainActivity(READY)).toEqual({ kind: "single", state: "idle" });
+    expect(deriveBrainActivity({ ...READY, state: "starting" })).toEqual({
+      kind: "single",
+      state: "loading",
+    });
+  });
+
+  it("keeps a long-running op on the single glyph even while two slots serve it", () => {
+    // A benchmark runs completions through both slots; the op owns the whole
+    // host, so the halves must not describe its internals.
+    expect(
+      deriveBrainActivity({
+        ...READY,
+        slots: { prefill: 1, decode: 1, threads: [thread(0, "decode"), thread(1, "decode")] },
+        activity: { kind: "benchmark" },
+      }),
+    ).toEqual({ kind: "single", state: "benchmarking" });
+  });
+
+  it("splits exactly two active slots, lowest id left", () => {
+    // Order arrives as /slots lists it; the split is by id, not by position.
+    expect(
+      deriveBrainActivity({
+        ...READY,
+        slots: {
+          prefill: 0,
+          decode: 2,
+          threads: [thread(3, "decode"), thread(1, "decode")],
+        },
+      }),
+    ).toEqual({ kind: "split", slots: ["generating", "generating"] });
+  });
+
+  it("splits two slots doing different things", () => {
+    expect(
+      deriveBrainActivity({
+        ...READY,
+        slots: {
+          prefill: 1,
+          decode: 1,
+          threads: [thread(0, "prefill"), thread(1, "decode")],
+        },
+      }),
+    ).toEqual({ kind: "split", slots: ["prefill", "generating"] });
+  });
+
+  it("refines a decode half to thinking through the proxy join", () => {
+    expect(
+      deriveBrainActivity({
+        ...READY,
+        slots: {
+          prefill: 0,
+          decode: 2,
+          threads: [thread(0, "decode"), thread(1, "decode")],
+        },
+        inference: { processing: 0, thinking: 1, generating: 1, slotStages: { "1": "thinking" } },
+      }),
+    ).toEqual({ kind: "split", slots: ["generating", "thinking"] });
+  });
+
+  it("counts active slots, not total slots", () => {
+    // Four configured slots, one busy: the ordinary single glyph.
+    expect(
+      deriveBrainActivity({
+        ...READY,
+        slots: { prefill: 0, decode: 1, threads: [thread(2, "decode")] },
+      }),
+    ).toEqual({ kind: "single", state: "generating" });
+    // Three configured slots, two busy: still the split.
+    expect(
+      deriveBrainActivity({
+        ...READY,
+        slots: {
+          prefill: 0,
+          decode: 2,
+          threads: [thread(0, "decode"), thread(2, "decode")],
+        },
+      }),
+    ).toEqual({ kind: "split", slots: ["generating", "generating"] });
+  });
+
+  it("goes to the spectrum at three or more active slots", () => {
+    expect(
+      deriveBrainActivity({
+        ...READY,
+        slots: {
+          prefill: 1,
+          decode: 2,
+          threads: [thread(0, "prefill"), thread(1, "decode"), thread(2, "decode")],
+        },
+      }),
+    ).toEqual({ kind: "spectrum", count: 3 });
+    expect(
+      deriveBrainActivity({
+        ...READY,
+        slots: {
+          prefill: 0,
+          decode: 4,
+          threads: [
+            thread(0, "decode"),
+            thread(1, "decode"),
+            thread(2, "decode"),
+            thread(3, "decode"),
+          ],
+        },
+      }),
+    ).toEqual({ kind: "spectrum", count: 4 });
+  });
+
+  it("falls back to the single glyph without the busy rows", () => {
+    // The aggregate counts say busy but `threads` (host API v2) is missing or
+    // empty - an older brain, or the sub-second race at a request boundary.
+    // The aggregate claim is the honest one; a guessed half would be a lie.
+    expect(deriveBrainActivity({ ...READY, slots: { prefill: 0, decode: 2 } })).toEqual({
+      kind: "single",
+      state: "generating",
+    });
+    expect(
+      deriveBrainActivity({
+        ...READY,
+        slots: { prefill: 0, decode: 2, threads: [] },
+      }),
+    ).toEqual({ kind: "single", state: "generating" });
+    expect(deriveBrainActivity({ ...READY, queued: 1 })).toEqual({
+      kind: "single",
+      state: "queued",
+    });
+  });
+
+  it("labels the split with each half's own words", () => {
+    expect(resolveBrainActivityLabel({ kind: "split", slots: ["thinking", "generating"] })).toBe(
+      "Brain - thinking · generating tokens",
+    );
+  });
+
+  it("labels the spectrum by count", () => {
+    expect(resolveBrainActivityLabel({ kind: "spectrum", count: 3 })).toBe(
+      "Brain - 3 slots working",
+    );
+  });
+
+  it("labels a single activity as the state's own sentence", () => {
+    expect(resolveBrainActivityLabel({ kind: "single", state: "idle" })).toBe(
+      BRAIN_STATE_LABELS.idle,
     );
   });
 });

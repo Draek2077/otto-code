@@ -8,6 +8,7 @@ import {
   buildSidebarWorkspacePlacementModel,
   buildSidebarProjectsFromStructure,
   computeSidebarOrderUpdates,
+  createSidebarWorkspaceEntry,
   deriveSidebarLoadingState,
   shouldShowSidebarHostLabels,
   type SidebarProjectEntry,
@@ -218,6 +219,74 @@ describe("buildSidebarProjectsFromStructure", () => {
 });
 
 describe("shared sidebar workspace model", () => {
+  it("keeps an active chat separate from a higher-priority workspace status", () => {
+    const entry = createSidebarWorkspaceEntry({
+      serverId: "srv",
+      workspace: workspace({
+        id: "workspace-a",
+        name: "main",
+        projectId: "project-a",
+        projectDisplayName: "Project A",
+        status: "needs_input",
+      }),
+      workspaceAgentActivity: new Map([
+        [
+          "workspace-a",
+          {
+            agentId: "running-chat",
+            status: "running",
+            enteredAt: new Date("2026-06-01T10:00:00.000Z"),
+            hasActiveChat: true,
+          },
+        ],
+      ]),
+    });
+
+    expect(entry).toMatchObject({ statusBucket: "needs_input", hasActiveChat: true });
+  });
+
+  it("keeps a chat notification over the blue running status", () => {
+    const entry = createSidebarWorkspaceEntry({
+      serverId: "srv",
+      workspace: workspace({
+        id: "workspace-a",
+        name: "main",
+        projectId: "project-a",
+        projectDisplayName: "Project A",
+        status: "running",
+      }),
+      workspaceAgentActivity: new Map([
+        [
+          "workspace-a",
+          {
+            agentId: "finished-chat",
+            status: "attention",
+            enteredAt: new Date("2026-06-01T10:00:00.000Z"),
+            hasActiveChat: true,
+          },
+        ],
+      ]),
+    });
+
+    expect(entry).toMatchObject({ statusBucket: "attention", hasActiveChat: true });
+  });
+
+  it("does not treat aggregate workspace activity as a running chat", () => {
+    const entry = createSidebarWorkspaceEntry({
+      serverId: "srv",
+      workspace: workspace({
+        id: "workspace-a",
+        name: "main",
+        projectId: "project-a",
+        projectDisplayName: "Project A",
+        status: "running",
+      }),
+      workspaceAgentActivity: new Map(),
+    });
+
+    expect(entry).toMatchObject({ statusBucket: "running", hasActiveChat: false });
+  });
+
   it("feeds project placement and status grouping from the same cross-host workspace identities", () => {
     const model = buildSidebarWorkspacePlacementModel({
       projects: [

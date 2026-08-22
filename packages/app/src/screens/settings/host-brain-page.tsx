@@ -1875,7 +1875,6 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 200,
   },
   modelPickerRow: {
-    flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     gap: theme.spacing[3],
@@ -1883,13 +1882,14 @@ const styles = StyleSheet.create((theme) => ({
   modelPickerControl: {
     flexGrow: 1,
     flexShrink: 1,
-    flexBasis: 360,
+    flexBasis: { xs: "auto", sm: 360 },
     minWidth: 200,
+    width: { xs: "100%", sm: "auto" },
   },
   modelPickerCopy: {
     flexGrow: 1,
     flexShrink: 1,
-    flexBasis: 280,
+    flexBasis: { xs: "auto", sm: 280 },
     minWidth: 200,
   },
   modelPickerTrigger: {

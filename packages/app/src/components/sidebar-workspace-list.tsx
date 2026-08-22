@@ -153,7 +153,6 @@ import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import type { HostBadgeModel } from "@/hosts/appearance";
 import { useHostBadges } from "@/hosts/use-host-badges";
 import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
-import { useIsLspBusy } from "@/stores/lsp-activity-store";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { mergeRefs } from "@/utils/merge-refs";
 import { projectRowKey, workspaceRowKey } from "@/components/sidebar/sidebar-row-anchors";
@@ -1119,7 +1118,6 @@ function WorkspaceRowInner({
   const _isCompact = useIsCompactFormFactor();
   const [isPressed, setIsPressed] = useState(false);
   const isTouchPlatform = platformIsNative;
-  const isLspBusy = useIsLspBusy(workspace.serverId, workspace.workspaceDirectory ?? null);
   const workspaceAnchorRef = useSidebarRowAnchor(
     workspaceRowKey(workspace.serverId, workspace.workspaceId),
   );
@@ -1219,8 +1217,6 @@ function WorkspaceRowInner({
                 serviceSummary={serviceSummary}
                 backdrop={getSidebarRowBackdrop({ isDragging, isPressed, selected, isHovered })}
                 isHovered={isHovered}
-                isLoading={isArchiving || isCreating}
-                isIndexing={isLspBusy}
                 isCreating={isCreating}
                 shortcutNumber={shortcutNumber}
                 showShortcutBadge={showShortcutBadge}

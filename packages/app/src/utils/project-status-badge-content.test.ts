@@ -6,8 +6,11 @@ describe("getProjectStatusBadgeContent", () => {
     expect(getProjectStatusBadgeContent("running")).toEqual({ kind: "dot", bucket: "running" });
   });
 
-  it("shows the alert when input is needed", () => {
-    expect(getProjectStatusBadgeContent("needs_input")).toEqual({ kind: "alert" });
+  it("shows an amber dot when input is needed", () => {
+    expect(getProjectStatusBadgeContent("needs_input")).toEqual({
+      kind: "dot",
+      bucket: "needs_input",
+    });
   });
 
   it("shows a failed dot when a workspace failed", () => {

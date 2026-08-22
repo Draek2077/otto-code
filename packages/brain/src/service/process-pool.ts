@@ -239,11 +239,20 @@ export class ModelProcessPool implements ModelScheduler<Supervisor> {
   async #pass(): Promise<void> {
     await this.#trimIdleSlots();
     for (;;) {
-      const job = this.#queue[0];
+      let selectedIndex = -1;
+      let selectedSlot: PoolSlot | null = null;
+      for (let index = 0; index < this.#queue.length; index += 1) {
+        const candidate = this.#queue[index]!;
+        const slot = await this.#slotFor(candidate.model);
+        if (!slot) continue;
+        selectedIndex = index;
+        selectedSlot = slot;
+        break;
+      }
+      if (selectedIndex < 0 || !selectedSlot) return;
+      const [job] = this.#queue.splice(selectedIndex, 1);
       if (!job) return;
-      const slot = await this.#slotFor(job.model);
-      if (!slot) return;
-      this.#queue.shift();
+      const slot = selectedSlot;
       slot.pending += 1;
       slot.lastUsedAt = ++this.#clock;
       this.#announce();

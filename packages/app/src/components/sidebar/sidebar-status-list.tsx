@@ -32,7 +32,6 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useClearWorkspaceAttention } from "@/hooks/use-clear-workspace-attention";
-import { useIsLspBusy } from "@/stores/lsp-activity-store";
 import {
   SidebarWorkspaceRowFrame,
   SidebarWorkspaceRowContent,
@@ -711,7 +710,6 @@ function StatusWorkspaceRowInner({
   const isTouchPlatform = platformIsNative;
   const [isPressed, setIsPressed] = useState(false);
   const trailing = useSidebarWorkspaceTrailing();
-  const isLspBusy = useIsLspBusy(workspace.serverId, workspace.workspaceDirectory ?? null);
   const workspaceAnchorRef = useSidebarRowAnchor(
     workspaceRowKey(workspace.serverId, workspace.workspaceId),
   );
@@ -788,8 +786,6 @@ function StatusWorkspaceRowInner({
                 serviceSummary={serviceSummary}
                 backdrop={getSidebarRowBackdrop({ isPressed, selected, isHovered })}
                 isHovered={isHovered}
-                isLoading={isArchiving}
-                isIndexing={isLspBusy}
                 shortcutNumber={shortcutNumber}
                 showShortcutBadge={showShortcutBadge}
                 reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}

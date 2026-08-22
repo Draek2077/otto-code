@@ -55,7 +55,7 @@ function agent(input: {
 }
 
 describe("workspace agent activity index", () => {
-  it("keeps the latest active root agent for each workspace", () => {
+  it("keeps the highest-priority root-chat status for each workspace", () => {
     const index = buildWorkspaceAgentActivityIndex(
       new Map([
         [
@@ -98,6 +98,7 @@ describe("workspace agent activity index", () => {
             agentId: "permission",
             status: "needs_input",
             enteredAt: new Date("2026-06-01T10:01:00.000Z"),
+            hasActiveChat: true,
           },
         ],
         [
@@ -106,10 +107,43 @@ describe("workspace agent activity index", () => {
             agentId: "attention",
             status: "attention",
             enteredAt: new Date("2026-06-01T10:02:00.000Z"),
+            hasActiveChat: false,
           },
         ],
       ]),
     );
+  });
+
+  it("keeps a finished-chat notification green while another root chat runs", () => {
+    const index = buildWorkspaceAgentActivityIndex(
+      new Map([
+        [
+          "notification",
+          agent({
+            id: "notification",
+            workspaceId: "workspace-a",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+            attentionTimestamp: "2026-06-01T10:00:00.000Z",
+            requiresAttention: true,
+            attentionReason: "finished",
+          }),
+        ],
+        [
+          "running",
+          agent({
+            id: "running",
+            workspaceId: "workspace-a",
+            status: "running",
+            updatedAt: "2026-06-01T10:01:00.000Z",
+          }),
+        ],
+      ]),
+    );
+
+    expect(index.get("workspace-a")).toMatchObject({
+      status: "attention",
+      hasActiveChat: true,
+    });
   });
 
   it("does not let archived or child agents change root workspace activity", () => {
@@ -152,6 +186,59 @@ describe("workspace agent activity index", () => {
       agentId: "root",
       status: "running",
       enteredAt: new Date("2026-06-01T10:00:00.000Z"),
+      hasActiveChat: true,
+    });
+  });
+
+  it("does not count a running lifecycle with a pending question as an active chat", () => {
+    const index = buildWorkspaceAgentActivityIndex(
+      new Map([
+        [
+          "question",
+          agent({
+            id: "question",
+            workspaceId: "workspace-a",
+            status: "running",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+            pendingPermissionCount: 1,
+          }),
+        ],
+      ]),
+    );
+
+    expect(index.get("workspace-a")).toMatchObject({
+      status: "needs_input",
+      hasActiveChat: false,
+    });
+  });
+
+  it("keeps a running chat active when a newer question owns the status dot", () => {
+    const index = buildWorkspaceAgentActivityIndex(
+      new Map([
+        [
+          "question",
+          agent({
+            id: "question",
+            workspaceId: "workspace-a",
+            updatedAt: "2026-06-01T10:01:00.000Z",
+            pendingPermissionCount: 1,
+          }),
+        ],
+        [
+          "running",
+          agent({
+            id: "running",
+            workspaceId: "workspace-a",
+            status: "running",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+          }),
+        ],
+      ]),
+    );
+
+    expect(index.get("workspace-a")).toMatchObject({
+      status: "needs_input",
+      hasActiveChat: true,
     });
   });
 
@@ -187,6 +274,7 @@ describe("workspace agent activity index", () => {
             agentId: "parent",
             status: "done",
             enteredAt: new Date("2026-06-01T10:00:00.000Z"),
+            hasActiveChat: false,
           },
         ],
         [
@@ -195,6 +283,7 @@ describe("workspace agent activity index", () => {
             agentId: "child",
             status: "running",
             enteredAt: new Date("2026-06-01T10:03:00.000Z"),
+            hasActiveChat: true,
           },
         ],
       ]),
@@ -271,6 +360,7 @@ describe("workspace agent activity index", () => {
       agentId: "root",
       status: "needs_input",
       enteredAt: new Date("2026-06-01T10:05:00.000Z"),
+      hasActiveChat: false,
     });
   });
 });

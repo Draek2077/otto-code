@@ -1,7 +1,7 @@
 import { useCallback, type ReactNode, type Ref } from "react";
 import { Pressable, Text, View, type PressableProps } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { resolveBrainRailLabel } from "@/components/brain/brain-state";
+import { resolveBrainActivityLabel } from "@/components/brain/brain-state";
 import { BrainStateIcon } from "@/components/brain/brain-state-icon";
 import { useBrainRail } from "@/components/brain/use-brain-rail-state";
 import { Gauge, Home, Settings, type IconComponent } from "@/components/icons/material-icons";
@@ -176,13 +176,20 @@ export function SidebarFooterNavRow({
   const isCompact = useIsCompactFormFactor();
   const renderBrainIcon = useCallback(
     ({ size }: { size: number }) => (
-      <BrainStateIcon state={brainState} size={size} theme={theme} compact={isCompact} />
+      <BrainStateIcon
+        state={brainState}
+        size={size}
+        theme={theme}
+        compact={isCompact}
+        activity={brainRail.activity}
+      />
     ),
-    [brainState, theme, isCompact],
+    [brainState, brainRail.activity, theme, isCompact],
   );
   // Every state - idle included - carries the state's own sentence, so the
-  // tooltip reads "Brain - idle" at rest rather than dropping the state.
-  const brainLabel = resolveBrainRailLabel(brainRail);
+  // tooltip reads "Brain - idle" at rest rather than dropping the state. With
+  // two slots working the sentence names each half; three or more just count.
+  const brainLabel = resolveBrainActivityLabel(brainRail.activity);
 
   return (
     <View style={styles.footerBar}>

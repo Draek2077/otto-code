@@ -5,7 +5,7 @@ title: "Remote Brain functionality is host-owned and connection-neutral"
 status: "confirmed"
 tags: ["brain","remote","client","capabilities"]
 created_at: "2026-08-09T03:37:01.390Z"
-updated_at: "2026-08-22T01:40:03.469Z"
+updated_at: "2026-08-22T02:25:36.000Z"
 ---
 # Remote Brain functionality is host-owned and connection-neutral
 
@@ -31,3 +31,8 @@ A Brain page connected through a daemon that proxies a configured remote brain m
   summary: "Remote runtime management now reconciles the dialog with the Brain host’s live runtime identity and inventory rather than the proxy daemon’s local runtime configuration. The action is unavailable unless a remote Brain both responds with runtime state and advertises writable remote configuration; when permitted, runtime-install jobs continue through the host-owned daemon-to-Brain route."
   source: "Implementation and focused regression coverage, 2026-08-21"
   affects: ["remote-brain"]
+- time: "2026-08-22T02:25:36.000Z"
+  kind: "evidence"
+  summary: "Brain model-process configuration is connection-neutral: the owning daemon persists and applies `maxLoadedModels` and `lockedModels`, advertises the additive process-pool capability, and the same Settings surface edits these fields locally or through the remote Brain config route. The default remains one auto-loaded model; a locked set may preload up to the configured process limit."
+  source: "User direction and verified implementation, 2026-08-21"
+  affects: ["brain-managed-process-pool","remote-brain"]

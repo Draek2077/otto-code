@@ -15,6 +15,23 @@ export function isSidebarActiveAgent(input: AgentStateBucketInput): boolean {
   return deriveSidebarStateBucket(input) !== "done";
 }
 
+// A workspace row's centre dot tells the user what chat needs their attention.
+// Motion is an independent signal, so a completed chat notification remains green
+// while another chat runs around it. This differs intentionally from the workspace
+// aggregation order below, where a running workspace remains more prominent than
+// a notification on a collapsed project row.
+const WORKSPACE_STATUS_DOT_PRIORITY: readonly SidebarStateBucket[] = [
+  "needs_input",
+  "failed",
+  "attention",
+  "running",
+  "done",
+];
+
+export function getWorkspaceStatusDotPriority(bucket: SidebarStateBucket): number {
+  return WORKSPACE_STATUS_DOT_PRIORITY.indexOf(bucket);
+}
+
 // Most urgent first, for collapsing a project's workspaces into one badge. This is
 // deliberately NOT the flat status-list order (STATUS_BUCKET_ORDER in
 // hooks/sidebar-status-view-model.ts), which ranks "attention" above "running": on a

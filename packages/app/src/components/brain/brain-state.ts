@@ -107,6 +107,22 @@ export function resolveBrainRailLabel(presentation: BrainRailPresentation): stri
 }
 
 /**
+ * The sentence for the multi-slot pictures. Same rule as the single state: the
+ * label is the state's own words, so the tooltip never drops the "Brain"
+ * identity. Split names each half in slot order ("thinking · generating");
+ * spectrum stops attributing and just counts.
+ */
+export function resolveBrainActivityLabel(activity: BrainRailActivity): string {
+  if (activity.kind === "split") {
+    return `Brain - ${BRAIN_STATE_LABELS[activity.slots[0]].replace(/^Brain - /, "")} · ${BRAIN_STATE_LABELS[activity.slots[1]].replace(/^Brain - /, "")}`;
+  }
+  if (activity.kind === "spectrum") {
+    return `Brain - ${activity.count} slots working`;
+  }
+  return BRAIN_STATE_LABELS[activity.state];
+}
+
+/**
  * Which glyph the state draws, resolved to markup by `brain-icon-glyphs.ts`.
  *
  * Five of these are the `network_intelligence` family: the same circuit-brain
@@ -375,7 +391,20 @@ export interface BrainStateInput {
   /** Jobs the scheduler is holding because no slot is free, or a swap is mid-flight. */
   queued?: number | null;
   /** Per-phase slot occupancy, split out of llama-server's `/slots`. */
-  slots?: { prefill?: number | null; decode?: number | null } | null;
+  slots?: {
+    prefill?: number | null;
+    decode?: number | null;
+    /**
+     * The busy rows themselves, host API v2 and newer: one per actively
+     * processing slot, with the engine's slot id and phase. This is what lets
+     * the rail tell two busy slots apart rather than collapsing them into one
+     * aggregate claim.
+     */
+    threads?: Array<{
+      slot?: number | null;
+      phase?: "prefill" | "decode" | null;
+    }> | null;
+  } | null;
   /** Whether any live slot is inside a reasoning block. */
   reasoning?: boolean | null;
   /** Exact aggregate proxy stages from host API v2. */
@@ -383,6 +412,12 @@ export interface BrainStateInput {
     processing?: number | null;
     thinking?: number | null;
     generating?: number | null;
+    /**
+     * Per-slot proxy stages (host API v3): the request pinned to each slot and
+     * the stage that request has reached. The join that makes a per-slot
+     * "thinking" possible - the engine alone cannot report it.
+     */
+    slotStages?: Record<string, unknown> | null;
   } | null;
   /** A long-running op that owns the host. */
   activity?: { kind?: string | null } | null;
@@ -523,4 +558,107 @@ function deriveInferenceState(input: BrainStateInput): BrainState | null {
     return "queued";
   }
   return null;
+}
+
+/**
+ * What each actively working slot is doing, as a per-slot state.
+ *
+ * The engine phase (`threads[].phase`, host API v2) is the ground truth for
+ * *where* the slot is - prefill or decode - exactly as the Overview's rows read
+ * it. The proxy join (`inference.slotStages`, host API v3) then refines a decode
+ * row into "thinking" when the pinned request is mid-reasoning, which is the one
+ * state the engine cannot express. The fallback order matches
+ * `modelActivityPhase` in the Overview panel word for word, so the rail and the
+ * page it opens can never disagree about a slot.
+ */
+function deriveSlotState(
+  thread: { slot?: number | null; phase?: "prefill" | "decode" | null },
+  slotStages: Record<string, unknown> | null,
+): BrainState {
+  if (thread.phase === "prefill") {
+    return "prefill";
+  }
+  if (!slotStages || typeof thread.slot !== "number") {
+    return "generating";
+  }
+  const stage = slotStages[String(thread.slot)];
+  if (stage === "thinking") return "thinking";
+  if (stage === "generating") return "generating";
+  if (stage === "processing") return "prefill";
+  // A decode row with no joined stage is emitting tokens by definition.
+  return "generating";
+}
+
+/**
+ * How many distinct ways the busy work can be shown: one aggregate state, two
+ * halves, or the spectrum.
+ *
+ * **The count that matters is active slots, not configured slots** - three
+ * loaded slots with two of them serving requests still shows the split, and one
+ * busy slot on an eight-slot engine still shows the ordinary single glyph.
+ *
+ * Split needs the busy rows themselves. The aggregate `slots.prefill`/`decode`
+ * counts cannot name which slots are busy, so without `threads` there is nothing
+ * to draw twice and the answer falls back to today's single glyph - an older
+ * brain keeps exactly the picture it has always shown rather than a guessed one.
+ */
+export type BrainRailActivity =
+  | { kind: "single"; state: BrainState }
+  /** Two active slots; index 0 draws on the left half, index 1 on the right. */
+  | { kind: "split"; slots: [BrainState, BrainState] }
+  /** Three or more active slots: too much motion to attribute, so just show it all. */
+  | { kind: "spectrum"; count: number };
+
+export function deriveBrainActivity(input: BrainStateInput | null | undefined): BrainRailActivity {
+  const single = deriveBrainState(input);
+  // Split only for work that is genuinely per-slot: a long-running op or a
+  // supervisor transition owns the whole host, and the busy aggregates it
+  // produces (a benchmark running completions through two slots, a model load
+  // pinning one) are its internals, not two independent workers.
+  const fromOp = Boolean(ACTIVITY_STATES[input?.activity?.kind ?? ""]);
+  const state = input?.state ?? null;
+  const fromSupervisor = state === "starting" || state === "stopping";
+  const busy = !fromOp && !fromSupervisor && input ? deriveInferenceState(input) : null;
+  if (!busy) {
+    return { kind: "single", state: single };
+  }
+
+  const threads = busyThreads(input);
+  if (threads.length < 2) {
+    // Zero or one row with busy aggregates means the sample raced the request
+    // boundary (the `/slots` loopback lags dispatch); the aggregate claim is
+    // still the honest one until the rows catch up.
+    return { kind: "single", state: single };
+  }
+
+  const slotStages = input?.inference?.slotStages ?? null;
+  if (threads.length === 2) {
+    return { kind: "split", slots: splitSlots(threads, slotStages) };
+  }
+  return { kind: "spectrum", count: threads.length };
+}
+
+/** The busy rows themselves, in whatever order `/slots` listed them. */
+function busyThreads(input: BrainStateInput | null | undefined): Array<{
+  slot?: number | null;
+  phase?: "prefill" | "decode" | null;
+}> {
+  return (input?.slots?.threads ?? []).filter(
+    (thread) => thread.phase === "prefill" || thread.phase === "decode",
+  );
+}
+
+/**
+ * Two busy rows, ordered lowest id left, each resolved to its own state.
+ * The order is stable regardless of the order `/slots` listed them in.
+ */
+function splitSlots(
+  threads: Array<{ slot?: number | null; phase?: "prefill" | "decode" | null }>,
+  slotStages: Record<string, unknown> | null,
+): [BrainState, BrainState] {
+  const ordered =
+    (threads[0].slot ?? 0) <= (threads[1].slot ?? 0)
+      ? [threads[0], threads[1]]
+      : [threads[1], threads[0]];
+  return [deriveSlotState(ordered[0], slotStages), deriveSlotState(ordered[1], slotStages)];
 }

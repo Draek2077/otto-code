@@ -40,7 +40,7 @@ class FakeSupervisor {
   }
 }
 
-function createPool(maxModels: number) {
+function createPool(maxModels: number, parallelSlots = 1) {
   const supervisors: FakeSupervisor[] = [];
   const makeSupervisor = (index: number): Supervisor => {
     const supervisor = new FakeSupervisor(index);
@@ -57,7 +57,7 @@ function createPool(maxModels: number) {
       const fake = supervisor as unknown as FakeSupervisor;
       fake.state = "starting";
       fake.model = target;
-      fake.profile = { parallelSlots: 1 } as Profile;
+      fake.profile = { parallelSlots } as Profile;
       fake.state = "ready";
       return 1;
     },
@@ -83,7 +83,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
 describe("ModelProcessPool", () => {
   it("serves different models concurrently in independent processes", async () => {
-    const { pool } = createPool(2);
+    const { pool } = createPool(2, 2);
     const releaseA = deferred();
     const releaseB = deferred();
     const residents: Supervisor[] = [];
@@ -137,5 +137,37 @@ describe("ModelProcessPool", () => {
     await b;
     expect(bStarted).toBe(true);
     expect(supervisors[0].stopCount).toBe(1);
+  });
+
+  it("keeps serving resident models while an unloaded model waits for eviction", async () => {
+    const { pool } = createPool(2, 2);
+    const releaseA = deferred();
+    const releaseB = deferred();
+    const a = pool.submit(model("a"), async () => releaseA.promise);
+    const b = pool.submit(model("b"), async () => releaseB.promise);
+    await waitFor(
+      () =>
+        pool.supervisorFor("a")?.state === "ready" && pool.supervisorFor("b")?.state === "ready",
+    );
+
+    let cStarted = false;
+    const c = pool.submit(model("c"), async () => {
+      cStarted = true;
+    });
+    let residentRequestFinished = false;
+    const residentRequest = pool.submit(model("a"), async () => {
+      residentRequestFinished = true;
+    });
+
+    await waitFor(() => residentRequestFinished);
+    expect(cStarted).toBe(false);
+
+    releaseB.resolve();
+    await b;
+    await c;
+    expect(cStarted).toBe(true);
+    releaseA.resolve();
+    await a;
+    await residentRequest;
   });
 });

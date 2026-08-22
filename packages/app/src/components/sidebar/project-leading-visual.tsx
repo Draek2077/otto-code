@@ -1,6 +1,6 @@
 import { ActivityIndicator, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react-native";
+import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { STATUS_BUCKET_LABELS } from "@/hooks/sidebar-status-view-model";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
@@ -12,10 +12,7 @@ import {
 } from "@/utils/project-status-badge-content";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { getStatusDotColor } from "@/utils/status-dot-color";
-import {
-  STATUS_INDICATOR_ALERT_SIZE,
-  STATUS_INDICATOR_FILLED_DOT_SIZE,
-} from "@/utils/status-indicator-geometry";
+import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
 import { StatusRing } from "@/components/status-ring";
 import { getStatusRingOffset } from "@/components/status-ring/geometry";
 import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
@@ -32,21 +29,14 @@ const STATUS_BADGE_OFFSET = -4;
 // odd size measured 1.5 device px right and down at 3x, ~3px of asymmetry between opposite gaps).
 // Even sizes divide the shell into whole pixels and land dead center with no correction.
 //
-// The filled alert occupies the full badge shell so needs-input remains more prominent than
-// the passive status dots.
 // Matches the workspace title's lineHeight (sidebar-workspace-row-content's
 // workspaceBranchText) so the icon centers on the title rather than floating above it.
 const LEADING_SLOT_HEIGHT = 20;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
-const ThemedCircleAlert = withUnistyles(CircleAlert);
 
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
-});
-const needsInputColorMapping = (theme: Theme) => ({
-  color: theme.colors.surface0,
-  fill: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
 });
 
 /**
@@ -103,16 +93,15 @@ export function ProjectLeadingVisual({
 
 // The project icon (the lettered box) is what marks a row as a *project* rather than a
 // workspace, so it always stays and status annotates it instead of replacing it. Every
-// surfaced bucket lands in the identical corner badge — an amber alert glyph for needs_input,
-// a colored disc for the rest, nothing for done — so the badge reads as one fixed shell and
-// only its contents change.
+// surfaced bucket lands in the identical corner badge — a colored disc for actionable states,
+// nothing for done — so the badge reads as one fixed shell and only its contents change.
 export function ProjectStatusIndicator({
   iconDataUri,
   displayName,
   projectViewKey,
   statusBucket,
   backdrop,
-  loading = false,
+  hasActiveChat = false,
   testID,
 }: {
   iconDataUri: string | null;
@@ -121,16 +110,14 @@ export function ProjectStatusIndicator({
   statusBucket: SidebarStateBucket | null;
   /** The row's current background, so the status badge can knock out of it. */
   backdrop: SidebarSurfaceBackdrop;
-  loading?: boolean;
+  hasActiveChat?: boolean;
   testID?: string;
 }) {
   const placeholderInitial = projectIconPlaceholderLabelFromDisplayName(displayName)
     .charAt(0)
     .toUpperCase();
-  // A row that's still starting up and a row that's working are both "busy", and at this size
-  // there's no room to draw the difference — so `loading` just resolves to the running bucket
-  // and they share one badge.
-  const badgeBucket = loading ? "running" : statusBucket;
+  // Status and activity are independent: a workspace can need input while another chat runs.
+  const badgeBucket = statusBucket === "done" && hasActiveChat ? "running" : statusBucket;
   const badgeContent = getProjectStatusBadgeContent(badgeBucket);
 
   return (
@@ -154,6 +141,7 @@ export function ProjectStatusIndicator({
             content={badgeContent}
             statusBucket={badgeBucket}
             backdrop={backdrop}
+            spinning={hasActiveChat}
           />
         )}
       </View>
@@ -165,15 +153,16 @@ function ProjectStatusBadge({
   content,
   statusBucket,
   backdrop,
+  spinning,
 }: {
   content: ProjectStatusBadgeContent;
   statusBucket: SidebarStateBucket;
   backdrop: SidebarSurfaceBackdrop;
+  spinning: boolean;
 }) {
-  // Running skips the shell. The ring is wider than the 12pt shell and carries its own knockout,
-  // so nesting it inside would clip it against the very thing that was meant to separate it from
-  // the icon. It anchors to the same corner instead, growing around the centre the dot had.
-  if (content.kind === "dot" && content.bucket === "running") {
+  // The ring is wider than the 12pt shell and carries its own knockout, so nesting it inside
+  // would clip it against the very thing that was meant to separate it from the icon.
+  if (spinning) {
     return (
       <View
         role="status"
@@ -181,7 +170,7 @@ function ProjectStatusBadge({
         style={styles.statusRingAnchor}
         testID="project-status-badge"
       >
-        <StatusRing backdrop={backdrop} />
+        <StatusRing backdrop={backdrop} centerStyle={getStatusDotColorStyle(content.bucket)} />
       </View>
     );
   }
@@ -192,11 +181,7 @@ function ProjectStatusBadge({
       style={[styles.statusBadge, getStatusBadgeBackdropStyle(backdrop)]}
       testID="project-status-badge"
     >
-      {content.kind === "alert" ? (
-        <ThemedCircleAlert size={STATUS_INDICATOR_ALERT_SIZE} uniProps={needsInputColorMapping} />
-      ) : (
-        <ProjectStatusDot bucket={content.bucket} />
-      )}
+      <ProjectStatusDot bucket={content.bucket} />
     </View>
   );
 }
@@ -247,6 +232,7 @@ function ProjectInlineChevron({ chevron }: { chevron: "expand" | "collapse" | nu
 }
 
 function getStatusDotColorStyle(bucket: ProjectStatusBadgeDotBucket): ViewStyle {
+  if (bucket === "needs_input") return styles.statusDotNeedsInput;
   if (bucket === "failed") return styles.statusDotFailed;
   if (bucket === "running") return styles.statusDotRunning;
   return styles.statusDotAttention;
@@ -311,6 +297,10 @@ const styles = StyleSheet.create((theme) => {
     statusBadgeOnSidebarHover: { backgroundColor: theme.colors.surfaceSidebarHover },
     statusBadgeOnSurface2: { backgroundColor: theme.colors.surface2 },
     statusDotRunning: statusDot("running"),
+    statusDotNeedsInput: {
+      ...statusDot("needs_input"),
+      transform: [{ translateX: 0.5 }],
+    },
     statusDotFailed: statusDot("failed"),
     statusDotAttention: statusDot("attention"),
   };

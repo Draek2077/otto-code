@@ -1,26 +1,18 @@
 import { memo } from "react";
-import { View } from "react-native";
 import {
   StatusRingFrame,
   type StatusRingProps,
-  rotatorStyles,
-  styles,
+  ThemedStatusBlobLoader,
 } from "@/components/status-ring/frame";
-import { useStatusRingAnimationRef } from "@/components/status-ring/clock.web";
+import { STATUS_RING_FRAME_SIZE } from "@/components/status-ring/geometry";
 
 /**
- * Web running indicator. A sidebar full of agents can hold dozens of these at once, so the browser
- * drives the rotation from one absolute document-timeline epoch rather than from mount time — see
- * `clock.web.ts`.
+ * Web running indicator. BlobLoader shares one browser-timeline animation across every instance.
  */
-export const StatusRing = memo(function StatusRing({ backdrop }: StatusRingProps) {
-  const rotatorRef = useStatusRingAnimationRef();
-
+export const StatusRing = memo(function StatusRing({ backdrop, centerStyle }: StatusRingProps) {
   return (
-    <StatusRingFrame backdrop={backdrop}>
-      <View ref={rotatorRef} style={rotatorStyles.rotator}>
-        <View style={styles.arc} />
-      </View>
+    <StatusRingFrame backdrop={backdrop} centerStyle={centerStyle}>
+      <ThemedStatusBlobLoader size={STATUS_RING_FRAME_SIZE} />
     </StatusRingFrame>
   );
 });

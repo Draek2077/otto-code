@@ -17,7 +17,7 @@
 import { useCallback } from "react";
 import { router } from "expo-router";
 import { withUnistyles } from "react-native-unistyles";
-import { resolveBrainRailLabel } from "@/components/brain/brain-state";
+import { resolveBrainActivityLabel } from "@/components/brain/brain-state";
 import { BrainStateIcon } from "@/components/brain/brain-state-icon";
 import { resolveBrainRailRoute, useBrainRail } from "@/components/brain/use-brain-rail-state";
 import { HeaderToggleButton, headerIconSlotStyle } from "@/components/headers/header-toggle-button";
@@ -50,7 +50,9 @@ export function WorkspaceBrainButton() {
   // desktop stays on the smaller md glyph shared with the "..." trigger.
   const glyphSize = isCompact ? iconSize.lg : iconSize.md;
   const rail = useBrainRail();
-  const label = resolveBrainRailLabel(rail);
+  // Same wording rule as the sidebar footer: the sentence is the state's own.
+  // Two active slots name each half; three or more just count themselves.
+  const label = resolveBrainActivityLabel(rail.activity);
   const { disabled, serverId } = rail;
 
   const handlePress = useCallback(() => {
@@ -77,6 +79,7 @@ export function WorkspaceBrainButton() {
         state={rail.state}
         size={glyphSize}
         compact={isCompact}
+        activity={rail.activity}
         uniProps={brainThemeMapping}
       />
     </HeaderToggleButton>

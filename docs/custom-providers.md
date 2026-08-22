@@ -231,7 +231,7 @@ Local inference servers like [LM Studio](https://lmstudio.ai), [Ollama](https://
 
 ### How it works
 
-- **Models are discovered automatically** from `GET {OPENAI_BASE_URL}/models` - whatever the server has downloaded shows up in the model picker. Setting `models` in the config replaces discovery with a static list.
+- **Models are discovered automatically** from `GET {OPENAI_BASE_URL}/models` - whatever the server has downloaded shows up in the model picker. A successful result is reused across workspace model pickers; Refresh in provider settings forces a new endpoint request. Setting `models` in the config replaces discovery with a static list.
 - **Status reflects reachability, not installation.** When the server is running the provider shows Available with the discovered model count; when it isn't, the row shows an error explaining that the endpoint can't be reached.
 - Chat turns stream over `POST {OPENAI_BASE_URL}/chat/completions` (SSE). Reasoning deltas (`reasoning_content`) are rendered as thinking output.
 - **Function-calling models get a built-in coding toolset** executed by the daemon in the agent's cwd: `read_file`, `list_dir`, `grep_search`, `write_file`, `edit_file`, `run_command`. Tool calls stream as timeline items like any other agent's.

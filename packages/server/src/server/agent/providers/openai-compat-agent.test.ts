@@ -53,10 +53,17 @@ async function startEndpoint(options?: {
   /** Serve LM Studio's native /api/v0/models listing with loaded_context_length. */
   nativeContextLength?: number;
   modelFields?: Record<string, unknown>;
-}): Promise<TestEndpoint & { completionBodies: Array<Record<string, unknown>> }> {
+}): Promise<
+  TestEndpoint & {
+    completionBodies: Array<Record<string, unknown>>;
+    modelRequests: string[];
+  }
+> {
   const completionBodies: Array<Record<string, unknown>> = [];
+  const modelRequests: string[] = [];
   const server = createServer((req, res) => {
     if (req.method === "GET" && req.url === "/v1/models") {
+      modelRequests.push(req.url);
       res.writeHead(200, { "Content-Type": "application/json" });
       const extra =
         typeof options?.v1ContextLength === "number"
@@ -139,7 +146,7 @@ async function startEndpoint(options?: {
     server.listen(0, "127.0.0.1", resolve);
   });
   const { port } = server.address() as AddressInfo;
-  return { server, baseUrl: `http://127.0.0.1:${port}`, completionBodies };
+  return { server, baseUrl: `http://127.0.0.1:${port}`, completionBodies, modelRequests };
 }
 
 function createClient(
@@ -423,6 +430,24 @@ describe("OpenAICompatAgentClient", () => {
       "high",
     ]);
     expect(catalog.models[0]?.defaultThinkingOptionId).toBe("off");
+  });
+
+  test("reuses an endpoint catalog across workspace snapshots until explicitly refreshed", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+
+    const settingsCatalog = await client.fetchCatalog({ scope: "global", force: true });
+    const workspaceCatalog = await client.fetchCatalog({
+      scope: "workspace",
+      cwd: process.cwd(),
+      force: false,
+    });
+
+    expect(workspaceCatalog).toBe(settingsCatalog);
+    expect(endpoint.modelRequests).toHaveLength(1);
+
+    await client.fetchCatalog({ scope: "workspace", cwd: process.cwd(), force: true });
+    expect(endpoint.modelRequests).toHaveLength(2);
   });
 
   test("reports an actionable error when the server is unreachable", async () => {

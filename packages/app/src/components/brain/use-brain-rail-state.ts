@@ -19,8 +19,10 @@
  */
 import { useMemo } from "react";
 import {
+  deriveBrainActivity,
   deriveBrainState,
   resolveBrainRailPresentation,
+  type BrainRailActivity,
   type BrainState,
 } from "@/components/brain/brain-state";
 import { brainStatusQueryKey, PUSHED_BRAIN_STATUS_STALE_MS } from "@/data/brain-status";
@@ -89,12 +91,14 @@ export function useBrainRail() {
     },
   });
 
+  const status = statusQuery.data ?? null;
   const presentation = resolveBrainRailPresentation(
-    deriveBrainState(statusQuery.data ?? null),
+    deriveBrainState(status),
     config?.brain.enabled,
   );
+  const activity: BrainRailActivity = deriveBrainActivity(status);
 
-  return { ...presentation, serverId };
+  return { ...presentation, activity, serverId };
 }
 
 export function useBrainRailState(): BrainState {

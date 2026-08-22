@@ -33,6 +33,7 @@ function ws(
     archiveUnpushedCommitCount: null,
     scripts: [],
     hasRunningScripts: false,
+    hasActiveChat: input.hasActiveChat ?? false,
     workspaceKey: input.workspaceKey,
   };
 }

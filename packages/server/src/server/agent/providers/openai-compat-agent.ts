@@ -1508,6 +1508,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly endpointResolver: (() => ResolvedEndpoint) | null;
   private readonly reasoningEffortMode: "levels" | "toggle";
   private readonly projectRootResolver: ((cwd: string) => Promise<string>) | null;
+  private catalogCache: { baseUrl: string; catalog: ProviderCatalog } | null = null;
 
   constructor(options: OpenAICompatAgentClientOptions) {
     this.provider = options.providerId;
@@ -1545,8 +1546,13 @@ export class OpenAICompatAgentClient implements AgentClient {
   }
 
   async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
-    void options;
     const endpoint = this.endpoint();
+    if (options.force) {
+      this.catalogCache = null;
+    } else if (this.catalogCache?.baseUrl === endpoint.baseUrl) {
+      return this.catalogCache.catalog;
+    }
+
     const timeoutMs = DEFAULT_CATALOG_TIMEOUT_MS;
     let response: Response;
     try {
@@ -1613,7 +1619,14 @@ export class OpenAICompatAgentClient implements AgentClient {
       }
       return model;
     });
-    return { models, modes: OPENAI_COMPAT_MODES };
+    const catalog: ProviderCatalog = { models, modes: OPENAI_COMPAT_MODES };
+    // OpenAI-compatible model discovery belongs to the endpoint, not the
+    // workspace. ProviderSnapshotManager keeps separate workspace snapshots
+    // for providers whose catalogs can vary by cwd, so retain this successful
+    // endpoint result for those non-forced projections. Settings Refresh still
+    // passes force=true and replaces the cache from GET /models.
+    this.catalogCache = { baseUrl: endpoint.baseUrl, catalog };
+    return catalog;
   }
 
   /**
