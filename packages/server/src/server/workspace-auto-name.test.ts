@@ -28,13 +28,14 @@ test("auto-name preserves workspace archival that lands during its metadata writ
   const allowMutation = deferred();
   const updateEmitted = deferred();
   const workspaceRegistry = {
+    get: async () => workspace,
     update: async (_workspaceId, updater) => {
       mutationStarted.resolve();
       await allowMutation.promise;
       workspace = updater(workspace);
       return workspace;
     },
-  } satisfies Pick<WorkspaceRegistry, "update">;
+  } satisfies Pick<WorkspaceRegistry, "get" | "update">;
   const autoName = new WorkspaceAutoName({
     agentManager: {} as AgentManager,
     workspaceRegistry,
@@ -59,8 +60,10 @@ test("auto-name preserves workspace archival that lands during its metadata writ
   allowMutation.resolve();
   await updateEmitted.promise;
 
+  // The archival landed before the write; the generated title must not
+  // resurrect the workspace by overwriting it, so title stays untouched.
   expect(workspace).toMatchObject({
-    title: "generated",
+    title: null,
     archivedAt,
   });
 });

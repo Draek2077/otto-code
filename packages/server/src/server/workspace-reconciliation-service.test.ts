@@ -288,7 +288,7 @@ describe("WorkspaceReconciliationService", () => {
       workspaceRegistry,
       logger: createTestLogger(),
       workspaceGitService: {
-        getCheckout: async (cwd) => {
+        getCheckoutLite: async (cwd) => {
           readStarted.resolve();
           await allowRead.promise;
           return createCheckout(cwd, {
@@ -307,9 +307,12 @@ describe("WorkspaceReconciliationService", () => {
     allowRead.resolve();
     await reconciliation;
 
+    // The archive landed while the git read was in flight; reconciliation
+    // re-reads before writing and must not resurrect the record by writing
+    // the stale (pre-archive) snapshot's branch back over it.
     expect(workspaces.get("w1")).toMatchObject({
       archivedAt,
-      branch: "new-branch",
+      branch: "old-branch",
     });
   });
 

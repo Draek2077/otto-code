@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setImmediate as waitForImmediate } from "node:timers/promises";
 import { afterEach, expect, test, vi } from "vitest";
 import { z } from "zod";
 
@@ -18,6 +19,7 @@ import { Session } from "./session.js";
 import type { SessionOptions } from "./session.js";
 import type { AgentUpdatesService } from "./session/agent-updates/agent-updates-service.js";
 import type { AgentSnapshotPayload, SessionOutboundMessage } from "@otto-code/protocol/messages";
+import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createTerminalManager } from "../terminal/terminal-manager.js";
 import { AgentManager, type AgentManagerEvent, type ManagedAgent } from "./agent/agent-manager.js";
@@ -76,6 +78,14 @@ const REPO_CWD = path.resolve("/tmp/repo");
 const UNREGISTERED_CWD = path.resolve("/tmp/unregistered");
 
 const terminalManagers: TerminalManager[] = [];
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 afterEach(async () => {
   while (terminalManagers.length > 0) {
@@ -7189,6 +7199,7 @@ test("project.rename.request announces a project with no active workspaces on th
       projectId: project.projectId,
       projectDisplayName: "Ouroboroz",
       projectCustomName: "Ouroboroz",
+      projectCustomIconRevision: null,
       // A project that has never chosen a Kanban board reports null, which is
       // what the Kanban screen reads as "not configured".
       projectKanban: null,
@@ -8079,6 +8090,7 @@ test("workspace auto-name keeps a manual title written before the scheduled titl
   const workspaceAutoName = new WorkspaceAutoName({
     agentManager: asAgentManager({}),
     workspaceRegistry: {
+      get: async (workspaceId) => stored.get(workspaceId) ?? null,
       update: async (workspaceId, updater) => {
         const current = stored.get(workspaceId);
         if (!current) return null;
@@ -8135,6 +8147,7 @@ test("workspace auto-name replaces the unchanged prompt title", async () => {
   const workspaceAutoName = new WorkspaceAutoName({
     agentManager: asAgentManager({}),
     workspaceRegistry: {
+      get: async (workspaceId) => stored.get(workspaceId) ?? null,
       update: async (workspaceId, updater) => {
         const current = stored.get(workspaceId);
         if (!current) return null;
@@ -8206,6 +8219,7 @@ test("workspace auto-name applies title once when branch auto-name is rejected",
   const workspaceAutoName = new WorkspaceAutoName({
     agentManager: asAgentManager({}),
     workspaceRegistry: {
+      get: async (workspaceId) => stored.get(workspaceId) ?? null,
       update: async (workspaceId, updater) => {
         const current = stored.get(workspaceId);
         if (!current) return null;
