@@ -12,7 +12,7 @@ Transfer the current task - context, decisions, failed attempts, constraints - t
 
 ## Prerequisites
 
-Read the **otto** skill. Call `list_profiles` before choosing the receiving agent, and read every configured profile's `notes`. Do not create the receiving agent until you have inspected the available profiles.
+Read the **otto** skill. Call `list_personalities` before choosing the receiving agent, and read every entry's `roles` and `guidance`. Do not create the receiving agent until you have inspected the available personalities.
 
 ## Parsing arguments
 

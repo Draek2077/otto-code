@@ -13,7 +13,7 @@ Single agent. Reads the situation you're in. Gives a judgment. You decide what t
 
 ## Prerequisites
 
-Read the **otto** skill. Call `list_profiles` before choosing the advisor, and read every configured profile's `notes`. Do not create the advisor until you have inspected the available profiles.
+Read the **otto** skill. Call `list_personalities` before choosing the advisor, and read every entry's `roles` and `guidance`. Do not create the advisor until you have inspected the available personalities.
 
 ## Picking the advisor
 

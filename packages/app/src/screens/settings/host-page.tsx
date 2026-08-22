@@ -21,7 +21,6 @@ import {
   getTerminalProfileIcon,
   DEFAULT_TERMINAL_PROFILES,
 } from "@otto-code/protocol/terminal-profiles";
-import { AgentProfilesSection } from "@/agent-profiles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Button } from "@/components/ui/button";
@@ -453,7 +452,6 @@ export function HostStoragePage({ serverId }: { serverId: string }) {
           <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
         </View>
       )}
-      <AgentProfilesSection serverId={serverId} />
     </View>
   );
 }

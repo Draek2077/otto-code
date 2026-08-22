@@ -33,6 +33,8 @@ import {
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 import { isUserSelectableMode } from "@otto-code/protocol/provider-manifest";
 import { ChevronDown, Pencil, Plus, Robot, Trash2 } from "@/components/icons/material-icons";
+import { AgentProfileGlyph } from "@/agent-profiles/internal/agent-profile-glyph";
+import { AgentProfileAppearanceField } from "@/agent-profiles/settings/agent-profile-appearance-field";
 import { BlobLoader } from "@/components/blob-loader";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { Button } from "@/components/ui/button";
@@ -199,6 +201,9 @@ interface PersonalityDraft {
   /** Whether this personality accrues lessons across sessions. Default on. */
   memoryEnabled: boolean;
   roles: PersonalityRole[];
+  /** Icon registry key and identity colour; "" draws the defaults. */
+  icon: string;
+  color: string;
   glowA: string;
   glowB: string;
   voice: AgentPersonalityVoice | null;
@@ -363,6 +368,8 @@ function personalityToDraft(personality: AgentPersonality): PersonalityDraft {
     // is there to stop a personality accruing, not to start it.
     memoryEnabled: personality.memoryEnabled ?? true,
     roles: normalizePersonalityRoles(personality.roles),
+    icon: personality.icon ?? "",
+    color: personality.color ?? "",
     glowA: personality.spinner?.glowA ?? DEFAULT_GLOW_A,
     glowB: personality.spinner?.glowB ?? DEFAULT_GLOW_B,
     voice: personality.voice ?? null,
@@ -380,6 +387,12 @@ function draftToPersonality(draft: PersonalityDraft, id: string): AgentPersonali
     roles: draft.roles,
     spinner: { glowA: draft.glowA.trim(), glowB: draft.glowB.trim() },
   };
+  if (draft.icon) {
+    personality.icon = draft.icon;
+  }
+  if (draft.color) {
+    personality.color = draft.color;
+  }
   if (draft.effortLevel) {
     personality.effortLevel = draft.effortLevel;
   }
@@ -428,6 +441,8 @@ function emptyDraft(entries: readonly ProviderSnapshotEntry[]): PersonalityDraft
     memoryEnabled: true,
     // A new personality is available everywhere by default; the user narrows it.
     roles: [...PERSONALITY_ROLES],
+    icon: "",
+    color: "",
     glowA: DEFAULT_GLOW_A,
     glowB: DEFAULT_GLOW_B,
     voice: null,
@@ -1012,7 +1027,11 @@ function PersonalityRow({
     [isFirst],
   );
 
-  const icon = (
+  // A picked identity icon wins the leading slot; without one the provider
+  // glyph tinted by the spinner glows keeps identifying the row.
+  const icon = personality.icon ? (
+    <AgentProfileGlyph icon={personality.icon} color={personality.color ?? ""} size={18} />
+  ) : (
     <PersonalityProviderIcon
       provider={personality.provider}
       size={18}
@@ -1300,6 +1319,9 @@ function PersonalityEditModal({
   }, []);
   const setMemoryEnabled = useCallback((value: boolean) => {
     setDraft((current) => ({ ...current, memoryEnabled: value }));
+  }, []);
+  const setAppearance = useCallback((next: { icon: string; color: string }) => {
+    setDraft((current) => ({ ...current, icon: next.icon, color: next.color }));
   }, []);
   const setGlowA = useCallback((value: string) => {
     setDraft((current) => ({ ...current, glowA: value }));
@@ -1631,6 +1653,14 @@ function PersonalityEditModal({
               glowB={draft.glowB}
               onGlowAChange={setGlowA}
               onGlowBChange={setGlowB}
+            />
+
+            <AgentProfileAppearanceField
+              label="Appearance"
+              icon={draft.icon}
+              color={draft.color}
+              onChange={setAppearance}
+              testID="agent-personality-appearance"
             />
           </>
         ) : null}

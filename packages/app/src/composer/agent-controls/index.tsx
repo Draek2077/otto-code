@@ -9,7 +9,6 @@ import {
   type RefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { router } from "expo-router";
 import {
   View,
   Text,
@@ -88,7 +87,6 @@ import {
   type AgentProfilePicker,
   type DraftAgentProfileControls,
 } from "@/agent-profiles";
-import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 
 interface AgentControlOption {
   id: string;
@@ -250,21 +248,6 @@ function toThinkingControlOptions(options: AgentControlOption[] | undefined): Ag
     id: option.id,
     label: formatThinkingOptionLabel(option),
   }));
-}
-
-/**
- * The picker's edit shortcut. Agent profiles are host config, so it lands on the
- * host settings section that owns the list.
- */
-function useEditAgentProfilesNavigation(
-  serverId: string | null,
-  isSupported: boolean,
-): (() => void) | undefined {
-  const handleEdit = useCallback(() => {
-    if (!serverId) return;
-    router.push(buildSettingsHostSectionRoute(serverId, "agents"));
-  }, [serverId]);
-  return serverId && isSupported ? handleEdit : undefined;
 }
 
 function buildFallbackModelSelectorProviders(
@@ -1545,7 +1528,6 @@ export const AgentControls = memo(function AgentControls({
     availableProviders: profileProviders,
     target: profileTarget,
   });
-  const handleEditAgentProfiles = useEditAgentProfilesNavigation(serverId, agentProfiles !== null);
 
   const handleSelectThinkingOption = useCallback(
     (thinkingOptionId: string) => {
@@ -1658,7 +1640,6 @@ export const AgentControls = memo(function AgentControls({
       onSelectModel={handleSelectModel}
       agentProfiles={agentProfiles}
       onApplyAgentProfile={agentProfiles?.applyProfile}
-      onEditAgentProfiles={handleEditAgentProfiles}
       thinkingOptions={thinkingOptions.length > 1 ? thinkingOptions : undefined}
       selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
       onSelectThinkingOption={handleSelectThinkingOption}
@@ -1758,10 +1739,6 @@ export function DraftAgentControls({
     availableProviders: profileProviders,
     target: profileTarget,
   });
-  const handleEditAgentProfiles = useEditAgentProfilesNavigation(
-    modelSelectorServerId,
-    agentProfiles !== null,
-  );
 
   const modeControl = useMemo<AgentModeControlValue | null>(
     () =>
@@ -1791,7 +1768,6 @@ export function DraftAgentControls({
       isModelLoading={isAllModelsLoading}
       agentProfiles={agentProfiles}
       onApplyAgentProfile={agentProfiles?.applyProfile}
-      onEditAgentProfiles={handleEditAgentProfiles}
       thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
       selectedThinkingOptionId={effectiveSelectedThinkingOption}
       onSelectThinkingOption={onSelectThinkingOption}

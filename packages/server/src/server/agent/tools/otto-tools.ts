@@ -24,11 +24,7 @@ import {
   personalityHasRole,
   summarizePersonalityForSelection,
 } from "@otto-code/protocol/agent-personalities";
-import {
-  AgentProfileSchema,
-  type AgentPersonality,
-  type AgentProfile,
-} from "@otto-code/protocol/messages";
+import type { AgentPersonality, AgentProfile } from "@otto-code/protocol/messages";
 import type { DaemonConfigStore } from "../../daemon-config-store.js";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {
@@ -1898,7 +1894,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .min(1)
       .optional()
       .describe(
-        "Spawn from a named agent profile on this host. The compatibility field name remains `personality`; explicit provider/settings override profile values per field. See list_profiles before choosing one. Fails loudly if unavailable here.",
+        "Spawn from a named agent profile on this host. The compatibility field name remains `personality`; explicit provider/settings override profile values per field. See list_personalities before choosing one. Fails loudly if unavailable here.",
       ),
     labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
     settings: CreateAgentSettingsInputSchema.optional().describe(
@@ -2132,7 +2128,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create chat",
       description:
-        "Start an Otto chat session immediately. A chat can be independent or a child chat. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a profile name. Title and initialPrompt are optional. Prefer a named profile when available; call list_profiles before choosing one.",
+        "Start an Otto chat session immediately. A chat can be independent or a child chat. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a profile name. Title and initialPrompt are optional. Prefer a named profile when available; call list_personalities before choosing one.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -5257,47 +5253,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           provider,
           models,
         }),
-      };
-    },
-  );
-
-  registerTool(
-    "list_profiles",
-    {
-      title: "List agent profiles",
-      description:
-        "List the host's named agent profiles. Profiles bind provider/model/mode settings and may also carry Otto roles, prompts, voice, spinner, and memory behavior. Read `notes` and `roles` to choose a collaborator, then pass its name to create_chat or copy its launch settings.",
-      inputSchema: {},
-      outputSchema: { profiles: z.array(AgentProfileSchema) },
-    },
-    async () => {
-      // v0.4 profiles are the canonical shape. Fold legacy Otto personalities
-      // into that roster so role/prompt/voice behavior survives migration
-      // without exposing two independent lists to new callers.
-      const byId = new Map<string, Record<string, unknown>>();
-      for (const personality of readAgentPersonalities?.() ?? []) {
-        byId.set(personality.id, {
-          id: personality.id,
-          name: personality.name,
-          provider: personality.provider,
-          model: personality.model,
-          modeId: personality.modeId,
-          effortLevel: personality.effortLevel,
-          personalityPrompt: personality.personalityPrompt,
-          respectGlobalAppendPrompt: personality.respectGlobalAppendPrompt,
-          roles: personality.roles,
-          spinner: personality.spinner,
-          voice: personality.voice,
-          voiceCues: personality.voiceCues,
-          memoryEnabled: personality.memoryEnabled,
-        });
-      }
-      for (const profile of daemonConfigStore?.get().agentProfiles ?? []) {
-        byId.set(profile.id, { ...byId.get(profile.id), ...profile });
-      }
-      return {
-        content: [],
-        structuredContent: ensureValidJson({ profiles: [...byId.values()] }),
       };
     },
   );

@@ -328,6 +328,10 @@ export const AgentPersonalitySchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
+    /** A key into the client's icon registry, not a glyph. Unknown keys draw the default. */
+    icon: z.string().optional(),
+    /** An identity colour name shared with host badges. Unknown values draw unthemed. */
+    color: z.string().optional(),
     provider: z.string().min(1),
     model: z.string().min(1),
     // Canonical effort level ("off".."max"); resolved to the bound model's

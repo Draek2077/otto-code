@@ -2281,6 +2281,7 @@ describe("create_chat MCP tool", () => {
     const workspaceAutoName = new WorkspaceAutoName({
       agentManager,
       workspaceRegistry: {
+        get: async (workspaceId) => workspaceRecords.get(workspaceId) ?? null,
         update: async (workspaceId, updater) => {
           const current = workspaceRecords.get(workspaceId);
           if (!current) return null;
@@ -3432,7 +3433,7 @@ describe("create_chat MCP tool", () => {
       logger,
     });
 
-    await registeredTool(server, "create_agent").handler({
+    await registeredTool(server, "create_chat").handler({
       ...subagentCurrentWorkspace(),
       title: "Codex child",
       provider: "codex/gpt-5.4",
@@ -3444,7 +3445,7 @@ describe("create_chat MCP tool", () => {
       expect.any(Object),
     );
 
-    await registeredTool(server, "create_agent").handler({
+    await registeredTool(server, "create_chat").handler({
       ...subagentCurrentWorkspace(),
       title: "Claude child",
       provider: "claude/sonnet",
@@ -3808,7 +3809,7 @@ describe("send_chat_prompt MCP tool", () => {
     expect(spies.agentManager.subscribe).toHaveBeenCalledTimes(1);
     expect(spies.agentManager.waitForAgentEvent).not.toHaveBeenCalled();
     expect(response.structuredContent.guidance).toBe(
-      "You will get notified when the prompted agent finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives.",
+      "You will get notified when the prompted chat finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives.",
     );
   });
 
@@ -5093,63 +5094,20 @@ function daemonConfigStoreStub(agentProfiles?: AgentProfile[]): Pick<DaemonConfi
 describe("agent profile listing MCP tool", () => {
   const logger = createTestLogger();
 
-  it("returns configured profiles, including notes", async () => {
-    const { agentManager, agentStorage } = createTestDeps();
-    const profiles: AgentProfile[] = [
-      {
-        id: "ui-profile",
-        name: "UI work",
-        provider: "claude",
-        model: "claude-test-model",
-        modeId: "bypassPermissions",
-        thinkingOptionId: "high",
-        featureValues: { fast_mode: true },
-        notes: "Use for UI work: components, layout, design tokens. Not for backend.",
-      },
-    ];
-    const server = await createAgentMcpServer({
-      agentManager,
-      agentStorage,
-      providerSnapshotManager: createOpenCodeManager().manager,
-      daemonConfigStore: daemonConfigStoreStub(profiles),
-      logger,
-    });
-    const tool = registeredTool(server, "list_profiles");
-
-    const response = await tool.handler({});
-
-    expect(response.structuredContent).toEqual({ profiles });
-  });
-
-  it("returns an empty array when no profiles are configured", async () => {
+  // The profiles listing folded into list_personalities' concept: personalities
+  // are the one roster agents choose collaborators from, and profile-named
+  // spawns still resolve through create_chat's `personality` field.
+  it("does not register the retired list_profiles tool", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
       agentStorage,
       providerSnapshotManager: createOpenCodeManager().manager,
-      daemonConfigStore: daemonConfigStoreStub(),
+      daemonConfigStore: daemonConfigStoreStub([]),
       logger,
     });
-    const tool = registeredTool(server, "list_profiles");
 
-    const response = await tool.handler({});
-
-    expect(response.structuredContent).toEqual({ profiles: [] });
-  });
-
-  it("returns an empty array when no daemon config store is provided", async () => {
-    const { agentManager, agentStorage } = createTestDeps();
-    const server = await createAgentMcpServer({
-      agentManager,
-      agentStorage,
-      providerSnapshotManager: createOpenCodeManager().manager,
-      logger,
-    });
-    const tool = registeredTool(server, "list_profiles");
-
-    const response = await tool.handler({});
-
-    expect(response.structuredContent).toEqual({ profiles: [] });
+    expect(() => registeredTool(server, "list_profiles")).toThrow();
   });
 });
 

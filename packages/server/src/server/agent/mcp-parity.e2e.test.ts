@@ -838,10 +838,10 @@ describe("Suite D: Provider Tools", () => {
     expect(Array.isArray(payload.models)).toBe(true);
   });
 
-  test("list_profiles returns configured agent profiles, including notes", async () => {
-    const payload = await callToolStructured(topLevelClient, "list_profiles");
-    const profiles = recordArr(payload.profiles);
-    expect(profiles).toEqual([seededAgentProfile]);
+  test("the retired list_profiles tool is not exposed", async () => {
+    // Personalities are the one roster agents list; profile-named spawns still
+    // resolve through create_chat's `personality` field.
+    await expect(callToolStructured(topLevelClient, "list_profiles")).rejects.toThrow();
   });
 });
 

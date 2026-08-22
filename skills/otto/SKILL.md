@@ -66,7 +66,7 @@ Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look f
 
 ## Agent profiles
 
-**`list_profiles`** - named launch bundles configured by the human. Before choosing how to launch a delegated agent, call this tool and read every profile's `notes`. Pick a named profile the user requested, or the profile whose notes best match the work.
+**`list_personalities`** - the roster of named agent personalities configured by the human. Before choosing how to launch a delegated agent, call this tool and read every entry's `roles` and `guidance`. Pick the personality the user requested, or the one whose guidance best matches the work; pass its name to `create_chat`'s `personality` field.
 
 There is no `profile` parameter on `create_agent`. Materialize the selected profile into the call:
 

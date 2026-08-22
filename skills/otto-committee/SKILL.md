@@ -12,7 +12,7 @@ Two agents from contrasting profiles, fresh context, planning a solution in para
 
 ## Prerequisites
 
-Read the **otto** skill. Call `list_profiles` before choosing committee members, and read every configured profile's `notes`. Do not create committee agents until you have inspected the available profiles.
+Read the **otto** skill. Call `list_personalities` before choosing committee members, and read every entry's `roles` and `guidance`. Do not create committee agents until you have inspected the available personalities.
 
 Contrast is the point of a committee, so prefer two suitable profiles from different provider families. Materialize each selected profile into `create_agent` as described by the **otto** skill. If fewer than two profiles fit, use Otto's provider-discovery fallback for the missing member and tell the user.
 
