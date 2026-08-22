@@ -215,14 +215,14 @@ const styles = StyleSheet.create((_theme) => ({
   highlightHorizontal: {
     top: 0,
     bottom: 0,
-    width: 3,
-    left: -1,
+    width: 1,
+    left: 0,
   },
   highlightVertical: {
     left: 0,
     right: 0,
-    height: 3,
-    top: -1,
+    height: 1,
+    top: 0,
   },
   hitArea: {
     position: "absolute",

@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComponentProps } from "react";
 import { Pressable, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
@@ -7,6 +6,7 @@ import {
   resolveSidebarResizeHandleGeometry,
   type SidebarResizeEdge,
 } from "@/components/sidebar-resize-handle-layout";
+import { useResizeHandleHighlight } from "@/components/use-resize-handle-highlight";
 import { isWeb } from "@/constants/platform";
 import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 
@@ -16,8 +16,6 @@ interface SidebarResizeHandleProps {
   pressed: boolean;
   testID: string;
 }
-
-const HIGHLIGHT_DELAY_MS = 100;
 
 const webResizeCursorStyle = isWeb
   ? ({
@@ -39,8 +37,7 @@ export function SidebarResizeHandle({ edge, gesture, pressed, testID }: SidebarR
 }
 
 function PointerResizeHandle({ edge, gesture, testID }: SidebarResizeHandleProps) {
-  const [highlighted, setHighlighted] = useState(false);
-  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { highlighted, handleHoverIn, handleHoverOut } = useResizeHandleHighlight();
   const geometry = resolveSidebarResizeHandleGeometry(true);
   const hitAreaStyle = [
     styles.hitArea,
@@ -48,27 +45,6 @@ function PointerResizeHandle({ edge, gesture, testID }: SidebarResizeHandleProps
     edgeOffsetStyle(edge, geometry.edgeOffset),
     webResizeCursorStyle,
   ];
-
-  const cancelHighlightTimer = useCallback(() => {
-    if (highlightTimerRef.current === null) return;
-    clearTimeout(highlightTimerRef.current);
-    highlightTimerRef.current = null;
-  }, []);
-
-  const handleHoverIn = useCallback(() => {
-    cancelHighlightTimer();
-    highlightTimerRef.current = setTimeout(() => {
-      highlightTimerRef.current = null;
-      setHighlighted(true);
-    }, HIGHLIGHT_DELAY_MS);
-  }, [cancelHighlightTimer]);
-
-  const handleHoverOut = useCallback(() => {
-    cancelHighlightTimer();
-    setHighlighted(false);
-  }, [cancelHighlightTimer]);
-
-  useEffect(() => cancelHighlightTimer, [cancelHighlightTimer]);
 
   return (
     <GestureDetector gesture={gesture}>
@@ -79,7 +55,11 @@ function PointerResizeHandle({ edge, gesture, testID }: SidebarResizeHandleProps
         onHoverOut={handleHoverOut}
       >
         {highlighted ? (
-          <View pointerEvents="none" testID={`${testID}-highlight`} style={styles.highlight} />
+          <View
+            pointerEvents="none"
+            testID={`${testID}-highlight`}
+            style={[styles.highlight, edge === "left" ? styles.leftEdgeHighlight : null]}
+          />
         ) : null}
       </Pressable>
     </GestureDetector>
@@ -137,6 +117,13 @@ const styles = StyleSheet.create((theme) => ({
     width: 1,
     backgroundColor: theme.colors.foreground,
     opacity: 0.25,
+  },
+  // A left-side border occupies the first pixel of its parent. The pointer hit
+  // band starts from the padding box after that border, so its hover line must
+  // move one pixel left to occupy the exact same seam rather than jumping
+  // inward on hover.
+  leftEdgeHighlight: {
+    left: 4,
   },
   touchLayer: {
     position: "absolute",

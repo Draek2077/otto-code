@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
-import { Gesture } from "react-native-gesture-handler";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { DocumentSearch, Files, X } from "@/components/icons/material-icons";
@@ -50,12 +50,15 @@ import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import { useSidebarSlide } from "@/hooks/use-sidebar-slide";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { useHasFinePointer } from "@/hooks/use-fine-pointer";
+import { useResizeHandleHighlight } from "@/components/use-resize-handle-highlight";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import { useIconSize } from "@/styles/theme";
 import type { KeyboardActionId } from "@/keyboard/actions";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { resolveDesktopExplorerWidth } from "@/components/desktop-sidebar-layout";
 import {
+  POINTER_HANDLE_WIDTH,
   SIDEBAR_RESIZE_ACTIVATION_OFFSET,
   SIDEBAR_RESIZE_FAIL_OFFSET,
 } from "@/components/sidebar-resize-handle-layout";
@@ -194,6 +197,12 @@ export function ExplorerSidebar({
   const startWidthRef = useRef(visibleExplorerWidth);
   const resizeWidth = useSharedValue(visibleExplorerWidth);
   const [resizePressed, setResizePressed] = useState(false);
+  const finePointer = useHasFinePointer();
+  const {
+    highlighted: resizeHighlighted,
+    handleHoverIn: handleResizeHoverIn,
+    handleHoverOut: handleResizeHoverOut,
+  } = useResizeHandleHighlight();
   const showResizeGrip = useCallback(() => setResizePressed(true), []);
   const hideResizeGrip = useCallback(() => setResizePressed(false), []);
 
@@ -290,31 +299,80 @@ export function ExplorerSidebar({
 
   return (
     <Animated.View style={desktopSidebarStyle}>
-      <View style={[styles.desktopSidebarBorder, { flex: 1 }]}>
+      <View style={explorerStaticStyles.desktopSidebarClip}>
+        <View
+          style={[
+            styles.desktopSidebarBorder,
+            { flex: 1 },
+            resizeHighlighted ? styles.desktopSidebarBorderHighlighted : null,
+          ]}
+        >
+          <ExplorerSidebarContent
+            activeTab={explorerTab}
+            onTabPress={handleTabPress}
+            onClose={handleDesktopClose}
+            serverId={serverId}
+            workspaceId={workspaceId}
+            workspaceRoot={workspaceRoot}
+            isGit={isGit}
+            isDeveloperMode={isDeveloperMode}
+            isMobile={false}
+            isOpen={isOpen}
+            onOpenFile={onOpenFile}
+          />
+
+          {resizeHighlighted ? null : <SidebarSeamShadow seam="left" />}
+        </View>
+      </View>
+      {finePointer ? (
+        <ExplorerPointerResizeHandle
+          gesture={resizeHandleGesture}
+          highlighted={resizeHighlighted}
+          onPointerEnter={handleResizeHoverIn}
+          onPointerLeave={handleResizeHoverOut}
+        />
+      ) : (
         <SidebarResizeHandle
           edge="left"
           gesture={resizeHandleGesture}
           pressed={resizePressed}
           testID="explorer-sidebar-resize-handle"
         />
-
-        <ExplorerSidebarContent
-          activeTab={explorerTab}
-          onTabPress={handleTabPress}
-          onClose={handleDesktopClose}
-          serverId={serverId}
-          workspaceId={workspaceId}
-          workspaceRoot={workspaceRoot}
-          isGit={isGit}
-          isDeveloperMode={isDeveloperMode}
-          isMobile={false}
-          isOpen={isOpen}
-          onOpenFile={onOpenFile}
-        />
-
-        <SidebarSeamShadow seam="left" />
-      </View>
+      )}
     </Animated.View>
+  );
+}
+
+function ExplorerPointerResizeHandle({
+  gesture,
+  highlighted,
+  onPointerEnter,
+  onPointerLeave,
+}: {
+  gesture: ComponentProps<typeof GestureDetector>["gesture"];
+  highlighted: boolean;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
+}) {
+  return (
+    <GestureDetector gesture={gesture}>
+      <View
+        role="separator"
+        aria-orientation="vertical"
+        testID="explorer-sidebar-resize-handle"
+        style={styles.explorerPointerResizeHitArea}
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
+      >
+        {highlighted ? (
+          <View
+            pointerEvents="none"
+            testID="explorer-sidebar-resize-handle-highlight"
+            style={styles.explorerPointerResizeHighlight}
+          />
+        ) : null}
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -766,8 +824,12 @@ function PrTabContent({
 const explorerStaticStyles = RNStyleSheet.create({
   desktopSidebar: {
     position: "relative" as const,
-    // Clip the inner content while the outer width animates during the
-    // open/close slide, so the panel edge reveals cleanly.
+  },
+  // Clip contents during the open/close width animation, but keep the outer
+  // shell visible so the left-edge hover line can occupy the same external
+  // pixel as the left sidebar's preferred treatment.
+  desktopSidebarClip: {
+    flex: 1,
     overflow: "hidden" as const,
   },
 });
@@ -777,6 +839,30 @@ const styles = StyleSheet.create((theme) => ({
     borderLeftWidth: 1,
     borderLeftColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebarPanel,
+  },
+  // This is specific to the explorer. Its hover line replaces its own border
+  // on the same pixel, so it cannot add a second seam beside the shared left
+  // sidebar treatment.
+  desktopSidebarBorderHighlighted: {
+    borderLeftColor: "transparent",
+  },
+  explorerPointerResizeHitArea: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: -POINTER_HANDLE_WIDTH / 2,
+    width: POINTER_HANDLE_WIDTH,
+    zIndex: 10,
+    cursor: "col-resize",
+  } as object,
+  explorerPointerResizeHighlight: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: POINTER_HANDLE_WIDTH / 2,
+    width: 1,
+    backgroundColor: theme.colors.foreground,
+    opacity: 0.4,
   },
   sidebarContent: {
     flex: 1,

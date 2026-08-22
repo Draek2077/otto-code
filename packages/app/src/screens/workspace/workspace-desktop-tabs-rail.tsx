@@ -20,6 +20,7 @@ import {
   WORKSPACE_TABS_RAIL_MIN_WIDTH,
 } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
+import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 import { persistAppSettings, useAppSettingValue } from "@/hooks/use-settings";
 import type { AppSettings } from "@/hooks/use-settings/storage";
 import {
@@ -44,6 +45,7 @@ import {
 import type { WorkspaceTabMenuLabels } from "@/screens/workspace/workspace-tab-menu";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { RenderProfile } from "@/utils/render-profiler";
+import { useResizeHandleHighlight } from "@/components/use-resize-handle-highlight";
 
 interface WorkspaceDesktopTabsRailProps {
   paneId?: string;
@@ -176,6 +178,12 @@ export function WorkspaceDesktopTabsRail({
   const [railHovered, setRailHovered] = useState(false);
   const handleRailPointerEnter = useCallback(() => setRailHovered(true), []);
   const handleRailPointerLeave = useCallback(() => setRailHovered(false), []);
+  const finePointer = useHasFinePointer();
+  const {
+    highlighted: splitterHighlighted,
+    handleHoverIn: handleSplitterHoverIn,
+    handleHoverOut: handleSplitterHoverOut,
+  } = useResizeHandleHighlight();
 
   const fallbackTabLabels = useMemo(
     () => ({
@@ -237,8 +245,8 @@ export function WorkspaceDesktopTabsRail({
     () => [staticRailStyles.railOuter, railAnimatedStyle],
     [railAnimatedStyle],
   );
-  // No dragging highlight: the splitter is an invisible grab band, and the
-  // rail's own edge already moves with the pointer as feedback.
+  // The splitter remains a wide invisible grab band. Fine pointers also get
+  // the same delayed seam highlight as the sidebars before a drag begins.
   const splitterStyle = useMemo(
     () => [styles.splitter, isWeb && ({ cursor: "col-resize" } as object)],
     [],
@@ -394,13 +402,22 @@ export function WorkspaceDesktopTabsRail({
       onPointerLeave={handleRailPointerLeave}
     >
       <View style={styles.railSurface}>
-        <View style={styles.railRightHairline} pointerEvents="none" />
+        <View pointerEvents="none" style={styles.railRightHairline} />
+        {finePointer && splitterHighlighted ? (
+          <View
+            pointerEvents="none"
+            testID="workspace-tabs-rail-splitter-highlight"
+            style={styles.railRightHighlight}
+          />
+        ) : null}
         <GestureDetector gesture={railResizeGesture}>
           <View
             role="separator"
             aria-orientation="vertical"
             style={splitterStyle}
             testID="workspace-tabs-rail-splitter"
+            onPointerEnter={finePointer ? handleSplitterHoverIn : undefined}
+            onPointerLeave={finePointer ? handleSplitterHoverOut : undefined}
           />
         </GestureDetector>
         <View style={styles.header}>
@@ -432,6 +449,7 @@ export function WorkspaceDesktopTabsRail({
             toolsAvailableWidth={Math.max(0, railWidth - RAIL_HEADER_FIXED_CHROME_WIDTH)}
             rowHovered={railHovered}
           />
+          <View pointerEvents="none" style={styles.headerBottomHairline} />
         </View>
         <ScrollView
           style={styles.scroll}
@@ -601,6 +619,18 @@ const styles = StyleSheet.create((theme) => ({
     width: RAIL_SPLITTER_WIDTH,
     zIndex: 20,
   },
+  // Visual-only counterpart to the high-z-index hit band above. It sits below
+  // the tab chips, just like railRightHairline, so the selected tab's open
+  // edge still breaks the seam rather than receiving a line through its fill.
+  railRightHighlight: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: 1,
+    backgroundColor: theme.colors.foreground,
+    opacity: 0.25,
+  },
   // The rail/pane separator is a positioned child rather than a borderRight so
   // the active chip (which runs flush to the rail's right edge) can paint over
   // it and fuse with the pane content - the vertical counterpart of the row's
@@ -626,8 +656,17 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     paddingLeft: theme.spacing[2],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
+  },
+  // Ends one pixel before the rail seam. That keeps the vertical resize
+  // highlight visible at their intersection while retaining the active tab's
+  // open right edge below the header.
+  headerBottomHairline: {
+    position: "absolute",
+    left: 0,
+    right: 1,
+    bottom: 0,
+    height: theme.borderWidth[1],
+    backgroundColor: theme.colors.border,
   },
   scroll: {
     flex: 1,
