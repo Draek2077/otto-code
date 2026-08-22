@@ -5,7 +5,7 @@ title: "Workspace row icons align to the title line"
 status: "confirmed"
 tags: ["ui","responsive-layout","sidebar","workspaces"]
 created_at: "2026-08-11T04:09:13.750Z"
-updated_at: "2026-08-21T23:33:49.500Z"
+updated_at: "2026-08-22T19:13:38.072Z"
 ---
 # Workspace row icons align to the title line
 
@@ -50,3 +50,6 @@ In compact workspace rows, leading status/loading indicators and trailing contro
   summary: "Reduced compact project-row vertical padding in `packages/app/src/components/sidebar-workspace-list.tsx` from 8 px to 6 px, bringing the 24 px action target's row from 40 px down to the existing 36 px minimum. Removed the trailing-action rail's upward translation so the plus and kebab controls center geometrically with the shortened row. Focused sidebar workspace-list tests passed 4/4; app lint, typecheck, formatting, and `git diff --check` passed."
   source: "Implementation verified on 2026-08-21"
   affects: ["workspace-row-icons-align-to-title-line"]
+- time: "2026-08-22T19:13:38.072Z"
+  kind: "evidence"
+  summary: "The row-level 2px lift (`translateY: -theme.spacing[0.5]` on `rowRight` in `sidebar-workspace-row-content.tsx`) was re-scoped to the kebab overlay only after the user reported the trailing diff stat riding above the title line: the lift was meant for the 24px kebab touch target, but it also carried the 20px DiffStat/timestamp. Verified in the running dev app that the diff glyphs now center exactly on the title line box (both centers at the same y) while the kebab keeps its optical lift via `trailingActionOverlay`. Targeted oxlint, app typecheck, and oxfmt passed."

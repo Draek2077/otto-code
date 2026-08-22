@@ -225,9 +225,6 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     flexShrink: 0,
-    // The compact action target includes more vertical touch space than the title glyph. Lift
-    // the rail slightly so the painted control centers optically with the row content.
-    transform: [{ translateY: -theme.spacing[0.5] }],
   },
   shortcutBadge: {
     minWidth: 18,
@@ -270,6 +267,10 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     top: 0,
     right: 0,
     zIndex: 1,
+    // The compact action target includes more vertical touch space than the title glyph. Lift
+    // the painted control so it centers optically with the row content; the trailing diff or
+    // timestamp stays on the title line and must not ride along with the kebab.
+    transform: [{ translateY: -theme.spacing[0.5] }],
   },
 }));
 
