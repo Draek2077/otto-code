@@ -15,6 +15,7 @@ import { Session, type SessionOptions } from "./session.js";
 import { toObservedSubagentPayload } from "./agent/agent-projections.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 import type { AgentTimelineRow } from "./agent/agent-manager.js";
+import { InMemoryAgentTimelineStore } from "./agent/agent-timeline-store.js";
 import type { AgentTimelineFetchOptions } from "./agent/agent-timeline-store-types.js";
 import { handleCreateOttoWorktreeRequest } from "./worktree-session.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
@@ -54,10 +55,18 @@ interface SessionInternals {
 }
 
 class InMemoryAgentManager {
+  private readonly timeline = new InMemoryAgentTimelineStore();
+
   constructor(
-    private readonly rows: AgentTimelineRow[],
+    rows: AgentTimelineRow[],
     private readonly observedPayloads: Map<string, AgentSnapshotPayload> = new Map(),
-  ) {}
+  ) {
+    this.timeline.initialize("agent-1", {
+      epoch: "epoch-1",
+      rows,
+      nextSeq: (rows.at(-1)?.seq ?? 0) + 1,
+    });
+  }
 
   getAgent(id?: string) {
     // Only the live root agent resolves as a ManagedAgent; observed subagents
