@@ -8,39 +8,49 @@ mock · T2 local-AI · T3 real provider · DT desktop-only (out of Playwright-we
 manual/capture-harness). **Pri:** P0 release-blocking journey · P1 shipped feature without
 coverage · P2 polish/visual.
 
-Spec paths are relative to `packages/app/e2e/`. Every `*.spec.ts` on disk must be claimed by at
+Spec paths are relative to `packages/app/e2e/browser/`. Every `*.spec.ts` on disk must be claimed by at
 least one row - `node scripts/e2e-coverage-check.mjs` enforces both directions, and CI's `lint`
 job runs it on every push and pull request so drift fails the build rather than waiting for
 someone to run it by hand.
 
 ## 1. Startup, routing & app shell
 
-| Behavior                                                                                                         | Status | Specs / plan                              | Tier | Pri |
-| ---------------------------------------------------------------------------------------------------------------- | ------ | ----------------------------------------- | ---- | --- |
-| Cold start with empty state renders sessions screen                                                              | ✅     | `00-sessions-empty.spec.ts`               | T1   | -   |
-| Startup loading states, no blank flash                                                                           | ✅     | `startup-loading.spec.ts`                 | T1   | -   |
-| Startup wire metrics / connection bring-up                                                                       | ✅     | `startup-wire-metrics.spec.ts`            | T1   | -   |
-| Launcher tab behavior                                                                                            | ✅     | `launcher-tab.spec.ts`                    | T1   | -   |
-| Route restore / navigation regressions (back, deep links)                                                        | ✅     | `workspace-navigation-regression.spec.ts` | T1   | -   |
-| Desktop project picker                                                                                           | ✅     | `project-picker-desktop.spec.ts`          | T1   | -   |
-| Bottom sheets reopen cleanly after dismiss                                                                       | ✅     | `bottom-sheet-reopen.spec.ts`             | T1   | -   |
-| First-time wizard flow (enters via `/setup`, happy path + Skip, idempotent, `hasCompletedSetupWizard` persisted) | ✅     | `first-time-wizard.spec.ts`               | T1   | -   |
-| Compact/mobile layout smoke (viewport 375px: sidebar overlay, tab switcher lists all panes)                      | ❌     | resize viewport per key screen            | T1   | P1  |
-| Animations toggle disables page-fade veil (durations 0 when off, no flash on re-enable)                          | ✅     | `appearance-theme-animations.spec.ts`     | T1   | -   |
-| Command center lists and opens workspaces                                                                        | 🟡     | `command-center-workspaces.spec.ts`       | T1   | -   |
-| Sidebar help entry point                                                                                         | ❌     | no sidebar help menu in Otto              | T1   | P2  |
-| Sidebar resize handle (drag, persisted width)                                                                    | ❌     | Otto's own handles carry no testIDs       | T1   | P1  |
-| Workspace focus mode (Ctrl+Shift+F chrome collapse)                                                              | 🟡     | `workspace-focus-mode.spec.ts`            | T1   | -   |
+| Behavior                                                                                                         | Status | Specs / plan                                  | Tier | Pri |
+| ---------------------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------- | ---- | --- |
+| Cold start with empty state renders sessions screen                                                              | ✅     | `sessions-empty.spec.ts`                      | T1   | -   |
+| Startup loading states, no blank flash                                                                           | ✅     | `startup-loading.spec.ts`                     | T1   | -   |
+| Startup wire metrics / connection bring-up                                                                       | ✅     | `startup-wire-metrics.spec.ts`                | T1   | -   |
+| Launcher tab behavior                                                                                            | ✅     | `launcher-tab.spec.ts`                        | T1   | -   |
+| Route restore / navigation regressions (back, deep links)                                                        | ✅     | `workspace-navigation-regression.spec.ts`     | T1   | -   |
+| Desktop project picker                                                                                           | ✅     | `packages/desktop/e2e/project-picker.spec.ts` | DT   | -   |
+| Bottom sheets reopen cleanly after dismiss                                                                       | ✅     | `bottom-sheet-reopen.spec.ts`                 | T1   | -   |
+| First-time wizard flow (enters via `/setup`, happy path + Skip, idempotent, `hasCompletedSetupWizard` persisted) | ✅     | `first-time-wizard.spec.ts`                   | T1   | -   |
+| Compact/mobile layout smoke (viewport 375px: sidebar overlay, tab switcher lists all panes)                      | ❌     | resize viewport per key screen                | T1   | P1  |
+| Animations toggle disables page-fade veil (durations 0 when off, no flash on re-enable)                          | ✅     | `appearance-theme-animations.spec.ts`         | T1   | -   |
+| Command center lists and opens workspaces                                                                        | 🟡     | `command-center-workspaces.spec.ts`           | T1   | -   |
+| Sidebar help entry point                                                                                         | ✅     | `sidebar-help.spec.ts`                        | T1   | -   |
+| Sidebar resize handle (drag, persisted width)                                                                    | ✅     | `sidebar-resize-handle.spec.ts`               | T1   | -   |
+| Workspace focus mode (Ctrl+Shift+F chrome collapse)                                                              | 🟡     | `workspace-focus-mode.spec.ts`                | T1   | -   |
+| Compact-layout kebab menus open as action sheets (project and workspace actions)                                 | ✅     | `sidebar-mobile-menu-sheets.spec.ts`          | T1   | -   |
+| Command center scroll keeps its first result fully visible while opening                                         | ✅     | `command-center-scroll.spec.ts`               | T1   | -   |
+| Command center file search stays geometrically stable through delayed loading and failures                       | ✅     | `command-center-file-search.spec.ts`          | T1   | -   |
+| Command center agent controls preserve the selected row across running/draft setting changes                     | ✅     | `command-center-agent-controls.spec.ts`       | T1   | -   |
+| Command center workspace actions dispatch through the Git policy and the active workspace                        | ✅     | `command-center-workspace-actions.spec.ts`    | T1   | -   |
+| History search (typo-tolerant ranking, whole-word priority, match highlighting)                                  | ✅     | `sessions-search.spec.ts`                     | T1   | -   |
+| History search across hosts (ranks together, narrows to one host, names unreachable hosts)                       | ✅     | `sessions-search-hosts.spec.ts`               | T1   | -   |
 
 ## 2. Hosts & connectivity
 
-| Behavior                                                        | Status | Specs / plan                                    | Tier | Pri |
-| --------------------------------------------------------------- | ------ | ----------------------------------------------- | ---- | --- |
-| Command center host switching                                   | ✅     | `command-center-host.spec.ts`                   | T1   | -   |
-| Host settings page                                              | ✅     | `settings-host-page.spec.ts`                    | T1   | -   |
-| Sidebar multi-host filtering                                    | ✅     | `sidebar-host-filter-multi.spec.ts`             | T1   | -   |
-| Relay pairing (QR / code) - relay already runs in global setup  | ❌     | pair a second client through the wrangler relay | T1   | P1  |
-| Daemon restart mid-session → reconnecting toast → full recovery | ✅     | `daemon-reconnect-banner.spec.ts`               | T1   | -   |
+| Behavior                                                                              | Status | Specs / plan                                                             | Tier | Pri |
+| ------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------ | ---- | --- |
+| Command center host switching                                                         | ✅     | `command-center-host.spec.ts`                                            | T1   | -   |
+| Host settings page                                                                    | ✅     | `settings-host-page.spec.ts`                                             | T1   | -   |
+| Sidebar multi-host filtering                                                          | ✅     | `sidebar-host-filter-multi.spec.ts`                                      | T1   | -   |
+| Relay pairing (QR / code) - relay already runs in global setup                        | 🟡     | `pair-device-relay.spec.ts` - opens consent only, no full round trip yet | T1   | P1  |
+| Daemon restart mid-session → reconnecting toast → full recovery                       | ✅     | `daemon-reconnect-banner.spec.ts`                                        | T1   | -   |
+| Host appearance (rename, color, icon-only display, per-host badge survives reload)    | ✅     | `host-appearance.spec.ts`                                                | T1   | -   |
+| Settings host selection (entering Settings from a remote workspace selects that host) | ✅     | `settings-host-selection.spec.ts`                                        | T1   | -   |
+| Relay deployment reconnect (a streaming chat recovers without user action)            | ✅     | `relay-deployment-reconnect.real.spec.ts`                                | T3   | -   |
 
 ## 3. Projects, workspaces & worktrees
 
@@ -65,49 +75,67 @@ someone to run it by hand.
 | Sidebar context menus                                                                           | ✅     | `sidebar-context-menu.spec.ts`                                         | T1   | -   |
 | Workspace pins                                                                                  | ✅     | `workspace-pins.spec.ts`                                               | T1   | -   |
 | Pane remount stability                                                                          | ✅     | `workspace-pane-remount.spec.ts`                                       | T1   | -   |
-| Open in external editor                                                                         | ✅     | `workspace-open-in-editor.spec.ts`                                     | T1   | -   |
+| Open in external editor                                                                         | ✅     | `packages/desktop/e2e/open-in-editor.spec.ts`                          | DT   | -   |
 | Workspace setup runtime + streaming                                                             | ✅     | `workspace-setup-runtime.spec.ts`, `workspace-setup-streaming.spec.ts` | T1   | -   |
 | Gated multi-root: preview any file, edit gates (unlinked / linked-lifts-live / outside-project) | ✅     | `multi-root-edit-gate.spec.ts`                                         | T1   | -   |
 | Per-worktree diff base configuration                                                            | ❌     | pending diff-base project ship                                         | T1   | P2  |
-| Add-project flow (form, validation, appears in sidebar)                                         | 🟡     | `project-picker-desktop.spec.ts`, `empty-project-persists.spec.ts`     | T1   | -   |
+| Add-project flow (form, validation, appears in sidebar)                                         | 🟡     | `add-project-flow.spec.ts`, `empty-project-persists.spec.ts`           | T1   | -   |
 | Every "New project" entry point reaches the New project page                                    | 🟡     | `open-project-home-regression.spec.ts`                                 | T1   | -   |
-| Add project from GitHub (clone + register)                                                      | ❌     | retarget at the New project page's clone path                          | T3   | P2  |
+| Add project from GitHub (clone + register)                                                      | ✅     | `add-project-github.real.spec.ts`                                      | T3   | -   |
 | Directory bootstrap on first project add                                                        | 🟡     | `directory-bootstrap.spec.ts`                                          | T1   | -   |
 | New-workspace composer draft survives the create flow                                           | 🟡     | `new-workspace-composer-draft.spec.ts`                                 | T1   | -   |
 | New-workspace mode cycling stays safe across providers                                          | 🟡     | `new-workspace-mode-cycle-safety.spec.ts`                              | T1   | -   |
-| Sidebar project grouping                                                                        | 🟡     | `sidebar-project-grouping.spec.ts`                                     | T1   | -   |
+| Sidebar project grouping                                                                        | 🟡     | `sidebar-project-grouping.spec.ts`, `command-center-grouping.spec.ts`  | T1   | -   |
 | Sidebar reorder (drag projects/workspaces)                                                      | 🟡     | `sidebar-reorder.spec.ts`                                              | T1   | -   |
 | Workspace pin keyboard shortcut                                                                 | 🟡     | `sidebar-workspace-pin-shortcut.spec.ts`                               | T1   | -   |
+| New workspace dictation submit (spoken prompt survives pending state and failure)               | ✅     | `new-workspace-dictation-submit.spec.ts`                               | T1   | -   |
+| New workspace host/project preservation across host switches                                    | ✅     | `new-workspace-host-project-preservation.spec.ts`                      | T1   | -   |
+| New workspace composer is one control across chat and terminal launch modes                     | ✅     | `new-workspace-launch-composer.spec.ts`                                | T1   | -   |
+| New workspace launch target memory (remembers last target, falls back cleanly)                  | ✅     | `new-workspace-launch-memory.spec.ts`                                  | T1   | -   |
+| New workspace launching a terminal (profile prompt substitution, bare launch)                   | ✅     | `new-workspace-launch-terminal.spec.ts`                                | T1   | -   |
+| New workspace metadata row layout (long host/branch names stay inside the composer's rail)      | ✅     | `new-workspace-meta-row-layout.spec.ts`                                | T1   | -   |
+| Project status badge surfaces the most urgent hidden workspace status on a collapsed project    | ✅     | `project-status-badge.spec.ts`                                         | T1   | -   |
 
 ## 4. Chat: composer & timeline
 
-| Behavior                                                                           | Status | Specs / plan                                 | Tier | Pri |
-| ---------------------------------------------------------------------------------- | ------ | -------------------------------------------- | ---- | --- |
-| Composer attachments (files, images)                                               | ✅     | `composer-attachments.spec.ts`               | T1   | -   |
-| Composer @-autocomplete                                                            | ✅     | `composer-autocomplete.spec.ts`              | T1   | -   |
-| Client slash commands                                                              | ✅     | `client-slash-commands.spec.ts`              | T1   | -   |
-| Agent stream rendering (tool calls, text)                                          | ✅     | `agent-stream-ui.spec.ts`                    | T1   | -   |
-| Timeline pagination / backfill                                                     | ✅     | `agent-timeline-pagination.spec.ts`          | T1   | -   |
-| User message UI contract                                                           | ✅     | `user-message-contract.ui-contract.spec.ts`  | T1   | -   |
-| Sent LaTeX renders as math; currency stays prose; copy keeps the TeX               | ✅     | `user-message-contract.ui-contract.spec.ts`  | T1   | -   |
-| Question prompt pagination (AskUserQuestion-style)                                 | ✅     | `question-prompt-pagination.spec.ts`         | T1   | -   |
-| Agent title handoff to tab                                                         | ✅     | `workspace-agent-title-handoff.spec.ts`      | T1   | -   |
-| Agent tab rename                                                                   | ✅     | `workspace-agent-tab-rename.spec.ts`         | T1   | -   |
-| Fork from assistant message                                                        | ✅     | `assistant-fork-menu.spec.ts`                | T1   | -   |
-| Composer ghost-text suggestions (Tab), sent-history Up/Down, ESC clear-then-cancel | ✅     | `composer-suggestions-history.spec.ts`       | T1   | -   |
-| Chat auto-title (writer ladder pinned to mock; explicit title never overwritten)   | ✅     | `chat-auto-title.spec.ts`                    | T1   | -   |
-| Chat file links open in side pane, never displace chat                             | ✅     | `chat-file-link-side-open.spec.ts`           | T1   | -   |
-| Chat markdown rendering (headings, lists, inline code, 12px spacing rhythm)        | ✅     | `chat-markdown-rendering.spec.ts`            | T1   | -   |
-| Detached reader position survives an agent turn completing                         | ✅     | `turn-completion-scroll.spec.ts`             | T1   | -   |
-| Detached reader position survives a chat tab being evicted and remounted           | 🟡     | `chat-tab-eviction-scroll.spec.ts`           | T1   | -   |
-| Streaming reveal (typewriter) + live turn token counters                           | ❌     | assert counters tick during mock stream      | T1   | P2  |
-| Rate-limit warning strip in composer (allowed/warning/rejected states)             | ✅     | `rate-limit-warning-strip.spec.ts`           | T1   | -   |
-| Friendly tool display names (canonical map + MCP humanizer)                        | ✅     | `tool-display-names.spec.ts`                 | T1   | -   |
-| Steer queue (queued steering drains at idle)                                       | ❌     | charter not shipped; spec lands with feature | T1   | P2  |
-| Add a changed file to the chat composer                                            | 🟡     | `add-changed-file-to-chat.spec.ts`           | T1   | -   |
-| Add the open file, or a selected row:column range, from the File Editor            | 🟡     | `add-file-to-chat-from-editor.spec.ts`       | T1   | -   |
-| Picking an `@` mention attaches a pill instead of inserting a quoted path          | 🟡     | `add-file-to-chat-from-editor.spec.ts`       | T1   | -   |
-| Tool-call shimmer while a call is running                                          | 🟡     | `tool-call-shimmer.spec.ts`                  | T1   | -   |
+| Behavior                                                                               | Status | Specs / plan                                                                        | Tier | Pri |
+| -------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- | ---- | --- |
+| Composer attachments (files, images)                                                   | ✅     | `composer-attachments.spec.ts`                                                      | T1   | -   |
+| Composer @-autocomplete                                                                | ✅     | `composer-autocomplete.spec.ts`                                                     | T1   | -   |
+| Client slash commands                                                                  | ✅     | `client-slash-commands.spec.ts`                                                     | T1   | -   |
+| Agent stream rendering (tool calls, text)                                              | ✅     | `agent-stream-ui.spec.ts`                                                           | T1   | -   |
+| Timeline pagination / backfill                                                         | ✅     | `agent-timeline-pagination.spec.ts`, `agent-timeline-pagination-old-daemon.spec.ts` | T1   | -   |
+| User message UI contract                                                               | ✅     | `user-message-contract.ui-contract.spec.ts`                                         | T1   | -   |
+| Sent LaTeX renders as math; currency stays prose; copy keeps the TeX                   | ✅     | `user-message-contract.ui-contract.spec.ts`                                         | T1   | -   |
+| Question prompt pagination (AskUserQuestion-style)                                     | ✅     | `question-prompt-pagination.spec.ts`                                                | T1   | -   |
+| Agent title handoff to tab                                                             | ✅     | `workspace-agent-title-handoff.spec.ts`                                             | T1   | -   |
+| Agent tab rename                                                                       | ✅     | `workspace-agent-tab-rename.spec.ts`                                                | T1   | -   |
+| Fork from assistant message                                                            | ✅     | `assistant-fork-menu.spec.ts`                                                       | T1   | -   |
+| Composer ghost-text suggestions (Tab), sent-history Up/Down, ESC clear-then-cancel     | ✅     | `composer-suggestions-history.spec.ts`                                              | T1   | -   |
+| Chat auto-title (writer ladder pinned to mock; explicit title never overwritten)       | ✅     | `chat-auto-title.spec.ts`                                                           | T1   | -   |
+| Chat file links open in side pane, never displace chat                                 | ✅     | `chat-file-link-side-open.spec.ts`                                                  | T1   | -   |
+| Chat markdown rendering (headings, lists, inline code, 12px spacing rhythm)            | ✅     | `chat-markdown-rendering.spec.ts`                                                   | T1   | -   |
+| Detached reader position survives an agent turn completing                             | ✅     | `turn-completion-scroll.spec.ts`                                                    | T1   | -   |
+| Detached reader position survives a chat tab being evicted and remounted               | 🟡     | `chat-tab-eviction-scroll.spec.ts`                                                  | T1   | -   |
+| Streaming reveal (typewriter) + live turn token counters                               | ❌     | assert counters tick during mock stream                                             | T1   | P2  |
+| Rate-limit warning strip in composer (allowed/warning/rejected states)                 | ✅     | `rate-limit-warning-strip.spec.ts`                                                  | T1   | -   |
+| Friendly tool display names (canonical map + MCP humanizer)                            | ✅     | `tool-display-names.spec.ts`                                                        | T1   | -   |
+| Steer queue (queued steering drains at idle)                                           | ❌     | charter not shipped; spec lands with feature                                        | T1   | P2  |
+| Add a changed file to the chat composer                                                | 🟡     | `add-changed-file-to-chat.spec.ts`                                                  | T1   | -   |
+| Add the open file, or a selected row:column range, from the File Editor                | 🟡     | `add-file-to-chat-from-editor.spec.ts`                                              | T1   | -   |
+| Picking an `@` mention attaches a pill instead of inserting a quoted path              | 🟡     | `add-file-to-chat-from-editor.spec.ts`                                              | T1   | -   |
+| Tool-call shimmer while a call is running                                              | 🟡     | `tool-call-shimmer.spec.ts`                                                         | T1   | -   |
+| Consecutive-turn submission keeps activity continuous across race orderings            | ✅     | `agent-consecutive-turns.spec.ts`                                                   | T1   | -   |
+| Agent message submission edge cases (interrupt, queue, provider-echo reconciliation)   | ✅     | `agent-message-submission.spec.ts`                                                  | T1   | -   |
+| Reader scroll return (retained chat resumes following, ignores pointer jitter)         | ✅     | `agent-scroll-return.spec.ts`                                                       | T1   | -   |
+| Assistant image tab stability across settle, reload, pagination and remount            | ✅     | `agent-tab-image-stability.spec.ts`                                                 | T1   | -   |
+| Copying an assistant selection preserves Markdown structure and links                  | ✅     | `assistant-selection-copy.spec.ts`                                                  | T1   | -   |
+| Chat outline indexes prompts and jumps the reader through the transcript               | ✅     | `chat-outline.spec.ts`                                                              | T1   | -   |
+| Composer control density stays expanded across agent/draft tab switches                | ✅     | `composer-control-density.spec.ts`                                                  | T1   | -   |
+| Mermaid diagram stays rendered while its message streams, completes, and reloads       | ✅     | `mermaid-streaming.spec.ts`                                                         | T1   | -   |
+| Native provider task lists render above the composer                                   | ✅     | `provider-task-list.real.spec.ts`                                                   | T3   | -   |
+| Workspace draft thinking/permission-mode preferences survive a model switch and reload | ✅     | `workspace-draft-thinking-preferences.spec.ts`                                      | T1   | -   |
+| Session rename from the compact tab switcher                                           | ✅     | `workspace-tab-switcher-rename.spec.ts`                                             | T1   | -   |
 
 ## 5. Agent lifecycle & control
 
@@ -131,6 +159,13 @@ someone to run it by hand.
 | Archived Codex agent reopens from persistence                                                                | 🟡     | `archived-codex-agent.real.spec.ts`                                                                                                                                        | T3   | -   |
 | Provider subagent rows (announce, settle, drill-in)                                                          | 🟡     | `provider-subagents.real.spec.ts`                                                                                                                                          | T3   | -   |
 | Viewed-agent timeline retention across navigation                                                            | 🟡     | `viewed-agent-timelines.spec.ts`                                                                                                                                           | T1   | -   |
+| Real ACP permission choices render the provider's native question options                                    | ✅     | `acp-permission-choices.real.spec.ts`                                                                                                                                      | T3   | -   |
+| Agent message rewind restores a submitted prompt to the composer                                             | ✅     | `agent-message-rewind.spec.ts`                                                                                                                                             | T1   | -   |
+| Agent timeline resume after disconnect lands as one latest-tail update                                       | ✅     | `agent-timeline-resume.spec.ts`                                                                                                                                            | T1   | -   |
+| Real Claude workflow project-inspection subagent renders its report in the generic detail pane               | ✅     | `claude-workflow-project-inspection.real.spec.ts`                                                                                                                          | T3   | -   |
+| Real Claude workflow subagent row (running + completed) through the generic subagent UI                      | ✅     | `claude-workflow-subagent.real.spec.ts`                                                                                                                                    | T3   | -   |
+| Codex out-of-band commands settle the submitted row without a turn                                           | ✅     | `out-of-band-command.codex.real.spec.ts`                                                                                                                                   | T3   | -   |
+| Cross-workspace subagent opens in its own workspace and keeps its parent relationship                        | ✅     | `workspace-model-regressions.spec.ts`                                                                                                                                      | T1   | -   |
 
 ## 6. Providers & models
 
@@ -149,6 +184,11 @@ someone to run it by hand.
 | Custom provider profiles (Z.AI / Qwen / custom binaries) render + validate                     | ❌     | catalog/settings-level assertions, no live calls                    | T1   | P2  |
 | Effort selector per-model (effort unification)                                                 | ❌     | model picker shows correct effort levels per catalog                | T1   | P2  |
 | Provider removal (settings, disappears from pickers)                                           | 🟡     | `provider-removal.spec.ts`                                          | T1   | -   |
+| Agent profiles repair a stale modeless provider preference when applied                        | ✅     | `agent-profile-modeless-preferences.spec.ts`                        | T1   | -   |
+| Agent profiles in the model picker (pinned profile materializes into the composer)             | ✅     | `agent-profiles-picker.spec.ts`                                     | T1   | -   |
+| Agent profiles settings (create/edit/reorder host profiles; legacy favourites migrate)         | ✅     | `agent-profiles-settings.spec.ts`                                   | T1   | -   |
+| Cross-provider model search (one query reaches every provider, stable/virtualized results)     | ✅     | `model-search-across-providers.spec.ts`                             | T1   | -   |
+| Metadata generation model selection (auto-title/summary model choice, reset to automatic)      | ✅     | `metadata-generation-settings.spec.ts`                              | T1   | -   |
 
 ## 7. Personalities & teams
 
@@ -194,6 +234,8 @@ someone to run it by hand.
 | AI Refactor flow (real agent behind selection refactor)                                                                | ❌     | good T2 candidate - deterministic small refactor                    | T2   | P2  |
 | Assistant file link opens at its referenced line (`path:line`, re-applied on an open tab)                              | ✅     | `file-editing.spec.ts`                                              | T1   | -   |
 | BOM / CRLF preservation on save (no `lineSeparator` handling outside the dead `src/file-pane/`)                        | ❌     | `file-editing.spec.ts` (skipped, ready once the capability exists)  | T1   | P2  |
+| File change conflicts (disk-change callout, save-watcher, reload/retry actions, deleted-file notice)                   | ✅     | `file-change-conflicts.spec.ts`                                     | T1   | -   |
+| File explorer context actions (create, rename, copy, delete, duplicate, error handling)                                | ✅     | `file-explorer-context-actions.spec.ts`                             | T1   | -   |
 
 ## 10. Git & Changes
 
@@ -202,7 +244,7 @@ someone to run it by hand.
 | Changes tab commit flow                                                                       | ✅     | `changes-commit.spec.ts`                    | T1   | -   |
 | Branch switcher                                                                               | ✅     | `branch-switcher.spec.ts`                   | T1   | -   |
 | PR pane (GitHub fixtures: `helpers/github-fixtures.ts`)                                       | ✅     | `pr-pane.spec.ts`                           | T1   | -   |
-| Diff row alignment                                                                            | ✅     | `diff-row-alignment.spec.ts`                | T1   | -   |
+| Diff row alignment                                                                            | ✅     | `changes-pane.spec.ts`                      | T1   | -   |
 | Git Log tab (daemon git _operation_ log records a UI commit's message + hash)                 | ✅     | `git-log-tab.spec.ts`                       | T1   | -   |
 | Rollback file (git discard w/ confirm; cancel keeps changes)                                  | ✅     | `changes-rollback-file.spec.ts`             | T1   | -   |
 | Commit CTA writer-agent confirm dialog (spawn not assertable: writer is an internal agent)    | ✅     | `changes-commit-agent-cta.spec.ts`          | T1   | -   |
@@ -210,20 +252,22 @@ someone to run it by hand.
 | Bitbucket Cloud forge parity (PR pane against Bitbucket fixtures)                             | ❌     | mirror `pr-pane` with Bitbucket fixture set | T1   | P2  |
 | Commit diff panel (open a commit, render its diff)                                            | 🟡     | `commit-diff-panel.spec.ts`                 | T1   | -   |
 | Conventional commit type selector (opens, and prefixes the manual commit message)             | ✅     | `commit-type-selector.verify.spec.ts`       | T1   | -   |
+| Auto-archive after pull request merge (manual restore latches an active merged-PR workspace)  | ✅     | `auto-archive-after-merge.real.spec.ts`     | T3   | -   |
 
 ## 11. Settings & i18n
 
-| Behavior                                                                                 | Status | Specs / plan                                              | Tier | Pri |
-| ---------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------- | ---- | --- |
-| Settings navigation                                                                      | ✅     | `settings-navigation.spec.ts`                             | T1   | -   |
-| Settings sidebar scroll                                                                  | ✅     | `settings-sidebar-scroll.spec.ts`                         | T1   | -   |
-| Settings i18n (all locales render)                                                       | ✅     | `settings-i18n.spec.ts`                                   | T1   | -   |
-| Toggle/tab state regression                                                              | ✅     | `settings-toggle-tab-regression.spec.ts`                  | T1   | -   |
-| Appearance: theme switch persists + token-level repaint                                  | ✅     | `appearance-theme-animations.spec.ts`                     | T1   | -   |
-| Speech settings cards (engine, voice; no downloads triggered)                            | ❌     | assert UI only - global setup already disables speech env | T1   | P2  |
-| Visualizer settings section (enable switch + dependent rows; GPU re-enable button is DT) | ✅     | `feature-flag-visualizer-gate.spec.ts`                    | T1   | -   |
-| Feature-flag registry: disabling Visualizer removes surfaces + reaps open tabs           | ✅     | `feature-flag-visualizer-gate.spec.ts`                    | T1   | -   |
-| Activity stats start-screen setting                                                      | ❌     | toggle + start screen presence                            | T1   | P2  |
+| Behavior                                                                                  | Status | Specs / plan                                              | Tier | Pri |
+| ----------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------- | ---- | --- |
+| Settings navigation                                                                       | ✅     | `settings-navigation.spec.ts`                             | T1   | -   |
+| Settings sidebar scroll                                                                   | ✅     | `packages/desktop/e2e/settings-sidebar-scroll.spec.ts`    | DT   | -   |
+| Settings i18n (all locales render)                                                        | ✅     | `settings-i18n.spec.ts`                                   | T1   | -   |
+| Toggle/tab state regression                                                               | ✅     | `settings-toggle-tab-regression.spec.ts`                  | T1   | -   |
+| Appearance: theme switch persists + token-level repaint                                   | ✅     | `appearance-theme-animations.spec.ts`                     | T1   | -   |
+| Speech settings cards (engine, voice; no downloads triggered)                             | ❌     | assert UI only - global setup already disables speech env | T1   | P2  |
+| Visualizer settings section (enable switch + dependent rows; GPU re-enable button is DT)  | ✅     | `feature-flag-visualizer-gate.spec.ts`                    | T1   | -   |
+| Feature-flag registry: disabling Visualizer removes surfaces + reaps open tabs            | ✅     | `feature-flag-visualizer-gate.spec.ts`                    | T1   | -   |
+| Activity stats start-screen setting                                                       | ❌     | toggle + start screen presence                            | T1   | P2  |
+| Pure black appearance option (theme picker, interface font size applies to settings text) | ✅     | `appearance-theme-picker.spec.ts`                         | T1   | -   |
 
 ## 11a. Brain
 
@@ -293,12 +337,12 @@ invariants have unit coverage. Browser-level management workflows remain explici
 
 ## 15. Desktop-only (manual / capture harness - not Playwright-web)
 
-| Behavior                                                  | Status | Specs / plan                      | Tier | Pri |
-| --------------------------------------------------------- | ------ | --------------------------------- | ---- | --- |
-| Desktop update flow UI (mocked feed)                      | ✅     | `desktop-updates.spec.ts`         | T1   | -   |
-| GPU fallback auto-relaunch + re-enable button             | ❌     | manual checklist item             | DT   | P2  |
-| Focus mode caption strip (Ctrl+Shift+F)                   | ❌     | manual checklist item             | DT   | P2  |
-| Electron webview browser pane (real preview verification) | ❌     | `docs/browser-capture-harness.md` | DT   | P2  |
+| Behavior                                                  | Status | Specs / plan                           | Tier | Pri |
+| --------------------------------------------------------- | ------ | -------------------------------------- | ---- | --- |
+| Desktop update flow UI (mocked feed)                      | ✅     | `packages/desktop/e2e/updates.spec.ts` | DT   | -   |
+| GPU fallback auto-relaunch + re-enable button             | ❌     | manual checklist item                  | DT   | P2  |
+| Focus mode caption strip (Ctrl+Shift+F)                   | ❌     | manual checklist item                  | DT   | P2  |
+| Electron webview browser pane (real preview verification) | ❌     | `docs/browser-capture-harness.md`      | DT   | P2  |
 
 ## 16. Performance instruments (measurement, not coverage)
 
@@ -318,6 +362,7 @@ diagnoses already.
 | ------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --- |
 | Client resource retention across repeated chat + navigation cycles  | 📊     | `client-resource-soak.spec.ts` - `OTTO_RESOURCE_SOAK_E2E=1`; method and traps in `docs/client-performance.md`                                         | T1   | -   |
 | Cost of moving around a heavy install (long chats, many workspaces) | 📊     | `perf-corpus-soak.spec.ts` - `OTTO_CORPUS_SOAK_E2E=1`; seeds a synthetic conversation corpus, then times chat opens and workspace switches against it | T1   | -   |
+| Replica cache write volume during a long stream                     | 📊     | `replica-cache-performance.spec.ts` - `OTTO_REPLICA_CACHE_PERF_E2E=1`; asserts streaming writes stay within the persisted-change bound                | T1   | -   |
 
 **Known inconsistency, left as a separate call:** the two terminal perf specs in §8
 (terminal-performance, terminal-keystroke-stress) are the same shape - opt-in instruments behind
