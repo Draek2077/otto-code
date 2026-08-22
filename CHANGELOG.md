@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.13 - 2026-08-22
+
+### Added
+
+- Integrate Paseo v0.4.0's updated task, chat, and orchestration experience
+- Add an Otto tool-selection evaluator backed by the selected host configuration
+- Add Obsidian and Ivory monochrome themes, plus a theme-state gallery
+- Preview saved Markdown comments when hovering their source sections
+- Offer a start-empty workspace action
+- Name the code inside slow frames: performance captures now record long-frame script attribution and keep the pre-capture growth trend
+- Let OpenAI-compatible and Otto Brain models ask up to three multiple-choice questions mid-turn, using Otto's shared question UI
+- Carry the active workspace's host and project into History, Artifacts, Schedules, Runs, and Kanban, with matching scope controls on each page
+
+### Changed
+
+- Refine Brain process management, model serving indicators, benchmark persistence, and VRAM budget stability
+- Refine sidebar navigation, workspace tools, agent handoffs, composer controls, and responsive layouts
+- Use clearer semantic icons and theme-aware accent colors throughout the app
+- Improve rendered Markdown table borders and mobile chat presentation
+- Give the public site and documentation pages a shared, consistent frame
+
+### Fixed
+
+- Prevent the Visualizer from freezing behind a stuck session-switch gate
+- Keep Brain benchmark results available across host restarts
+- Prevent duplicate observed-subagent rows and stale model spinners
+- Keep the composer toolbar stable during rotation and attachment-pill layouts compact
+- Repair upstream drift checks and tag resolution for the Paseo integration
+- Restore Settings search indexing, so matching rows appear and open reliably
+
 ## 0.8.12 - 2026-08-20
 
 ### Added
