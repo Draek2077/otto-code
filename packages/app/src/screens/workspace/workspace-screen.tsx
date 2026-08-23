@@ -25,12 +25,11 @@ import { useTranslation } from "react-i18next";
 import {
   BookOpen,
   Chat,
-  ContextualToken,
   ChevronDown,
+  ContextualToken,
   Copy,
   Ellipsis,
   FileText,
-  GitBranch,
   Globe,
   HeadsetMic,
   Import as ImportIcon,
@@ -41,6 +40,7 @@ import {
   SquarePen,
   SquareTerminal,
 } from "@/components/icons/material-icons";
+import { GitBranch } from "@/components/icons/lucide";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
@@ -1874,7 +1874,10 @@ function WorkspaceHeaderTitleBar({
             onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
             hideLabels
             presentation="ghost"
-            ghostIconSize={headerActionIconSize.chromeLg}
+            // chromeMd, not chromeLg: this sits between the Visualizer and Brain
+            // buttons, and both of those draw at chromeMd. A step up here made
+            // Scripts visibly the odd one out in the title bar.
+            ghostIconSize={headerActionIconSize.chromeMd}
           />
         ) : null}
         {/* The Brain status light, standing in for the sidebar's own whenever

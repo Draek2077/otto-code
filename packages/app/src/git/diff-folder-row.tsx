@@ -156,6 +156,7 @@ export function DiffFolderRow({
             <DiffStat
               additions={additions}
               deletions={deletions}
+              style={styles.stat}
               testID={testID ? `${testID}-stat` : undefined}
             />
           </View>
@@ -222,6 +223,12 @@ const styles = StyleSheet.create((theme: Theme) => ({
     alignItems: "center",
     flexShrink: 0,
     gap: theme.spacing[1],
+  },
+  // The stat's own 20px height is sized for the sidebar rows it also serves.
+  // In a tree it must not be the tallest child, or these rows stand taller than
+  // the Files explorer's, whose tallest child is the icon frame.
+  stat: {
+    height: WORKSPACE_TREE_ICON_FRAME_SIZE,
   },
   folderName: {
     fontSize: theme.fontSize.sm,

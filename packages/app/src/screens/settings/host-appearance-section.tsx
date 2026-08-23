@@ -3,7 +3,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronDown, Pencil } from "@/components/icons/lucide";
+import { ChevronDown, Pencil } from "@/components/icons/material-icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,7 +64,7 @@ function HostRenameButton({ host }: { host: HostProfile }) {
         accessibilityLabel={t("settings.host.daemon.rename.editLabel")}
         testID="host-page-label-edit-button"
       >
-        <ThemedPencil size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
+        <ThemedPencil size="sm" uniProps={mutedColorMapping} />
       </Pressable>
 
       <AdaptiveRenameModal
@@ -134,7 +134,7 @@ function ColorRow({ color, onChange }: { color: HostColor; onChange: (color: Hos
         >
           <ColorSwatch color={color} />
           <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
+          <ThemedChevronDown size="sm" uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
           {HOST_COLORS.map((option) => (
@@ -175,7 +175,7 @@ function BadgeDisplayRow({
           })}
         >
           <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
+          <ThemedChevronDown size="sm" uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
           {HOST_BADGE_DISPLAYS.map((option) => (

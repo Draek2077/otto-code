@@ -4,13 +4,13 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   ChevronDown,
   CornerDownLeft,
-  GitBranch,
   MessageSquarePlus,
   Play,
   Schema,
   Trash2,
   X,
 } from "@/components/icons/material-icons";
+import { GitBranch } from "@/components/icons/lucide";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,

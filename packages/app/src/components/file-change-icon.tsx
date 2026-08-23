@@ -1,6 +1,7 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { View } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
-import { SquareMinus, SquarePlus } from "@/components/icons/lucide";
+import { SquareMinus, SquarePlus } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import type { Theme } from "@/styles/theme";
 
@@ -20,24 +21,30 @@ const ICON_SIZE = 14;
  * these are footnotes on a file header, not the diff body where colour carries the line-by-line
  * signal.
  */
+// Material glyphs take only size, colour and style, so the label rides on a wrapper the
+// same way ScopeBadge does it.
+function LabelledIcon({ label, children }: { label: string; children: ReactNode }): ReactElement {
+  return (
+    <View collapsable={false} accessibilityRole="image" accessibilityLabel={label}>
+      {children}
+    </View>
+  );
+}
+
 export function FileChangeIcon({ change }: { change: "added" | "deleted" }): ReactElement {
   const { t } = useTranslation();
 
   if (change === "added") {
     return (
-      <ThemedSquarePlus
-        size={ICON_SIZE}
-        uniProps={successMapping}
-        accessibilityLabel={t("workspace.git.diff.newFile")}
-      />
+      <LabelledIcon label={t("workspace.git.diff.newFile")}>
+        <ThemedSquarePlus size={ICON_SIZE} uniProps={successMapping} />
+      </LabelledIcon>
     );
   }
 
   return (
-    <ThemedSquareMinus
-      size={ICON_SIZE}
-      uniProps={dangerMapping}
-      accessibilityLabel={t("workspace.git.diff.deletedFile")}
-    />
+    <LabelledIcon label={t("workspace.git.diff.deletedFile")}>
+      <ThemedSquareMinus size={ICON_SIZE} uniProps={dangerMapping} />
+    </LabelledIcon>
   );
 }

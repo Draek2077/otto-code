@@ -31,7 +31,7 @@ import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { AgentProfile } from "@otto-code/protocol/messages";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
+import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 import type { InterfaceMode } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";

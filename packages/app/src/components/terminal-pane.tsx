@@ -8,7 +8,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
   Keyboard as KeyboardIcon,
   KeyboardOff as KeyboardOffIcon,
-} from "@/components/icons/lucide";
+} from "@/components/icons/material-icons";
 import type { TerminalKeyInput } from "@otto-code/protocol/terminal-key-input";
 import type { TerminalState } from "@otto-code/protocol/messages";
 import {

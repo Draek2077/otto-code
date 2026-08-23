@@ -10,12 +10,12 @@ import {
   FolderGit2,
   FolderOpen,
   FolderPlus,
-  GitBranch,
   Globe,
   Groups,
   PrivacyTip,
   Server,
 } from "@/components/icons/material-icons";
+import { GitBranch } from "@/components/icons/lucide";
 import type { ComboboxOption } from "@/components/ui/combobox";
 import type { HostProfile } from "@/types/host-connection";
 import type { Theme } from "@/styles/theme";

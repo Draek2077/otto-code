@@ -38,12 +38,12 @@ import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import {
   ExternalLink,
-  GitPullRequest,
-  Settings,
   MoreVertical,
   Plus,
+  Settings,
   Trash2,
 } from "@/components/icons/material-icons";
+import { GitPullRequest } from "@/components/icons/lucide";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";

@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, GitBranch } from "@/components/icons/material-icons";
+import { ChevronDown } from "@/components/icons/material-icons";
+import { GitBranch } from "@/components/icons/lucide";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { type Theme } from "@/styles/theme";

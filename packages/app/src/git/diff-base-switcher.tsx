@@ -3,7 +3,8 @@ import { Pressable, Text, View, type PressableStateCallbackType } from "react-na
 import { useQueryClient } from "@tanstack/react-query";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, GitMerge } from "@/components/icons/material-icons";
+import { ChevronDown } from "@/components/icons/material-icons";
+import { GitMerge } from "@/components/icons/lucide";
 import { Combobox, ComboboxItem, type ComboboxProps } from "@/components/ui/combobox";
 import { useFetchQuery } from "@/data/query";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";

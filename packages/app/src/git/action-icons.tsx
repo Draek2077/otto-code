@@ -4,11 +4,10 @@ import {
   Archive,
   ArrowDownUp,
   Download,
-  GitCommitHorizontal,
-  GitMerge,
   RefreshCcw,
   Upload,
-} from "@/components/icons/lucide";
+} from "@/components/icons/material-icons";
+import { GitCommitHorizontal, GitMerge } from "@/components/icons/lucide";
 import type { Theme } from "@/styles/theme";
 import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 

@@ -408,7 +408,7 @@ function HostTeamOptions({
       onClose();
       if (rowId === EDIT_TEAMS_ROW_ID) {
         onBeforeNavigate?.();
-        router.push(buildSettingsHostSectionRoute(serverId, "agents"));
+        router.push(buildSettingsHostSectionRoute(serverId, "teams"));
         return;
       }
       const nextActiveTeamId = rowId === NO_TEAM_ROW_ID ? null : rowId;

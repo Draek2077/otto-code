@@ -11,7 +11,7 @@ import {
   Keyboard,
   Plus,
   Settings,
-} from "@/components/icons/lucide";
+} from "@/components/icons/material-icons";
 import { withUnistyles } from "react-native-unistyles";
 import { getIsElectronRuntime } from "@/constants/layout";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
@@ -56,39 +56,39 @@ const ThemedCircleDashed = withUnistyles(CircleDashed, (theme) => ({
 }));
 
 function PlusIcon({ size }: CommandCenterIconProps) {
-  return <ThemedPlus size={size} strokeWidth={2.4} />;
+  return <ThemedPlus size={size} />;
 }
 
 function AddProjectIcon({ size }: CommandCenterIconProps) {
-  return <ThemedFolderPlus size={size} strokeWidth={2.2} />;
+  return <ThemedFolderPlus size={size} />;
 }
 
 function SettingsIcon({ size }: CommandCenterIconProps) {
-  return <ThemedSettings size={size} strokeWidth={2.2} />;
+  return <ThemedSettings size={size} />;
 }
 
 function HistoryIcon({ size }: CommandCenterIconProps) {
-  return <ThemedHistory size={size} strokeWidth={2.2} />;
+  return <ThemedHistory size={size} />;
 }
 
 function SchedulesIcon({ size }: CommandCenterIconProps) {
-  return <ThemedCalendarClock size={size} strokeWidth={2.2} />;
+  return <ThemedCalendarClock size={size} />;
 }
 
 function KeyboardIcon({ size }: CommandCenterIconProps) {
-  return <ThemedKeyboard size={size} strokeWidth={2.2} />;
+  return <ThemedKeyboard size={size} />;
 }
 
 function HomeIcon({ size }: CommandCenterIconProps) {
-  return <ThemedHome size={size} strokeWidth={2.2} />;
+  return <ThemedHome size={size} />;
 }
 
 function FolderIcon({ size }: CommandCenterIconProps) {
-  return <ThemedFolder size={size} strokeWidth={2.2} />;
+  return <ThemedFolder size={size} />;
 }
 
 function CircleDashedIcon({ size }: CommandCenterIconProps) {
-  return <ThemedCircleDashed size={size} strokeWidth={2.2} />;
+  return <ThemedCircleDashed size={size} />;
 }
 
 export function CommandCenterRootActions() {

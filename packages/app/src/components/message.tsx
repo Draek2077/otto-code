@@ -1454,10 +1454,13 @@ export const TurnCopyButton = memo(function TurnCopyButton({
         const iconColor = hovered
           ? turnCopyButtonStylesheet.iconHoveredColor.color
           : turnCopyButtonStylesheet.iconColor.color;
+        // `chromeMd`, not `md`: a per-turn action that sits under dense transcript text
+        // stays on the chrome ladder, so it grows by half on compact rather than
+        // doubling. Desktop pixels are unchanged.
         return copied ? (
-          <Check size="md" color={iconColor} />
+          <Check size="chromeMd" color={iconColor} />
         ) : (
-          <Copy size="md" color={iconColor} />
+          <Copy size="chromeMd" color={iconColor} />
         );
       }}
     </Pressable>

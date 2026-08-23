@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronRight, Folder, X } from "@/components/icons/lucide";
+import { Check, ChevronRight, Folder, X } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   BottomSheetBackdrop,
@@ -444,7 +444,7 @@ function ResultContent({ result }: { result: CommandCenterResult }) {
       <View style={styles.rowContent} testID={`command-center-workspace-${key}`}>
         <View style={styles.rowMain}>
           <View style={styles.iconSlot}>
-            <ThemedFolder size="md" strokeWidth={2.2} />
+            <ThemedFolder size="md" />
           </View>
           <View style={styles.textContent}>
             <Text style={styles.title} numberOfLines={1}>
@@ -502,7 +502,7 @@ function ResultContent({ result }: { result: CommandCenterResult }) {
               key={presentation.path.slice(0, index + 1).join("\u0000")}
               style={styles.breadcrumbPart}
             >
-              {index > 0 ? <ThemedChevronRight size="sm" strokeWidth={2} /> : null}
+              {index > 0 ? <ThemedChevronRight size="sm" /> : null}
               <Text
                 style={
                   index === presentation.path.length - 1 ? styles.title : styles.breadcrumbGroup
@@ -517,7 +517,7 @@ function ResultContent({ result }: { result: CommandCenterResult }) {
       </View>
       {presentation.selected ? (
         <View style={styles.iconSlot}>
-          <ThemedCheck size="md" strokeWidth={2.2} />
+          <ThemedCheck size="md" />
         </View>
       ) : null}
     </View>
@@ -798,9 +798,9 @@ function ScopeChip({ label, onRemove }: { label: string; onRemove(): void }) {
       style={styles.scopeChip}
       testID="command-center-files-scope"
     >
-      <ThemedFolder size="sm" strokeWidth={2.2} />
+      <ThemedFolder size="sm" />
       <Text style={styles.scopeChipLabel}>{label}</Text>
-      <ThemedX size="xs" strokeWidth={2.2} />
+      <ThemedX size="xs" />
     </Pressable>
   );
 }

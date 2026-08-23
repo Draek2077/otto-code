@@ -11,7 +11,7 @@ import { PiIcon } from "@/components/icons/pi-icon";
 import { ACP_PROVIDER_CATALOG } from "@/data/acp-provider-catalog";
 import { resolveProviderIconName } from "@/components/provider-icon-name";
 import { MATERIAL_SYMBOL_SVGS } from "@/assets/material-symbol-icons";
-import type { IconSizeProp } from "@/components/icons/icon-size";
+import { withIconSizeToken, type IconSizeProp } from "@/components/icons/icon-size";
 
 export interface ProviderIconProps {
   size?: IconSizeProp;
@@ -39,9 +39,18 @@ const PROVIDER_BRAIN_SVG = MATERIAL_SYMBOL_SVGS.Brain.replace(
   `viewBox="${PROVIDER_BRAIN_VIEW_BOX}"`,
 );
 
-const ProviderBrainIcon: ProviderIconComponent = ({ size, color }) =>
-  createElement(SvgXml, { xml: PROVIDER_BRAIN_SVG, width: size, height: size, color });
-ProviderBrainIcon.displayName = "ProviderBrainIcon";
+function ProviderBrainIconBase({ size = 16, color }: { size?: number; color?: string }) {
+  return createElement(SvgXml, { xml: PROVIDER_BRAIN_SVG, width: size, height: size, color });
+}
+
+// Token-sized like every builtin mark: a string size token ("md", "chromeMd")
+// must be resolved to pixels here, or it lands as a literal `width="md"` on the
+// SVG, which the browser rejects and falls back to the glyph's default size -
+// the composer chip's oversized brain mark.
+const ProviderBrainIcon: ProviderIconComponent = withIconSizeToken(
+  ProviderBrainIconBase,
+  "ProviderBrainIcon",
+);
 
 // App-only provider ids that are not part of the protocol icon-name registry
 // but still need a specific icon (e.g. the built-in local brain host).
@@ -92,14 +101,22 @@ const BUILTIN_PROVIDER_SVGS: Record<string, string> = {
 const catalogIconComponents = new Map<string, ProviderIconComponent>();
 
 function createCatalogIcon(provider: string, iconSvg: string): ProviderIconComponent {
-  const CatalogProviderIcon: ProviderIconComponent = ({ size, color }) =>
-    createElement(SvgXml, {
+  // Token-sized for the same reason as ProviderBrainIcon: catalog marks reach
+  // the chip through the same `size="md"` token path, and a raw string would
+  // otherwise become a literal `width="md"` on the SVG.
+  function CatalogProviderIconBase({ size = 16, color }: { size?: number; color?: string }) {
+    return createElement(SvgXml, {
       xml: iconSvg,
       width: size,
       height: size,
       color,
     });
-  CatalogProviderIcon.displayName = `CatalogProviderIcon(${provider})`;
+  }
+  CatalogProviderIconBase.displayName = `CatalogProviderIconBase(${provider})`;
+  const CatalogProviderIcon = withIconSizeToken(
+    CatalogProviderIconBase,
+    `CatalogProviderIcon(${provider})`,
+  );
   return CatalogProviderIcon;
 }
 

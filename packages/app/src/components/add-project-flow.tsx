@@ -5,12 +5,12 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
-  Github,
   HardDrive,
   Plus,
   Search,
   Server,
-} from "@/components/icons/lucide";
+} from "@/components/icons/material-icons";
+import { Github } from "@/components/icons/lucide";
 import {
   createElement,
   useCallback,

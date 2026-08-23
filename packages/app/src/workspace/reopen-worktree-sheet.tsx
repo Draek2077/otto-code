@@ -9,7 +9,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { GitBranch } from "@/components/icons/material-icons";
+import { GitBranch } from "@/components/icons/lucide";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";

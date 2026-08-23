@@ -471,6 +471,9 @@ const styles = StyleSheet.create((theme) => ({
       md: theme.spacing[6],
     },
     paddingTop: theme.spacing[3],
+    // The header's bottom rule is drawn by `historyHeader`, so without this the
+    // search field sits flush on the line with nothing between them.
+    paddingBottom: theme.spacing[3],
   },
   clearArchivedText: {
     color: theme.colors.destructive,

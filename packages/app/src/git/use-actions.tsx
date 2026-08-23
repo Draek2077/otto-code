@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, type ReactElement } from "react";
-import { Info } from "@/components/icons/lucide";
+import { Info } from "@/components/icons/material-icons";
 import { withUnistyles } from "react-native-unistyles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getForgePresentation } from "@/git/forge";

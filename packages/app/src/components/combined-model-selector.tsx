@@ -3,13 +3,12 @@ import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
-import type { AgentProfilePicker } from "@/agent-profiles";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
-import { compactUp, ICON_SIZE, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import { Combobox, type ComboboxOption, type ComboboxProps } from "@/components/ui/combobox";
 import {
   buildSelectedTriggerLabel,
@@ -55,8 +54,7 @@ interface CombinedModelSelectorProps {
   isLoading: boolean;
   favoriteKeys?: Set<string>;
   onToggleFavorite?: (provider: string, modelId: string) => void;
-  profiles?: AgentProfilePicker | null;
-  onApplyProfile?: (profileId: string) => void;
+  /** Opens the Personalities settings section from the picker header. */
   onEditProfiles?: () => void;
   renderTrigger?: (input: {
     selectedModelLabel: string;
@@ -74,6 +72,11 @@ interface CombinedModelSelectorProps {
   serverId?: string | null;
   desktopPlacement?: ComboboxProps["desktopPlacement"];
   desktopMinWidth?: number;
+  /**
+   * Collapse the chip to its leading glyph. The composer's control ladder sets
+   * this on its last rung, once every other control is already icon-only.
+   */
+  iconOnly?: boolean;
   /**
    * Optional personality roster, rendered as a section above the model list.
    * Selecting one auto-fills provider/model/effort/mode via the caller's
@@ -126,10 +129,9 @@ export function CombinedModelSelector({
   isLoading,
   favoriteKeys = EMPTY_FAVORITE_KEYS,
   onToggleFavorite,
-  profiles = null,
-  onApplyProfile,
   onEditProfiles,
   renderTrigger,
+  iconOnly = false,
   onOpen,
   onClose,
   onRetryProvider,
@@ -158,31 +160,13 @@ export function CombinedModelSelector({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
 
-  const profileRows = useMemo<SelectorPersonality[]>(
-    () =>
-      (profiles?.rows ?? []).map((profile) => ({
-        id: `profile:${profile.id}`,
-        name: profile.name,
-        provider: profile.provider,
-        subtitle: profile.summary,
-        glowA: profile.color || undefined,
-        glowB: profile.color || undefined,
-        available: true,
-      })),
-    [profiles],
-  );
-  const selectableIdentities = useMemo(
-    () => [...profileRows, ...(personalities ?? [])],
-    [personalities, profileRows],
-  );
-
   // Only a *selectable* roster (one that renders the identities section)
   // changes the view layout. A read-only identity roster - passed with a
   // selected id but no onSelectPersonality, as the running-agent controls do to
   // label the trigger - must not suppress the single-provider bypass.
   const hasPersonalities =
-    (selectableIdentities.length > 0 || (personalityGroups?.length ?? 0) > 0) &&
-    Boolean(onSelectPersonality || onApplyProfile);
+    ((personalities?.length ?? 0) > 0 || (personalityGroups?.length ?? 0) > 0) &&
+    Boolean(onSelectPersonality);
 
   // Providers in an error/unavailable state (auth failed, not installed,
   // unreachable) are hidden from the picker entirely. The one exception is the
@@ -281,19 +265,15 @@ export function CombinedModelSelector({
   // roster rows stay hidden - the entries then only label the trigger.
   const handlePersonalitySelect = useMemo(
     () =>
-      onSelectPersonality || onApplyProfile
+      onSelectPersonality
         ? (id: string) => {
-            if (id.startsWith("profile:")) {
-              onApplyProfile?.(id.slice("profile:".length));
-            } else {
-              onSelectPersonality?.(id);
-            }
+            onSelectPersonality(id);
             setIsOpen(false);
             setSearchQuery("");
             bumpSearchResetKey();
           }
         : undefined,
-    [onApplyProfile, onSelectPersonality],
+    [onSelectPersonality],
   );
 
   const handlePersonalityClear = useMemo(
@@ -310,6 +290,15 @@ export function CombinedModelSelector({
   );
 
   const hasSelectedProvider = selectedProvider.trim().length > 0;
+
+  // The trigger glyph follows the same rule as the popup rows: a Brain model
+  // wears its catalog family mark, not the Brain glyph. Only the row list
+  // knows the family, so it is resolved here and threaded into the trigger.
+  const selectedModelFamily = useMemo(() => {
+    const provider = providers.find((entry) => entry.id === selectedProvider);
+    if (!provider) return undefined;
+    return getProviderModelRows(provider).find((row) => row.modelId === selectedModel)?.family;
+  }, [providers, selectedProvider, selectedModel]);
 
   // A selected personality owns the trigger's identity - its name and spinner
   // glow stand in for the raw model label/provider glyph, so the composer chip
@@ -432,6 +421,18 @@ export function CombinedModelSelector({
     () => (triggerFill ? styles.triggerText : [styles.triggerText, styles.triggerTextCapped]),
     [triggerFill],
   );
+  // Collapsed to its leading glyph, the chip drops both its label and its
+  // caret. Resolved here rather than inline so the trigger JSX stays flat.
+  const triggerLabelNode = useMemo(
+    () =>
+      iconOnly ? null : (
+        <Text style={triggerTextStyle} numberOfLines={1} ellipsizeMode="tail">
+          {triggerLabel}
+        </Text>
+      ),
+    [iconOnly, triggerLabel, triggerTextStyle],
+  );
+  const triggerChevron = useMemo(() => (iconOnly ? null : undefined), [iconOnly]);
 
   const triggerStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => {
@@ -447,13 +448,14 @@ export function CombinedModelSelector({
       }
       return [
         styles.trigger,
+        iconOnly && styles.triggerIconOnly,
         Boolean(hovered) && styles.triggerHovered,
         (pressed || isOpen) && styles.triggerPressed,
         disabled && styles.triggerDisabled,
         renderTrigger ? styles.customTriggerWrapper : null,
       ];
     },
-    [disabled, isOpen, renderTrigger, triggerFill],
+    [disabled, iconOnly, isOpen, renderTrigger, triggerFill],
   );
 
   const handleBackToAll = useCallback(() => {
@@ -508,7 +510,7 @@ export function CombinedModelSelector({
     if (view.kind === "personalityGroup") {
       return {
         title: view.sectionLabel,
-        leading: <ThemedBoxes size={ICON_SIZE.md} uniProps={foregroundMapping} />,
+        leading: <ThemedBoxes size="md" uniProps={foregroundMapping} />,
         back: { onPress: handleBackToAll },
         search: {
           onChange: handleSearchQueryChange,
@@ -537,7 +539,7 @@ export function CombinedModelSelector({
     );
     return {
       title: view.providerLabel,
-      leading: <ProviderGlyph provider={view.providerId} size={ICON_SIZE.md} tone="foreground" />,
+      leading: <ProviderGlyph provider={view.providerId} size="md" tone="foreground" />,
       back: singleProviderView ? undefined : { onPress: handleBackToAll },
       actions: headerActions,
       search: {
@@ -595,6 +597,7 @@ export function CombinedModelSelector({
           accessibilityRole="button"
           accessibilityLabel={t("modelSelector.selectedModel", { model: selectedModelLabel })}
           testID="combined-model-selector"
+          chevron={triggerChevron}
         >
           {triggerLoading ? (
             <ThemedLoadingSpinner size="md" uniProps={foregroundMutedMapping} />
@@ -602,12 +605,11 @@ export function CombinedModelSelector({
             <TriggerLeadingIcon
               personality={selectedPersonality}
               provider={hasSelectedProvider ? selectedProvider : null}
+              family={selectedModelFamily}
               size="md"
             />
           )}
-          <Text style={triggerTextStyle} numberOfLines={1} ellipsizeMode="tail">
-            {triggerLabel}
-          </Text>
+          {triggerLabelNode}
         </ComboboxTrigger>
       )}
       <Combobox
@@ -621,7 +623,6 @@ export function CombinedModelSelector({
         desktopMinWidth={desktopMinWidth}
         desktopLockWidth
         desktopFixedHeight={desktopFixedHeight}
-        desktopChildrenScrollEnabled={false}
         header={sheetHeader}
         mobileChildrenScrollEnabled={view.kind !== "provider" || !isNative}
         mobileChildrenContentContainerStyle={styles.mobileBrowserContent}
@@ -640,8 +641,7 @@ export function CombinedModelSelector({
             onDrillDownPersonalityGroup={handleDrillDownPersonalityGroup}
             onRetryProvider={onRetryProvider}
             isRetryingProvider={isRetryingProvider}
-            personalities={selectableIdentities}
-            personalitySectionLabel="Profiles"
+            personalities={personalities}
             personalityGroups={personalityGroups}
             selectedPersonalityId={selectedPersonalityId}
             onSelectPersonality={handlePersonalitySelect}
@@ -649,7 +649,7 @@ export function CombinedModelSelector({
           />
         ) : (
           <View style={styles.sheetLoadingState}>
-            <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+            <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
             <Text style={styles.sheetLoadingText}>{t("modelSelector.loadingSelector")}</Text>
           </View>
         )}
@@ -674,6 +674,13 @@ const styles = StyleSheet.create((theme) => ({
     gap: compactUp(theme.spacing[1]),
     paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius.full,
+  },
+  // Square the chip so the collapsed model control matches the other icon-only
+  // badges sharing the composer row.
+  triggerIconOnly: {
+    width: compactUp(28),
+    paddingHorizontal: 0,
+    justifyContent: "center",
   },
   triggerHovered: {
     backgroundColor: theme.colors.surfaceHover,

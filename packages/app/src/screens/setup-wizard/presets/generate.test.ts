@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentMode, AgentModelDefinition } from "@otto-code/protocol/agent-types";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
+import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
 import { TEAM_BLUEPRINTS, findBlueprint } from "./blueprints";
 import { VARIATIONS } from "./variations";
 import { generateTeam, makeRng, resolveTierModels } from "./generate";

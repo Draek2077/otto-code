@@ -32,11 +32,11 @@ import {
   Eye,
   EyeOff,
   FilePlus,
+  Folder,
   FolderPlus,
   RotateCw,
-} from "@/components/icons/lucide";
+} from "@/components/icons/material-icons";
 import { MaterialFileIcon } from "@/components/material-file-icon";
-import { Folder } from "@/components/icons/material-icons";
 import {
   TreeChevron,
   TreeIndentGuides,
@@ -55,7 +55,7 @@ import {
   useOverlayFlatListScrollbar,
   type OverlayFlatListScrollbar,
 } from "@/components/ui/overlay-scrollbar/use-overlay-flat-list-scrollbar";
-import { type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import type {
   AgentFileExplorerState,
   ExplorerDirectory,
@@ -102,6 +102,7 @@ import {
 } from "@/components/file-explorer-entries";
 import { SolutionTreePane } from "@/solution/solution-tree-pane";
 import { useSolutionsQuery } from "@/solution/use-solution-queries";
+import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
 
 const SORT_OPTIONS: { value: SortOption }[] = [
   { value: "name" },
@@ -155,6 +156,7 @@ interface TreeRowItemProps {
   isSelected: boolean;
   loading: boolean;
   onEntryPress: (entry: ExplorerEntry) => void;
+  onEditEntry?: (entry: ExplorerEntry) => void;
   onSelectEntry: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void;
   onCopyRelativePath: (path: string) => void;
@@ -293,6 +295,7 @@ function TreeRowItem({
   isSelected,
   loading,
   onEntryPress,
+  onEditEntry,
   onSelectEntry,
   onCopyPath,
   onCopyRelativePath,
@@ -328,6 +331,10 @@ function TreeRowItem({
   const handleSelect = useCallback(() => {
     onSelectEntry(entry);
   }, [entry, onSelectEntry]);
+
+  const handleEdit = useCallback(() => {
+    onEditEntry?.(entry);
+  }, [entry, onEditEntry]);
   const accessibilityState = useMemo(() => ({ selected: isSelected }), [isSelected]);
 
   const pressableStyle = useCallback(
@@ -439,6 +446,7 @@ function TreeRowItem({
       </ContextMenuTrigger>
       <FileActionsContextMenuContent
         fileKind={entry.kind}
+        onEditFile={onEditEntry ? handleEdit : undefined}
         onCopyPath={handleCopy}
         onCopyRelativePath={handleCopyRelativePath}
         onReveal={onRevealEntry ? handleReveal : undefined}
@@ -462,7 +470,7 @@ interface FileExplorerPaneProps {
   serverId: string;
   workspaceId?: string | null;
   workspaceRoot: string;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, options?: { edit?: boolean }) => void;
   onAddToChat?: (path: string) => void;
 }
 
@@ -475,6 +483,7 @@ export function FileExplorerPane({
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
+  const canEditFiles = useTextEditorFeature(serverId);
 
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
   const workspaceStateKey = useMemo(
@@ -691,6 +700,19 @@ export function FileExplorerPane({
       onOpenFile?.(entry.path);
     },
     [hasWorkspaceScope, onOpenFile],
+  );
+
+  // "Edit file" opens the same file tab the row press opens, but in editor view -
+  // matching the Changes pane's menu item.
+  const handleEditEntry = useCallback(
+    (entry: ExplorerEntry) => {
+      if (!hasWorkspaceScope) {
+        return;
+      }
+      selectExplorerEntry(entry.path);
+      onOpenFile?.(entry.path, { edit: true });
+    },
+    [hasWorkspaceScope, onOpenFile, selectExplorerEntry],
   );
 
   const handleOpenSolutionFile = useCallback(
@@ -1146,6 +1168,7 @@ export function FileExplorerPane({
           selectedEntryPath={selectedEntryPath}
           isDirectoryLoading={isDirectoryLoading}
           onEntryPress={handleEntryPress}
+          onEditEntry={canEditFiles ? handleEditEntry : undefined}
           onSelectEntry={handleSelectEntry}
           onCopyPath={handleCopyPath}
           onCopyRelativePath={handleCopyRelativePath}
@@ -1173,6 +1196,7 @@ export function FileExplorerPane({
       handleDraftCommit,
       handleDuplicateEntry,
       handleEditCancel,
+      handleEditEntry,
       handleEntryPress,
       handleNewEntry,
       handleRenameCommit,
@@ -1180,6 +1204,7 @@ export function FileExplorerPane({
       handleRevealEntry,
       handleSelectEntry,
       isDirectoryLoading,
+      canEditFiles,
       fileManagerTarget,
       selectedEntryPath,
       effectiveOnAddToChat,
@@ -1639,6 +1664,7 @@ function TreeRowDispatcher({
   selectedEntryPath,
   isDirectoryLoading,
   onEntryPress,
+  onEditEntry,
   onSelectEntry,
   onCopyPath,
   onCopyRelativePath,
@@ -1660,6 +1686,7 @@ function TreeRowDispatcher({
   selectedEntryPath: string | null;
   isDirectoryLoading: (path: string) => boolean;
   onEntryPress: (entry: ExplorerEntry) => void;
+  onEditEntry?: (entry: ExplorerEntry) => void;
   onSelectEntry: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void | Promise<void>;
   onCopyRelativePath: (path: string) => void | Promise<void>;
@@ -1691,6 +1718,7 @@ function TreeRowDispatcher({
       isSelected={isSelected}
       loading={loading}
       onEntryPress={onEntryPress}
+      onEditEntry={onEditEntry}
       onSelectEntry={onSelectEntry}
       onCopyPath={onCopyPath}
       onCopyRelativePath={onCopyRelativePath}
@@ -1906,9 +1934,9 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   entriesContent: {
+    // No leading or trailing inset: the tree starts flush under the toolbar
+    // divider and ends flush at the pane edge, the same as the Changes tree.
     flexGrow: 1,
-    paddingTop: theme.spacing[2],
-    paddingBottom: theme.spacing[4],
   },
   rootContextTarget: {
     flex: 1,
@@ -2052,8 +2080,12 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   refreshIcon: {
-    width: 16,
-    height: 16,
+    // Reserves the glyph's slot so the row does not twitch when the spinner swaps in,
+    // which means it has to grow with the glyph: a fixed box left the refresh icon
+    // rendering a compact-sized glyph inside a desktop-sized square, so it read as a
+    // different size from every other button in the toolbar.
+    width: compactUp(16),
+    height: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },

@@ -39,15 +39,17 @@ import {
   CircleX,
   Copy,
   ExternalLink,
-  GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
-  GitPullRequestDraft,
   MessageSquare,
   MessageSquarePlus,
   MoreHorizontal,
   RotateCw,
 } from "@/components/icons/material-icons";
+import {
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
+} from "@/components/icons/lucide";
 import { getForgePresentation } from "@/git/forge";
 import { CLIENT_FORGE_VIEW_MODULES } from "@/git/forges/view";
 import type { PaneNativeContribution } from "@/git/client-forge-module";
@@ -137,15 +139,13 @@ const PR_STATE_PRESENTATION: Record<PrState, PrStatePresentation> = {
 };
 
 const SUMMARY_COMMENT_ICON = (
-  <ThemedMessageSquare size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
+  <ThemedMessageSquare size="xs" uniProps={foregroundMutedColorMapping} />
 );
 const ADD_TO_CHAT_MENU_ICON = (
-  <ThemedMessageSquarePlus size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
+  <ThemedMessageSquarePlus size="sm" uniProps={foregroundMutedColorMapping} />
 );
-const COPY_MENU_ICON = <ThemedCopy size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />;
-const OPEN_MENU_ICON = (
-  <ThemedExternalLink size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
-);
+const COPY_MENU_ICON = <ThemedCopy size="sm" uniProps={foregroundMutedColorMapping} />;
+const OPEN_MENU_ICON = <ThemedExternalLink size="sm" uniProps={foregroundMutedColorMapping} />;
 
 function handleMarkdownLinkPress(url: string): boolean {
   void openExternalUrl(url);
@@ -176,7 +176,7 @@ function refreshButtonStyle({
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
   return (
     <ThemedMoreHorizontal
-      size={ICON_SIZE.sm}
+      size="sm"
       uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
     />
   );
@@ -544,12 +544,9 @@ export function PullRequestPane({
             >
               <View style={styles.refreshIcon}>
                 {isRefreshing ? (
-                  <ThemedLoadingSpinner
-                    size={ICON_SIZE.sm}
-                    uniProps={foregroundMutedColorMapping}
-                  />
+                  <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedColorMapping} />
                 ) : (
-                  <ThemedRotateCw size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
+                  <ThemedRotateCw size="sm" uniProps={foregroundMutedColorMapping} />
                 )}
               </View>
             </Pressable>
@@ -568,7 +565,7 @@ export function PullRequestPane({
                 </Text>
               </Text>
               <View style={styles.metaLine}>
-                <StateIcon size={ICON_SIZE.sm} uniProps={statePresentation.iconColor} />
+                <StateIcon size="sm" uniProps={statePresentation.iconColor} />
                 <Text style={stateLabelStyle(data.state)} testID="pr-pane-state">
                   {getStateLabel(data.state)}
                 </Text>
@@ -579,7 +576,7 @@ export function PullRequestPane({
                   </Text>
                 ) : null}
                 <View style={hovered ? styles.headerLinkIcon : styles.headerLinkIconHidden}>
-                  <ThemedExternalLink size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
+                  <ThemedExternalLink size="xs" uniProps={foregroundMutedColorMapping} />
                 </View>
               </View>
             </>
@@ -721,7 +718,7 @@ function ActivityOrderMenu({
       >
         {({ hovered, open }) => (
           <ThemedArrowDownUp
-            size={ICON_SIZE.xs}
+            size="xs"
             uniProps={hovered || open ? foregroundColorMapping : foregroundMutedColorMapping}
           />
         )}
@@ -928,7 +925,7 @@ function ActivityVerb({ activity }: { activity: PrPaneActivity }) {
   if (activity.kind === "review" && activity.reviewState === "approved") {
     return (
       <View style={styles.verbGroup}>
-        <ThemedCircleCheck size={ICON_SIZE.xs} uniProps={successColorMapping} />
+        <ThemedCircleCheck size="xs" uniProps={successColorMapping} />
         <Text style={styles.verbSuccess}>{verb}</Text>
       </View>
     );
@@ -936,7 +933,7 @@ function ActivityVerb({ activity }: { activity: PrPaneActivity }) {
   if (activity.kind === "review" && activity.reviewState === "changes_requested") {
     return (
       <View style={styles.verbGroup}>
-        <ThemedCircleX size={ICON_SIZE.xs} uniProps={dangerColorMapping} />
+        <ThemedCircleX size="xs" uniProps={dangerColorMapping} />
         <Text style={styles.verbDanger}>{verb}</Text>
       </View>
     );
@@ -1130,7 +1127,7 @@ function ReviewCard({
           ) : null}
           {collapsed ? (
             <View style={styles.threadCount}>
-              <ThemedMessageSquare size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
+              <ThemedMessageSquare size="xs" uniProps={foregroundMutedColorMapping} />
               <Text style={styles.ageText}>{threads.length}</Text>
             </View>
           ) : null}
@@ -1232,7 +1229,7 @@ function ThreadBlock({
         <View style={styles.headerTrailing}>
           {collapsed ? (
             <View style={styles.threadCount}>
-              <ThemedMessageSquare size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
+              <ThemedMessageSquare size="xs" uniProps={foregroundMutedColorMapping} />
               <Text style={styles.ageText}>{thread.comments.length}</Text>
             </View>
           ) : null}

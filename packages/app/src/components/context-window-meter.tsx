@@ -9,11 +9,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useIsCompactFormFactor } from "@/constants/layout";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { useAgentContextUsage } from "@/hooks/use-agent-context-usage";
-import { compactUp, type Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
 import { themeColorRef } from "@/styles/theme-color-ref";
 import type { AgentContextUsage } from "@otto-code/protocol/messages";
 import { formatTokenCount } from "./context-window-meter.utils";
@@ -219,11 +219,12 @@ function ContextWindowMeterInner({
   meterDangerColor,
 }: ContextWindowMeterInnerProps) {
   const { t } = useTranslation();
-  // react-native-svg needs explicit dimensions - unistyles breakpoint styles
-  // don't reach the <svg> element on web, leaving it 0×0. Match compactUp():
-  // doubled on compact form factors.
-  const isCompact = useIsCompactFormFactor();
-  const svgSize = isCompact ? SVG_SIZE * 2 : SVG_SIZE;
+  // react-native-svg needs explicit dimensions - unistyles breakpoint styles don't
+  // reach the <svg> element on web, leaving it 0x0 - so this is one of the few places
+  // that resolves an icon token to a number instead of handing the token to a glyph.
+  // The ring sits in the composer toolbar row and takes that row's size; only the
+  // rendered box changes, the viewBox stays the fixed geometry space below.
+  const svgSize = useIconSize()[COMPOSER_ICON_SIZE];
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const { view: providerUsageView, refresh: refreshProviderUsage } = useProviderUsage(
     serverId ?? null,

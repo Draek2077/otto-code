@@ -306,7 +306,7 @@ function ActiveTeamSwitcher({
       setOpen(false);
       if (id === EDIT_TEAMS_OPTION_ID) {
         onBeforeNavigate?.();
-        router.push(buildSettingsHostSectionRoute(serverId, "agents"));
+        router.push(buildSettingsHostSectionRoute(serverId, "teams"));
         return;
       }
       const nextActiveTeamId = id === NO_TEAM_OPTION_ID ? null : id;

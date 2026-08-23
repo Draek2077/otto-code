@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "expo-router";
-import { ChevronDown, MessageCircle, SquareTerminal } from "@/components/icons/lucide";
+import { ChatBubble, ChevronDown, SquareTerminal } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   DropdownMenu,
@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ProfileIcon } from "@/workspace-pins/launch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ICON_SIZE } from "@/styles/theme";
 import {
   formatResolvedCommand,
   getTerminalProfileIcon,
@@ -32,15 +31,15 @@ import {
   type LaunchTarget,
 } from "./target";
 
-const ThemedMessageCircle = withUnistyles(MessageCircle);
+const ThemedMessageCircle = withUnistyles(ChatBubble);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const extraMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
 
-const chatIcon = <ThemedMessageCircle size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
-const blankTerminalIcon = <ThemedSquareTerminal size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
+const chatIcon = <ThemedMessageCircle size="sm" uniProps={mutedColorMapping} />;
+const blankTerminalIcon = <ThemedSquareTerminal size="sm" uniProps={mutedColorMapping} />;
 
 /** Owns its own leading icon and select callback so neither is rebuilt per render of the menu. */
 function LaunchProfileMenuItem({
@@ -99,12 +98,12 @@ function TriggerIcon({
   profile: TerminalProfile | null;
 }): ReactElement {
   if (target.kind === "chat") {
-    return <ThemedMessageCircle size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
+    return <ThemedMessageCircle size="sm" uniProps={mutedColorMapping} />;
   }
   if (profile) {
     return <ProfileIcon iconKey={getTerminalProfileIcon(profile)} />;
   }
-  return <ThemedSquareTerminal size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
+  return <ThemedSquareTerminal size="sm" uniProps={mutedColorMapping} />;
 }
 
 /**
@@ -174,7 +173,7 @@ export function LaunchControl({
                   <Text style={styles.profileName}> {selectedProfile.name}</Text>
                 ) : null}
               </Text>
-              <ThemedChevronDown size={ICON_SIZE.sm} uniProps={extraMutedColorMapping} />
+              <ThemedChevronDown size="sm" uniProps={extraMutedColorMapping} />
             </DropdownMenuTrigger>
           </View>
         </TooltipTrigger>

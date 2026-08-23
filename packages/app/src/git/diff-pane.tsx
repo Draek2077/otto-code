@@ -40,8 +40,6 @@ import {
   Copy,
   Download,
   FolderTree,
-  GitCommitHorizontal,
-  GitMerge,
   History,
   List,
   ListChevronsDownUp,
@@ -57,6 +55,7 @@ import {
   Upload,
   WrapText,
 } from "@/components/icons/material-icons";
+import { GitCommitHorizontal, GitMerge } from "@/components/icons/lucide";
 import {
   useCheckoutDiffQuery,
   type ParsedDiffFile,
@@ -1162,6 +1161,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
         <DiffStat
           additions={file.additions}
           deletions={file.deletions}
+          style={styles.fileHeaderStat}
           testID={testID ? `${testID}-stat` : undefined}
         />
       </View>
@@ -1472,7 +1472,11 @@ const DIFF_CONTEXT_HISTORY_ICON = (
  * tracked path in the repo, so unlike the Files explorer there is no
  * is-this-a-repo test to make - if the host can answer, the question applies.
  */
-function DiffContextHistoryMenuItem({
+/**
+ * File history is host-gated, and the Changes menu needs to know whether it renders before it can
+ * decide where its section separators land - so availability is a hook, not a self-hiding item.
+ */
+function useDiffContextHistoryAction({
   serverId,
   workspaceId,
   request,
@@ -1480,8 +1484,7 @@ function DiffContextHistoryMenuItem({
   serverId: string;
   workspaceId?: string | null;
   request: DiffContextMenuRequest | null;
-}) {
-  const { t } = useTranslation();
+}): (() => void) | null {
   const supported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitFileHistory === true,
   );
@@ -1494,15 +1497,7 @@ function DiffContextHistoryMenuItem({
   if (!supported || !workspaceId || !request) {
     return null;
   }
-  return (
-    <ContextMenuItem
-      leading={DIFF_CONTEXT_HISTORY_ICON}
-      onSelect={handleSelect}
-      testID="changes-context-menu-git-history"
-    >
-      {t("gitFileHistory.open")}
-    </ContextMenuItem>
-  );
+  return handleSelect;
 }
 const DIFF_CONTEXT_ADD_TO_CONTEXT_ICON = (
   <ThemedPaperclip size="sm" uniProps={foregroundMutedIconColorMapping} />
@@ -3369,14 +3364,19 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     [cwd, serverId, workspaceId],
   );
 
-  // This pane owns only the review slice of the attachment scope: file-context
-  // pills added from this pane's context menu (or the Files/Search panes) must
-  // survive review-snapshot updates and this pane unmounting.
+  // This pane owns only its own review draft's slice of the attachment scope:
+  // file-context pills added from this pane's context menu (or the Files/Search
+  // panes) must survive review-snapshot updates and this pane unmounting - and
+  // so must another surface's review pill. The Search pane writes notes under
+  // its own draft key, and dropping every "review" attachment here would take
+  // that pill with it whenever both panes are mounted.
   useEffect(() => {
     const syncReviewAttachment = (attachment: typeof reviewAttachment) => {
       const store = useWorkspaceAttachmentsStore.getState();
       const current = store.attachmentsByScope[workspaceAttachmentScopeKey] ?? [];
-      const others = current.filter((existing) => existing.kind !== "review");
+      const others = current.filter(
+        (existing) => existing.kind !== "review" || existing.reviewDraftKey !== reviewDraftKey,
+      );
       store.setWorkspaceAttachments({
         scopeKey: workspaceAttachmentScopeKey,
         attachments: attachment ? [...others, attachment] : others,
@@ -3384,7 +3384,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     };
     syncReviewAttachment(reviewAttachment);
     return () => syncReviewAttachment(null);
-  }, [reviewAttachment, workspaceAttachmentScopeKey]);
+  }, [reviewAttachment, reviewDraftKey, workspaceAttachmentScopeKey]);
   const { githubFeaturesEnabled, payloadError: prPayloadError } = useCheckoutPrStatusQuery({
     serverId,
     cwd,
@@ -3985,7 +3985,6 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
 
   // One pane-level context menu serves every file header and diff line
   // (web right-click); per-line menus would be too heavy for large diffs.
-  const canEditFiles = useTextEditorFeature(serverId);
   const [contextMenuRequest, setContextMenuRequest] = useState<DiffContextMenuRequest | null>(null);
 
   const handleShowFileContextMenu = useCallback((input: DiffContextMenuRequest) => {
@@ -4008,36 +4007,6 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       setContextMenuRequest(null);
     }
   }, []);
-
-  const handleContextMenuEdit = useCallback(() => {
-    if (!contextMenuRequest || !onOpenFile) {
-      return;
-    }
-    onOpenFile(contextMenuRequest.path, { edit: true, lineStart: contextMenuRequest.lineStart });
-  }, [contextMenuRequest, onOpenFile]);
-
-  const handleContextMenuCopyPath = useCallback(() => {
-    if (!contextMenuRequest) {
-      return;
-    }
-    void Clipboard.setStringAsync(
-      buildAbsoluteExplorerPath({
-        workspaceRoot: normalizedWorkspaceRoot,
-        entryPath: contextMenuRequest.path,
-      }),
-    );
-  }, [contextMenuRequest, normalizedWorkspaceRoot]);
-
-  const handleContextMenuFindInFiles = useCallback(() => {
-    if (!contextMenuRequest) {
-      return;
-    }
-    // Stash the reveal first so the Files pane finds it on mount, then switch
-    // tabs. The pane expands the parent folders and scrolls the row into view.
-    const { requestFilesReveal, setExplorerTabForCheckout } = usePanelStore.getState();
-    requestFilesReveal(contextMenuRequest.path);
-    setExplorerTabForCheckout({ serverId, cwd, isGit: true, tab: "files" });
-  }, [contextMenuRequest, cwd, serverId]);
 
   const rollback = useDiffRollbackActions({
     serverId,
@@ -4400,40 +4369,121 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
         onOpenChange={handleContextMenuOpenChange}
         anchor={contextMenuRequest}
       >
-        <ContextMenuContent width={220} testID="changes-context-menu">
-          <DiffContextToggleMenuItem toggle={contextAttachmentToggle} />
-          {canEditFiles && onOpenFile ? (
-            <ContextMenuItem
-              leading={DIFF_CONTEXT_EDIT_ICON}
-              onSelect={handleContextMenuEdit}
-              testID="changes-context-menu-edit"
-            >
-              {t("workspace.fileExplorer.context.edit")}
-            </ContextMenuItem>
-          ) : null}
-          <DiffContextHistoryMenuItem
-            serverId={serverId}
-            workspaceId={workspaceId}
-            request={contextMenuRequest}
-          />
-          <ContextMenuItem
-            leading={DIFF_CONTEXT_FIND_IN_FILES_ICON}
-            onSelect={handleContextMenuFindInFiles}
-            testID="changes-context-menu-find-in-files"
-          >
-            {t("workspace.fileExplorer.context.findInFiles")}
-          </ContextMenuItem>
-          <ContextMenuItem
-            leading={DIFF_CONTEXT_COPY_PATH_ICON}
-            onSelect={handleContextMenuCopyPath}
-            testID="changes-context-menu-copy-path"
-          >
-            {t("workspace.fileExplorer.context.copyPath")}
-          </ContextMenuItem>
-          <DiffRollbackMenuItems rollback={rollback} />
-        </ContextMenuContent>
+        <ChangesContextMenuContent
+          serverId={serverId}
+          workspaceId={workspaceId}
+          cwd={cwd}
+          workspaceRoot={normalizedWorkspaceRoot}
+          request={contextMenuRequest}
+          onOpenFile={onOpenFile}
+          toggle={contextAttachmentToggle}
+          rollback={rollback}
+        />
       </ContextMenu>
     </View>
+  );
+}
+
+/**
+ * The pane-level Changes menu. Extracted so its section logic - which separators render, and
+ * whether the host supports editing or file history - stays out of GitDiffPane.
+ */
+function ChangesContextMenuContent({
+  serverId,
+  workspaceId,
+  cwd,
+  workspaceRoot,
+  request,
+  onOpenFile,
+  toggle,
+  rollback,
+}: {
+  serverId: string;
+  workspaceId?: string | null;
+  cwd: string;
+  workspaceRoot: string;
+  request: DiffContextMenuRequest | null;
+  onOpenFile?: (path: string, options?: { edit?: boolean; lineStart?: number }) => void;
+  toggle: DiffContextAttachmentToggle | null;
+  rollback: DiffRollbackActions;
+}) {
+  const { t } = useTranslation();
+  const canEditFiles = useTextEditorFeature(serverId);
+  const historyAction = useDiffContextHistoryAction({ serverId, workspaceId, request });
+
+  const handleEdit = useCallback(() => {
+    if (!request || !onOpenFile) {
+      return;
+    }
+    onOpenFile(request.path, { edit: true, lineStart: request.lineStart });
+  }, [onOpenFile, request]);
+
+  const handleCopyPath = useCallback(() => {
+    if (!request) {
+      return;
+    }
+    void Clipboard.setStringAsync(
+      buildAbsoluteExplorerPath({ workspaceRoot, entryPath: request.path }),
+    );
+  }, [request, workspaceRoot]);
+
+  const handleFindInFiles = useCallback(() => {
+    if (!request) {
+      return;
+    }
+    // Stash the reveal first so the Files pane finds it on mount, then switch
+    // tabs. The pane expands the parent folders and scrolls the row into view.
+    const { requestFilesReveal, setExplorerTabForCheckout } = usePanelStore.getState();
+    requestFilesReveal(request.path);
+    setExplorerTabForCheckout({ serverId, cwd, isGit: true, tab: "files" });
+  }, [cwd, request, serverId]);
+
+  const showEdit = canEditFiles && Boolean(onOpenFile);
+  // Sections match the shared file menu: open/edit, then paths, then sharing, then destructive -
+  // with a separator only between sections that actually rendered.
+  return (
+    <ContextMenuContent width={220} testID="changes-context-menu">
+      {showEdit ? (
+        <ContextMenuItem
+          leading={DIFF_CONTEXT_EDIT_ICON}
+          onSelect={handleEdit}
+          testID="changes-context-menu-edit"
+        >
+          {t("workspace.fileActions.editFile")}
+        </ContextMenuItem>
+      ) : null}
+      {historyAction ? (
+        <ContextMenuItem
+          leading={DIFF_CONTEXT_HISTORY_ICON}
+          onSelect={historyAction}
+          testID="changes-context-menu-git-history"
+        >
+          {t("gitFileHistory.open")}
+        </ContextMenuItem>
+      ) : null}
+      {showEdit || historyAction ? <ContextMenuSeparator /> : null}
+      <ContextMenuItem
+        leading={DIFF_CONTEXT_FIND_IN_FILES_ICON}
+        onSelect={handleFindInFiles}
+        testID="changes-context-menu-find-in-files"
+      >
+        {t("workspace.fileExplorer.context.findInFiles")}
+      </ContextMenuItem>
+      <ContextMenuItem
+        leading={DIFF_CONTEXT_COPY_PATH_ICON}
+        onSelect={handleCopyPath}
+        testID="changes-context-menu-copy-path"
+      >
+        {t("workspace.fileExplorer.context.copyPath")}
+      </ContextMenuItem>
+      {toggle ? (
+        <>
+          <ContextMenuSeparator />
+          <DiffContextToggleMenuItem toggle={toggle} />
+        </>
+      ) : null}
+      <DiffRollbackMenuItems rollback={rollback} />
+    </ContextMenuContent>
   );
 }
 
@@ -4684,6 +4734,12 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
     flexShrink: 0,
+  },
+  // The stat's own 20px height is sized for the sidebar rows it also serves.
+  // Here it must not be the tallest child, or a file row stands taller than the
+  // Files explorer's rows, whose tallest child is the icon frame.
+  fileHeaderStat: {
+    height: WORKSPACE_TREE_ICON_FRAME_SIZE,
   },
   fileIcon: {
     width: WORKSPACE_TREE_ICON_FRAME_SIZE,

@@ -13,12 +13,11 @@ import {
   ChevronDown,
   FileText,
   Folder,
-  GitBranch,
-  GitPullRequest,
   MessageSquarePlus,
   Robot,
   X,
 } from "@/components/icons/material-icons";
+import { GitBranch, GitPullRequest } from "@/components/icons/lucide";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Composer } from "@/composer";
 import { Button } from "@/components/ui/button";
@@ -36,7 +35,7 @@ import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
-import { compactUp, ICON_SIZE, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { resolveSpawnPersonalityId } from "@/composer/draft/workspace-tab-core";
@@ -213,7 +212,7 @@ const chevronExtraMutedMapping = (theme: Theme) => ({ color: theme.colors.foregr
 function MetaChevron(): ReactElement {
   return (
     <View style={styles.chevronContainer}>
-      <ThemedChevronDown size={ICON_SIZE.sm} uniProps={chevronExtraMutedMapping} />
+      <ThemedChevronDown size="sm" uniProps={chevronExtraMutedMapping} />
     </View>
   );
 }
@@ -347,7 +346,7 @@ function ProjectPickerTrigger({
                   iconDataUri={iconDataUri}
                   initial={placeholderInitial}
                   projectViewKey={projectViewKey}
-                  size={ICON_SIZE.md}
+                  size="md"
                   textStyle={styles.projectIconFallbackText}
                 />
               ) : (
@@ -623,7 +622,7 @@ function ProjectOptionItem({
           iconDataUri={iconDataUri}
           initial={placeholderInitial}
           projectViewKey={projectViewKey}
-          size={ICON_SIZE.md}
+          size="md"
           textStyle={styles.projectIconFallbackText}
         />
       </View>

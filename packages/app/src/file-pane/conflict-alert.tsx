@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
-import { AlertTriangle } from "@/components/icons/lucide";
+import type { Theme } from "@/styles/theme";
+import { AlertTriangle } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -24,7 +24,7 @@ export function FileConflictAlert({ state }: { state: FileConflictAlertState }) 
 
   return (
     <View style={styles.container} testID="file-conflict-alert" accessibilityRole="alert">
-      <ThemedAlertTriangle size={ICON_SIZE.sm} uniProps={warningIconMapping} />
+      <ThemedAlertTriangle size="sm" uniProps={warningIconMapping} />
       <View style={styles.message}>
         <Text style={styles.title}>{title}</Text>
         {description ? <Text style={styles.description}>{description}</Text> : null}

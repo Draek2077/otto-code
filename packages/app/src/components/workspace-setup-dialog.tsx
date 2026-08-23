@@ -7,7 +7,6 @@ import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-moda
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
 import { ProjectIconView } from "@/components/project-icon-view";
-import { ICON_SIZE } from "@/styles/theme";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { resolveSpawnPersonalityId } from "@/composer/draft/workspace-tab-core";
@@ -409,7 +408,7 @@ export function WorkspaceSetupDialog() {
           iconDataUri={iconDataUri}
           initial={placeholderInitial}
           projectViewKey={sourceDirectory}
-          size={ICON_SIZE.md}
+          size="md"
           textStyle={styles.projectIconFallbackText}
         />
         <Text style={styles.projectTitle} numberOfLines={1}>

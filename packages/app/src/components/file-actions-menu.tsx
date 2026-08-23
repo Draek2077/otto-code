@@ -6,15 +6,16 @@ import {
   Download,
   FilePlus,
   FileText,
-  FolderMinus,
   FolderOpen,
   FolderPlus,
+  ListChevronsDownUp,
   MessageSquarePlus,
   Pencil,
+  SquarePen,
   Trash2,
-} from "@/components/icons/lucide";
+} from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -30,7 +31,7 @@ interface FileAction {
   icon: IconComponent;
   onSelect: () => void;
   destructive?: boolean;
-  section?: "create" | "edit" | "path" | "sharing" | "destructive";
+  section?: "open" | "create" | "edit" | "path" | "sharing" | "destructive";
   separatorBefore?: boolean;
   testID?: string;
 }
@@ -39,6 +40,8 @@ interface FileActionsContextMenuContentProps {
   fileKind: "file" | "directory";
   fileExists?: boolean;
   onOpenFile?: () => void;
+  /** Opens the file's tab in editor view - the same action the Changes menu offers. */
+  onEditFile?: () => void;
   onCopyPath?: () => void;
   onCopyRelativePath?: () => void;
   onReveal?: () => void;
@@ -64,6 +67,7 @@ export function FileActionsContextMenuContent({
   fileKind,
   fileExists = true,
   onOpenFile,
+  onEditFile,
   onCopyPath,
   onCopyRelativePath,
   onReveal,
@@ -83,6 +87,15 @@ export function FileActionsContextMenuContent({
   const actions = useMemo<FileAction[]>(() => {
     const availableFile = fileKind === "file" && fileExists;
     const specs: Array<FileAction | null> = [
+      availableFile && onOpenFile
+        ? {
+            key: "open-file",
+            label: t("workspace.fileActions.openFile"),
+            icon: FileText,
+            onSelect: onOpenFile,
+            section: "open",
+          }
+        : null,
       onNewFile
         ? {
             key: "new-file",
@@ -105,18 +118,18 @@ export function FileActionsContextMenuContent({
         ? {
             key: "collapse-folder",
             label: t("workspace.fileActions.collapseFolder"),
-            icon: FolderMinus,
+            icon: ListChevronsDownUp,
             onSelect: onCollapseFolder,
             section: "create",
           }
         : null,
-      availableFile && onOpenFile
+      availableFile && onEditFile
         ? {
-            key: "open-file",
-            label: t("workspace.fileActions.openFile"),
-            icon: FileText,
-            onSelect: onOpenFile,
-            section: "create",
+            key: "edit-file",
+            label: t("workspace.fileActions.editFile"),
+            icon: SquarePen,
+            onSelect: onEditFile,
+            section: "edit",
           }
         : null,
       onRename
@@ -212,6 +225,7 @@ export function FileActionsContextMenuContent({
     onDelete,
     onDownload,
     onDuplicate,
+    onEditFile,
     onNewFile,
     onNewFolder,
     onOpenFile,
@@ -252,7 +266,7 @@ function FileActionMenuItem({ action }: { action: FileAction }): ReactElement {
     const ThemedIcon = withUnistyles(action.icon);
     return (
       <ThemedIcon
-        size={ICON_SIZE.sm}
+        size="sm"
         uniProps={action.destructive ? destructiveColorMapping : foregroundMutedColorMapping}
       />
     );

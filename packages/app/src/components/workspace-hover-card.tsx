@@ -21,9 +21,9 @@ import {
   Copy,
   ExternalLink,
   Folder,
-  GitBranch,
   Server,
 } from "@/components/icons/material-icons";
+import { GitBranch } from "@/components/icons/lucide";
 import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import type { Theme } from "@/styles/theme";
 import { DiffStat } from "@/components/diff-stat";
@@ -382,7 +382,9 @@ const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedFolder = withUnistyles(Folder);
 const ThemedServer = withUnistyles(Server);
 
-type CardInfoIcon = React.ComponentType<React.ComponentProps<typeof ThemedGitBranch>>;
+// Derived from a Material glyph, not the lucide branch icon: Material types `color` as
+// `string` where lucide types it as `ColorValue`, so only this direction accepts both.
+type CardInfoIcon = React.ComponentType<React.ComponentProps<typeof ThemedFolder>>;
 
 function HostRow({ serverId }: { serverId: string }): ReactElement | null {
   const hosts = useHosts();

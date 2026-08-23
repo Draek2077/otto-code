@@ -20,21 +20,20 @@ import {
   AlertTriangle,
   Check,
   ChevronRight,
-  Pencil,
   Plus,
   Search,
   Settings,
-} from "@/components/icons/lucide";
+} from "@/components/icons/material-icons";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
+import type { RolePersonality } from "@/provider-selection/role-model-personality";
 import {
-  AgentProfileGlyph,
-  type AgentProfilePicker,
-  type AgentProfilePickerRow as AgentProfilePickerRowModel,
-} from "@/agent-profiles";
+  PersonalitiesSection,
+  type SelectorPersonality,
+} from "@/components/model-selector/selector-content";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 import { getProviderIcon } from "@/components/provider-icons";
 import { BrainModelFamilyIcon } from "@/components/brain/brain-model-family-icon";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -52,7 +51,7 @@ import {
 } from "@/provider-selection/provider-selection";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
 import { useCurrentOverlayLayer } from "@/lib/overlay-root";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 import {
   resolveInitialModelBrowserView,
   resolveModelBrowserAllView,
@@ -68,7 +67,6 @@ const ThemedAlertTriangle = withUnistyles(AlertTriangle);
 const ThemedCheck = withUnistyles(Check);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
-const ThemedPencil = withUnistyles(Pencil);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedSearch = withUnistyles(Search);
 const ThemedSettings = withUnistyles(Settings);
@@ -106,39 +104,12 @@ function ProviderSettingsAction({
   );
 }
 
-function AgentProfilesEditAction({ onPress }: { onPress: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
-      <TooltipTrigger asChild>
-        <Pressable
-          onPress={onPress}
-          hitSlop={8}
-          style={iconButtonStyle}
-          accessibilityRole="button"
-          accessibilityLabel={t("modelSelector.editProfilesLabel")}
-          testID="model-profiles-edit"
-        >
-          <ThemedPencil size={ICON_SIZE.xs} uniProps={foregroundExtraMutedMapping} />
-        </Pressable>
-      </TooltipTrigger>
-      <TooltipContent side="top" align="center" offset={8}>
-        <Text style={styles.tooltipText}>{t("modelSelector.editProfilesLabel")}</Text>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 const IndependentScrollGestureContext = createContext<ReturnType<typeof Gesture.Native> | null>(
   null,
 );
 
 const foregroundMutedMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
-});
-
-const foregroundExtraMutedMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundExtraMuted,
 });
 
 const headerSettingsMapping = (disabled: boolean) => (theme: Theme) => ({
@@ -151,7 +122,7 @@ interface ModelBrowserInput {
   selectedModel: string;
   isLoading: boolean;
   /** Pinned above the provider list on the root view. `null` hides the section. */
-  profiles?: AgentProfilePicker | null;
+  personality?: RolePersonality | null;
   serverId?: string | null;
 }
 
@@ -159,7 +130,7 @@ export interface ModelBrowserState {
   providers: ProviderSelectorProvider[];
   selectedProvider: string;
   selectedModel: string;
-  profiles: AgentProfilePicker | null;
+  personality: RolePersonality | null;
   view: ModelBrowserView;
   searchQuery: string;
   header: SheetHeader;
@@ -175,8 +146,9 @@ export interface ModelBrowserState {
 interface ModelBrowserProps {
   state: ModelBrowserState;
   onSelect: (provider: string, modelId: string) => void;
-  /** Applying a profile resolves the pick and dismisses, exactly like a model row. */
-  onApplyProfile?: (profileId: string) => void;
+  /** Picking a Personality resolves the pick and dismisses, exactly like a model row. */
+  onSelectPersonality?: (id: string) => void;
+  onClearPersonality?: () => void;
   onEditProfiles?: () => void;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider?: boolean;
@@ -189,7 +161,7 @@ interface ModelBrowserContentProps extends Omit<ModelBrowserProps, "state" | "sc
   selectedProvider: string;
   selectedModel: string;
   searchQuery: string;
-  profiles: AgentProfilePicker | null;
+  personality: RolePersonality | null;
   onDrillDown: (providerId: string, providerLabel: string) => void;
   scrolling: "sheet" | "independent";
 }
@@ -202,7 +174,7 @@ export function ModelProviderGlyph({
   tone = "muted",
 }: {
   provider: string;
-  size: number;
+  size: IconSizeProp;
   tone?: ProviderGlyphTone;
 }) {
   const Icon = getProviderIcon(provider);
@@ -213,7 +185,7 @@ export function ModelProviderGlyph({
 
 function HeaderSettingsIcon({ disabled }: { disabled: boolean }) {
   const uniProps = useMemo(() => headerSettingsMapping(disabled), [disabled]);
-  return <ThemedSettings size={ICON_SIZE.sm} uniProps={uniProps} />;
+  return <ThemedSettings size="sm" uniProps={uniProps} />;
 }
 
 function iconButtonStyle({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) {
@@ -251,14 +223,14 @@ export function useModelBrowser({
   selectedProvider,
   selectedModel,
   isLoading,
-  profiles = null,
+  personality = null,
   serverId = null,
 }: ModelBrowserInput): ModelBrowserState {
   const { t } = useTranslation();
   const [view, setView] = useState<ModelBrowserView>({ kind: "all" });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
-  const hasProfiles = (profiles?.rows.length ?? 0) > 0;
+  const hasProfiles = (personality?.personalities?.length ?? 0) > 0;
 
   const initialView = useMemo(
     () =>
@@ -313,9 +285,7 @@ export function useModelBrowser({
     }
     return {
       title: view.providerLabel,
-      leading: (
-        <ModelProviderGlyph provider={view.providerId} size={ICON_SIZE.md} tone="foreground" />
-      ),
+      leading: <ModelProviderGlyph provider={view.providerId} size="md" tone="foreground" />,
       back: singleProviderView ? undefined : { onPress: handleBackToAll },
       actions: (
         <View style={styles.headerActionRow}>
@@ -373,7 +343,7 @@ export function useModelBrowser({
     providers,
     selectedProvider,
     selectedModel,
-    profiles,
+    personality,
     view,
     searchQuery,
     header,
@@ -566,9 +536,7 @@ function ModelBrowserRow({
           <View style={styles.browserRowTrailing}>
             {selectionIndicator ? (
               <View style={styles.browserRowSelection}>
-                {selected ? (
-                  <ThemedCheck size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
-                ) : null}
+                {selected ? <ThemedCheck size="sm" uniProps={foregroundMutedMapping} /> : null}
               </View>
             ) : null}
             {trailingSlot}
@@ -602,9 +570,9 @@ function ModelRow({
   const leadingSlot = useMemo(
     () =>
       row.provider === "otto-brain" && row.family ? (
-        <ThemedBrainModelFamilyIcon family={row.family} size={ICON_SIZE.sm} />
+        <ThemedBrainModelFamilyIcon family={row.family} size="sm" />
       ) : (
-        <ModelProviderGlyph provider={row.provider} size={ICON_SIZE.sm} />
+        <ModelProviderGlyph provider={row.provider} size="sm" />
       ),
     [row.family, row.provider],
   );
@@ -648,63 +616,34 @@ function SelectableModelRow({
   );
 }
 
-function AgentProfilePickerRowView({
-  row,
-  onApply,
-}: {
-  row: AgentProfilePickerRowModel;
-  onApply: (profileId: string) => void;
-}) {
-  const handlePress = useCallback(() => onApply(row.id), [onApply, row.id]);
-  const leadingSlot = useMemo(
-    () => <AgentProfileGlyph icon={row.icon} color={row.color} size={ICON_SIZE.sm} />,
-    [row.color, row.icon],
-  );
-  return (
-    <ModelBrowserRow
-      label={row.name}
-      description={row.summary}
-      tone="elevated"
-      onPress={handlePress}
-      leadingSlot={leadingSlot}
-      testID={`model-profile-row-${row.id}`}
-    />
-  );
-}
-
 /**
- * Pinned above the provider list. Rows are actions, not selections: applying a
- * profile writes its values into the composer and nothing stays bound to it, so
- * there is no checkmark and no active row to show.
+ * Pinned above the provider list. This is the same Personalities section the
+ * desktop picker draws, so the two surfaces cannot drift on label, colour, or
+ * selected-row behaviour.
  */
-function AgentProfilesPickerSection({
+function PersonalityPickerContent({
   rows,
-  onApplyProfile,
+  selectedPersonalityId,
+  onSelectPersonality,
+  onClearPersonality,
   onEditProfiles,
 }: {
-  rows: AgentProfilePickerRowModel[];
-  onApplyProfile?: (profileId: string) => void;
+  rows: SelectorPersonality[] | undefined;
+  selectedPersonalityId: string | null;
+  onSelectPersonality?: (id: string) => void;
+  onClearPersonality?: () => void;
   onEditProfiles?: () => void;
 }) {
-  const { t } = useTranslation();
-  const handleApply = useCallback(
-    (profileId: string) => onApplyProfile?.(profileId),
-    [onApplyProfile],
-  );
+  if (!rows || rows.length === 0) {
+    return onEditProfiles ? <CreateAgentProfileRow onPress={onEditProfiles} /> : null;
+  }
   return (
-    <View style={styles.profilesContainer}>
-      <View style={styles.sectionHeading}>
-        <Text style={styles.sectionHeadingText}>{t("modelSelector.profiles")}</Text>
-        {onEditProfiles ? (
-          <View style={styles.sectionHeadingAction}>
-            <AgentProfilesEditAction onPress={onEditProfiles} />
-          </View>
-        ) : null}
-      </View>
-      {rows.map((row) => (
-        <AgentProfilePickerRowView key={row.id} row={row} onApply={handleApply} />
-      ))}
-    </View>
+    <PersonalitiesSection
+      personalities={rows}
+      selectedPersonalityId={selectedPersonalityId}
+      onSelectPersonality={onSelectPersonality}
+      onClearPersonality={onClearPersonality}
+    />
   );
 }
 
@@ -713,7 +652,7 @@ function CreateAgentProfileRow({ onPress }: { onPress: () => void }) {
   const leadingSlot = useMemo(
     () => (
       <View testID="model-profiles-create-icon">
-        <ThemedPlus size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+        <ThemedPlus size="sm" uniProps={foregroundMutedMapping} />
       </View>
     ),
     [],
@@ -725,27 +664,6 @@ function CreateAgentProfileRow({ onPress }: { onPress: () => void }) {
       leadingSlot={leadingSlot}
       onPress={onPress}
       testID="model-profiles-empty"
-    />
-  );
-}
-
-function AgentProfilesPickerContent({
-  rows,
-  onApplyProfile,
-  onEditProfiles,
-}: {
-  rows: AgentProfilePickerRowModel[];
-  onApplyProfile?: (profileId: string) => void;
-  onEditProfiles?: () => void;
-}) {
-  if (rows.length === 0) {
-    return onEditProfiles ? <CreateAgentProfileRow onPress={onEditProfiles} /> : null;
-  }
-  return (
-    <AgentProfilesPickerSection
-      rows={rows}
-      onApplyProfile={onApplyProfile}
-      onEditProfiles={onEditProfiles}
     />
   );
 }
@@ -778,7 +696,7 @@ function GroupProviderButton({
       return (
         <View style={styles.rowStateInline}>
           <View style={styles.rowSpinner}>
-            <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+            <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
           </View>
           <Text style={styles.drillDownCount}>{t("modelSelector.loadingShort")}</Text>
         </View>
@@ -786,20 +704,20 @@ function GroupProviderButton({
     }
     return (
       <View style={styles.rowStateInline}>
-        <ThemedAlertTriangle size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+        <ThemedAlertTriangle size="sm" uniProps={foregroundMutedMapping} />
         <Text style={styles.drillDownCount}>{t("modelSelector.error")}</Text>
       </View>
     );
   }, [selection, t]);
   const leadingSlot = useMemo(
-    () => <ModelProviderGlyph provider={provider.id} size={ICON_SIZE.sm} />,
+    () => <ModelProviderGlyph provider={provider.id} size="sm" />,
     [provider.id],
   );
   const trailingSlot = useMemo(
     () => (
       <View style={styles.drillDownTrailing}>
         {stateNode}
-        <ThemedChevronRight size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+        <ThemedChevronRight size="sm" uniProps={foregroundMutedMapping} />
       </View>
     ),
     [stateNode],
@@ -994,7 +912,7 @@ function ProviderErrorEmptyState({
   }, [onRetryProvider, providerId]);
   return (
     <View style={styles.emptyState}>
-      <ThemedAlertTriangle size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+      <ThemedAlertTriangle size="md" uniProps={foregroundMutedMapping} />
       <Text style={styles.emptyStateText}>{presentedMessage}</Text>
       {onRetryProvider ? (
         <Button variant="default" size="sm" onPress={handleRetry} disabled={isRetryingProvider}>
@@ -1009,7 +927,7 @@ function ModelSearchEmptyState() {
   const { t } = useTranslation();
   return (
     <View style={styles.emptyState}>
-      <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+      <ThemedSearch size="md" uniProps={foregroundMutedMapping} />
       <Text style={styles.emptyStateText}>{t("modelSelector.noMatches")}</Text>
     </View>
   );
@@ -1018,12 +936,13 @@ function ModelSearchEmptyState() {
 function ProviderModelBrowserContent({
   view,
   provider,
-  profiles,
+  personality,
   selectedProvider,
   selectedModel,
   normalizedQuery,
   onSelect,
-  onApplyProfile,
+  onSelectPersonality,
+  onClearPersonality,
   onEditProfiles,
   onRetryProvider,
   isRetryingProvider,
@@ -1031,12 +950,13 @@ function ProviderModelBrowserContent({
 }: {
   view: Extract<ModelBrowserView, { kind: "provider" }>;
   provider: ProviderSelectorProvider | null;
-  profiles: AgentProfilePicker | null;
+  personality: RolePersonality | null;
   selectedProvider: string;
   selectedModel: string;
   normalizedQuery: string;
   onSelect: (provider: string, modelId: string) => void;
-  onApplyProfile?: (profileId: string) => void;
+  onSelectPersonality?: (id: string) => void;
+  onClearPersonality?: () => void;
   onEditProfiles?: () => void;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
@@ -1047,20 +967,31 @@ function ProviderModelBrowserContent({
     () => (provider ? filterAndRankModelRows(getProviderModelRows(provider), normalizedQuery) : []),
     [normalizedQuery, provider],
   );
-  const providerProfileRows = useMemo(
-    () => profiles?.rows.filter((row) => row.provider === view.providerId) ?? [],
-    [profiles, view.providerId],
+  // The family view lists only this provider Personalities: a running agent is
+  // one provider process, and the draft form drills in per family.
+  const providerPersonalityRows = useMemo(
+    () => personality?.personalities?.filter((row) => row.provider === view.providerId) ?? [],
+    [personality, view.providerId],
   );
   const profileHeader = useMemo(
     () =>
-      normalizedQuery.length === 0 && profiles ? (
-        <AgentProfilesPickerContent
-          rows={providerProfileRows}
-          onApplyProfile={onApplyProfile}
+      normalizedQuery.length === 0 && personality ? (
+        <PersonalityPickerContent
+          rows={providerPersonalityRows}
+          selectedPersonalityId={personality.selectedPersonalityId}
+          onSelectPersonality={onSelectPersonality}
+          onClearPersonality={onClearPersonality}
           onEditProfiles={onEditProfiles}
         />
       ) : undefined,
-    [normalizedQuery, onApplyProfile, onEditProfiles, profiles, providerProfileRows],
+    [
+      normalizedQuery,
+      onClearPersonality,
+      onEditProfiles,
+      onSelectPersonality,
+      personality,
+      providerPersonalityRows,
+    ],
   );
 
   if (!provider) return <ModelSearchEmptyState />;
@@ -1069,7 +1000,7 @@ function ProviderModelBrowserContent({
     return (
       <View style={styles.emptyState}>
         <View style={styles.rowSpinner}>
-          <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+          <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
         </View>
         <Text style={styles.emptyStateText}>{t("modelSelector.loadingShort")}</Text>
       </View>
@@ -1107,9 +1038,10 @@ function ModelBrowserContent({
   selectedProvider,
   selectedModel,
   searchQuery,
-  profiles,
+  personality,
   onSelect,
-  onApplyProfile,
+  onSelectPersonality,
+  onClearPersonality,
   onEditProfiles,
   onDrillDown,
   onRetryProvider,
@@ -1129,19 +1061,20 @@ function ModelBrowserContent({
     () => resolveModelBrowserAllView({ providers, normalizedQuery }),
     [normalizedQuery, providers],
   );
-  const hasResults = profiles !== null || providers.length > 0;
+  const hasResults = personality !== null || providers.length > 0;
 
   if (view.kind === "provider") {
     return (
       <ProviderModelBrowserContent
         view={view}
         provider={selectedViewProvider}
-        profiles={profiles}
+        personality={personality}
         selectedProvider={selectedProvider}
         selectedModel={selectedModel}
         normalizedQuery={normalizedQuery}
         onSelect={onSelect}
-        onApplyProfile={onApplyProfile}
+        onSelectPersonality={onSelectPersonality}
+        onClearPersonality={onClearPersonality}
         onEditProfiles={onEditProfiles}
         onRetryProvider={onRetryProvider}
         isRetryingProvider={isRetryingProvider}
@@ -1153,7 +1086,7 @@ function ModelBrowserContent({
   if (allView.kind === "noSearchMatches") {
     return (
       <View style={styles.emptyState} testID="model-search-empty">
-        <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+        <ThemedSearch size="md" uniProps={foregroundMutedMapping} />
         <Text style={styles.emptyStateText}>
           {t("modelSelector.noMatchesForQuery", { query: searchQuery.trim() })}
         </Text>
@@ -1176,16 +1109,18 @@ function ModelBrowserContent({
 
   const allProvidersContent = (
     <View>
-      {profiles ? (
-        <AgentProfilesPickerContent
-          rows={profiles.rows}
-          onApplyProfile={onApplyProfile}
+      {personality ? (
+        <PersonalityPickerContent
+          rows={personality.personalities}
+          selectedPersonalityId={personality.selectedPersonalityId}
+          onSelectPersonality={onSelectPersonality}
+          onClearPersonality={onClearPersonality}
           onEditProfiles={onEditProfiles}
         />
       ) : null}
       {providers.length > 0 ? (
         <View>
-          {profiles ? (
+          {personality ? (
             <View style={styles.sectionHeading}>
               <Text style={styles.sectionHeadingText}>{t("modelSelector.providers")}</Text>
             </View>
@@ -1207,7 +1142,8 @@ function ModelBrowserContent({
 export function ModelBrowser({
   state,
   onSelect,
-  onApplyProfile,
+  onSelectPersonality,
+  onClearPersonality,
   onEditProfiles,
   onRetryProvider,
   isRetryingProvider = false,
@@ -1220,9 +1156,10 @@ export function ModelBrowser({
       selectedProvider={state.selectedProvider}
       selectedModel={state.selectedModel}
       searchQuery={state.searchQuery}
-      profiles={state.profiles}
+      personality={state.personality}
       onSelect={onSelect}
-      onApplyProfile={onApplyProfile}
+      onSelectPersonality={onSelectPersonality}
+      onClearPersonality={onClearPersonality}
       onEditProfiles={onEditProfiles}
       onDrillDown={state.drillDown}
       onRetryProvider={onRetryProvider}

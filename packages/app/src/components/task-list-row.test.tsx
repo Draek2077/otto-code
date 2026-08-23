@@ -46,10 +46,10 @@ vi.mock("react-native-unistyles", () => ({
     },
 }));
 
-// The row imports its glyphs from the wrapped barrel, so that is what gets mocked, and the
-// stub set is derived from the barrel's own exports rather than hand-listed - a named mock
-// goes stale the moment the row reaches for another icon.
-vi.mock("@/components/icons/lucide", async (importOriginal) => {
+// The row imports its glyphs from the Material Symbols barrel, so that is what gets mocked,
+// and the stub set is derived from the barrel's own exports rather than hand-listed - a named
+// mock goes stale the moment the row reaches for another icon.
+vi.mock("@/components/icons/material-icons", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   const createIcon = (name: string) => (props: Record<string, unknown>) =>
     React.createElement("span", { ...props, "data-icon": name });

@@ -1,6 +1,9 @@
+import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
+import { ICON_SIZE } from "@/styles/theme";
+import { ACP_PROVIDER_CATALOG } from "@/data/acp-provider-catalog";
+import { getProviderIcon, getProviderIconSvg, PROVIDER_BRAIN_VIEW_BOX } from "./provider-icons";
 import { MATERIAL_SYMBOL_SVGS } from "@/assets/material-symbol-icons";
-import { getProviderIconSvg, PROVIDER_BRAIN_VIEW_BOX } from "./provider-icons";
 
 /**
  * The provider-sized brain, pinned to the glyph's ink.
@@ -116,5 +119,67 @@ describe("provider-sized brain icon", () => {
     // draw the base glyph and stay optically aligned with the other Material
     // Symbols around them.
     expect(MATERIAL_SYMBOL_SVGS.Brain).not.toContain(PROVIDER_BRAIN_VIEW_BOX);
+  });
+});
+
+// The composer's model chip hands its leading icon a STRING size token
+// (`size="md"`), and every provider mark that flows through `getProviderIcon`
+// must accept one. A token that reaches the raw `<svg width=... height=...>`
+// attributes is an invalid size the browser silently drops - the SVG then
+// renders at its default (viewport) size, which is the giant brain mark the
+// chip showed. These tests render the component as a plain function, the same
+// way `icon-size.test.tsx` does, so they pin the wrapper contract without a DOM.
+
+function invoke(icon: ReturnType<typeof getProviderIcon>, props: { size?: number | string }) {
+  return (icon as unknown as (p: { size?: number | string }) => ReactElement)(props);
+}
+
+function sizePropOf(element: ReactElement): { size?: unknown; uniProps?: unknown } {
+  return element.props as { size?: unknown; uniProps?: unknown };
+}
+
+function resolvesToPixels(element: ReactElement, expected: number) {
+  const { size, uniProps } = sizePropOf(element);
+  if (uniProps) {
+    // Token path: the mapping must exist and resolve to a number for a real theme.
+    expect(typeof uniProps).toBe("function");
+    expect(
+      (uniProps as (t: { iconSize: Record<string, number> }) => { size: number })({
+        iconSize: ICON_SIZE,
+      }),
+    ).toEqual({
+      size: expected,
+    });
+  } else {
+    // Numeric path: a number goes straight to the SVG, unscaled.
+    expect(size).toBe(expected);
+  }
+}
+
+describe("provider icon size tokens", () => {
+  it("brain mark: a token resolves to pixels, never a string width", () => {
+    resolvesToPixels(invoke(getProviderIcon("otto-brain"), { size: "md" }), ICON_SIZE.md);
+    // And a number keeps its exact pixels, so the chip's neighboring
+    // numeric-sized call sites are untouched.
+    resolvesToPixels(invoke(getProviderIcon("otto-brain"), { size: 20 }), 20);
+  });
+
+  it("every catalog mark with its own SVG resolves tokens the same way", () => {
+    for (const entry of ACP_PROVIDER_CATALOG) {
+      if (!entry.iconSvg) continue;
+      const element = invoke(getProviderIcon(entry.id), { size: "md" });
+      const { size, uniProps } = sizePropOf(element);
+      if (uniProps !== undefined) {
+        expect(
+          (uniProps as (t: { iconSize: Record<string, number> }) => { size: number })({
+            iconSize: ICON_SIZE,
+          }),
+        ).toEqual({ size: ICON_SIZE.md });
+      } else {
+        // A numeric `size` on the element means it went straight to the SVG
+        // unwrapped - the exact defect the brain mark had.
+        expect(typeof size).toBe("number");
+      }
+    }
   });
 });

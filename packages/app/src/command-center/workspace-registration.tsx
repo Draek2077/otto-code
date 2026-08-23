@@ -1,6 +1,12 @@
 import { useMemo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Columns2, Globe, Rows2, SquarePen, SquareTerminal } from "@/components/icons/lucide";
+import {
+  Columns2,
+  Globe,
+  Rows2,
+  SquarePen,
+  SquareTerminal,
+} from "@/components/icons/material-icons";
 import { getIsElectron } from "@/constants/platform";
 import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";
 import { GIT_ACTION_ICONS } from "@/git/action-icons";

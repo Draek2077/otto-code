@@ -1811,10 +1811,13 @@ function ActiveAgentComposer({
   const isBlackChat = useBlackChatScope();
   const insets = useSafeAreaInsets();
   const isCompactFormFactor = useIsCompactFormFactor();
-  const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
-    COMPACT_FORM_FACTOR_WIDTH,
-    { initialIsBelow: isCompactFormFactor },
-  );
+  // The composer row degrades one control at a time from its own measurements
+  // (see composer/input/toolbar-stage.ts), so pane width must not flip the whole
+  // control group to the mobile surface at a 500px cliff. Only a real compact
+  // form factor selects that branch now.
+  const { onLayout: onInputAreaLayout } = useContainerWidthBelow(COMPACT_FORM_FACTOR_WIDTH, {
+    initialIsBelow: isCompactFormFactor,
+  });
   const paneContext = usePaneContext();
   const { workspaceId, tabId, retargetCurrentTab } = paneContext;
   const { archiveAgent } = useArchiveAgent();
@@ -2103,7 +2106,6 @@ function ActiveAgentComposer({
             onComposerHeightChange={onComposerHeightChange}
             onMessageSent={onMessageSent}
             onClientSlashCommand={handleClientSlashCommand}
-            isCompactLayout={isCompactComposerLayout}
             viewportHeight={viewportHeight}
           />
         </View>

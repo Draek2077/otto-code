@@ -4,11 +4,11 @@ import {
   CircleDot,
   FileText,
   Folder,
-  GitPullRequest,
   MessageSquareCode,
   MousePointer2,
   SpeakerNotes,
 } from "@/components/icons/material-icons";
+import { GitPullRequest } from "@/components/icons/lucide";
 import { withUnistyles } from "react-native-unistyles";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";

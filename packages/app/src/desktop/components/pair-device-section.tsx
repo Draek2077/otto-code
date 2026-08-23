@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import * as QRCode from "qrcode";
 import { SvgXml } from "react-native-svg";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Copy, Network, RotateCw, ShieldCheck } from "@/components/icons/lucide";
+import { Check, Copy, Network, RotateCw, ShieldCheck } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/ui/alert";

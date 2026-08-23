@@ -384,7 +384,15 @@ function SheetContent({
   );
 }
 
-function BottomSheetVisibleContent({ children }: { children: ReactNode }) {
+/**
+ * Clamp a sheet's content column to the height actually on screen at the resting detent.
+ *
+ * gorhom sizes the column for the HIGHEST snap point, so a sheet resting at a lower one
+ * has its tail rendered past the bottom of the screen where no amount of scrolling
+ * reaches it. Any multi-detent sheet whose body scrolls needs this wrapper, not just the
+ * ones that happen to carry a footer.
+ */
+export function BottomSheetVisibleContent({ children }: { children: ReactNode }) {
   const { animatedDetentsState, animatedKeyboardState, animatedLayoutState, animatedPosition } =
     useBottomSheetInternal();
   const visibleContentStyle = useAnimatedStyle(() => {

@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 
 export type AssistantForkTarget = "tab" | "workspace";
 
@@ -69,10 +69,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
     [t],
   );
 
-  const forkIcon = useMemo(
-    () => <ThemedSplit size={ICON_SIZE.sm} uniProps={foregroundColorMapping} />,
-    [],
-  );
+  const forkIcon = useMemo(() => <ThemedSplit size="sm" uniProps={foregroundColorMapping} />, []);
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
@@ -88,7 +85,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
             >
               {({ hovered, open }) => (
                 <ThemedSplit
-                  size={ICON_SIZE.sm}
+                  size="sm"
                   uniProps={hovered || open ? foregroundColorMapping : foregroundMutedColorMapping}
                 />
               )}

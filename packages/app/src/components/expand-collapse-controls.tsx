@@ -12,6 +12,11 @@ const mutedColor = (theme: { colors: { foregroundMuted: string } }) => ({
   color: theme.colors.foregroundMuted,
 });
 
+// `chromeSm`, not `sm`: these ride along a transcript row that is already dense with
+// text, and the ordinary ladder's doubling turns a quiet affordance into the loudest
+// thing in the row on a phone. Same desktop pixels either way - only the compact
+// factor differs (1.5 rather than 2).
+
 export function ExpandCollapseControls({
   onExpand,
   onCollapse,
@@ -57,7 +62,7 @@ export function ExpandCollapseControls({
         style={styles.button}
         testID="expand-all-control"
       >
-        <ThemedExpandIcon size="sm" uniProps={mutedColor} />
+        <ThemedExpandIcon size="chromeSm" uniProps={mutedColor} />
       </Pressable>
       <Pressable
         accessibilityRole={isNative ? "button" : undefined}
@@ -67,7 +72,7 @@ export function ExpandCollapseControls({
         style={styles.button}
         testID="collapse-all-control"
       >
-        <ThemedCollapseIcon size="sm" uniProps={mutedColor} />
+        <ThemedCollapseIcon size="chromeSm" uniProps={mutedColor} />
       </Pressable>
     </View>
   );

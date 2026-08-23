@@ -366,7 +366,7 @@ export function EntryContextMenu({
             ) : null}
             {entry.kind === "file" && onEditEntry ? (
               <ContextMenuItem leading={editLeading} onSelect={handleEdit}>
-                {t("workspace.fileExplorer.context.edit")}
+                {t("workspace.fileActions.editFile")}
               </ContextMenuItem>
             ) : null}
             {entry.kind === "file" && onShowHistory ? (

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderOpen } from "@/components/icons/lucide";
+import { FolderOpen } from "@/components/icons/material-icons";
 import { withUnistyles } from "react-native-unistyles";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ContextMenuItem } from "@/components/ui/context-menu";
