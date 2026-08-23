@@ -1,3 +1,4 @@
+import { withIconSizeToken } from "@/components/icons/icon-size";
 import Svg, { Path } from "react-native-svg";
 
 interface CopilotIconProps {
@@ -5,7 +6,7 @@ interface CopilotIconProps {
   color?: string;
 }
 
-export function CopilotIcon({ size = 16, color = "currentColor" }: CopilotIconProps) {
+function CopilotIconBase({ size = 16, color = "currentColor" }: CopilotIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 512 416" fill={color}>
       <Path
@@ -16,3 +17,5 @@ export function CopilotIcon({ size = 16, color = "currentColor" }: CopilotIconPr
     </Svg>
   );
 }
+
+export const CopilotIcon = withIconSizeToken(CopilotIconBase, "CopilotIcon");

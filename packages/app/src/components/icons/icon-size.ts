@@ -105,3 +105,23 @@ export function withIconSizeToken<P extends { size?: number }>(
   TokenSizedIcon.displayName = displayName;
   return TokenSizedIcon;
 }
+
+/** Every token, in ramp order. */
+export const ICON_SIZE_TOKENS = Object.keys(SIZE_UNIPROPS) as readonly IconSizeToken[];
+
+export function isIconSizeToken(value: unknown): value is IconSizeToken {
+  return typeof value === "string" && value in SIZE_UNIPROPS;
+}
+
+/**
+ * The stable `uniProps` mapping for a token, for components that cannot take
+ * {@link withIconSizeToken} because `size` already means something else to them.
+ *
+ * The loading spinner is the case this exists for: it is an `ActivityIndicator`, whose
+ * `size` is React Native's own `"small" | "large" | number`, and it already carries a
+ * `uniProps` mapping for the accent colour. It composes this into that mapping rather
+ * than being wrapped a second time.
+ */
+export function iconSizeUniProps(token: IconSizeToken): (theme: Theme) => { size: number } {
+  return SIZE_UNIPROPS[token];
+}

@@ -27,7 +27,7 @@ import {
   Trash2,
 } from "@/components/icons/material-icons";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
-import { compactUp, useIconSize } from "@/styles/theme";
+import { compactUp } from "@/styles/theme";
 import { TREE_RAILS_ALL_CONTINUE, withTreeRail } from "@/components/tree-rail-mask";
 import { ExplorerEntry } from "@/stores/session-store";
 import { useDownloadStore } from "@/stores/download-store";
@@ -115,16 +115,15 @@ export function hasEntryBottomActions(
  */
 function useEntryMutationHandlers({ entry, onRename, onDelete }: EntryMutationItemsProps) {
   const { theme } = useUnistyles();
-  const iconSize = useIconSize();
   const handleRename = useCallback(() => onRename?.(entry), [entry, onRename]);
   const handleDelete = useCallback(() => onDelete?.(entry), [entry, onDelete]);
   const renameLeading = useMemo(
-    () => <Pencil size={iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [iconSize.sm, theme.colors.foregroundMuted],
+    () => <Pencil size="sm" color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
   );
   const deleteLeading = useMemo(
-    () => <Trash2 size={iconSize.sm} color={theme.colors.destructive} />,
-    [iconSize.sm, theme.colors.destructive],
+    () => <Trash2 size="sm" color={theme.colors.destructive} />,
+    [theme.colors.destructive],
   );
   return {
     handleRename,
@@ -269,7 +268,6 @@ export function EntryContextMenu({
 }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const entry = request?.entry ?? null;
 
   const handleToggleContext = useCallback(() => {
@@ -294,28 +292,28 @@ export function EntryContextMenu({
     if (entry) onDownloadEntry(entry);
   }, [entry, onDownloadEntry]);
   const contextLeading = useMemo(
-    () => <Paperclip size={iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [iconSize.sm, theme.colors.foregroundMuted],
+    () => <Paperclip size="sm" color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
   );
   const editLeading = useMemo(
-    () => <SquarePen size={iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [iconSize.sm, theme.colors.foregroundMuted],
+    () => <SquarePen size="sm" color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
   );
   const copyLeading = useMemo(
-    () => <Copy size={iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [iconSize.sm, theme.colors.foregroundMuted],
+    () => <Copy size="sm" color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
   );
   const downloadLeading = useMemo(
-    () => <Download size={iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [iconSize.sm, theme.colors.foregroundMuted],
+    () => <Download size="sm" color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
   );
   const historyLeading = useMemo(
-    () => <History size={iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [iconSize.sm, theme.colors.foregroundMuted],
+    () => <History size="sm" color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
   );
   const changesLeading = useMemo(
-    () => <SourceControlPanelIcon size={iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [iconSize.sm, theme.colors.foregroundMuted],
+    () => <SourceControlPanelIcon size="sm" color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
   );
 
   return (
@@ -480,7 +478,6 @@ export function ExplorerLensSwitcher({
 }) {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const iconSize = useIconSize();
 
   const selectFiles = useCallback(() => onSelectViewMode("files"), [onSelectViewMode]);
 
@@ -500,7 +497,7 @@ export function ExplorerLensSwitcher({
         <Text style={styles.sortTriggerText} numberOfLines={1}>
           {label}
         </Text>
-        <ChevronDown size={iconSize.xs} color={theme.colors.foregroundMuted} />
+        <ChevronDown size="xs" color={theme.colors.foregroundMuted} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" width={240}>
         <DropdownMenuItem onSelect={selectFiles} testID="explorer-lens-files">

@@ -9,7 +9,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
-import { compactUp, ICON_SIZE, useIconSize, type Theme } from "@/styles/theme";
+import { compactUp, ICON_SIZE, type Theme } from "@/styles/theme";
 import { Combobox, type ComboboxOption, type ComboboxProps } from "@/components/ui/combobox";
 import {
   buildSelectedTriggerLabel,
@@ -152,7 +152,6 @@ export function CombinedModelSelector({
   // Live icon size - the static ICON_SIZE import never sees the compact
   // doubling, which would leave this trigger's glyph half the size of the
   // neighboring mode/effort chip icons on compact breakpoints.
-  const iconSize = useIconSize();
   const [isOpen, setIsOpen] = useState(false);
   const [isContentReady, setIsContentReady] = useState(platformIsWeb);
   const [view, setView] = useState<SelectorView>({ kind: "all" });
@@ -598,12 +597,12 @@ export function CombinedModelSelector({
           testID="combined-model-selector"
         >
           {triggerLoading ? (
-            <ThemedLoadingSpinner size={iconSize.md} uniProps={foregroundMutedMapping} />
+            <ThemedLoadingSpinner size="md" uniProps={foregroundMutedMapping} />
           ) : (
             <TriggerLeadingIcon
               personality={selectedPersonality}
               provider={hasSelectedProvider ? selectedProvider : null}
-              size={iconSize.md}
+              size="md"
             />
           )}
           <Text style={triggerTextStyle} numberOfLines={1} ellipsizeMode="tail">

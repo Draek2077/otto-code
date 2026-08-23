@@ -43,7 +43,7 @@ import {
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import { confirmBulkReplace } from "@/components/project-search-replace-warning";
-import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
@@ -136,7 +136,6 @@ function SelectionBox({
   testID: string;
   onPress: () => void;
 }) {
-  const iconSize = useIconSize();
   return (
     <Pressable
       accessibilityRole="checkbox"
@@ -148,9 +147,9 @@ function SelectionBox({
       hitSlop={6}
     >
       {checked ? (
-        <ThemedCheck size={iconSize.sm} uniProps={accentIconColorMapping} />
+        <ThemedCheck size="sm" uniProps={accentIconColorMapping} />
       ) : (
-        <ThemedSquare size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+        <ThemedSquare size="sm" uniProps={foregroundMutedIconColorMapping} />
       )}
     </Pressable>
   );
@@ -170,7 +169,6 @@ export function ProjectSearchPane({
   const { t } = useTranslation();
   const toast = useToast();
   const isCompact = useIsCompactFormFactor();
-  const iconSize = useIconSize();
   const showDesktopWebScrollbar = isWeb && !isCompact;
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
@@ -605,9 +603,9 @@ export function ProjectSearchPane({
               style={iconButtonStyle}
             >
               {replaceOpen ? (
-                <ThemedChevronDown size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+                <ThemedChevronDown size="sm" uniProps={foregroundMutedIconColorMapping} />
               ) : (
-                <ThemedChevronRight size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+                <ThemedChevronRight size="sm" uniProps={foregroundMutedIconColorMapping} />
               )}
             </Pressable>
           ) : null}
@@ -630,7 +628,7 @@ export function ProjectSearchPane({
             onPress={handleSubmit}
             style={iconButtonStyle}
           >
-            <ThemedSearch size={iconSize.md} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedSearch size="md" uniProps={foregroundMutedIconColorMapping} />
           </Pressable>
           <View style={styles.searchToggles} onLayout={handleTogglesLayout}>
             <SearchToggle
@@ -682,7 +680,7 @@ export function ProjectSearchPane({
                   {replacing ? (
                     <ThemedLoadingSpinner uniProps={foregroundMutedIconColorMapping} />
                   ) : (
-                    <ThemedPlay size={iconSize.md} uniProps={foregroundMutedIconColorMapping} />
+                    <ThemedPlay size="md" uniProps={foregroundMutedIconColorMapping} />
                   )}
                 </View>
               </TooltipTrigger>
@@ -779,7 +777,6 @@ function FileRow({
   onShowContextMenu?: (input: { file: SearchFileResult; x: number; y: number }) => void;
 }) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const handleToggleCollapsed = useCallback(
     () => onToggleCollapsed(file.path),
     [file.path, onToggleCollapsed],
@@ -821,9 +818,9 @@ function FileRow({
         testID={`project-search-file-${file.path}`}
       >
         {collapsed ? (
-          <ThemedChevronRight size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedChevronRight size="xs" uniProps={foregroundMutedIconColorMapping} />
         ) : (
-          <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedChevronDown size="xs" uniProps={foregroundMutedIconColorMapping} />
         )}
         <Text style={styles.filePath} numberOfLines={1}>
           {file.path}
@@ -955,10 +952,9 @@ function SearchEntryContextMenu({
     return isInContext ? t("projectSearch.removeFromContext") : t("projectSearch.addToContext");
   }, [isInContext, request, t]);
 
-  const iconSize = useIconSize();
   const contextLeading = useMemo(
-    () => <ThemedPaperclip size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
-    [iconSize.sm],
+    () => <ThemedPaperclip size="sm" uniProps={foregroundMutedIconColorMapping} />,
+    [],
   );
 
   return (

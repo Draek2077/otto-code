@@ -9,7 +9,7 @@ import { useFetchQuery } from "@/data/query";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";
-import { useIconSize, type Theme } from "@/styles/theme";
+import { type Theme } from "@/styles/theme";
 import { invalidateCheckoutGitQueriesForClient } from "@/git/query-keys";
 import {
   useCheckoutDiffBaseAnyRepoFeature,
@@ -100,7 +100,6 @@ export function DiffBaseSwitcher({
   isBaseEditable,
 }: DiffBaseSwitcherProps) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const anchorRef = useRef<View>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -262,11 +261,11 @@ export function DiffBaseSwitcher({
       accessibilityRole={canEdit ? "button" : "text"}
       accessibilityLabel={accessibilityLabel}
     >
-      <ThemedGitMerge size={iconSize.xs} uniProps={mutedColorMapping} />
+      <ThemedGitMerge size="xs" uniProps={mutedColorMapping} />
       <Text style={styles.label} numberOfLines={1}>
         {label}
       </Text>
-      <ThemedChevronDown size={iconSize.xs} uniProps={mutedColorMapping} />
+      <ThemedChevronDown size="xs" uniProps={mutedColorMapping} />
     </Pressable>
   );
 

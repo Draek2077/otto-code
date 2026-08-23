@@ -5,9 +5,10 @@ import type { CheckoutPrMergeMethod, CheckoutPrStatusResponse } from "@otto-code
 import type { Theme } from "@/styles/theme";
 import type { Forge } from "@/git/forge";
 import type { PrPaneCheck } from "@/git/pull-request-panel/data";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 export interface ForgeIconProps {
-  size?: number;
+  size?: IconSizeProp;
   color?: string;
 }
 

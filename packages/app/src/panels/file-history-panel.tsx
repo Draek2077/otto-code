@@ -10,7 +10,7 @@ import { ResizeHandle } from "@/components/resize-handle";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
-import { compactFont, compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { compactFont, compactUp, type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
@@ -252,7 +252,6 @@ function FileHistoryToolbar({
   onRefresh: () => void;
 }) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   return (
     <View style={styles.toolbar}>
       {range ? (
@@ -276,7 +275,7 @@ function FileHistoryToolbar({
         testID="file-history-ignore-whitespace"
       >
         <ThemedPilcrow
-          size={iconSize.sm}
+          size="sm"
           uniProps={ignoreWhitespace ? accentColorMapping : mutedColorMapping}
         />
       </ToolbarIconButton>
@@ -285,7 +284,7 @@ function FileHistoryToolbar({
         onPress={onRefresh}
         testID="file-history-refresh"
       >
-        <ThemedRotateCw size={iconSize.sm} uniProps={mutedColorMapping} />
+        <ThemedRotateCw size="sm" uniProps={mutedColorMapping} />
       </ToolbarIconButton>
     </View>
   );

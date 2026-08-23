@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, GitBranch } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { useIconSize, type Theme } from "@/styles/theme";
+import { type Theme } from "@/styles/theme";
 import { Combobox, ComboboxItem, type ComboboxProps } from "@/components/ui/combobox";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
@@ -37,7 +37,6 @@ export function BranchSwitcher({
   testID = "workspace-header-branch-switcher",
 }: BranchSwitcherProps) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const anchorRef = useRef<View>(null);
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -68,8 +67,8 @@ export function BranchSwitcher({
   );
 
   const branchLeadingSlot = useMemo(
-    () => <ThemedGitBranch size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
-    [iconSize.sm],
+    () => <ThemedGitBranch size="sm" uniProps={foregroundMutedIconColorMapping} />,
+    [],
   );
 
   const renderBranchOption = useCallback<NonNullable<ComboboxProps["renderOption"]>>(
@@ -105,14 +104,14 @@ export function BranchSwitcher({
             : t("branchSwitcher.currentBranch", { branchName: currentBranchName })
         }
       >
-        <ThemedGitBranch size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+        <ThemedGitBranch size="sm" uniProps={foregroundMutedIconColorMapping} />
         <Text style={styles.branchLabel} numberOfLines={1}>
           {currentBranchName}
         </Text>
         {isSwitching ? (
           <ThemedActivityIndicator size="small" uniProps={foregroundMutedIconColorMapping} />
         ) : (
-          <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedChevronDown size="xs" uniProps={foregroundMutedIconColorMapping} />
         )}
       </Pressable>
       <Combobox

@@ -1,3 +1,4 @@
+import { withIconSizeToken } from "@/components/icons/icon-size";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { useMemo } from "react";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
@@ -20,7 +21,7 @@ export interface PersonalityProviderIconProps {
  * shape masks a gradient rect via MaskedView. See the `.web.tsx` sibling for the
  * browser path (MaskedView is a no-op on web).
  */
-export function PersonalityProviderIcon({
+function PersonalityProviderIconBase({
   provider,
   size,
   glowA = GLOW_DEFAULT_A,
@@ -44,3 +45,8 @@ export function PersonalityProviderIcon({
     </MaskedView>
   );
 }
+
+export const PersonalityProviderIcon = withIconSizeToken(
+  PersonalityProviderIconBase,
+  "PersonalityProviderIcon",
+);

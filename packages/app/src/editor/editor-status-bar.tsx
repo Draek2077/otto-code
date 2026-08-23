@@ -14,7 +14,7 @@ import {
 } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
-import { useIconSize, type Theme } from "@/styles/theme";
+import { type Theme } from "@/styles/theme";
 import { formatFileSize, utf8ByteSize } from "@/utils/format-file-size";
 import type { EditorBufferState } from "./editor-buffer-state";
 import type { EditorCursorPosition, EditorVimMode } from "./editor-contract";
@@ -185,7 +185,6 @@ export function EditorStatusBar({
   diagnostics,
 }: EditorStatusBarProps) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const language = useMemo(() => getLanguageDisplayName(path), [path]);
   const size = useMemo(() => formatFileSize({ size: byteSize }), [byteSize]);
   const totals = useMemo(() => diagnosticTotals(diagnostics ?? []), [diagnostics]);
@@ -194,13 +193,13 @@ export function EditorStatusBar({
     <View style={styles.container} testID="editor-status-bar">
       <View style={styles.group}>
         <View style={styles.item}>
-          <ThemedDataObject size={iconSize.xs} uniProps={mutedIconColor} />
+          <ThemedDataObject size="xs" uniProps={mutedIconColor} />
           <Text style={styles.text} numberOfLines={1}>
             {language}
           </Text>
         </View>
         <View style={styles.item}>
-          <ThemedHardDrive size={iconSize.xs} uniProps={mutedIconColor} />
+          <ThemedHardDrive size="xs" uniProps={mutedIconColor} />
           <Text style={styles.text} numberOfLines={1}>
             {size}
           </Text>
@@ -216,7 +215,7 @@ export function EditorStatusBar({
         {totals.length > 0 ? <View style={styles.divider} /> : null}
         {imageDimensions ? (
           <View style={styles.item}>
-            <ThemedImage size={iconSize.xs} uniProps={mutedIconColor} />
+            <ThemedImage size="xs" uniProps={mutedIconColor} />
             <Text style={styles.numericText} numberOfLines={1}>
               {`${imageDimensions.width} × ${imageDimensions.height}`}
             </Text>
@@ -224,7 +223,7 @@ export function EditorStatusBar({
         ) : null}
         {eol ? (
           <View style={styles.item}>
-            <ThemedPilcrow size={iconSize.xs} uniProps={mutedIconColor} />
+            <ThemedPilcrow size="xs" uniProps={mutedIconColor} />
             <Text style={styles.text} numberOfLines={1}>
               {eol.toUpperCase()}
             </Text>
@@ -232,7 +231,7 @@ export function EditorStatusBar({
         ) : null}
         {isText ? (
           <View style={styles.item}>
-            <ThemedAbc size={iconSize.xs} uniProps={mutedIconColor} />
+            <ThemedAbc size="xs" uniProps={mutedIconColor} />
             <Text style={styles.text} numberOfLines={1}>
               {ENCODING_LABEL}
             </Text>
@@ -270,7 +269,7 @@ export function EditorStatusBar({
               column: cursor.column,
             })}
           >
-            <ThemedTextSelectStart size={iconSize.xs} uniProps={mutedIconColor} />
+            <ThemedTextSelectStart size="xs" uniProps={mutedIconColor} />
             <Text style={styles.numericText} numberOfLines={1}>
               {formatCursor(cursor)}
             </Text>

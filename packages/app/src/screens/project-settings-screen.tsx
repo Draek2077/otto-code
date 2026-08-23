@@ -63,7 +63,6 @@ import {
   type ProjectHostEntry,
   type ProjectSummary,
 } from "@/utils/projects";
-import { useIconSize } from "@/styles/theme";
 import { ProjectKanbanSection } from "./project-settings-kanban-section";
 import {
   combineProjectFormSaveStates,
@@ -223,7 +222,6 @@ function ProjectSettingsBody({
   onDirtyChange,
 }: ProjectSettingsBodyProps) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const navigation = useNavigation();
   const [configSaveState, setConfigSaveState] = useState<ProjectFormSaveState | null>(null);
   const [linksSaveState, setLinksSaveState] = useState<ProjectFormSaveState | null>(null);
@@ -382,7 +380,7 @@ function ProjectSettingsBody({
             hitSlop={8}
             style={styles.editButton}
           >
-            <Pencil size={iconSize.sm} color={styles.iconColor.color} />
+            <Pencil size="sm" color={styles.iconColor.color} />
           </Pressable>
         </View>
       </View>
@@ -610,7 +608,6 @@ function ProjectConfigForm({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const iconSize = useIconSize();
   const isDeveloperMode = useIsDeveloperMode();
 
   const [draft, setDraft] = useState<ProjectConfigDraft>(() => configToDraft(baseConfig));
@@ -778,10 +775,10 @@ function ProjectConfigForm({
         accessibilityLabel={t("settings.project.scripts.actions.add")}
         testID="scripts-add-button"
       >
-        <Plus size={iconSize.sm} color={styles.iconColor.color} />
+        <Plus size="sm" color={styles.iconColor.color} />
       </Pressable>
     ),
-    [handleAddScript, t, iconSize.sm],
+    [handleAddScript, t],
   );
 
   const setupDocsLink = useMemo(
@@ -1267,7 +1264,6 @@ interface ScriptRowProps {
 
 function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const handleEdit = useCallback(() => onEdit(script), [onEdit, script]);
   const handleRemove = useCallback(() => onRemove(script), [onRemove, script]);
   const rowStyle = isFirst ? styles.scriptRow : styles.scriptRowWithBorder;
@@ -1288,7 +1284,7 @@ function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
           testID={`script-row-menu-${script.id}`}
           style={styles.scriptKebab}
         >
-          <MoreVertical size={iconSize.sm} color={styles.chevronColor.color} />
+          <MoreVertical size="sm" color={styles.chevronColor.color} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" minWidth={160}>
           <DropdownMenuItem testID={`script-action-${script.id}-edit`} onSelect={handleEdit}>

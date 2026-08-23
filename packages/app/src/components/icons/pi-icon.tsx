@@ -1,3 +1,4 @@
+import { withIconSizeToken } from "@/components/icons/icon-size";
 import Svg, { Path } from "react-native-svg";
 
 interface PiIconProps {
@@ -5,7 +6,7 @@ interface PiIconProps {
   color?: string;
 }
 
-export function PiIcon({ size = 16, color = "currentColor" }: PiIconProps) {
+function PiIconBase({ size = 16, color = "currentColor" }: PiIconProps) {
   return (
     <Svg width={size} height={size} viewBox="100 100 600 600" fill={color}>
       <Path
@@ -17,3 +18,5 @@ export function PiIcon({ size = 16, color = "currentColor" }: PiIconProps) {
     </Svg>
   );
 }
+
+export const PiIcon = withIconSizeToken(PiIconBase, "PiIcon");

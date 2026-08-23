@@ -26,7 +26,7 @@ import { isWeb } from "@/constants/platform";
 import { getForgePresentation, normalizeForge } from "@/git/forge";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
-import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import {
   DropdownMenu,
@@ -91,10 +91,9 @@ function renderTriggerIcon({ hovered }: { hovered?: boolean }) {
 // `size` is a plain number prop, which the ambient theme patch never reaches. The trigger box
 // around it is already `compactUp(24)`, so the glyph was the only half left behind on mobile.
 function WorkspaceKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
-  const iconSize = useIconSize();
   return (
     <ThemedMoreVertical
-      size={iconSize.sm}
+      size="sm"
       uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
     />
   );

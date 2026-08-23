@@ -20,7 +20,7 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import { compactUp, useIconSize } from "@/styles/theme";
+import { compactUp } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import type { GitAction, GitActions } from "@/git/policy";
 import { useGitActionRunner } from "@/git/use-actions";
@@ -92,7 +92,6 @@ export function GitActionsSplitButton({
 }: GitActionsSplitButtonProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const runGitAction = useGitActionRunner();
   const archiveShortcutKeys = useShortcutKeys("archive-workspace");
 
@@ -202,7 +201,7 @@ export function GitActionsSplitButton({
                     accessibilityRole="button"
                     accessibilityLabel={t("workspace.git.actions.moreOptions")}
                   >
-                    <ChevronDown size={iconSize.md} color={theme.colors.foregroundMuted} />
+                    <ChevronDown size="md" color={theme.colors.foregroundMuted} />
                   </SplitButtonMenuTrigger>
                 </TooltipTrigger>
                 <TooltipContent side={tooltipSide} align="center" offset={8}>
@@ -240,7 +239,7 @@ export function GitActionsSplitButton({
             accessibilityRole="button"
             accessibilityLabel={t("workspace.git.actions.moreActions")}
           >
-            <MoreVertical size={iconSize.md} color={theme.colors.foregroundMuted} />
+            <MoreVertical size="md" color={theme.colors.foregroundMuted} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" width={220} testID="changes-overflow-content">
             {gitActions.menu.map((action) => (

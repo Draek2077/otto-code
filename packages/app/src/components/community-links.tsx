@@ -6,24 +6,16 @@ import { Button } from "@/components/ui/button";
 import { FeedbackSheet } from "@/components/feedback-sheet";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { openLink } from "@/utils/open-link";
-import { useIconSize } from "@/styles/theme";
 
 export function CommunityLinks() {
-  const iconSize = useIconSize();
   const [feedbackVisible, setFeedbackVisible] = useState(false);
 
   const renderGitHubIcon = useCallback(
-    (color: string) => <GitHubIcon color={color} size={iconSize.sm} />,
-    [iconSize.sm],
+    (color: string) => <GitHubIcon color={color} size="sm" />,
+    [],
   );
-  const renderHeartIcon = useCallback(
-    (color: string) => <Heart color={color} size={iconSize.sm} />,
-    [iconSize.sm],
-  );
-  const renderForumIcon = useCallback(
-    (color: string) => <Forum color={color} size={iconSize.sm} />,
-    [iconSize.sm],
-  );
+  const renderHeartIcon = useCallback((color: string) => <Heart color={color} size="sm" />, []);
+  const renderForumIcon = useCallback((color: string) => <Forum color={color} size="sm" />, []);
   const githubIcon = useMemo(() => ({ render: renderGitHubIcon }), [renderGitHubIcon]);
   const heartIcon = useMemo(() => ({ render: renderHeartIcon }), [renderHeartIcon]);
   const forumIcon = useMemo(() => ({ render: renderForumIcon }), [renderForumIcon]);

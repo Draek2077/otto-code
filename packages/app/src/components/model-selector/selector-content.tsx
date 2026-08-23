@@ -37,6 +37,7 @@ import {
   type ProviderSelectionModelRow,
   type ProviderSelectorProvider,
 } from "@/provider-selection/provider-selection";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 /**
  * The Otto model/personality selector implementation: the drill-down views,
@@ -164,7 +165,7 @@ export function ProviderGlyph({
   tone = "muted",
 }: {
   provider: string;
-  size: number;
+  size: IconSizeProp;
   tone?: ProviderGlyphTone;
 }) {
   const Icon = getProviderIcon(provider);
@@ -186,7 +187,7 @@ export function TriggerLeadingIcon({
 }: {
   personality: SelectorPersonality | null;
   provider: string | null;
-  size: number;
+  size: IconSizeProp;
 }) {
   // A role-slot entry (Team's <Role>) wears its neutral role glyph, not the
   // current holder's colored provider icon.

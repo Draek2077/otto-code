@@ -1,3 +1,4 @@
+import { withIconSizeToken } from "@/components/icons/icon-size";
 import Svg, { Path } from "react-native-svg";
 
 interface OpenCodeIconProps {
@@ -5,7 +6,7 @@ interface OpenCodeIconProps {
   color?: string;
 }
 
-export function OpenCodeIcon({ size = 16, color = "currentColor" }: OpenCodeIconProps) {
+function OpenCodeIconBase({ size = 16, color = "currentColor" }: OpenCodeIconProps) {
   return (
     <Svg width={size} height={size} viewBox="96 64 288 384" fill={color}>
       <Path d="M320 224V352H192V224H320Z" opacity={0.4} />
@@ -17,3 +18,5 @@ export function OpenCodeIcon({ size = 16, color = "currentColor" }: OpenCodeIcon
     </Svg>
   );
 }
+
+export const OpenCodeIcon = withIconSizeToken(OpenCodeIconBase, "OpenCodeIcon");

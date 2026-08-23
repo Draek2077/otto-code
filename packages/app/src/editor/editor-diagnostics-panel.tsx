@@ -5,7 +5,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { AlertTriangle, CircleAlertFilled, X } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
-import { useIconSize, type Theme } from "@/styles/theme";
+import { type Theme } from "@/styles/theme";
 
 /**
  * The problems panel: a tinted strip between the document and the status bar, matching the
@@ -207,7 +207,6 @@ export function EditorDiagnosticsPanel({
   onSelectLine,
   onDismiss,
 }: EditorDiagnosticsPanelProps) {
-  const iconSize = useIconSize();
   const listed = diagnostics.filter(
     (entry) => entry.severity === "error" || entry.severity === "warning",
   );
@@ -228,9 +227,9 @@ export function EditorDiagnosticsPanel({
     >
       <View style={styles.header}>
         {isDanger ? (
-          <ThemedCircleAlertFilled size={iconSize.xs} uniProps={dangerIconColor} />
+          <ThemedCircleAlertFilled size="xs" uniProps={dangerIconColor} />
         ) : (
-          <ThemedAlertTriangle size={iconSize.xs} uniProps={warningIconColor} />
+          <ThemedAlertTriangle size="xs" uniProps={warningIconColor} />
         )}
         <Text style={isDanger ? styles.summaryDanger : styles.summaryWarning} numberOfLines={1}>
           {summarize(counts)}
@@ -244,7 +243,7 @@ export function EditorDiagnosticsPanel({
             accessibilityLabel="Dismiss problems"
             testID="editor-diagnostics-dismiss"
           >
-            <ThemedX size={iconSize.xs} uniProps={mutedIconColor} />
+            <ThemedX size="xs" uniProps={mutedIconColor} />
           </TooltipTrigger>
           {/* The Text wrapper is required, not decoration: TooltipContent renders its
               children raw, so a bare string inherits the web document's font size and

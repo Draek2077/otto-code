@@ -1,3 +1,4 @@
+import { withIconSizeToken } from "@/components/icons/icon-size";
 import { useId, useMemo } from "react";
 import { View } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
@@ -16,7 +17,7 @@ import type { PersonalityProviderIconProps } from "@/components/personality-prov
  * Both the prefixed and unprefixed properties are set: react-native-web passes
  * unrecognised style keys through to the DOM, and Safari still wants the prefix.
  */
-export function PersonalityProviderIcon({
+function PersonalityProviderIconBase({
   provider,
   size,
   glowA = GLOW_DEFAULT_A,
@@ -62,3 +63,8 @@ export function PersonalityProviderIcon({
     </View>
   );
 }
+
+export const PersonalityProviderIcon = withIconSizeToken(
+  PersonalityProviderIconBase,
+  "PersonalityProviderIcon",
+);

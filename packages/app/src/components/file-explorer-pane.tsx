@@ -48,7 +48,7 @@ import {
   useOverlayFlatListScrollbar,
   type OverlayFlatListScrollbar,
 } from "@/components/ui/overlay-scrollbar/use-overlay-flat-list-scrollbar";
-import { useIconSize, type Theme } from "@/styles/theme";
+import { type Theme } from "@/styles/theme";
 import type {
   AgentFileExplorerState,
   ExplorerDirectory,
@@ -1322,7 +1322,6 @@ interface FileExplorerPaneContentProps {
 
 function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const {
     error,
     showInitialLoading,
@@ -1440,7 +1439,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
                 accessibilityLabel={t("workspace.fileActions.newFile")}
                 testID="files-new-file"
               >
-                <ThemedFilePlus size={iconSize.sm} uniProps={foregroundMutedColorMapping} />
+                <ThemedFilePlus size="sm" uniProps={foregroundMutedColorMapping} />
               </Pressable>
               <Pressable
                 onPress={handleNewFolderAtRoot}
@@ -1450,7 +1449,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
                 accessibilityLabel={t("workspace.fileActions.newFolder")}
                 testID="files-new-folder"
               >
-                <ThemedFolderPlus size={iconSize.sm} uniProps={foregroundMutedColorMapping} />
+                <ThemedFolderPlus size="sm" uniProps={foregroundMutedColorMapping} />
               </Pressable>
             </>
           ) : null}
@@ -1465,9 +1464,9 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
               testID="files-hidden-toggle"
             >
               {showHiddenFiles ? (
-                <ThemedEye size={iconSize.sm} uniProps={foregroundMutedColorMapping} />
+                <ThemedEye size="sm" uniProps={foregroundMutedColorMapping} />
               ) : (
-                <ThemedEyeOff size={iconSize.sm} uniProps={foregroundMutedColorMapping} />
+                <ThemedEyeOff size="sm" uniProps={foregroundMutedColorMapping} />
               )}
             </Pressable>
           )}
@@ -1486,9 +1485,9 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
           >
             <View style={styles.refreshIcon}>
               {isRefreshFetching ? (
-                <ThemedLoadingSpinner size={iconSize.sm} uniProps={foregroundMutedColorMapping} />
+                <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedColorMapping} />
               ) : (
-                <ThemedRotateCw size={iconSize.sm} uniProps={foregroundMutedColorMapping} />
+                <ThemedRotateCw size="sm" uniProps={foregroundMutedColorMapping} />
               )}
             </View>
           </Pressable>

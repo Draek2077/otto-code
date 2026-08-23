@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import { DiffStat } from "@/components/diff-stat";
 import { PanelRight, PanelRightClose } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import { HeaderToggleButton, headerIconSlotStyle } from "@/components/headers/header-toggle-button";
 import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -154,7 +154,6 @@ export function PlainExplorerToggle({
   accessibilityState: { expanded: boolean };
 }) {
   const { t } = useTranslation();
-  const headerActionIconSize = useIconSize(1.5);
   const explorerToggleKeys = useShortcutKeys("toggle-right-sidebar");
   if (isMobile) {
     return (
@@ -175,10 +174,10 @@ export function PlainExplorerToggle({
       >
         {({ hovered }) =>
           isExplorerOpen ? (
-            <ThemedPanelRightClose size={headerActionIconSize.lg} uniProps={accentColorMapping} />
+            <ThemedPanelRightClose size="chromeLg" uniProps={accentColorMapping} />
           ) : (
             <ThemedPanelRight
-              size={headerActionIconSize.lg}
+              size="chromeLg"
               uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
             />
           )
