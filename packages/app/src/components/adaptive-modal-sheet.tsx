@@ -592,7 +592,7 @@ export function InlineHeaderView({ header }: { header: SheetHeader }) {
                 const color = pressed ? theme.colors.foreground : theme.colors.foregroundMuted;
                 return (
                   <>
-                    <ArrowLeft size={16} color={color} />
+                    <ArrowLeft size="md" color={color} />
                     {back?.label ? (
                       <Text style={[styles.headerBackLabel, { color }]}>{back.label}</Text>
                     ) : null}

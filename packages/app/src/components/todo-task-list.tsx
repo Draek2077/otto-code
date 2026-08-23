@@ -116,7 +116,7 @@ export function TodoSummaryMarker({ phase, animationsEnabled }: TodoSummaryMarke
   if (phase === "done") {
     return (
       <View style={doneStyle}>
-        <ThemedTodoCheckIcon size={12} uniProps={primaryForegroundColorMapping} />
+        <ThemedTodoCheckIcon size="xs" uniProps={primaryForegroundColorMapping} />
       </View>
     );
   }

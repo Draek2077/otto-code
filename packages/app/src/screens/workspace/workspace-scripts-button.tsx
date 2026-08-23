@@ -951,7 +951,7 @@ export function WorkspaceScriptsButton({
           </Text>
         )}
         {presentation === "split" ? (
-          <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
+          <ThemedChevronDown size="sm" uniProps={mutedColorMapping} />
         ) : null}
       </View>
     </DropdownMenuTrigger>

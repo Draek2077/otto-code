@@ -132,7 +132,7 @@ export function CommitsSection({ serverId, cwd, onCommitPress }: CommitsSectionP
         style={styles.header}
       >
         <View style={headerChevronStyle}>
-          <ThemedChevron size={14} uniProps={chevronColorMapping} />
+          <ThemedChevron size="sm" uniProps={chevronColorMapping} />
         </View>
         <Text style={styles.title}>{t("workspace.git.diff.commits.title")}</Text>
         {commitCount === null ? (

@@ -368,9 +368,9 @@ export function PrBadge({ hint, style }: { hint: PrHint; style?: StyleProp<ViewS
       style={pressableStyle}
     >
       {isHovered ? (
-        <ThemedExternalLink size={12} uniProps={iconUniProps} />
+        <ThemedExternalLink size="xs" uniProps={iconUniProps} />
       ) : (
-        <ThemedGitPullRequest size={12} uniProps={iconUniProps} />
+        <ThemedGitPullRequest size="xs" uniProps={iconUniProps} />
       )}
       <Text style={textStyle} numberOfLines={1}>
         {hint.number}
@@ -489,10 +489,10 @@ function ProjectRowTrailingActions({
   );
 }
 
-const trash2LeadingIcon = <ThemedTrash2 size={14} uniProps={foregroundMutedColorMapping} />;
-const settingsLeadingIcon = <ThemedSettings size={14} uniProps={foregroundMutedColorMapping} />;
+const trash2LeadingIcon = <ThemedTrash2 size="sm" uniProps={foregroundMutedColorMapping} />;
+const settingsLeadingIcon = <ThemedSettings size="sm" uniProps={foregroundMutedColorMapping} />;
 const openInNewWindowLeadingIcon = (
-  <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />
+  <ThemedExternalLink size="sm" uniProps={foregroundMutedColorMapping} />
 );
 
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
@@ -874,7 +874,7 @@ function NewWorkspaceGhostRow({
         <>
           <View style={styles.newWorkspaceGhostIconSlot}>
             <ThemedPlus
-              size={14}
+              size="sm"
               uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
             />
           </View>

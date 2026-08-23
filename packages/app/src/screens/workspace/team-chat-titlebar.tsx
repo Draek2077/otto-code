@@ -686,9 +686,9 @@ function ZoomChatFavoriteButton({
       style={[styles.teamChatFavoriteButton, disabled && styles.teamChatFavoriteButtonDisabled]}
     >
       {favorite ? (
-        <ThemedStarFilled size={16} uniProps={favoriteColorMapping} />
+        <ThemedStarFilled size="md" uniProps={favoriteColorMapping} />
       ) : (
-        <ThemedStar size={16} uniProps={mutedSmMapping} />
+        <ThemedStar size="md" uniProps={mutedSmMapping} />
       )}
     </Pressable>
   );

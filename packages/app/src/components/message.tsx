@@ -1455,9 +1455,9 @@ export const TurnCopyButton = memo(function TurnCopyButton({
           ? turnCopyButtonStylesheet.iconHoveredColor.color
           : turnCopyButtonStylesheet.iconColor.color;
         return copied ? (
-          <Check size={16} color={iconColor} />
+          <Check size="md" color={iconColor} />
         ) : (
-          <Copy size={16} color={iconColor} />
+          <Copy size="md" color={iconColor} />
         );
       }}
     </Pressable>
@@ -2844,7 +2844,7 @@ export const SpeakMessage = memo(function SpeakMessage({
   return (
     <View testID="speak-message" style={containerStyle}>
       <View style={speakMessageStylesheet.header}>
-        <ThemedMicVocal size={12} uniProps={foregroundMutedColorMapping} />
+        <ThemedMicVocal size="xs" uniProps={foregroundMutedColorMapping} />
         <Text style={speakMessageStylesheet.headerLabel}>{t("message.speak.header")}</Text>
       </View>
       <Text style={speakMessageStylesheet.text}>{message}</Text>
@@ -3008,7 +3008,7 @@ export const ActivityLog = memo(function ActivityLog({
       <View style={activityLogStylesheet.content}>
         <View style={activityLogStylesheet.row}>
           <View style={activityLogStylesheet.iconContainer}>
-            <IconComponent size={16} color={config.color} />
+            <IconComponent size="md" color={config.color} />
           </View>
           <View style={activityLogStylesheet.textContainer}>
             <Text style={messageTextStyle} selectable>
@@ -3020,9 +3020,9 @@ export const ActivityLog = memo(function ActivityLog({
                   {t("message.activity.details")}
                 </Text>
                 {isExpanded ? (
-                  <ChevronDown size={12} color="#71717a" />
+                  <ChevronDown size="xs" color="#71717a" />
                 ) : (
-                  <ChevronRight size={12} color="#71717a" />
+                  <ChevronRight size="xs" color="#71717a" />
                 )}
               </View>
             )}
@@ -3082,7 +3082,7 @@ export const CompactionMarker = memo(function CompactionMarker({
     <View testID="compaction-marker" style={compactionStylesheet.container}>
       <View style={compactionStylesheet.line} />
       <View style={compactionStylesheet.label}>
-        {status === "completed" && <Summarize size={12} color="#a1a1aa" />}
+        {status === "completed" && <Summarize size="xs" color="#a1a1aa" />}
         <Text style={compactionStylesheet.text}>{label}</Text>
       </View>
       <View style={compactionStylesheet.line} />
@@ -3459,7 +3459,7 @@ function ExpandableBadgeLabelRow({
           hitSlop={6}
         >
           <ThemedFileSymlinkIcon
-            size={14}
+            size="sm"
             uniProps={isOpenFileHovered ? foregroundColorMapping : foregroundMutedColorMapping}
           />
         </Pressable>
@@ -3548,7 +3548,7 @@ function renderExpandableBadgeIcon({
   isRunning: boolean;
   isTightGlyph: boolean;
   ThemedIcon: ComponentType<{
-    size?: number;
+    size?: IconSizeProp;
     isActive?: boolean;
     uniProps?: typeof foregroundColorMapping;
   }> | null;
@@ -3557,7 +3557,7 @@ function renderExpandableBadgeIcon({
     return (
       <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
         <ThemedTriangleAlertIcon
-          size={12}
+          size="xs"
           style={TRIANGLE_ALERT_ICON_OPACITY}
           uniProps={errorLevel === "warning" ? warningColorMapping : destructiveColorMapping}
         />
@@ -3577,7 +3577,7 @@ function renderExpandableBadgeIcon({
     return (
       <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
         <ThemedIcon
-          size={12}
+          size="xs"
           uniProps={isActive ? foregroundColorMapping : mutedForegroundColorMapping}
         />
       </View>
@@ -3597,7 +3597,7 @@ function renderExpandableBadgeIconSlot({
 }): ReactNode {
   if (showChevron) {
     return (
-      <ThemedChevronRightIcon size={12} style={chevronStyle} uniProps={foregroundColorMapping} />
+      <ThemedChevronRightIcon size="xs" style={chevronStyle} uniProps={foregroundColorMapping} />
     );
   }
   return iconNode;

@@ -560,7 +560,7 @@ export function WorkspacePreviewButton({ controller }: { controller: WorkspacePr
               <ThemedActivityIndicator size="small" uniProps={mutedColorMapping} />
             ) : (
               <ThemedPlayFilled
-                size={14}
+                size="sm"
                 uniProps={hasRunningPreviewServer ? accentColorMapping : mutedColorMapping}
               />
             )}
@@ -661,7 +661,7 @@ function PreviewServerMenuItem({
         >
           {({ hovered, pressed }) => (
             <ThemedX
-              size={14}
+              size="sm"
               uniProps={hovered || pressed ? destructiveColorMapping : mutedColorMapping}
             />
           )}

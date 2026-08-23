@@ -1134,7 +1134,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
             testID={testID ? `${testID}-checkbox` : undefined}
           >
             {selected ? (
-              <ThemedCheck size={12} uniProps={accentForegroundIconColorMapping} />
+              <ThemedCheck size="xs" uniProps={accentForegroundIconColorMapping} />
             ) : null}
           </Pressable>
         ) : null}
@@ -1450,17 +1450,17 @@ const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedPaperclip = withUnistyles(Paperclip);
 const DIFF_CONTEXT_EDIT_ICON = (
-  <ThemedSquarePen size={14} uniProps={foregroundMutedIconColorMapping} />
+  <ThemedSquarePen size="sm" uniProps={foregroundMutedIconColorMapping} />
 );
 const DIFF_CONTEXT_COPY_PATH_ICON = (
-  <ThemedCopy size={14} uniProps={foregroundMutedIconColorMapping} />
+  <ThemedCopy size="sm" uniProps={foregroundMutedIconColorMapping} />
 );
 const DIFF_CONTEXT_FIND_IN_FILES_ICON = (
-  <ThemedFolderTree size={14} uniProps={foregroundMutedIconColorMapping} />
+  <ThemedFolderTree size="sm" uniProps={foregroundMutedIconColorMapping} />
 );
 const ThemedHistory = withUnistyles(History);
 const DIFF_CONTEXT_HISTORY_ICON = (
-  <ThemedHistory size={14} uniProps={foregroundMutedIconColorMapping} />
+  <ThemedHistory size="sm" uniProps={foregroundMutedIconColorMapping} />
 );
 
 /**
@@ -1505,10 +1505,10 @@ function DiffContextHistoryMenuItem({
   );
 }
 const DIFF_CONTEXT_ADD_TO_CONTEXT_ICON = (
-  <ThemedPaperclip size={14} uniProps={foregroundMutedIconColorMapping} />
+  <ThemedPaperclip size="sm" uniProps={foregroundMutedIconColorMapping} />
 );
 const ThemedUndo2 = withUnistyles(Undo2);
-const DIFF_CONTEXT_ROLLBACK_ICON = <ThemedUndo2 size={14} uniProps={destructiveIconColorMapping} />;
+const DIFF_CONTEXT_ROLLBACK_ICON = <ThemedUndo2 size="sm" uniProps={destructiveIconColorMapping} />;
 const ThemedTrash2 = withUnistyles(Trash2);
 
 const ThemedRotateCw = withUnistyles(RotateCw);
@@ -2807,7 +2807,7 @@ function CommitActionRow({
   if (partiallySelected) {
     selectAllMark = <View style={styles.fileCheckboxIndeterminateMark} />;
   } else if (allSelected) {
-    selectAllMark = <ThemedCheck size={12} uniProps={accentForegroundIconColorMapping} />;
+    selectAllMark = <ThemedCheck size="xs" uniProps={accentForegroundIconColorMapping} />;
   }
 
   return (

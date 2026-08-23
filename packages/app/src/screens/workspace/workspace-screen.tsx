@@ -375,7 +375,7 @@ const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright
 const accentForegroundColorMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
 // Size-folding variants: `uniProps` mappings read the live theme, so folding
 // `theme.iconSize.*` into the mapping keeps these icons reactive to the compact
-// (mobile) icon-doubling patch - a plain `size={16}` prop is a frozen literal.
+// (mobile) icon-doubling patch - a plain `size="md"` prop is a frozen literal.
 const foregroundMdMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
   size: theme.iconSize.md,
@@ -949,7 +949,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
                 backdrop={pressed ? "surface1" : "surface0"}
               />
             </View>
-            <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
+            <ThemedChevronDown size="sm" uniProps={mutedColorMapping} />
           </>
         )}
       </Pressable>
@@ -1821,7 +1821,7 @@ function WorkspaceHeaderTitleBar({
             testID="dev-build-label"
             accessibilityLabel={`Development build: ${DEV_BUILD_LABEL}`}
           >
-            <ThemedGitBranch size={12} uniProps={accentForegroundColorMapping} />
+            <ThemedGitBranch size="xs" uniProps={accentForegroundColorMapping} />
             <Text numberOfLines={1} ellipsizeMode="tail" style={styles.devBuildBadgeText}>
               {DEV_BUILD_LABEL}
             </Text>

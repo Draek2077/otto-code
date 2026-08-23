@@ -1424,7 +1424,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
               <Text style={styles.sortTriggerText} testID="files-sort-label">
                 {currentSortLabel}
               </Text>
-              <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
+              <ThemedChevronDown size="xs" uniProps={foregroundMutedColorMapping} />
             </Pressable>
           )}
         </View>

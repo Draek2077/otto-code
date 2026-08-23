@@ -966,7 +966,7 @@ function KnowledgeTagFilter({
           style={styles.tagTrigger}
           testID="project-knowledge-tag-filter-trigger"
         >
-          <Settings2 size={14} color={triggerColor} />
+          <Settings2 size="sm" color={triggerColor} />
           <Text
             style={[styles.tagTriggerLabel, selectedTags.length > 0 && styles.tagTriggerActive]}
           >
@@ -1020,7 +1020,7 @@ function KnowledgeTagFilter({
                 ]}
                 onPress={() => toggle(tag)}
               >
-                <X size={12} color={theme.colors.foregroundMuted} />
+                <X size="xs" color={theme.colors.foregroundMuted} />
               </Pressable>
             </View>
           ))}
@@ -1034,7 +1034,7 @@ function KnowledgeTagFilter({
               ]}
               onPress={() => onChange([])}
             >
-              <ClearAll size={14} color={theme.colors.foregroundMuted} />
+              <ClearAll size="sm" color={theme.colors.foregroundMuted} />
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={6}>
               <Text style={styles.tagTooltipText}>Clear filter tags</Text>
