@@ -12,7 +12,7 @@ import {
   type ManagedAgent,
 } from "./agent-projections.js";
 import { parseStoredAgentRecord } from "./agent-storage.js";
-import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
+import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
 import type { AgentSession } from "./agent-sdk-types.js";
 import type {
   AgentFeature,
@@ -196,7 +196,7 @@ describe("toStoredAgentRecord", () => {
   });
 
   it("round-trips a personality snapshot through storage", () => {
-    const snapshot: ResolvedPersonalitySnapshot = {
+    const snapshot: ResolvedProfileSnapshot = {
       personalityId: "p1",
       name: "Aria",
       provider: "codex",

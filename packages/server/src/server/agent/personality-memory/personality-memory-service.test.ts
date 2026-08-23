@@ -35,7 +35,7 @@ beforeEach(async () => {
   roster = [personality()];
   service = new PersonalityMemoryService({
     store,
-    readAgentPersonalities: () => roster,
+    readAgentProfiles: () => roster,
     // Every cwd under the fixture repo resolves to the repo, the way a worktree
     // and its main checkout share one project's lessons.
     resolveProjectRoot: async () => REPO,
@@ -126,7 +126,7 @@ describe("resolveBriefForSpawn", () => {
     });
     const elsewhere = new PersonalityMemoryService({
       store,
-      readAgentPersonalities: () => roster,
+      readAgentProfiles: () => roster,
       resolveProjectRoot: async () => "/repos/somewhere-else",
       logger,
     });
@@ -142,7 +142,7 @@ describe("resolveBriefForSpawn", () => {
   it("never fails a spawn when memory cannot be read", async () => {
     const broken = new PersonalityMemoryService({
       store,
-      readAgentPersonalities: () => {
+      readAgentProfiles: () => {
         throw new Error("roster exploded");
       },
       resolveProjectRoot: async () => REPO,

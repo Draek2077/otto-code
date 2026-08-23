@@ -291,7 +291,7 @@ describe("resolveStructuredGenerationProviders", () => {
       providerSnapshotManager: snapshots,
       role: "writer",
       daemonConfig: {
-        agentPersonalities: { personalities: [personality({ roles: ["writer", "scheduler"] })] },
+        agentProfiles: [personality({ roles: ["writer", "scheduler"] })],
       },
     });
 
@@ -314,7 +314,7 @@ describe("resolveStructuredGenerationProviders", () => {
       role: "writer",
       daemonConfig: {
         metadataGeneration: { preferWriterPersonalities: true },
-        agentPersonalities: { personalities: [personality({ roles: ["writer", "scheduler"] })] },
+        agentProfiles: [personality({ roles: ["writer", "scheduler"] })],
       },
     });
 
@@ -378,7 +378,7 @@ describe("resolveStructuredGenerationProviders", () => {
       daemonConfig: {
         // Roster order puts the off-team writer FIRST; the team rung must
         // still reorder the on-team writer ahead of it.
-        agentPersonalities: { personalities: [offTeamWriter, teamWriter] },
+        agentProfiles: [offTeamWriter, teamWriter],
         agentTeams: {
           teams: [{ id: "team-crew", name: "Crew", memberIds: [teamWriter.id] }],
           activeTeamId: "team-crew",
@@ -416,7 +416,7 @@ describe("resolveStructuredGenerationProviders", () => {
       providerSnapshotManager: snapshots,
       role: "writer",
       daemonConfig: {
-        agentPersonalities: { personalities: [first, second] },
+        agentProfiles: [first, second],
         // Active id points at a deleted team - reads as no team, never an error.
         agentTeams: {
           teams: [{ id: "team-crew", name: "Crew", memberIds: [second.id] }],
@@ -449,7 +449,7 @@ describe("resolveStructuredGenerationProviders", () => {
       role: "writer",
       daemonConfig: {
         // Bound to a provider that isn't in the snapshot → provider-missing.
-        agentPersonalities: { personalities: [personality({ provider: "not-connected" })] },
+        agentProfiles: [personality({ provider: "not-connected" })],
       },
     });
 
@@ -471,9 +471,7 @@ describe("resolveStructuredGenerationProviders", () => {
       providerSnapshotManager: snapshots,
       role: "writer",
       daemonConfig: {
-        agentPersonalities: {
-          personalities: [personality({ model: "coder-model", roles: ["coder"] })],
-        },
+        agentProfiles: [personality({ model: "coder-model", roles: ["coder"] })],
       },
     });
 
@@ -497,11 +495,9 @@ describe("resolveStructuredGenerationProviders", () => {
       providerSnapshotManager: snapshots,
       role: "coder",
       daemonConfig: {
-        agentPersonalities: {
-          personalities: [
-            personality({ model: "impl-model", effortLevel: "high", roles: ["worker"] }),
-          ],
-        },
+        agentProfiles: [
+          personality({ model: "impl-model", effortLevel: "high", roles: ["worker"] }),
+        ],
       },
     });
 
@@ -530,7 +526,7 @@ describe("resolveStructuredGenerationAgent", () => {
       cwd: "/tmp/repo",
       providerSnapshotManager: snapshots,
       role: "writer",
-      daemonConfig: { agentPersonalities: { personalities: [personality()] } },
+      daemonConfig: { agentProfiles: [personality()] },
     });
 
     expect(agent).toEqual({

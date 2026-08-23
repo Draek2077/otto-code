@@ -17,7 +17,6 @@ import {
   healActiveAgentTeamId,
   mergeSpeechIntoPersistedFeatures,
   mergeSpeechOpenAiIntoPersistedProviders,
-  readAgentPersonalities,
   readAgentTeamsSection,
   readMetadataGenerationFlags,
   readMetadataGenerationProviders,
@@ -26,7 +25,6 @@ import {
   restoreConnectorSecretsInPatch,
   stripRedactedSecretsFromPatch,
   withAgentArraySections,
-  withAgentPersonalities,
   withAgentTeams,
 } from "./otto-daemon-config.js";
 
@@ -43,7 +41,7 @@ type MutableDaemonConfig = import("@otto-code/protocol/messages").MutableDaemonC
 
 type MutableDaemonConfigPatch = import("@otto-code/protocol/messages").MutableDaemonConfigPatch;
 
-type AgentPersonality = import("@otto-code/protocol/messages").AgentPersonality;
+type AgentProfile = import("@otto-code/protocol/messages").AgentProfile;
 
 type AgentTeam = import("@otto-code/protocol/messages").AgentTeam;
 
@@ -154,35 +152,81 @@ export class DaemonConfigStore {
   }
 
   /**
-   * Seed the shipped default Agent Personalities onto disk the first time this
-   * host runs the feature - but ONLY when the persisted config has never carried
-   * an agentPersonalities section. Once the section exists on disk (even as an
-   * empty roster the user cleared), this is a no-op, so deleting the whole team
-   * sticks across restarts instead of silently re-seeding. The in-memory config
-   * is seeded separately at construction (see bootstrap); this only records the
-   * one-time initialization on disk, writing just the personalities branch so
-   * unrelated defaults (speech, etc.) are never frozen onto disk as a side
-   * effect.
+   * Seed the shipped starter roster into `daemon.agentProfiles` the first time
+   * this host runs the feature - but ONLY when the persisted config carries
+   * neither an agentProfiles section nor a legacy agentPersonalities one. Once
+   * either exists on disk (even as an empty roster the user cleared), this is a
+   * no-op, so deleting the whole team sticks across restarts instead of silently
+   * re-seeding. The in-memory config is seeded separately at construction (see
+   * bootstrap); this only records the one-time initialization on disk, writing
+   * just the profiles branch so unrelated defaults (speech, etc.) are never
+   * frozen onto disk as a side effect.
    */
-  public seedDefaultPersonalitiesIfAbsent(defaults: readonly AgentPersonality[]): void {
+  public seedDefaultProfilesIfAbsent(defaults: readonly AgentProfile[]): void {
     const persisted = loadPersistedConfig(this.ottoHome, this.logger);
-    if (persisted.agents?.agentPersonalities !== undefined) {
+    if (
+      persisted.daemon?.agentProfiles !== undefined ||
+      persisted.agents?.agentPersonalities !== undefined
+    ) {
       return;
     }
     savePersistedConfig(
       this.ottoHome,
       {
         ...persisted,
-        agents: {
-          ...persisted.agents,
-          agentPersonalities: {
-            personalities: [...defaults],
-          },
+        daemon: {
+          ...persisted.daemon,
+          agentProfiles: [...defaults],
         },
       },
       this.logger,
     );
-    this.logger?.info(`Seeded ${defaults.length} default agent personalities`);
+    this.logger?.info(`Seeded ${defaults.length} default agent profiles`);
+  }
+
+  /**
+   * COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
+   *
+   * Fold a pre-convergence host's `agents.agentPersonalities` roster into
+   * `daemon.agentProfiles`, which is now the one stored template list.
+   * `AgentProfile` is a strict superset of `AgentPersonality`, so this is a
+   * copy rather than a translation - and ids are preserved verbatim, which is
+   * what keeps personality memory (files named `<id>.json`), the usage stats
+   * store, and `agentTeams.memberIds` resolving without a data migration.
+   *
+   * One-shot, guarded by its own marker rather than by the roster being empty:
+   * a user who imports and then deletes every profile must not get the roster
+   * back on the next start. Existing profiles win on an id collision, and the
+   * legacy section is left on disk untouched as a rollback tombstone.
+   */
+  public importLegacyPersonalitiesIfNeeded(): void {
+    const persisted = loadPersistedConfig(this.ottoHome, this.logger);
+    if (persisted.daemon?.agentProfilesImportedPersonalities === true) {
+      return;
+    }
+    const legacy = persisted.agents?.agentPersonalities?.personalities ?? [];
+    const existing = persisted.daemon?.agentProfiles ?? [];
+    const existingIds = new Set(existing.map((profile) => profile.id));
+    const imported = legacy.filter((personality) => !existingIds.has(personality.id));
+    savePersistedConfig(
+      this.ottoHome,
+      {
+        ...persisted,
+        daemon: {
+          ...persisted.daemon,
+          ...(imported.length > 0 ? { agentProfiles: [...existing, ...imported] } : {}),
+          agentProfilesImportedPersonalities: true,
+        },
+      },
+      this.logger,
+    );
+    if (imported.length > 0) {
+      this.current = {
+        ...this.current,
+        agentProfiles: [...existing, ...imported],
+      };
+      this.logger?.info(`Imported ${imported.length} agent personalities into agent profiles`);
+    }
   }
 
   /**
@@ -364,7 +408,6 @@ function mergeMutableConfigIntoPersistedConfig(params: {
   }
   const metadataGenerationProviders = readMetadataGenerationProviders(mutable);
   const metadataGenerationFlags = readMetadataGenerationFlags(mutable);
-  const agentPersonalities = readAgentPersonalities(mutable);
   const removedProviders = new Set(removedProviderIds);
   const persistedOverrides = persisted.agents?.providers as
     | Record<string, ProviderOverride>
@@ -403,13 +446,13 @@ function mergeMutableConfigIntoPersistedConfig(params: {
     initial: persisted.agents as PersistedConfig["agents"],
   });
 
-  // Fold the personality roster into agents.agentPersonalities.
-  nextAgents = withAgentPersonalities({
-    nextAgents,
-    persistedAgents,
-    hadPersonalities: persisted.agents?.agentPersonalities !== undefined,
-    personalities: agentPersonalities,
-  });
+  // COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
+  // The roster now lives in daemon.agentProfiles, so nothing writes
+  // agents.agentPersonalities any more. It is deliberately NOT folded in here:
+  // resolveNextAgents spreads the persisted agents section verbatim, so leaving
+  // it alone preserves the pre-import roster on disk as a rollback tombstone.
+  // Folding the (now unmaintained) mutable roster back in would overwrite it
+  // with an empty array on the first unrelated config patch.
 
   // Fold the teams + active team id into agents.agentTeams.
   nextAgents = withAgentTeams({

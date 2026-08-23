@@ -443,6 +443,12 @@ export const PersistedConfigSchema = z
         appendSystemPrompt: z.string().optional(),
         terminalProfiles: z.array(TerminalProfileSchema).optional(),
         agentProfiles: z.array(AgentProfileSchema).optional(),
+        // COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
+        // Set once, when a host's legacy `agents.agentPersonalities` roster is
+        // imported into `agentProfiles`. Its presence (not the roster's) is what
+        // makes the import one-shot, so deleting every imported profile sticks
+        // instead of the roster reappearing on the next start.
+        agentProfilesImportedPersonalities: z.boolean().optional(),
         cors: z
           .object({
             allowedOrigins: z.array(z.string()).optional(),

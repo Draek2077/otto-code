@@ -10,7 +10,7 @@
  */
 
 import type { Logger } from "pino";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import { composeMemoryBrief, selectEntriesForProject, type MemoryBrief } from "./memory-brief.js";
 import { PersonalityMemoryStore } from "./personality-memory-store.js";
 import type {
@@ -23,7 +23,7 @@ import type {
 export interface PersonalityMemoryServiceDeps {
   store: PersonalityMemoryStore;
   /** The live roster, for names and the per-personality memory switch. */
-  readAgentPersonalities: () => readonly AgentPersonality[];
+  readAgentProfiles: () => readonly AgentProfile[];
   /** git repo root for a cwd, else the cwd. Scopes project lessons. */
   resolveProjectRoot: (cwd: string) => Promise<string>;
   logger: Logger;
@@ -35,7 +35,7 @@ export interface PersonalityMemoryServiceDeps {
  * the feature never starts working for anyone who did not go looking for a
  * switch. The switch exists to stop a personality accruing, not to start it.
  */
-export function isPersonalityMemoryEnabled(personality: AgentPersonality | undefined): boolean {
+export function isPersonalityMemoryEnabled(personality: AgentProfile | undefined): boolean {
   if (!personality) return false;
   const value = (personality as { memoryEnabled?: unknown }).memoryEnabled;
   return value !== false;
@@ -58,8 +58,8 @@ export class PersonalityMemoryService {
     this.store = deps.store;
   }
 
-  private findPersonality(personalityId: string): AgentPersonality | undefined {
-    return this.deps.readAgentPersonalities().find((entry) => entry.id === personalityId);
+  private findPersonality(personalityId: string): AgentProfile | undefined {
+    return this.deps.readAgentProfiles().find((entry) => entry.id === personalityId);
   }
 
   /**

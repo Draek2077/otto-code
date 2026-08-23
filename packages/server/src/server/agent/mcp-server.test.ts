@@ -52,8 +52,7 @@ import type { ForgeService } from "../../services/forge-service.js";
 import { areEquivalentPaths } from "../../utils/path.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
-import { MutableDaemonConfigSchema, type AgentProfile } from "@otto-code/protocol/messages";
-import type { DaemonConfigStore } from "../daemon-config-store.js";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import type { BrowserToolsBroker, BrowserToolsExecuteInput } from "../browser-tools/broker.js";
 import type { BrowserToolsResponsePayload } from "../browser-tools/errors.js";
 import { readOttoWorktreeMetadata } from "../../utils/worktree-metadata.js";
@@ -1467,11 +1466,41 @@ describe("create_chat MCP tool", () => {
         spinner: { glowA: "#111", glowB: "#222" },
       },
     ];
+    // Since the two template systems converged there is ONE resolver, and it
+    // enforces availability on every spawn path - so this fixture has to
+    // advertise the model the profile names. The shared provider stub carries
+    // modes but no models (every other create_chat test spawns by explicit
+    // provider string and never resolves a template), so add them to the codex
+    // entry here. A profile naming a model the host lacks now fails loudly
+    // instead of spawning degraded.
+    const { manager, stub } = createOpenCodeManager();
+    const withCodexModels = (entries: ProviderSnapshotEntry[]): ProviderSnapshotEntry[] =>
+      entries.map((entry) =>
+        entry.provider === "codex"
+          ? {
+              ...entry,
+              models: [
+                {
+                  id: "gpt-5.4",
+                  label: "GPT-5.4",
+                  thinkingOptions: [
+                    { id: "low", label: "Low" },
+                    { id: "high", label: "High" },
+                  ],
+                },
+              ],
+            }
+          : entry,
+      );
+    const baseEntries = await stub.listProviders({});
+    stub.listProviders.mockResolvedValue(withCodexModels(baseEntries));
+    stub.getSnapshot.mockReturnValue(withCodexModels(stub.getSnapshot()));
+
     const server = await createAgentMcpServer({
       agentManager,
       agentStorage,
-      providerSnapshotManager: createOpenCodeManager().manager,
-      daemonConfigStore: daemonConfigStoreStub(profiles),
+      providerSnapshotManager: manager,
+      readAgentProfiles: () => profiles,
       ensureWorkspaceForCreate,
       logger,
     });
@@ -5024,15 +5053,6 @@ describe("provider listing MCP tool", () => {
   });
 });
 
-function daemonConfigStoreStub(agentProfiles?: AgentProfile[]): Pick<DaemonConfigStore, "get"> {
-  const config = MutableDaemonConfigSchema.parse({
-    relay: { enabled: true },
-    mcp: { injectIntoAgents: true },
-    ...(agentProfiles !== undefined ? { agentProfiles } : {}),
-  });
-  return { get: () => config };
-}
-
 describe("agent profile listing MCP tool", () => {
   const logger = createTestLogger();
 
@@ -5045,7 +5065,7 @@ describe("agent profile listing MCP tool", () => {
       agentManager,
       agentStorage,
       providerSnapshotManager: createOpenCodeManager().manager,
-      daemonConfigStore: daemonConfigStoreStub([]),
+      readAgentProfiles: () => [],
       logger,
     });
 

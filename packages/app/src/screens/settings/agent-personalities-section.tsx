@@ -18,14 +18,14 @@ import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type {
-  AgentPersonality,
+  AgentProfile,
   AgentPersonalityVoice,
   CueMoment,
   PersonalityRole,
   SpeechSettingsOptions,
 } from "@otto-code/protocol/messages";
 import { CUE_MOMENTS, PERSONALITY_ROLES } from "@otto-code/protocol/messages";
-import { DEFAULT_AGENT_PERSONALITIES } from "@otto-code/protocol/default-personalities";
+import { DEFAULT_AGENT_PROFILES } from "@otto-code/protocol/default-personalities";
 import {
   checkPersonalityAvailability,
   normalizePersonalityRoles,
@@ -150,13 +150,13 @@ function isHexColor(value: string): boolean {
 // already populated) so the caller can skip the write. Used by the background
 // cue generation that runs after a cue-less personality is saved.
 function fillEmptyPersistedCues(
-  current: AgentPersonality["voiceCues"],
+  current: AgentProfile["voiceCues"],
   generated: Partial<Record<CueMoment, string[]>>,
-): AgentPersonality["voiceCues"] | null {
+): AgentProfile["voiceCues"] | null {
   // Mirror the wire type rather than `Record<string, string[]>`: the cues schema
   // is a passthrough object, so its inferred type carries an `unknown` index
   // signature that a plain string[] record cannot accept.
-  const next: NonNullable<AgentPersonality["voiceCues"]> = { ...current };
+  const next: NonNullable<AgentProfile["voiceCues"]> = { ...current };
   let added = false;
   for (const moment of CUE_MOMENTS) {
     const existing = next[moment];
@@ -251,7 +251,7 @@ function emptyDraftVoiceCues(): DraftVoiceCues {
   return buildDraftVoiceCues(() => []);
 }
 
-function draftVoiceCuesFrom(cues: AgentPersonality["voiceCues"]): DraftVoiceCues {
+function draftVoiceCuesFrom(cues: AgentProfile["voiceCues"]): DraftVoiceCues {
   return buildDraftVoiceCues((moment) => {
     const group: unknown = cues?.[moment];
     return Array.isArray(group) ? group.map((text) => newCueLine(String(text))) : [];
@@ -260,9 +260,7 @@ function draftVoiceCuesFrom(cues: AgentPersonality["voiceCues"]): DraftVoiceCues
 
 // Trim + drop blank lines; returns undefined when every group is empty (so the
 // personality stores no voiceCues at all rather than empty arrays).
-function draftVoiceCuesToPersistable(
-  cues: DraftVoiceCues,
-): AgentPersonality["voiceCues"] | undefined {
+function draftVoiceCuesToPersistable(cues: DraftVoiceCues): AgentProfile["voiceCues"] | undefined {
   const persistable: Record<string, string[]> = {};
   for (const moment of CUE_MOMENTS) {
     const lines = cues[moment].map((line) => line.text.trim()).filter((text) => text.length > 0);
@@ -355,11 +353,13 @@ function formatEffortLabel(level: string): string {
   return level.charAt(0).toUpperCase() + level.slice(1);
 }
 
-function personalityToDraft(personality: AgentPersonality): PersonalityDraft {
+function personalityToDraft(personality: AgentProfile): PersonalityDraft {
   return {
     name: personality.name,
     provider: personality.provider,
-    model: personality.model,
+    // A template may name no model ("use the provider's default"); the editor
+    // shows that as no model chosen rather than inventing one.
+    model: personality.model ?? "",
     modeId: personality.modeId ?? "",
     effortLevel: personality.effortLevel ?? "",
     personalityPrompt: personality.personalityPrompt ?? "",
@@ -377,8 +377,8 @@ function personalityToDraft(personality: AgentPersonality): PersonalityDraft {
   };
 }
 
-function draftToPersonality(draft: PersonalityDraft, id: string): AgentPersonality {
-  const personality: AgentPersonality = {
+function draftToPersonality(draft: PersonalityDraft, id: string): AgentProfile {
+  const personality: AgentProfile = {
     id,
     name: draft.name.trim(),
     provider: draft.provider,
@@ -596,12 +596,16 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
   const memoryCounts = usePersonalityMemoryCounts(serverId, isConnected && hasFeature);
   const memoryTransfer = usePersonalityMemoryTransfer(serverId);
 
-  const personalities = useMemo(() => config?.agentPersonalities?.personalities ?? [], [config]);
+  // The roster is `daemon.agentProfiles` - one stored template list, labelled
+  // "Personalities" here because the UI label is the one users know. A
+  // pre-convergence host's `agents.agentPersonalities` is imported into it once
+  // at daemon start, ids intact.
+  const personalities = useMemo(() => config?.agentProfiles ?? [], [config]);
   const providerEntries = useMemo(() => entries ?? [], [entries]);
 
   const savePersonalities = useCallback(
-    async (next: AgentPersonality[]) => {
-      await patchConfig({ agentPersonalities: { personalities: next } });
+    async (next: AgentProfile[]) => {
+      await patchConfig({ agentProfiles: next });
     },
     [patchConfig],
   );
@@ -628,7 +632,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
       }
       // Build the replacement once (outside the map) so the swap is a plain
       // reference substitution rather than an allocate-per-iteration spread.
-      const updated: AgentPersonality = { ...target, voiceCues: mergedCues };
+      const updated: AgentProfile = { ...target, voiceCues: mergedCues };
       const next = current.map((entry) => (entry.id === personalityId ? updated : entry));
       await savePersonalities(next);
     },
@@ -651,7 +655,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
   const handleClose = useCallback(() => setEditing(null), []);
 
   const handleSave = useCallback(
-    async (draft: PersonalityDraft): Promise<AgentPersonality | undefined> => {
+    async (draft: PersonalityDraft): Promise<AgentProfile | undefined> => {
       if (!editing) return undefined;
       const id = editing.id ?? generatePersonalityId();
       // Draft conversion is inside the try with the save: anything that throws
@@ -699,7 +703,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
   // undo. Zero lessons keeps the plain confirm - a decision sheet about nothing
   // is just an extra click.
   const [pendingDelete, setPendingDelete] = useState<{
-    personality: AgentPersonality;
+    personality: AgentProfile;
     lessonCount: number;
   } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -789,12 +793,12 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
   // and the disabled state.
   const missingDefaultsCount = useMemo(() => {
     const existingIds = new Set(personalities.map((entry) => entry.id));
-    return DEFAULT_AGENT_PERSONALITIES.filter((entry) => !existingIds.has(entry.id)).length;
+    return DEFAULT_AGENT_PROFILES.filter((entry) => !existingIds.has(entry.id)).length;
   }, [personalities]);
 
   const handleRestoreDefaults = useCallback(async () => {
     const existingIds = new Set(personalities.map((entry) => entry.id));
-    const missing = DEFAULT_AGENT_PERSONALITIES.filter((entry) => !existingIds.has(entry.id));
+    const missing = DEFAULT_AGENT_PROFILES.filter((entry) => !existingIds.has(entry.id));
     if (missing.length === 0) return;
     try {
       await savePersonalities([...personalities, ...missing]);
@@ -859,7 +863,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
                 style={styles.restoreButton}
                 testID="agent-personalities-restore-button"
               >
-                {`Add starter team (${DEFAULT_AGENT_PERSONALITIES.length})`}
+                {`Add starter team (${DEFAULT_AGENT_PROFILES.length})`}
               </Button>
             </View>
           )}
@@ -914,7 +918,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
 // ---------------------------------------------------------------------------
 
 interface PersonalityRowProps {
-  personality: AgentPersonality;
+  personality: AgentProfile;
   entries: readonly ProviderSnapshotEntry[];
   isFirst: boolean;
   usageCount: number;
@@ -947,7 +951,7 @@ function formatLessonCount(count: number): string | null {
 // Resolve the display labels the dropdowns use (not raw ids) plus availability.
 // Falls back to the stored id when the provider/model is no longer resolvable.
 function derivePersonalityRowInfo(
-  personality: AgentPersonality,
+  personality: AgentProfile,
   entries: readonly ProviderSnapshotEntry[],
 ) {
   const entry = entries.find((candidate) => candidate.provider === personality.provider);
@@ -1030,11 +1034,11 @@ function PersonalityRow({
   // A picked identity icon wins the leading slot; without one the provider
   // glyph tinted by the spinner glows keeps identifying the row.
   const icon = personality.icon ? (
-    <AgentProfileGlyph icon={personality.icon} color={personality.color ?? ""} size={18} />
+    <AgentProfileGlyph icon={personality.icon} color={personality.color ?? ""} size="mdPlus" />
   ) : (
     <PersonalityProviderIcon
       provider={personality.provider}
-      size={18}
+      size="mdPlus"
       glowA={personality.spinner?.glowA}
       glowB={personality.spinner?.glowB}
     />
@@ -1132,7 +1136,7 @@ interface PersonalityEditModalProps {
   onClose: () => void;
   // Resolves with the saved personality (or undefined if the save failed) so the
   // editor can start background cue generation keyed to its id.
-  onSave: (draft: PersonalityDraft) => Promise<AgentPersonality | undefined>;
+  onSave: (draft: PersonalityDraft) => Promise<AgentProfile | undefined>;
   // Persists cues generated in the background after a cue-less save completes.
   onPersistGeneratedCues: (
     personalityId: string,

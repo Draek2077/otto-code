@@ -1,5 +1,5 @@
 import { normalizePersonalityRoles } from "./agent-personalities.js";
-import type { AgentPersonality, AgentTeam, PersonalityRole } from "./messages.js";
+import type { AgentProfile, AgentTeam, PersonalityRole } from "./messages.js";
 
 // Pure, dependency-free team helpers shared by the daemon (spawn-time active
 // team resolution, list_personalities scoping) and the app (team cards,
@@ -65,14 +65,14 @@ export function isTeamMember(
  */
 export function resolveTeamMembers(
   team: Pick<AgentTeam, "memberIds"> | null | undefined,
-  personalities: readonly AgentPersonality[] | undefined,
-): AgentPersonality[] {
+  personalities: readonly AgentProfile[] | undefined,
+): AgentProfile[] {
   if (!team || !personalities || personalities.length === 0) {
     return [];
   }
   const byId = new Map(personalities.map((personality) => [personality.id, personality]));
   const seen = new Set<string>();
-  const members: AgentPersonality[] = [];
+  const members: AgentProfile[] = [];
   for (const memberId of team.memberIds ?? []) {
     if (seen.has(memberId)) {
       continue;
@@ -93,7 +93,7 @@ export function resolveTeamMembers(
  */
 export function pruneTeamMemberIds(
   memberIds: readonly string[] | undefined,
-  personalities: readonly AgentPersonality[] | undefined,
+  personalities: readonly AgentProfile[] | undefined,
 ): string[] {
   if (!memberIds || memberIds.length === 0) {
     return [];
@@ -121,8 +121,8 @@ export function pruneTeamMemberIds(
 export function resolveExclusiveTeamMembers(
   team: Pick<AgentTeam, "memberIds"> | null | undefined,
   otherTeams: readonly Pick<AgentTeam, "memberIds">[] | undefined,
-  personalities: readonly AgentPersonality[] | undefined,
-): AgentPersonality[] {
+  personalities: readonly AgentProfile[] | undefined,
+): AgentProfile[] {
   const claimed = new Set<string>();
   for (const other of otherTeams ?? []) {
     for (const memberId of other.memberIds ?? []) {
@@ -140,7 +140,7 @@ export function resolveExclusiveTeamMembers(
  */
 export function teamRoleUnion(
   team: Pick<AgentTeam, "memberIds"> | null | undefined,
-  personalities: readonly AgentPersonality[] | undefined,
+  personalities: readonly AgentProfile[] | undefined,
 ): PersonalityRole[] {
   const roles = resolveTeamMembers(team, personalities).flatMap(
     (personality) => personality.roles ?? [],

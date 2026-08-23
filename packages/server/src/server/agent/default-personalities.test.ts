@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  DEFAULT_AGENT_PERSONALITIES,
+  DEFAULT_AGENT_PROFILES,
   DEFAULT_AGENT_TEAMS,
 } from "@otto-code/protocol/default-personalities";
 import {
@@ -36,15 +36,15 @@ const KOKORO_V1_VOICE_NAMES = new Set(
   listLocalTtsVoices(KOKORO_V1_MODEL).map((voice) => voice.name),
 );
 
-describe("DEFAULT_AGENT_PERSONALITIES", () => {
+describe("DEFAULT_AGENT_PROFILES", () => {
   test("every entry is a schema-valid personality", () => {
-    for (const personality of DEFAULT_AGENT_PERSONALITIES) {
+    for (const personality of DEFAULT_AGENT_PROFILES) {
       expect(() => AgentPersonalitySchema.parse(personality)).not.toThrow();
     }
   });
 
   test("ids are unique and stable builtin handles", () => {
-    const ids = DEFAULT_AGENT_PERSONALITIES.map((personality) => personality.id);
+    const ids = DEFAULT_AGENT_PROFILES.map((personality) => personality.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) {
       expect(id.startsWith("personality_builtin_")).toBe(true);
@@ -52,16 +52,14 @@ describe("DEFAULT_AGENT_PERSONALITIES", () => {
   });
 
   test("names are single-word handles safe for spawn-by-name", () => {
-    for (const personality of DEFAULT_AGENT_PERSONALITIES) {
+    for (const personality of DEFAULT_AGENT_PROFILES) {
       expect(personality.name).toMatch(/^[A-Za-z0-9_-]{1,20}$/);
     }
   });
 
   test("the roster covers all seven roles", () => {
     const covered = new Set(
-      DEFAULT_AGENT_PERSONALITIES.flatMap((personality) =>
-        normalizePersonalityRoles(personality.roles),
-      ),
+      DEFAULT_AGENT_PROFILES.flatMap((personality) => normalizePersonalityRoles(personality.roles)),
     );
     for (const role of PERSONALITY_ROLES) {
       expect(covered.has(role)).toBe(true);
@@ -69,7 +67,7 @@ describe("DEFAULT_AGENT_PERSONALITIES", () => {
   });
 
   test("every requested effort level is on the canonical scale", () => {
-    for (const personality of DEFAULT_AGENT_PERSONALITIES) {
+    for (const personality of DEFAULT_AGENT_PROFILES) {
       if (personality.effortLevel !== undefined) {
         expect(EFFORT_LEVELS).toContain(personality.effortLevel);
       }
@@ -77,14 +75,14 @@ describe("DEFAULT_AGENT_PERSONALITIES", () => {
   });
 
   test("every model is a real Claude manifest model", () => {
-    for (const personality of DEFAULT_AGENT_PERSONALITIES) {
+    for (const personality of DEFAULT_AGENT_PROFILES) {
       expect(personality.provider).toBe("claude");
       expect(isClaudeManifestModelId(personality.model)).toBe(true);
     }
   });
 
   test("every mode is a valid Claude permission mode", () => {
-    for (const personality of DEFAULT_AGENT_PERSONALITIES) {
+    for (const personality of DEFAULT_AGENT_PROFILES) {
       if (personality.modeId !== undefined) {
         expect(CLAUDE_MODE_IDS.has(personality.modeId)).toBe(true);
       }
@@ -92,7 +90,7 @@ describe("DEFAULT_AGENT_PERSONALITIES", () => {
   });
 
   test("every voice is a Kokoro v1.0 voice", () => {
-    for (const personality of DEFAULT_AGENT_PERSONALITIES) {
+    for (const personality of DEFAULT_AGENT_PROFILES) {
       expect(personality.voice).toBeDefined();
       expect(personality.voice?.provider).toBe("local");
       expect(personality.voice?.model).toBe(KOKORO_V1_MODEL);
@@ -101,7 +99,7 @@ describe("DEFAULT_AGENT_PERSONALITIES", () => {
   });
 
   test("every personality ships two spinner glow colors", () => {
-    for (const personality of DEFAULT_AGENT_PERSONALITIES) {
+    for (const personality of DEFAULT_AGENT_PROFILES) {
       expect(personality.spinner?.glowA).toMatch(/^#[0-9A-Fa-f]{6}$/);
       expect(personality.spinner?.glowB).toMatch(/^#[0-9A-Fa-f]{6}$/);
     }
@@ -120,7 +118,7 @@ describe("DEFAULT_AGENT_TEAMS", () => {
   });
 
   test("every seeded member id exists in the starter personality roster", () => {
-    const personalityIds = new Set(DEFAULT_AGENT_PERSONALITIES.map((entry) => entry.id));
+    const personalityIds = new Set(DEFAULT_AGENT_PROFILES.map((entry) => entry.id));
     for (const team of DEFAULT_AGENT_TEAMS) {
       const memberIds = team.memberIds ?? [];
       expect(memberIds.length).toBeGreaterThan(0);

@@ -1,4 +1,4 @@
-import type { AgentPersonality, AgentTeam } from "@otto-code/protocol/messages";
+import type { AgentProfile, AgentTeam } from "@otto-code/protocol/messages";
 import { isPersonalityRole, personalityHasRole } from "@otto-code/protocol/agent-personalities";
 
 // Resolve which member of the active team fills a role - the daemon-side mirror
@@ -9,9 +9,9 @@ import { isPersonalityRole, personalityHasRole } from "@otto-code/protocol/agent
 // reason; this only answers "does the team roster cover this role at all".
 export function resolveTeamRoleMember(input: {
   team: Pick<AgentTeam, "memberIds"> | null | undefined;
-  roster: readonly AgentPersonality[];
+  roster: readonly AgentProfile[];
   role: string;
-}): AgentPersonality | null {
+}): AgentProfile | null {
   if (!input.team || !isPersonalityRole(input.role)) {
     return null;
   }

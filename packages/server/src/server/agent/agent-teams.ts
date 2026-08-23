@@ -9,8 +9,8 @@ import {
   composeRoleFocusDirective,
   personalityHasRole,
 } from "@otto-code/protocol/agent-personalities";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
-import { resolvePersonality, type ResolvedPersonalitySnapshot } from "./agent-personalities.js";
+import type { AgentProfile } from "@otto-code/protocol/messages";
+import { resolveProfile, type ResolvedProfileSnapshot } from "./agent-profiles.js";
 import type { ProviderSnapshotEntry } from "./agent-sdk-types.js";
 
 /**
@@ -68,9 +68,9 @@ export function resolveTeamSnapshotForPersonality(
  */
 export function resolveTeamSchedulerSnapshot(params: {
   agentTeams: AgentTeamsConfigView | undefined;
-  roster: readonly AgentPersonality[];
+  roster: readonly AgentProfile[];
   entries: readonly ProviderSnapshotEntry[];
-}): ResolvedPersonalitySnapshot {
+}): ResolvedProfileSnapshot {
   const team = getActiveAgentTeam(params.agentTeams);
   if (!team) {
     throw new Error(
@@ -87,7 +87,7 @@ export function resolveTeamSchedulerSnapshot(params: {
   }
   let firstReason: string | null = null;
   for (const member of schedulers) {
-    const resolution = resolvePersonality(member, params.entries);
+    const resolution = resolveProfile(member, params.entries);
     if (resolution.status === "available") {
       return resolution.snapshot;
     }

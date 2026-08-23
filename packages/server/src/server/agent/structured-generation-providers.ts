@@ -3,7 +3,7 @@ import {
   personalityHasRole,
 } from "@otto-code/protocol/agent-personalities";
 import { getActiveAgentTeam, type AgentTeamsConfigView } from "@otto-code/protocol/agent-teams";
-import type { AgentPersonality, PersonalityRole } from "@otto-code/protocol/messages";
+import type { AgentProfile, PersonalityRole } from "@otto-code/protocol/messages";
 import type { ModelTier } from "@otto-code/protocol/agent-types";
 import type {
   AgentModelDefinition,
@@ -34,11 +34,10 @@ export interface StructuredGenerationDaemonConfig {
       thinkingOptionId?: string;
     }>;
   };
-  // The host's Agent Personalities roster, so role-matched personalities can be
-  // resolved as the primary worker for a mini-task before the legacy chain.
-  agentPersonalities?: {
-    personalities?: readonly AgentPersonality[];
-  };
+  // The host's roster of stored agent profiles (labelled "Personalities" in the
+  // UI), so role-matched entries can be resolved as the primary worker for a
+  // mini-task before the legacy chain.
+  agentProfiles?: readonly AgentProfile[];
   // The host's Agent Teams section. With a team active, its role-matched
   // members are preferred ahead of non-member personalities - a preference
   // ladder, never an availability gate (an all-out-of-commission team must not
@@ -232,10 +231,10 @@ export async function resolveStructuredGenerationAgent(
 // chain, so it is the primary when its bound provider/model equals `primary`.
 function findPrimaryPersonalityMatch(
   role: PersonalityRole,
-  personalities: readonly AgentPersonality[],
+  personalities: readonly AgentProfile[],
   entries: readonly ProviderSnapshotEntry[],
   primary: StructuredGenerationProvider,
-): AgentPersonality | null {
+): AgentProfile | null {
   const entryByProvider = new Map<string, ProviderSnapshotEntry>(
     entries.map((entry) => [entry.provider, entry]),
   );
@@ -500,9 +499,9 @@ function resolveCheapestTierProvider(
 
 function readConfiguredPersonalities(
   daemonConfig: ResolveStructuredGenerationProvidersOptions["daemonConfig"],
-): readonly AgentPersonality[] {
-  const personalities = daemonConfig?.agentPersonalities?.personalities;
-  const roster = Array.isArray(personalities) ? personalities : [];
+): readonly AgentProfile[] {
+  const profiles = daemonConfig?.agentProfiles;
+  const roster = Array.isArray(profiles) ? profiles : [];
   return orderPersonalitiesByTeamPreference(roster, daemonConfig?.agentTeams);
 }
 
@@ -514,9 +513,9 @@ function readConfiguredPersonalities(
  * pre-teams behavior.
  */
 function orderPersonalitiesByTeamPreference(
-  personalities: readonly AgentPersonality[],
+  personalities: readonly AgentProfile[],
   agentTeams: AgentTeamsConfigView | undefined,
-): readonly AgentPersonality[] {
+): readonly AgentProfile[] {
   const team = getActiveAgentTeam(agentTeams);
   if (!team) {
     return personalities;
@@ -538,7 +537,7 @@ function orderPersonalitiesByTeamPreference(
  */
 function resolvePersonalityProviders(
   role: PersonalityRole,
-  personalities: readonly AgentPersonality[],
+  personalities: readonly AgentProfile[],
   entries: readonly ProviderSnapshotEntry[],
 ): StructuredGenerationProvider[] {
   const entryByProvider = new Map<string, ProviderSnapshotEntry>(

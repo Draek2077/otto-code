@@ -24,6 +24,12 @@ import {
   AgentPersonalitiesGenerateProfileRequestSchema,
   AgentPersonalitiesGetStatsResponseSchema,
   AgentPersonalitiesGenerateProfileResponseSchema,
+  AgentProfileStatsRequestSchema,
+  AgentProfileStatsResponseSchema,
+  AgentProfileGeneratePromptRequestSchema,
+  AgentProfileGeneratePromptResponseSchema,
+  AgentProfileGenerateVoiceCuesRequestSchema,
+  AgentProfileGenerateVoiceCuesResponseSchema,
   PersonalityMemoryListRequestMessageSchema,
   PersonalityMemoryListResponseMessageSchema,
   PersonalityMemoryUpdateRequestMessageSchema,
@@ -32,6 +38,14 @@ import {
   PersonalityMemoryTransferResponseMessageSchema,
   PersonalityMemoryStatsRequestMessageSchema,
   PersonalityMemoryStatsResponseMessageSchema,
+  ProfileMemoryListRequestMessageSchema,
+  ProfileMemoryListResponseMessageSchema,
+  ProfileMemoryUpdateRequestMessageSchema,
+  ProfileMemoryUpdateResponseMessageSchema,
+  ProfileMemoryTransferRequestMessageSchema,
+  ProfileMemoryTransferResponseMessageSchema,
+  ProfileMemoryStatsRequestMessageSchema,
+  ProfileMemoryStatsResponseMessageSchema,
 } from "./personality-schemas.js";
 import {
   TerminalCompatibilityDiagnosticRequestSchema,
@@ -2686,6 +2700,17 @@ export const AgentPersonalitySetResponseMessageSchema = z.object({
   payload: AgentActionResponsePayloadSchema,
 });
 
+// COMPAT(agentProfileRpcs): added in v0.8.13, drop the legacy pair above when
+// the daemon floor >= v0.8.13. The profile-named twin of the pair above; see the
+// block at the end of personality-schemas.ts for why both halves exist.
+export const AgentProfileSetRequestMessageSchema = AgentPersonalitySetRequestMessageSchema.omit({
+  type: true,
+}).extend({ type: z.literal("agent.profile.set.request") });
+
+export const AgentProfileSetResponseMessageSchema = AgentPersonalitySetResponseMessageSchema.omit({
+  type: true,
+}).extend({ type: z.literal("agent.profile.set.response") });
+
 export const AgentRewindModeSchema = z.enum(["conversation", "files", "both"]);
 
 export const AgentRewindRequestMessageSchema = z.object({
@@ -4184,6 +4209,11 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   VisualizerVoiceCuesGenerateRequestSchema,
   AgentPersonalitiesGetStatsRequestSchema,
   AgentPersonalitiesGenerateProfileRequestSchema,
+  // COMPAT(agentProfileRpcs): added in v0.8.13, drop the legacy names above
+  // when the daemon floor >= v0.8.13.
+  AgentProfileStatsRequestSchema,
+  AgentProfileGeneratePromptRequestSchema,
+  AgentProfileGenerateVoiceCuesRequestSchema,
   ReadProjectConfigRequestMessageSchema,
   WriteProjectConfigRequestMessageSchema,
   DictationStreamStartMessageSchema,
@@ -4217,6 +4247,10 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   PersonalityMemoryUpdateRequestMessageSchema,
   PersonalityMemoryTransferRequestMessageSchema,
   PersonalityMemoryStatsRequestMessageSchema,
+  ProfileMemoryListRequestMessageSchema,
+  ProfileMemoryUpdateRequestMessageSchema,
+  ProfileMemoryTransferRequestMessageSchema,
+  ProfileMemoryStatsRequestMessageSchema,
   StatsActivityResetRequestMessageSchema,
   UsageLogGetRequestMessageSchema,
   AgentContextGetUsageRequestMessageSchema,
@@ -4246,6 +4280,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   TasksSuggestedStartRequestMessageSchema,
   TasksSuggestedDismissRequestMessageSchema,
   AgentPersonalitySetRequestMessageSchema,
+  AgentProfileSetRequestMessageSchema,
   AgentRewindRequestMessageSchema,
   AgentQueueRemoveRequestMessageSchema,
   AgentQueueReorderRequestMessageSchema,
@@ -4855,6 +4890,12 @@ export const ServerInfoStatusPayloadSchema = z
         ttsSpeak: z.boolean().optional(),
         // COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
         visualizerVoiceCues: z.boolean().optional(),
+        // The daemon accepts the profile-named halves of the personality RPCs
+        // (agent.profile.*, profile.memory.*). Purely a rename: the legacy names
+        // keep working, so this gates WHICH literal the client emits, never
+        // whether the feature exists.
+        // COMPAT(agentProfileRpcs): added in v0.8.13, drop the gate when daemon floor >= v0.8.13.
+        agentProfileRpcs: z.boolean().optional(),
         // COMPAT(personalityProfile): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
         // Host can author a personality profile (the prompt prose) from a name,
         // roles, and spinner colors.
@@ -8184,6 +8225,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   VisualizerVoiceCuesGenerateResponseSchema,
   AgentPersonalitiesGetStatsResponseSchema,
   AgentPersonalitiesGenerateProfileResponseSchema,
+  AgentProfileStatsResponseSchema,
+  AgentProfileGeneratePromptResponseSchema,
+  AgentProfileGenerateVoiceCuesResponseSchema,
   ReadProjectConfigResponseMessageSchema,
   WriteProjectConfigResponseMessageSchema,
   SetAgentModeResponseMessageSchema,
@@ -8205,6 +8249,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SuggestedTasksChangedSchema,
   ContextReportChangedSchema,
   AgentPersonalitySetResponseMessageSchema,
+  AgentProfileSetResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
@@ -8406,6 +8451,10 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   PersonalityMemoryUpdateResponseMessageSchema,
   PersonalityMemoryTransferResponseMessageSchema,
   PersonalityMemoryStatsResponseMessageSchema,
+  ProfileMemoryListResponseMessageSchema,
+  ProfileMemoryUpdateResponseMessageSchema,
+  ProfileMemoryTransferResponseMessageSchema,
+  ProfileMemoryStatsResponseMessageSchema,
   StatsActivityResetResponseMessageSchema,
   UsageLogGetResponseMessageSchema,
   ActivityStatsChangedSchema,

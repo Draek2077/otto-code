@@ -18,7 +18,7 @@ import type {
 import type { OttoToolCatalog } from "./tools/types.js";
 // Type-only import - erased at compile time, so the resolver ⇄ config-types
 // cycle never exists at runtime.
-import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
+import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
 import type { ResolvedTeamSnapshot } from "./agent-teams.js";
 
 export type { AgentProviderNotice, AgentTaskItem };
@@ -883,7 +883,7 @@ export interface AgentSessionConfig {
    * agent.personality.set switch (AgentManager.setAgentPersonality), which
    * re-resolves a roster personality and replaces the snapshot wholesale.
    */
-  personalitySnapshot?: ResolvedPersonalitySnapshot;
+  personalitySnapshot?: ResolvedProfileSnapshot;
   /**
    * Frozen active-team resolution captured at spawn when the spawning
    * personality was a member of the host's active Agent Team. Same lifecycle
@@ -928,7 +928,7 @@ export interface AgentSessionConfig {
  * except a restored `daemonAppendSystemPrompt`.
  */
 export interface AgentPersonalityUpdate {
-  personalitySnapshot: ResolvedPersonalitySnapshot | undefined;
+  personalitySnapshot: ResolvedProfileSnapshot | undefined;
   systemPrompt: string | undefined;
   daemonAppendSystemPrompt: string | undefined;
 }

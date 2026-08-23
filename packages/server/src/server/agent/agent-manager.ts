@@ -14,7 +14,7 @@ import {
   normalizePersonalityRoles,
   OTTO_WORK_VOCABULARY_DIRECTIVE,
 } from "@otto-code/protocol/agent-personalities";
-import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
+import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
 import { composeTeamAndPersonalityPrompt } from "./agent-teams.js";
 import { deltaAgentUsage } from "./subagent-usage.js";
 import { normalizeWidgetTimelineItem } from "../widget/widget-timeline.js";
@@ -3149,7 +3149,7 @@ export class AgentManager {
    */
   async setAgentPersonality(
     agentId: string,
-    snapshot: ResolvedPersonalitySnapshot | null,
+    snapshot: ResolvedProfileSnapshot | null,
   ): Promise<AgentProviderNotice | null> {
     return this.withAgentConfigLock(agentId, () =>
       this.setAgentPersonalityUnlocked(agentId, snapshot),
@@ -3158,7 +3158,7 @@ export class AgentManager {
 
   private async setAgentPersonalityUnlocked(
     agentId: string,
-    snapshot: ResolvedPersonalitySnapshot | null,
+    snapshot: ResolvedProfileSnapshot | null,
   ): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
     const session = agent.session;
@@ -3252,7 +3252,7 @@ export class AgentManager {
   private async applyPersonalityBrain(
     agent: ManagedAgent,
     session: AgentSession,
-    snapshot: ResolvedPersonalitySnapshot,
+    snapshot: ResolvedProfileSnapshot,
   ): Promise<(AgentProviderNotice | null)[]> {
     const notices: (AgentProviderNotice | null)[] = [];
     // Ordering carries two invariants:
@@ -7549,7 +7549,7 @@ export class AgentManager {
    */
   private async withPersonalityMemory(
     systemPrompt: string | undefined,
-    snapshot: ResolvedPersonalitySnapshot | null | undefined,
+    snapshot: ResolvedProfileSnapshot | null | undefined,
     cwd: string | undefined,
   ): Promise<string | undefined> {
     if (!snapshot || !this.resolvePersonalityMemoryBrief) {

@@ -1,4 +1,4 @@
-import type { AgentPersonality, AgentTeam } from "./messages.js";
+import type { AgentProfile, AgentTeam } from "./messages.js";
 
 // The starter "team" of Agent Personalities shipped with Otto. These seed a
 // fresh host so a new user sees a working, role-complete roster instead of an
@@ -32,11 +32,11 @@ import type { AgentPersonality, AgentTeam } from "./messages.js";
 
 const KOKORO_V1_MODEL = "kokoro-multi-lang-v1_0";
 
-function kokoroVoice(name: string): AgentPersonality["voice"] {
+function kokoroVoice(name: string): AgentProfile["voice"] {
   return { provider: "local", model: KOKORO_V1_MODEL, name };
 }
 
-export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
+export const DEFAULT_AGENT_PROFILES: readonly AgentProfile[] = [
   {
     id: "personality_builtin_atlas",
     name: "Atlas",
@@ -161,6 +161,6 @@ export const DEFAULT_AGENT_TEAMS: readonly AgentTeam[] = [
       "together under Atlas's lead. Stay in your lane and trust your teammates' lanes: do your " +
       "own role's work well, hand off cleanly with the context the next specialist needs, and " +
       "flag anything you notice outside your remit instead of fixing it yourself.",
-    memberIds: DEFAULT_AGENT_PERSONALITIES.map((personality) => personality.id),
+    memberIds: DEFAULT_AGENT_PROFILES.map((profile) => profile.id),
   },
 ];

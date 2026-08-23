@@ -7,6 +7,15 @@ import { PERSONALITY_ROLES, type AgentPersonality, type PersonalityRole } from "
 
 const ROLE_SET: ReadonlySet<string> = new Set(PERSONALITY_ROLES);
 
+// Retired role names, mapped to their canonical replacement. "worker" was split
+// into "writer" (fast small-text generation) and "coder" (sub-agent coding); a
+// personality that still carries the old tag resolves to "coder", the closer
+// heir of what a worker did. Normalization applies these before filtering so
+// personalities persisted before the split keep a real role.
+const LEGACY_ROLE_ALIASES: Readonly<Record<string, PersonalityRole>> = {
+  worker: "coder",
+};
+
 export function isPersonalityRole(value: string): value is PersonalityRole {
   return ROLE_SET.has(value);
 }
@@ -14,8 +23,8 @@ export function isPersonalityRole(value: string): value is PersonalityRole {
 /**
  * Filter an arbitrary role array (roles ride the wire as plain strings) down to
  * the known set, deduped and returned in canonical `PERSONALITY_ROLES` order.
- * Unknown roles (for example, a role from a newer peer) are dropped rather
- * than trusted.
+ * Retired role names are mapped through `LEGACY_ROLE_ALIASES`; anything else
+ * unknown (e.g. a role from a newer peer) is dropped rather than trusted.
  */
 export function normalizePersonalityRoles(roles: readonly string[] | undefined): PersonalityRole[] {
   if (!roles || roles.length === 0) {
@@ -23,7 +32,7 @@ export function normalizePersonalityRoles(roles: readonly string[] | undefined):
   }
   const present = new Set<PersonalityRole>();
   for (const raw of roles) {
-    const canonical = isPersonalityRole(raw) ? raw : null;
+    const canonical = LEGACY_ROLE_ALIASES[raw] ?? (isPersonalityRole(raw) ? raw : null);
     if (canonical) {
       present.add(canonical);
     }
@@ -217,9 +226,14 @@ export type PersonalityAvailability =
  * A personality is out of commission the moment any bound setting can't resolve:
  * provider absent/disabled/not-ready, model gone, or an explicit mode missing.
  * The caller grays it out in pickers and hard-fails it in automation.
+ *
+ * `model` is optional because the stored template is an `AgentProfile`, which
+ * may name no model at all ("use whatever this provider defaults to"). Absent
+ * means the provider only has to advertise SOME model; the concrete id is
+ * chosen at resolution time, not here.
  */
 export function checkPersonalityAvailability(
-  personality: Pick<AgentPersonality, "provider" | "model" | "modeId">,
+  personality: { provider: string; model?: string | undefined; modeId?: string | undefined },
   input: PersonalityAvailabilityInput,
 ): PersonalityAvailability {
   if (input.providerStatus === undefined) {
@@ -243,7 +257,16 @@ export function checkPersonalityAvailability(
       reason: `Provider "${personality.provider}" is not ready (${input.providerStatus}).`,
     };
   }
-  if (!(input.modelIds ?? []).includes(personality.model)) {
+  const modelIds = input.modelIds ?? [];
+  if (personality.model === undefined) {
+    if (modelIds.length === 0) {
+      return {
+        available: false,
+        code: "model-missing",
+        reason: `Provider "${personality.provider}" advertises no models.`,
+      };
+    }
+  } else if (!modelIds.includes(personality.model)) {
     return {
       available: false,
       code: "model-missing",

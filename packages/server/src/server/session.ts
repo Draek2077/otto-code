@@ -166,10 +166,7 @@ import {
   type AgentRunOptions,
   type AgentSessionConfig,
 } from "./agent/agent-sdk-types.js";
-import {
-  resolvePersonality,
-  type ResolvedPersonalitySnapshot,
-} from "./agent/agent-personalities.js";
+import { resolveProfile, type ResolvedProfileSnapshot } from "./agent/agent-profiles.js";
 import {
   composeTeamAndPersonalityPrompt,
   resolveTeamSnapshotForPersonality,
@@ -370,6 +367,12 @@ import {
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 import { resolveWorktreeSourceCwd } from "./workspace-source.js";
+import {
+  isAliasableResponseType,
+  readRpcRequestId,
+  resolveAliasedRequestType,
+  resolveAliasedResponseType,
+} from "./profile-rpc-alias.js";
 
 type ProviderSubagentManagerEvent = Extract<
   AgentManagerEvent,
@@ -967,6 +970,11 @@ export class Session {
   private readonly resolveScriptHealth: ((hostname: string) => ScriptHealthState | null) | null;
   private readonly terminalController: TerminalSessionController;
   private inflightRequests = 0;
+  // COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
+  // Request ids that arrived under a profile-named alias and are still awaiting
+  // a response. Entries are removed as their response goes out, so this only
+  // ever holds in-flight requests and stays empty for legacy-name clients.
+  private readonly aliasedProfileRpcRequestIds = new Set<string>();
   private peakInflightRequests = 0;
   private readonly workspaceSetupSnapshots: Map<string, WorkspaceSetupSnapshot>;
   private readonly workspaceSetupRuntime: WorkspaceSetupRuntime;
@@ -1989,7 +1997,7 @@ export class Session {
     const config = this.daemonConfigStore.get();
     return {
       metadataGeneration: config.metadataGeneration,
-      agentPersonalities: config.agentPersonalities,
+      agentProfiles: config.agentProfiles,
       agentTeams: config.agentTeams,
     };
   }
@@ -2494,7 +2502,11 @@ export class Session {
   /**
    * Main entry point for processing session messages
    */
-  public async handleMessage(msg: SessionInboundMessage, source?: object): Promise<void> {
+  public async handleMessage(rawMsg: SessionInboundMessage, source?: object): Promise<void> {
+    // COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
+    // A profile-named request is handled by its legacy twin's handler; emit()
+    // rewrites the response back. See profile-rpc-alias.ts.
+    const msg = this.adoptProfileRpcAlias(rawMsg);
     this.inflightRequests++;
     if (this.inflightRequests > this.peakInflightRequests) {
       this.peakInflightRequests = this.inflightRequests;
@@ -6695,7 +6707,7 @@ export class Session {
       cwd: config.cwd,
       wait: true,
     });
-    const resolution = resolvePersonality(personality, entries);
+    const resolution = resolveProfile(personality, entries);
     if (resolution.status === "unavailable") {
       this.sessionLogger.warn(
         { personalityId, reason: resolution.reason },
@@ -6703,7 +6715,7 @@ export class Session {
       );
       return config;
     }
-    const snapshot: ResolvedPersonalitySnapshot = resolution.snapshot;
+    const snapshot: ResolvedProfileSnapshot = resolution.snapshot;
     // The one team rule: a member of the active team at spawn time carries the
     // frozen team layer, and the team prompt stacks directly ahead of the
     // personality prompt. Caller-authored prompts still win - nothing composes.
@@ -6735,7 +6747,7 @@ export class Session {
   private async resolvePersonalitySnapshotForAgent(
     agentId: string,
     personalityId: string,
-  ): Promise<ResolvedPersonalitySnapshot> {
+  ): Promise<ResolvedProfileSnapshot> {
     const agent = this.agentManager.getAgent(agentId);
     if (!agent) {
       throw new Error(`Agent not found: ${agentId}`);
@@ -6753,7 +6765,7 @@ export class Session {
       providers: [personality.provider],
       wait: true,
     });
-    const resolution = resolvePersonality(personality, entries);
+    const resolution = resolveProfile(personality, entries);
     if (resolution.status === "unavailable") {
       throw new Error(resolution.reason);
     }
@@ -11313,10 +11325,18 @@ export class Session {
   /**
    * Emit a message to the client
    */
-  private emit(msg: SessionOutboundMessage): void {
-    if (msg.type !== "rpc_error" && !isSessionRpcAllowed(this.scopes, msg.type)) {
+  private emit(rawMsg: SessionOutboundMessage): void {
+    // Scope is checked against the LEGACY type, before any alias rewrite: a
+    // session scoped to `personality.*` must still receive the response to a
+    // request it was allowed to make, whichever name it asked under.
+    if (rawMsg.type !== "rpc_error" && !isSessionRpcAllowed(this.scopes, rawMsg.type)) {
       return;
     }
+    // COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
+    // Guarded on the tracking set being non-empty, so a client speaking the
+    // legacy names never pays for this.
+    const msg =
+      this.aliasedProfileRpcRequestIds.size > 0 ? this.restoreProfileRpcAlias(rawMsg) : rawMsg;
     // JSON.stringify(msg) is only computed when trace is enabled - it runs for
     // every outbound message otherwise, and trace is disabled by default.
     // Optional-chained because test logger stubs don't implement isLevelEnabled.
@@ -11330,6 +11350,41 @@ export class Session {
       );
     }
     this.onMessage(msg);
+  }
+
+  /**
+   * COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
+   * Rewrite a profile-named request to the legacy literal its handler is
+   * written against, remembering the request id so the response can be
+   * rewritten back. Non-alias messages pass straight through.
+   */
+  private adoptProfileRpcAlias(msg: SessionInboundMessage): SessionInboundMessage {
+    const legacyType = resolveAliasedRequestType(msg.type);
+    if (!legacyType) {
+      return msg;
+    }
+    const requestId = readRpcRequestId(msg);
+    if (requestId !== null) {
+      this.aliasedProfileRpcRequestIds.add(requestId);
+    }
+    return { ...msg, type: legacyType } as SessionInboundMessage;
+  }
+
+  /**
+   * COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
+   * The mirror of adoptProfileRpcAlias: answer a request that arrived under a
+   * profile name with the profile-named response, and stop tracking it.
+   */
+  private restoreProfileRpcAlias(msg: SessionOutboundMessage): SessionOutboundMessage {
+    if (!isAliasableResponseType(msg.type)) {
+      return msg;
+    }
+    const requestId = readRpcRequestId(msg);
+    if (requestId === null || !this.aliasedProfileRpcRequestIds.delete(requestId)) {
+      return msg;
+    }
+    const aliasType = resolveAliasedResponseType(msg.type);
+    return aliasType ? ({ ...msg, type: aliasType } as SessionOutboundMessage) : msg;
   }
 
   private emitBinary(frame: Uint8Array): void {

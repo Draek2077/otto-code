@@ -2289,6 +2289,8 @@ export class VoiceAssistantWebSocketServer {
         checkoutDiscardChanges: true,
         // COMPAT(agentProfiles): added in v0.3.2, remove gate after 2027-02-11.
         agentProfiles: true,
+        // COMPAT(agentProfileRpcs): added in v0.8.13, drop the gate when daemon floor >= v0.8.13.
+        agentProfileRpcs: true,
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: true,
       },

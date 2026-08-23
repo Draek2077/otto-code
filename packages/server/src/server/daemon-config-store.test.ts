@@ -11,7 +11,7 @@ import {
 } from "./daemon-config-store.js";
 import { loadPersistedConfig } from "./persisted-config.js";
 import {
-  DEFAULT_AGENT_PERSONALITIES,
+  DEFAULT_AGENT_PROFILES,
   DEFAULT_AGENT_TEAMS,
 } from "@otto-code/protocol/default-personalities";
 
@@ -447,7 +447,7 @@ describe("DaemonConfigStore", () => {
     expect(persisted.daemon?.appendSystemPrompt).toBe("Prefer terse replies.");
   });
 
-  test("patch persists agent personalities into config.json and reloads them", () => {
+  test("patch persists agent profiles into config.json and reloads them", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);
 
@@ -461,35 +461,33 @@ describe("DaemonConfigStore", () => {
         autoArchiveAfterMerge: false,
         enableTerminalAgentHooks: false,
         appendSystemPrompt: "",
-        agentPersonalities: { personalities: [] },
+        agentProfiles: [],
       },
       undefined,
     );
 
     store.patch({
-      agentPersonalities: {
-        personalities: [
-          {
-            id: "p-sparky",
-            name: "Sparky",
-            provider: "openai-compat",
-            model: "qwen3-coder",
-            effortLevel: "high",
-            modeId: "yolo",
-            personalityPrompt: "Be bold and fast.",
-            respectGlobalAppendPrompt: false,
-            roles: ["chatter", "worker"],
-            spinner: { glowA: "#4ec4ff", glowB: "#e14fe8" },
-            voice: { provider: "local", model: "kokoro-multi-lang-v1_0", name: "af_heart" },
-          },
-        ],
-      },
+      agentProfiles: [
+        {
+          id: "p-sparky",
+          name: "Sparky",
+          provider: "openai-compat",
+          model: "qwen3-coder",
+          effortLevel: "high",
+          modeId: "yolo",
+          personalityPrompt: "Be bold and fast.",
+          respectGlobalAppendPrompt: false,
+          roles: ["chatter", "worker"],
+          spinner: { glowA: "#4ec4ff", glowB: "#e14fe8" },
+          voice: { provider: "local", model: "kokoro-multi-lang-v1_0", name: "af_heart" },
+        },
+      ],
     });
 
     // Survives a full reload from disk - the merge whitelist must persist the
     // section, not just hold it in memory.
     const persisted = loadPersistedConfig(ottoHome);
-    expect(persisted.agents?.agentPersonalities?.personalities).toEqual([
+    expect(persisted.daemon?.agentProfiles).toEqual([
       {
         id: "p-sparky",
         name: "Sparky",
@@ -505,10 +503,49 @@ describe("DaemonConfigStore", () => {
       },
     ]);
 
-    // Deleting the last personality clears the roster on disk rather than
-    // leaving the stale entry behind.
-    store.patch({ agentPersonalities: { personalities: [] } });
-    expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toEqual([]);
+    // Deleting the last profile clears the roster on disk rather than leaving
+    // the stale entry behind.
+    store.patch({ agentProfiles: [] });
+    expect(loadPersistedConfig(ottoHome).daemon?.agentProfiles).toEqual([]);
+  });
+
+  test("a legacy agentPersonalities section on disk is never rewritten", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    // COMPAT(agentPersonalities): the pre-convergence roster is a rollback
+    // tombstone. An unrelated patch must leave it byte-for-byte alone rather
+    // than folding the retired (and now unmaintained) mutable section over it.
+    const legacy = [...DEFAULT_AGENT_PROFILES].slice(0, 2);
+    const initial = loadPersistedConfig(ottoHome);
+    writeFileSync(
+      path.join(ottoHome, "config.json"),
+      JSON.stringify(
+        { ...initial, agents: { agentPersonalities: { personalities: legacy } } },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentProfiles: [],
+      },
+      undefined,
+    );
+    store.patch({ appendSystemPrompt: "unrelated" });
+
+    expect(
+      loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities?.map((e) => e.id),
+    ).toEqual(legacy.map((e) => e.id));
   });
 
   test("patch persists model tier overrides into config.json and clears them", () => {
@@ -553,31 +590,33 @@ describe("DaemonConfigStore", () => {
     expect(loadPersistedConfig(ottoHome).agents?.modelTierOverrides).toEqual([]);
   });
 
+  const baseInitial = {
+    mcp: { injectIntoAgents: false },
+    browserTools: { enabled: false },
+    providers: {},
+    metadataGeneration: { providers: [] },
+    autoArchiveAfterMerge: false,
+    enableTerminalAgentHooks: false,
+    appendSystemPrompt: "",
+    agentPersonalities: { personalities: [] },
+  } as const;
+
   test("seeds the shipped starter team onto a fresh host", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);
 
     const store = new DaemonConfigStore(
       ottoHome,
-      {
-        mcp: { injectIntoAgents: false },
-        browserTools: { enabled: false },
-        providers: {},
-        metadataGeneration: { providers: [] },
-        autoArchiveAfterMerge: false,
-        enableTerminalAgentHooks: false,
-        appendSystemPrompt: "",
-        agentPersonalities: { personalities: [] },
-      },
+      { ...baseInitial, agentProfiles: [...DEFAULT_AGENT_PROFILES] },
       undefined,
     );
 
-    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
+    store.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
 
-    const persisted = loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities;
-    expect(persisted).toHaveLength(DEFAULT_AGENT_PERSONALITIES.length);
+    const persisted = loadPersistedConfig(ottoHome).daemon?.agentProfiles;
+    expect(persisted).toHaveLength(DEFAULT_AGENT_PROFILES.length);
     expect(persisted?.map((entry) => entry.id)).toEqual(
-      DEFAULT_AGENT_PERSONALITIES.map((entry) => entry.id),
+      DEFAULT_AGENT_PROFILES.map((entry) => entry.id),
     );
   });
 
@@ -589,6 +628,26 @@ describe("DaemonConfigStore", () => {
     const initial = loadPersistedConfig(ottoHome);
     writeFileSync(
       path.join(ottoHome, "config.json"),
+      JSON.stringify({ ...initial, daemon: { agentProfiles: [] } }, null, 2) + "\n",
+    );
+
+    const store = new DaemonConfigStore(ottoHome, { ...baseInitial, agentProfiles: [] }, undefined);
+
+    store.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
+
+    expect(loadPersistedConfig(ottoHome).daemon?.agentProfiles).toEqual([]);
+  });
+
+  test("does not seed a pre-convergence host that still carries a legacy roster", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    // The legacy section existing at all means this host has already made its
+    // roster choices; seeding the starter team over them would resurrect
+    // personalities the user deleted before upgrading.
+    const initial = loadPersistedConfig(ottoHome);
+    writeFileSync(
+      path.join(ottoHome, "config.json"),
       JSON.stringify(
         { ...initial, agents: { agentPersonalities: { personalities: [] } } },
         null,
@@ -596,24 +655,10 @@ describe("DaemonConfigStore", () => {
       ) + "\n",
     );
 
-    const store = new DaemonConfigStore(
-      ottoHome,
-      {
-        mcp: { injectIntoAgents: false },
-        browserTools: { enabled: false },
-        providers: {},
-        metadataGeneration: { providers: [] },
-        autoArchiveAfterMerge: false,
-        enableTerminalAgentHooks: false,
-        appendSystemPrompt: "",
-        agentPersonalities: { personalities: [] },
-      },
-      undefined,
-    );
+    const store = new DaemonConfigStore(ottoHome, { ...baseInitial, agentProfiles: [] }, undefined);
+    store.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
 
-    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
-
-    expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toEqual([]);
+    expect(loadPersistedConfig(ottoHome).daemon?.agentProfiles).toBeUndefined();
   });
 
   test("a cleared roster stays cleared across a simulated restart", () => {
@@ -624,56 +669,92 @@ describe("DaemonConfigStore", () => {
     // on disk (the seed call below), so the two never diverge.
     const store = new DaemonConfigStore(
       ottoHome,
-      {
-        mcp: { injectIntoAgents: false },
-        browserTools: { enabled: false },
-        providers: {},
-        metadataGeneration: { providers: [] },
-        autoArchiveAfterMerge: false,
-        enableTerminalAgentHooks: false,
-        appendSystemPrompt: "",
-        agentPersonalities: { personalities: [...DEFAULT_AGENT_PERSONALITIES] },
-      },
+      { ...baseInitial, agentProfiles: [...DEFAULT_AGENT_PROFILES] },
       undefined,
     );
 
     // First boot records the seed on disk; the user then deletes all of it.
-    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
-    store.patch({ agentPersonalities: { personalities: [] } });
+    store.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
+    store.patch({ agentProfiles: [] });
 
     // Next boot must NOT resurrect the deleted team.
-    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
-    expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toEqual([]);
+    store.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
+    expect(loadPersistedConfig(ottoHome).daemon?.agentProfiles).toEqual([]);
   });
 
-  test("a personalities patch without the array leaves the stored roster intact", () => {
+  test("imports a legacy personality roster into agent profiles, ids intact", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const legacy = [...DEFAULT_AGENT_PROFILES].slice(0, 3);
+    const initial = loadPersistedConfig(ottoHome);
+    writeFileSync(
+      path.join(ottoHome, "config.json"),
+      JSON.stringify(
+        { ...initial, agents: { agentPersonalities: { personalities: legacy } } },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    const store = new DaemonConfigStore(ottoHome, { ...baseInitial, agentProfiles: [] }, undefined);
+    store.importLegacyPersonalitiesIfNeeded();
+
+    const persisted = loadPersistedConfig(ottoHome);
+    // Ids are preserved verbatim: personality memory files, the usage stats
+    // store and agentTeams.memberIds all key off them.
+    expect(persisted.daemon?.agentProfiles?.map((entry) => entry.id)).toEqual(
+      legacy.map((entry) => entry.id),
+    );
+    // The in-memory config is updated too, so the very first read after the
+    // import sees the roster without waiting for a restart.
+    expect(store.get().agentProfiles?.map((entry) => entry.id)).toEqual(
+      legacy.map((entry) => entry.id),
+    );
+    // The legacy section stays on disk as a rollback tombstone.
+    expect(persisted.agents?.agentPersonalities?.personalities).toHaveLength(legacy.length);
+  });
+
+  test("an imported roster the user then deletes stays deleted", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const legacy = [...DEFAULT_AGENT_PROFILES].slice(0, 2);
+    const initial = loadPersistedConfig(ottoHome);
+    writeFileSync(
+      path.join(ottoHome, "config.json"),
+      JSON.stringify(
+        { ...initial, agents: { agentPersonalities: { personalities: legacy } } },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    const store = new DaemonConfigStore(ottoHome, { ...baseInitial, agentProfiles: [] }, undefined);
+    store.importLegacyPersonalitiesIfNeeded();
+    store.patch({ agentProfiles: [] });
+
+    // The marker, not the roster being empty, is what makes the import one-shot.
+    store.importLegacyPersonalitiesIfNeeded();
+    expect(loadPersistedConfig(ottoHome).daemon?.agentProfiles).toEqual([]);
+  });
+
+  test("an agentProfiles patch replaces the whole stored roster", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);
 
     const store = new DaemonConfigStore(
       ottoHome,
-      {
-        mcp: { injectIntoAgents: false },
-        browserTools: { enabled: false },
-        providers: {},
-        metadataGeneration: { providers: [] },
-        autoArchiveAfterMerge: false,
-        enableTerminalAgentHooks: false,
-        appendSystemPrompt: "",
-        agentPersonalities: { personalities: [...DEFAULT_AGENT_PERSONALITIES] },
-      },
+      { ...baseInitial, agentProfiles: [...DEFAULT_AGENT_PROFILES] },
       undefined,
     );
-    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
+    store.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
 
-    // The patch schema must not inject `personalities: []` into a patch that
-    // touches the section without the array - the injected default would
-    // deep-merge over the stored roster and silently wipe every personality.
-    const next = store.patch({ agentPersonalities: {} });
-    expect(next.agentPersonalities.personalities).toHaveLength(DEFAULT_AGENT_PERSONALITIES.length);
-    expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toHaveLength(
-      DEFAULT_AGENT_PERSONALITIES.length,
-    );
+    const kept = DEFAULT_AGENT_PROFILES[0];
+    if (!kept) throw new Error("expected a starter profile");
+    const next = store.patch({ agentProfiles: [kept] });
+    expect(next.agentProfiles).toHaveLength(1);
+    expect(loadPersistedConfig(ottoHome).daemon?.agentProfiles).toHaveLength(1);
   });
 
   test("seeds the starter team on a fresh host without activating it, and never re-seeds", () => {

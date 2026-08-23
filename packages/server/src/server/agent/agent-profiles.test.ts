@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { AgentPersonality } from "@otto-code/protocol/messages";
-import { resolvePersonality } from "./agent-personalities.js";
+import { resolveProfile } from "./agent-profiles.js";
 import type { AgentSelectOption, ProviderSnapshotEntry } from "./agent-sdk-types.js";
 
 function personality(overrides: Partial<AgentPersonality> = {}): AgentPersonality {
@@ -43,9 +43,9 @@ function readyEntry(overrides: Partial<ProviderSnapshotEntry> = {}): ProviderSna
   };
 }
 
-describe("resolvePersonality", () => {
+describe("resolveProfile", () => {
   test("resolves a fully-available personality into a concrete snapshot", () => {
-    const result = resolvePersonality(personality(), [readyEntry()]);
+    const result = resolveProfile(personality(), [readyEntry()]);
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
     expect(result.snapshot).toEqual({
@@ -67,14 +67,14 @@ describe("resolvePersonality", () => {
   });
 
   test("falls back to the provider default mode when the personality has none", () => {
-    const result = resolvePersonality(personality({ modeId: undefined }), [readyEntry()]);
+    const result = resolveProfile(personality({ modeId: undefined }), [readyEntry()]);
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
     expect(result.snapshot.modeId).toBe("default");
   });
 
   test("defaults respectGlobalAppendPrompt to true when unset", () => {
-    const result = resolvePersonality(personality({ respectGlobalAppendPrompt: undefined }), [
+    const result = resolveProfile(personality({ respectGlobalAppendPrompt: undefined }), [
       readyEntry(),
     ]);
     expect(result.status).toBe("available");
@@ -97,7 +97,7 @@ describe("resolvePersonality", () => {
         },
       ],
     });
-    const result = resolvePersonality(personality({ effortLevel: "max" }), [entry]);
+    const result = resolveProfile(personality({ effortLevel: "max" }), [entry]);
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
     expect(result.snapshot.thinkingOptionId).toBe("low");
@@ -116,7 +116,7 @@ describe("resolvePersonality", () => {
         },
       ],
     });
-    const result = resolvePersonality(personality({ effortLevel: "high" }), [entry]);
+    const result = resolveProfile(personality({ effortLevel: "high" }), [entry]);
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
     expect(result.snapshot.thinkingOptionId).toBeUndefined();
@@ -124,7 +124,7 @@ describe("resolvePersonality", () => {
   });
 
   test("drops unknown roles and returns known roles in canonical order", () => {
-    const result = resolvePersonality(
+    const result = resolveProfile(
       personality({ roles: ["coder", "bogus", "chatter", "orchestrator"] }),
       [readyEntry()],
     );
@@ -134,7 +134,7 @@ describe("resolvePersonality", () => {
   });
 
   test("maps the retired 'worker' role to 'coder' so old personalities keep a role", () => {
-    const result = resolvePersonality(personality({ roles: ["writer", "worker"] }), [readyEntry()]);
+    const result = resolveProfile(personality({ roles: ["writer", "worker"] }), [readyEntry()]);
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
     // "worker" normalizes to "coder"; both survive in canonical order, deduped - canonical
@@ -143,7 +143,7 @@ describe("resolvePersonality", () => {
   });
 
   test("is unavailable when the provider is absent from the snapshot", () => {
-    const result = resolvePersonality(personality(), []);
+    const result = resolveProfile(personality(), []);
     expect(result).toEqual({
       status: "unavailable",
       code: "provider-missing",
@@ -152,14 +152,14 @@ describe("resolvePersonality", () => {
   });
 
   test("is unavailable when the provider is disabled", () => {
-    const result = resolvePersonality(personality(), [readyEntry({ enabled: false })]);
+    const result = resolveProfile(personality(), [readyEntry({ enabled: false })]);
     expect(result.status).toBe("unavailable");
     if (result.status !== "unavailable") return;
     expect(result.code).toBe("provider-disabled");
   });
 
   test("is unavailable when the provider is not ready", () => {
-    const result = resolvePersonality(personality(), [
+    const result = resolveProfile(personality(), [
       readyEntry({ status: "loading", models: undefined, modes: undefined }),
     ]);
     expect(result.status).toBe("unavailable");
@@ -168,14 +168,14 @@ describe("resolvePersonality", () => {
   });
 
   test("is unavailable when the bound model is gone", () => {
-    const result = resolvePersonality(personality({ model: "ghost-model" }), [readyEntry()]);
+    const result = resolveProfile(personality({ model: "ghost-model" }), [readyEntry()]);
     expect(result.status).toBe("unavailable");
     if (result.status !== "unavailable") return;
     expect(result.code).toBe("model-missing");
   });
 
   test("is unavailable when an explicit mode is missing from the provider", () => {
-    const result = resolvePersonality(personality({ modeId: "ghost-mode" }), [readyEntry()]);
+    const result = resolveProfile(personality({ modeId: "ghost-mode" }), [readyEntry()]);
     expect(result.status).toBe("unavailable");
     if (result.status !== "unavailable") return;
     expect(result.code).toBe("mode-missing");

@@ -402,3 +402,90 @@ export const VisualizerVoiceCuesGenerateResponseSchema = z.object({
 export type VisualizerVoiceCuesResult = z.infer<
   typeof VisualizerVoiceCuesGenerateResponseSchema
 >["payload"];
+
+// ─── Profile-named RPC twins ──────────────────────────────────────────────────
+//
+// COMPAT(agentProfileRpcs): added in v0.8.13, drop the legacy halves when the
+// daemon floor >= v0.8.13.
+//
+// The stored template converged on Paseo's `AgentProfile`, so the wire follows.
+// These are the same messages under conforming names (see docs/rpc-namespacing.md,
+// which three of the legacy names violate). Derived with `.omit().extend()`
+// rather than copied so the two halves cannot drift.
+//
+// The daemon ACCEPTS both halves from today. The client keeps EMITTING the
+// legacy literals until the floor rises: a new client must not break against an
+// old daemon, and the feature contract forbids writing a degraded fallback path.
+//
+// One name is not a straight translation. `agentPersonalities.generate_profile`
+// generates a personality PROMPT, not a profile - a genuine trap once "profile"
+// means the stored template - so its twin is named `generate_prompt`.
+
+export const ProfileMemoryListRequestMessageSchema = PersonalityMemoryListRequestMessageSchema.omit(
+  {
+    type: true,
+  },
+).extend({ type: z.literal("profile.memory.list.request") });
+
+export const ProfileMemoryListResponseMessageSchema =
+  PersonalityMemoryListResponseMessageSchema.omit({ type: true }).extend({
+    type: z.literal("profile.memory.list.response"),
+  });
+
+export const ProfileMemoryUpdateRequestMessageSchema =
+  PersonalityMemoryUpdateRequestMessageSchema.omit({ type: true }).extend({
+    type: z.literal("profile.memory.update.request"),
+  });
+
+export const ProfileMemoryUpdateResponseMessageSchema =
+  PersonalityMemoryUpdateResponseMessageSchema.omit({ type: true }).extend({
+    type: z.literal("profile.memory.update.response"),
+  });
+
+export const ProfileMemoryTransferRequestMessageSchema =
+  PersonalityMemoryTransferRequestMessageSchema.omit({ type: true }).extend({
+    type: z.literal("profile.memory.transfer.request"),
+  });
+
+export const ProfileMemoryTransferResponseMessageSchema =
+  PersonalityMemoryTransferResponseMessageSchema.omit({ type: true }).extend({
+    type: z.literal("profile.memory.transfer.response"),
+  });
+
+export const ProfileMemoryStatsRequestMessageSchema =
+  PersonalityMemoryStatsRequestMessageSchema.omit({ type: true }).extend({
+    type: z.literal("profile.memory.stats.request"),
+  });
+
+export const ProfileMemoryStatsResponseMessageSchema =
+  PersonalityMemoryStatsResponseMessageSchema.omit({ type: true }).extend({
+    type: z.literal("profile.memory.stats.response"),
+  });
+
+export const AgentProfileStatsRequestSchema = AgentPersonalitiesGetStatsRequestSchema.omit({
+  type: true,
+}).extend({ type: z.literal("agent.profile.stats.request") });
+
+export const AgentProfileStatsResponseSchema = AgentPersonalitiesGetStatsResponseSchema.omit({
+  type: true,
+}).extend({ type: z.literal("agent.profile.stats.response") });
+
+export const AgentProfileGeneratePromptRequestSchema =
+  AgentPersonalitiesGenerateProfileRequestSchema.omit({ type: true }).extend({
+    type: z.literal("agent.profile.generate_prompt.request"),
+  });
+
+export const AgentProfileGeneratePromptResponseSchema =
+  AgentPersonalitiesGenerateProfileResponseSchema.omit({ type: true }).extend({
+    type: z.literal("agent.profile.generate_prompt.response"),
+  });
+
+export const AgentProfileGenerateVoiceCuesRequestSchema =
+  VisualizerVoiceCuesGenerateRequestSchema.omit({ type: true }).extend({
+    type: z.literal("agent.profile.generate_voice_cues.request"),
+  });
+
+export const AgentProfileGenerateVoiceCuesResponseSchema =
+  VisualizerVoiceCuesGenerateResponseSchema.omit({ type: true }).extend({
+    type: z.literal("agent.profile.generate_voice_cues.response"),
+  });

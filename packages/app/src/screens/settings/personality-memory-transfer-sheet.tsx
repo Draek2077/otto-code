@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { ROLE_LABELS } from "@/provider-selection/role-labels";
@@ -31,11 +31,11 @@ export type MemoryTransferChoice =
 interface PersonalityMemoryTransferSheetProps {
   visible: boolean;
   /** The personality being deleted. */
-  personality: AgentPersonality;
+  personality: AgentProfile;
   /** How many lessons are at stake - named, so the decision is informed. */
   lessonCount: number;
   /** The rest of the roster, as possible destinations. */
-  candidates: readonly AgentPersonality[];
+  candidates: readonly AgentProfile[];
   busy: boolean;
   error: string | null;
   onCancel: () => void;
@@ -145,7 +145,7 @@ export function PersonalityMemoryTransferSheet({
 }
 
 interface DestinationRowProps {
-  personality: AgentPersonality;
+  personality: AgentProfile;
   sharesRole: boolean;
   selected: boolean;
   onSelect: (personalityId: string) => void;
@@ -189,7 +189,7 @@ function DestinationRow({
 }
 
 interface OrderedCandidate {
-  personality: AgentPersonality;
+  personality: AgentProfile;
   sharesRole: boolean;
 }
 
@@ -199,8 +199,8 @@ interface OrderedCandidate {
  * Orchestrator may well know something the role tags do not.
  */
 function orderBySharedRole(
-  source: AgentPersonality,
-  candidates: readonly AgentPersonality[],
+  source: AgentProfile,
+  candidates: readonly AgentProfile[],
 ): OrderedCandidate[] {
   const sourceRoles = new Set(normalizePersonalityRoles(source.roles));
   const scored = candidates

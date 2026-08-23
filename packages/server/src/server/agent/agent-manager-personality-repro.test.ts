@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { AgentManager } from "./agent-manager.js";
-import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
+import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
 import type {
   AgentClient,
   AgentPersonalityUpdate,
@@ -107,7 +107,7 @@ class ReproClient implements AgentClient {
   }
 }
 
-function sprocket(): ResolvedPersonalitySnapshot {
+function sprocket(): ResolvedProfileSnapshot {
   return {
     personalityId: "personality_builtin_sprocket",
     name: "Sprocket",
@@ -121,7 +121,7 @@ function sprocket(): ResolvedPersonalitySnapshot {
   };
 }
 
-function atlas(): ResolvedPersonalitySnapshot {
+function atlas(): ResolvedProfileSnapshot {
   return {
     personalityId: "personality_builtin_atlas",
     name: "Atlas",

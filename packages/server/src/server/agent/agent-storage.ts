@@ -13,7 +13,7 @@ import { AgentOwnerSchema, daemonExecutionKey, type DaemonAgentOwner } from "./a
 // Frozen personality snapshot as stored on disk. Roles are kept as a loose
 // string array here (not the PersonalityRole enum) so an old record whose role
 // vocabulary drifted never fails to load - buildStoredAgentConfig re-normalizes
-// them to the known set on read. Mirrors ResolvedPersonalitySnapshot.
+// them to the known set on read. Mirrors ResolvedProfileSnapshot.
 const PERSONALITY_SNAPSHOT_STORAGE_SCHEMA = z
   .object({
     personalityId: z.string(),

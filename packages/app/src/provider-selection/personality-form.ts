@@ -1,5 +1,5 @@
 import type { AgentModelDefinition, ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import { checkPersonalityAvailability } from "@otto-code/protocol/agent-personalities";
 import { resolveEffortOption } from "@otto-code/protocol/effort";
 import { coerceModeForModel } from "./mode-support";
@@ -25,7 +25,7 @@ export type PersonalityFormResolution =
 // Auto support is per-model: fall back to the provider default when the model
 // can't run the classifier (daemon-stamped supportsAutoMode: false).
 function resolvePersonalityModeId(
-  personality: AgentPersonality,
+  personality: AgentProfile,
   entry: ProviderSnapshotEntry,
   model: AgentModelDefinition,
 ): string {
@@ -35,48 +35,71 @@ function resolvePersonalityModeId(
   );
 }
 
+// A stored template may name no model, meaning "this provider's default".
+// Mirrors the daemon resolver so the app and daemon bind the same model.
+function resolveFormModelId(
+  personality: AgentProfile,
+  entry: ProviderSnapshotEntry | undefined,
+): string | undefined {
+  return (
+    personality.model ??
+    entry?.models?.find((candidate) => candidate.isDefault)?.id ??
+    entry?.models?.[0]?.id
+  );
+}
+
+// An explicit provider-specific option id wins over the canonical effort level,
+// the same precedence the daemon resolver uses.
+function resolveFormThinkingOptionId(
+  personality: AgentProfile,
+  model: AgentModelDefinition,
+): string {
+  const requested = personality.thinkingOptionId ?? personality.effortLevel;
+  if (!requested || !model.thinkingOptions || model.thinkingOptions.length === 0) {
+    return "";
+  }
+  try {
+    return resolveEffortOption({ requested, thinkingOptions: model.thinkingOptions }).optionId;
+  } catch {
+    // Model advertises only custom options that don't map to the canonical
+    // scale - leave effort unset rather than guessing.
+    return "";
+  }
+}
+
 export function resolvePersonalityForForm(
-  personality: AgentPersonality,
+  personality: AgentProfile,
   entries: readonly ProviderSnapshotEntry[],
 ): PersonalityFormResolution {
   const entry = entries.find((candidate) => candidate.provider === personality.provider);
-  const model = entry?.models?.find((candidate) => candidate.id === personality.model);
+  // Resolved BEFORE the availability check so the check and the filled-in form
+  // agree on which model is actually being bound.
+  const modelId = resolveFormModelId(personality, entry);
+  const model = entry?.models?.find((candidate) => candidate.id === modelId);
 
-  const availability = checkPersonalityAvailability(personality, {
-    providerStatus: entry?.status,
-    providerEnabled: entry?.enabled,
-    modelIds: entry?.models?.map((candidate) => candidate.id),
-    modeIds: entry?.modes?.map((candidate) => candidate.id),
-  });
+  const availability = checkPersonalityAvailability(
+    { ...personality, model: modelId },
+    {
+      providerStatus: entry?.status,
+      providerEnabled: entry?.enabled,
+      modelIds: entry?.models?.map((candidate) => candidate.id),
+      modeIds: entry?.modes?.map((candidate) => candidate.id),
+    },
+  );
   if (!availability.available) {
     return { available: false, reason: availability.reason };
   }
-  if (!entry || !model) {
-    return { available: false, reason: `Model "${personality.model}" is not available.` };
-  }
-
-  const modeId = resolvePersonalityModeId(personality, entry, model);
-  let thinkingOptionId = "";
-  if (personality.effortLevel && model.thinkingOptions && model.thinkingOptions.length > 0) {
-    try {
-      thinkingOptionId = resolveEffortOption({
-        requested: personality.effortLevel,
-        thinkingOptions: model.thinkingOptions,
-      }).optionId;
-    } catch {
-      // Model advertises only custom options that don't map to the canonical
-      // scale - leave effort unset rather than guessing.
-      thinkingOptionId = "";
-    }
+  if (!entry || !model || modelId === undefined) {
+    return { available: false, reason: `Model "${modelId ?? ""}" is not available.` };
   }
 
   return {
     available: true,
     values: {
       provider: personality.provider,
-      model: personality.model,
-      modeId: modeId ?? "",
-      thinkingOptionId,
+      model: modelId,
+      modeId: resolvePersonalityModeId(personality, entry, model) ?? "",
+      thinkingOptionId: resolveFormThinkingOptionId(personality, model),
     },
   };
 }

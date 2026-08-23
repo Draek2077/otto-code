@@ -224,7 +224,7 @@ import {
 import type { OttoToolGroup } from "@otto-code/protocol/provider-config";
 import { STALL_GUARD_DEFAULT_THRESHOLD } from "@otto-code/protocol/provider-config";
 import {
-  DEFAULT_AGENT_PERSONALITIES,
+  DEFAULT_AGENT_PROFILES,
   DEFAULT_AGENT_TEAMS,
 } from "@otto-code/protocol/default-personalities";
 import type {
@@ -865,17 +865,21 @@ function withSavedEndpointApiKey(
   return { ...endpoint, apiKey: endpoint.apiKey ?? "" };
 }
 
-function buildInitialAgentPersonalities(
-  config: OttoDaemonConfig,
-): MutableDaemonConfig["agentPersonalities"] {
-  return {
-    // A host that has never carried a personalities section (undefined, not an
-    // empty roster the user cleared) is seeded with the shipped starter team.
-    personalities:
-      config.agentPersonalities === undefined
-        ? [...DEFAULT_AGENT_PERSONALITIES]
-        : (config.agentPersonalities.personalities ?? []),
-  };
+// The one stored roster, labelled "Personalities" in the UI. A host that has
+// carried neither an agentProfiles section nor a legacy agentPersonalities one
+// (undefined, not an empty roster the user cleared) is seeded with the shipped
+// starter team. A pre-convergence host reads its legacy roster here so the
+// in-memory config is correct on the very first tick; the durable copy is made
+// by importLegacyPersonalitiesIfNeeded.
+// COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
+function buildInitialAgentProfiles(config: OttoDaemonConfig): AgentProfile[] {
+  if (config.agentProfiles !== undefined) {
+    return config.agentProfiles;
+  }
+  if (config.agentPersonalities !== undefined) {
+    return config.agentPersonalities.personalities ?? [];
+  }
+  return [...DEFAULT_AGENT_PROFILES];
 }
 
 function buildInitialAgentTeams(config: OttoDaemonConfig): MutableDaemonConfig["agentTeams"] {
@@ -938,7 +942,13 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     speech: createInitialMutableSpeechConfig(config),
     ...(persistedGitHosting ? { gitHosting: persistedGitHosting } : {}),
-    agentPersonalities: buildInitialAgentPersonalities(config),
+    agentProfiles: buildInitialAgentProfiles(config),
+    // COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
+    // Retired section, kept on the wire so a pre-convergence client still
+    // parses server_info. Nothing reads or writes it any more; the roster lives
+    // in agentProfiles. An old client sees an empty roster rather than a stale
+    // one, which is the feature contract's "upgrade the host" degradation.
+    agentPersonalities: { personalities: [] },
     agentTeams: buildInitialAgentTeams(config),
     // User per-model tier tags round-trip config.json ⇄ mutable config; absent
     // on disk reads as an empty tag set (all tiers inferred at ingest).
@@ -955,10 +965,6 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
 
   if (config.terminalProfiles !== undefined) {
     initialConfig.terminalProfiles = config.terminalProfiles;
-  }
-
-  if (config.agentProfiles !== undefined) {
-    initialConfig.agentProfiles = config.agentProfiles;
   }
 
   return initialConfig;
@@ -981,8 +987,12 @@ export async function createOttoDaemon(
     { relayEnabledMutable: config.relayEnabledMutable ?? true },
   );
   // Record the first-run seed on disk so the shipped starter team survives a
-  // restart AND a subsequent "delete every personality" stays deleted.
-  daemonConfigStore.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
+  // restart AND a subsequent "delete every profile" stays deleted.
+  daemonConfigStore.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
+  // COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
+  // Fold a pre-convergence host's roster into agentProfiles. Runs after the
+  // seed so a fresh host is seeded rather than importing an empty legacy list.
+  daemonConfigStore.importLegacyPersonalitiesIfNeeded();
   daemonConfigStore.seedDefaultTeamsIfAbsent(DEFAULT_AGENT_TEAMS);
   // Publish the connector credential store before anything can spawn an agent:
   // the openai-compat provider reads it when it builds MCP transports, and a
@@ -1366,7 +1376,7 @@ export async function createOttoDaemon(
   // (a worktree and its main checkout are the same project's lessons).
   const personalityMemory = new PersonalityMemoryService({
     store: personalityMemoryStore,
-    readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
+    readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
     resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
     logger,
   });
@@ -1612,7 +1622,7 @@ export async function createOttoDaemon(
     providerSnapshotManager,
     readDaemonConfig: () => ({
       metadataGeneration: daemonConfigStore.get().metadataGeneration,
-      agentPersonalities: daemonConfigStore.get().agentPersonalities,
+      agentProfiles: daemonConfigStore.get().agentProfiles,
       agentTeams: daemonConfigStore.get().agentTeams,
     }),
     gitMutation: createGitMutationService({
@@ -1631,7 +1641,7 @@ export async function createOttoDaemon(
     providerSnapshotManager,
     readDaemonConfig: () => ({
       metadataGeneration: daemonConfigStore.get().metadataGeneration,
-      agentPersonalities: daemonConfigStore.get().agentPersonalities,
+      agentProfiles: daemonConfigStore.get().agentProfiles,
       agentTeams: daemonConfigStore.get().agentTeams,
     }),
     workspaceGitService,
@@ -1910,7 +1920,7 @@ export async function createOttoDaemon(
     archiveWorkspace: archiveScheduleWorkspaceExternal,
     revealWorkspace: revealScheduleWorkspaceExternal,
     providerSnapshotManager,
-    readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
+    readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
     readAgentTeams: () => daemonConfigStore.get().agentTeams,
     onActivity: recordActivity,
   });
@@ -1935,7 +1945,7 @@ export async function createOttoDaemon(
       const cfg = daemonConfigStore.get();
       return {
         metadataGeneration: cfg.metadataGeneration,
-        agentPersonalities: cfg.agentPersonalities,
+        agentProfiles: cfg.agentProfiles,
         agentTeams: cfg.agentTeams,
       };
     },
@@ -2009,11 +2019,10 @@ export async function createOttoDaemon(
     scheduleService,
     runService,
     providerSnapshotManager,
-    readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
+    readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
     readAgentTeams: () => daemonConfigStore.get().agentTeams,
     personalityMemory,
     projectKnowledge,
-    daemonConfigStore,
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,

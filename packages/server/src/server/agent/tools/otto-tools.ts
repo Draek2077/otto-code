@@ -5,7 +5,7 @@ import type { Logger } from "pino";
 import type { AgentMode, AgentModelDefinition, AgentProvider } from "../agent-sdk-types.js";
 import type { AgentManager } from "../agent-manager.js";
 import { resolveEffortOption } from "../effort-levels.js";
-import { resolvePersonality, type ResolvedPersonalitySnapshot } from "../agent-personalities.js";
+import { resolveProfile, type ResolvedProfileSnapshot } from "../agent-profiles.js";
 import type { PersonalityMemoryService } from "../personality-memory/personality-memory-service.js";
 import type { ProjectKnowledgeService } from "../project-knowledge/project-knowledge-service.js";
 import {
@@ -24,8 +24,7 @@ import {
   personalityHasRole,
   summarizePersonalityForSelection,
 } from "@otto-code/protocol/agent-personalities";
-import type { AgentPersonality, AgentProfile } from "@otto-code/protocol/messages";
-import type { DaemonConfigStore } from "../../daemon-config-store.js";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {
   getOrchestrationPolicyFromLabels,
@@ -49,10 +48,6 @@ import {
 import { curateAgentActivity } from "../activity-curator.js";
 import { selectItemsByProjectedLimit } from "../timeline-projection.js";
 
-const profileSpinnerSchema = z.object({ glowA: z.string(), glowB: z.string() }).passthrough();
-const profileVoiceSchema = z
-  .object({ provider: z.string(), model: z.string(), name: z.string() })
-  .passthrough();
 import type { AgentStorage } from "../agent-storage.js";
 import { ensureAgentLoaded } from "../agent-loading.js";
 import { isStoredAgentProviderAvailable } from "../../persistence-hooks.js";
@@ -171,13 +166,12 @@ export interface OttoToolHostDependencies {
    */
   runService?: RunService | null;
   providerSnapshotManager: ProviderSnapshotManager;
-  daemonConfigStore?: Pick<DaemonConfigStore, "get">;
   /**
    * Reads the live Agent Personalities roster from the daemon config. Enables
    * chat creation by personality in create_chat and the list_personalities tool. Absent
    * on hosts that don't wire personalities.
    */
-  readAgentPersonalities?: () => AgentPersonality[];
+  readAgentProfiles?: () => AgentProfile[];
   /**
    * Reads the live Agent Teams section (teams + active team id) from the
    * daemon config. Lets create_chat stamp the frozen team layer onto member
@@ -718,7 +712,7 @@ interface InheritedArtifactIdentity {
  */
 function resolveInheritedArtifactIdentity(params: {
   providerOverridden: boolean;
-  snapshot: ResolvedPersonalitySnapshot | undefined;
+  snapshot: ResolvedProfileSnapshot | undefined;
 }): InheritedArtifactIdentity {
   const snapshot = params.providerOverridden ? undefined : params.snapshot;
   if (!snapshot) {
@@ -876,13 +870,13 @@ function resolveEffortAgainstModels(params: {
  */
 function buildPersonalityAgentConfig(brain: {
   systemPrompt?: string;
-  personalitySnapshot?: ResolvedPersonalitySnapshot;
+  personalitySnapshot?: ResolvedProfileSnapshot;
   teamSnapshot?: ResolvedTeamSnapshot;
   featureValues?: Record<string, unknown>;
 }):
   | {
       systemPrompt?: string;
-      personalitySnapshot?: ResolvedPersonalitySnapshot;
+      personalitySnapshot?: ResolvedProfileSnapshot;
       teamSnapshot?: ResolvedTeamSnapshot;
       featureValues?: Record<string, unknown>;
     }
@@ -897,7 +891,7 @@ function buildPersonalityAgentConfig(brain: {
   }
   const config: {
     systemPrompt?: string;
-    personalitySnapshot?: ResolvedPersonalitySnapshot;
+    personalitySnapshot?: ResolvedProfileSnapshot;
     teamSnapshot?: ResolvedTeamSnapshot;
     featureValues?: Record<string, unknown>;
   } = {};
@@ -1226,8 +1220,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     scheduleService,
     runService,
     providerSnapshotManager,
-    daemonConfigStore,
-    readAgentPersonalities,
+    readAgentProfiles,
     readAgentTeams,
     callerAgentId,
     resolveSpeakHandler,
@@ -1462,11 +1455,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     return entry?.models ?? [];
   };
 
-  const getPersonalityRoster = (): AgentPersonality[] => readAgentPersonalities?.() ?? [];
+  const getPersonalityRoster = (): AgentProfile[] => readAgentProfiles?.() ?? [];
 
-  const getProfileRoster = (): AgentProfile[] => daemonConfigStore?.get().agentProfiles ?? [];
-
-  const findPersonalityByName = (name: string): AgentPersonality | undefined => {
+  const findPersonalityByName = (name: string): AgentProfile | undefined => {
     const trimmed = name.trim();
     const roster = getPersonalityRoster();
     return (
@@ -1475,21 +1466,12 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     );
   };
 
-  const findProfileByName = (name: string): AgentProfile | undefined => {
-    const trimmed = name.trim();
-    const roster = getProfileRoster();
-    return (
-      roster.find((profile) => profile.name === trimmed) ??
-      roster.find((profile) => profile.name.toLowerCase() === trimmed.toLowerCase())
-    );
-  };
-
   interface ResolvedCreateAgentBrain {
     providerModel: string;
     modeId?: string;
     thinkingOptionId?: string;
     systemPrompt?: string;
-    personalitySnapshot?: ResolvedPersonalitySnapshot;
+    personalitySnapshot?: ResolvedProfileSnapshot;
     teamSnapshot?: ResolvedTeamSnapshot;
     featureValues?: Record<string, unknown>;
   }
@@ -1509,10 +1491,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     });
   };
 
-  // Profiles intentionally combine upstream launch settings with Otto identity fields.
-  // eslint-disable-next-line complexity
-  const resolveConfiguredProfileBrain = async (
-    profile: AgentProfile,
+  const resolvePersonalityBrain = async (
+    personality: AgentProfile,
     input: {
       providerOverride: string | undefined;
       modeOverride: string | undefined;
@@ -1521,76 +1501,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     },
   ): Promise<ResolvedCreateAgentBrain> => {
     const entries = await providerSnapshotManager.listProviders({ cwd: input.cwd, wait: true });
-    const providerEntry = entries.find((entry) => entry.provider === profile.provider);
-    const resolvedModel =
-      profile.model ??
-      providerEntry?.models?.find((model) => model.isDefault)?.id ??
-      providerEntry?.models?.[0]?.id;
-    const profileProviderModel = resolvedModel
-      ? `${profile.provider}/${resolvedModel}`
-      : profile.provider;
-    const providerModel = input.providerOverride?.trim() || profileProviderModel;
-    const modeId = input.modeOverride ?? profile.modeId ?? providerEntry?.defaultModeId;
-    const profileEffort = typeof profile.effortLevel === "string" ? profile.effortLevel : undefined;
-    const thinkingOptionId = input.thinkingOverride
-      ? await resolveThinkingAgainstProvider(input.thinkingOverride, providerModel)
-      : (profile.thinkingOptionId ??
-        (profileEffort
-          ? await resolveThinkingAgainstProvider(profileEffort, providerModel)
-          : undefined));
-    const roles = Array.isArray(profile.roles)
-      ? normalizePersonalityRoles(
-          profile.roles.filter((role): role is string => typeof role === "string"),
-        )
-      : [];
-    const personalityPrompt =
-      typeof profile.personalityPrompt === "string" ? profile.personalityPrompt : undefined;
-    const spinnerResult = profileSpinnerSchema.safeParse(profile.spinner);
-    const voiceResult = profileVoiceSchema.safeParse(profile.voice);
-    const teamSnapshot = resolveTeamSnapshotForPersonality(readAgentTeams?.(), profile.id);
-    const composedPrompt = composeTeamAndPersonalityPrompt(teamSnapshot, personalityPrompt, roles);
-    const personalitySnapshot: ResolvedPersonalitySnapshot | undefined = resolvedModel
-      ? {
-          personalityId: profile.id,
-          name: profile.name,
-          provider: profile.provider,
-          model: resolvedModel,
-          ...(modeId ? { modeId } : {}),
-          ...(thinkingOptionId ? { thinkingOptionId } : {}),
-          ...(profileEffort ? { effortLevel: profileEffort } : {}),
-          effortDegraded: false,
-          respectGlobalAppendPrompt:
-            typeof profile.respectGlobalAppendPrompt === "boolean"
-              ? profile.respectGlobalAppendPrompt
-              : true,
-          roles,
-          ...(personalityPrompt ? { systemPrompt: personalityPrompt } : {}),
-          ...(spinnerResult.success ? { spinner: spinnerResult.data } : {}),
-          ...(voiceResult.success ? { voice: voiceResult.data } : {}),
-        }
-      : undefined;
-    return {
-      providerModel,
-      ...(modeId ? { modeId } : {}),
-      ...(thinkingOptionId ? { thinkingOptionId } : {}),
-      ...(composedPrompt ? { systemPrompt: composedPrompt } : {}),
-      ...(personalitySnapshot ? { personalitySnapshot } : {}),
-      ...(teamSnapshot ? { teamSnapshot } : {}),
-      ...(profile.featureValues ? { featureValues: profile.featureValues } : {}),
-    };
-  };
-
-  const resolveLegacyPersonalityBrain = async (
-    personality: AgentPersonality,
-    input: {
-      providerOverride: string | undefined;
-      modeOverride: string | undefined;
-      thinkingOverride: string | undefined;
-      cwd: string | undefined;
-    },
-  ): Promise<ResolvedCreateAgentBrain> => {
-    const entries = await providerSnapshotManager.listProviders({ cwd: input.cwd, wait: true });
-    const resolution = resolvePersonality(personality, entries);
+    const resolution = resolveProfile(personality, entries);
     if (resolution.status === "unavailable") {
       throw new Error(
         `Personality "${personality.name}" is unavailable here: ${resolution.reason}`,
@@ -1621,6 +1532,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       ...(composedPrompt !== undefined ? { systemPrompt: composedPrompt } : {}),
       personalitySnapshot: snapshot,
       ...(teamSnapshot ? { teamSnapshot } : {}),
+      ...(snapshot.featureValues ? { featureValues: snapshot.featureValues } : {}),
     };
   };
 
@@ -1637,20 +1549,16 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     cwd: string | undefined;
   }): Promise<ResolvedCreateAgentBrain> => {
     if (input.personalityName) {
-      const profile = findProfileByName(input.personalityName);
-      if (profile) {
-        return resolveConfiguredProfileBrain(profile, input);
-      }
       const personality = findPersonalityByName(input.personalityName);
       if (!personality) {
-        const names = [...getProfileRoster(), ...getPersonalityRoster()]
+        const names = getPersonalityRoster()
           .map((candidate) => candidate.name)
           .join(", ");
         throw new Error(
-          `Profile "${input.personalityName}" not found.${names ? ` Available: ${names}.` : " No profiles are configured on this host."}`,
+          `Personality "${input.personalityName}" not found.${names ? ` Available: ${names}.` : " No personalities are configured on this host."}`,
         );
       }
-      return resolveLegacyPersonalityBrain(personality, input);
+      return resolvePersonalityBrain(personality, input);
     }
 
     const providerModel = input.providerOverride?.trim();
@@ -2273,7 +2181,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     },
   );
 
-  if (readAgentPersonalities) {
+  if (readAgentProfiles) {
     registerTool(
       "list_personalities",
       {
@@ -2348,7 +2256,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               ),
           )
           .map((personality) => {
-            const resolution = resolvePersonality(personality, entries);
+            const resolution = resolveProfile(personality, entries);
             const selection = summarizePersonalityForSelection(personality);
             const entryOut: {
               id: string;
@@ -2369,7 +2277,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               name: personality.name,
               roles: normalizePersonalityRoles(personality.roles),
               provider: personality.provider,
-              model: personality.model,
+              // A personality may name no model, meaning "this provider's
+              // default". Report the model the resolver actually bound so a
+              // deciding agent sees what it would really get, and fall back to
+              // the stored value only when resolution failed.
+              model:
+                resolution.status === "available"
+                  ? resolution.snapshot.model
+                  : (personality.model ?? ""),
               available: resolution.status === "available",
               tier: selection.tier,
               canLaunch: selection.canLaunch,
@@ -5887,8 +5802,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     const activeRunService = runService;
 
     // Resolve (and cache) which active-team member fills a role for this run.
-    const roleMemberCache = new Map<string, AgentPersonality | null>();
-    const resolveRoleMember = (role: string): AgentPersonality | null => {
+    const roleMemberCache = new Map<string, AgentProfile | null>();
+    const resolveRoleMember = (role: string): AgentProfile | null => {
       const cached = roleMemberCache.get(role);
       if (cached !== undefined) {
         return cached;

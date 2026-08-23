@@ -1,5 +1,5 @@
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { AgentPersonality, AgentTeam, PersonalityRole } from "@otto-code/protocol/messages";
+import type { AgentProfile, AgentTeam, PersonalityRole } from "@otto-code/protocol/messages";
 import { personalityHasRole } from "@otto-code/protocol/agent-personalities";
 import { resolveTeamMembers } from "@otto-code/protocol/agent-teams";
 import type { SelectorPersonality } from "@/components/combined-model-selector";
@@ -21,7 +21,7 @@ export interface TeamRoleEntry {
   /** Resolved form values of the CURRENT holder; null when nothing resolves. */
   values: PersonalityFormValues | null;
   /** The member resolved right now (for spinner snapshot, etc.); null if none. */
-  member: AgentPersonality | null;
+  member: AgentProfile | null;
 }
 
 export interface BuildTeamRoleEntryInput {
@@ -34,7 +34,7 @@ export interface BuildTeamRoleEntryInput {
   /** Human role label used in the unavailable messages, e.g. "Scheduler". */
   roleLabel: string;
   team: AgentTeam;
-  roster: readonly AgentPersonality[];
+  roster: readonly AgentProfile[];
   entries: readonly ProviderSnapshotEntry[];
 }
 

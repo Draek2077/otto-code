@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { AgentManager } from "./agent-manager.js";
 import { ProjectKnowledgeService } from "./project-knowledge/project-knowledge-service.js";
-import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
+import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
 import type {
   AgentClient,
   AgentMode,
@@ -163,9 +163,7 @@ class PersonalityTestClient implements AgentClient {
 
 const logger = createTestLogger();
 
-function buildSnapshot(
-  overrides: Partial<ResolvedPersonalitySnapshot> = {},
-): ResolvedPersonalitySnapshot {
+function buildSnapshot(overrides: Partial<ResolvedProfileSnapshot> = {}): ResolvedProfileSnapshot {
   return {
     personalityId: "personality-vera",
     name: "Vera",

@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import { getActiveAgentTeam, type AgentTeamsConfigView } from "@otto-code/protocol/agent-teams";
 import {
   ORCHESTRATION_OUTPUT_FIELDS_LABEL,
@@ -17,10 +17,7 @@ import {
 
 import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentProvider, ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
-import {
-  resolvePersonality,
-  type ResolvedPersonalitySnapshot,
-} from "../agent/agent-personalities.js";
+import { resolveProfile, type ResolvedProfileSnapshot } from "../agent/agent-profiles.js";
 import { sendPromptToAgent } from "../agent/agent-prompt.js";
 import {
   composeTeamAndPersonalityPrompt,
@@ -70,7 +67,7 @@ export interface UserOrchestrationDependencies {
   agentManager: AgentManager;
   createAgentDeps: CreateAgentCommandDependencies;
   logger: Logger;
-  getPersonalityRoster(): AgentPersonality[];
+  getPersonalityRoster(): AgentProfile[];
   getAgentTeams(): AgentTeamsConfigView | undefined;
   listProviderEntries(cwd: string): Promise<readonly ProviderSnapshotEntry[]>;
   /**
@@ -236,7 +233,7 @@ async function startGraphOrchestration(
 // ── Orchestrator seat ────────────────────────────────────────────────────────
 
 type OrchestratorSeat =
-  | { kind: "personality"; personality: AgentPersonality }
+  | { kind: "personality"; personality: AgentProfile }
   | { kind: "model"; providerModel: string; thinkingOptionId?: string };
 
 async function resolveOrchestratorSeat(
@@ -389,7 +386,7 @@ async function spawnOrchestrationAgent(
 
 interface PersonalityCreateConfig {
   systemPrompt?: string;
-  personalitySnapshot: ResolvedPersonalitySnapshot;
+  personalitySnapshot: ResolvedProfileSnapshot;
   teamSnapshot?: ResolvedTeamSnapshot;
 }
 
@@ -399,12 +396,12 @@ interface PersonalityCreateConfig {
 // loud error: an orchestration must never silently swap brains.
 async function buildPersonalityCreateConfigForCwd(
   deps: UserOrchestrationDependencies,
-  personality: AgentPersonality,
+  personality: AgentProfile,
   cwd: string,
   agentTeamsView?: AgentTeamsConfigView,
-): Promise<{ snapshot: ResolvedPersonalitySnapshot; config: PersonalityCreateConfig }> {
+): Promise<{ snapshot: ResolvedProfileSnapshot; config: PersonalityCreateConfig }> {
   const entries = await deps.listProviderEntries(cwd);
-  const resolution = resolvePersonality(personality, entries);
+  const resolution = resolveProfile(personality, entries);
   if (resolution.status !== "available") {
     throw new Error(`Personality "${personality.name}" is unavailable: ${resolution.reason}`);
   }
@@ -455,7 +452,7 @@ function buildGraphSpawnPort(
     /** The team view frozen at run start - the whole cast resolves against it. */
     agentTeamsView: AgentTeamsConfigView | undefined;
     /** The personality roster frozen at run start. */
-    roster: AgentPersonality[];
+    roster: AgentProfile[];
     /** Prompt templates frozen at run start; null when the host has no store. */
     templatesById: Map<string, PromptTemplate> | null;
   },

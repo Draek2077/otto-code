@@ -6,10 +6,7 @@ import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentSessionConfig, ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
 import type { AgentStorage, StoredAgentRecord } from "../agent/agent-storage.js";
 import type { ActivityIncrementFn } from "../activity-stats/activity-stats-store.js";
-import {
-  resolvePersonality,
-  type ResolvedPersonalitySnapshot,
-} from "../agent/agent-personalities.js";
+import { resolveProfile, type ResolvedProfileSnapshot } from "../agent/agent-profiles.js";
 import {
   composeTeamAndPersonalityPrompt,
   resolveTeamSchedulerSnapshot,
@@ -38,7 +35,7 @@ import type {
   UpdateScheduleInput,
   UpdateScheduleNewAgentConfig,
 } from "@otto-code/protocol/schedule/types";
-import type { AgentPersonality, FirstAgentContext } from "@otto-code/protocol/messages";
+import type { AgentProfile, FirstAgentContext } from "@otto-code/protocol/messages";
 import { truncateHeadTail } from "../../utils/truncate-head-tail.js";
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
@@ -340,7 +337,7 @@ export interface ScheduleServiceOptions {
   /** Optional - enables personality-bound schedules (run-time resolution). */
   providerSnapshotManager?: ScheduleProviderLister;
   /** Optional - reads the live personality roster for personality-bound schedules. */
-  readAgentPersonalities?: () => AgentPersonality[];
+  readAgentProfiles?: () => AgentProfile[];
   /**
    * Optional - reads the live Agent Teams section. A schedule resolves the
    * ACTIVE team at run time (the active team is "how this host operates right
@@ -380,7 +377,7 @@ export class ScheduleService {
   private readonly archiveWorkspace: (workspaceId: string, repoRoot: string) => Promise<void>;
   private readonly revealWorkspace: (workspaceId: string) => Promise<void>;
   private readonly providerSnapshotManager: ScheduleProviderLister | null;
-  private readonly readAgentPersonalities: (() => AgentPersonality[]) | null;
+  private readonly readAgentProfiles: (() => AgentProfile[]) | null;
   private readonly readAgentTeams: (() => AgentTeamsConfigView | undefined) | null;
   private readonly now: () => Date;
   private readonly runner: (
@@ -402,7 +399,7 @@ export class ScheduleService {
     this.archiveWorkspace = options.archiveWorkspace;
     this.revealWorkspace = options.revealWorkspace;
     this.providerSnapshotManager = options.providerSnapshotManager ?? null;
-    this.readAgentPersonalities = options.readAgentPersonalities ?? null;
+    this.readAgentProfiles = options.readAgentProfiles ?? null;
     this.readAgentTeams = options.readAgentTeams ?? null;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
@@ -1350,12 +1347,12 @@ export class ScheduleService {
     if (!name) {
       return undefined;
     }
-    if (!this.providerSnapshotManager || !this.readAgentPersonalities) {
+    if (!this.providerSnapshotManager || !this.readAgentProfiles) {
       throw new Error(
         `Schedule binds personality "${name}", but personality resolution is not configured on this host.`,
       );
     }
-    const roster = this.readAgentPersonalities();
+    const roster = this.readAgentProfiles();
     const entries = await this.providerSnapshotManager.listProviders({
       cwd: config.cwd,
       wait: true,
@@ -1380,7 +1377,7 @@ export class ScheduleService {
     if (!personality) {
       throw new Error(`Personality "${name}" not found; the scheduled run cannot proceed.`);
     }
-    const resolution = resolvePersonality(personality, entries);
+    const resolution = resolveProfile(personality, entries);
     if (resolution.status === "unavailable") {
       throw new Error(`Personality "${personality.name}" is unavailable: ${resolution.reason}`);
     }
@@ -1390,7 +1387,7 @@ export class ScheduleService {
   // Shared tail for both binding kinds: run-time team framing (iff the resolved
   // personality is a member of the team active NOW - teamless runs are valid,
   // never an error) plus the concrete brain fields.
-  private buildScheduleBrain(snapshot: ResolvedPersonalitySnapshot): ScheduleBrain {
+  private buildScheduleBrain(snapshot: ResolvedProfileSnapshot): ScheduleBrain {
     const teamSnapshot = resolveTeamSnapshotForPersonality(
       this.readAgentTeams?.(),
       snapshot.personalityId,
@@ -1450,7 +1447,7 @@ interface ScheduleBrain {
   modeId?: string;
   thinkingOptionId?: string;
   systemPrompt?: string;
-  snapshot: ResolvedPersonalitySnapshot;
+  snapshot: ResolvedProfileSnapshot;
   teamSnapshot?: ResolvedTeamSnapshot;
 }
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import {
   PERSONALITY_ROLES,
-  type AgentPersonality,
+  type AgentProfile,
   type PersonalityRole,
 } from "@otto-code/protocol/messages";
 import {
@@ -269,7 +269,7 @@ export function usePersonalitySelection(
   }, [fullRoster, entries]);
 
   const isHiddenPersonality = useCallback(
-    (personality: AgentPersonality): boolean =>
+    (personality: AgentProfile): boolean =>
       brokenProviders.has(personality.provider) &&
       personality.id !== latchedPersonalityId &&
       personality.id !== (alwaysIncludePersonalityId ?? null),
@@ -277,7 +277,7 @@ export function usePersonalitySelection(
   );
 
   const buildSelectorPersonality = useCallback(
-    (personality: AgentPersonality): SelectorPersonality => {
+    (personality: AgentProfile): SelectorPersonality => {
       const resolution = resolutions.get(personality.id);
       // Show the human-readable provider/model names from the live snapshot
       // rather than the raw ids; fall back to the id when the snapshot has no
@@ -320,7 +320,7 @@ export function usePersonalitySelection(
     if (visible.length === 0) {
       return [];
     }
-    const buildRoleGroups = (list: readonly AgentPersonality[]): SelectorPersonalityRoleGroup[] => {
+    const buildRoleGroups = (list: readonly AgentProfile[]): SelectorPersonalityRoleGroup[] => {
       const groups: SelectorPersonalityRoleGroup[] = [];
       for (const groupRole of PERSONALITY_ROLES) {
         const members = list.filter((personality) => personalityHasRole(personality, groupRole));
