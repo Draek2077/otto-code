@@ -27,9 +27,10 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import type { KeyboardActionId } from "@/keyboard/actions";
-import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import type { MarkdownCommandName } from "../editor-contract";
 import { isMarkdownPath } from "./markdown-path";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 // Each icon is wrapped individually: `withUnistyles` wraps LEAVES, so only the
 // glyph re-renders on a theme change rather than the whole strip.
@@ -218,7 +219,7 @@ function ToolbarButton({
   command: MarkdownCommandName;
   Icon: ToolbarIcon;
   label: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
   onRun: (command: MarkdownCommandName) => void;
 }) {
   const handlePress = useCallback(() => {
@@ -284,7 +285,6 @@ export function MarkdownToolbar({ onRun }: MarkdownToolbarProps) {
   const { t } = useTranslation();
   // Doubled on compact like every other icon-only control, which here is also
   // what makes the buttons a real touch target.
-  const iconSize = useIconSize();
   const groups = useMemo(() => TOOLBAR_GROUPS, []);
 
   return (
@@ -309,7 +309,7 @@ export function MarkdownToolbar({ onRun }: MarkdownToolbarProps) {
                 command={item.command}
                 Icon={item.Icon}
                 label={t(item.labelKey)}
-                iconSize={iconSize.md}
+                iconSize="md"
                 onRun={onRun}
               />
             ))}

@@ -5,7 +5,8 @@ import { useTranslation } from "react-i18next";
 import { Columns2, Eye, SquarePen, Wysiwyg } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { FileViewMode } from "@/stores/file-view-store";
-import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 // The file tab's three-way view switch: editor, editor+preview split,
 // preview. Icon-only with tooltips; exactly one mode is selected.
@@ -39,7 +40,7 @@ function FileViewModeButton({
   mode: FileViewMode;
   label: string;
   Icon: ModeIcon;
-  iconSize: number;
+  iconSize: IconSizeProp;
   selected: boolean;
   onChange: (mode: FileViewMode) => void;
 }) {
@@ -109,7 +110,7 @@ function FormattedButton({
   formatted,
 }: {
   label: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
   formatted: FileViewFormattedToggle;
 }) {
   const { on, disabled, onToggle } = formatted;
@@ -150,14 +151,13 @@ export function FileViewModeBar({ mode, showSplit, onChange, formatted }: FileVi
   const { t } = useTranslation();
   // Doubled on compact, like every other icon-only control. The literal 16 this
   // used to pass is ICON_SIZE.md, so the desktop size is unchanged.
-  const iconSize = useIconSize();
   return (
     <View style={styles.bar} testID="file-view-mode-bar">
       <FileViewModeButton
         mode="editor"
         label={t("editor.viewMode.editor")}
         Icon={ThemedSquarePen}
-        iconSize={iconSize.md}
+        iconSize="md"
         selected={mode === "editor"}
         onChange={onChange}
       />
@@ -166,7 +166,7 @@ export function FileViewModeBar({ mode, showSplit, onChange, formatted }: FileVi
           mode="split"
           label={t("editor.viewMode.split")}
           Icon={ThemedColumns2}
-          iconSize={iconSize.md}
+          iconSize="md"
           selected={mode === "split"}
           onChange={onChange}
         />
@@ -175,7 +175,7 @@ export function FileViewModeBar({ mode, showSplit, onChange, formatted }: FileVi
         mode="preview"
         label={t("editor.viewMode.preview")}
         Icon={ThemedEye}
-        iconSize={iconSize.md}
+        iconSize="md"
         selected={mode === "preview"}
         onChange={onChange}
       />
@@ -187,7 +187,7 @@ export function FileViewModeBar({ mode, showSplit, onChange, formatted }: FileVi
           <View style={styles.axisDivider} />
           <FormattedButton
             label={t("editor.viewMode.formatted")}
-            iconSize={iconSize.md}
+            iconSize="md"
             formatted={formatted}
           />
         </>

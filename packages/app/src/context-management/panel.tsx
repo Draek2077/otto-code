@@ -57,6 +57,7 @@ import { useContextSelection } from "./use-context-selection";
 import { LoadModeControl } from "./load-mode-control";
 import { ContextSummary } from "./summary";
 import { useContextReportQuery } from "./use-context-report";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 const DEFAULT_WINDOW_TOKENS = 200_000;
 
@@ -712,7 +713,7 @@ function CompactPaneHeader({
 }: {
   node: ContextNode | null;
   category: ContextCategory | null;
-  iconSize: number;
+  iconSize: IconSizeProp;
   onBack: () => void;
 }): ReactElement {
   const { t } = useTranslation();
@@ -774,7 +775,7 @@ function FindingBanner({
   onDismiss,
 }: {
   message: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
   onDismiss: () => void;
 }): ReactElement {
   const { t } = useTranslation();

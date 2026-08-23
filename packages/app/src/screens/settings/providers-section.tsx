@@ -38,6 +38,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 // three exist there, and mixing sets inside one row shows.
 import { ChevronRight, MoreHorizontal, Trash2 } from "@/components/icons/material-icons";
 import { filterSelectableModels } from "@/provider-selection/model-catalog";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 type ProviderDefinition = ReturnType<typeof buildProviderDefinitions>[number];
 type ProviderEntry = NonNullable<ReturnType<typeof useProvidersSnapshot>["entries"]>[number];
@@ -99,7 +100,7 @@ interface ProviderActionsMenuProps {
   providerId: string;
   providerLabel: string;
   isRemoving: boolean;
-  iconSize: number;
+  iconSize: IconSizeProp;
   foregroundColor: string;
   foregroundMutedColor: string;
   dangerColor: string;

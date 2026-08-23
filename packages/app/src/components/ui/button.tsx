@@ -40,7 +40,7 @@ type LeftIcon =
 interface ButtonIconProps {
   loading: boolean;
   leftIcon?: LeftIcon;
-  iconSize: number;
+  iconSize: IconSizeProp;
   iconColor: string;
 }
 
@@ -63,7 +63,7 @@ function ButtonIcon({ loading, leftIcon, iconSize, iconColor }: ButtonIconProps)
     return <View>{leftIcon.render(iconColor)}</View>;
   }
 
-  const Icon = leftIcon as ComponentType<{ color: string; size: number }>;
+  const Icon = leftIcon as ComponentType<{ color: string; size: IconSizeProp }>;
   return (
     <View>
       <Icon color={iconColor} size={iconSize} />
@@ -225,7 +225,7 @@ export function Button({
     size?: ButtonSize;
     leftIcon?: LeftIcon;
     /** Override the icon size derived from `size` (e.g. a compact 2x bump). */
-    iconSize?: number;
+    iconSize?: IconSizeProp;
     trailing?: ReactNode;
     style?: StyleProp<ViewStyle>;
     textStyle?: StyleProp<TextStyle>;

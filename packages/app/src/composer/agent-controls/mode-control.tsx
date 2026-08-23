@@ -18,7 +18,7 @@ import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/com
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { compactUp, useIconSize } from "@/styles/theme";
+import { compactUp } from "@/styles/theme";
 import {
   getAgentControlHintKey,
   getModeTierColor,
@@ -79,10 +79,9 @@ function ModeComboboxOption({
   const IconComponent = getAgentModeOptionIcon(provider, option.id, providerDefinitions);
   const tierColor = getModeTierColor(visuals?.colorTier, tierColors);
   const resolvedIconColor = tierColor ?? iconColor;
-  const iconSize = useIconSize();
   const leadingSlot = useMemo(
-    () => (IconComponent ? <IconComponent size={iconSize.md} color={resolvedIconColor} /> : null),
-    [IconComponent, resolvedIconColor, iconSize.md],
+    () => (IconComponent ? <IconComponent size="md" color={resolvedIconColor} /> : null),
+    [IconComponent, resolvedIconColor],
   );
   return (
     <ComboboxItem

@@ -138,6 +138,7 @@ import {
   resolveNewWorkspaceInitialServerId,
 } from "./new-workspace-initial-context";
 import { useNewWorkspaceProjectPicker } from "./new-workspace/project-picker";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 function useIsNewWorkspaceDraftHandoffActive(input: {
   draftId: string | undefined;
@@ -232,7 +233,7 @@ function RefPickerBadgeContent({
   selectedItem: PickerItem | null;
   triggerLabel: string;
   iconColor: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
 }) {
   return (
     <>
@@ -271,7 +272,7 @@ function RefPickerTrigger({
   accessibilityLabel: string;
   tooltipLabel: string;
   iconColor: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
 }) {
   return (
     <Tooltip>
@@ -322,7 +323,7 @@ function ProjectPickerTrigger({
   projectViewKey: string | null;
   iconDataUri: string | null;
   iconColor: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
 }) {
   const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(label);
   const placeholderInitial = placeholderLabel.charAt(0).toUpperCase() || "?";
@@ -386,7 +387,7 @@ function CheckoutHintBadge({
   onAccept: () => void;
   onDismiss: () => void;
   iconColor: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
 }) {
   return (
     <View style={styles.checkoutHintBadge}>
@@ -513,7 +514,7 @@ function PickerOptionItem({
   trailingLabel?: string;
   accessibilityLabel?: string;
   iconColor: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
 }) {
   const leadingSlot = useMemo(
     () => (
@@ -565,7 +566,7 @@ function IsolationOptionItem({
   disabled: boolean;
   onPress: () => void;
   iconColor: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
 }) {
   const leadingSlot = useMemo(
     () => (
@@ -759,7 +760,7 @@ function IsolationPickerTrigger({
   label: string;
   tooltipLabel: string;
   iconColor: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
 }) {
   return (
     <Tooltip>

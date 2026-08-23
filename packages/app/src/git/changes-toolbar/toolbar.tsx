@@ -15,6 +15,7 @@ import { useToolbarIconButtonStyle } from "@/components/ui/toolbar-icon-button";
 import { isNative } from "@/constants/platform";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import { isChangesToolbarItemPinned, type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 // Pinned state uses the same gold as a favorited star, matching the tab bar's
@@ -36,7 +37,7 @@ const ThemedPinOff = withUnistyles(PinOff);
 export interface ChangesToolbarItem {
   id: ChangesToolbarItemId;
   label: string;
-  renderIcon: (size: number) => ReactElement;
+  renderIcon: (size: IconSizeProp) => ReactElement;
   onPress: () => void;
   disabled?: boolean;
   /** Draw a menu separator above this item (used before Refresh). */
@@ -87,7 +88,6 @@ function ChangesPinnableMenuItem({
   onTogglePin: (id: ChangesToolbarItemId) => void;
 }): ReactElement {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const [isHovered, setIsHovered] = useState(false);
 
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
@@ -107,12 +107,12 @@ function ChangesPinnableMenuItem({
   );
   const trailingSpacer = useMemo(() => <View style={slotStyle} />, [slotStyle]);
 
-  let pinIcon = <ThemedPin size={iconSize.sm} uniProps={mutedColorMapping} />;
+  let pinIcon = <ThemedPin size="sm" uniProps={mutedColorMapping} />;
   if (isPinned) {
     pinIcon = isHovered ? (
-      <ThemedPinOff size={iconSize.sm} uniProps={mutedColorMapping} />
+      <ThemedPinOff size="sm" uniProps={mutedColorMapping} />
     ) : (
-      <ThemedPinFilled size={iconSize.sm} uniProps={starColorMapping} />
+      <ThemedPinFilled size="sm" uniProps={starColorMapping} />
     );
   }
 
@@ -124,7 +124,7 @@ function ChangesPinnableMenuItem({
     >
       <DropdownMenuItem
         testID={item.testID}
-        leading={item.renderIcon(iconSize.sm)}
+        leading={item.renderIcon("sm")}
         trailing={trailingSpacer}
         disabled={item.disabled}
         onSelect={item.onPress}

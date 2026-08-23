@@ -60,7 +60,7 @@ import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
 import { MessageInput, type MessageInputRef, type AttachmentMenuItem } from "./input/input";
 import type { ImageAttachment, MessagePayload } from "./types";
-import { compactUp, type Theme, useIconSize } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";
@@ -139,6 +139,7 @@ import { readClipboardImage } from "./clipboard-image";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
 import { ComposerFrame } from "@/composer/composer-frame";
 import { focusMessageInputWithPlatformStrategy } from "@/composer/message-input-keyboard";
+import type { IconSizeProp, IconSizeToken } from "@/components/icons/icon-size";
 
 const composerImageAttachmentPersister: Pick<
   AttachmentPersister,
@@ -167,8 +168,10 @@ function resolveErrorMessage(error: unknown): string | null {
   return null;
 }
 
-function resolveComposerButtonIconSize(iconSize: Theme["iconSize"]): number {
-  return isWeb ? iconSize.md : iconSize.lg;
+// Native gets the larger glyph: the composer buttons are worked with a thumb there even
+// on a tablet, where the breakpoint still reads as wide.
+function resolveComposerButtonIconSize(): IconSizeToken {
+  return isWeb ? "md" : "lg";
 }
 
 function resolveIsComposerLocked(
@@ -581,7 +584,6 @@ function QueuedMessageRow({
   moveDownLabel,
   formatAttachmentCount,
 }: QueuedMessageRowProps) {
-  const iconSize = useIconSize();
   const handleEdit = useCallback(() => {
     onEdit(item.id);
   }, [onEdit, item.id]);
@@ -615,7 +617,7 @@ function QueuedMessageRow({
               accessibilityState={canMoveUp ? undefined : QUEUE_MOVE_DISABLED_STATE}
             >
               <ThemedChevronUp
-                size={iconSize.xs}
+                size="xs"
                 uniProps={canMoveUp ? iconForegroundMapping : iconForegroundMutedMapping}
               />
             </TooltipTrigger>
@@ -634,7 +636,7 @@ function QueuedMessageRow({
               accessibilityState={canMoveDown ? undefined : QUEUE_MOVE_DISABLED_STATE}
             >
               <ThemedChevronDown
-                size={iconSize.xs}
+                size="xs"
                 uniProps={canMoveDown ? iconForegroundMapping : iconForegroundMutedMapping}
               />
             </TooltipTrigger>
@@ -653,7 +655,7 @@ function QueuedMessageRow({
           testID="composer-queue-attachment-count"
           accessibilityLabel={formatAttachmentCount(attachmentCount)}
         >
-          <ThemedPaperclip size={iconSize.xs} uniProps={iconForegroundMutedMapping} />
+          <ThemedPaperclip size="xs" uniProps={iconForegroundMutedMapping} />
           <Text style={styles.queueAttachmentCount}>{attachmentCount}</Text>
         </View>
       ) : null}
@@ -668,7 +670,7 @@ function QueuedMessageRow({
             accessibilityLabel={editLabel}
             accessibilityRole="button"
           >
-            <ThemedUndo size={iconSize.sm} uniProps={iconForegroundMapping} />
+            <ThemedUndo size="sm" uniProps={iconForegroundMapping} />
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
             <Text style={styles.tooltipText}>{editLabel}</Text>
@@ -684,7 +686,7 @@ function QueuedMessageRow({
               accessibilityLabel={sendAllLabel}
               accessibilityRole="button"
             >
-              <ThemedPublish size={iconSize.sm} uniProps={iconForegroundMapping} />
+              <ThemedPublish size="sm" uniProps={iconForegroundMapping} />
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={8}>
               <Text style={styles.tooltipText}>{sendAllLabel}</Text>
@@ -698,7 +700,7 @@ function QueuedMessageRow({
             accessibilityLabel={sendNowLabel}
             accessibilityRole="button"
           >
-            <ThemedArrowUp size={iconSize.sm} uniProps={iconAccentForegroundMapping} />
+            <ThemedArrowUp size="sm" uniProps={iconAccentForegroundMapping} />
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
             <Text style={styles.tooltipText}>{sendNowLabel}</Text>
@@ -772,15 +774,14 @@ function GithubAttachmentPill({
 }: GithubAttachmentPillProps) {
   const item = attachment.item;
   const kindLabel = item.kind === "change_request" ? "PR" : "issue";
-  const iconSize = useIconSize();
   const icon = useMemo(
     () =>
       item.kind === "change_request" ? (
-        <ThemedGitPullRequest size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
+        <ThemedGitPullRequest size="sm" uniProps={iconForegroundMutedMapping} />
       ) : (
-        <ThemedCircleDot size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
+        <ThemedCircleDot size="sm" uniProps={iconForegroundMutedMapping} />
       ),
-    [item.kind, iconSize.sm],
+    [item.kind],
   );
   const handleOpen = useCallback(() => {
     onOpen(attachment);
@@ -829,10 +830,9 @@ function WorkspaceFileAttachmentPill({
   onRemove,
   removeLabel,
 }: WorkspaceFileAttachmentPillProps) {
-  const iconSize = useIconSize();
   const icon = useMemo(
-    () => <ThemedFileText size={iconSize.sm} uniProps={iconForegroundMutedMapping} />,
-    [iconSize.sm],
+    () => <ThemedFileText size="sm" uniProps={iconForegroundMutedMapping} />,
+    [],
   );
   const handleRemove = useCallback(() => {
     onRemove(index);
@@ -864,10 +864,9 @@ function FileAttachmentPill({
   removeLabel,
 }: FileAttachmentPillProps) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const icon = useMemo(
-    () => <ThemedFileText size={iconSize.sm} uniProps={iconForegroundMutedMapping} />,
-    [iconSize.sm],
+    () => <ThemedFileText size="sm" uniProps={iconForegroundMutedMapping} />,
+    [],
   );
   const handleRemove = useCallback(() => {
     onRemove(index);
@@ -908,18 +907,17 @@ function GithubPickerOption({
   item,
   onToggle,
 }: GithubPickerOptionProps) {
-  const iconSize = useIconSize();
   const handlePress = useCallback(() => {
     onToggle(item);
   }, [onToggle, item]);
   const leadingSlot = useMemo(
     () =>
       item.kind === "change_request" ? (
-        <ThemedGitPullRequest size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
+        <ThemedGitPullRequest size="sm" uniProps={iconForegroundMutedMapping} />
       ) : (
-        <ThemedCircleDot size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
+        <ThemedCircleDot size="sm" uniProps={iconForegroundMutedMapping} />
       ),
-    [item.kind, iconSize.sm],
+    [item.kind],
   );
   return (
     <ComboboxItem
@@ -1033,7 +1031,7 @@ function resolveContextWindowValues(
 }
 
 interface ComposerCancelButtonProps {
-  buttonIconSize: number;
+  buttonIconSize: IconSizeProp;
   cancelButtonStyle: (object | undefined)[];
   handleCancelAgent: () => void;
   isConnected: boolean;
@@ -1082,7 +1080,7 @@ function ComposerCancelButton({
 }
 
 interface ComposerVoiceModeButtonProps {
-  buttonIconSize: number;
+  buttonIconSize: IconSizeProp;
   handleToggleRealtimeVoice: () => void;
   isConnected: boolean;
   isVoiceSwitching: boolean;
@@ -1229,8 +1227,7 @@ export function Composer({
 }: ComposerProps) {
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
-  const iconSize = useIconSize();
-  const buttonIconSize = resolveComposerButtonIconSize(iconSize);
+  const buttonIconSize = resolveComposerButtonIconSize();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
@@ -2339,7 +2336,7 @@ export function Composer({
         ? {
             id: "folder",
             label: t("composer.attachments.addFolder"),
-            icon: <ThemedFolder size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
+            icon: <ThemedFolder size="md" uniProps={iconForegroundMutedMapping} />,
             onSelect: () => {
               setIsFolderPickerOpen(true);
             },
@@ -2348,7 +2345,7 @@ export function Composer({
       {
         id: "image",
         label: t("composer.attachments.addImage"),
-        icon: <ThemedImageIcon size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
+        icon: <ThemedImageIcon size="md" uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           void handlePickImage();
         },
@@ -2357,7 +2354,7 @@ export function Composer({
         ? {
             id: "paste-image",
             label: t("composer.attachments.pasteImage"),
-            icon: <ThemedClipboardPaste size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
+            icon: <ThemedClipboardPaste size="md" uniProps={iconForegroundMutedMapping} />,
             onSelect: () => {
               void handlePasteImage();
             },
@@ -2366,7 +2363,7 @@ export function Composer({
       {
         id: "github",
         label: t("composer.attachments.addIssueOrPr"),
-        icon: <ThemedGithub size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
+        icon: <ThemedGithub size="md" uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           setIsGithubPickerOpen(true);
         },
@@ -2374,14 +2371,14 @@ export function Composer({
       {
         id: "file",
         label: t("composer.attachments.addFile"),
-        icon: <ThemedUploadFile size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
+        icon: <ThemedUploadFile size="md" uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           void handlePickFile();
         },
       },
     ];
     return items.filter((item): item is AttachmentMenuItem => item !== null);
-  }, [folderAttachmentScopeKey, handlePasteImage, handlePickFile, handlePickImage, iconSize.md, t]);
+  }, [folderAttachmentScopeKey, handlePasteImage, handlePickFile, handlePickImage, t]);
 
   const handleToggleGithubItem = useCallback(
     (item: ForgeSearchItem) => {

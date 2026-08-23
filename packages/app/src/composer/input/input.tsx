@@ -23,7 +23,7 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useTranslation } from "react-i18next";
-import { compactUp, type Theme, useIconSize } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import {
   ArrowUp,
   Mic,
@@ -89,6 +89,7 @@ import { ComposerToolbarWidthContext } from "./toolbar-width-context";
 import { computeToolbarScale } from "./toolbar-scale";
 import { applyDictationTranscript } from "./dictation-delivery";
 import { playDictationStartCue } from "@/voice/dictation-start-cue";
+import type { IconSizeProp, IconSizeToken } from "@/components/icons/icon-size";
 const COMPOSER_INPUT_DATASET = { composerInput: "" } as const;
 
 export interface AttachmentMenuItem {
@@ -373,7 +374,7 @@ function AttachButtonIcon({
 }: {
   hovered: boolean;
   onAttachButtonRef: ((node: View | null) => void) | undefined;
-  buttonIconSize: number;
+  buttonIconSize: IconSizeProp;
 }) {
   const colorMapping = hovered ? iconForegroundMapping : iconForegroundMutedMapping;
   return (
@@ -410,7 +411,7 @@ function AutoSpeechControl({
   show: boolean;
   serverId: string | undefined;
   agentId: string | undefined;
-  buttonIconSize: number;
+  buttonIconSize: IconSizeToken;
 }) {
   if (!show) return null;
   return <AutoSpeechButton serverId={serverId} agentId={agentId} buttonIconSize={buttonIconSize} />;
@@ -477,7 +478,7 @@ function VoiceButtonIcon({
   hovered: boolean;
   isDictating: boolean;
   isMutedRealtime: boolean;
-  buttonIconSize: number;
+  buttonIconSize: IconSizeProp;
 }) {
   if (isDictating) {
     return <Square size={buttonIconSize} color="white" />;
@@ -519,7 +520,7 @@ function SendButtonContent({
   isSubmitLoading: boolean;
   submitIcon: "arrow" | "return";
   submitLabel: string | undefined;
-  buttonIconSize: number;
+  buttonIconSize: IconSizeProp;
 }) {
   if (isSubmitLoading) {
     return <ThemedActivityIndicator size="small" uniProps={iconAccentMapping} />;
@@ -995,7 +996,7 @@ function SendButtonTooltip({
   submitIcon: "arrow" | "return";
   submitLabel: string | undefined;
   submitButtonTestID: string | undefined;
-  buttonIconSize: number;
+  buttonIconSize: IconSizeProp;
   sendTooltipLabel: string;
 }) {
   if (!shouldShow) return null;
@@ -1499,8 +1500,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       viewportHeight: viewportHeight && viewportHeight > 0 ? viewportHeight : windowHeight,
       isCompact,
     });
-    const iconSize = useIconSize();
-    const buttonIconSize = isWeb ? iconSize.md : iconSize.lg;
+    const buttonIconSize = isWeb ? "md" : "lg";
     const toast = useToast();
     const { settings: appSettings } = useAppSettings();
     const voice = useVoiceOptional();

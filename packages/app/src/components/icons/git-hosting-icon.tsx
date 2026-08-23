@@ -1,10 +1,11 @@
+import type { IconSizeProp } from "@/components/icons/icon-size";
 import type { GitHostingProviderId } from "@otto-code/protocol/messages";
 import { BitbucketIcon } from "@/components/icons/bitbucket-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 
 interface GitHostingIconProps {
   provider?: GitHostingProviderId | null;
-  size?: number;
+  size?: IconSizeProp;
   color?: string;
 }
 

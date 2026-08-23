@@ -36,6 +36,7 @@ import { formatFileSize } from "@/utils/format-file-size";
 import { HighlightedText } from "@/components/ui/highlighted-text";
 import type { AgentSearchMatch } from "@otto-code/protocol/messages";
 import type { MatchRange } from "@otto-code/protocol/search/text-match";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -185,7 +186,7 @@ function WorkspaceTitlePrefix({
   workspaceName: string;
   ranges?: readonly MatchRange[];
   testID: string;
-  iconSize: number;
+  iconSize: IconSizeProp;
   color: string;
 }) {
   if (!visible) {

@@ -18,7 +18,7 @@ import { FitScreen, Minus, Plus } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
-import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { formatFileSize } from "@/utils/format-file-size";
 import type { ImageDimensions } from "@/components/image-dimensions";
@@ -29,6 +29,7 @@ import {
   nextZoomStep,
   scaledSize,
 } from "@/components/image-zoom";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 // The read-only image view inside a file tab. There is no editor and no split
 // mode for an image - `file-tab-pane` withholds the whole mode bar for a
@@ -120,7 +121,7 @@ function ZoomButton({
 }: {
   label: string;
   Icon: typeof ThemedPlus;
-  iconSize: number;
+  iconSize: IconSizeProp;
   disabled?: boolean;
   selected?: boolean;
   testID: string;
@@ -170,7 +171,6 @@ function ZoomControls({
   onFit: () => void;
 }) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const percentStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.zoomButton,
@@ -185,7 +185,7 @@ function ZoomControls({
       <ZoomButton
         label={t("panels.file.image.zoomOut")}
         Icon={ThemedMinus}
-        iconSize={iconSize.md}
+        iconSize="md"
         disabled={isAtZoomLimit(scale, -1)}
         testID="image-preview-zoom-out"
         onPress={onZoomOut}
@@ -207,7 +207,7 @@ function ZoomControls({
       <ZoomButton
         label={t("panels.file.image.zoomIn")}
         Icon={ThemedPlus}
-        iconSize={iconSize.md}
+        iconSize="md"
         disabled={isAtZoomLimit(scale, 1)}
         testID="image-preview-zoom-in"
         onPress={onZoomIn}
@@ -216,7 +216,7 @@ function ZoomControls({
       <ZoomButton
         label={t("panels.file.image.fitToWindow")}
         Icon={ThemedFitScreen}
-        iconSize={iconSize.md}
+        iconSize="md"
         selected={isFit}
         testID="image-preview-fit"
         onPress={onFit}

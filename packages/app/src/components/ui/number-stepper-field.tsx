@@ -18,6 +18,7 @@ import {
   type FieldControlSize,
 } from "@/components/ui/control-geometry";
 import { isWeb } from "@/constants/platform";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 // Press-and-hold acceleration. A single tap steps by ±1. Holding a button dwells
 // briefly (so a slightly-long press is still one step), then auto-repeats on a
@@ -299,7 +300,7 @@ function StepperButton({
   testID,
 }: {
   icon: IconComponent;
-  iconSize: number;
+  iconSize: IconSizeProp;
   label: string;
   disabled: boolean;
   sizeStyle: StyleProp<ViewStyle>;

@@ -24,6 +24,8 @@ import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
 import { useAppSettings, useAppSettingValue } from "@/hooks/use-settings";
 import { buildAgentAutoSpeechKey, type AppSettings } from "@/hooks/use-settings/storage";
 import { compactUp, type Theme } from "@/styles/theme";
+import type { IconSizeToken } from "@/components/icons/icon-size";
+import { useIconSize } from "@/styles/theme";
 
 const ThemedVolume2 = withUnistyles(Volume2);
 const ThemedVolumeX = withUnistyles(VolumeX);
@@ -35,7 +37,7 @@ const iconAccentMapping = (theme: Theme) => ({ color: theme.colors.accent });
 interface AutoSpeechButtonProps {
   serverId: string | undefined;
   agentId: string | undefined;
-  buttonIconSize: number;
+  buttonIconSize: IconSizeToken;
 }
 
 // Optical size correction - the button box still matches its neighbours exactly,
@@ -79,7 +81,10 @@ export function AutoSpeechButton({ serverId, agentId, buttonIconSize }: AutoSpee
     }).catch(() => undefined);
   }, [agentKey, enabled, enabledAgents, audioEngine, updateSettings]);
 
-  const glyphSize = Math.round(buttonIconSize * SPEAKER_OPTICAL_SCALE);
+  // One of the few places that still needs the token resolved to a number: the optical
+  // correction below is a multiplier, and the result is deliberately off the ramp.
+  const iconSize = useIconSize();
+  const glyphSize = Math.round(iconSize[buttonIconSize] * SPEAKER_OPTICAL_SCALE);
   const renderIcon = useCallback(
     ({ hovered }: { hovered?: boolean }) => {
       if (enabled) {

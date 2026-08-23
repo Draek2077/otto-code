@@ -2690,7 +2690,6 @@ function CommitTypeSelector({
   onCommitTypeChange: (next: CommitTypeChoice) => void;
 }) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
 
@@ -2747,7 +2746,7 @@ function CommitTypeSelector({
         <Text style={styles.commitTypeValue} numberOfLines={1}>
           {value === NO_COMMIT_TYPE ? t("workspace.git.commit.type.none") : value}
         </Text>
-        <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
+        <ThemedChevronDown size="xs" uniProps={foregroundMutedIconColorMapping} />
       </Pressable>
       <Combobox
         options={options}
@@ -4181,8 +4180,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     () => computeBaseRefLabel(baseRef, t("workspace.git.diff.base")),
     [baseRef, t],
   );
-  const iconSize = useIconSize();
-  const actionIconSize = iconSize.md;
+  const actionIconSize = "md" as const;
   const gitActionsIcons = useMemo(
     () => ({
       commit: (
@@ -4329,10 +4327,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
                   <Text style={styles.diffStatusText} numberOfLines={1}>
                     {diffMode === "uncommitted" ? uncommittedLabel : committedLabel}
                   </Text>
-                  <ThemedChevronDown
-                    size={iconSize.xs}
-                    uniProps={foregroundMutedIconColorMapping}
-                  />
+                  <ThemedChevronDown size="xs" uniProps={foregroundMutedIconColorMapping} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" width={260} testID="changes-diff-status-menu">
                   <DropdownMenuItem

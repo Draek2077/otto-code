@@ -24,6 +24,7 @@ import { resolvePreviewFlag, useControlStatePreview } from "@/components/ui/cont
 import { compactUp, type Theme } from "@/styles/theme";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { MenuDepthProvider, useMenuContext } from "./menu-context";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 const ThemedCheck = withUnistyles(Check);
 const ThemedCheckCircle = withUnistyles(CheckCircle);
@@ -192,7 +193,7 @@ function resolveLeadingContent(input: {
   isPending: boolean | undefined;
   isSuccess: boolean;
   leading: ReactElement | null;
-  iconSize: number;
+  iconSize: IconSizeProp;
 }): ReactElement | null {
   const { isPending, isSuccess, leading, iconSize } = input;
   if (isPending) {
