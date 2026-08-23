@@ -34,7 +34,7 @@
 import { Buffer } from "buffer";
 import { useEffect, useRef } from "react";
 import type {
-  AgentPersonality,
+  AgentProfile,
   AgentPersonalityVoiceCues,
   CueMoment,
 } from "@otto-code/protocol/messages";
@@ -144,14 +144,14 @@ export function __resetAgentVoiceCueThrottleForTests(): void {
 }
 
 function personalityFor(
-  roster: readonly AgentPersonality[] | undefined,
+  roster: readonly AgentProfile[] | undefined,
   personalityId: string,
-): AgentPersonality | undefined {
+): AgentProfile | undefined {
   return roster?.find((p) => p.id === personalityId);
 }
 
 function resolveVoice(
-  personality: AgentPersonality | undefined,
+  personality: AgentProfile | undefined,
 ): { provider?: string; model?: string; name: string } | undefined {
   const voice = personality?.voice;
   return voice?.name
@@ -338,8 +338,8 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
   // fire time. Cues are their OWN audio channel: the Visualizer's sound volume
   // and its speaker-button mute are ambience for a graph you are watching and
   // have no say over a notification that fires while you are somewhere else.
-  const rosterRef = useRef<readonly AgentPersonality[] | undefined>(undefined);
-  rosterRef.current = config?.agentPersonalities?.personalities;
+  const rosterRef = useRef<readonly AgentProfile[] | undefined>(undefined);
+  rosterRef.current = config?.agentProfiles;
   const gainRef = useRef(1);
   gainRef.current = settings.agentVoiceCuesVolume / 100;
 

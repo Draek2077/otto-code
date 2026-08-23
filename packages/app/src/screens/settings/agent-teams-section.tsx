@@ -11,7 +11,7 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { AgentPersonality, AgentTeam, PersonalityRole } from "@otto-code/protocol/messages";
+import type { AgentProfile, AgentTeam, PersonalityRole } from "@otto-code/protocol/messages";
 import {
   checkPersonalityAvailability,
   normalizePersonalityRoles,
@@ -106,7 +106,7 @@ function teamToDraft(team: AgentTeam): TeamDraft {
 function draftToTeam(
   draft: TeamDraft,
   id: string,
-  personalities: readonly AgentPersonality[],
+  personalities: readonly AgentProfile[],
 ): AgentTeam {
   const team: AgentTeam = {
     id,
@@ -232,13 +232,13 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
 
   const teams = useMemo(() => config?.agentTeams?.teams ?? [], [config]);
   const activeTeamId = config?.agentTeams?.activeTeamId ?? null;
-  const personalities = useMemo(() => config?.agentPersonalities?.personalities ?? [], [config]);
+  const personalities = useMemo(() => config?.agentProfiles ?? [], [config]);
   const providerEntries = useMemo(() => entries ?? [], [entries]);
 
   const saveTeams = useCallback(
     async (
       next: AgentTeam[],
-      options?: { clearActive?: boolean; personalities?: AgentPersonality[] },
+      options?: { clearActive?: boolean; personalities?: AgentProfile[] },
     ) => {
       await patchConfig({
         agentTeams: {
@@ -248,9 +248,7 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
         // Deleting a team can optionally take its exclusive members with it;
         // both sections ride one patch so the roster never briefly disagrees
         // with the teams that reference it.
-        ...(options?.personalities
-          ? { agentPersonalities: { personalities: options.personalities } }
-          : {}),
+        ...(options?.personalities ? { agentProfiles: options.personalities } : {}),
       });
     },
     [patchConfig],
@@ -480,7 +478,7 @@ const MEMBER_ICON_SIZE = 16;
 
 interface TeamRowProps {
   team: AgentTeam;
-  personalities: readonly AgentPersonality[];
+  personalities: readonly AgentProfile[];
   entries: readonly ProviderSnapshotEntry[];
   isFirst: boolean;
   isActive: boolean;
@@ -497,7 +495,7 @@ function MemberIcons({
   entries,
 }: {
   team: AgentTeam;
-  personalities: readonly AgentPersonality[];
+  personalities: readonly AgentProfile[];
   entries: readonly ProviderSnapshotEntry[];
 }): ReactElement | null {
   const members = useMemo(() => {
@@ -562,7 +560,7 @@ function RolePills({ roles }: { roles: readonly PersonalityRole[] }): ReactEleme
   );
 }
 
-function formatMemberCount(team: AgentTeam, personalities: readonly AgentPersonality[]): string {
+function formatMemberCount(team: AgentTeam, personalities: readonly AgentProfile[]): string {
   const known = new Set(personalities.map((entry) => entry.id));
   const count = (team.memberIds ?? []).filter((memberId) => known.has(memberId)).length;
   return count === 1 ? "1 member" : `${count} members`;
@@ -670,7 +668,7 @@ function TeamRow({
 interface TeamEditModalProps {
   title: string;
   initialDraft: TeamDraft;
-  personalities: readonly AgentPersonality[];
+  personalities: readonly AgentProfile[];
   entries: readonly ProviderSnapshotEntry[];
   // Lowercased trimmed names of every other team; the draft must not collide.
   takenNames: readonly string[];
@@ -980,7 +978,7 @@ function AvatarColorField({
 }
 
 interface MembersFieldProps {
-  personalities: readonly AgentPersonality[];
+  personalities: readonly AgentProfile[];
   entries: readonly ProviderSnapshotEntry[];
   memberIds: readonly string[];
   onToggle: (personalityId: string) => void;
@@ -1020,7 +1018,7 @@ function MembersField({
 }
 
 interface MemberRowProps {
-  personality: AgentPersonality;
+  personality: AgentProfile;
   entries: readonly ProviderSnapshotEntry[];
   checked: boolean;
   onToggle: (personalityId: string) => void;

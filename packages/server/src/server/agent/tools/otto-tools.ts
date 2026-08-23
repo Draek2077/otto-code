@@ -2187,7 +2187,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "List personalities",
         description:
-          "List the personality profiles on this host - named templates binding a provider/model, effort, mode, prompt, and roles. Pass a name to create_chat's `personality` to start it (availability is resolved per workspace; unavailable profiles can't be started there). Any chat may call this to choose a collaborator. Each entry's `guidance`, `tier`, and `canLaunch` fields explain when to choose it.",
+          "List the personality profiles on this host - named templates binding a provider/model, effort, mode, prompt, and roles. Pass a name to create_chat's `personality` to start it (availability is resolved per workspace; unavailable profiles can't be started there). Any chat may call this to choose a collaborator. Each entry's `guidance`, `tier`, and `canLaunch` fields explain when to choose it, and `notes` carries the author's own note about what this particular one is for.",
         inputSchema: {
           cwd: z
             .string()
@@ -2272,6 +2272,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               modeId?: string;
               thinkingOptionId?: string;
               effortLevel?: string;
+              notes?: string;
             } = {
               id: personality.id,
               name: personality.name,
@@ -2290,6 +2291,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               canLaunch: selection.canLaunch,
               guidance: selection.guidance,
             };
+            // The author's own "when to pick this one" note. `guidance` is
+            // derived from roles and says what the ROLE is for; this says what
+            // this particular teammate is for, which the roles cannot express.
+            const notes = typeof personality.notes === "string" ? personality.notes.trim() : "";
+            if (notes) {
+              entryOut.notes = notes;
+            }
             if (resolution.status === "unavailable") {
               entryOut.unavailableReason = resolution.reason;
               return entryOut;

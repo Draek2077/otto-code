@@ -159,7 +159,10 @@ describe("generateTeam", () => {
     // Every member binds an advertised model + resolvable roles + a prompt.
     const modelIds = new Set(CLAUDE_MODELS.map((m) => m.id));
     for (const personality of personalities) {
-      expect(modelIds.has(personality.model)).toBe(true);
+      // A generated member always pins a concrete model, even though the stored
+      // template type allows "use the provider's default".
+      expect(personality.model).toBeDefined();
+      expect(modelIds.has(personality.model ?? "")).toBe(true);
       expect(normalizePersonalityRoles(personality.roles).length).toBeGreaterThan(0);
       expect(personality.personalityPrompt && personality.personalityPrompt.length).toBeTruthy();
     }

@@ -400,7 +400,7 @@ function HostTeamOptions({
   const { config, isLoading, patchConfig } = useDaemonConfig(serverId);
   const teams = useMemo(() => config?.agentTeams?.teams ?? [], [config]);
   const activeTeam = useMemo(() => getActiveAgentTeam(config?.agentTeams), [config]);
-  const personalities = config?.agentPersonalities?.personalities;
+  const personalities = config?.agentProfiles;
   const activeTeamId = activeTeam?.id ?? null;
 
   const handleSelect = useCallback(

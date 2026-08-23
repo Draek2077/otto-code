@@ -155,7 +155,7 @@ export function SetupWizardScreen() {
     [primaryProvider, entries],
   );
 
-  const rosterCount = config?.agentPersonalities?.personalities?.length ?? 0;
+  const rosterCount = config?.agentProfiles?.length ?? 0;
   const activeTeamName = useMemo(
     () => getActiveAgentTeam(config?.agentTeams)?.name ?? null,
     [config],

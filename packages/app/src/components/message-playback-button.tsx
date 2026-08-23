@@ -53,9 +53,7 @@ function useAgentPersonalityVoice(
     if (!personalityId) {
       return undefined;
     }
-    const personality = config?.agentPersonalities?.personalities?.find(
-      (candidate) => candidate.id === personalityId,
-    );
+    const personality = config?.agentProfiles?.find((candidate) => candidate.id === personalityId);
     const voice = personality?.voice;
     return voice?.name
       ? { provider: voice.provider, model: voice.model, name: voice.name }

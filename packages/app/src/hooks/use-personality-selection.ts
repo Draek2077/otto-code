@@ -216,7 +216,7 @@ export function usePersonalitySelection(
 
   // Depend on the roster slice, not the whole config - unrelated daemon-config
   // changes must not rebuild the roster → resolutions → personalities chain.
-  const rosterSource = config?.agentPersonalities?.personalities;
+  const rosterSource = config?.agentProfiles;
   const fullRoster = useMemo(() => rosterSource ?? [], [rosterSource]);
   // Strict active-team scoping FOR THE UP-FRONT SECTION: with a team active
   // only its members show (role/availability-filtered as always). The one

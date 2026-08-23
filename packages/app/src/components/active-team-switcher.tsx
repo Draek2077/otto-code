@@ -274,7 +274,7 @@ function ActiveTeamSwitcher({
 
   const teams = useMemo(() => config?.agentTeams?.teams ?? [], [config]);
   const activeTeam = useMemo(() => getActiveAgentTeam(config?.agentTeams), [config]);
-  const personalities = config?.agentPersonalities?.personalities;
+  const personalities = config?.agentProfiles;
 
   const isEligible = isConnected && hasFeature && teams.length > 0;
   // "Might still qualify" - a teams-capable host whose config is in flight.

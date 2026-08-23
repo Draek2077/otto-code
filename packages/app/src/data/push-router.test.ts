@@ -86,6 +86,7 @@ const daemonConfig: MutableDaemonConfig = {
     stallGuardThreshold: 15,
   },
   agentPersonalities: { personalities: [] },
+  agentProfiles: [],
   agentTeams: { teams: [] },
   modelTierOverrides: [],
   connectors: [],

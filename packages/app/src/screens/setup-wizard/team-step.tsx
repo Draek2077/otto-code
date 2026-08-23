@@ -30,7 +30,7 @@ import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 import type { InterfaceMode } from "@/hooks/use-settings";
@@ -176,11 +176,9 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
   // activate the team. Throws on failure so callers decide how to surface it.
   const installTeam = useCallback(
     async (generated: GeneratedTeam) => {
-      const existingPersonalities = config?.agentPersonalities?.personalities ?? [];
+      const existingPersonalities = config?.agentProfiles ?? [];
       await patchConfig({
-        agentPersonalities: {
-          personalities: [...existingPersonalities, ...generated.personalities],
-        },
+        agentProfiles: [...existingPersonalities, ...generated.personalities],
         agentTeams: buildAddTeamPatch(config, generated.team),
       });
       markInstalled(generated.team.id);
@@ -316,7 +314,7 @@ function GeneratedPreview({
 }: {
   blueprintName: string;
   team: NonNullable<GeneratedTeam["team"]>;
-  personalities: AgentPersonality[];
+  personalities: AgentProfile[];
   installedTeamIds: ReadonlySet<string>;
   isAdding: boolean;
   disabled: boolean;
@@ -438,10 +436,7 @@ function CustomTeamBuilder({
   patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
   onInstalled: (teamId: string) => void;
 }) {
-  const available = useMemo(
-    () => config?.agentPersonalities?.personalities ?? [],
-    [config?.agentPersonalities?.personalities],
-  );
+  const available = useMemo(() => config?.agentProfiles ?? [], [config?.agentProfiles]);
   const { t } = useTranslation();
   const defaultName = t("setupWizard.team.builder.defaultName");
   const [name, setName] = useState(defaultName);
@@ -572,7 +567,7 @@ function CustomTeamBuilder({
   );
 }
 
-function MemberRow({ personality }: { personality: AgentPersonality }) {
+function MemberRow({ personality }: { personality: AgentProfile }) {
   const { t } = useTranslation();
   const roles = useMemo(() => normalizePersonalityRoles(personality.roles), [personality]);
   const chipStyle = useMemo(
@@ -599,7 +594,7 @@ function SelectableMemberRow({
   selected,
   onToggle,
 }: {
-  personality: AgentPersonality;
+  personality: AgentProfile;
   selected: boolean;
   onToggle: (id: string) => void;
 }) {

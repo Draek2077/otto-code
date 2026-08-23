@@ -27,6 +27,18 @@ import type {
 import { CUE_MOMENTS, PERSONALITY_ROLES } from "@otto-code/protocol/messages";
 import { DEFAULT_AGENT_PROFILES } from "@otto-code/protocol/default-personalities";
 import {
+  DEFAULT_GLOW_A,
+  DEFAULT_GLOW_B,
+  draftToPersonality,
+  draftVoiceCuesAreEmpty,
+  emptyDraftVoiceCues,
+  newCueLine,
+  personalityToDraft,
+  type CueLineDraft,
+  type DraftVoiceCues,
+  type PersonalityDraft,
+} from "./personality-draft";
+import {
   checkPersonalityAvailability,
   normalizePersonalityRoles,
 } from "@otto-code/protocol/agent-personalities";
@@ -114,9 +126,6 @@ export function usePersonalityProfileFeature(serverId: string): boolean {
   );
 }
 
-const DEFAULT_GLOW_A = "#4ec4ff";
-const DEFAULT_GLOW_B = "#e14fe8";
-
 // Personality names are single-word "handles" - short, and restricted to
 // letters, digits, hyphen, and underscore - so an agent is trivially
 // recognizable at a glance (in the roster, spinner tooltips, and spawn-by-name
@@ -172,46 +181,6 @@ function fillEmptyPersistedCues(
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
-// A cue line carries a stable id so the editor's list rows key on identity, not
-// array index (keeps focus stable across add/remove and satisfies list-key
-// lint). `text` is the editable content.
-interface CueLineDraft {
-  id: string;
-  text: string;
-}
-
-// One editable line list per protocol cue moment - a Record so adding a moment
-// to CUE_MOMENTS lights up the whole editor without touching this shape.
-type DraftVoiceCues = Record<CueMoment, CueLineDraft[]>;
-
-let cueLineSeq = 0;
-function newCueLine(text: string): CueLineDraft {
-  cueLineSeq += 1;
-  return { id: `cue_${cueLineSeq}`, text };
-}
-
-interface PersonalityDraft {
-  name: string;
-  provider: string;
-  model: string;
-  modeId: string; // "" = provider default
-  effortLevel: string; // "" = none
-  personalityPrompt: string;
-  respectGlobalAppendPrompt: boolean;
-  /** Whether this personality accrues lessons across sessions. Default on. */
-  memoryEnabled: boolean;
-  roles: PersonalityRole[];
-  /** Icon registry key and identity colour; "" draws the defaults. */
-  icon: string;
-  color: string;
-  glowA: string;
-  glowB: string;
-  voice: AgentPersonalityVoice | null;
-  // Pre-generated (editable) spoken cue lines, always present as arrays for
-  // simple list editing; persisted only when non-empty.
-  voiceCues: DraftVoiceCues;
-}
-
 // The editor is split into tabs (the form grew long). Identity = who it is,
 // Model = its brain, Voice = spoken voice + the voice-cue lines.
 type EditorTab = "identity" | "personality" | "model" | "voice";
@@ -238,42 +207,6 @@ const CUE_KIND_HINTS: Record<CueMoment, string> = {
   waiting: "Its own turn is over but its sub-agents are still running - e.g. “Still hearing back”.",
   done: "Finished, handing back the result - e.g. “Done”.",
 };
-
-function buildDraftVoiceCues(lines: (moment: CueMoment) => CueLineDraft[]): DraftVoiceCues {
-  const draft = {} as DraftVoiceCues;
-  for (const moment of CUE_MOMENTS) {
-    draft[moment] = lines(moment);
-  }
-  return draft;
-}
-
-function emptyDraftVoiceCues(): DraftVoiceCues {
-  return buildDraftVoiceCues(() => []);
-}
-
-function draftVoiceCuesFrom(cues: AgentProfile["voiceCues"]): DraftVoiceCues {
-  return buildDraftVoiceCues((moment) => {
-    const group: unknown = cues?.[moment];
-    return Array.isArray(group) ? group.map((text) => newCueLine(String(text))) : [];
-  });
-}
-
-// Trim + drop blank lines; returns undefined when every group is empty (so the
-// personality stores no voiceCues at all rather than empty arrays).
-function draftVoiceCuesToPersistable(cues: DraftVoiceCues): AgentProfile["voiceCues"] | undefined {
-  const persistable: Record<string, string[]> = {};
-  for (const moment of CUE_MOMENTS) {
-    const lines = cues[moment].map((line) => line.text.trim()).filter((text) => text.length > 0);
-    if (lines.length > 0) {
-      persistable[moment] = lines;
-    }
-  }
-  return Object.keys(persistable).length > 0 ? persistable : undefined;
-}
-
-function draftVoiceCuesAreEmpty(cues: DraftVoiceCues): boolean {
-  return draftVoiceCuesToPersistable(cues) === undefined;
-}
 
 // Per-moment merge of freshly generated lines into the current draft: only
 // moments that actually produced lines are overwritten, so a partial
@@ -353,71 +286,6 @@ function formatEffortLabel(level: string): string {
   return level.charAt(0).toUpperCase() + level.slice(1);
 }
 
-function personalityToDraft(personality: AgentProfile): PersonalityDraft {
-  return {
-    name: personality.name,
-    provider: personality.provider,
-    // A template may name no model ("use the provider's default"); the editor
-    // shows that as no model chosen rather than inventing one.
-    model: personality.model ?? "",
-    modeId: personality.modeId ?? "",
-    effortLevel: personality.effortLevel ?? "",
-    personalityPrompt: personality.personalityPrompt ?? "",
-    respectGlobalAppendPrompt: personality.respectGlobalAppendPrompt ?? true,
-    // Absent means on: memory costs nothing until a lesson exists, so the switch
-    // is there to stop a personality accruing, not to start it.
-    memoryEnabled: personality.memoryEnabled ?? true,
-    roles: normalizePersonalityRoles(personality.roles),
-    icon: personality.icon ?? "",
-    color: personality.color ?? "",
-    glowA: personality.spinner?.glowA ?? DEFAULT_GLOW_A,
-    glowB: personality.spinner?.glowB ?? DEFAULT_GLOW_B,
-    voice: personality.voice ?? null,
-    voiceCues: draftVoiceCuesFrom(personality.voiceCues),
-  };
-}
-
-function draftToPersonality(draft: PersonalityDraft, id: string): AgentProfile {
-  const personality: AgentProfile = {
-    id,
-    name: draft.name.trim(),
-    provider: draft.provider,
-    model: draft.model,
-    respectGlobalAppendPrompt: draft.respectGlobalAppendPrompt,
-    roles: draft.roles,
-    spinner: { glowA: draft.glowA.trim(), glowB: draft.glowB.trim() },
-  };
-  if (draft.icon) {
-    personality.icon = draft.icon;
-  }
-  if (draft.color) {
-    personality.color = draft.color;
-  }
-  if (draft.effortLevel) {
-    personality.effortLevel = draft.effortLevel;
-  }
-  if (draft.modeId) {
-    personality.modeId = draft.modeId;
-  }
-  const prompt = draft.personalityPrompt.trim();
-  if (prompt) {
-    personality.personalityPrompt = prompt;
-  }
-  if (draft.voice) {
-    personality.voice = draft.voice;
-  }
-  const voiceCues = draftVoiceCuesToPersistable(draft.voiceCues);
-  if (voiceCues) {
-    personality.voiceCues = voiceCues;
-  }
-  // Written only when off, so the default state stays absent on the wire and an
-  // older daemon reading this roster sees exactly what it saw before.
-  if (!draft.memoryEnabled) {
-    personality.memoryEnabled = false;
-  }
-  return personality;
-}
-
 function selectableProviders(entries: readonly ProviderSnapshotEntry[]): ProviderSnapshotEntry[] {
   return entries.filter((entry) => entry.enabled !== false);
 }
@@ -437,6 +305,7 @@ function emptyDraft(entries: readonly ProviderSnapshotEntry[]): PersonalityDraft
     modeId: "",
     effortLevel: "medium",
     personalityPrompt: "",
+    notes: "",
     respectGlobalAppendPrompt: true,
     memoryEnabled: true,
     // A new personality is available everywhere by default; the user narrows it.
@@ -621,7 +490,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
   // no-ops if the personality was deleted or the user has since added cues.
   const persistGeneratedCues = useCallback(
     async (personalityId: string, generated: Partial<Record<CueMoment, string[]>>) => {
-      const current = configRef.current?.agentPersonalities?.personalities ?? [];
+      const current = configRef.current?.agentProfiles ?? [];
       const target = current.find((entry) => entry.id === personalityId);
       if (!target) {
         return;
@@ -662,7 +531,11 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
       // between the click and the write has to reach the user, or the editor
       // just sits there looking stuck.
       try {
-        const personality = draftToPersonality(draft, id);
+        const personality = draftToPersonality(
+          draft,
+          id,
+          personalities.find((entry) => entry.id === editing.id),
+        );
         // An edited personality can vanish from the roster mid-edit (deleted
         // from another client); mapping by id would silently drop the save, so
         // append (recreate) it instead.
@@ -1318,6 +1191,9 @@ function PersonalityEditModal({
   const setPrompt = useCallback((value: string) => {
     setDraft((current) => ({ ...current, personalityPrompt: value }));
   }, []);
+  const setNotes = useCallback((value: string) => {
+    setDraft((current) => ({ ...current, notes: value }));
+  }, []);
   const setRespectAppend = useCallback((value: boolean) => {
     setDraft((current) => ({ ...current, respectGlobalAppendPrompt: value }));
   }, []);
@@ -1686,6 +1562,16 @@ function PersonalityEditModal({
               isGenerating={isGeneratingProfile}
               error={profileGenError}
               onGenerate={handleGenerateProfile}
+            />
+
+            <FieldLabel label="Notes" />
+            <TextArea
+              value={draft.notes}
+              onChangeText={setNotes}
+              placeholder="When to pick this one. Shown to agents choosing a collaborator, not to the model itself."
+              placeholderTextColor={styles.placeholder.color}
+              style={styles.textArea}
+              testID="agent-personality-notes-input"
             />
 
             <View style={styles.toggleRow}>
@@ -2146,7 +2032,7 @@ function SpinnerField({
     <View style={styles.spinnerField}>
       <View style={styles.spinnerHeader}>
         <FieldLabel label="Spinner colors" />
-        <BlobLoader size={20} glowA={glowA} glowB={glowB} />
+        <BlobLoader size="lg" glowA={glowA} glowB={glowB} />
       </View>
       <View style={styles.spinnerWheels}>
         <ColorInput

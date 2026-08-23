@@ -21,7 +21,7 @@ import type {
   AgentModelDefinition,
   AgentProvider,
 } from "@otto-code/protocol/agent-types";
-import type { AgentPersonality, AgentTeam } from "@otto-code/protocol/messages";
+import type { AgentProfile, AgentTeam } from "@otto-code/protocol/messages";
 import { inferModelTier } from "@otto-code/protocol/model-tiers";
 import { COLOR_PAIRS, NAME_POOLS, voiceForGender } from "./pools";
 import { VARIATIONS } from "./variations";
@@ -54,7 +54,7 @@ export interface GenerateTeamInput {
 }
 
 export interface GeneratedTeam {
-  personalities: AgentPersonality[];
+  personalities: AgentProfile[];
   team: AgentTeam;
 }
 
@@ -129,7 +129,7 @@ function drawName(gender: NameGender, random: () => number, used: Set<string>): 
   return name;
 }
 
-function shuffledColors(random: () => number): AgentPersonality["spinner"][] {
+function shuffledColors(random: () => number): AgentProfile["spinner"][] {
   const copy = [...COLOR_PAIRS];
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
@@ -153,12 +153,12 @@ function buildPersonality(input: {
   model: string;
   modeId: string | undefined;
   name: string;
-  spinner: AgentPersonality["spinner"];
-  voice: AgentPersonality["voice"];
+  spinner: AgentProfile["spinner"];
+  voice: AgentProfile["voice"];
   random: () => number;
-}): AgentPersonality {
+}): AgentProfile {
   const { archetype, variation, provider, model, modeId, name, spinner, voice } = input;
-  const personality: AgentPersonality = {
+  const personality: AgentProfile = {
     id: `personality_preset_${archetype.slot}_${token(input.random)}`,
     name,
     provider,
@@ -193,7 +193,7 @@ export function generateTeam(input: GenerateTeamInput): GeneratedTeam | null {
   const colors = shuffledColors(random);
   const genderCounters: Record<NameGender, number> = { m: 0, f: 0, n: 0 };
 
-  const personalities: AgentPersonality[] = blueprint.slots.map((archetype, index) => {
+  const personalities: AgentProfile[] = blueprint.slots.map((archetype, index) => {
     const variation =
       pickVariation(blueprint.id, archetype.slot, random) ??
       // Defensive: a slot with no authored variations still yields a valid member

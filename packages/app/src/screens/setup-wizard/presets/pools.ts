@@ -10,7 +10,7 @@
  * host default at playback, it never takes a personality out of commission.
  */
 
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import type { NameGender } from "./types";
 
 // ~20 names per pool. Kept broad and internationally varied; a variation's
@@ -86,7 +86,7 @@ export const NAME_POOLS: Record<NameGender, readonly string[]> = {
 
 // Spinner glow pairs (glowA/glowB), hue-spread so a team of them reads as a
 // varied set. Drawn without replacement per team.
-export const COLOR_PAIRS: readonly AgentPersonality["spinner"][] = [
+export const COLOR_PAIRS: readonly AgentProfile["spinner"][] = [
   { glowA: "#4F46E5", glowB: "#F59E0B" },
   { glowA: "#14B8A6", glowB: "#8B5CF6" },
   { glowA: "#F43F5E", glowB: "#FBBF24" },
@@ -118,7 +118,7 @@ const VOICE_NAMES: Record<NameGender, readonly string[]> = {
   n: ["af_nova", "am_echo", "af_heart", "am_puck"],
 };
 
-export function voiceForGender(gender: NameGender, index: number): AgentPersonality["voice"] {
+export function voiceForGender(gender: NameGender, index: number): AgentProfile["voice"] {
   const bank = VOICE_NAMES[gender];
   const name = bank[index % bank.length];
   return { provider: "local", model: KOKORO_V1_MODEL, name };

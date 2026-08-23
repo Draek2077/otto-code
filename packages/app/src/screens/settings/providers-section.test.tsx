@@ -285,6 +285,7 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
       stallGuardThreshold: 15,
     },
     agentPersonalities: { personalities: [] },
+    agentProfiles: [],
     agentTeams: { teams: [] },
     modelTierOverrides: [],
     connectors: [],

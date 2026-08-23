@@ -17,7 +17,7 @@ import { useFormRolePersonality } from "./role-model-personality";
 const mocks = vi.hoisted(() => ({
   config: {
     config: null as {
-      agentPersonalities?: { personalities?: unknown[] };
+      agentProfiles?: unknown[];
       agentTeams?: { teams?: unknown[]; activeTeamId?: string | null };
     } | null,
   },
@@ -115,7 +115,7 @@ const TEAM_ENTRY_ID = "__team-chatter__";
 
 function setConfig(input: { personalities: AgentPersonality[]; activeTeamId: string | null }) {
   mocks.config.config = {
-    agentPersonalities: { personalities: input.personalities },
+    agentProfiles: input.personalities,
     agentTeams: { teams: [TEAM], activeTeamId: input.activeTeamId },
   };
 }

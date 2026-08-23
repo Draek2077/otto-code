@@ -2,7 +2,7 @@ import { useCallback, useMemo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import type { SelectFieldOption } from "@/components/ui/select-field";
 import { ScopeSelect } from "./scope-select";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 
 /**
  * "Viewing context for: …" - the selector that makes this tab honest now that
@@ -29,7 +29,7 @@ const SEARCHABLE_ROSTER_SIZE = 8;
 const EVERYONE_ID = "everyone";
 
 interface ContextPersonalitySelectorProps {
-  personalities: readonly AgentPersonality[];
+  personalities: readonly AgentProfile[];
   /** null = "Everyone": the personality-agnostic report. */
   selectedId: string | null;
   /** Lesson counts by personality id, for the accrual count. */

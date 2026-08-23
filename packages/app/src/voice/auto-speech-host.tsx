@@ -26,7 +26,7 @@
 // personality the same way the per-bubble playback button and voice cues do, so
 // a message is read in the voice of whoever wrote it.
 import { useEffect, useRef } from "react";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import {
   clearMessagePlaybackActive,
   setMessagePlaybackActive,
@@ -45,7 +45,7 @@ const selectAgentAutoSpeechEnabled = (settings: AppSettings): Record<string, boo
   settings.agentAutoSpeechEnabled;
 
 function resolveVoice(
-  roster: readonly AgentPersonality[] | undefined,
+  roster: readonly AgentProfile[] | undefined,
   serverId: string,
   agentId: string | undefined,
 ): { provider?: string; model?: string; name: string } | undefined {
@@ -71,8 +71,8 @@ function HostAutoSpeech({ serverId }: { serverId: string }) {
   const { config } = useDaemonConfig(serverId);
   // Read at speak time so a personality edit - or toggling voice mode - never
   // tears the registration down mid-queue.
-  const rosterRef = useRef<readonly AgentPersonality[] | undefined>(undefined);
-  rosterRef.current = config?.agentPersonalities?.personalities;
+  const rosterRef = useRef<readonly AgentProfile[] | undefined>(undefined);
+  rosterRef.current = config?.agentProfiles;
   const voiceRuntime = useVoiceRuntimeOptional();
   const voiceRuntimeRef = useRef(voiceRuntime);
   voiceRuntimeRef.current = voiceRuntime;

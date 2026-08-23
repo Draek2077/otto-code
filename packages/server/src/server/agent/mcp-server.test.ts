@@ -5071,6 +5071,40 @@ describe("agent profile listing MCP tool", () => {
 
     expect(() => registeredTool(server, "list_profiles")).toThrow();
   });
+
+  // `notes` is the author's own "when to pick this one". It was orphaned when
+  // list_profiles retired - the field kept being stored and stopped being
+  // shown - so it is pinned here rather than left to rot a second time.
+  it("surfaces a personality's notes to a deciding agent", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      readAgentProfiles: () => [
+        {
+          id: "p-noted",
+          name: "Noted",
+          provider: "codex",
+          model: "gpt-5.4",
+          roles: ["judger"],
+          notes: "  Use for release-blocking reviews.  ",
+        },
+        { id: "p-bare", name: "Bare", provider: "codex", model: "gpt-5.4", roles: ["judger"] },
+      ],
+      logger,
+    });
+
+    const result = await registeredTool(server, "list_personalities").handler({});
+    const listed = result.structuredContent.personalities as Array<Record<string, unknown>>;
+
+    expect(listed.find((entry) => entry.id === "p-noted")?.notes).toBe(
+      "Use for release-blocking reviews.",
+    );
+    // Absent rather than an empty string, so an entry with nothing to say costs
+    // a deciding agent no tokens.
+    expect(listed.find((entry) => entry.id === "p-bare")).not.toHaveProperty("notes");
+  });
 });
 
 describe("provider MCP tools", () => {

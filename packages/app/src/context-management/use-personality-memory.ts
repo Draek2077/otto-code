@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentPersonality, PersonalityMemoryEntryPayload } from "@otto-code/protocol/messages";
+import type { AgentProfile, PersonalityMemoryEntryPayload } from "@otto-code/protocol/messages";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useSessionStore } from "@/stores/session-store";
 
@@ -25,13 +25,13 @@ export function usePersonalityMemoryEnabled(serverId: string): boolean {
 }
 
 /** The host's personality roster, for the selector and the transfer picker. */
-export function usePersonalityRoster(serverId: string): readonly AgentPersonality[] {
+export function usePersonalityRoster(serverId: string): readonly AgentProfile[] {
   const { config } = useDaemonConfig(serverId);
-  const personalities = config?.agentPersonalities?.personalities;
+  const personalities = config?.agentProfiles;
   return useMemo(() => personalities ?? EMPTY_ROSTER, [personalities]);
 }
 
-const EMPTY_ROSTER: readonly AgentPersonality[] = [];
+const EMPTY_ROSTER: readonly AgentProfile[] = [];
 
 export interface PersonalityMemoryView {
   personalityId: string;

@@ -32,6 +32,7 @@ function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
       stallGuardThreshold: 15,
     },
     agentPersonalities: { personalities: [] },
+    agentProfiles: [],
     agentTeams: { teams: [] },
     modelTierOverrides: [],
     connectors: [],

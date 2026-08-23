@@ -160,7 +160,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
   } = input;
   const { config } = useDaemonConfig(serverId);
   const hasTeamsFeature = useAgentTeamsFeature(serverId ?? "");
-  const rosterSource = config?.agentPersonalities?.personalities;
+  const rosterSource = config?.agentProfiles;
   const activeTeam = useMemo(() => getActiveAgentTeam(config?.agentTeams), [config?.agentTeams]);
 
   // The already-bound personality stays selectable even when the active team's

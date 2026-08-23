@@ -105,7 +105,7 @@ function buildTeam(id: string, name: string, color: string) {
 function buildConfig(teams: ReturnType<typeof buildTeam>[], activeTeamId: string | null) {
   return {
     agentTeams: { teams, activeTeamId },
-    agentPersonalities: { personalities: [] },
+    agentProfiles: [],
   };
 }
 
