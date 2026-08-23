@@ -883,11 +883,11 @@ export interface AgentSessionConfig {
    * agent.personality.set switch (AgentManager.setAgentPersonality), which
    * re-resolves a roster personality and replaces the snapshot wholesale.
    */
-  personalitySnapshot?: ResolvedProfileSnapshot;
+  profileSnapshot?: ResolvedProfileSnapshot;
   /**
    * Frozen active-team resolution captured at spawn when the spawning
    * personality was a member of the host's active Agent Team. Same lifecycle
-   * as personalitySnapshot: switching or editing teams never mutates a running
+   * as profileSnapshot: switching or editing teams never mutates a running
    * agent - the born team is frozen identity, and a live personality switch
    * recomposes the prompt against THIS snapshot's teamPrompt, not the current
    * active team. Absent on raw spawns and non-member personality spawns.
@@ -928,7 +928,7 @@ export interface AgentSessionConfig {
  * except a restored `daemonAppendSystemPrompt`.
  */
 export interface AgentPersonalityUpdate {
-  personalitySnapshot: ResolvedProfileSnapshot | undefined;
+  profileSnapshot: ResolvedProfileSnapshot | undefined;
   systemPrompt: string | undefined;
   daemonAppendSystemPrompt: string | undefined;
 }

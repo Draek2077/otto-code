@@ -197,7 +197,7 @@ describe("toStoredAgentRecord", () => {
 
   it("round-trips a personality snapshot through storage", () => {
     const snapshot: ResolvedProfileSnapshot = {
-      personalityId: "p1",
+      profileId: "p1",
       name: "Aria",
       provider: "codex",
       model: "gpt-5.4",
@@ -212,14 +212,14 @@ describe("toStoredAgentRecord", () => {
       voice: { provider: "kokoro", model: "kokoro-multi-lang-v1_0", name: "af_heart" },
       roles: ["chatter", "orchestrator"],
     };
-    const agent = createManagedAgent({ config: { personalitySnapshot: snapshot } });
+    const agent = createManagedAgent({ config: { profileSnapshot: snapshot } });
 
     const record = toStoredAgentRecord(agent, { title: "Aria" });
-    expect(record.config?.personalitySnapshot).toEqual(snapshot);
+    expect(record.config?.profileSnapshot).toEqual(snapshot);
 
     // Survives the storage zod parse (the on-disk read path).
     const parsed = parseStoredAgentRecord(record);
-    expect(parsed.config?.personalitySnapshot).toEqual(snapshot);
+    expect(parsed.config?.profileSnapshot).toEqual(snapshot);
   });
 
   it("round-trips a team snapshot through storage", () => {

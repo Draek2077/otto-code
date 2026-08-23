@@ -16,7 +16,7 @@ import type { ProviderSnapshotEntry } from "./agent-sdk-types.js";
 /**
  * The active team resolved at spawn and frozen onto the agent as
  * `AgentSessionConfig.teamSnapshot` - the team-layer sibling of
- * `personalitySnapshot`, with the same lifecycle: switching the active team
+ * `profileSnapshot`, with the same lifecycle: switching the active team
  * never mutates a running or observed agent; the born team is part of the
  * agent's identity, like its cwd. Only the fields spawn semantics need are
  * frozen (id/name for provenance, prompt for recomposition on a live

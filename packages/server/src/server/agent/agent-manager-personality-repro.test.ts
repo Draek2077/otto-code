@@ -75,7 +75,7 @@ class ReproSession implements AgentSession {
     this.config.thinkingOptionId = thinkingOptionId ?? undefined;
   }
   async applyPersonality(update: AgentPersonalityUpdate): Promise<void> {
-    this.config.personalitySnapshot = update.personalitySnapshot;
+    this.config.profileSnapshot = update.profileSnapshot;
     this.config.systemPrompt = update.systemPrompt;
     this.config.daemonAppendSystemPrompt = update.daemonAppendSystemPrompt;
   }
@@ -109,7 +109,7 @@ class ReproClient implements AgentClient {
 
 function sprocket(): ResolvedProfileSnapshot {
   return {
-    personalityId: "personality_builtin_sprocket",
+    profileId: "personality_builtin_sprocket",
     name: "Sprocket",
     provider: "codex",
     model: "gpt-5.4",
@@ -123,7 +123,7 @@ function sprocket(): ResolvedProfileSnapshot {
 
 function atlas(): ResolvedProfileSnapshot {
   return {
-    personalityId: "personality_builtin_atlas",
+    profileId: "personality_builtin_atlas",
     name: "Atlas",
     provider: "codex",
     model: "gpt-5.4-mini",
@@ -152,7 +152,7 @@ test("two open chats: switching one personality does not leak into the other", a
       {
         provider: "codex",
         cwd: workdir,
-        personalitySnapshot: sprocket(),
+        profileSnapshot: sprocket(),
         systemPrompt: "You are Sprocket.",
       },
       undefined,
@@ -162,7 +162,7 @@ test("two open chats: switching one personality does not leak into the other", a
       {
         provider: "codex",
         cwd: workdir,
-        personalitySnapshot: atlas(),
+        profileSnapshot: atlas(),
         systemPrompt: "You are Atlas.",
       },
       undefined,
@@ -174,20 +174,20 @@ test("two open chats: switching one personality does not leak into the other", a
 
     // The applied id matches the selected id (no stale/captured id). The prompt is
     // Atlas's, with the role-focus directive appended (roles bear a directive).
-    expect(chatA.config.personalitySnapshot?.personalityId).toBe("personality_builtin_atlas");
+    expect(chatA.config.profileSnapshot?.profileId).toBe("personality_builtin_atlas");
     expect(chatA.config.systemPrompt).toContain("You are Atlas.");
     expect(chatA.config.systemPrompt).not.toContain("You are Sprocket.");
     expect(chatA.config.model).toBe("gpt-5.4-mini");
 
     // Chat B is completely unaffected by Chat A's switch.
-    expect(chatB.config.personalitySnapshot?.personalityId).toBe("personality_builtin_atlas");
+    expect(chatB.config.profileSnapshot?.profileId).toBe("personality_builtin_atlas");
     expect(chatB.config.systemPrompt).toContain("You are Atlas.");
 
     // Now switch Chat B -> Sprocket and re-confirm A kept Atlas.
     await manager.setAgentPersonality(chatB.id, sprocket());
-    expect(chatB.config.personalitySnapshot?.personalityId).toBe("personality_builtin_sprocket");
+    expect(chatB.config.profileSnapshot?.profileId).toBe("personality_builtin_sprocket");
     expect(chatB.config.systemPrompt).toContain("You are Sprocket.");
-    expect(chatA.config.personalitySnapshot?.personalityId).toBe("personality_builtin_atlas");
+    expect(chatA.config.profileSnapshot?.profileId).toBe("personality_builtin_atlas");
     expect(chatA.config.systemPrompt).toContain("You are Atlas.");
     expect(chatA.config.systemPrompt).not.toContain("You are Sprocket.");
   } finally {
@@ -202,7 +202,7 @@ test("concurrent switches on two agents each apply their own selected personalit
       {
         provider: "codex",
         cwd: workdir,
-        personalitySnapshot: sprocket(),
+        profileSnapshot: sprocket(),
         systemPrompt: "You are Sprocket.",
       },
       undefined,
@@ -212,7 +212,7 @@ test("concurrent switches on two agents each apply their own selected personalit
       {
         provider: "codex",
         cwd: workdir,
-        personalitySnapshot: sprocket(),
+        profileSnapshot: sprocket(),
         systemPrompt: "You are Sprocket.",
       },
       undefined,
@@ -225,10 +225,10 @@ test("concurrent switches on two agents each apply their own selected personalit
       manager.setAgentPersonality(chatB.id, sprocket()),
     ]);
 
-    expect(chatA.config.personalitySnapshot?.personalityId).toBe("personality_builtin_atlas");
+    expect(chatA.config.profileSnapshot?.profileId).toBe("personality_builtin_atlas");
     expect(chatA.config.systemPrompt).toContain("You are Atlas.");
     expect(chatA.config.systemPrompt).not.toContain("You are Sprocket.");
-    expect(chatB.config.personalitySnapshot?.personalityId).toBe("personality_builtin_sprocket");
+    expect(chatB.config.profileSnapshot?.profileId).toBe("personality_builtin_sprocket");
     expect(chatB.config.systemPrompt).toContain("You are Sprocket.");
   } finally {
     cleanup();

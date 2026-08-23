@@ -17,13 +17,13 @@ import type { AgentSelectOption, ProviderSnapshotEntry } from "./agent-sdk-types
  * spawn time; later edits to the profile never mutate an already-spawned
  * agent (see the lifecycle section of the charter).
  *
- * COMPAT(agentPersonalities): the `personalityId` key and the `personalitySnapshot`
- * field that carries this blob keep their pre-convergence names. They are
- * persisted into stored agent JSON and ride the wire, so renaming them would
- * cost a stored-agent migration for no user-visible gain. Added in v0.8.13.
+ * This blob is persisted into stored agent JSON as `config.profileSnapshot`.
+ * Records written before the convergence used `personalitySnapshot` with a
+ * `personalityId` inside it; normalizeStoredAgentRecord renames both on read,
+ * and a startup pass rewrites the files. See COMPAT(profileSnapshotKey).
  */
 export interface ResolvedProfileSnapshot {
-  personalityId: string;
+  profileId: string;
   name: string;
   provider: string;
   model: string;
@@ -151,7 +151,7 @@ function buildSnapshot(
   effort: ResolvedEffort,
 ): ResolvedProfileSnapshot {
   const snapshot: ResolvedProfileSnapshot = {
-    personalityId: profile.id,
+    profileId: profile.id,
     name: profile.name,
     provider: profile.provider,
     model: modelId,

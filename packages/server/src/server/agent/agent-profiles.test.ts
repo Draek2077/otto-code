@@ -49,7 +49,7 @@ describe("resolveProfile", () => {
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
     expect(result.snapshot).toEqual({
-      personalityId: "p-sparky",
+      profileId: "p-sparky",
       name: "Sparky",
       provider: "openai-compat",
       model: "qwen3-coder",

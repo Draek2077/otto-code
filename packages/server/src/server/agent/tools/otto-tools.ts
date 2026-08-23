@@ -870,20 +870,20 @@ function resolveEffortAgainstModels(params: {
  */
 function buildPersonalityAgentConfig(brain: {
   systemPrompt?: string;
-  personalitySnapshot?: ResolvedProfileSnapshot;
+  profileSnapshot?: ResolvedProfileSnapshot;
   teamSnapshot?: ResolvedTeamSnapshot;
   featureValues?: Record<string, unknown>;
 }):
   | {
       systemPrompt?: string;
-      personalitySnapshot?: ResolvedProfileSnapshot;
+      profileSnapshot?: ResolvedProfileSnapshot;
       teamSnapshot?: ResolvedTeamSnapshot;
       featureValues?: Record<string, unknown>;
     }
   | undefined {
   if (
     brain.systemPrompt === undefined &&
-    brain.personalitySnapshot === undefined &&
+    brain.profileSnapshot === undefined &&
     brain.teamSnapshot === undefined &&
     brain.featureValues === undefined
   ) {
@@ -891,15 +891,15 @@ function buildPersonalityAgentConfig(brain: {
   }
   const config: {
     systemPrompt?: string;
-    personalitySnapshot?: ResolvedProfileSnapshot;
+    profileSnapshot?: ResolvedProfileSnapshot;
     teamSnapshot?: ResolvedTeamSnapshot;
     featureValues?: Record<string, unknown>;
   } = {};
   if (brain.systemPrompt !== undefined) {
     config.systemPrompt = brain.systemPrompt;
   }
-  if (brain.personalitySnapshot !== undefined) {
-    config.personalitySnapshot = brain.personalitySnapshot;
+  if (brain.profileSnapshot !== undefined) {
+    config.profileSnapshot = brain.profileSnapshot;
   }
   if (brain.teamSnapshot !== undefined) {
     config.teamSnapshot = brain.teamSnapshot;
@@ -1471,7 +1471,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     modeId?: string;
     thinkingOptionId?: string;
     systemPrompt?: string;
-    personalitySnapshot?: ResolvedProfileSnapshot;
+    profileSnapshot?: ResolvedProfileSnapshot;
     teamSnapshot?: ResolvedTeamSnapshot;
     featureValues?: Record<string, unknown>;
   }
@@ -1508,10 +1508,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       );
     }
     const snapshot = resolution.snapshot;
-    const teamSnapshot = resolveTeamSnapshotForPersonality(
-      readAgentTeams?.(),
-      snapshot.personalityId,
-    );
+    const teamSnapshot = resolveTeamSnapshotForPersonality(readAgentTeams?.(), snapshot.profileId);
     const composedPrompt = composeTeamAndPersonalityPrompt(
       teamSnapshot,
       snapshot.systemPrompt,
@@ -1530,7 +1527,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       ...(modeId !== undefined ? { modeId } : {}),
       ...(thinkingOptionId !== undefined ? { thinkingOptionId } : {}),
       ...(composedPrompt !== undefined ? { systemPrompt: composedPrompt } : {}),
-      personalitySnapshot: snapshot,
+      profileSnapshot: snapshot,
       ...(teamSnapshot ? { teamSnapshot } : {}),
       ...(snapshot.featureValues ? { featureValues: snapshot.featureValues } : {}),
     };
@@ -3078,7 +3075,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         throw new Error("Personality memory tools must be called from an agent session");
       }
       const agent = agentManager.getAgent(callerAgentId);
-      const personalityId = agent?.config.personalitySnapshot?.personalityId;
+      const personalityId = agent?.config.profileSnapshot?.profileId;
       if (!personalityId) {
         throw new Error(
           "This agent has no bound personality, so there is nowhere to keep lessons. " +
@@ -4184,7 +4181,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       // card shows who generated it, matching the create sheet.
       const inheritedIdentity = resolveInheritedArtifactIdentity({
         providerOverridden: input.provider !== undefined,
-        snapshot: callerAgent?.config.personalitySnapshot,
+        snapshot: callerAgent?.config.profileSnapshot,
       });
 
       const artifact = await artifactService.create({

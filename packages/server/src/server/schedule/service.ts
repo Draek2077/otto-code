@@ -1390,7 +1390,7 @@ export class ScheduleService {
   private buildScheduleBrain(snapshot: ResolvedProfileSnapshot): ScheduleBrain {
     const teamSnapshot = resolveTeamSnapshotForPersonality(
       this.readAgentTeams?.(),
-      snapshot.personalityId,
+      snapshot.profileId,
     );
     const composedPrompt = composeTeamAndPersonalityPrompt(
       teamSnapshot,
@@ -1420,7 +1420,7 @@ interface ScheduleRunExecutor {
 // personality (if any), plus its live-or-configured provider/model.
 function resolveAgentTargetExecutor(record: StoredAgentRecord): ScheduleRunExecutor {
   return {
-    personalityName: record.config?.personalitySnapshot?.name ?? null,
+    personalityName: record.config?.profileSnapshot?.name ?? null,
     provider: record.runtimeInfo?.provider ?? record.provider,
     model: record.runtimeInfo?.model ?? record.config?.model ?? null,
   };
@@ -1476,7 +1476,7 @@ function applyScheduleBrain(input: {
       thinking: configThinkingOptionId,
     };
   }
-  const config: AgentSessionConfig = { ...baseAgentConfig, personalitySnapshot: brain.snapshot };
+  const config: AgentSessionConfig = { ...baseAgentConfig, profileSnapshot: brain.snapshot };
   if (brain.teamSnapshot !== undefined) {
     config.teamSnapshot = brain.teamSnapshot;
   }

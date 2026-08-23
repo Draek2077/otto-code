@@ -149,7 +149,7 @@ function toQueuedMessagePayloads(
  */
 function applyPersonalityIdentity(
   payload: AgentSnapshotPayload,
-  snapshot: AgentSessionConfig["personalitySnapshot"],
+  snapshot: AgentSessionConfig["profileSnapshot"],
 ): void {
   if (snapshot?.spinner !== undefined) {
     payload.personalitySpinner = snapshot.spinner;
@@ -157,8 +157,8 @@ function applyPersonalityIdentity(
   if (snapshot?.name !== undefined) {
     payload.personalityName = snapshot.name;
   }
-  if (snapshot?.personalityId !== undefined) {
-    payload.personalityId = snapshot.personalityId;
+  if (snapshot?.profileId !== undefined) {
+    payload.personalityId = snapshot.profileId;
   }
 }
 
@@ -249,7 +249,7 @@ export function toAgentPayload(
     payload.lastError = agent.lastError;
   }
 
-  applyPersonalityIdentity(payload, agent.config.personalitySnapshot);
+  applyPersonalityIdentity(payload, agent.config.profileSnapshot);
 
   // Handle attention state
   payload.requiresAttention = agent.attention.requiresAttention;
@@ -362,15 +362,15 @@ function buildStoredAgentPayloadTail(
   providerAvailable: boolean,
 ): Partial<AgentSnapshotPayload> {
   const tail: Partial<AgentSnapshotPayload> = {};
-  const spinner = record.config?.personalitySnapshot?.spinner;
+  const spinner = record.config?.profileSnapshot?.spinner;
   if (spinner) {
     tail.personalitySpinner = spinner;
   }
-  const personalityName = record.config?.personalitySnapshot?.name;
+  const personalityName = record.config?.profileSnapshot?.name;
   if (personalityName) {
     tail.personalityName = personalityName;
   }
-  const personalityId = record.config?.personalitySnapshot?.personalityId;
+  const personalityId = record.config?.profileSnapshot?.profileId;
   if (personalityId) {
     tail.personalityId = personalityId;
   }
@@ -630,8 +630,8 @@ function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentC
   if (config.mcpServers) {
     serializable.mcpServers = config.mcpServers;
   }
-  if (config.personalitySnapshot) {
-    serializable.personalitySnapshot = config.personalitySnapshot;
+  if (config.profileSnapshot) {
+    serializable.profileSnapshot = config.profileSnapshot;
   }
   if (config.teamSnapshot) {
     serializable.teamSnapshot = config.teamSnapshot;

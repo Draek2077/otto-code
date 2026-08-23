@@ -2970,7 +2970,7 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   async applyPersonality(update: AgentPersonalityUpdate): Promise<void | AgentProviderNotice> {
-    this.config.personalitySnapshot = update.personalitySnapshot;
+    this.config.profileSnapshot = update.profileSnapshot;
     this.config.systemPrompt = update.systemPrompt;
     this.config.daemonAppendSystemPrompt = update.daemonAppendSystemPrompt;
     // The system prompt is baked into the query options; recreate the query on

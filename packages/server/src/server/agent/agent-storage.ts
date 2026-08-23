@@ -10,13 +10,13 @@ import type { ManagedAgent } from "./agent-manager.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
 import { AgentOwnerSchema, daemonExecutionKey, type DaemonAgentOwner } from "./agent-owner.js";
 
-// Frozen personality snapshot as stored on disk. Roles are kept as a loose
-// string array here (not the PersonalityRole enum) so an old record whose role
+// Frozen profile snapshot as stored on disk. Roles are kept as a loose string
+// array here (not the PersonalityRole enum) so an old record whose role
 // vocabulary drifted never fails to load - buildStoredAgentConfig re-normalizes
 // them to the known set on read. Mirrors ResolvedProfileSnapshot.
-const PERSONALITY_SNAPSHOT_STORAGE_SCHEMA = z
+const PROFILE_SNAPSHOT_STORAGE_SCHEMA = z
   .object({
-    personalityId: z.string(),
+    profileId: z.string(),
     name: z.string(),
     provider: z.string(),
     model: z.string(),
@@ -65,7 +65,7 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
       .optional(),
     systemPrompt: z.string().nullable().optional(),
     mcpServers: z.record(z.string(), z.any()).nullable().optional(),
-    personalitySnapshot: PERSONALITY_SNAPSHOT_STORAGE_SCHEMA,
+    profileSnapshot: PROFILE_SNAPSHOT_STORAGE_SCHEMA,
     teamSnapshot: TEAM_SNAPSHOT_STORAGE_SCHEMA,
   })
   .nullable()
@@ -134,13 +134,70 @@ export type SerializableAgentConfig = Pick<
   | "toolPolicy"
   | "systemPrompt"
   | "mcpServers"
-  | "personalitySnapshot"
+  | "profileSnapshot"
   | "teamSnapshot"
 >;
 
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;
+
+/**
+ * COMPAT(profileSnapshotKey): added in v0.8.13, remove after 2027-02-22.
+ *
+ * Rename the pre-convergence stored keys in place, before validation. The
+ * schema only knows the new names, so this is the single point that has to
+ * understand the old ones.
+ *
+ * It exists even though a migration pass rewrites these files at startup,
+ * because the rewrite is not the correctness guarantee - this is. A record can
+ * still arrive with the old keys after the pass has run: the pass crashed
+ * halfway, an older daemon wrote to the same OTTO_HOME afterwards, or the user
+ * downgraded and came back. Reading has to tolerate that regardless, and once
+ * it does, the pass is only there so the on-disk state converges and this
+ * function can be deleted on the date above.
+ */
+export function normalizeStoredAgentRecord(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  const config = record["config"];
+  if (typeof config !== "object" || config === null) {
+    return value;
+  }
+  const configRecord = config as Record<string, unknown>;
+  // NOTE: these two string literals are the pre-convergence key names and must
+  // stay spelled that way. A project-wide rename of `personalitySnapshot`
+  // silently rewrote them once, which turned this function into a no-op that
+  // still typechecked and still passed every test that did not read a legacy
+  // file from disk.
+  const legacySnapshot = configRecord["personalitySnapshot"];
+  if (legacySnapshot === undefined) {
+    return value;
+  }
+  const { personalitySnapshot: _dropped, ...restConfig } = configRecord;
+  // A record carrying both keeps the new one: it can only mean a newer daemon
+  // already wrote this file and an older one appended the legacy key back.
+  const snapshot =
+    restConfig["profileSnapshot"] !== undefined
+      ? restConfig["profileSnapshot"]
+      : renameSnapshotId(legacySnapshot);
+  return { ...record, config: { ...restConfig, profileSnapshot: snapshot } };
+}
+
+function renameSnapshotId(snapshot: unknown): unknown {
+  if (typeof snapshot !== "object" || snapshot === null) {
+    return snapshot;
+  }
+  const record = snapshot as Record<string, unknown>;
+  if (record["personalityId"] === undefined) {
+    return snapshot;
+  }
+  const { personalityId, ...rest } = record;
+  return { ...rest, profileId: rest["profileId"] ?? personalityId };
+}
+
 export function parseStoredAgentRecord(value: unknown): StoredAgentRecord {
-  return STORED_AGENT_SCHEMA.parse(value);
+  return STORED_AGENT_SCHEMA.parse(normalizeStoredAgentRecord(value));
 }
 
 // Guardrail fields (safe-unattended Phase 2) are not rehydrated onto the live
@@ -567,10 +624,47 @@ export class AgentStorage {
     try {
       const content = await fs.readFile(filePath, "utf8");
       const parsed = JSON.parse(content);
-      return parseStoredAgentRecord(parsed);
+      // COMPAT(profileSnapshotKey): added in v0.8.13, remove after 2027-02-22.
+      // normalizeStoredAgentRecord returns the SAME reference when it changed
+      // nothing, so this is a free check on the overwhelmingly common path.
+      const normalized = normalizeStoredAgentRecord(parsed);
+      const record = STORED_AGENT_SCHEMA.parse(normalized);
+      if (normalized !== parsed) {
+        await this.rewriteMigratedRecord(filePath, normalized);
+      }
+      return record;
     } catch (error) {
       this.logger.error({ err: error, filePath }, "Skipping invalid agent record");
       return null;
+    }
+  }
+
+  /**
+   * COMPAT(profileSnapshotKey): added in v0.8.13, remove after 2027-02-22.
+   *
+   * Converge one pre-convergence record on disk, so the read-side rename can be
+   * deleted on the date above instead of living forever.
+   *
+   * Driven by the load rather than a separate startup sweep: it only touches
+   * records the daemon actually opens, it is atomic per file, and it cannot
+   * leave the store half-migrated in a way that matters - reading already
+   * tolerates either shape, so an interrupted run just means fewer files
+   * converged this time.
+   *
+   * The NORMALIZED RAW json is written, not the parsed record: parsing strips
+   * unknown keys, and a migration has no business dropping a field it does not
+   * recognize. A failure here is logged and swallowed - a read-only store or a
+   * permissions problem must not stop an agent from loading.
+   */
+  private async rewriteMigratedRecord(filePath: string, normalized: unknown): Promise<void> {
+    try {
+      await writeJsonFileAtomic(filePath, normalized);
+      this.logger.info({ filePath }, "Migrated stored agent to the profile snapshot key");
+    } catch (error) {
+      this.logger.warn(
+        { err: error, filePath },
+        "Could not rewrite stored agent during profile-key migration; it still loads",
+      );
     }
   }
 

@@ -2283,7 +2283,7 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   async applyPersonality(update: AgentPersonalityUpdate): Promise<void> {
-    this.config.personalitySnapshot = update.personalitySnapshot;
+    this.config.profileSnapshot = update.profileSnapshot;
     this.config.systemPrompt = update.systemPrompt;
     this.config.daemonAppendSystemPrompt = update.daemonAppendSystemPrompt;
     // The daemon owns this conversation: the system prompt is just messages[0],

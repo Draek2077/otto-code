@@ -386,7 +386,7 @@ async function spawnOrchestrationAgent(
 
 interface PersonalityCreateConfig {
   systemPrompt?: string;
-  personalitySnapshot: ResolvedProfileSnapshot;
+  profileSnapshot: ResolvedProfileSnapshot;
   teamSnapshot?: ResolvedTeamSnapshot;
 }
 
@@ -418,7 +418,7 @@ async function buildPersonalityCreateConfigForCwd(
   return {
     snapshot,
     config: {
-      personalitySnapshot: snapshot,
+      profileSnapshot: snapshot,
       ...(teamSnapshot ? { teamSnapshot } : {}),
       ...(composedPrompt !== undefined ? { systemPrompt: composedPrompt } : {}),
     },

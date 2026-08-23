@@ -1521,8 +1521,8 @@ describe("create_chat MCP tool", () => {
         thinkingOptionId: "high",
         featureValues: { fast_mode: true },
         systemPrompt: expect.stringContaining("Review carefully."),
-        personalitySnapshot: expect.objectContaining({
-          personalityId: "review-profile",
+        profileSnapshot: expect.objectContaining({
+          profileId: "review-profile",
           roles: ["judger"],
           spinner: { glowA: "#111", glowB: "#222" },
         }),

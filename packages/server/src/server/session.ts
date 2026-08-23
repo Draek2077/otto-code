@@ -6685,7 +6685,7 @@ export class Session {
    * unavailable or unknown personality is skipped with a warning rather than
    * failing the create - the agent still runs with the chosen brain, just
    * without personality identity. The brain fields are never overridden; only
-   * `personalitySnapshot` and (when the caller set none) `systemPrompt` are added.
+   * `profileSnapshot` and (when the caller set none) `systemPrompt` are added.
    */
   private async applyPersonalityIdentityToConfig(
     config: AgentSessionConfig,
@@ -6721,7 +6721,7 @@ export class Session {
     // personality prompt. Caller-authored prompts still win - nothing composes.
     const teamSnapshot = resolveTeamSnapshotForPersonality(
       this.daemonConfigStore.get().agentTeams,
-      snapshot.personalityId,
+      snapshot.profileId,
     );
     const composedPrompt = composeTeamAndPersonalityPrompt(
       teamSnapshot,
@@ -6730,7 +6730,7 @@ export class Session {
     );
     return {
       ...config,
-      personalitySnapshot: snapshot,
+      profileSnapshot: snapshot,
       ...(teamSnapshot ? { teamSnapshot } : {}),
       ...(config.systemPrompt === undefined && composedPrompt !== undefined
         ? { systemPrompt: composedPrompt }

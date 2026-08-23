@@ -1114,7 +1114,7 @@ describe("ClaudeAgentSession features", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
       await session.applyPersonality?.({
-        personalitySnapshot: undefined,
+        profileSnapshot: undefined,
         systemPrompt: undefined,
         daemonAppendSystemPrompt: undefined,
       });

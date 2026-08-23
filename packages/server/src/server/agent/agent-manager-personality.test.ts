@@ -109,7 +109,7 @@ class PersonalityTestSession implements AgentSession {
       await new Promise((resolve) => setTimeout(resolve, this.behavior.applyPersonalityDelayMs));
     }
     this.personalityUpdates.push(update);
-    this.config.personalitySnapshot = update.personalitySnapshot;
+    this.config.profileSnapshot = update.profileSnapshot;
     this.config.systemPrompt = update.systemPrompt;
     this.config.daemonAppendSystemPrompt = update.daemonAppendSystemPrompt;
     this.calls.push("applyPersonality:exit");
@@ -165,7 +165,7 @@ const logger = createTestLogger();
 
 function buildSnapshot(overrides: Partial<ResolvedProfileSnapshot> = {}): ResolvedProfileSnapshot {
   return {
-    personalityId: "personality-vera",
+    profileId: "personality-vera",
     name: "Vera",
     provider: "codex",
     model: "gpt-5.4-mini",
@@ -238,7 +238,7 @@ test("setAgentPersonality applies mode before model before thinking, prompt last
       "applyPersonality:enter",
       "applyPersonality:exit",
     ]);
-    expect(agent.config.personalitySnapshot?.personalityId).toBe("personality-vera");
+    expect(agent.config.profileSnapshot?.profileId).toBe("personality-vera");
     expect(agent.config.model).toBe("gpt-5.4-mini");
     expect(agent.config.modeId).toBe("auto");
     expect(agent.config.thinkingOptionId).toBe("high");
@@ -325,7 +325,7 @@ test("a setMode failure aborts the switch before any brain state changes", async
     const session = harness.client.lastSession!;
     expect(session.calls).toEqual(["setMode:throw:auto"]);
     expect(agent.config.model).toBe(modelBefore);
-    expect(agent.config.personalitySnapshot).toBeUndefined();
+    expect(agent.config.profileSnapshot).toBeUndefined();
     expect(agent.config.systemPrompt).toBeUndefined();
   } finally {
     harness.cleanup();
@@ -348,7 +348,7 @@ test("clearing a personality keeps the brain and removes the personality-owned p
 
     // Clear applies no brain setters - only the prompt half.
     expect(session.calls).toEqual(["applyPersonality:enter", "applyPersonality:exit"]);
-    expect(agent.config.personalitySnapshot).toBeUndefined();
+    expect(agent.config.profileSnapshot).toBeUndefined();
     expect(agent.config.systemPrompt).toBeUndefined();
     expect(agent.config.model).toBe("gpt-5.4-mini");
     expect(agent.config.modeId).toBe("auto");
@@ -412,7 +412,7 @@ test("a snapshot without an effort clears the previous thinking option", async (
     await harness.manager.setAgentPersonality(
       agent.id,
       buildSnapshot({
-        personalityId: "personality-dash",
+        profileId: "personality-dash",
         name: "Dash",
         thinkingOptionId: undefined,
       }),
@@ -462,7 +462,7 @@ test("a live switch recomposes against the frozen born team, not the current one
       {
         provider: "codex",
         cwd: harness.workdir,
-        personalitySnapshot: buildSnapshot(),
+        profileSnapshot: buildSnapshot(),
         teamSnapshot: { teamId: "team-crew", name: "Shipping crew", teamPrompt: "Team frame." },
         systemPrompt: "Team frame.\n\nYou are Vera.",
       },
@@ -475,7 +475,7 @@ test("a live switch recomposes against the frozen born team, not the current one
     await harness.manager.setAgentPersonality(
       agent.id,
       buildSnapshot({
-        personalityId: "personality-dash",
+        profileId: "personality-dash",
         name: "Dash",
         systemPrompt: "You are Dash.",
       }),
@@ -494,7 +494,7 @@ test("clearing the personality keeps the born team prompt and drops the personal
       {
         provider: "codex",
         cwd: harness.workdir,
-        personalitySnapshot: buildSnapshot(),
+        profileSnapshot: buildSnapshot(),
         teamSnapshot: { teamId: "team-crew", name: "Shipping crew", teamPrompt: "Team frame." },
         systemPrompt: "Team frame.\n\nYou are Vera.",
       },
@@ -504,7 +504,7 @@ test("clearing the personality keeps the born team prompt and drops the personal
 
     await harness.manager.setAgentPersonality(agent.id, null);
 
-    expect(agent.config.personalitySnapshot).toBeUndefined();
+    expect(agent.config.profileSnapshot).toBeUndefined();
     expect(agent.config.systemPrompt).toBe("Team frame.");
     expect(agent.config.teamSnapshot?.teamId).toBe("team-crew");
   } finally {
@@ -519,7 +519,7 @@ test("a caller-authored prompt survives switches on a team-born agent", async ()
       {
         provider: "codex",
         cwd: harness.workdir,
-        personalitySnapshot: buildSnapshot(),
+        profileSnapshot: buildSnapshot(),
         teamSnapshot: { teamId: "team-crew", name: "Shipping crew", teamPrompt: "Team frame." },
         systemPrompt: "caller prompt",
       },
@@ -529,7 +529,7 @@ test("a caller-authored prompt survives switches on a team-born agent", async ()
 
     await harness.manager.setAgentPersonality(
       agent.id,
-      buildSnapshot({ personalityId: "personality-dash", name: "Dash" }),
+      buildSnapshot({ profileId: "personality-dash", name: "Dash" }),
     );
     expect(agent.config.systemPrompt).toBe("caller prompt");
 
@@ -549,7 +549,7 @@ test("a pre-teams agent (bare personality prompt) still reads as personality-own
       {
         provider: "codex",
         cwd: harness.workdir,
-        personalitySnapshot: buildSnapshot(),
+        profileSnapshot: buildSnapshot(),
         systemPrompt: "You are Vera.",
       },
       undefined,
@@ -559,7 +559,7 @@ test("a pre-teams agent (bare personality prompt) still reads as personality-own
     await harness.manager.setAgentPersonality(
       agent.id,
       buildSnapshot({
-        personalityId: "personality-dash",
+        profileId: "personality-dash",
         name: "Dash",
         systemPrompt: "You are Dash.",
       }),
@@ -574,7 +574,7 @@ test("onPersonalitySpawn fires once per personality-bound createAgent", async ()
   const harness = createHarness();
   try {
     await harness.manager.createAgent(
-      { provider: "codex", cwd: harness.workdir, personalitySnapshot: buildSnapshot() },
+      { provider: "codex", cwd: harness.workdir, profileSnapshot: buildSnapshot() },
       undefined,
       { workspaceId: undefined },
     );
@@ -604,7 +604,7 @@ test("a personality's accrued lessons ride the launch prompt but never the store
       {
         provider: "codex",
         cwd: harness.workdir,
-        personalitySnapshot: buildSnapshot(),
+        profileSnapshot: buildSnapshot(),
         systemPrompt: "You are Vera.",
       },
       undefined,
@@ -642,7 +642,7 @@ test("nothing to remember leaves the launch prompt byte-identical", async () => 
       {
         provider: "codex",
         cwd: harness.workdir,
-        personalitySnapshot: buildSnapshot(),
+        profileSnapshot: buildSnapshot(),
         systemPrompt: "You are Vera.",
       },
       undefined,

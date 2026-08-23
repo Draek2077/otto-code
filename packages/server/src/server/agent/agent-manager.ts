@@ -288,12 +288,12 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
     config.systemPrompt = record.config.systemPrompt;
   }
   if (record.config.mcpServers != null) config.mcpServers = record.config.mcpServers;
-  if (record.config.personalitySnapshot != null) {
+  if (record.config.profileSnapshot != null) {
     // Storage keeps roles as a loose string array; normalize back to the known
     // PersonalityRole set on the way in.
-    config.personalitySnapshot = {
-      ...record.config.personalitySnapshot,
-      roles: normalizePersonalityRoles(record.config.personalitySnapshot.roles),
+    config.profileSnapshot = {
+      ...record.config.profileSnapshot,
+      roles: normalizePersonalityRoles(record.config.profileSnapshot.roles),
     };
   }
   if (record.config.teamSnapshot != null) {
@@ -2345,7 +2345,7 @@ export class AgentManager {
       workspaceId: options.workspaceId,
       ...(options.owner ? { owner: options.owner } : {}),
     });
-    const spawnedPersonalityId = storedConfig.personalitySnapshot?.personalityId;
+    const spawnedPersonalityId = storedConfig.profileSnapshot?.profileId;
     if (spawnedPersonalityId) {
       this.onPersonalitySpawn?.(spawnedPersonalityId);
     }
@@ -3143,7 +3143,7 @@ export class AgentManager {
    * prompt half goes through the session's applyPersonality (providers without
    * it reject - they cannot change a system prompt mid-conversation); the brain
    * half (model/mode/effort) rides the existing setters. Identity (name/spinner)
-   * follows automatically: agent_state projects it from config.personalitySnapshot.
+   * follows automatically: agent_state projects it from config.profileSnapshot.
    * The caller resolves the roster personality against the agent's cwd and
    * guarantees provider match; this method only applies.
    */
@@ -3181,14 +3181,14 @@ export class AgentManager {
     // team prompt, and clearing the personality keeps team + brain, dropping
     // only the personality prompt.
     const teamSnapshot = agent.config.teamSnapshot;
-    const outgoingPersonalityPrompt = agent.config.personalitySnapshot?.systemPrompt;
+    const outgoingPersonalityPrompt = agent.config.profileSnapshot?.systemPrompt;
     // Recompose the outgoing prompt with the SAME role directive it was born
     // with (its snapshot's roles) so the ownership comparison still matches the
     // stored systemPrompt; the incoming prompt takes the new personality's roles.
     const outgoingComposedPrompt = composeTeamAndPersonalityPrompt(
       teamSnapshot,
       outgoingPersonalityPrompt,
-      agent.config.personalitySnapshot?.roles,
+      agent.config.profileSnapshot?.roles,
     );
     const promptIsPersonalityOwned =
       agent.config.systemPrompt === undefined ||
@@ -3213,7 +3213,7 @@ export class AgentManager {
 
     const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
     const personalityUpdate: AgentPersonalityUpdate = {
-      personalitySnapshot: snapshot ?? undefined,
+      profileSnapshot: snapshot ?? undefined,
       systemPrompt: providerSystemPrompt,
       // Same rule as applyDaemonAppendSystemPrompt: a personality with
       // respectGlobalAppendPrompt === false owns its whole prompt.
@@ -3236,7 +3236,7 @@ export class AgentManager {
 
     // Stored config: personality + prompt persist; daemonAppendSystemPrompt is
     // deliberately runtime-only (re-derived from daemon settings on resume).
-    agent.config.personalitySnapshot = snapshot ?? undefined;
+    agent.config.profileSnapshot = snapshot ?? undefined;
     agent.config.systemPrompt = nextSystemPrompt;
 
     this.touchUpdatedAt(agent);
@@ -7513,7 +7513,7 @@ export class AgentManager {
   private async applyPersonalityMemory(config: AgentSessionConfig): Promise<AgentSessionConfig> {
     const systemPrompt = await this.withPersonalityMemory(
       config.systemPrompt,
-      config.personalitySnapshot,
+      config.profileSnapshot,
       config.cwd,
     );
     return systemPrompt === config.systemPrompt ? config : { ...config, systemPrompt };
@@ -7556,7 +7556,7 @@ export class AgentManager {
       return systemPrompt;
     }
     const brief = await this.resolvePersonalityMemoryBrief({
-      personalityId: snapshot.personalityId,
+      personalityId: snapshot.profileId,
       personalityName: snapshot.name,
       cwd,
     });
@@ -7629,7 +7629,7 @@ export class AgentManager {
 
     // A personality with respectGlobalAppendPrompt === false owns its whole
     // system prompt - the daemon-global append must not stack on top of it.
-    const suppressGlobalAppend = config.personalitySnapshot?.respectGlobalAppendPrompt === false;
+    const suppressGlobalAppend = config.profileSnapshot?.respectGlobalAppendPrompt === false;
 
     return daemonAppendSystemPrompt && !suppressGlobalAppend
       ? {

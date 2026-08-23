@@ -1047,7 +1047,7 @@ export class VoiceSession {
   ): Promise<SpeechVoiceOverride | undefined> {
     try {
       const agent = await this.host.loadAgent(agentId);
-      const voice = agent.config.personalitySnapshot?.voice;
+      const voice = agent.config.profileSnapshot?.voice;
       if (!voice) {
         return undefined;
       }
