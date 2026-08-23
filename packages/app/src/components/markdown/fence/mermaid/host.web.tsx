@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { Pressable, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
-import { Code, Scan, Workflow, ZoomIn, ZoomOut } from "lucide-react-native";
+import { Code, Scan, Workflow, ZoomIn, ZoomOut } from "@/components/icons/lucide";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import { useIsCompactFormFactor } from "@/constants/layout";

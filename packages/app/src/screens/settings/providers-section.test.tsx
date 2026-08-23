@@ -136,11 +136,13 @@ vi.mock("react-native-unistyles", () => ({
   withUnistyles: (component: unknown) => component,
 }));
 
-vi.mock("@/components/icons/material-icons", () => {
+// Derived from the real export list rather than hand-listed: this module re-exports the
+// whole Material Symbols barrel, so a named mock goes stale as soon as the screen reaches
+// for another glyph.
+vi.mock("@/components/icons/material-icons", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
   const icon = (name: string) => () => React.createElement("span", { "data-icon": name });
-  return {
-    ChevronRight: icon("ChevronRight"),
-  };
+  return Object.fromEntries(Object.keys(actual).map((name) => [name, icon(name)]));
 });
 
 vi.mock("react-i18next", () => ({

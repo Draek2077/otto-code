@@ -107,6 +107,8 @@ vi.mock("react-native-unistyles", () => ({
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
   useUnistyles: () => ({ theme }),
+  // The wrapped icon barrels call this at module load.
+  withUnistyles: (Component: unknown) => Component,
 }));
 
 vi.mock("@/components/icons/material-icons", () => {

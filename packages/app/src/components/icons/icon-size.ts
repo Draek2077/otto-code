@@ -1,4 +1,4 @@
-import { createElement, type ComponentType } from "react";
+import { createElement, type ComponentType, type FunctionComponent } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
@@ -90,14 +90,24 @@ const SIZE_UNIPROPS: Record<IconSizeToken, (theme: Theme) => { size: number }> =
  * ## Why a number is passed straight through
  *
  * A numeric `size` means "this glyph is not on the ramp" - brand art, an avatar, an
- * illustration - so it is drawn as asked and never scaled. This is also what makes the
+ * illustration - so it is drawn as asked and never scaled.
+ *
+ * The constraint admits `string` because that is how lucide types its own `size`, which
+ * is exactly why lucide icons have to come through here: a token handed straight to one
+ * type-checks, then silently renders at lucide's default 24.
+ *
+ * The return is a `FunctionComponent`, not a `ComponentType`. `ComponentType` is a union
+ * that includes `ComponentClass`, whose `defaultProps` is an invariant `Partial<P>`, so a
+ * wrapped icon stops being assignable to a slot over any prop it declares more loosely -
+ * lucide's `color` is React Native's `ColorValue`, not `string`. This is a function
+ * component; saying so keeps the class branch out of the comparison entirely. This is also what makes the
  * token migration safe to do file by file: an unmigrated call site keeps its exact
  * current pixels, and no glyph can end up scaled twice.
  */
-export function withIconSizeToken<P extends { size?: number }>(
+export function withIconSizeToken<P extends { size?: number | string }>(
   Base: ComponentType<P>,
   displayName: string,
-): ComponentType<Omit<P, "size"> & { size?: IconSizeProp }> {
+): FunctionComponent<Omit<P, "size"> & { size?: IconSizeProp }> {
   const Themed = withUnistyles(Base as ComponentType<Record<string, unknown>>);
   function TokenSizedIcon({ size = "md", ...rest }: Omit<P, "size"> & { size?: IconSizeProp }) {
     return typeof size === "number"

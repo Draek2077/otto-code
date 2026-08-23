@@ -8,7 +8,7 @@ import {
   GitPullRequest,
   GitPullRequestClosed,
   Globe,
-} from "lucide-react-native";
+} from "@/components/icons/lucide";
 import type { HostBadgeModel } from "@/hosts/appearance";
 import { HostBadge, HOST_BADGE_ICON_SIZE } from "@/hosts/host-badge";
 import type { PrHint } from "@/git/pr-hint";

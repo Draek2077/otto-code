@@ -10,7 +10,7 @@ import {
   Plus,
   Search,
   Server,
-} from "lucide-react-native";
+} from "@/components/icons/lucide";
 import {
   createElement,
   useCallback,

@@ -46,14 +46,14 @@ vi.mock("react-native-unistyles", () => ({
     },
 }));
 
-vi.mock("lucide-react-native", () => {
+// The row imports its glyphs from the wrapped barrel, so that is what gets mocked, and the
+// stub set is derived from the barrel's own exports rather than hand-listed - a named mock
+// goes stale the moment the row reaches for another icon.
+vi.mock("@/components/icons/lucide", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
   const createIcon = (name: string) => (props: Record<string, unknown>) =>
     React.createElement("span", { ...props, "data-icon": name });
-  return {
-    Circle: createIcon("Circle"),
-    CircleCheck: createIcon("CircleCheck"),
-    CircleDot: createIcon("CircleDot"),
-  };
+  return Object.fromEntries(Object.keys(actual).map((name) => [name, createIcon(name)]));
 });
 
 vi.stubGlobal("React", React);

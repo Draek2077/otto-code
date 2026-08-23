@@ -12,8 +12,7 @@ import {
   MessageSquarePlus,
   Pencil,
   Trash2,
-  type LucideIcon,
-} from "lucide-react-native";
+} from "@/components/icons/lucide";
 import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import {
@@ -21,13 +20,14 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
+import type { IconComponent } from "@/components/icons/icon-size";
 
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 interface FileAction {
   key: string;
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   onSelect: () => void;
   destructive?: boolean;
   section?: "create" | "edit" | "path" | "sharing" | "destructive";

@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronRight } from "@/components/icons/lucide";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";

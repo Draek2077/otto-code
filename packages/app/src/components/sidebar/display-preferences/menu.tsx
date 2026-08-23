@@ -16,7 +16,7 @@ import {
   Server,
   Settings2,
   Type,
-} from "lucide-react-native";
+} from "@/components/icons/lucide";
 import {
   MenuItem,
   MenuRoot,

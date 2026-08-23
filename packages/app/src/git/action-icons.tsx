@@ -8,7 +8,7 @@ import {
   GitMerge,
   RefreshCcw,
   Upload,
-} from "lucide-react-native";
+} from "@/components/icons/lucide";
 import type { Theme } from "@/styles/theme";
 import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 

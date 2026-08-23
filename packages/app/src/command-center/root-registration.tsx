@@ -11,7 +11,7 @@ import {
   Keyboard,
   Plus,
   Settings,
-} from "lucide-react-native";
+} from "@/components/icons/lucide";
 import { withUnistyles } from "react-native-unistyles";
 import { getIsElectronRuntime } from "@/constants/layout";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
