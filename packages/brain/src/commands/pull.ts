@@ -1,7 +1,7 @@
 /**
  * `otto brain pull <model>` - download a model from the catalog into the managed
  * models directory, using only Node's fetch (no external downloader). The catalog
- * is the same one seeded from docs/candidate-models.md. `--list-quants` shows what
+ * is the same one seeded from docs/brain-model-catalog.md. `--list-quants` shows what
  * quantizations the repo offers and `--quant <label>` downloads a specific one.
  */
 import type { Command } from "commander";

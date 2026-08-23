@@ -30,10 +30,10 @@ present, but are not required.
 
 This package began life as a standalone Node-stdlib tool ("otto-brain") and was
 refactored into an Otto suite package, then merged here. The integration record -
-architecture rationale, module map, and remaining follow-ups (daemon-managed
-lifecycle, the full `vitest run` teardown) - lives in
-[docs/integration-notes.md](docs/integration-notes.md). The download catalog is
-seeded from [docs/candidate-models.md](docs/candidate-models.md).
+architecture rationale, module map, and the follow-ups that outlived it - is the
+completed project page `otto-brain-package-integration` in Otto Knowledge. The
+download catalog is seeded from
+[docs/brain-model-catalog.md](../../docs/brain-model-catalog.md).
 
 ## Commands
 

@@ -8,7 +8,7 @@ creating documents, and generating charts/graphs via code (widgets, artifacts).
 distill, MTP and other re-quant **variants are intentionally excluded** - the base
 list stays clean; search Hugging Face directly when you want a specific spin.
 
-Source of truth is [`config/downloads.json`](../config/downloads.json) - edit
+Source of truth is [`packages/brain/config/downloads.json`](../packages/brain/config/downloads.json) - edit
 that, then keep this table in sync. `~VRAM` is the on-disk GGUF weight size at
 the listed quant (approximate); **real KV/context fit must still be measured**
 with `npm run calibrate -- --model X`, because the theoretical KV formula

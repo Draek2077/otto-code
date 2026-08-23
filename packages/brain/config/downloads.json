@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Curated download catalog for a 12-32GB-VRAM home-hardware box, aimed at coding + generative work (logic, financial/marketing prose, analysis, documents, and code-driven charts/widgets/artifacts). One canonical entry per distinct model (dense and MoE both) - quant/imatrix/distill/MTP re-quant variants are intentionally excluded; search Hugging Face directly for those. Source of truth for docs/candidate-models.md. approxWeightsBytes is the on-disk GGUF size at the listed quant (raw bytes, GiB-based, approximate); real KV/context fit must still be measured with `npm run calibrate`. Repos/files verified against public GGUF releases as of 2026-07; confirm the exact file before downloading.",
+  "note": "Curated download catalog for a 12-32GB-VRAM home-hardware box, aimed at coding + generative work (logic, financial/marketing prose, analysis, documents, and code-driven charts/widgets/artifacts). One canonical entry per distinct model (dense and MoE both) - quant/imatrix/distill/MTP re-quant variants are intentionally excluded; search Hugging Face directly for those. Source of truth for docs/brain-model-catalog.md. approxWeightsBytes is the on-disk GGUF size at the listed quant (raw bytes, GiB-based, approximate); real KV/context fit must still be measured with `npm run calibrate`. Repos/files verified against public GGUF releases as of 2026-07; confirm the exact file before downloading.",
   "vramBudgetBytes": 34359738368,
   "systemRamBytes": 68719476736,
   "retiredModelIds": [
