@@ -51,6 +51,7 @@ import { isWeb } from "@/constants/platform";
 import { useIsolatedBottomSheetVisibility } from "./isolated-bottom-sheet-modal";
 import {
   AdaptiveTextInput,
+  BottomSheetVisibleContent,
   InlineHeaderView,
   SheetHeaderView,
   type SheetHeader,
@@ -278,6 +279,10 @@ export function ComboboxItem({
 }: ComboboxItemProps): ReactElement {
   const { theme } = useUnistyles();
   const preview = useControlStatePreview();
+  const [rowHoveredState, setRowHovered] = useState(false);
+  const rowHovered = preview?.hovered ?? rowHoveredState;
+  const handleRowPointerEnter = useCallback(() => setRowHovered(true), []);
+  const handleRowPointerLeave = useCallback(() => setRowHovered(false), []);
 
   let leadingContent: ReactElement | null = null;
   if (leadingSlot) {
@@ -364,10 +369,19 @@ export function ComboboxItem({
 
   if (!trailingAction) return item;
 
+  // The row's paint has to live out here, not on the inner Pressable. That Pressable is
+  // `flex: 1` and stops where the trailing action begins, so painting hover there left a
+  // bare strip down the right edge of every row that carries an action - the host picker
+  // is the one everybody sees. Hover is tracked on this wrapper View per docs/hover.md
+  // (hover on a View, press on an inner Pressable); the Pressable keeps its own pressed
+  // paint for the label half, which is the half that actually took the press.
   return (
     <View
+      onPointerEnter={handleRowPointerEnter}
+      onPointerLeave={handleRowPointerLeave}
       style={[
         styles.comboboxItemActionRow,
+        rowHovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
         active && styles.comboboxItemActive,
         active && styles.comboboxItemFocused,
       ]}
@@ -1116,52 +1130,57 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
       keyboardBlurBehavior="none"
       presentation={props.presentation}
     >
-      <View style={frameStyle}>
-        {props.header ? (
-          <SheetHeaderView header={props.header} onClose={props.onClose} />
-        ) : (
-          <>
-            {/* The shared sheet header, so a picker's title sits where every other sheet's
+      {/* This sheet rests at its first detent but gorhom lays the column out for the
+          last one, so without this clamp the tail of a long option list renders below
+          the screen edge and cannot be scrolled to. */}
+      <BottomSheetVisibleContent>
+        <View style={frameStyle}>
+          {props.header ? (
+            <SheetHeaderView header={props.header} onClose={props.onClose} />
+          ) : (
+            <>
+              {/* The shared sheet header, so a picker's title sits where every other sheet's
                 does. No close button: a picker closes by choosing, dragging down, or tapping
                 the backdrop, and an X is chrome on the one surface that needs none. */}
-            <SheetHeaderView
-              header={comboboxHeader}
-              onClose={props.onClose}
-              showCloseButton={false}
-            />
-            {props.stickyHeader}
-            {!props.hasChildren && props.searchable ? (
-              <SearchInput
-                value={props.searchQuery}
-                placeholder={props.searchPlaceholder}
-                onChangeText={props.setSearchQueryWithCallback}
-                onSubmitEditing={props.handleSubmitSearch}
-                autoFocus={false}
-                useBottomSheetInput
-                resetKey={props.searchResetKey}
+              <SheetHeaderView
+                header={comboboxHeader}
+                onClose={props.onClose}
+                showCloseButton={false}
               />
-            ) : null}
-          </>
-        )}
-        {props.hasChildren && !props.mobileChildrenScrollEnabled ? (
-          body
-        ) : (
-          <BottomSheetScrollView
-            ref={scrollRef}
-            style={styles.mobileSheetBody}
-            contentContainerStyle={[
-              styles.comboboxScrollContent,
-              props.mobileChildrenContentContainerStyle,
-            ]}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            onLayout={handleScrollViewportLayout}
-          >
-            {body}
-          </BottomSheetScrollView>
-        )}
-        {props.footer ? <View style={styles.footer}>{props.footer}</View> : null}
-      </View>
+              {props.stickyHeader}
+              {!props.hasChildren && props.searchable ? (
+                <SearchInput
+                  value={props.searchQuery}
+                  placeholder={props.searchPlaceholder}
+                  onChangeText={props.setSearchQueryWithCallback}
+                  onSubmitEditing={props.handleSubmitSearch}
+                  autoFocus={false}
+                  useBottomSheetInput
+                  resetKey={props.searchResetKey}
+                />
+              ) : null}
+            </>
+          )}
+          {props.hasChildren && !props.mobileChildrenScrollEnabled ? (
+            body
+          ) : (
+            <BottomSheetScrollView
+              ref={scrollRef}
+              style={styles.mobileSheetBody}
+              contentContainerStyle={[
+                styles.comboboxScrollContent,
+                props.mobileChildrenContentContainerStyle,
+              ]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              onLayout={handleScrollViewportLayout}
+            >
+              {body}
+            </BottomSheetScrollView>
+          )}
+          {props.footer ? <View style={styles.footer}>{props.footer}</View> : null}
+        </View>
+      </BottomSheetVisibleContent>
     </SheetSurfaceModal>
   );
 }

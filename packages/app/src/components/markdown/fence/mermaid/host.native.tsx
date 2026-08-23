@@ -9,7 +9,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
-import { Code, Workflow, X } from "@/components/icons/lucide";
+import { Code, Workflow, X } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";

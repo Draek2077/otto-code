@@ -10,13 +10,12 @@ import {
   Diff,
   EyeOff,
   Folder,
-  GitBranch,
-  GitPullRequest,
   Globe,
   Server,
   Settings2,
   Type,
-} from "@/components/icons/lucide";
+} from "@/components/icons/material-icons";
+import { GitBranch, GitPullRequest } from "@/components/icons/lucide";
 import {
   MenuItem,
   MenuRoot,

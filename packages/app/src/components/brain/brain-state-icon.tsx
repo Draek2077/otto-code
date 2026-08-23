@@ -1,9 +1,10 @@
-import { useEffect, useId, useMemo } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
   ReduceMotion,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -78,6 +79,15 @@ const SPECTRUM_HUES = [
 const ABSOLUTE_FILL = { position: "absolute" } as const;
 
 /**
+ * How long one state picture dissolves into the next. When the derived state
+ * changes, the outgoing picture is frozen and fades out on top of the incoming
+ * one, so a tint change reads as a shift rather than a snap. This constant is
+ * the tuning knob; `crossfadeDurationMs` on `BrainStateIcon` overrides it
+ * per-instance.
+ */
+const STATE_CROSSFADE_DURATION_MS = 300;
+
+/**
  * The Brain rail button's glyph, showing what the local AI host is doing.
  *
  * Lifecycle states are a flat tint and hold still - a status light that moves
@@ -91,10 +101,12 @@ const ABSOLUTE_FILL = { position: "absolute" } as const;
  * learned about `activity`, hosts that predate the per-slot join, lifecycle and
  * long-running op states - draws today's single-state picture unchanged.
  *
- * Everything here is driven off repeating shared values. There is no timer,
- * no state, and no re-render per frame: each sweep is a transform on a single
+ * Everything here is driven off repeating shared values. There is no timer and
+ * no re-render per frame: each sweep is a transform on a single
  * `Animated.View` clipped to the glyph, which is the one masking rig in this app
- * that behaves the same on web and on device.
+ * that behaves the same on web and on device. The only React state is the
+ * crossfade's frozen outgoing picture, touched once per state change, never per
+ * frame.
  */
 export function BrainStateIcon({
   state,
@@ -103,6 +115,7 @@ export function BrainStateIcon({
   style,
   compact = false,
   activity,
+  crossfadeDurationMs = STATE_CROSSFADE_DURATION_MS,
 }: {
   state: BrainState;
   size: number;
@@ -115,33 +128,39 @@ export function BrainStateIcon({
    * or `single` falls back to `state` above.
    */
   activity?: BrainRailActivity;
+  /** How long one state picture dissolves into the next. */
+  crossfadeDurationMs?: number;
 }) {
   // Appearance → Animations turns the motion off everywhere in the app, and this
   // is motion. The state still reads: the tint and the glyph are the animation's
   // own resting frame, so nothing is lost but the movement.
   const animationsEnabled = useAnimationsEnabled();
-  const containerStyle = useContainerStyle(size, style);
 
+  // One picture per derived state, plus a key naming which picture this is.
+  // The key is what the crossfade watches: continuous prop changes (size,
+  // theme, compact) flow into the current picture without a fade, while a key
+  // change freezes the old picture and dissolves it into the new one.
+  let pictureKey: string;
+  let picture: React.ReactNode;
   if (activity?.kind === "spectrum") {
-    return (
+    pictureKey = "spectrum";
+    picture = (
       <BrainSpectrumGlyph
         size={size}
         theme={theme}
-        containerStyle={containerStyle}
         compact={compact}
         animated={animationsEnabled}
       />
     );
-  }
-
-  if (activity?.kind === "split") {
+  } else if (activity?.kind === "split") {
     // The glow is drawn once, unclipped, behind both halves: each half's state
     // carries its own peak colour, so the halo blends the two. The glyphs then
     // sit in their own clips so the two fills never cross the seam.
     const left = BRAIN_STATE_VISUALS[activity.slots[0]];
     const right = BRAIN_STATE_VISUALS[activity.slots[1]];
-    return (
-      <View pointerEvents="none" style={containerStyle}>
+    pictureKey = `split:${activity.slots[0]}:${activity.slots[1]}`;
+    picture = (
+      <>
         <BrainIconGlow
           box={size}
           size={brainGlyphExtent(size)}
@@ -171,20 +190,175 @@ export function BrainStateIcon({
             />
           </View>
         </View>
-      </View>
+      </>
     );
-  }
-
-  return (
-    <View pointerEvents="none" style={containerStyle}>
+  } else {
+    const visualState = activity ? activity.state : state;
+    pictureKey = `state:${visualState}`;
+    picture = (
       <BrainStateGlyph
-        visual={BRAIN_STATE_VISUALS[activity ? activity.state : state]}
+        visual={BRAIN_STATE_VISUALS[visualState]}
         animationsEnabled={animationsEnabled}
         size={size}
         theme={theme}
         compact={compact}
       />
+    );
+  }
+
+  return (
+    <BrainStateCrossfade
+      pictureKey={pictureKey}
+      size={size}
+      style={style}
+      durationMs={crossfadeDurationMs}
+      enabled={animationsEnabled}
+    >
+      {picture}
+    </BrainStateCrossfade>
+  );
+}
+
+/**
+ * The dissolve between state pictures.
+ *
+ * Every picture is drawn inside an absolute size-box layer with the container's
+ * centring, so a frozen copy stacks pixel-for-pixel over a live one. When
+ * `pictureKey` changes, the last-rendered picture is frozen as an outgoing
+ * layer drawn on top of the incoming one and faded out - fade-out-over rather
+ * than a paired fade-in/fade-out, because the two pictures share the same brain
+ * silhouette, so dimming both mid-fade would read as the icon blinking.
+ *
+ * The frozen picture is the previous React subtree, still mounted: its own
+ * sweep keeps running while it fades, and its props (theme, size) simply stop
+ * updating for the fraction of a second it remains. A second key change
+ * mid-fade replaces the outgoing layer outright; two generations of ghosts are
+ * never stacked.
+ */
+function BrainStateCrossfade({
+  pictureKey,
+  size,
+  style,
+  durationMs,
+  enabled,
+  children,
+}: {
+  pictureKey: string;
+  size: number;
+  style?: StyleProp<ViewStyle>;
+  durationMs: number;
+  /** Off (Appearance → Animations): pictures swap instantly, no ghost layer. */
+  enabled: boolean;
+  children: React.ReactNode;
+}) {
+  const containerStyle = useContainerStyle(size, style);
+  const layerStyle = useMemo<ViewStyle>(
+    () => ({
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: size,
+      height: size,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "visible",
+    }),
+    [size],
+  );
+
+  const [renderedKey, setRenderedKey] = useState(pictureKey);
+  const [outgoing, setOutgoing] = useState<{ id: number; node: React.ReactNode } | null>(null);
+  // The children as of the previous render: what gets frozen when the key
+  // flips. A ref, not state, so tracking it costs nothing on the renders
+  // where nothing changes.
+  const lastPictureRef = useRef(children);
+  const outgoingIdRef = useRef(0);
+
+  if (renderedKey !== pictureKey) {
+    // React's documented render-phase pattern for deriving state from a prop
+    // change: set state during render and let React restart the render with it,
+    // instead of committing the new picture for a frame and fading only after
+    // an effect fires.
+    setRenderedKey(pictureKey);
+    if (enabled && durationMs > 0) {
+      outgoingIdRef.current += 1;
+      setOutgoing({ id: outgoingIdRef.current, node: lastPictureRef.current });
+    } else if (outgoing !== null) {
+      setOutgoing(null);
+    }
+  }
+  lastPictureRef.current = children;
+
+  // Only clear if the finished ghost is still the one on screen: a fade that
+  // was superseded mid-flight must not remove its replacement.
+  const handleFadedOut = useCallback((id: number) => {
+    setOutgoing((current) => (current !== null && current.id === id ? null : current));
+  }, []);
+
+  return (
+    <View pointerEvents="none" style={containerStyle}>
+      <View pointerEvents="none" style={layerStyle}>
+        {children}
+      </View>
+      {outgoing ? (
+        <BrainCrossfadeOut
+          key={outgoing.id}
+          id={outgoing.id}
+          style={layerStyle}
+          durationMs={durationMs}
+          onDone={handleFadedOut}
+        >
+          {outgoing.node}
+        </BrainCrossfadeOut>
+      ) : null}
     </View>
+  );
+}
+
+/** One frozen outgoing picture, fading from opaque to gone over `durationMs`. */
+function BrainCrossfadeOut({
+  id,
+  style,
+  durationMs,
+  onDone,
+  children,
+}: {
+  id: number;
+  style: StyleProp<ViewStyle>;
+  durationMs: number;
+  onDone: (id: number) => void;
+  children: React.ReactNode;
+}) {
+  const opacity = useSharedValue(1);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+  useEffect(() => {
+    const finish = () => onDoneRef.current(id);
+    opacity.value = withTiming(
+      0,
+      {
+        duration: durationMs,
+        easing: Easing.linear,
+        // Same story as the sweep below: the app's Animations setting is this
+        // fade's gate, and an unset reduceMotion would let headless Chromium's
+        // `prefers-reduced-motion: reduce` snap the ghost away instantly.
+        reduceMotion: ReduceMotion.Never,
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(finish)();
+        }
+      },
+    );
+    return () => {
+      cancelAnimation(opacity);
+    };
+  }, [durationMs, id, opacity]);
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View pointerEvents="none" style={[style, fadeStyle]}>
+      {children}
+    </Animated.View>
   );
 }
 
@@ -368,13 +542,11 @@ function BrainStateGlyph({
 function BrainSpectrumGlyph({
   size,
   theme,
-  containerStyle,
   compact = false,
   animated,
 }: {
   size: number;
   theme: Theme;
-  containerStyle: StyleProp<ViewStyle>;
   /** Compact form factor: trims the glow so it fits the tighter rail. */
   compact?: boolean;
   animated: boolean;
@@ -425,7 +597,7 @@ function BrainSpectrumGlyph({
   );
 
   return (
-    <View pointerEvents="none" style={containerStyle}>
+    <>
       {/* The halo picks up a spectrum hue so the glow breathes colour as the
           wheel turns rather than sitting on one fixed accent. */}
       <BrainIconGlow box={size} size={glyph} color="#818cf8" strength={0.7} compact={compact} />
@@ -447,7 +619,7 @@ function BrainSpectrumGlyph({
         color={theme.colors.foregroundMuted}
         style={ghostStyle}
       />
-    </View>
+    </>
   );
 }
 

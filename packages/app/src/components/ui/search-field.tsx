@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactElement } from "react";
 import { Pressable, TextInput, View } from "react-native";
-import { Search, X } from "@/components/icons/lucide";
+import { Search, X } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 

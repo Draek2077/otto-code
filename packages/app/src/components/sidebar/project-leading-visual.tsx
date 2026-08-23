@@ -1,6 +1,6 @@
 import { ActivityIndicator, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronDown, ChevronRight } from "@/components/icons/lucide";
+import { ChevronDown, ChevronRight } from "@/components/icons/material-icons";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { STATUS_BUCKET_LABELS } from "@/hooks/sidebar-status-view-model";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";

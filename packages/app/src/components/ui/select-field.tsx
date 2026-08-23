@@ -171,10 +171,10 @@ export function SelectFieldTrigger({
       </Text>
       {loading ? (
         <View style={styles.spinnerSlot}>
-          <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+          <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
         </View>
       ) : null}
-      <ThemedChevronDown size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+      <ThemedChevronDown size="md" uniProps={foregroundMutedMapping} />
     </View>
   );
 }

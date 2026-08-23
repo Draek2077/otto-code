@@ -5,7 +5,7 @@ import { toFilledQuarters, type CheckSummary } from "./check-summary";
 
 /**
  * Geometry in a 24-unit box scaled to the icon size, so the stroke weight matches the
- * lucide icons sitting next to it in the row. The outline radius leaves half the stroke
+ * icons sitting next to it in the row. The outline radius leaves half the stroke
  * inside the box on each side; the pie is inset far enough to read as a separate shape
  * rather than a thick ring.
  */

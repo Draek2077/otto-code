@@ -17,7 +17,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Check, CheckCircle } from "@/components/icons/lucide";
+import { Check, CheckCircle } from "@/components/icons/material-icons";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { resolvePreviewFlag, useControlStatePreview } from "@/components/ui/control-state-preview";

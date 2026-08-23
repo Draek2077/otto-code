@@ -7,7 +7,8 @@ import {
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { ExternalLink, GitPullRequest } from "@/components/icons/material-icons";
+import { ExternalLink } from "@/components/icons/material-icons";
+import { GitPullRequest } from "@/components/icons/lucide";
 import type { PrHint } from "@/git/use-pr-status-query";
 import { openLink } from "@/utils/open-link";
 import type { Theme } from "@/styles/theme";

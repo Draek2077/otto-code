@@ -9,13 +9,8 @@ import {
 } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import {
-  ChevronDown,
-  Folder,
-  GitBranch,
-  Psychology,
-  Schema,
-} from "@/components/icons/material-icons";
+import { ChevronDown, Folder, Psychology, Schema } from "@/components/icons/material-icons";
+import { GitBranch } from "@/components/icons/lucide";
 import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
 import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
 import {

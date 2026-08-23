@@ -22,11 +22,15 @@ import {
   Star,
   StarFilled,
 } from "@/components/icons/material-icons";
+import {
+  BrainModelFamilyIcon,
+  hasBrainModelFamilyIcon,
+} from "@/components/brain/brain-model-family-icon";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import { Button } from "@/components/ui/button";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 import { ComboboxItem } from "@/components/ui/combobox";
 import { getProviderIcon } from "@/components/provider-icons";
 import {
@@ -178,15 +182,18 @@ export function ProviderGlyph({
  * Leading glyph for the selector trigger. With a selected personality that
  * carries both spinner colors, the provider icon is filled with those colors as
  * a static 45° gradient (identity without an animated spinner); otherwise the
- * plain provider glyph. Nothing when there is no provider.
+ * plain provider glyph - except a Brain model, which wears its catalog family
+ * mark under the same rule as ModelRowGlyph. Nothing when there is no provider.
  */
 export function TriggerLeadingIcon({
   personality,
   provider,
+  family,
   size,
 }: {
   personality: SelectorPersonality | null;
   provider: string | null;
+  family?: string | null;
   size: IconSizeProp;
 }) {
   // A role-slot entry (Team's <Role>) wears its neutral role glyph, not the
@@ -208,16 +215,21 @@ export function TriggerLeadingIcon({
       />
     );
   }
+  if (provider === "otto-brain" && hasBrainModelFamilyIcon(family)) {
+    return (
+      <BrainModelFamilyIcon family={family} size={size} color={styles.providerIconMuted.color} />
+    );
+  }
   return <ProviderGlyph provider={provider} size={size} />;
 }
 export function HeaderSettingsIcon({ disabled }: { disabled: boolean }) {
   const uniProps = useMemo(() => headerSettingsMapping(disabled), [disabled]);
-  return <ThemedSettings size={ICON_SIZE.sm} uniProps={uniProps} />;
+  return <ThemedSettings size="sm" uniProps={uniProps} />;
 }
 function FavoriteStar({ isFavorite, hovered }: { isFavorite: boolean; hovered: boolean }) {
   const uniProps = useMemo(() => favoriteStarMapping(isFavorite, hovered), [hovered, isFavorite]);
   const ThemedIcon = isFavorite ? ThemedStarFilled : ThemedStar;
-  return <ThemedIcon size={ICON_SIZE.md} uniProps={uniProps} />;
+  return <ThemedIcon size="md" uniProps={uniProps} />;
 }
 export type SelectorView =
   | { kind: "all" }
@@ -261,6 +273,22 @@ function sortFavoritesFirst(
   }
   return [...favorites, ...rest];
 }
+/**
+ * Otto Brain serves models from many vendors, so a row of them all wearing the
+ * Brain glyph says nothing about which model it is. Brain rows carry a
+ * catalog-owned family, and that family's brand mark is the useful mark. Rows
+ * from any other provider - and Brain families the catalog has no mark for -
+ * keep the provider glyph.
+ */
+function ModelRowGlyph({ provider, family }: { provider: string; family?: string }) {
+  if (provider === "otto-brain" && hasBrainModelFamilyIcon(family)) {
+    return (
+      <BrainModelFamilyIcon family={family} size="sm" color={styles.providerIconMuted.color} />
+    );
+  }
+  return <ProviderGlyph provider={provider} size="sm" />;
+}
+
 function ModelRow({
   row,
   isSelected,
@@ -287,8 +315,8 @@ function ModelRow({
   );
 
   const leadingSlot = useMemo(
-    () => <ProviderGlyph provider={row.provider} size={ICON_SIZE.sm} />,
-    [row.provider],
+    () => <ModelRowGlyph provider={row.provider} family={row.family} />,
+    [row.provider, row.family],
   );
   const trailingSlot = useMemo(
     () =>
@@ -427,7 +455,7 @@ function GroupProviderButton({ provider, onDrillDown }: GroupProviderButtonProps
     stateNode = (
       <View style={styles.rowStateInline}>
         <View style={styles.rowSpinner}>
-          <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+          <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
         </View>
         <Text style={styles.drillDownCount}>{t("modelSelector.loadingShort")}</Text>
       </View>
@@ -435,7 +463,7 @@ function GroupProviderButton({ provider, onDrillDown }: GroupProviderButtonProps
   } else {
     stateNode = (
       <View style={styles.rowStateInline}>
-        <ThemedAlertTriangle size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+        <ThemedAlertTriangle size="sm" uniProps={foregroundMutedMapping} />
         <Text style={styles.drillDownCount}>{t("modelSelector.error")}</Text>
       </View>
     );
@@ -443,11 +471,11 @@ function GroupProviderButton({ provider, onDrillDown }: GroupProviderButtonProps
 
   return (
     <Pressable onPress={handlePress} style={drillDownRowStyle}>
-      <ProviderGlyph provider={provider.id} size={ICON_SIZE.sm} />
+      <ProviderGlyph provider={provider.id} size="sm" />
       <Text style={styles.drillDownText}>{provider.label}</Text>
       <View style={styles.drillDownTrailing}>
         {stateNode}
-        <ThemedChevronRight size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+        <ThemedChevronRight size="sm" uniProps={foregroundMutedMapping} />
       </View>
     </Pressable>
   );
@@ -552,7 +580,7 @@ function ProviderErrorEmptyState({
   }, [onRetryProvider, providerId]);
   return (
     <View style={styles.emptyState}>
-      <ThemedAlertTriangle size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+      <ThemedAlertTriangle size="md" uniProps={foregroundMutedMapping} />
       <Text style={styles.emptyStateText}>{presentedMessage}</Text>
       {onRetryProvider ? (
         <Button variant="default" size="sm" onPress={handleRetry} disabled={isRetryingProvider}>
@@ -568,12 +596,12 @@ function ProviderErrorEmptyState({
 function PersonalityRowIcon({ personality }: { personality: SelectorPersonality }) {
   if (personality.roleIcon) {
     const RoleIcon = personality.roleIcon;
-    return <RoleIcon size={ICON_SIZE.md} color={styles.providerIconForeground.color} />;
+    return <RoleIcon size="md" color={styles.providerIconForeground.color} />;
   }
   return (
     <PersonalityProviderIcon
       provider={personality.provider}
-      size={ICON_SIZE.md}
+      size="md"
       glowA={personality.glowA}
       glowB={personality.glowB}
     />
@@ -645,7 +673,7 @@ function PersonalityRow({
             : (personality.unavailableReason ?? personality.subtitle)}
         </Text>
       </View>
-      {isSelected ? <ThemedCheck size={ICON_SIZE.sm} uniProps={accentMapping} /> : null}
+      {isSelected ? <ThemedCheck size="sm" uniProps={accentMapping} /> : null}
     </Pressable>
   );
 }
@@ -685,7 +713,7 @@ export function PersonalitiesSection({
   );
 }
 function RoleGroupIcon({ icon: Icon }: { icon: IconComponent }) {
-  return <Icon size={ICON_SIZE.sm} color={styles.providerIconMuted.color} />;
+  return <Icon size="sm" color={styles.providerIconMuted.color} />;
 }
 
 /** Distinct personalities across a section's role groups (a multi-role
@@ -750,14 +778,14 @@ function PersonalityGroupButton({
       accessibilityRole="button"
       testID={`personality-group-${section.key}`}
     >
-      <ThemedBoxes size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+      <ThemedBoxes size="sm" uniProps={foregroundMutedMapping} />
       <Text style={styles.drillDownText}>{section.label}</Text>
       <View style={styles.drillDownTrailing}>
         {/* i18n: English-only pending the agent-personalities translation pass. */}
         <Text style={styles.drillDownCount}>
           {count === 1 ? "1 personality" : `${count} personalities`}
         </Text>
-        <ThemedChevronRight size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+        <ThemedChevronRight size="sm" uniProps={foregroundMutedMapping} />
       </View>
     </Pressable>
   );
@@ -858,7 +886,7 @@ function PersonalityGroupContent({
   if (!section || !onSelectPersonality || roleGroups.length === 0) {
     return (
       <View style={styles.emptyState}>
-        <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+        <ThemedSearch size="md" uniProps={foregroundMutedMapping} />
         <Text style={styles.emptyStateText}>{t("modelSelector.noMatches")}</Text>
       </View>
     );
@@ -892,6 +920,11 @@ export function SelectorContent({
   onClearPersonality,
 }: SelectorContentProps) {
   const { t } = useTranslation();
+  // Only the mobile-native provider view virtualizes its model list, and only
+  // that path wants a flex-bounded body (see providerViewBody). Everywhere else
+  // the body sits inside a ScrollView whose content height is auto, where
+  // `flex: 1` resolves against zero free space and collapses the list.
+  const usesVirtualizedModelList = useIsCompactFormFactor() && isNative;
   const normalizedQuery = useMemo(() => normalizeSearchQuery(searchQuery), [searchQuery]);
   const selectedViewProvider = useMemo(
     () =>
@@ -909,7 +942,7 @@ export function SelectorContent({
   );
   const emptyState = (
     <View style={styles.emptyState}>
-      <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+      <ThemedSearch size="md" uniProps={foregroundMutedMapping} />
       <Text style={styles.emptyStateText}>{t("modelSelector.noMatches")}</Text>
     </View>
   );
@@ -956,7 +989,7 @@ export function SelectorContent({
           {familyPersonalitiesNode}
           <View style={styles.emptyState}>
             <View style={styles.rowSpinner}>
-              <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+              <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
             </View>
             <Text style={styles.emptyStateText}>{t("modelSelector.loadingShort")}</Text>
           </View>
@@ -999,7 +1032,7 @@ export function SelectorContent({
       modelBody = emptyState;
     }
     return (
-      <View style={styles.providerViewBody}>
+      <View style={usesVirtualizedModelList ? styles.providerViewBody : undefined}>
         {familyPersonalitiesNode}
         {modelBody}
       </View>
@@ -1103,7 +1136,7 @@ function AllViewContent({
 
       {!hasResults ? (
         <View style={styles.emptyState}>
-          <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+          <ThemedSearch size="md" uniProps={foregroundMutedMapping} />
           <Text style={styles.emptyStateText}>{t("modelSelector.noMatches")}</Text>
         </View>
       ) : null}
@@ -1271,7 +1304,8 @@ const styles = StyleSheet.create((theme) => ({
   // flex-bounded frame (no wrapping ScrollView - see mobileChildrenScrollEnabled
   // in Combobox) so its virtualized FlatList can measure a real height. Without
   // flex here this View auto-sizes to content, the FlatList's flex: 1 has
-  // nothing to fill, and the model list silently renders as zero height.
+  // nothing to fill, and the model list silently renders as zero height. Applied
+  // on that path only - see usesVirtualizedModelList in SelectorContent.
   providerViewBody: {
     flex: 1,
     minHeight: 0,

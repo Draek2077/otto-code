@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
-import { Activity, CircleHelp, Gift, Keyboard } from "@/components/icons/lucide";
+import { Activity, CircleHelp, Gift, Keyboard } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { DiscordIcon } from "@/components/icons/discord-icon";
@@ -20,7 +20,7 @@ import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useSessionStore } from "@/stores/session-store";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
@@ -39,21 +39,11 @@ const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foregrou
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
-const diagnosticLeadingIcon = (
-  <ThemedActivity size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
-);
-const shortcutsLeadingIcon = (
-  <ThemedKeyboard size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
-);
-const discordLeadingIcon = (
-  <ThemedDiscordIcon size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
-);
-const githubLeadingIcon = (
-  <ThemedGitHubIcon size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
-);
-const changelogLeadingIcon = (
-  <ThemedGift size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
-);
+const diagnosticLeadingIcon = <ThemedActivity size="sm" uniProps={foregroundMutedColorMapping} />;
+const shortcutsLeadingIcon = <ThemedKeyboard size="sm" uniProps={foregroundMutedColorMapping} />;
+const discordLeadingIcon = <ThemedDiscordIcon size="sm" uniProps={foregroundMutedColorMapping} />;
+const githubLeadingIcon = <ThemedGitHubIcon size="sm" uniProps={foregroundMutedColorMapping} />;
+const changelogLeadingIcon = <ThemedGift size="sm" uniProps={foregroundMutedColorMapping} />;
 
 function HostVersionHint({ host }: { host: HostProfile }) {
   const { t } = useTranslation();
@@ -114,7 +104,7 @@ export function SidebarHelpMenu() {
             >
               {({ hovered }) => (
                 <ThemedCircleHelp
-                  size={ICON_SIZE.md}
+                  size="md"
                   uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
                 />
               )}

@@ -1,4 +1,11 @@
-import { MoreVertical, Pause, Pencil, Play, RotateCw, Trash2 } from "@/components/icons/lucide";
+import {
+  MoreVertical,
+  Pause,
+  Pencil,
+  Play,
+  RotateCw,
+  Trash2,
+} from "@/components/icons/material-icons";
 import { useCallback, useState, type ReactElement } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -25,7 +32,7 @@ import {
 import { formatTimeAgo } from "@/utils/time";
 import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
 
-// Themed lucide wrappers — module-scope so only the icon re-renders on theme
+// Themed icon wrappers — module-scope so only the icon re-renders on theme
 // change (never call useUnistyles in render). See docs/unistyles.md.
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedPause = withUnistyles(Pause);

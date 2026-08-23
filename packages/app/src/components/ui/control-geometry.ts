@@ -1,5 +1,6 @@
 import type { StyleProp, ViewStyle } from "react-native";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import type { IconSizeToken } from "@/components/icons/icon-size";
+import type { Theme } from "@/styles/theme";
 
 export type ButtonControlSize = "xs" | "sm" | "md" | "lg";
 export type FieldControlSize = "sm" | "md";
@@ -44,17 +45,22 @@ const controlHeights = {
   field: FIELD_CONTROL_HEIGHT,
 };
 
-export const buttonIconSize: Record<ButtonControlSize, number> = {
-  xs: ICON_SIZE.xs,
-  sm: ICON_SIZE.sm,
-  md: ICON_SIZE.md,
-  lg: ICON_SIZE.lg,
+// Tokens, not pixels. These two maps sit between a control's `size` and the glyph it
+// draws, so a number here freezes every button and segment icon in the app at its
+// desktop size - the control grows on a phone and the icon inside it does not. Naming
+// the token instead lets `applyAppearance` resolve it per form factor, which is the one
+// place icon scaling is allowed to happen.
+export const buttonIconSize: Record<ButtonControlSize, IconSizeToken> = {
+  xs: "xs",
+  sm: "sm",
+  md: "md",
+  lg: "lg",
 };
 
-export const segmentedIconSize: Record<SegmentedControlSize, number> = {
-  xs: ICON_SIZE.xs,
-  sm: ICON_SIZE.sm,
-  md: ICON_SIZE.md,
+export const segmentedIconSize: Record<SegmentedControlSize, IconSizeToken> = {
+  xs: "xs",
+  sm: "sm",
+  md: "md",
 };
 
 export const switchGeometry = {

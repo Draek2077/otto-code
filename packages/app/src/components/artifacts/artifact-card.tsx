@@ -30,7 +30,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { AggregatedArtifact } from "@/artifacts/use-artifacts";
 
-// Themed lucide wrappers so menu icons can live as module-scope constants
+// Themed icon wrappers so menu icons can live as module-scope constants
 // (avoids the react-perf jsx-as-prop rule) without calling useUnistyles in
 // render - see docs/unistyles.md and the schedule-row precedent.
 const ThemedEye = withUnistyles(Eye);

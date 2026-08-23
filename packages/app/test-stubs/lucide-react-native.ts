@@ -49,6 +49,7 @@ export const GitMerge = StubIcon;
 export const GitPullRequest = StubIcon;
 export const GitPullRequestClosed = StubIcon;
 export const GitPullRequestDraft = StubIcon;
+export const Github = StubIcon;
 export const Globe = StubIcon;
 export const Heart = StubIcon;
 export const History = StubIcon;

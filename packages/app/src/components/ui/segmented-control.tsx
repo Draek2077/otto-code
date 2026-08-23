@@ -9,9 +9,10 @@ import {
 } from "@/components/ui/control-geometry";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useControlStatePreview } from "@/components/ui/control-state-preview";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 import type { Theme } from "@/styles/theme";
 
-type SegmentedControlIconRenderer = (props: { color: string; size: number }) => ReactNode;
+type SegmentedControlIconRenderer = (props: { color: string; size: IconSizeProp }) => ReactNode;
 
 export interface SegmentedControlOption<T extends string> {
   value: T;
@@ -46,7 +47,7 @@ interface SegmentedControlProps<T extends string> {
 
 interface SegmentIconProps {
   icon: SegmentedControlIconRenderer;
-  iconSize: number;
+  iconSize: IconSizeProp;
   iconColor: string;
 }
 
@@ -137,7 +138,7 @@ function SegmentItem<T extends string>({
 }: {
   option: SegmentedControlOption<T>;
   isSelected: boolean;
-  iconSize: number;
+  iconSize: IconSizeProp;
   hideLabels: boolean;
   segmentSizeStyle: StyleProp<ViewStyle>;
   labelSizeStyle: StyleProp<TextStyle>;

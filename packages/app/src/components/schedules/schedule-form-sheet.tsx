@@ -10,7 +10,8 @@ import {
   type ReactNode,
 } from "react";
 import { Text, View } from "react-native";
-import { Folder, GitBranch, Psychology } from "@/components/icons/material-icons";
+import { Folder, Psychology } from "@/components/icons/material-icons";
+import { GitBranch } from "@/components/icons/lucide";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { ScheduleCadence, ScheduleSummary } from "@otto-code/protocol/schedule/types";

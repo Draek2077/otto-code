@@ -13,7 +13,7 @@ import { withIconSizeToken } from "@/components/icons/icon-size";
 //
 // Consequence: the mark is 2.09:1, so `size` here is the WIDTH and the height
 // follows from the aspect ratio. Pick the width that optically matches the
-// square icons beside it, not the height you'd pass a lucide icon.
+// square icons beside it, not the height you'd pass a stock icon.
 //
 // Geometry must stay in sync with branding/otto-icon.svg and
 // branding/otto-icon-wink.svg - see branding/README.md.

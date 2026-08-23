@@ -30,7 +30,7 @@ import { formatCadence, formatNextRun, resolveScheduleTitle } from "@/utils/sche
 import { formatTimeAgo } from "@/utils/time";
 import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
 
-// Themed lucide wrappers - module-scope so only the icon re-renders on theme
+// Themed icon wrappers - module-scope so only the icon re-renders on theme
 // change (never call useUnistyles in render). See docs/unistyles.md.
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedMessageSquare = withUnistyles(MessageSquare);
@@ -44,11 +44,14 @@ const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMut
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 
+// Menu rows stay a plain number: a dropdown row's glyph is deliberately quiet and the
+// row's own height already gives it a touch target. The card's own header icon and its
+// kebab are chrome the user aims at, so they name tokens and follow the form factor.
 const MENU_ICON_SIZE = 14;
-const HEADER_ICON_SIZE = 16;
+const HEADER_ICON_SIZE = "md";
 // Matches ArtifactCard's star/kebab trigger size so the two grids' header
 // rows align pixel-for-pixel.
-const KEBAB_TRIGGER_ICON_SIZE = 18;
+const KEBAB_TRIGGER_ICON_SIZE = "mdPlus";
 
 // Pending flags for each action so the parent grid can wire a mutation hook
 // and the card reflects in-flight state without owning the mutation itself.

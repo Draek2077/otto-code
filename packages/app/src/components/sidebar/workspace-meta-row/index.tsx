@@ -2,13 +2,8 @@ import { Fragment, useCallback, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import {
-  ExternalLink,
-  GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
-  Globe,
-} from "@/components/icons/lucide";
+import { ExternalLink, Globe } from "@/components/icons/material-icons";
+import { GitMerge, GitPullRequest, GitPullRequestClosed } from "@/components/icons/lucide";
 import type { HostBadgeModel } from "@/hosts/appearance";
 import { HostBadge, HOST_BADGE_ICON_SIZE } from "@/hosts/host-badge";
 import type { PrHint } from "@/git/pr-hint";
