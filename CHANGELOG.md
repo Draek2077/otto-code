@@ -12,7 +12,11 @@
 - Make the Personality editor the single roster surface, so the composer, Settings, and schedules all read the same list
 - Resolve every icon size from one ramp, and put the title-bar, sidebar, sheet, and menu chrome on one shared ladder
 - Give a selected left-sidebar item the same accent a selected tab uses
+- The composer toolbar now sheds detail in ordered stages as the pane narrows, measuring what each step needs before taking it, and only scales uniformly once it is fully collapsed
 - Move the project's Knowledge pages out of the source tree
+- Comment on a search hit the way you comment on a diff line, and carry those notes into the chat
+- Give Search rows the full file path, and a context menu with Edit file, Find in files, and both copy-path actions
+- Present project Search results the way Changes does: a file row, then that file's matches in a code well with a line-number gutter, syntax-highlighted source, and each hit lit up in the same amber the editor's find uses
 
 ### Fixed
 
@@ -23,11 +27,13 @@
 - Keep flat provider fields on configs and schedules instead of stripping them, so a schedule keeps the approval, sandbox, and network settings it was saved with
 - Fork into a new workspace with the host's real project id
 - Make Rollback the single revert path in the Changes pane
+- Give Changes file rows the same height as the Files tree's rows, and drop the empty band above and below the Files list
 - Route Command Center's Add project through the same picker the rest of the app uses
 - Keep the shortcut discovery overlay above browser panes
 - Finish the Mermaid renderer convergence, and load its web runtime lazily
 - Keep the sidebar diff stat on the title line, align changes-tree folder stats with their file rows, and fix workspace row action geometry on compact layouts
 - Align explorer tabs with the title-bar button geometry, and settle the workspace splitter hover seams
+- Stop the window stuttering while you drag its edge: resizing no longer runs the layout cascade twice per frame, or round-trips to the desktop process for every frame of the drag
 - Stop a whitespace-only reply fragment inserting an empty assistant bubble ahead of a queued follow-up
 - Bind a Personality that names no model to its provider's default, so mini-task routing keeps the effort level it was given
 - Release the request bookkeeping for a profile-named call that fails or is denied, instead of holding it for the life of the connection
