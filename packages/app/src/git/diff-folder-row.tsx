@@ -7,7 +7,6 @@ import {
   TreeChevron,
   TreeIndentGuides,
   treeRowPaddingLeft,
-  WORKSPACE_FILE_ROW_TRAILING_PADDING,
   WORKSPACE_FILE_ROW_VERTICAL_PADDING,
   WORKSPACE_TREE_ICON_LABEL_GAP,
   WORKSPACE_TREE_ICON_FRAME_SIZE,
@@ -182,7 +181,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
   folderRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingRight: WORKSPACE_FILE_ROW_TRAILING_PADDING,
+    // Same trailing inset as a file row (diff-pane's fileHeader), so folder and
+    // file diff stats land on one right edge instead of two. The -1 is measured,
+    // not arbitrary: a folder row's stat still landed 1px inside the file rows'
+    // right edge at a matched 8px padding.
+    paddingRight: theme.spacing[2] - 1,
     paddingVertical: WORKSPACE_FILE_ROW_VERTICAL_PADDING,
     gap: theme.spacing[1],
     minWidth: 0,
