@@ -1,7 +1,7 @@
 import {
   checkPersonalityAvailability,
   personalityHasRole,
-} from "@otto-code/protocol/agent-personalities";
+} from "@otto-code/protocol/agent-profiles";
 import { getActiveAgentTeam, type AgentTeamsConfigView } from "@otto-code/protocol/agent-teams";
 import type { AgentProfile, PersonalityRole } from "@otto-code/protocol/messages";
 import type { ModelTier } from "@otto-code/protocol/agent-types";
@@ -252,7 +252,8 @@ function findPrimaryPersonalityMatch(
     if (!availability.available) {
       continue;
     }
-    return personality.provider === primary.provider && personality.model === primary.model
+    return personality.provider === primary.provider &&
+      resolveProfileModelId(personality, entry) === primary.model
       ? personality
       : null;
   }
@@ -558,15 +559,27 @@ function resolvePersonalityProviders(
     if (!availability.available) {
       continue;
     }
-    const model = entry?.models?.find((candidate) => candidate.id === personality.model);
+    const modelId = resolveProfileModelId(personality, entry);
+    const model = entry?.models?.find((candidate) => candidate.id === modelId);
     const thinkingOptionId = resolvePersonalityThinkingOptionId(model, personality.effortLevel);
     resolved.push({
       provider: personality.provider,
-      model: personality.model,
+      model: modelId,
       ...(thinkingOptionId ? { thinkingOptionId } : {}),
     });
   }
   return resolved;
+}
+
+// The model a profile binds, mirroring resolveProfile: a profile may name no
+// model at all, meaning "whatever this provider defaults to". Without this the
+// mini-task path looks the model up by an undefined id, finds nothing, and both
+// drops the profile's effort mapping and routes the request with no model.
+function resolveProfileModelId(
+  personality: AgentProfile,
+  entry: ProviderSnapshotEntry | undefined,
+): string | undefined {
+  return personality.model ?? selectDefaultModel(entry?.models ?? [])?.id;
 }
 
 // Map the personality's canonical effort level onto the bound model's advertised

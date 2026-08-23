@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentPersonality, AgentProfile } from "@otto-code/protocol/messages";
 import {
   resolveStructuredGenerationAgent,
   resolveStructuredGenerationProviders,
@@ -504,6 +504,41 @@ describe("resolveStructuredGenerationProviders", () => {
     // "worker" normalizes to "coder", so this legacy personality still matches;
     // the model advertises no thinking options, so effort is left unset.
     expect(providers).toEqual([{ provider: "lmstudio", model: "impl-model" }]);
+  });
+
+  test("binds the provider default for a profile that names no model", async () => {
+    const snapshots = new ProviderSnapshots([
+      {
+        provider: "lmstudio",
+        status: READY,
+        enabled: true,
+        models: [
+          {
+            provider: "lmstudio",
+            id: "lmstudio-default",
+            label: "LM Studio Default",
+            isDefault: true,
+            defaultThinkingOptionId: "balanced",
+          },
+        ],
+        modes: [{ id: "auto", label: "Auto" }],
+      },
+    ]);
+
+    const modelless: AgentProfile = { ...personality({ effortLevel: "high" }), model: undefined };
+    const providers = await resolveStructuredGenerationProviders({
+      cwd: "/tmp/repo",
+      providerSnapshotManager: snapshots,
+      role: "writer",
+      daemonConfig: { agentProfiles: [modelless] },
+    });
+
+    // A profile may name no model, meaning "this provider's default". Routing has
+    // to resolve that the way resolveProfile does - otherwise the model lookup
+    // misses, the effort mapping is dropped, and the request carries no model.
+    expect(providers).toEqual([
+      { provider: "lmstudio", model: "lmstudio-default", thinkingOptionId: "balanced" },
+    ]);
   });
 });
 
