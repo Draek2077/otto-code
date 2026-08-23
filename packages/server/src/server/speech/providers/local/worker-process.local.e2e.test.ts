@@ -29,8 +29,13 @@ function hasParakeetModel(dir: string): boolean {
   );
 }
 
+const appE2eFixturesDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../../../../app/e2e/support/fixtures",
+);
+
 function fixturePath(fileName: string): string {
-  return path.resolve(process.cwd(), "..", "app", "e2e", "fixtures", fileName);
+  return path.join(appE2eFixturesDir, fileName);
 }
 
 function resolveWorkerUrl(): URL {
