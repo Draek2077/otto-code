@@ -20,6 +20,7 @@ import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { collectAllTabs, normalizeLayout } from "@/stores/workspace-layout-actions";
 import { useWorkspaceTabsStore } from "@/stores/workspace-tabs-store";
 import { censusContainers } from "./container-census";
+import { getGlobalSingleton } from "./global-singleton";
 import { readRuntimeCounters } from "./runtime-counters";
 import { buildResourceMetrics, type ResourceMetricsInput } from "./resource-metrics";
 import type { FrameWindowStats } from "./frame-rate-sampler";
@@ -65,9 +66,58 @@ const CENSUS_STORES: Array<{ prefix: string; store: StoreLike<unknown> }> = [
   { prefix: "contextUsage", store: useContextUsageCacheStore },
 ];
 
+/**
+ * TEMP DIAGNOSTIC (2026-08-23): the long-frame profile attributed a ~1/s
+ * 70-380ms callback to this module on a fresh app, which no known caller
+ * explains - the census interval is 10s. These counters make the question
+ * answerable from the next capture: how often the census actually runs, what
+ * it costs, and (via sampled stacks) who calls it. Remove once the driver of
+ * the per-second long frames is identified.
+ */
+interface CensusStats {
+  calls: number;
+  totalMs: number;
+  maxMs: number;
+  startedAt: number;
+  /** Distinct call stacks, capped; the count per stack names the caller mix. */
+  stacks: Map<string, number>;
+}
+
+const CENSUS_STACKS_CAP = 20;
+const censusStats = getGlobalSingleton<CensusStats>("otto.diagnostics.censusStats", () => ({
+  calls: 0,
+  totalMs: 0,
+  maxMs: 0,
+  startedAt: Date.now(),
+  stacks: new Map(),
+}));
+
+export function getCensusStats(): {
+  calls: number;
+  totalMs: number;
+  maxMs: number;
+  startedAt: number;
+  callsPerMinute: number;
+  stacks: Array<{ stack: string; count: number }>;
+} {
+  const elapsedMinutes = Math.max((Date.now() - censusStats.startedAt) / 60_000, 1 / 60);
+  return {
+    calls: censusStats.calls,
+    totalMs: Math.round(censusStats.totalMs),
+    maxMs: Math.round(censusStats.maxMs * 10) / 10,
+    startedAt: censusStats.startedAt,
+    callsPerMinute: Math.round((censusStats.calls / elapsedMinutes) * 10) / 10,
+    stacks: [...censusStats.stacks.entries()]
+      .map(([stack, count]) => ({ stack, count }))
+      .sort((left, right) => right.count - left.count),
+  };
+}
+
 export function collectResourceMetrics(
   frames: FrameWindowStats | null,
 ): Readonly<Record<string, number>> {
+  const censusStartMs = Date.now();
+  recordCensusCall();
   const stores: Record<string, number> = {};
   for (const { prefix, store } of CENSUS_STORES) {
     try {
@@ -88,7 +138,28 @@ export function collectResourceMetrics(
     chat: readChatState(),
     frames,
   };
-  return buildResourceMetrics(input);
+  const metrics = buildResourceMetrics(input);
+  const censusMs = Date.now() - censusStartMs;
+  censusStats.totalMs += censusMs;
+  censusStats.maxMs = Math.max(censusStats.maxMs, censusMs);
+  return metrics;
+}
+
+function recordCensusCall(): void {
+  censusStats.calls += 1;
+  try {
+    const stack = new Error().stack ?? "(no stack)";
+    // Drop the first line ("Error") and this frame; keep the caller chain.
+    const key = stack.split("\n").slice(2, 8).join("\n");
+    const existing = censusStats.stacks.get(key);
+    if (existing !== undefined) {
+      censusStats.stacks.set(key, existing + 1);
+    } else if (censusStats.stacks.size < CENSUS_STACKS_CAP) {
+      censusStats.stacks.set(key, 1);
+    }
+  } catch {
+    // Stack capture is diagnostic garnish; never let it break the census.
+  }
 }
 
 /** Read live chat state separately from the generic retention census. */

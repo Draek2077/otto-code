@@ -13,6 +13,7 @@
 import { isWeb } from "@/constants/platform";
 import { collectResourceMetrics } from "./collect-resource-metrics";
 import { FrameRateSampler, type FrameWindowStats } from "./frame-rate-sampler";
+import { getGlobalSingleton } from "./global-singleton";
 import { startLongFrameAttribution, stopLongFrameAttribution } from "./long-frame-attribution";
 import { installRuntimeCounters } from "./runtime-counters";
 import type { ResourceSample } from "./resource-trend";
@@ -153,4 +154,10 @@ class ResourceMonitor {
   }
 }
 
-export const resourceMonitor = new ResourceMonitor();
+// Reattached across Metro Fast Refresh rather than re-created: a fresh instance
+// here leaves the previous one's census interval and frame loop running forever,
+// and they stack with every refresh. See global-singleton.ts.
+export const resourceMonitor = getGlobalSingleton(
+  "otto.diagnostics.resourceMonitor",
+  () => new ResourceMonitor(),
+);

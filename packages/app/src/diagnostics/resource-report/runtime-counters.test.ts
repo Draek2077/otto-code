@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
+  getSlowTimerCallbacks,
   installRuntimeCounters,
   readRuntimeCounters,
   resetRuntimeCountersForTest,
@@ -109,5 +110,40 @@ describe("runtime counters", () => {
   test("reports not-installed when the host has no timers", () => {
     expect(installRuntimeCounters({} as unknown as FakeTimerHost)).toBe(false);
     expect(readRuntimeCounters().installed).toBe(0);
+  });
+});
+
+describe("slow timer attribution", () => {
+  test("records a timer callback that runs past the long-frame budget, with its source", () => {
+    const { host, fire } = createHost();
+    installRuntimeCounters(host);
+    const nowSpy = vi.spyOn(performance, "now");
+    // Two reads per run: start and end. 120ms apart is a long frame on its own.
+    nowSpy.mockReturnValueOnce(1_000).mockReturnValueOnce(1_120);
+    const rebuiltTranscripts: string[] = [];
+    function slowRefresh(): void {
+      rebuiltTranscripts.push("transcript");
+    }
+    const handle = host.setTimeout(slowRefresh, 25) as unknown as number;
+    fire(handle);
+
+    const [record] = getSlowTimerCallbacks();
+    expect(record).toMatchObject({
+      kind: "timeout",
+      delayMs: 25,
+      durationMs: 120,
+      name: "slowRefresh",
+    });
+    expect(record.source).toContain("rebuiltTranscripts.push");
+    expect(getSlowTimerCallbacks(record.at + 1)).toEqual([]);
+    nowSpy.mockRestore();
+  });
+
+  test("ignores fast callbacks", () => {
+    const { host, fire } = createHost();
+    installRuntimeCounters(host);
+    const handle = host.setTimeout(() => undefined, 0) as unknown as number;
+    fire(handle);
+    expect(getSlowTimerCallbacks()).toEqual([]);
   });
 });

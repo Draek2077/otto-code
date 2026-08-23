@@ -103,6 +103,7 @@ describe("LongFrameAggregator", () => {
           {
             source: "a",
             invokerType: "",
+            invoker: "",
             durationMs: 10,
             forcedStyleAndLayoutMs: 0,
             charPosition: -1,
@@ -116,6 +117,7 @@ describe("LongFrameAggregator", () => {
           {
             source: "a",
             invokerType: "",
+            invoker: "",
             durationMs: 30,
             forcedStyleAndLayoutMs: 0,
             charPosition: -1,
@@ -123,6 +125,7 @@ describe("LongFrameAggregator", () => {
           {
             source: "b",
             invokerType: "",
+            invoker: "",
             durationMs: 25,
             forcedStyleAndLayoutMs: 0,
             charPosition: -1,
@@ -160,6 +163,7 @@ describe("LongFrameAggregator", () => {
             {
               source: `source-${index}`,
               invokerType: "",
+              invoker: "",
               durationMs: 1,
               forcedStyleAndLayoutMs: 0,
               charPosition: -1,

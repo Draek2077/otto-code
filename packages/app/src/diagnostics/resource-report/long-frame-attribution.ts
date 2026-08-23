@@ -14,6 +14,8 @@
 // shaping (`summarizeLongAnimationFrame`, `LongFrameAggregator`) is separate
 // from the observer wiring so it is testable without a browser frame loop.
 
+import { getGlobalSingleton } from "./global-singleton";
+
 /** Chromium's `PerformanceScriptTiming` - not in the TS lib yet. */
 interface PerformanceScriptTiming extends PerformanceEntry {
   invoker?: string;
@@ -36,6 +38,11 @@ export interface LongFrameScriptSummary {
   /** `sourceURL@functionName` when known, else the invoker, else "(unknown)". */
   source: string;
   invokerType: string;
+  /**
+   * The raw invoker, always kept: for an anonymous callback this is the only
+   * field that says what fired it ("Window.setInterval", a rAF, an observer).
+   */
+  invoker: string;
   durationMs: number;
   forcedStyleAndLayoutMs: number;
   charPosition: number;
@@ -100,6 +107,7 @@ export function summarizeLongAnimationFrame(
     .map((script) => ({
       source: scriptSource(script),
       invokerType: script.invokerType ?? "",
+      invoker: script.invoker ?? "",
       durationMs: round(script.duration),
       forcedStyleAndLayoutMs: round(script.forcedStyleAndLayoutDuration ?? 0),
       charPosition: script.sourceCharPosition ?? -1,
@@ -181,9 +189,23 @@ export class LongFrameAggregator {
 // `supported: false` in the report rather than breaking the monitor.
 // ---------------------------------------------------------------------------
 
-let observer: PerformanceObserver | null = null;
-let aggregator: LongFrameAggregator | null = null;
-let observedSince: number | null = null;
+interface LongFrameRuntime {
+  observer: PerformanceObserver | null;
+  aggregator: LongFrameAggregator | null;
+  observedSince: number | null;
+}
+
+// Survives Metro Fast Refresh: module-level state here would reset while the
+// old observer keeps firing, and a second observer would double-count every
+// long frame. See global-singleton.ts.
+const runtime = getGlobalSingleton<LongFrameRuntime>(
+  "otto.diagnostics.longFrameAttribution",
+  () => ({
+    observer: null,
+    aggregator: null,
+    observedSince: null,
+  }),
+);
 
 export function isLongFrameAttributionSupported(): boolean {
   return (
@@ -194,40 +216,41 @@ export function isLongFrameAttributionSupported(): boolean {
 }
 
 export function startLongFrameAttribution(): void {
-  if (observer || !isLongFrameAttributionSupported()) {
+  if (runtime.observer || !isLongFrameAttributionSupported()) {
     return;
   }
   try {
-    aggregator = new LongFrameAggregator();
-    observedSince = Date.now();
+    const aggregator = new LongFrameAggregator();
+    runtime.aggregator = aggregator;
+    runtime.observedSince = Date.now();
     const timeOrigin = performance.timeOrigin;
-    observer = new PerformanceObserver((list) => {
+    runtime.observer = new PerformanceObserver((list) => {
       // The observer callback itself runs on the main thread inside a frame;
       // shaping is O(scripts per entry) and bounded, so it cannot become the
       // long task it is measuring.
       for (const entry of list.getEntries()) {
-        aggregator?.record(
+        aggregator.record(
           summarizeLongAnimationFrame(entry as PerformanceLongAnimationFrameTiming, timeOrigin),
         );
       }
     });
-    observer.observe({ type: "long-animation-frame", buffered: true });
+    runtime.observer.observe({ type: "long-animation-frame", buffered: true });
   } catch {
-    observer = null;
-    aggregator = null;
-    observedSince = null;
+    runtime.observer = null;
+    runtime.aggregator = null;
+    runtime.observedSince = null;
   }
 }
 
 export function stopLongFrameAttribution(): void {
-  observer?.disconnect();
-  observer = null;
-  aggregator = null;
-  observedSince = null;
+  runtime.observer?.disconnect();
+  runtime.observer = null;
+  runtime.aggregator = null;
+  runtime.observedSince = null;
 }
 
 export function getLongFrameReport(sinceMs?: number): LongFrameReport {
-  if (!aggregator) {
+  if (!runtime.aggregator) {
     return {
       supported: isLongFrameAttributionSupported(),
       observedSince: null,
@@ -236,6 +259,12 @@ export function getLongFrameReport(sinceMs?: number): LongFrameReport {
       aggregate: [],
     };
   }
-  const { totalLongFrames, entries, aggregate } = aggregator.report(sinceMs);
-  return { supported: true, observedSince, totalLongFrames, entries, aggregate };
+  const { totalLongFrames, entries, aggregate } = runtime.aggregator.report(sinceMs);
+  return {
+    supported: true,
+    observedSince: runtime.observedSince,
+    totalLongFrames,
+    entries,
+    aggregate,
+  };
 }

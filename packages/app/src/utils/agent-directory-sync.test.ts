@@ -207,6 +207,44 @@ describe("message submission authority", () => {
   });
 });
 
+describe("repeated identical snapshots", () => {
+  // Measured 2026-08-23: a daemon re-broadcasting an unchanged 35KB running-agent
+  // snapshot every ~1.4s cost an 85-148ms frame per broadcast, all of it React
+  // re-rendering fanned out from no-op store writes. Identity preservation is
+  // what keeps those writes from happening; this pins it across the whole path.
+  it("preserves store identity when a daemon re-broadcasts an unchanged snapshot", () => {
+    const serverId = "server-identical-rebroadcast";
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, null as unknown as DaemonClient);
+    const agent = createAgentPayload({
+      id: "agent-1",
+      status: "running",
+      lastUserMessageAt: "2026-08-23T00:00:00.000Z",
+      pendingPermissions: [permission("perm-1")],
+    });
+    applyAgentDirectoryDelta({
+      serverId,
+      delta: { kind: "upsert", agent, project: createEntry(agent).project },
+    });
+    const before = useSessionStore.getState().sessions[serverId];
+
+    applyAgentDirectoryDelta({
+      serverId,
+      delta: {
+        kind: "upsert",
+        agent: { ...agent, pendingPermissions: [permission("perm-1")] },
+        project: createEntry(agent).project,
+      },
+    });
+
+    const after = useSessionStore.getState().sessions[serverId];
+    expect(after?.agents).toBe(before?.agents);
+    expect(after?.pendingPermissions).toBe(before?.pendingPermissions);
+    expect(after?.agentTurnLiveness).toBe(before?.agentTurnLiveness);
+    store.clearSession(serverId);
+  });
+});
+
 describe("replaceFetchedAgentDirectory", () => {
   it("preserves timeline initialization while replacing directory state", () => {
     const serverId = "server-initializing";

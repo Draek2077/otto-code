@@ -4,13 +4,18 @@ import type { DaemonClientInboundDispatchTiming } from "@otto-code/client/intern
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 import { isElectronRuntime } from "@/desktop/host";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { collectQueryHotspots, collectTrafficHotspots } from "./collect-resource-metrics";
+import {
+  collectQueryHotspots,
+  collectTrafficHotspots,
+  getCensusStats,
+} from "./collect-resource-metrics";
 import {
   getLongFrameReport,
   type LongFrameReport,
   type LongFrameSummary,
 } from "./long-frame-attribution";
 import { resourceMonitor } from "./resource-monitor";
+import { getSlowTimerCallbacks, type SlowTimerCallback } from "./runtime-counters";
 import { analyzeResourceTrend, type ResourceSample } from "./resource-trend";
 
 export interface PerformanceCaptureState {
@@ -50,6 +55,14 @@ interface PersistedPerformanceCapture {
   } | null;
   /** What ran inside the long frames: capture-window entries + session totals. */
   longFrames: LongFrameReport;
+  /** TEMP DIAGNOSTIC (2026-08-23): census invocation rate, cost, and callers. */
+  censusStats: ReturnType<typeof getCensusStats>;
+  /**
+   * Timer callbacks in the capture window that ran past the long-frame budget,
+   * named by source text and registration stack - the attribution that survives
+   * a drifting dev bundle where LoAF char offsets do not.
+   */
+  slowTimers: SlowTimerCallback[];
   /**
    * The inbound daemon messages whose synchronous dispatch overlapped a long
    * frame. This turns a generic WebSocket callback attribution into a concrete
@@ -135,6 +148,8 @@ export async function stopPerformanceCapture(): Promise<void> {
       trend: analyzeResourceTrend(samples),
       preCapture: preCaptureSnapshot,
       longFrames,
+      censusStats: getCensusStats(),
+      slowTimers: getSlowTimerCallbacks(state.startedAt),
       inboundDispatch: {
         entries: inboundDispatchEntries,
         longFrameMatches: matchInboundDispatchesToLongFrames(

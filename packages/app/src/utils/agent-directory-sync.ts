@@ -1,3 +1,4 @@
+import equal from "fast-deep-equal";
 import type { FetchAgentsEntry } from "@otto-code/client/internal/daemon-client";
 import { type Agent, useSessionStore } from "@/stores/session-store";
 import {
@@ -105,17 +106,33 @@ function applyAgentTurnSnapshot(
 }
 
 export function replaceAgentPendingPermissions(serverId: string, agent: Agent): void {
-  const pendingPermissions = new Map(
-    useSessionStore.getState().sessions[serverId]?.pendingPermissions,
-  );
-  for (const [key, pending] of pendingPermissions) {
-    if (pending.agentId === agent.id) pendingPermissions.delete(key);
-  }
-  for (const request of agent.pendingPermissions) {
-    const key = derivePendingPermissionKey(agent.id, request);
-    pendingPermissions.set(key, { key, agentId: agent.id, request });
-  }
-  useSessionStore.getState().setPendingPermissions(serverId, pendingPermissions);
+  useSessionStore.getState().setPendingPermissions(serverId, (current) => {
+    const desired = agent.pendingPermissions.map((request) => ({
+      key: derivePendingPermissionKey(agent.id, request),
+      agentId: agent.id,
+      request,
+    }));
+    // Keep the map's identity when this agent's entries are already in place -
+    // the common case is a repeated snapshot of a running agent with no
+    // permissions at all, and a fresh map here re-renders every subscriber.
+    let currentCount = 0;
+    for (const pending of current.values()) {
+      if (pending.agentId === agent.id) currentCount += 1;
+    }
+    const unchanged =
+      currentCount === desired.length &&
+      desired.every((entry) => {
+        const existing = current.get(entry.key);
+        return existing?.agentId === agent.id && equal(existing.request, entry.request);
+      });
+    if (unchanged) return current;
+    const next = new Map(current);
+    for (const [key, pending] of current) {
+      if (pending.agentId === agent.id) next.delete(key);
+    }
+    for (const entry of desired) next.set(entry.key, entry);
+    return next;
+  });
 }
 
 export function removeAgentDirectoryReplica(serverId: string, agentId: string): void {

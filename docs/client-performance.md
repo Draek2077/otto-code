@@ -98,6 +98,12 @@ intentionally displayed in the footer as time-series context rather than resourc
   has produced both verdicts on consecutive runs - including "degraded" with the deck pinned to a
   single workspace. Quote the whole `frames.fps` series, or run long enough for the decile to
   contain something.
+- **Live monitor state is keyed on `globalThis`, not module scope.** The monitor singleton, the
+  LoAF observer, and the timer-counter state all reattach through `global-singleton.ts` when Metro
+  Fast Refresh re-evaluates their modules. Module-scope state here resets on refresh while the old
+  closure keeps running: stacked census intervals, a double-counting second observer, or timer
+  wrappers wrapping their own previous layer. Production evaluates once, so the guard is inert
+  there.
 - **Timer counters patch the globals once, before the React tree mounts.** They are installed from
   `app/_layout.tsx` module scope. Installing later means an unknown baseline; unpatching mid-session
   would corrupt the counts, which is why the `resourceMonitorEnabled` setting stops the _sampling_
@@ -185,12 +191,16 @@ store and empties the query cache - it resets precisely the state being measured
 of this spec used `page.goto` per cycle and reported a perfectly healthy app.
 
 **Do not edit app source while a soak is in flight - including from another session.** Metro Fast
-Refresh re-evaluates the changed module graph, which rebuilds the React tree and re-creates the
-resource monitor singleton with an empty sample ring. It is the `page.goto` mistake arriving from
-the editor instead of the harness, and it is harder to spot: the daemon client survives, so traffic
-counters run on continuously while the census restarts, and the run reports a plausible-looking
-short series rather than an error. Two tells - the sample count comes back far below the cycle
-count, or a retained-state series dips **below its own one-unit floor** (a deck holding one
+Refresh re-evaluates the changed module graph and rebuilds the React tree, which disturbs exactly
+the retention being measured. The monitor itself now survives a refresh - its singleton, the LoAF
+observer state, and the timer-counter state reattach through `global-singleton.ts` instead of
+re-creating - because the old failure mode was worse than an empty ring: each refresh left the
+previous census interval running forever, and a long dev session accumulated enough stacked
+monitors that the census ran ~10x too often and became the top long-frame source in its own
+capture (measured 2026-08-23: 70-380ms per census against a loaded session, ~once per second).
+The reattached instance runs pre-edit code until a full reload; for a diagnostic that is the right
+trade. Tells that a mid-run rebuild still happened: the sample count comes back far below the
+cycle count, or a retained-state series dips **below its own one-unit floor** (a deck holding one
 workspace cannot drop below one workspace; only an app rebuild can). In a shared checkout, run the
 soak from a git worktree.
 

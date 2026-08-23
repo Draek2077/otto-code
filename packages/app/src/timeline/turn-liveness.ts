@@ -96,13 +96,21 @@ function openTurn(current: TurnLiveness, activeTurn: ActiveTurnIdentity): TurnLi
     current.phase === "open" &&
     ((activeTurn.turnId !== null && current.turnId === activeTurn.turnId) ||
       (activeTurn.turnId === null && current.turnId === null));
-  return {
-    phase: "open",
-    turnId: activeTurn.turnId,
-    startedAt: sameTurn ? (current.startedAt ?? activeTurn.startedAt) : activeTurn.startedAt,
-    cancellationRequestId:
-      sameTurn || current.phase === "idle" ? current.cancellationRequestId : null,
-  };
+  const startedAt = sameTurn ? (current.startedAt ?? activeTurn.startedAt) : activeTurn.startedAt;
+  const cancellationRequestId =
+    sameTurn || current.phase === "idle" ? current.cancellationRequestId : null;
+  // A re-broadcast snapshot of an already-open turn must not mint a new object:
+  // the map wrapper's identity check is what keeps the session store from
+  // publishing a no-op write to every subscriber once per snapshot.
+  if (
+    current.phase === "open" &&
+    current.turnId === activeTurn.turnId &&
+    current.startedAt === startedAt &&
+    current.cancellationRequestId === cancellationRequestId
+  ) {
+    return current;
+  }
+  return { phase: "open", turnId: activeTurn.turnId, startedAt, cancellationRequestId };
 }
 
 export function reduceTurnLiveness(
