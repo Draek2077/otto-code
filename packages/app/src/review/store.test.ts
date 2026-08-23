@@ -8,6 +8,8 @@ import {
   buildReviewDraftBranchKeyPrefix,
   buildReviewDraftKey,
   buildReviewDraftScopeKey,
+  buildSearchNoteAttachmentSnapshot,
+  buildSearchNoteDraftKey,
   prunePreBranchDraftKeys,
 } from "./store";
 import {
@@ -681,5 +683,112 @@ describe("buildReviewAttachmentSnapshot", () => {
         ],
       },
     });
+  });
+});
+
+describe("buildSearchNoteDraftKey", () => {
+  const input = { serverId: "server-1", workspaceId: "workspace-1", cwd: "/repo" };
+
+  it("uses a bucket of its own, so a diff draft key can never collide with it", () => {
+    expect(buildSearchNoteDraftKey({ ...input, branch: "main" })).toBe(
+      "search-note:server=server-1:workspace=workspace-1:branch=main",
+    );
+    expect(buildSearchNoteDraftKey({ ...input, branch: "main" })).not.toBe(
+      buildReviewDraftKey({
+        ...input,
+        branch: "main",
+        mode: "uncommitted",
+        ignoreWhitespace: false,
+      }),
+    );
+  });
+
+  it("scopes to the branch, and survives the pre-branch prune that needs one", () => {
+    expect(buildSearchNoteDraftKey({ ...input, branch: "feature" })).not.toBe(
+      buildSearchNoteDraftKey({ ...input, branch: "main" }),
+    );
+    const key = buildSearchNoteDraftKey({ ...input, branch: null });
+    const pruned = prunePreBranchDraftKeys({
+      drafts: { [key]: [] },
+      diffModeOverrides: {},
+    });
+    expect(Object.keys(pruned.drafts)).toEqual([key]);
+  });
+
+  it("is not swept by a branch-scoped bulk clear of the diff drafts", () => {
+    const noteKey = buildSearchNoteDraftKey({ ...input, branch: "main" });
+    expect(noteKey.startsWith(buildReviewDraftBranchKeyPrefix({ ...input, branch: "main" }))).toBe(
+      false,
+    );
+  });
+});
+
+describe("buildSearchNoteAttachmentSnapshot", () => {
+  const comment = {
+    id: "note-1",
+    filePath: "src/example.ts",
+    side: "new" as const,
+    lineNumber: 42,
+    body: "Rename this.",
+    createdAt: "2026-08-23T00:00:00.000Z",
+    updatedAt: "2026-08-23T00:00:00.000Z",
+  };
+
+  it("quotes the matched line as the note's context", () => {
+    const snapshot = buildSearchNoteAttachmentSnapshot({
+      reviewDraftKey: "search-note:key",
+      cwd: "/repo",
+      comments: [comment],
+      lineTextByTarget: new Map([["src/example.ts:new:42", "const foo = bar;"]]),
+    });
+
+    expect(snapshot).toEqual({
+      kind: "review",
+      reviewDraftKey: "search-note:key",
+      commentCount: 1,
+      attachment: {
+        type: "review",
+        mimeType: "application/otto-review",
+        cwd: "/repo",
+        mode: "uncommitted",
+        baseRef: null,
+        comments: [
+          {
+            filePath: "src/example.ts",
+            side: "new",
+            lineNumber: 42,
+            body: "Rename this.",
+            context: {
+              hunkHeader: "@@ -42,1 +42,1 @@",
+              targetLine: {
+                oldLineNumber: null,
+                newLineNumber: 42,
+                type: "context",
+                content: "const foo = bar;",
+              },
+              lines: [
+                {
+                  oldLineNumber: null,
+                  newLineNumber: 42,
+                  type: "context",
+                  content: "const foo = bar;",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("skips a note whose line is no longer in the results", () => {
+    expect(
+      buildSearchNoteAttachmentSnapshot({
+        reviewDraftKey: "search-note:key",
+        cwd: "/repo",
+        comments: [comment],
+        lineTextByTarget: new Map(),
+      }),
+    ).toBeNull();
   });
 });

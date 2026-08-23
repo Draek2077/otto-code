@@ -58,6 +58,16 @@ test.describe("Project search", () => {
     });
     await expect(page.getByTestId("workspace-file-tab-pane")).toBeVisible();
 
+    // A hit takes an inline note, on the review surface Changes writes to: the
+    // comment button appears on the line's gutter on hover, and the saved note
+    // stays with the line.
+    const firstHit = page.getByTestId("project-search-match-src/alpha.ts-0");
+    await firstHit.hover();
+    await page.getByTestId("project-search-match-src/alpha.ts-0-comment").click();
+    await page.getByTestId("inline-review-editor-input").fill("Rename this constant.");
+    await page.getByTestId("inline-review-editor-save").click();
+    await expect(page.getByText("Rename this constant.")).toBeVisible({ timeout: 10_000 });
+
     // Replace selected: uncheck beta.ts entirely, then replace the rest.
     await page.getByTestId("project-search-replace-expand").click();
     await page.getByTestId("project-search-replace-input").fill("renamed");

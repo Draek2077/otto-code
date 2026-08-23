@@ -14,20 +14,37 @@ import type {
 import type { FileSearchMatch } from "@otto-code/protocol/messages";
 import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import {
-  Check,
   ChevronDown,
   ChevronRight,
   Paperclip,
   Play,
   Search,
-  Square,
 } from "@/components/icons/material-icons";
+import { MaterialFileIcon } from "@/components/material-file-icon";
+import {
+  useTreeIconSize,
+  WORKSPACE_FILE_ROW_VERTICAL_PADDING,
+  WORKSPACE_TREE_ICON_FRAME_SIZE,
+  WORKSPACE_TREE_ICON_LABEL_GAP,
+} from "@/components/tree-primitives";
+import { SearchCodeBlock, SearchSelectionBox } from "@/components/project-search-code-block";
+import { useProjectSearchNotes } from "@/components/use-project-search-notes";
+import { revealFileInFiles } from "@/git/changes-reveal";
+import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
+import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
+import * as Clipboard from "expo-clipboard";
+import {
+  buildSearchDisplayLines,
+  type SearchDisplayLine,
+} from "@/components/project-search-code-lines";
+import { Copy, FolderTree, SquarePen } from "@/components/icons/material-icons";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   contextMenuAnchorFromEvent,
 } from "@/components/ui/context-menu";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -49,14 +66,26 @@ import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
-const accentIconColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
 const ThemedSearch = withUnistyles(Search);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
-const ThemedCheck = withUnistyles(Check);
 const ThemedPlay = withUnistyles(Play);
-const ThemedSquare = withUnistyles(Square);
 const ThemedPaperclip = withUnistyles(Paperclip);
+const ThemedCopy = withUnistyles(Copy);
+const ThemedFolderTree = withUnistyles(FolderTree);
+const ThemedSquarePen = withUnistyles(SquarePen);
+const SEARCH_CONTEXT_EDIT_ICON = (
+  <ThemedSquarePen size="sm" uniProps={foregroundMutedIconColorMapping} />
+);
+const SEARCH_CONTEXT_FIND_IN_FILES_ICON = (
+  <ThemedFolderTree size="sm" uniProps={foregroundMutedIconColorMapping} />
+);
+const SEARCH_CONTEXT_COPY_ICON = (
+  <ThemedCopy size="sm" uniProps={foregroundMutedIconColorMapping} />
+);
+const SEARCH_CONTEXT_ATTACH_ICON = (
+  <ThemedPaperclip size="sm" uniProps={foregroundMutedIconColorMapping} />
+);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedSearchInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
@@ -76,11 +105,13 @@ type SearchPhase = "idle" | "searching" | "done" | "error";
 
 interface ResultRow {
   key: string;
-  kind: "file" | "match";
+  kind: "file" | "matches";
   file: SearchFileResult;
-  match?: FileSearchMatch;
-  matchIndex?: number;
+  /** One entry per matched source line, for a "matches" row. */
+  lines?: readonly SearchDisplayLine[];
 }
+
+const EMPTY_LINES: readonly SearchDisplayLine[] = [];
 
 /** Right-click target for the pane-level "add to context" menu (web only). */
 type SearchContextMenuRequest =
@@ -121,36 +152,6 @@ function SearchToggle({
       style={containerStyle}
     >
       <Text style={textStyle}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function SelectionBox({
-  checked,
-  accessibilityLabel,
-  testID,
-  onPress,
-}: {
-  checked: boolean;
-  accessibilityLabel: string;
-  testID: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="checkbox"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={useMemo(() => ({ checked }), [checked])}
-      testID={testID}
-      onPress={onPress}
-      style={iconButtonStyle}
-      hitSlop={6}
-    >
-      {checked ? (
-        <ThemedCheck size="sm" uniProps={accentIconColorMapping} />
-      ) : (
-        <ThemedSquare size="sm" uniProps={foregroundMutedIconColorMapping} />
-      )}
     </Pressable>
   );
 }
@@ -252,12 +253,6 @@ export function ProjectSearchPane({
   const handleShowFileContextMenu = useCallback(
     (input: { file: SearchFileResult; x: number; y: number }) => {
       setContextMenuRequest({ kind: "file", ...input });
-    },
-    [],
-  );
-  const handleShowMatchContextMenu = useCallback(
-    (input: { file: SearchFileResult; match: FileSearchMatch; x: number; y: number }) => {
-      setContextMenuRequest({ kind: "match", ...input });
     },
     [],
   );
@@ -365,18 +360,6 @@ export function ProjectSearchPane({
         next.delete(path);
       } else {
         next.add(path);
-      }
-      return next;
-    });
-  }, []);
-
-  const toggleMatchChecked = useCallback((key: string) => {
-    setUncheckedMatches((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
       }
       return next;
     });
@@ -511,25 +494,98 @@ export function ProjectSearchPane({
   }, []);
   const togglesSpacerStyle = useMemo(() => ({ width: togglesWidth }), [togglesWidth]);
 
+  // Display lines are cached against the file object a result event created, so
+  // a streaming search rebuilding `rows` per event does not re-derive (and
+  // re-render) every earlier file's block.
+  const displayLinesCache = useRef(new WeakMap<SearchFileResult, readonly SearchDisplayLine[]>());
   const rows = useMemo<ResultRow[]>(() => {
     const next: ResultRow[] = [];
     for (const file of results) {
       next.push({ key: `file:${file.path}`, kind: "file", file });
-      if (collapsedFiles.has(file.path)) {
+      if (collapsedFiles.has(file.path) || file.matches.length === 0) {
         continue;
       }
-      file.matches.forEach((match, matchIndex) => {
-        next.push({
-          key: `match:${buildMatchKey(file.path, match)}`,
-          kind: "match",
-          file,
-          match,
-          matchIndex,
-        });
-      });
+      let lines = displayLinesCache.current.get(file);
+      if (!lines) {
+        lines = buildSearchDisplayLines(file.matches, (match) => buildMatchKey(file.path, match));
+        displayLinesCache.current.set(file, lines);
+      }
+      next.push({ key: `matches:${file.path}`, kind: "matches", file, lines });
     }
     return next;
   }, [collapsedFiles, results]);
+
+  // Inline notes on hits, on the review surface Changes writes to.
+  const noteSources = useMemo(
+    () =>
+      rows.flatMap((row) =>
+        row.kind === "matches"
+          ? [{ filePath: row.file.path, lines: row.lines ?? EMPTY_LINES }]
+          : [],
+      ),
+    [rows],
+  );
+  const reviewActions = useProjectSearchNotes({
+    serverId,
+    workspaceId,
+    workspaceRoot,
+    attachmentScopeKey,
+    sources: noteSources,
+  });
+
+  const stickyHeaderIndices = useMemo(
+    () =>
+      rows.reduce<number[]>((indices, row, index) => {
+        if (row.kind === "file") {
+          indices.push(index);
+        }
+        return indices;
+      }, []),
+    [rows],
+  );
+
+  // A code line stands for every match on it, so its checkbox covers them all.
+  // Two hits on one line cannot be selected apart - the row is the line.
+  const isLineChecked = useCallback(
+    (_filePath: string, line: SearchDisplayLine) =>
+      line.matchKeys.some((key) => !uncheckedMatches.has(key)),
+    [uncheckedMatches],
+  );
+  const toggleLineChecked = useCallback((_filePath: string, line: SearchDisplayLine) => {
+    setUncheckedMatches((previous) => {
+      const anyChecked = line.matchKeys.some((key) => !previous.has(key));
+      const next = new Set(previous);
+      for (const key of line.matchKeys) {
+        if (anyChecked) {
+          next.add(key);
+        } else {
+          next.delete(key);
+        }
+      }
+      return next;
+    });
+  }, []);
+  const handleOpenLine = useCallback(
+    (filePath: string, line: SearchDisplayLine) => {
+      onOpenFile?.(filePath, { lineStart: line.line });
+    },
+    [onOpenFile],
+  );
+  const handleLineContextMenu = useCallback(
+    (filePath: string, line: SearchDisplayLine, event: unknown) => {
+      const anchor = contextMenuAnchorFromEvent(event);
+      if (!anchor) {
+        return;
+      }
+      const file = results.find((entry) => entry.path === filePath);
+      const match = file?.matches.find((entry) => entry.line === line.line);
+      if (!file || !match) {
+        return;
+      }
+      setContextMenuRequest({ kind: "match", file, match, x: anchor.x, y: anchor.y });
+    },
+    [results],
+  );
 
   const showReplaceControls = !isCompact;
 
@@ -545,37 +601,38 @@ export function ProjectSearchPane({
             uncheckedMatches={uncheckedMatches}
             onToggleCollapsed={toggleFileCollapsed}
             onToggleChecked={toggleFileChecked}
-            onShowContextMenu={handleToggleFileContext ? handleShowFileContextMenu : undefined}
+            onShowContextMenu={handleShowFileContextMenu}
           />
         );
       }
       return (
-        <MatchRow
-          file={row.file}
-          match={row.match as FileSearchMatch}
-          matchIndex={row.matchIndex ?? 0}
+        <SearchCodeBlock
+          filePath={row.file.path}
+          lines={row.lines ?? EMPTY_LINES}
           showSelection={showReplaceControls && replaceOpen}
-          checked={
-            !uncheckedMatches.has(buildMatchKey(row.file.path, row.match as FileSearchMatch))
-          }
-          onToggleChecked={toggleMatchChecked}
-          onOpenFile={onOpenFile}
-          onShowContextMenu={handleToggleLineContext ? handleShowMatchContextMenu : undefined}
+          isLineChecked={isLineChecked}
+          toggleLabel={t("projectSearch.toggleMatch")}
+          onToggleLine={toggleLineChecked}
+          onPressLine={handleOpenLine}
+          onLineContextMenu={handleLineContextMenu}
+          reviewActions={reviewActions}
+          testIDPrefix={`project-search-match-${row.file.path}`}
         />
       );
     },
     [
       collapsedFiles,
+      handleLineContextMenu,
+      handleOpenLine,
       handleShowFileContextMenu,
-      handleShowMatchContextMenu,
-      handleToggleFileContext,
-      handleToggleLineContext,
-      onOpenFile,
+      isLineChecked,
+      reviewActions,
       replaceOpen,
       showReplaceControls,
+      t,
       toggleFileChecked,
       toggleFileCollapsed,
-      toggleMatchChecked,
+      toggleLineChecked,
       uncheckedMatches,
     ],
   );
@@ -731,6 +788,7 @@ export function ProjectSearchPane({
           keyExtractor={keyExtractor}
           style={styles.resultsList}
           contentContainerStyle={styles.resultsListContent}
+          stickyHeaderIndices={stickyHeaderIndices}
           onLayout={scrollbar.onLayout}
           onScroll={scrollbar.onScroll}
           onContentSizeChange={scrollbar.onContentSizeChange}
@@ -742,7 +800,10 @@ export function ProjectSearchPane({
       </View>
       <SearchEntryContextMenu
         request={contextMenuRequest}
+        serverId={serverId}
+        workspaceRoot={workspaceRoot}
         onOpenChange={handleContextMenuOpenChange}
+        onOpenFile={onOpenFile}
         isInContext={
           contextMenuRequest
             ? contextKeys.has(
@@ -777,6 +838,7 @@ function FileRow({
   onShowContextMenu?: (input: { file: SearchFileResult; x: number; y: number }) => void;
 }) {
   const { t } = useTranslation();
+  const treeIconSize = useTreeIconSize();
   const handleToggleCollapsed = useCallback(
     () => onToggleCollapsed(file.path),
     [file.path, onToggleCollapsed],
@@ -799,137 +861,86 @@ function FileRow({
     },
     [file, onShowContextMenu],
   );
+  const rowStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.fileRow,
+      collapsed ? styles.fileRowCollapsed : styles.fileRowExpanded,
+      (Boolean(hovered) || pressed) && styles.fileRowActive,
+    ],
+    [collapsed],
+  );
+  const accessibilityState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
+  const fileName = file.path.split("/").pop() ?? file.path;
+  // The whole path, not just the name: two hits in two `index.ts` files have to
+  // be tellable apart. The directory leads and gives way first, ellipsized from
+  // the head, so the file name is the one part that never gets squeezed out.
+  const directory = file.path.includes("/")
+    ? `${file.path.slice(0, file.path.lastIndexOf("/"))}/`
+    : "";
   return (
-    <View style={styles.fileRow}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
+      onPress={handleToggleCollapsed}
+      // @ts-ignore - onContextMenu is web-only and not in RN types.
+      onContextMenu={isWeb && onShowContextMenu ? handleContextMenu : undefined}
+      style={rowStyle}
+      testID={`project-search-file-${file.path}`}
+    >
       {showSelection ? (
-        <SelectionBox
+        <SearchSelectionBox
           checked={anyChecked}
           accessibilityLabel={t("projectSearch.toggleFile")}
           testID={`project-search-file-check-${file.path}`}
           onPress={handleToggleChecked}
         />
       ) : null}
-      <Pressable
-        accessibilityRole="button"
-        onPress={handleToggleCollapsed}
-        // @ts-ignore - onContextMenu is web-only and not in RN types.
-        onContextMenu={isWeb && onShowContextMenu ? handleContextMenu : undefined}
-        style={styles.fileRowLabel}
-        testID={`project-search-file-${file.path}`}
-      >
-        {collapsed ? (
-          <ThemedChevronRight size="xs" uniProps={foregroundMutedIconColorMapping} />
-        ) : (
-          <ThemedChevronDown size="xs" uniProps={foregroundMutedIconColorMapping} />
-        )}
-        <Text style={styles.filePath} numberOfLines={1}>
-          {file.path}
+      <View style={styles.fileIcon}>
+        <MaterialFileIcon fileName={fileName} size={treeIconSize} />
+      </View>
+      {directory ? (
+        <Text style={styles.fileDir} numberOfLines={1} ellipsizeMode="head">
+          {directory}
         </Text>
-        <Text style={styles.fileCount}>{file.matches.length}</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function MatchRow({
-  file,
-  match,
-  matchIndex,
-  showSelection,
-  checked,
-  onToggleChecked,
-  onOpenFile,
-  onShowContextMenu,
-}: {
-  file: SearchFileResult;
-  match: FileSearchMatch;
-  matchIndex: number;
-  showSelection: boolean;
-  checked: boolean;
-  onToggleChecked: (key: string) => void;
-  onOpenFile?: (filePath: string, options?: { edit?: boolean; lineStart?: number }) => void;
-  onShowContextMenu?: (input: {
-    file: SearchFileResult;
-    match: FileSearchMatch;
-    x: number;
-    y: number;
-  }) => void;
-}) {
-  const { t } = useTranslation();
-  const key = buildMatchKey(file.path, match);
-  // Spaces/colons in a testID don't survive as a data-testid attribute cleanly
-  // (they get mangled on web); a path + index stays stable and selectable.
-  const rowTestId = `project-search-match-${file.path}-${matchIndex}`;
-  const handleToggleChecked = useCallback(() => onToggleChecked(key), [key, onToggleChecked]);
-  const handleOpen = useCallback(
-    () => onOpenFile?.(file.path, { lineStart: match.line }),
-    [file.path, match.line, onOpenFile],
-  );
-  const handleContextMenu = useCallback(
-    (event: unknown) => {
-      if (!onShowContextMenu) {
-        return;
-      }
-      const anchor = contextMenuAnchorFromEvent(event);
-      if (!anchor) {
-        return;
-      }
-      onShowContextMenu({ file, match, x: anchor.x, y: anchor.y });
-    },
-    [file, match, onShowContextMenu],
-  );
-  const before = match.lineText.slice(0, match.previewStart);
-  const highlighted = match.lineText.slice(match.previewStart, match.previewStart + match.length);
-  const after = match.lineText.slice(match.previewStart + match.length);
-  return (
-    <View style={styles.matchRow}>
-      {showSelection ? (
-        <SelectionBox
-          checked={checked}
-          accessibilityLabel={t("projectSearch.toggleMatch")}
-          testID={`${rowTestId}-check`}
-          onPress={handleToggleChecked}
-        />
       ) : null}
-      <Pressable
-        accessibilityRole="button"
-        onPress={handleOpen}
-        // @ts-ignore - onContextMenu is web-only and not in RN types.
-        onContextMenu={isWeb && onShowContextMenu ? handleContextMenu : undefined}
-        style={styles.matchRowBody}
-        testID={rowTestId}
-      >
-        <Text style={styles.matchLineNumber}>{match.line}</Text>
-        <Text style={styles.matchPreview} numberOfLines={1}>
-          {before}
-          <Text style={styles.matchHighlight}>{highlighted}</Text>
-          {after}
-        </Text>
-      </Pressable>
-    </View>
+      <Text style={styles.fileName} numberOfLines={1}>
+        {fileName}
+      </Text>
+      <View style={styles.fileSpacer} />
+      <Text style={styles.fileCount}>{file.matches.length}</Text>
+    </Pressable>
   );
 }
 
 /**
- * Pane-level right-click menu (web only) - one shared instance serving every
- * file/match row, offering the same "add to context" action as its target.
+ * The pane-level right-click menu (web only) - one shared instance serving every
+ * file row and code line, with the same actions and section order the Changes
+ * menu uses. A line target keeps its line: Edit file opens at it, and the chat
+ * action attaches that line rather than the whole file.
  */
 function SearchEntryContextMenu({
   request,
+  serverId,
+  workspaceRoot,
   onOpenChange,
   isInContext,
+  onOpenFile,
   onToggleFileContext,
   onToggleLineContext,
 }: {
   request: SearchContextMenuRequest | null;
+  serverId: string;
+  workspaceRoot: string;
   onOpenChange: (open: boolean) => void;
   isInContext: boolean;
+  onOpenFile?: (filePath: string, options?: { edit?: boolean; lineStart?: number }) => void;
   onToggleFileContext?: (file: SearchFileResult) => void;
   onToggleLineContext?: (file: SearchFileResult, match: FileSearchMatch) => void;
 }) {
   const { t } = useTranslation();
+  const canEditFiles = useTextEditorFeature(serverId);
 
-  const handleToggle = useCallback(() => {
+  const handleToggleContext = useCallback(() => {
     if (!request) {
       return;
     }
@@ -940,7 +951,40 @@ function SearchEntryContextMenu({
     onToggleLineContext?.(request.file, request.match);
   }, [request, onToggleFileContext, onToggleLineContext]);
 
-  const label = useMemo(() => {
+  const handleEdit = useCallback(() => {
+    if (!request || !onOpenFile) {
+      return;
+    }
+    onOpenFile(request.file.path, {
+      edit: true,
+      ...(request.kind === "match" ? { lineStart: request.match.line } : null),
+    });
+  }, [onOpenFile, request]);
+
+  const handleFindInFiles = useCallback(() => {
+    if (!request) {
+      return;
+    }
+    revealFileInFiles({ serverId, cwd: workspaceRoot, path: request.file.path });
+  }, [request, serverId, workspaceRoot]);
+
+  const handleCopyPath = useCallback(() => {
+    if (!request) {
+      return;
+    }
+    void Clipboard.setStringAsync(
+      buildAbsoluteExplorerPath({ workspaceRoot, entryPath: request.file.path }),
+    );
+  }, [request, workspaceRoot]);
+
+  const handleCopyRelativePath = useCallback(() => {
+    if (!request) {
+      return;
+    }
+    void Clipboard.setStringAsync(request.file.path);
+  }, [request]);
+
+  const contextLabel = useMemo(() => {
     if (!request) {
       return "";
     }
@@ -952,25 +996,61 @@ function SearchEntryContextMenu({
     return isInContext ? t("projectSearch.removeFromContext") : t("projectSearch.addToContext");
   }, [isInContext, request, t]);
 
-  const contextLeading = useMemo(
-    () => <ThemedPaperclip size="sm" uniProps={foregroundMutedIconColorMapping} />,
-    [],
-  );
+  const showEdit = canEditFiles && Boolean(onOpenFile);
+  const showContextAction =
+    request !== null &&
+    (request.kind === "file" ? Boolean(onToggleFileContext) : Boolean(onToggleLineContext));
 
   return (
     <ContextMenu open={request !== null} onOpenChange={onOpenChange} anchor={request}>
       <ContextMenuContent width={240} testID="project-search-context-menu">
+        {showEdit ? (
+          <ContextMenuItem
+            leading={SEARCH_CONTEXT_EDIT_ICON}
+            onSelect={handleEdit}
+            testID="project-search-context-menu-edit"
+          >
+            {t("workspace.fileActions.editFile")}
+          </ContextMenuItem>
+        ) : null}
+        {showEdit ? <ContextMenuSeparator /> : null}
         <ContextMenuItem
-          leading={contextLeading}
-          onSelect={handleToggle}
-          testID={
-            isInContext
-              ? "project-search-context-menu-remove-from-context"
-              : "project-search-context-menu-add-to-context"
-          }
+          leading={SEARCH_CONTEXT_FIND_IN_FILES_ICON}
+          onSelect={handleFindInFiles}
+          testID="project-search-context-menu-find-in-files"
         >
-          {label}
+          {t("workspace.fileExplorer.context.findInFiles")}
         </ContextMenuItem>
+        <ContextMenuItem
+          leading={SEARCH_CONTEXT_COPY_ICON}
+          onSelect={handleCopyPath}
+          testID="project-search-context-menu-copy-path"
+        >
+          {t("workspace.fileExplorer.context.copyPath")}
+        </ContextMenuItem>
+        <ContextMenuItem
+          leading={SEARCH_CONTEXT_COPY_ICON}
+          onSelect={handleCopyRelativePath}
+          testID="project-search-context-menu-copy-relative-path"
+        >
+          {t("workspace.fileExplorer.context.copyRelativePath")}
+        </ContextMenuItem>
+        {showContextAction ? (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              leading={SEARCH_CONTEXT_ATTACH_ICON}
+              onSelect={handleToggleContext}
+              testID={
+                isInContext
+                  ? "project-search-context-menu-remove-from-context"
+                  : "project-search-context-menu-add-to-context"
+              }
+            >
+              {contextLabel}
+            </ContextMenuItem>
+          </>
+        ) : null}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -1132,12 +1212,9 @@ const styles = StyleSheet.create((theme) => ({
   resultsList: {
     flex: 1,
   },
-  // Breathing room above the first row lives inside the scroll content, not on
-  // the wrapper - wrapper padding sits outside the viewport and shows as a dead
-  // band that clips scrolled rows below the summary separator.
-  resultsListContent: {
-    paddingTop: theme.spacing[1],
-  },
+  // No inset: the first file row starts flush under the summary separator, the
+  // way the Changes list starts flush under its toolbar.
+  resultsListContent: {},
   centerState: {
     alignItems: "center",
     justifyContent: "center",
@@ -1148,27 +1225,62 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
+  // The Changes file header, geometry included: a result row and a changed-file
+  // row are the same kind of row, so they share the tree's padding, icon frame,
+  // and label gap rather than each inventing its own.
   fileRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: theme.spacing[1],
-    paddingTop: theme.spacing[1],
-  },
-  fileRowLabel: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
+    backgroundColor: theme.colors.surface2,
+    paddingLeft: 10,
+    paddingRight: theme.spacing[2],
+    paddingVertical: WORKSPACE_FILE_ROW_VERTICAL_PADDING,
     gap: theme.spacing[1],
-    paddingVertical: theme.spacing[1],
+    minWidth: 0,
   },
-  filePath: {
-    flexShrink: 1,
+  // Expanded, the header takes the code well's own surface so the two read as
+  // one block - the same pairing the Changes file section uses.
+  fileRowExpanded: {
+    backgroundColor: theme.colors.surface1,
+  },
+  fileRowCollapsed: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  fileRowActive: {
+    backgroundColor: theme.colors.surfaceSidebarHover,
+  },
+  fileIcon: {
+    width: WORKSPACE_TREE_ICON_FRAME_SIZE,
+    height: WORKSPACE_TREE_ICON_FRAME_SIZE,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: WORKSPACE_TREE_ICON_LABEL_GAP - theme.spacing[1],
+  },
+  fileName: {
     color: theme.colors.foreground,
     // Explicit compact bump matching the Files tree's row labels.
     fontSize: {
       xs: theme.fontSize.sm + 2,
       md: theme.fontSize.sm,
     },
+    flexShrink: 0,
+    userSelect: "none",
+  },
+  fileDir: {
+    color: theme.colors.foregroundMuted,
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
+    flexShrink: 1,
+    minWidth: 0,
+    userSelect: "none",
+  },
+  fileSpacer: {
+    flex: 1,
+    minWidth: 0,
   },
   fileCount: {
     color: theme.colors.foregroundMuted,
@@ -1176,37 +1288,11 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.fontSize.xs + 2,
       md: theme.fontSize.xs,
     },
+    // Held to the tree's icon frame so the count cannot make a header row
+    // taller than the file rows it sits among.
+    height: WORKSPACE_TREE_ICON_FRAME_SIZE,
+    lineHeight: WORKSPACE_TREE_ICON_FRAME_SIZE,
+    flexShrink: 0,
     fontVariant: ["tabular-nums"],
-  },
-  matchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingLeft: theme.spacing[3],
-    paddingRight: theme.spacing[1],
-  },
-  matchRowBody: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingVertical: 3,
-  },
-  matchLineNumber: {
-    minWidth: 28,
-    textAlign: "right",
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontFamily: theme.fontFamily.mono,
-    fontVariant: ["tabular-nums"],
-  },
-  matchPreview: {
-    flex: 1,
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.code,
-    fontFamily: theme.fontFamily.mono,
-  },
-  matchHighlight: {
-    color: theme.colors.foreground,
-    backgroundColor: theme.colors.surface3,
   },
 }));

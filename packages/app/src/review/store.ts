@@ -25,7 +25,11 @@ import {
   updateCommentInState,
 } from "@/review/state";
 import { generateMessageId } from "@/types/stream";
-import { buildNumberedDiffHunks, type NumberedDiffLine } from "@/utils/diff-layout";
+import {
+  buildNumberedDiffHunks,
+  buildReviewableDiffTargetKey,
+  type NumberedDiffLine,
+} from "@/utils/diff-layout";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
@@ -73,6 +77,22 @@ export interface BuildReviewDraftKeyInput extends BuildReviewDraftScopeKeyInput 
    * covers detached HEAD, where all detached states share one bucket.
    */
   branch?: string | null;
+}
+
+export interface BuildSearchNoteDraftKeyInput {
+  serverId: string;
+  workspaceId?: string | null;
+  cwd: string;
+  /** Search notes anchor to working-tree line numbers, so they follow the branch. */
+  branch?: string | null;
+}
+
+export interface BuildSearchNoteAttachmentSnapshotInput {
+  reviewDraftKey: string;
+  cwd: string;
+  comments: readonly ReviewDraftComment[];
+  /** Line text for the notes that still have a visible hit, by target key. */
+  lineTextByTarget: ReadonlyMap<string, string>;
 }
 
 export interface BuildReviewAttachmentSnapshotInput {
@@ -188,6 +208,29 @@ export function buildReviewDraftBranchKeyPrefix(
     ...buildReviewDraftIdentityParts(input),
     `branch=${encodeKeyPart(normalizeBranch(input.branch))}`,
     "",
+  ].join(":");
+}
+
+/**
+ * The bucket for notes written on a search hit.
+ *
+ * Deliberately NOT a diff draft key. A diff bucket pins a mode, a base, and a
+ * whitespace setting, and its attachment is built by resolving each comment
+ * into a diff hunk - so a note on a line nobody changed would be written into a
+ * bucket that silently drops it on the way to the composer. This bucket has its
+ * own prefix and its own snapshot builder, and the two never share a pill.
+ *
+ * The `branch=` part is load-bearing twice over: line numbers mean something
+ * different on another branch, and the v2 -> v3 migration prunes every draft key
+ * that does not carry one.
+ */
+export function buildSearchNoteDraftKey(input: BuildSearchNoteDraftKeyInput): string {
+  const [, serverPart, workspacePart] = buildReviewDraftIdentityParts(input);
+  return [
+    "search-note",
+    serverPart,
+    workspacePart,
+    `branch=${encodeKeyPart(normalizeBranch(input.branch))}`,
   ].join(":");
 }
 
@@ -368,8 +411,86 @@ export function buildReviewAttachmentSnapshot(
   };
 }
 
+/**
+ * The composer attachment for search notes.
+ *
+ * The diff builder quotes a hunk around the commented line; a search hit has no
+ * hunk, so the context is the matched line itself - the one line the reader was
+ * actually looking at. A note whose line is no longer in the results is skipped,
+ * exactly as a diff comment with no surviving target is.
+ */
+export function buildSearchNoteAttachmentSnapshot(
+  input: BuildSearchNoteAttachmentSnapshotInput,
+): ReviewComposerAttachment | null {
+  const comments: ReviewAttachment["comments"] = [];
+  for (const draftComment of input.comments) {
+    const targetKey = buildReviewableDiffTargetKey({
+      filePath: draftComment.filePath,
+      side: draftComment.side,
+      lineNumber: draftComment.lineNumber,
+    });
+    const content = input.lineTextByTarget.get(targetKey);
+    if (content === undefined) {
+      continue;
+    }
+    const targetLine: ReviewAttachmentContextLine = {
+      oldLineNumber: null,
+      newLineNumber: draftComment.lineNumber,
+      type: "context",
+      content,
+    };
+    comments.push({
+      filePath: draftComment.filePath,
+      side: draftComment.side,
+      lineNumber: draftComment.lineNumber,
+      body: draftComment.body,
+      context: {
+        hunkHeader: `@@ -${draftComment.lineNumber},1 +${draftComment.lineNumber},1 @@`,
+        targetLine,
+        lines: [targetLine],
+      },
+    });
+  }
+
+  if (comments.length === 0) {
+    return null;
+  }
+
+  return {
+    kind: "review",
+    reviewDraftKey: input.reviewDraftKey,
+    commentCount: comments.length,
+    attachment: {
+      type: "review",
+      mimeType: "application/otto-review",
+      cwd: input.cwd,
+      mode: "uncommitted",
+      baseRef: null,
+      comments,
+    },
+  };
+}
+
 export function useReviewDraftComments(key: string): ReviewDraftComment[] {
   return useReviewDraftStore((state) => state.drafts[key] ?? EMPTY_REVIEW_DRAFT_COMMENTS);
+}
+
+export function useSearchNoteAttachmentSnapshot(input: {
+  key: string;
+  cwd: string;
+  lineTextByTarget: ReadonlyMap<string, string>;
+}): ReviewComposerAttachment | null {
+  const comments = useReviewDraftComments(input.key);
+  return useMemo(
+    () =>
+      buildSearchNoteAttachmentSnapshot({
+        reviewDraftKey: input.key,
+        cwd: input.cwd,
+        comments,
+        lineTextByTarget: input.lineTextByTarget,
+      }),
+    [comments, input.cwd, input.key, input.lineTextByTarget],
+  );
 }
 
 export function useSetDiffModeOverride(): ReviewDraftStoreActions["setDiffModeOverride"] {
