@@ -75,6 +75,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   serviceSummary = null,
   backdrop,
   isHovered,
+  isSelected = false,
   isCreating = false,
   shortcutNumber = null,
   showShortcutBadge = false,
@@ -90,6 +91,8 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   /** The row's current background, so the project status badge can knock out of it. */
   backdrop: SidebarSurfaceBackdrop;
   isHovered: boolean;
+  /** The row is the active workspace, so its title takes the accent the selected explorer tab uses. */
+  isSelected?: boolean;
   isCreating?: boolean;
   shortcutNumber?: number | null;
   showShortcutBadge?: boolean;
@@ -106,8 +109,9 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
       styles.workspaceBranchText,
       isHovered && styles.workspaceBranchTextHovered,
       isCreating && styles.workspaceBranchTextCreating,
+      isSelected && styles.workspaceBranchTextSelected,
     ],
-    [isHovered, isCreating],
+    [isHovered, isCreating, isSelected],
   );
 
   return (
@@ -481,6 +485,12 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.92,
   },
   workspaceBranchTextHovered: {
+    opacity: 1,
+  },
+  // The active workspace names itself in the accent, matching the selected
+  // explorer tab. The leading status visual keeps its own semantic color.
+  workspaceBranchTextSelected: {
+    color: theme.colors.accent,
     opacity: 1,
   },
 }));

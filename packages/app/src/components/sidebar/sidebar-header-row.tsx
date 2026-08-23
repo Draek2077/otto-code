@@ -24,6 +24,20 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
   size: theme.iconSize.sm,
 });
+// Accent marks the surface you are already on, the same claim the explorer
+// sidebar's selected tab makes. Hover stays plain foreground: pointing at a
+// destination is not the same as being on it.
+const accentColorMapping = (theme: Theme) => ({
+  color: theme.colors.accent,
+  size: theme.iconSize.sm,
+});
+
+function resolveIconColorMapping(state: { isActive: boolean; isHighlighted: boolean }) {
+  if (state.isActive) {
+    return accentColorMapping;
+  }
+  return state.isHighlighted ? foregroundColorMapping : foregroundMutedColorMapping;
+}
 
 type SidebarHeaderRowVariant = "header" | "compact";
 type SidebarHeaderRowContentAlignment = "start" | "center";
@@ -78,21 +92,21 @@ export function SidebarHeaderRow({
       styles.button,
       variant === "compact" && styles.buttonCompact,
       contentAlignment === "center" && styles.buttonContentCentered,
-      (Boolean(hovered) || isActive) && styles.buttonHovered,
+      isActive && styles.buttonActive,
+      Boolean(hovered) && styles.buttonHovered,
     ],
     [contentAlignment, isActive, variant],
   );
 
   const renderChildren = useCallback(
     (state: PressableStateCallbackType & { hovered?: boolean }) => {
-      const isHighlighted = Boolean(state.hovered) || isActive;
+      const isHighlighted = Boolean(state.hovered);
       return (
         <>
-          <ThemedIcon
-            uniProps={isHighlighted ? foregroundColorMapping : foregroundMutedColorMapping}
-          />
+          <ThemedIcon uniProps={resolveIconColorMapping({ isActive, isHighlighted })} />
           <SidebarHeaderRowLabel
             label={label}
+            isActive={isActive}
             isHighlighted={isHighlighted}
             allowWrap={allowLabelWrap}
           />
@@ -124,16 +138,18 @@ export function SidebarHeaderRow({
 
 function SidebarHeaderRowLabel({
   label,
+  isActive,
   isHighlighted,
   allowWrap,
 }: {
   label: string;
+  isActive: boolean;
   isHighlighted: boolean;
   allowWrap: boolean;
 }) {
   const labelStyle = useMemo(
-    () => [styles.label, isHighlighted && styles.labelHighlighted],
-    [isHighlighted],
+    () => [styles.label, isHighlighted && styles.labelHighlighted, isActive && styles.labelActive],
+    [isActive, isHighlighted],
   );
   return (
     <Text style={labelStyle} numberOfLines={allowWrap ? undefined : 1} ellipsizeMode="tail">
@@ -182,6 +198,9 @@ const styles = StyleSheet.create((theme) => ({
   buttonContentCentered: {
     justifyContent: "center",
   },
+  buttonActive: {
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
   buttonHovered: {
     backgroundColor: theme.colors.surfaceInteractiveHover,
   },
@@ -197,6 +216,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   labelHighlighted: {
     color: theme.colors.foreground,
+  },
+  labelActive: {
+    color: theme.colors.accent,
   },
   shortcut: {
     marginLeft: "auto",

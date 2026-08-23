@@ -788,6 +788,7 @@ function StatusWorkspaceRowInner({
                 serviceSummary={serviceSummary}
                 backdrop={getSidebarRowBackdrop({ isPressed, selected, isHovered })}
                 isHovered={isHovered}
+                isSelected={selected}
                 shortcutNumber={shortcutNumber}
                 showShortcutBadge={showShortcutBadge}
                 reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}

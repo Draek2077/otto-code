@@ -358,6 +358,7 @@ function WorkspaceRowBody({
                 serviceSummary={serviceSummary}
                 backdrop={getSidebarRowBackdrop({ isDragging, isPressed, selected, isHovered })}
                 isHovered={isHovered}
+                isSelected={selected}
                 isCreating={isCreating}
                 shortcutNumber={shortcutNumber}
                 showShortcutBadge={showShortcutBadge}
