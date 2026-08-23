@@ -789,7 +789,6 @@ export const en = {
         copyPath: "Copy path",
         copyRelativePath: "Copy relative path",
         download: "Download",
-        edit: "Edit",
         findInFiles: "Find in files",
         addToContext: "Add to chat",
         removeFromContext: "Remove from chat",
@@ -1569,6 +1568,7 @@ export const en = {
     },
     fileActions: {
       openFile: "Open file",
+      editFile: "Edit file",
       navigateToFile: "Navigate to file",
       navigateToChanges: "Navigate to changes",
       copyPath: "Copy path",

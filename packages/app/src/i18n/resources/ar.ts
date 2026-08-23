@@ -783,7 +783,6 @@ export const ar: TranslationResources = {
         copyPath: "نسخ المسار",
         copyRelativePath: "نسخ المسار النسبي",
         download: "تحميل",
-        edit: "تحرير",
         findInFiles: "بحث في الملفات",
         addToContext: "إضافة إلى المحادثة",
         removeFromContext: "إزالة من المحادثة",
@@ -1544,6 +1543,7 @@ export const ar: TranslationResources = {
     },
     fileActions: {
       openFile: "افتح الملف",
+      editFile: "تحرير الملف",
       navigateToFile: "انتقل إلى الملف",
       navigateToChanges: "انتقل إلى التغييرات",
       copyPath: "نسخ المسار",

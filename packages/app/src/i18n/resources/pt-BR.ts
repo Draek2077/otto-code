@@ -794,7 +794,6 @@ export const ptBR: TranslationResources = {
         copyPath: "Copiar caminho",
         copyRelativePath: "Copiar caminho relativo",
         download: "Baixar",
-        edit: "Editar",
         findInFiles: "Buscar nos arquivos",
         addToContext: "Adicionar ao chat",
         removeFromContext: "Remover do chat",
@@ -1583,6 +1582,7 @@ export const ptBR: TranslationResources = {
     },
     fileActions: {
       openFile: "Abrir arquivo",
+      editFile: "Editar arquivo",
       navigateToFile: "Navegar até o arquivo",
       navigateToChanges: "Navegar até as alterações",
       copyPath: "Copiar caminho",

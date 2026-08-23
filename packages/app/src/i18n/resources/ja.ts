@@ -796,7 +796,6 @@ export const ja: TranslationResources = {
         copyPath: "パスをコピー",
         copyRelativePath: "相対パスをコピー",
         download: "ダウンロード",
-        edit: "編集",
         findInFiles: "ファイル内を検索",
         addToContext: "チャットに追加",
         removeFromContext: "チャットから削除",
@@ -1575,6 +1574,7 @@ export const ja: TranslationResources = {
     },
     fileActions: {
       openFile: "ファイルを開く",
+      editFile: "ファイルを編集",
       navigateToFile: "ファイルへ移動",
       navigateToChanges: "変更へ移動",
       copyPath: "パスをコピー",

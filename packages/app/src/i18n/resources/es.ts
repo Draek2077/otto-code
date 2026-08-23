@@ -794,7 +794,6 @@ export const es: TranslationResources = {
         copyPath: "Copiar ruta",
         copyRelativePath: "Copiar ruta relativa",
         download: "Descargar",
-        edit: "Editar",
         findInFiles: "Buscar en archivos",
         addToContext: "Añadir al chat",
         removeFromContext: "Quitar del chat",
@@ -1592,6 +1591,7 @@ export const es: TranslationResources = {
     },
     fileActions: {
       openFile: "Abrir archivo",
+      editFile: "Editar archivo",
       navigateToFile: "Ir al archivo",
       navigateToChanges: "Ir a los cambios",
       copyPath: "Copiar ruta",

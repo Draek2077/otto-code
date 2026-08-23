@@ -778,7 +778,6 @@ export const zhCN: TranslationResources = {
         copyPath: "复制路径",
         copyRelativePath: "复制相对路径",
         download: "下载",
-        edit: "编辑",
         findInFiles: "在文件中查找",
         addToContext: "添加到对话",
         removeFromContext: "从对话中移除",
@@ -1527,6 +1526,7 @@ export const zhCN: TranslationResources = {
     },
     fileActions: {
       openFile: "打开文件",
+      editFile: "编辑文件",
       navigateToFile: "导航到文件",
       navigateToChanges: "导航到更改",
       copyPath: "复制路径",

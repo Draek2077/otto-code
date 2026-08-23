@@ -791,7 +791,6 @@ export const ko: TranslationResources = {
         copyPath: "Copy path",
         copyRelativePath: "Copy relative path",
         download: "Download",
-        edit: "Edit",
         findInFiles: "Find in files",
         addToContext: "Add to chat",
         removeFromContext: "Remove from chat",
@@ -1566,6 +1565,7 @@ export const ko: TranslationResources = {
     },
     fileActions: {
       openFile: "파일 열기",
+      editFile: "파일 편집",
       navigateToFile: "Navigate to file",
       navigateToChanges: "Navigate to changes",
       copyPath: "경로 복사",

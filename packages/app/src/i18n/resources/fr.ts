@@ -795,7 +795,6 @@ export const fr: TranslationResources = {
         copyPath: "Copier le chemin",
         copyRelativePath: "Copier le chemin relatif",
         download: "Télécharger",
-        edit: "Modifier",
         findInFiles: "Rechercher dans les fichiers",
         addToContext: "Ajouter à la conversation",
         removeFromContext: "Retirer de la conversation",
@@ -1600,6 +1599,7 @@ export const fr: TranslationResources = {
     },
     fileActions: {
       openFile: "Ouvrir le fichier",
+      editFile: "Modifier le fichier",
       navigateToFile: "Aller au fichier",
       navigateToChanges: "Aller aux modifications",
       copyPath: "Copier le chemin",

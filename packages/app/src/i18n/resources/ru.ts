@@ -792,7 +792,6 @@ export const ru: TranslationResources = {
         copyPath: "Копировать путь",
         copyRelativePath: "Копировать относительный путь",
         download: "Скачать",
-        edit: "Изменить",
         findInFiles: "Найти в файлах",
         addToContext: "Добавить в чат",
         removeFromContext: "Убрать из чата",
@@ -1577,6 +1576,7 @@ export const ru: TranslationResources = {
     },
     fileActions: {
       openFile: "Открыть файл",
+      editFile: "Изменить файл",
       navigateToFile: "Перейти к файлу",
       navigateToChanges: "Перейти к изменениям",
       copyPath: "Копировать путь",
