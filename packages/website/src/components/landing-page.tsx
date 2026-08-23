@@ -287,7 +287,7 @@ function BuiltOnPaseoSection() {
     >
       <SectionTitle
         title="Built on Paseo"
-        description="Everything above stands on a foundation someone else got right first. Multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI. That is Paseo, and Otto keeps all of it intact."
+        description="Otto's foundation is Paseo: multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI. Mo got those right first, and Otto keeps all of it intact."
       />
 
       <div className="space-y-4">
@@ -310,9 +310,9 @@ function BuiltOnPaseoSection() {
           >
             Mo
           </a>
-          . That gives us the plumbing: process lifecycle, WebSocket protocol, cross-platform
-          clients. So we ship features instead of infrastructure. Paseo stays intact, upstream
-          history preserved.
+          . That covers the plumbing: process lifecycle, WebSocket protocol, cross-platform clients.
+          Everything above it, the features Otto is actually for, is built here. Paseo stays intact,
+          upstream history preserved.
         </p>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           The Visualizer is the render layer of{" "}

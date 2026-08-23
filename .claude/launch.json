@@ -2,22 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "otto-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:win"],
+      "name": "app",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "./scripts/dev.ps1"],
       "port": 8081
-    },
-    {
-      "name": "otto-agent",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:win:agent"],
-      "port": 8095
-    },
-    {
-      "name": "website",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:website"],
-      "port": 4300
     }
   ]
 }

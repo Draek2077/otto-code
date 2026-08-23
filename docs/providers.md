@@ -344,7 +344,7 @@ const PROVIDER_ICONS: Record<string, typeof Bot> = {
 };
 ```
 
-If no icon is registered, `getProviderIcon()` falls back to a generic `Bot` icon from lucide.
+If no icon is registered, `getProviderIcon()` falls back to a generic `Bot` icon from Material Symbols.
 
 ### 5. Add E2E test config
 

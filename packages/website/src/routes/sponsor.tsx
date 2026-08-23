@@ -48,24 +48,22 @@ function Sponsor() {
         </p>
 
         <p>
-          Otto is a personal project by Philippe, not a startup. Just the environment I want to work
-          in and the way I&apos;m getting better at agentic coding. Most of Otto is written by the
-          agents Otto runs. The problem I keep hitting is that agents can now do an enormous amount
-          of work on their own, and it&apos;s hard to see what they did, what it cost, and where it
-          went sideways, so the work leans toward making that legible, and toward pulling good
-          open-source pieces into one setup that works end to end.
+          Otto is a personal project by Philippe, not a startup. It is the environment I want to
+          work in, and it is where most of my hours go. The design, the direction, and every feature
+          decision are mine, and I review and rework what ships. The problem I keep hitting is that
+          agents can now do an enormous amount of work on their own, and it&apos;s hard to see what
+          they did, what it cost, and where it went sideways, so much of that time goes into making
+          the work legible and into making the whole setup hold together end to end.
         </p>
 
-        <p>
-          Which means Otto is mostly other people&apos;s hard work, assembled. The two projects it
-          leans on hardest deserve naming properly.
-        </p>
+        <p>Otto stands on two open-source projects, and they deserve naming properly.</p>
 
         <p>
           <strong className="font-medium text-white/90">Paseo</strong> is the foundation. Mo got the
           hard parts right before I ever showed up: agent process lifecycle, a clean WebSocket
-          protocol, genuinely cross-platform clients, an end-to-end encrypted relay. Everything Otto
-          adds is features on top of infrastructure that already worked.
+          protocol, genuinely cross-platform clients, an end-to-end encrypted relay. Starting from a
+          foundation that already worked is what let me spend my own time on everything Otto adds on
+          top of it.
         </p>
 
         <p>

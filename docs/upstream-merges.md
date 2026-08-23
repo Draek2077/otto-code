@@ -11,18 +11,18 @@ the rules on it.
 
 ## The naming map
 
-| Upstream                                      | Otto                                                             |
-| --------------------------------------------- | ---------------------------------------------------------------- |
-| `Paseo` / `paseo` (prose, identifiers)        | `Otto` / `otto`                                                  |
-| `@getpaseo/*` npm scope                       | `@otto-code/*`                                                   |
-| `getpaseo/paseo` GitHub repo                  | `Draek2077/otto-code`                                            |
-| `getpaseo` org                                | `Draek2077`                                                      |
-| `paseo.sh` domain                             | `otto-code.me`                                                   |
-| `PASEO_*` env vars                            | `OTTO_*`                                                         |
-| `sh.paseo` / `.debug` / `.desktop` bundle ids | `ai.ottocode` / `.debug` / `.desktop` (no hyphens - reverse-DNS) |
-| `paseo` CLI command                           | `otto`                                                           |
-| `~/.paseo` data dir, `paseo.json` config      | `~/.otto`, `otto.json`                                           |
-| Default daemon port `6767`                    | `6868`                                                           |
+| Upstream                                      | Otto                                                                                                   |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `Paseo` / `paseo` (prose, identifiers)        | `Otto` / `otto`                                                                                        |
+| `@getpaseo/*` npm scope                       | `@otto-code/*`                                                                                         |
+| `getpaseo/paseo` GitHub repo                  | `Draek2077/otto-code`                                                                                  |
+| `getpaseo` org                                | `Draek2077`                                                                                            |
+| `paseo.sh` domain                             | `otto-code.me`                                                                                         |
+| `PASEO_*` env vars                            | `OTTO_*`                                                                                               |
+| `sh.paseo` / `.debug` / `.desktop` bundle ids | Desktop: `ai.ottocode.desktop`. **Mobile: `me.ottocode.mobile` / `.debug`** (no hyphens - reverse-DNS) |
+| `paseo` CLI command                           | `otto`                                                                                                 |
+| `~/.paseo` data dir, `paseo.json` config      | `~/.otto`, `otto.json`                                                                                 |
+| Default daemon port `6767`                    | `6868`                                                                                                 |
 
 ## Upstream tags never live in `refs/tags/` - set this up once per clone
 
@@ -215,6 +215,14 @@ Then merge the branch into `main`.
   inside UUIDs/hashes: `git grep -nE '6868-6868'`.
 - **Bundle ids must stay hyphen-free.** Never let `sh.paseo` map to anything
   containing `otto-code` - reverse-DNS segments cannot contain hyphens.
+- **Mobile and desktop bundle ids are not the same namespace.** Desktop is
+  `ai.ottocode.desktop`; the Android/iOS app is `me.ottocode.mobile` (`.debug`
+  for `APP_VARIANT=development`), because Play Store package names are permanent
+  once published (see [fork-release-guide.md](fork-release-guide.md)). A blanket
+  `sh.paseo` -> `ai.ottocode` rewrite gets mobile wrong. When any package id
+  moves, grep the **whole** repo for the old one: `packages/app/maestro/` and
+  `packages/app/e2e/mobile/` held a dead id for weeks, which silently broke
+  every flow while the app itself worked fine.
 - **`LICENSE` is never rewritten.** The upstream copyright notice must remain
   verbatim (AGPL requirement). The script is simply never run against it.
 

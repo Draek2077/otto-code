@@ -224,6 +224,7 @@ someone to run it by hand.
 | In-app Vim mode: opt-in setting, NORMAL/INSERT feedback, cursor position, and a configured Space-leader action mapping | ✅     | `file-editing.spec.ts`                                              | T1   | -   |
 | File finder (quick open)                                                                                               | ✅     | `file-finder.spec.ts`                                               | T1   | -   |
 | Project-wide search                                                                                                    | ✅     | `project-search.spec.ts`                                            | T1   | -   |
+| Search result inline notes (gutter comment button, editor, note stays with the line)                                   | ✅     | `project-search.spec.ts`                                            | T1   | -   |
 | File explorer collapse behavior                                                                                        | ✅     | `file-explorer-collapse.spec.ts`                                    | T1   | -   |
 | Scripts menu resize behavior                                                                                           | ✅     | `workspace-scripts-menu-resize.spec.ts`                             | T1   | -   |
 | Unified file tab mode bar (editor/split/preview surfaces + per-file mode memory across reopen)                         | ✅     | `file-tab-mode-bar.spec.ts`                                         | T1   | -   |

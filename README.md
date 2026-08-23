@@ -323,8 +323,8 @@ based on. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ## Credits & attribution
 
-Otto is mostly other people's good work, assembled. Two projects carry it, and I'd rather
-name them properly than bury them in a footer.
+Otto stands on two open-source projects, and I'd rather name them properly than bury
+them in a footer.
 
 ### Paseo - by Mohamed Boudra
 
@@ -334,8 +334,8 @@ AGPL-3.0; Otto continues under the same license as required by its copyleft term
 
 Mo got the hard parts right before I ever showed up: agent process lifecycle, a clean
 WebSocket protocol, genuinely cross-platform clients, an end-to-end encrypted relay.
-That's why the work here can be features instead of plumbing. Otto keeps the full
-foundation intact with upstream history preserved.
+Starting there is what let the work here go into features instead of plumbing. Otto keeps
+the full foundation intact with upstream history preserved.
 → [Sponsor Mo](https://github.com/sponsors/boudra)
 
 ### Agent Flow - by Simon Patole
