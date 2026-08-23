@@ -1309,6 +1309,42 @@ describe("stream reducer canonical tool calls", () => {
       turnId: "turn-first",
     });
   });
+
+  it("does not mint an empty bubble when that late segment opens with whitespace", () => {
+    const head: StreamItem[] = [
+      {
+        kind: "assistant_message",
+        id: "assistant-first",
+        messageId: "assistant-first",
+        turnId: "turn-first",
+        text: "Done.",
+        timestamp: new Date("2025-01-01T11:22:00Z"),
+      },
+      {
+        kind: "user_message",
+        id: "user-follow-up",
+        clientMessageId: "user-follow-up",
+        turnId: "turn-second",
+        text: "One more thing.",
+        timestamp: new Date("2025-01-01T11:22:01Z"),
+      },
+    ];
+
+    // Providers routinely open a segment with a bare newline. That delta carries
+    // a fresh message id inside the same turn, so it reaches the insert-before-
+    // trailing-users path with nothing to say - it must be dropped, not turned
+    // into an empty assistant row ahead of the queued follow-up.
+    const result = applyStreamEvent({
+      tail: [],
+      head,
+      event: assistantTimeline("\n", "claude", "assistant-final", "turn-first"),
+      timestamp: new Date("2025-01-01T11:22:02Z"),
+      source: "live",
+    });
+
+    expect(result.head.map((item) => item.kind)).toEqual(["assistant_message", "user_message"]);
+    expect(result.head[0]).toMatchObject({ messageId: "assistant-first", text: "Done." });
+  });
 });
 
 describe("turn lifecycle events", () => {

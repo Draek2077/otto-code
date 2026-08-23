@@ -1050,7 +1050,7 @@ function createAssistantMessageItem(input: AssistantMessageChunkInput): Assistan
 }
 
 function appendAssistantBeforeTrailingUsers(
-  input: AssistantMessageChunkInput & { source: StreamUpdateSource },
+  input: AssistantMessageChunkInput & { source: StreamUpdateSource; hasContent: boolean },
 ): StreamItem[] | null {
   if (input.source !== "live") return null;
   const trailingUserStart = findTrailingUserStart(input.state);
@@ -1069,6 +1069,12 @@ function appendAssistantBeforeTrailingUsers(
 
   const messageMatches =
     input.messageId === undefined || precedingAssistant.messageId === input.messageId;
+  // A whitespace-only delta may EXTEND a bubble that already exists, but it must
+  // never mint one. Providers routinely open a segment with a bare newline, so a
+  // fresh message id inside the same turn would otherwise insert an empty
+  // assistant bubble ahead of the trailing user rows. Declining here hands the
+  // chunk back to the caller's !hasContent guard, which drops it.
+  if (!messageMatches && !input.hasContent) return null;
   const assistant = messageMatches
     ? extendAssistantMessage({ assistant: precedingAssistant, ...input })
     : createAssistantMessageItem(input);
@@ -1107,6 +1113,7 @@ function appendAssistantMessage(
   const insertedBeforeUsers = appendAssistantBeforeTrailingUsers({
     state,
     chunk,
+    hasContent,
     timestamp,
     source,
     messageId,
