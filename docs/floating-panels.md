@@ -20,6 +20,39 @@ input focused while its scrollable list lives in a Portal. There is no shared
 "floating panel" primitive yet - when a fifth use case shows up we can revisit;
 until then prefer copying the closest file and trimming.
 
+## The bottom-sheet frame
+
+Every sheet in the app arrives in one frame, and it lives in
+`components/ui/sheet-chrome.tsx`. Use `SheetSurfaceModal` rather than
+`IsolatedBottomSheetModal` directly, and take the title and the content indent from the same
+file.
+
+| Piece          | Value                                            | Owner                            |
+| -------------- | ------------------------------------------------ | -------------------------------- |
+| Surface        | `surface0`, top corners at `borderRadius["2xl"]` | `SheetSurfaceModal`              |
+| Grab handle    | 36 x 4, `palette.zinc[600]`                      | `SheetSurfaceModal`              |
+| Content indent | `spacing[SHEET_HORIZONTAL_PADDING_SCALE]`        | `SHEET_HORIZONTAL_PADDING_SCALE` |
+| Title          | `base` compact / `lg` wide, medium               | `sheetChromeStyles.title`        |
+| Opening detent | ~60-65%, with a second detent near 90%           | the sheet                        |
+
+**Pin the grab handle.** Left to the library, the indicator is 7.5% of the _window_ width, so
+the same sheet grows a handle three times wider on a desktop window than on a phone and no two
+sheets agree unless they happen to be open at the same width. This is the single loudest source
+of "these sheets look unrelated".
+
+**Only the top corners are rounded.** The bottom two sit past the screen edge, so rounding them
+buys nothing and costs the illusion that the sheet is anchored there.
+
+**A dialog sheet carries a close X; a menu sheet does not.** `AdaptiveModalSheet` and the tool-call
+sheet are dialogs - they hold a form or a document, and an explicit dismissal is expected, the
+more so because the same component renders as a centred modal on desktop. A menu sheet
+([menus.md](menus.md)) and a picker close by choosing something, dragging down, or tapping the
+backdrop, and an X there is chrome on the one surface that needs none. Do not split the
+difference per sheet.
+
+**Open at ~60-65%, not 80%.** A sheet that opens nearly full-screen reads as a screen that failed
+to be a route. Give it a second detent near 90% for the drag up.
+
 ## Popover width contract
 
 Combobox desktop popovers are never narrower than their trigger, and they grow

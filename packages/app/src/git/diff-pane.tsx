@@ -69,8 +69,9 @@ import { DiffFolderRow } from "@/git/diff-folder-row";
 import {
   TreeIndentGuides,
   treeRowPaddingLeft,
+  useTreeIconSize,
+  WORKSPACE_FILE_ROW_VERTICAL_PADDING,
   WORKSPACE_TREE_ICON_LABEL_GAP,
-  WORKSPACE_TREE_ICON_SIZE,
   WORKSPACE_TREE_ICON_FRAME_SIZE,
 } from "@/components/tree-primitives";
 import { MaterialFileIcon } from "@/components/material-file-icon";
@@ -999,6 +1000,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
   testID,
 }: DiffFileSectionProps) {
   const { t } = useTranslation();
+  const treeIconSize = useTreeIconSize();
 
   const handleToggleSelected = useCallback(
     (event: { stopPropagation?: () => void }) => {
@@ -1138,7 +1140,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
         ) : null}
         {showDir ? null : (
           <View style={styles.fileIcon}>
-            <MaterialFileIcon fileName={fileName} size={WORKSPACE_TREE_ICON_SIZE} />
+            <MaterialFileIcon fileName={fileName} size={treeIconSize} />
           </View>
         )}
         <Text style={styles.fileName} numberOfLines={1}>
@@ -4660,7 +4662,10 @@ const styles = StyleSheet.create((theme) => ({
     // panel edge, matching the trimmed commit-section inset below.
     paddingLeft: 10,
     paddingRight: theme.spacing[2],
-    paddingVertical: theme.spacing[2],
+    // The tree's shared row padding, not a local one. This row sits directly
+    // under a folder row in the same tree and was the only one paying spacing[2]
+    // for it, which read as two different row heights in one list.
+    paddingVertical: WORKSPACE_FILE_ROW_VERTICAL_PADDING,
     gap: theme.spacing[1],
     minWidth: 0,
     zIndex: 2,

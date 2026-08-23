@@ -7,11 +7,12 @@ import {
   TreeChevron,
   TreeIndentGuides,
   treeRowPaddingLeft,
+  useTreeIconSize,
   WORKSPACE_FILE_ROW_VERTICAL_PADDING,
   WORKSPACE_TREE_ICON_LABEL_GAP,
   WORKSPACE_TREE_ICON_FRAME_SIZE,
 } from "@/components/tree-primitives";
-import { useIconSize, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
@@ -70,7 +71,7 @@ export function DiffFolderRow({
   onDuplicate,
   testID,
 }: DiffFolderRowProps) {
-  const iconSize = useIconSize();
+  const treeIconSize = useTreeIconSize();
   const handleSelect = useCallback(() => {
     onSelect?.(dirPath);
   }, [dirPath, onSelect]);
@@ -145,7 +146,7 @@ export function DiffFolderRow({
               <TreeChevron expanded={!collapsed} />
             </View>
             <View style={styles.folderLabel}>
-              <ThemedFolder size={iconSize.md} uniProps={mutedIconColor} />
+              <ThemedFolder size={treeIconSize} uniProps={mutedIconColor} />
               <Text style={styles.folderName} numberOfLines={1}>
                 {displayName}
               </Text>

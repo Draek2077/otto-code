@@ -3,6 +3,7 @@ import { Text } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { VoiceSelection, VoiceSelectionOff } from "@/components/icons/material-icons";
 import { headerIconSlotStyle } from "@/components/headers/header-toggle-button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { StatusPulseGlow, notifyHaloColor } from "@/components/status-pulse-glow";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -80,7 +81,10 @@ export function WorkspaceWakeWordButton() {
     getWakeWordStatus,
     getWakeWordStatus,
   );
-  const size = useIconSize(1.5).md;
+  const iconSize = useIconSize(1.5);
+  // Compact matches the Chat / Meetings / Visualizer / Brain glyphs beside it
+  // (lg); desktop stays on the smaller md glyph shared with the "..." trigger.
+  const size = isCompact ? iconSize.lg : iconSize.md;
   const featureEnabled = settings.wakeWordEnabled;
   const listeningPaused = settings.wakeWordListeningPaused;
   const supported = getWakeWordCapability().available;
@@ -133,6 +137,43 @@ export function WorkspaceWakeWordButton() {
         <Text style={styles.tooltipText}>{label}</Text>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+// Matches the workspace "..." menu's leading-icon convention (muted, md).
+const mutedMenuMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.md,
+});
+const MENU_LISTENING_ICON = <ThemedVoiceSelection uniProps={mutedMenuMapping} />;
+const MENU_PAUSED_ICON = <ThemedVoiceSelectionOff uniProps={mutedMenuMapping} />;
+
+/** "..." menu fallback for when the compact header fit drops the button (see
+ * `resolveCompactHeaderActions`): the same listening toggle, one tap deeper.
+ * Self-gating on the same availability rule as the button, so a host without a
+ * usable microphone gets neither. */
+export function WorkspaceWakeWordMenuItem() {
+  const { settings, updateSettings } = useAppSettings();
+  const listeningPaused = settings.wakeWordListeningPaused;
+  const visible = shouldShowWakeWordToolbarButton({
+    featureEnabled: settings.wakeWordEnabled,
+    supported: getWakeWordCapability().available,
+    hasDictationTab: true,
+  });
+  const onSelect = useCallback(() => {
+    void updateSettings({ wakeWordListeningPaused: !listeningPaused });
+  }, [listeningPaused, updateSettings]);
+
+  if (!visible) return null;
+
+  return (
+    <DropdownMenuItem
+      testID="workspace-header-wake-word"
+      leading={listeningPaused ? MENU_PAUSED_ICON : MENU_LISTENING_ICON}
+      onSelect={onSelect}
+    >
+      {listeningPaused ? "Resume Hey Otto" : "Pause Hey Otto"}
+    </DropdownMenuItem>
   );
 }
 

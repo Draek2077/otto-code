@@ -25,10 +25,8 @@ import { AgentStatusDot } from "@/components/agent-status-dot";
 import { MaterialFileIcon } from "@/components/material-file-icon";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Shortcut } from "@/components/ui/shortcut";
-import {
-  IsolatedBottomSheetModal,
-  useIsolatedBottomSheetVisibility,
-} from "@/components/ui/isolated-bottom-sheet-modal";
+import { useIsolatedBottomSheetVisibility } from "@/components/ui/isolated-bottom-sheet-modal";
+import { SheetSurfaceModal } from "@/components/ui/sheet-chrome";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
@@ -687,7 +685,7 @@ export function CommandCenter() {
 
   if (showBottomSheet) {
     return (
-      <IsolatedBottomSheetModal
+      <SheetSurfaceModal
         ref={sheetRef}
         contextBridge={null}
         snapPoints={COMMAND_CENTER_SNAP_POINTS}
@@ -697,8 +695,6 @@ export function CommandCenter() {
         onDismiss={handleSheetDismiss}
         backdropComponent={backdrop}
         enablePanDownToClose
-        backgroundStyle={styles.sheetBackground}
-        handleIndicatorStyle={styles.sheetHandle}
         keyboardBehavior="extend"
         keyboardBlurBehavior="restore"
         accessible={false}
@@ -731,7 +727,7 @@ export function CommandCenter() {
         </View>
         {fileSearchError}
         <BottomSheetFlatList ref={bottomSheetListRef} {...commonListProps} />
-      </IsolatedBottomSheetModal>
+      </SheetSurfaceModal>
     );
   }
   if (!state.open) return null;
@@ -945,8 +941,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.statusDanger,
     fontSize: theme.fontSize.sm,
   },
-  sheetBackground: { backgroundColor: theme.colors.surface0 },
-  sheetHandle: { backgroundColor: theme.colors.palette.zinc[600] },
   titledSection: { height: 32, justifyContent: "flex-end" },
   dividedSection: { height: 49, justifyContent: "flex-end" },
   dividerSection: { height: 17, justifyContent: "flex-end" },

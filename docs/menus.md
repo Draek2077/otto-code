@@ -106,6 +106,19 @@ and a column of icons there is decoration competing with the values you actually
   is worked with a thumb just as a sheet is, and sizing off the sheet would leave it at the desktop
   height. `md` is where `useIsCompactFormFactor` divides, so row height and the popover/sheet choice
   turn over together.
+- **Every glyph in a row is drawn at the row's scale, whatever the call site asked for.** Leading
+  icons are built at 14 or 16 across the app, usually as module-level constant elements that no
+  hook can reach, so the row re-sizes what it is handed rather than the app sweeping a hundred
+  call sites and waiting for the next one to reintroduce the drift. It **sets** the size and must
+  never scale it: a call site that already sized its glyph through `useIconSize()` hands over an
+  already compact-scaled number, and doubling that lands at 4x, which is how one menu ended up
+  drawing 28, 32 and 56pt glyphs in three consecutive rows. Setting is idempotent, so a row is one
+  size no matter what the call site did. It only touches an element that already takes a numeric
+  `size`, so a slot holding a View, an avatar, or an icon sized through `uniProps` comes back
+  untouched.
+- **The icon-to-label gap follows the same split** - 8pt for a pointer, 12pt below `md`. A gap that
+  reads as separation beside a 28pt row reads as the icon crowding the label once the row grows to
+  40, so the two numbers turn over together with the row height.
 - The desktop height only holds because the label's `lineHeight` is pinned — 18 line + 8 padding +
   2 border is exactly 28. Leave it to the platform and content outgrows `minHeight`, which then does
   nothing. Compact is the other way round: `minHeight` leads and the label centres in it.

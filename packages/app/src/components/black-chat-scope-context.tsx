@@ -22,8 +22,10 @@ export function useBlackChatScope(): boolean {
 // can mount from a deep store update without rendering through ScopedTheme's
 // marker pair. This core RN style is therefore the authoritative pure-black
 // canvas; ScopedTheme still supplies the richer dark palette inside it.
+export const BLACK_CHAT_CANVAS_COLOR = "#000000";
+
 const blackChatCanvasStyle = RNStyleSheet.create({
-  enabled: { backgroundColor: "#000000" },
+  enabled: { backgroundColor: BLACK_CHAT_CANVAS_COLOR },
 }).enabled;
 
 export function resolveBlackChatCanvasStyle(enabled: boolean) {

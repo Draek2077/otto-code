@@ -118,10 +118,16 @@ export function HeaderToggleButton({
 export const headerIconSlotStyle = StyleSheet.create((theme) => ({
   slot: {
     position: "relative",
+    // The focus ring is reserved in the resting geometry: a transparent 1px
+    // border, paid for out of the padding, so focusing a control paints the
+    // ring without moving its glyph or changing the slot's outer size. Every
+    // title-bar control shares this chrome, so any of them can carry the ring.
     padding: {
-      xs: theme.spacing[3],
-      md: theme.spacing[2],
+      xs: theme.spacing[3] - 1,
+      md: theme.spacing[2] - 1,
     },
+    borderWidth: theme.borderWidth[1],
+    borderColor: "transparent",
     borderRadius: theme.borderRadius.lg,
   },
   // Compact workspace-header actions sit in a flush icon strip. Their normal
@@ -130,12 +136,20 @@ export const headerIconSlotStyle = StyleSheet.create((theme) => ({
   // while trimming only 2px from each compact edge.
   compactSlot: {
     padding: {
-      xs: theme.spacing[3] - 2,
-      md: theme.spacing[2],
+      xs: theme.spacing[3] - 3,
+      md: theme.spacing[2] - 1,
     },
+    borderWidth: theme.borderWidth[1],
+    borderColor: "transparent",
     borderRadius: theme.borderRadius.lg,
     alignItems: "center",
     justifyContent: "center",
+  },
+  // Keyboard focus, for the slots that can take it (the popup triggers). Rings
+  // hug the control's own border because the border space is already reserved
+  // above.
+  slotFocused: {
+    borderColor: theme.colors.accent,
   },
   // Selected is the quiet persistent state shared with explorer tabs. Hover is
   // stronger and is applied AFTER selected in `combinedStyle`, so pointing at

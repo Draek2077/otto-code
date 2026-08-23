@@ -1,19 +1,12 @@
 import React, { createContext, useContext, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import Animated from "react-native-reanimated";
-import {
-  BottomSheetScrollView,
-  BottomSheetBackdrop,
-  BottomSheetBackgroundProps,
-} from "@gorhom/bottom-sheet";
-import { X } from "@/components/icons/material-icons";
+import { BottomSheetScrollView, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
+import { SheetSurfaceModal } from "@/components/ui/sheet-chrome";
+import { SheetHeaderView } from "@/components/adaptive-modal-sheet";
 import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
-import {
-  IsolatedBottomSheetModal,
-  useIsolatedBottomSheetVisibility,
-} from "@/components/ui/isolated-bottom-sheet-modal";
+import { useIsolatedBottomSheetVisibility } from "@/components/ui/isolated-bottom-sheet-modal";
 import type { ToolCallIconComponent } from "@/utils/tool-call-icon";
 import { ToolCallDetailsContent } from "./tool-call-details";
 
@@ -45,17 +38,6 @@ export function useToolCallSheet(): ToolCallSheetContextValue {
   return context;
 }
 
-// ----- Custom Background Component -----
-
-function CustomSheetBackground({ style }: BottomSheetBackgroundProps) {
-  const { theme } = useUnistyles();
-  const containerStyle = useMemo(
-    () => [style, { backgroundColor: theme.colors.surface2, borderRadius: 16 }],
-    [style, theme.colors.surface2],
-  );
-  return <Animated.View pointerEvents="none" style={containerStyle} />;
-}
-
 // ----- Provider Component -----
 
 interface ToolCallSheetProviderProps {
@@ -63,7 +45,6 @@ interface ToolCallSheetProviderProps {
 }
 
 export function ToolCallSheetProvider({ children }: ToolCallSheetProviderProps) {
-  const { theme } = useUnistyles();
   const [sheetData, setSheetData] = React.useState<ToolCallSheetData | null>(null);
   const [isSheetOpen, setIsSheetOpen] = React.useState(false);
 
@@ -104,15 +85,10 @@ export function ToolCallSheetProvider({ children }: ToolCallSheetProviderProps) 
     [openToolCall, closeToolCall],
   );
 
-  const handleIndicatorStyle = useMemo(
-    () => ({ backgroundColor: theme.colors.palette.zinc[600] }),
-    [theme.colors.palette.zinc],
-  );
-
   return (
     <ToolCallSheetContext.Provider value={contextValue}>
       {children}
-      <IsolatedBottomSheetModal
+      <SheetSurfaceModal
         ref={bottomSheetRef}
         contextBridge={null}
         snapPoints={snapPoints}
@@ -122,11 +98,9 @@ export function ToolCallSheetProvider({ children }: ToolCallSheetProviderProps) 
         onDismiss={handleToolCallSheetDismiss}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
-        backgroundComponent={CustomSheetBackground}
-        handleIndicatorStyle={handleIndicatorStyle}
       >
         {sheetData && <ToolCallSheetContent data={sheetData} onClose={closeToolCall} />}
-      </IsolatedBottomSheetModal>
+      </SheetSurfaceModal>
     </ToolCallSheetContext.Provider>
   );
 }
@@ -141,21 +115,19 @@ interface ToolCallSheetContentProps {
 function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
   const { theme } = useUnistyles();
   const { displayName, detail, errorText, icon: IconComponent, showLoadingSkeleton } = data;
+  // The shared sheet header, not a hand-built one. This sheet used to carry its own title size,
+  // weight, indent and close button, which is most of what made it read as a different app.
+  const header = useMemo(
+    () => ({
+      title: displayName,
+      leading: <IconComponent size={theme.iconSize.md} color={theme.colors.foreground} />,
+    }),
+    [IconComponent, displayName, theme.colors.foreground, theme.iconSize.md],
+  );
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <IconComponent size={theme.iconSize.lg} color={theme.colors.foreground} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {displayName}
-          </Text>
-        </View>
-        <Pressable onPress={onClose} style={styles.closeButton}>
-          <X size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
-        </Pressable>
-      </View>
+      <SheetHeaderView header={header} onClose={onClose} />
 
       {/* Content */}
       <BottomSheetScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
@@ -172,39 +144,13 @@ function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
 
 // ----- Styles -----
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create(() => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surface2,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[3],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.foreground,
-    flex: 1,
-  },
-  closeButton: {
-    padding: theme.spacing[2],
   },
   content: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.colors.surface2,
   },
   contentContainer: {
     padding: 0,

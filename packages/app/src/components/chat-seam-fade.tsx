@@ -1,6 +1,7 @@
 import { StyleSheet as RNStyleSheet, View } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import { BLACK_CHAT_CANVAS_COLOR, useBlackChatScope } from "@/components/black-chat-scope-context";
 import type { Theme } from "@/styles/theme";
 
 const CHAT_SEAM_FADE_HEIGHT = 24;
@@ -60,9 +61,21 @@ const fadeColorMapping = (theme: Theme) => ({
  * CSS variables there (docs/unistyles.md).
  */
 export function ChatSeamFade({ edge }: { edge: ChatSeamFadeEdge }) {
+  // Under the black chat scope the fade has to reach the same authoritative
+  // #000000 canvas that `resolveBlackChatCanvasStyle` paints, not whatever
+  // `surface0` the uniProps mapping happens to resolve. `withUnistyles`
+  // captures its theme when the mapping runs, so a fade that re-renders
+  // outside ScopedTheme's markers resolves the app palette and lays a slate
+  // gradient over pure black - visible as a grey band along the tab-bar and
+  // composer seams.
+  const isBlackChat = useBlackChatScope();
   return (
     <View style={edge === "top" ? TOP_STRIP_STYLE : BOTTOM_STRIP_STYLE} pointerEvents="none">
-      <ThemedChatSeamFadeGradient edge={edge} uniProps={fadeColorMapping} />
+      {isBlackChat ? (
+        <ChatSeamFadeGradient edge={edge} color={BLACK_CHAT_CANVAS_COLOR} />
+      ) : (
+        <ThemedChatSeamFadeGradient edge={edge} uniProps={fadeColorMapping} />
+      )}
     </View>
   );
 }

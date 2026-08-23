@@ -242,6 +242,7 @@ export const PrivacyTip = createMaterialSymbolIcon("PrivacyTip");
 // thinking controls. NOT `Brain` (`network_intelligence`), which is reserved for
 // the Otto Brain feature.
 export const Psychology = createMaterialSymbolIcon("Psychology");
+export const Publish = createMaterialSymbolIcon("Publish");
 export const Puzzle = createMaterialSymbolIcon("Puzzle");
 export const QrCode = createMaterialSymbolIcon("QrCode");
 export const RecordVoiceOver = createMaterialSymbolIcon("RecordVoiceOver");

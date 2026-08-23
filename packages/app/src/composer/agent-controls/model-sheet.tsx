@@ -13,7 +13,6 @@ import type { ProviderSelectorProvider } from "@/provider-selection/provider-sel
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { compactUp } from "@/styles/theme";
 
-const SNAP_POINTS = ["80%", "90%"];
 const MODEL_LIST_TOP_INSET = 4;
 const MODEL_ROW_STRIDE = 44;
 const MODEL_VIEWPORT_VISIBLE_ROWS = 4.5;
@@ -172,7 +171,6 @@ export function CompactModelSheet({
         header={browser.header}
         visible={isOpen}
         onClose={close}
-        snapPoints={SNAP_POINTS}
         scrollable={false}
         sizeContentToCurrentSnapPoint={usesBottomSheet}
         footer={compactFooter}

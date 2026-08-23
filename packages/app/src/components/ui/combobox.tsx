@@ -28,12 +28,8 @@ import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import {
-  BottomSheetScrollView,
-  BottomSheetBackdrop,
-  BottomSheetBackgroundProps,
-} from "@gorhom/bottom-sheet";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { BottomSheetScrollView, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
+import { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, File, Folder, Search } from "@/components/icons/material-icons";
 import { compactUp } from "@/styles/theme";
 import {
@@ -52,16 +48,14 @@ import {
 } from "./combobox-options";
 import type { ComboboxOptionModel } from "./combobox-options";
 import { isWeb } from "@/constants/platform";
-import {
-  IsolatedBottomSheetModal,
-  useIsolatedBottomSheetVisibility,
-} from "./isolated-bottom-sheet-modal";
+import { useIsolatedBottomSheetVisibility } from "./isolated-bottom-sheet-modal";
 import {
   AdaptiveTextInput,
   InlineHeaderView,
   SheetHeaderView,
   type SheetHeader,
 } from "@/components/adaptive-modal-sheet";
+import { SheetSurfaceModal } from "@/components/ui/sheet-chrome";
 import { FloatingSurface } from "@/components/ui/floating";
 import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
 import { SearchClearButton } from "@/components/ui/search-clear-button";
@@ -163,24 +157,6 @@ function toNumericStyleValue(value: unknown): number | null {
     }
   }
   return null;
-}
-
-function ComboboxSheetBackground({ style }: BottomSheetBackgroundProps) {
-  const { theme } = useUnistyles();
-
-  const combinedStyle = useMemo(
-    () => [
-      style,
-      {
-        backgroundColor: theme.colors.surface0,
-        borderTopLeftRadius: theme.borderRadius["2xl"],
-        borderTopRightRadius: theme.borderRadius["2xl"],
-      },
-    ],
-    [style, theme.colors.surface0, theme.borderRadius],
-  );
-
-  return <Animated.View pointerEvents="none" style={combinedStyle} />;
 }
 
 export interface SearchInputProps {
@@ -1020,7 +996,6 @@ interface MobileBodyProps {
   snapPoints: string[];
   handleSheetChange: BottomSheetVisibility["handleSheetChange"];
   handleSheetDismiss: BottomSheetVisibility["handleSheetDismiss"];
-  handleIndicatorStyle: { backgroundColor: string };
   titleColor: string;
   title: string;
   header: SheetHeader | undefined;
@@ -1106,10 +1081,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
     [],
   );
 
-  const comboboxTitleStyle = useMemo(
-    () => [styles.comboboxTitle, { color: props.titleColor }],
-    [props.titleColor],
-  );
+  const comboboxHeader = useMemo<SheetHeader>(() => ({ title: props.title }), [props.title]);
   const frameStyle = useMemo(
     () => [styles.mobileSheetFrame, { paddingBottom: props.safeAreaBottom }],
     [props.safeAreaBottom],
@@ -1130,7 +1102,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
   );
 
   return (
-    <IsolatedBottomSheetModal
+    <SheetSurfaceModal
       ref={props.bottomSheetRef}
       contextBridge={null}
       snapPoints={props.snapPoints}
@@ -1140,8 +1112,6 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
       onDismiss={props.handleSheetDismiss}
       backdropComponent={renderBackdrop}
       enablePanDownToClose
-      backgroundComponent={ComboboxSheetBackground}
-      handleIndicatorStyle={props.handleIndicatorStyle}
       keyboardBehavior="extend"
       keyboardBlurBehavior="none"
       presentation={props.presentation}
@@ -1151,11 +1121,14 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
           <SheetHeaderView header={props.header} onClose={props.onClose} />
         ) : (
           <>
-            <View style={styles.bottomSheetHeader}>
-              <Text key={props.titleColor} style={comboboxTitleStyle}>
-                {props.title}
-              </Text>
-            </View>
+            {/* The shared sheet header, so a picker's title sits where every other sheet's
+                does. No close button: a picker closes by choosing, dragging down, or tapping
+                the backdrop, and an X is chrome on the one surface that needs none. */}
+            <SheetHeaderView
+              header={comboboxHeader}
+              onClose={props.onClose}
+              showCloseButton={false}
+            />
             {props.stickyHeader}
             {!props.hasChildren && props.searchable ? (
               <SearchInput
@@ -1189,7 +1162,7 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
         )}
         {props.footer ? <View style={styles.footer}>{props.footer}</View> : null}
       </View>
-    </IsolatedBottomSheetModal>
+    </SheetSurfaceModal>
   );
 }
 
@@ -1713,11 +1686,6 @@ export function Combobox({
 
   useDismissKeyboardOnOpen(isOpen, isMobile);
 
-  const handleIndicatorStyle = useMemo(
-    () => ({ backgroundColor: theme.colors.palette.zinc[600] }),
-    [theme.colors.palette.zinc],
-  );
-
   const desktopFrameStyle = useMemo(
     () =>
       buildDesktopFrameStyle({
@@ -1755,7 +1723,6 @@ export function Combobox({
         snapPoints={snapPoints}
         handleSheetChange={handleSheetChange}
         handleSheetDismiss={handleSheetDismiss}
-        handleIndicatorStyle={handleIndicatorStyle}
         titleColor={titleColor}
         title={resolvedTitle}
         header={header}
@@ -1981,15 +1948,6 @@ const styles = StyleSheet.create((theme) => ({
   footer: {
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
-  },
-  bottomSheetHeader: {
-    paddingHorizontal: theme.spacing[6],
-    paddingBottom: theme.spacing[2],
-  },
-  comboboxTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.medium,
-    textAlign: "left",
   },
   comboboxScrollContent: {
     paddingBottom: theme.spacing[8],

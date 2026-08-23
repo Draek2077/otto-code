@@ -44,6 +44,12 @@ export function getStatusRingRotation(nowMs: number): number {
  * slot, so growing them in place would walk the indicator off the corner. Callers keep their
  * existing dot offset and pass it through here to grow around the same centre point.
  */
-export function getStatusRingOffset(dotOffset: number, dotSize: number): number {
-  return dotOffset - (STATUS_RING_FRAME_SIZE - dotSize) / 2;
+export function getStatusRingOffset(
+  dotOffset: number,
+  dotSize: number,
+  /** The compact form factor, where both the ring and the dot it replaces are doubled. */
+  isCompact = false,
+): number {
+  const frameSize = isCompact ? STATUS_RING_FRAME_SIZE * 2 : STATUS_RING_FRAME_SIZE;
+  return dotOffset - (frameSize - dotSize) / 2;
 }

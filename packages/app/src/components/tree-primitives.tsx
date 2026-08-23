@@ -4,6 +4,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronRight } from "@/components/icons/material-icons";
 import { TREE_RAILS_ALL_CONTINUE, treeRailContinuesAt } from "@/components/tree-rail-mask";
 import { compactUp, SPACING, type Theme } from "@/styles/theme";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 // Shared presentation primitives for the app's directory trees. Both the Files
@@ -16,7 +17,37 @@ export const TREE_INDENT_PER_LEVEL = 16;
 export const WORKSPACE_FILE_ROW_VERTICAL_PADDING = SPACING[1.5];
 export const WORKSPACE_TREE_ICON_SIZE = 16;
 export const WORKSPACE_TREE_LOADING_ICON_SIZE = 14;
-export const WORKSPACE_TREE_ICON_FRAME_SIZE = compactUp(WORKSPACE_TREE_ICON_SIZE);
+/**
+ * How much bigger a tree glyph gets on a compact form factor.
+ *
+ * Gentler than the app-wide 2x, because these rows are a dense list rather than chrome: a 32pt
+ * glyph makes a 32pt row a 48pt one, and a screenful of files then scrolls a third less content.
+ * 1.5x lands the row on the same ~36pt pitch as a sidebar workspace row, which is a comfortable
+ * touch target, with a glyph that is still unmistakably bigger than the desktop one.
+ *
+ * Frame and glyph move together, always. A frame that scales while its glyph does not is what
+ * left the icon column looking empty, the rows looking too tall, and - where two glyphs share one
+ * slot, as a folder row's chevron and folder do - the second glyph squeezed out of the row.
+ */
+export const TREE_ICON_COMPACT_SCALE = 1.5;
+export const WORKSPACE_TREE_ICON_FRAME_SIZE = compactUp(
+  WORKSPACE_TREE_ICON_SIZE,
+  TREE_ICON_COMPACT_SCALE,
+);
+/** A directory row's leading slot: the disclosure chevron and the folder glyph, side by side. */
+export const WORKSPACE_TREE_DIRECTORY_ICON_FRAME_SIZE = compactUp(
+  WORKSPACE_TREE_ICON_SIZE * 2,
+  TREE_ICON_COMPACT_SCALE,
+);
+
+/**
+ * The glyph size that fills {@link WORKSPACE_TREE_ICON_FRAME_SIZE}. A plain `size` prop never
+ * sees the ambient compact patch, so every tree glyph reads it from here.
+ */
+export function useTreeIconSize(): number {
+  const isCompact = useIsCompactFormFactor();
+  return isCompact ? WORKSPACE_TREE_ICON_SIZE * TREE_ICON_COMPACT_SCALE : WORKSPACE_TREE_ICON_SIZE;
+}
 export const WORKSPACE_TREE_ICON_LABEL_GAP = SPACING[2];
 /**
  * Trailing glyph rail shared with the explorer X and Changes options chevron.
@@ -104,12 +135,10 @@ export function TreeIndentGuides({
 
 /** Rotating disclosure chevron for a directory row (points right; rotates down when expanded). */
 export function TreeChevron({ expanded }: { expanded: boolean }) {
+  const iconSize = useTreeIconSize();
   return (
     <View style={expanded ? CHEVRON_EXPANDED_STYLE : styles.chevron}>
-      <ThemedChevronRight
-        size={WORKSPACE_TREE_ICON_SIZE}
-        uniProps={foregroundExtraMutedIconColorMapping}
-      />
+      <ThemedChevronRight size={iconSize} uniProps={foregroundExtraMutedIconColorMapping} />
     </View>
   );
 }

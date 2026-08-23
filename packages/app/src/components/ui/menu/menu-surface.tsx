@@ -10,18 +10,16 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { useTranslation } from "react-i18next";
-import { Pressable, Text, View, type ScrollView, type ScrollViewProps } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { View, type ScrollView, type ScrollViewProps } from "react-native";
 import { BottomSheetBackdrop, BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import { ChevronLeft } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,
   type ContextBridge,
 } from "@/components/ui/isolated-bottom-sheet-modal";
-import { SPACING, type Theme } from "@/styles/theme";
+import { SPACING } from "@/styles/theme";
+import { SheetSurfaceModal } from "@/components/ui/sheet-chrome";
+import { SheetHeaderView } from "@/components/adaptive-modal-sheet";
 import { useMenuContext, MenuContextProvider } from "./menu-context";
 import { MenuPage } from "./menu-item";
 import { currentPageId, isSubPageOpen } from "./menu-navigation";
@@ -29,27 +27,9 @@ import { AnchoredSurface, MenuOverlay } from "./menu-overlay";
 import { getMenuSheetBottomPadding } from "./menu-sheet-layout";
 import type { Alignment, Placement } from "./menu-anchor";
 
-const ThemedChevronLeft = withUnistyles(ChevronLeft);
-const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-
 // `backgroundStyle` and `handleIndicatorStyle` are style-shaped props the Babel plugin does not
 // track, so the sheet is wrapped rather than reading the theme through a hook.
 // See docs/unistyles.md.
-const ThemedBottomSheetModal = withUnistyles(IsolatedBottomSheetModal, (theme) => ({
-  backgroundStyle: {
-    borderTopLeftRadius: theme.borderRadius.xl,
-    borderTopRightRadius: theme.borderRadius.xl,
-    borderWidth: 1,
-    backgroundColor: theme.colors.surface0,
-    borderColor: theme.colors.border,
-  },
-  handleIndicatorStyle: {
-    width: 36,
-    height: 4,
-    backgroundColor: theme.colors.surface2,
-  },
-}));
-
 /** How long the pointer must rest on a submenu row before its flyout opens. */
 const HOVER_OPEN_DELAY_MS = 90;
 /**
@@ -374,7 +354,7 @@ function MenuSheetSurface({
   );
 
   return (
-    <ThemedBottomSheetModal
+    <SheetSurfaceModal
       ref={sheetRef}
       contextBridge={contextBridge}
       // Content-sized rather than fixed snap points: a pushed page is rarely the same height
@@ -409,10 +389,15 @@ function MenuSheetSurface({
           </>
         )}
       </BottomSheetScrollView>
-    </ThemedBottomSheetModal>
+    </SheetSurfaceModal>
   );
 }
 
+/**
+ * The sheet header, which is the one every other sheet uses. A menu sheet passes no `onClose`
+ * work of its own: it closes by choosing a row, dragging down, or tapping the backdrop, so it
+ * asks for no close button - see the sheet frame contract in docs/floating-panels.md.
+ */
 function MenuSheetHeader({
   title,
   onBack,
@@ -420,49 +405,20 @@ function MenuSheetHeader({
   title: string;
   onBack: (() => void) | null;
 }): ReactElement {
-  const { t } = useTranslation();
+  const header = useMemo(
+    () => (onBack ? { title, back: { onPress: onBack } } : { title }),
+    [onBack, title],
+  );
   return (
-    <View style={styles.sheetHeader}>
-      {onBack ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("common.back")}
-          hitSlop={8}
-          onPress={onBack}
-          style={styles.sheetBackButton}
-          testID="menu-sheet-back"
-        >
-          <ThemedChevronLeft size={18} uniProps={mutedIconMapping} />
-        </Pressable>
-      ) : null}
-      <Text style={styles.sheetTitle} numberOfLines={1}>
-        {title}
-      </Text>
-    </View>
+    <SheetHeaderView
+      header={header}
+      onClose={noop}
+      showCloseButton={false}
+      testID="menu-sheet-header"
+    />
   );
 }
 
-const styles = StyleSheet.create((theme) => ({
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingTop: theme.spacing[1],
-    paddingBottom: theme.spacing[3],
-  },
-  sheetBackButton: {
-    width: 24,
-    height: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sheetTitle: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foreground,
-    flexShrink: 1,
-  },
-}));
+function noop() {}
 
 export { isSubPageOpen };

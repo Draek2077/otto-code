@@ -1,28 +1,28 @@
 /**
  * Responsive fitting for the compact workspace header's action strip.
  *
- * The strip is `[menu toggle] [title / subtitle] [...] [Microphone] [Voice cues]
- * [Visualizer] [Play] [Brain]` in the header's `left` container plus
- * `[Explorer]` in `right`.
+ * The strip is `[menu toggle] [title / subtitle] [...] [Chat] [Meetings]
+ * [Microphone] [Voice cues] [Visualizer] [Play] [Brain]` in the header's `left`
+ * container plus `[Explorer]` in `right`.
  * The "..." menu is the one non-negotiable control, and the project name /
  * workspace subtitle must always keep at least `MIN_TITLE_WIDTH` - so when the
- * row can't hold everything the optional buttons drop in the order Voice cues,
- * Visualizer, Play. Microphone, Brain, and Explorer are required controls.
+ * row can't hold everything the optional buttons drop in `DROP_ORDER`. Brain
+ * and Explorer are the only required controls.
  *
  * A dropped button is moved, not lost: every action the fit drops reappears as
  * an item in the "..." menu (the `menu*` flags below), so narrowing the window
  * costs a tap, never the capability. The drop order ranks one-tap value: Voice
- * cues go first because the same switch also lives in Agents settings, and Play
- * goes last because starting a workspace script is the most launch-like action
- * in the strip.
+ * cues go first because the same switch also lives in Agents settings, the two
+ * popup surfaces (Meetings, then Chat) follow because both open a panel that
+ * reads the same from a menu item, and the microphone goes last because it is
+ * the live listening control.
  *
- * Required controls are charged to the fixed chrome. The microphone is a
- * privacy control, while Brain is a status light, so neither belongs in a
- * closed menu. Explorer is the primary file access control.
+ * Required controls are charged to the fixed chrome. Brain is a status light
+ * rather than an action, and Explorer is the primary file access control.
  */
 
 /** Optional compact header buttons, listed in the order they drop. */
-const DROP_ORDER = ["voiceCues", "visualizer", "play"] as const;
+const DROP_ORDER = ["voiceCues", "meetings", "teamChat", "visualizer", "play", "wakeWord"] as const;
 
 type CompactHeaderAction = (typeof DROP_ORDER)[number] | "explorer";
 
@@ -35,16 +35,16 @@ type CompactHeaderAction = (typeof DROP_ORDER)[number] | "explorer";
 export const MIN_TITLE_WIDTH = 96;
 
 // Compact chrome widths, derived from the styles the buttons actually use:
-// every one is `headerIconSlotStyle.slot` (spacing[3] = 12px padding per side)
-// wrapping a compact-scaled glyph. Approximations are fine - this decides
-// whether a ~54px box fits, not where it lands.
-const SLOT_PADDING = 12 * 2;
-/** `MobileMenuIcon` is a fixed 16px rule doubled in compact. */
-const SIDEBAR_TOGGLE_WIDTH = SLOT_PADDING + 32;
-/** The "..." trigger scales its glyph at 1.5x `md` (16 -> 24). */
-const MENU_TRIGGER_WIDTH = SLOT_PADDING + 24;
-/** Play / Voice cues / Visualizer / Explorer all scale `lg` (20) at 1.5x. */
+// every action is `headerIconSlotStyle.compactSlot` (spacing[3] - 3 padding
+// plus the reserved 1px focus border, so 10px per side) wrapping a compact
+// glyph. Approximations are fine - this decides whether a ~50px box fits, not
+// where it lands.
+const SLOT_PADDING = 10 * 2;
+/** The sidebar toggle keeps the roomier `slot` around a 16px rule doubled in compact. */
+const SIDEBAR_TOGGLE_WIDTH = 12 * 2 + 32;
+/** Every control in the strip - the "..." trigger included - scales `lg` (20) at 1.5x. */
 const ACTION_WIDTH = SLOT_PADDING + 30;
+const MENU_TRIGGER_WIDTH = ACTION_WIDTH;
 /** `ScreenHeader`'s row padding plus the `left` container's one gap. */
 const ROW_CHROME_WIDTH = 8 * 2 + 8;
 
@@ -65,6 +65,10 @@ export interface CompactHeaderActionsInput {
   microphoneAvailable: boolean;
   hasWorkspaceScripts: boolean;
   hasWorkspaceDirectory: boolean;
+  /** The Team Chat button reports itself as showable (host connected, chat on). */
+  hasTeamChatButton: boolean;
+  /** The Meeting notes button reports itself as showable (recorder supported). */
+  hasMeetingsButton: boolean;
   /**
    * The Brain status light is on screen (the sidebar is collapsed, or this is
    * compact). It never drops, so it is charged to fixed chrome.
@@ -79,6 +83,12 @@ export interface CompactHeaderActionsFit {
   showVisualizer: boolean;
   /** Voice-cue mute, in the title cluster left of the Visualizer. */
   showVoiceCues: boolean;
+  /** Team Chat popup trigger, first in the title cluster. */
+  showTeamChat: boolean;
+  /** Meeting notes popup trigger, beside Team Chat. */
+  showMeetings: boolean;
+  /** Wake-word ("Hey Otto") listening toggle. */
+  showWakeWord: boolean;
   /** Developer-mode Explorer toggle, in the compact `headerRight`. */
   showCompactExplorer: boolean;
   /** User-mode Explorer toggle, which also renders on desktop. */
@@ -92,6 +102,9 @@ export interface CompactHeaderActionsFit {
   menuVisualizer: boolean;
   menuExplorer: boolean;
   menuPlay: boolean;
+  menuTeamChat: boolean;
+  menuMeetings: boolean;
+  menuWakeWord: boolean;
 }
 
 /**
@@ -116,6 +129,15 @@ export function resolveCompactHeaderActions(
   if (input.voiceCuesAvailable) {
     requested.add("voiceCues");
   }
+  if (input.hasTeamChatButton) {
+    requested.add("teamChat");
+  }
+  if (input.hasMeetingsButton) {
+    requested.add("meetings");
+  }
+  if (input.microphoneAvailable) {
+    requested.add("wakeWord");
+  }
   if (input.isDeveloperMode || input.hasWorkspaceDirectory) {
     requested.add("explorer");
   }
@@ -128,7 +150,6 @@ export function resolveCompactHeaderActions(
           requested,
           required,
           requiredWidth:
-            (input.microphoneAvailable ? ACTION_WIDTH : 0) +
             (input.hasBrainButton ? ACTION_WIDTH : 0) +
             (required.has("explorer") ? ACTION_WIDTH : 0),
         })
@@ -138,12 +159,18 @@ export function resolveCompactHeaderActions(
     showPlay: fitted.has("play"),
     showVisualizer: fitted.has("visualizer"),
     showVoiceCues: fitted.has("voiceCues"),
+    showTeamChat: fitted.has("teamChat"),
+    showMeetings: fitted.has("meetings"),
+    showWakeWord: fitted.has("wakeWord"),
     showCompactExplorer: input.isCompact && fitted.has("explorer"),
     showPlainExplorer: input.hasWorkspaceDirectory && fitted.has("explorer"),
     menuVoiceCues: dropped("voiceCues"),
     menuVisualizer: dropped("visualizer"),
     menuExplorer: dropped("explorer"),
     menuPlay: dropped("play"),
+    menuTeamChat: dropped("teamChat"),
+    menuMeetings: dropped("meetings"),
+    menuWakeWord: dropped("wakeWord"),
   };
 }
 

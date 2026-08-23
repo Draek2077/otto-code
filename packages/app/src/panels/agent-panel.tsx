@@ -28,6 +28,7 @@ import {
   resolveBlackChatCanvasStyle,
   useBlackChatScope,
 } from "@/components/black-chat-scope-context";
+import { ChatThemeScope } from "@/components/chat-theme-scope";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
@@ -1448,6 +1449,12 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       >
         {contentContainer}
 
+        {composerSection}
+
+        {/* Under the message box, not over it: the sync warning is ambient
+            status, so it must never push the composer down or cover the last
+            message while the user is typing. It sits above the metrics bar so
+            the run's own totals stay the bottom-most row. */}
         {showHistorySyncError ? (
           <SidebarCallout
             title={t("agentPanel.states.timelineSyncFailed")}
@@ -1455,8 +1462,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
             testID="agent-timeline-sync-error"
           />
         ) : null}
-
-        {composerSection}
 
         {/* Below the composer, at toolbar weight: this chat's total spend and
             everything spawned under it. Its top border separates it from the
@@ -1803,6 +1808,7 @@ function ActiveAgentComposer({
   onMessageSent: () => void;
   viewportHeight: number;
 }) {
+  const isBlackChat = useBlackChatScope();
   const insets = useSafeAreaInsets();
   const isCompactFormFactor = useIsCompactFormFactor();
   const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
@@ -2018,75 +2024,91 @@ function ActiveAgentComposer({
     mode: "translate",
   });
 
+  // The composer gutter is an opaque `surface0` band spanning the pane, so it
+  // is a chat canvas in its own right and needs the same authoritative black
+  // fill as the pane root - without it the whole bottom of a black chat pane
+  // stays on the app palette.
   const inputAreaStyle = useMemo(
-    () => [styles.inputAreaWrapper, { paddingBottom: insets.bottom }, composerKeyboardStyle],
-    [insets.bottom, composerKeyboardStyle],
+    () => [
+      styles.inputAreaWrapper,
+      resolveBlackChatCanvasStyle(isBlackChat),
+      { paddingBottom: insets.bottom },
+      composerKeyboardStyle,
+    ],
+    [insets.bottom, composerKeyboardStyle, isBlackChat],
   );
 
   return (
-    <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
-      {/* Topmost card in the fanned stack (highest), yet painted first so it sits
+    // Re-assert the black palette on every render of the composer column: this
+    // component re-renders on its own (draft text, queue, subagent rows) and
+    // would otherwise re-register all of its chrome against the app theme.
+    <ChatThemeScope>
+      <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
+        {/* Topmost card in the fanned stack (highest), yet painted first so it sits
           BEHIND every flyout below it and the composer - see RateLimitWarningTrack. */}
-      {/* Mounted above the usage warning: highest in the fan, painted furthest
+        {/* Mounted above the usage warning: highest in the fan, painted furthest
           back. Context health is important but never urgent, so it yields the
           position nearest the composer to the rate-limit strip. */}
-      <ContextHealthTrack serverId={serverId} agentId={agentId} />
-      <RateLimitWarningTrack serverId={serverId} agentId={agentId} />
-      {/* Says out loud that the last prompt was accepted by Otto rather than
+        <ContextHealthTrack serverId={serverId} agentId={agentId} />
+        <RateLimitWarningTrack serverId={serverId} agentId={agentId} />
+        {/* Says out loud that the last prompt was accepted by Otto rather than
           typed, and carries the Stop for the chain. Only renders once a
           suggestion has actually been followed. */}
-      <FollowSuggestionTrack serverId={serverId} agentId={agentId} />
-      {SHOW_PASEO_TASK_LIST_PANEL ? <AgentTaskList serverId={serverId} agentId={agentId} /> : null}
-      <SubagentsTrack
-        rows={subagentRows}
-        onOpenSubagent={handleOpenSubagent}
-        onOpenProviderSubagent={handleOpenProviderSubagent}
-        onArchiveSubagent={handleArchiveSubagent}
-        onStopSubagent={handleStopSubagent}
-        onClearCompleted={handleClearCompletedSubagents}
-        onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
-        clearedTokens={clearedSubagentTokens}
-      />
-      {hasBackgroundShellTasks ? (
-        <BackgroundTasksTrack
-          rows={backgroundTaskRows}
-          onStopTask={handleStopBackgroundTask}
-          onClearTasks={handleClearCompletedBackgroundTasks}
-          expanded={backgroundTasksExpanded}
-          onExpandedChange={setBackgroundTasksExpanded}
+        <FollowSuggestionTrack serverId={serverId} agentId={agentId} />
+        {SHOW_PASEO_TASK_LIST_PANEL ? (
+          <AgentTaskList serverId={serverId} agentId={agentId} />
+        ) : null}
+        <SubagentsTrack
+          rows={subagentRows}
+          onOpenSubagent={handleOpenSubagent}
+          onOpenProviderSubagent={handleOpenProviderSubagent}
+          onArchiveSubagent={handleArchiveSubagent}
+          onStopSubagent={handleStopSubagent}
+          onClearCompleted={handleClearCompletedSubagents}
+          onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
+          clearedTokens={clearedSubagentTokens}
         />
-      ) : null}
-      {/* Front of the fan: a card mid-entrance or mid-dismissal overflows its own
+        {hasBackgroundShellTasks ? (
+          <BackgroundTasksTrack
+            rows={backgroundTaskRows}
+            onStopTask={handleStopBackgroundTask}
+            onClearTasks={handleClearCompletedBackgroundTasks}
+            expanded={backgroundTasksExpanded}
+            onExpandedChange={setBackgroundTasksExpanded}
+          />
+        ) : null}
+        {/* Front of the fan: a card mid-entrance or mid-dismissal overflows its own
           collapsing box across this space, so the composer needs the highest
           explicit z-index for the card to pass behind it rather than over the
           input. See COMPOSER_TRACK_LAYERS in composer/track-layers.ts. */}
-      <View style={styles.composerLayer}>
-        <Composer
-          agentId={agentId}
-          serverId={serverId}
-          externalKeyboardShift
-          isPaneFocused={isPaneFocused}
-          value={agentInputDraft.text}
-          onChangeText={agentInputDraft.setText}
-          attachments={agentInputDraft.attachments}
-          attachmentScopeKeys={attachmentScopeKeys}
-          attachmentWriteScopeKey={workspaceAttachmentScopeKey}
-          onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
-          onChangeAttachments={agentInputDraft.setAttachments}
-          cwd={cwd}
-          clearDraft={agentInputDraft.clear}
-          autoFocus={isPaneFocused}
-          isSubmitLoading={isSubmitLoading}
-          onAttentionInputFocus={onAttentionInputFocus}
-          onAttentionPromptSend={onAttentionPromptSend}
-          onComposerHeightChange={onComposerHeightChange}
-          onMessageSent={onMessageSent}
-          onClientSlashCommand={handleClientSlashCommand}
-          isCompactLayout={isCompactComposerLayout}
-          viewportHeight={viewportHeight}
-        />
-      </View>
-    </ReanimatedAnimated.View>
+        <View style={styles.composerLayer}>
+          <Composer
+            agentId={agentId}
+            serverId={serverId}
+            externalKeyboardShift
+            isPaneFocused={isPaneFocused}
+            value={agentInputDraft.text}
+            onChangeText={agentInputDraft.setText}
+            attachments={agentInputDraft.attachments}
+            attachmentScopeKeys={attachmentScopeKeys}
+            attachmentWriteScopeKey={workspaceAttachmentScopeKey}
+            onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
+            onChangeAttachments={agentInputDraft.setAttachments}
+            cwd={cwd}
+            clearDraft={agentInputDraft.clear}
+            autoFocus={isPaneFocused}
+            isSubmitLoading={isSubmitLoading}
+            onAttentionInputFocus={onAttentionInputFocus}
+            onAttentionPromptSend={onAttentionPromptSend}
+            onComposerHeightChange={onComposerHeightChange}
+            onMessageSent={onMessageSent}
+            onClientSlashCommand={handleClientSlashCommand}
+            isCompactLayout={isCompactComposerLayout}
+            viewportHeight={viewportHeight}
+          />
+        </View>
+      </ReanimatedAnimated.View>
+    </ChatThemeScope>
   );
 }
 

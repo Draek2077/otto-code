@@ -1,4 +1,4 @@
-import { View, Pressable, Text, Keyboard, type PressableStateCallbackType } from "react-native";
+import { View, Text, Keyboard, type PressableStateCallbackType } from "react-native";
 import type { TFunction } from "i18next";
 import {
   useState,
@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { ChatThemeScope } from "@/components/chat-theme-scope";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
 import {
@@ -19,7 +20,7 @@ import {
   ChevronDown,
   ChevronUp,
   Stop,
-  Pencil,
+  Undo2,
   AudioLines,
   CircleDot,
   FileText,
@@ -29,6 +30,7 @@ import {
   Image as ImageIcon,
   ClipboardPaste,
   Paperclip,
+  Publish,
   UploadFile,
 } from "@/components/icons/material-icons";
 import * as Clipboard from "expo-clipboard";
@@ -602,34 +604,44 @@ function QueuedMessageRow({
         // buttons competing with edit/send. The ends of the queue keep their
         // arrow, disabled, so every row's controls stay on the same grid.
         <View style={styles.queueMoveColumn}>
-          <Pressable
-            onPress={handleMoveUp}
-            disabled={!canMoveUp}
-            hitSlop={QUEUE_MOVE_UP_HIT_SLOP}
-            style={canMoveUp ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
-            accessibilityLabel={moveUpLabel}
-            accessibilityRole="button"
-            accessibilityState={canMoveUp ? undefined : QUEUE_MOVE_DISABLED_STATE}
-          >
-            <ThemedChevronUp
-              size={iconSize.xs}
-              uniProps={canMoveUp ? iconForegroundMapping : iconForegroundMutedMapping}
-            />
-          </Pressable>
-          <Pressable
-            onPress={handleMoveDown}
-            disabled={!canMoveDown}
-            hitSlop={QUEUE_MOVE_DOWN_HIT_SLOP}
-            style={canMoveDown ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
-            accessibilityLabel={moveDownLabel}
-            accessibilityRole="button"
-            accessibilityState={canMoveDown ? undefined : QUEUE_MOVE_DISABLED_STATE}
-          >
-            <ThemedChevronDown
-              size={iconSize.xs}
-              uniProps={canMoveDown ? iconForegroundMapping : iconForegroundMutedMapping}
-            />
-          </Pressable>
+          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger
+              onPress={handleMoveUp}
+              disabled={!canMoveUp}
+              hitSlop={QUEUE_MOVE_UP_HIT_SLOP}
+              style={canMoveUp ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
+              accessibilityLabel={moveUpLabel}
+              accessibilityRole="button"
+              accessibilityState={canMoveUp ? undefined : QUEUE_MOVE_DISABLED_STATE}
+            >
+              <ThemedChevronUp
+                size={iconSize.xs}
+                uniProps={canMoveUp ? iconForegroundMapping : iconForegroundMutedMapping}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>{moveUpLabel}</Text>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger
+              onPress={handleMoveDown}
+              disabled={!canMoveDown}
+              hitSlop={QUEUE_MOVE_DOWN_HIT_SLOP}
+              style={canMoveDown ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
+              accessibilityLabel={moveDownLabel}
+              accessibilityRole="button"
+              accessibilityState={canMoveDown ? undefined : QUEUE_MOVE_DISABLED_STATE}
+            >
+              <ThemedChevronDown
+                size={iconSize.xs}
+                uniProps={canMoveDown ? iconForegroundMapping : iconForegroundMutedMapping}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center" offset={8}>
+              <Text style={styles.tooltipText}>{moveDownLabel}</Text>
+            </TooltipContent>
+          </Tooltip>
         </View>
       ) : null}
       {attachmentCount > 0 ? (
@@ -649,32 +661,49 @@ function QueuedMessageRow({
         {item.text}
       </Text>
       <View style={styles.queueActions}>
-        {onSendAll ? (
-          <Pressable
-            onPress={onSendAll}
-            style={styles.queueSendAllButton}
-            accessibilityLabel={sendAllLabel}
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger
+            onPress={handleEdit}
+            style={styles.queueActionButton}
+            accessibilityLabel={editLabel}
             accessibilityRole="button"
           >
-            <Text style={styles.queueSendAllText}>{sendAllLabel}</Text>
-          </Pressable>
+            <ThemedUndo size={iconSize.sm} uniProps={iconForegroundMapping} />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <Text style={styles.tooltipText}>{editLabel}</Text>
+          </TooltipContent>
+        </Tooltip>
+        {onSendAll ? (
+          // Icon-only like the rest of the row's controls, so the head row does
+          // not grow a wide text button; the name lives in the tooltip.
+          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger
+              onPress={onSendAll}
+              style={styles.queueActionButton}
+              accessibilityLabel={sendAllLabel}
+              accessibilityRole="button"
+            >
+              <ThemedPublish size={iconSize.sm} uniProps={iconForegroundMapping} />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>{sendAllLabel}</Text>
+            </TooltipContent>
+          </Tooltip>
         ) : null}
-        <Pressable
-          onPress={handleEdit}
-          style={styles.queueActionButton}
-          accessibilityLabel={editLabel}
-          accessibilityRole="button"
-        >
-          <ThemedPencil size={iconSize.sm} uniProps={iconForegroundMapping} />
-        </Pressable>
-        <Pressable
-          onPress={handleSendNow}
-          style={QUEUE_SEND_BUTTON_STYLE}
-          accessibilityLabel={sendNowLabel}
-          accessibilityRole="button"
-        >
-          <ThemedArrowUp size={iconSize.sm} uniProps={iconAccentForegroundMapping} />
-        </Pressable>
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger
+            onPress={handleSendNow}
+            style={QUEUE_SEND_BUTTON_STYLE}
+            accessibilityLabel={sendNowLabel}
+            accessibilityRole="button"
+          >
+            <ThemedArrowUp size={iconSize.sm} uniProps={iconAccentForegroundMapping} />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <Text style={styles.tooltipText}>{sendNowLabel}</Text>
+          </TooltipContent>
+        </Tooltip>
       </View>
     </View>
   );
@@ -2554,116 +2583,123 @@ export function Composer({
   );
 
   return (
-    <ComposerKeyboardScopeProvider isActiveComposer={isPaneFocused}>
-      <ComposerFrame
-        externalKeyboardShift={externalKeyboardShift}
-        footer={renderComposerFooter(footer, null)}
-        isLocked={isComposerLocked}
-        renderOverlay={renderAttachmentLightbox}
-      >
-        {queueList}
-        {sendErrorNode}
+    // The composer re-renders on every keystroke, queue change and attachment
+    // edit, none of which pass through the chat pane's ScopedTheme markers.
+    // Re-asserting the scope here keeps its own chrome - input well, queue
+    // rows, control chips - on the black palette instead of silently falling
+    // back to the app one (see components/chat-theme-scope.tsx).
+    <ChatThemeScope>
+      <ComposerKeyboardScopeProvider isActiveComposer={isPaneFocused}>
+        <ComposerFrame
+          externalKeyboardShift={externalKeyboardShift}
+          footer={renderComposerFooter(footer, null)}
+          isLocked={isComposerLocked}
+          renderOverlay={renderAttachmentLightbox}
+        >
+          {queueList}
+          {sendErrorNode}
 
-        <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
-          <AutocompletePopover
-            visible={autocompleteVisible}
-            anchorRef={messageInputContainerRef}
-            options={autocomplete.options}
-            selectedIndex={autocomplete.selectedIndex}
-            onSelect={autocomplete.onSelectOption}
-            isLoading={autocomplete.isLoading}
-            errorMessage={autocomplete.errorMessage}
-            loadingText={autocomplete.loadingText}
-            emptyText={autocomplete.emptyText}
-          />
+          <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
+            <AutocompletePopover
+              visible={autocompleteVisible}
+              anchorRef={messageInputContainerRef}
+              options={autocomplete.options}
+              selectedIndex={autocomplete.selectedIndex}
+              onSelect={autocomplete.onSelectOption}
+              isLoading={autocomplete.isLoading}
+              errorMessage={autocomplete.errorMessage}
+              loadingText={autocomplete.loadingText}
+              emptyText={autocomplete.emptyText}
+            />
 
-          {/* MessageInput handles everything: text, dictation, attachments, all buttons */}
-          <StableMessageInput
-            ref={messageInputRef}
-            value={userInput}
-            onChangeText={handleComposerChangeText}
-            onSubmit={handleSubmit}
-            hasExternalContent={hasExternalContent}
-            allowEmptySubmit={allowEmptySubmit}
-            submitButtonAccessibilityLabel={submitButtonAccessibilityLabel}
-            submitButtonTestID={submitButtonTestID}
-            submitIcon={submitIcon}
-            isSubmitDisabled={isSubmitDisabled}
-            isSubmitLoading={isSubmitLoadingVisible}
-            preserveHeightOnSubmit={submitBehavior === "preserve-and-lock"}
-            attachments={selectedAttachments}
-            cwd={cwd}
-            attachmentMenuItems={attachmentMenuItems}
-            onAttachButtonRef={handleAttachButtonRef}
-            onAddImages={addImages}
-            client={client}
-            isReadyForDictation={isDictationReady}
-            placeholder={
-              appSettings.promptSuggestionsEnabled && promptSuggestion && userInput.length === 0
-                ? promptSuggestion
-                : messagePlaceholder
-            }
-            autoFocus={messageInputAutoFocus}
-            autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}
-            disabled={isSubmitLoading}
-            isPaneFocused={isPaneFocused}
-            autoStartDictation={autoStartDictation}
-            onAutoStartDictationConsumed={onAutoStartDictationConsumed}
-            leadingContent={mode.showUsageMeter ? contextWindowMeter : null}
-            showAutoSpeechButton={mode.showAutoSpeechButton}
-            leftContent={leftContent}
-            rightContent={rightContent}
-            activeActionContent={activeActionContent}
-            voiceServerId={serverId}
-            voiceAgentId={agentId}
-            isAgentRunning={isAgentRunning}
-            defaultSendBehavior={appSettings.sendBehavior}
-            onQueue={handleQueue}
-            onSubmitLoadingPress={submitLoadingPressHandler}
-            onKeyPress={handleCommandKeyPress}
-            onSelectionChange={handleSelectionChange}
-            onFocusChange={handleFocusChange}
-            onHeightChange={onComposerHeightChange}
-            viewportHeight={viewportHeight}
-            inputWrapperStyle={inputWrapperStyle}
-            attachmentSlot={attachmentTray}
-            inputMode={inputMode}
-            readOnly={readOnly}
-            submitLabel={submitLabel}
-          />
-          <Combobox
-            options={githubSearchOptions}
-            value=""
-            onSelect={noop}
-            keepOpenOnSelect
-            searchable
-            searchPlaceholder={t("composer.github.searchPlaceholder")}
-            title={t("composer.github.title")}
-            open={isGithubPickerOpen}
-            onOpenChange={handleGithubPickerOpenChange}
-            onSearchQueryChange={setGithubSearchQuery}
-            desktopPlacement="top-start"
-            anchorRef={attachButtonRef}
-            emptyText={githubEmptyText}
-            renderOption={renderGithubPickerOption}
-          />
-          <Combobox
-            options={folderSearchOptions}
-            value=""
-            onSelect={handleSelectFolder}
-            searchable
-            searchPlaceholder={t("composer.folder.searchPlaceholder")}
-            title={t("composer.folder.title")}
-            open={isFolderPickerOpen}
-            onOpenChange={handleFolderPickerOpenChange}
-            onSearchQueryChange={setFolderSearchQuery}
-            desktopPlacement="top-start"
-            anchorRef={attachButtonRef}
-            emptyText={folderEmptyText}
-          />
-        </View>
-      </ComposerFrame>
-    </ComposerKeyboardScopeProvider>
+            {/* MessageInput handles everything: text, dictation, attachments, all buttons */}
+            <StableMessageInput
+              ref={messageInputRef}
+              value={userInput}
+              onChangeText={handleComposerChangeText}
+              onSubmit={handleSubmit}
+              hasExternalContent={hasExternalContent}
+              allowEmptySubmit={allowEmptySubmit}
+              submitButtonAccessibilityLabel={submitButtonAccessibilityLabel}
+              submitButtonTestID={submitButtonTestID}
+              submitIcon={submitIcon}
+              isSubmitDisabled={isSubmitDisabled}
+              isSubmitLoading={isSubmitLoadingVisible}
+              preserveHeightOnSubmit={submitBehavior === "preserve-and-lock"}
+              attachments={selectedAttachments}
+              cwd={cwd}
+              attachmentMenuItems={attachmentMenuItems}
+              onAttachButtonRef={handleAttachButtonRef}
+              onAddImages={addImages}
+              client={client}
+              isReadyForDictation={isDictationReady}
+              placeholder={
+                appSettings.promptSuggestionsEnabled && promptSuggestion && userInput.length === 0
+                  ? promptSuggestion
+                  : messagePlaceholder
+              }
+              autoFocus={messageInputAutoFocus}
+              autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}
+              disabled={isSubmitLoading}
+              isPaneFocused={isPaneFocused}
+              autoStartDictation={autoStartDictation}
+              onAutoStartDictationConsumed={onAutoStartDictationConsumed}
+              leadingContent={mode.showUsageMeter ? contextWindowMeter : null}
+              showAutoSpeechButton={mode.showAutoSpeechButton}
+              leftContent={leftContent}
+              rightContent={rightContent}
+              activeActionContent={activeActionContent}
+              voiceServerId={serverId}
+              voiceAgentId={agentId}
+              isAgentRunning={isAgentRunning}
+              defaultSendBehavior={appSettings.sendBehavior}
+              onQueue={handleQueue}
+              onSubmitLoadingPress={submitLoadingPressHandler}
+              onKeyPress={handleCommandKeyPress}
+              onSelectionChange={handleSelectionChange}
+              onFocusChange={handleFocusChange}
+              onHeightChange={onComposerHeightChange}
+              viewportHeight={viewportHeight}
+              inputWrapperStyle={inputWrapperStyle}
+              attachmentSlot={attachmentTray}
+              inputMode={inputMode}
+              readOnly={readOnly}
+              submitLabel={submitLabel}
+            />
+            <Combobox
+              options={githubSearchOptions}
+              value=""
+              onSelect={noop}
+              keepOpenOnSelect
+              searchable
+              searchPlaceholder={t("composer.github.searchPlaceholder")}
+              title={t("composer.github.title")}
+              open={isGithubPickerOpen}
+              onOpenChange={handleGithubPickerOpenChange}
+              onSearchQueryChange={setGithubSearchQuery}
+              desktopPlacement="top-start"
+              anchorRef={attachButtonRef}
+              emptyText={githubEmptyText}
+              renderOption={renderGithubPickerOption}
+            />
+            <Combobox
+              options={folderSearchOptions}
+              value=""
+              onSelect={handleSelectFolder}
+              searchable
+              searchPlaceholder={t("composer.folder.searchPlaceholder")}
+              title={t("composer.folder.title")}
+              open={isFolderPickerOpen}
+              onOpenChange={handleFolderPickerOpenChange}
+              onSearchQueryChange={setFolderSearchQuery}
+              desktopPlacement="top-start"
+              anchorRef={attachButtonRef}
+              emptyText={folderEmptyText}
+            />
+          </View>
+        </ComposerFrame>
+      </ComposerKeyboardScopeProvider>
+    </ChatThemeScope>
   );
 }
 
@@ -2825,17 +2861,21 @@ const styles = StyleSheet.create((theme: Theme) => ({
     justifyContent: "center",
     backgroundColor: theme.colors.surface2,
   },
-  // 15 + 2 + 15 stacks to the same 32 as the round action buttons beside it, so
-  // adding the move control does not change the row's height.
+  // The stack is sized to the queue text's own line box - a `fontSize.base` row
+  // lands near 20pt - so it can never be what sets a row's height. It used to be
+  // 15 + 2 + 15 to match the 32pt round action buttons, which made the control
+  // the tallest thing in the row on any breakpoint where it scaled up.
   queueMoveColumn: {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: compactUp(2),
+    gap: 2,
   },
   queueMoveButton: {
-    width: compactUp(20),
-    height: compactUp(15),
+    // Compact keeps a slightly larger target against its larger text row, but
+    // not the doubled one `compactUp` would give: that is what grew the row.
+    width: { xs: 22, sm: 22, md: 18, lg: 18, xl: 18 },
+    height: { xs: 11, sm: 11, md: 9, lg: 9, xl: 9 },
     borderRadius: theme.borderRadius.base,
     alignItems: "center",
     justifyContent: "center",
@@ -2843,21 +2883,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   queueMoveButtonDisabled: {
     backgroundColor: "transparent",
-  },
-  queueSendAllButton: {
-    height: 32,
-    paddingHorizontal: theme.spacing[3],
-    borderRadius: theme.borderRadius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.surface2,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-  },
-  queueSendAllText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
   },
   queueSendButton: {
     backgroundColor: theme.colors.accent,
@@ -2872,11 +2897,14 @@ const QUEUE_SEND_BUTTON_STYLE = [styles.queueActionButton, styles.queueSendButto
 const QUEUE_MOVE_DISABLED_STATE = { disabled: true } as const;
 const QUEUE_MOVE_BUTTON_DISABLED_STYLE = [styles.queueMoveButton, styles.queueMoveButtonDisabled];
 // Slop only points away from the pair, so the two stacked targets cannot overlap.
-const QUEUE_MOVE_UP_HIT_SLOP = { top: 6, bottom: 0, left: 6, right: 6 } as const;
-const QUEUE_MOVE_DOWN_HIT_SLOP = { top: 0, bottom: 6, left: 6, right: 6 } as const;
+// It carries most of the target now that the buttons themselves are line-height
+// tall - the drawn pill is 9pt, the pressable area stays comfortably larger.
+const QUEUE_MOVE_UP_HIT_SLOP = { top: 10, bottom: 0, left: 8, right: 8 } as const;
+const QUEUE_MOVE_DOWN_HIT_SLOP = { top: 0, bottom: 10, left: 8, right: 8 } as const;
 
 const ThemedPaperclip = withUnistyles(Paperclip);
-const ThemedPencil = withUnistyles(Pencil);
+const ThemedUndo = withUnistyles(Undo2);
+const ThemedPublish = withUnistyles(Publish);
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedChevronUp = withUnistyles(ChevronUp);
 const ThemedChevronDown = withUnistyles(ChevronDown);

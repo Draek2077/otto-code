@@ -37,9 +37,11 @@ import {
   WORKSPACE_FILE_ROW_TRAILING_PADDING,
   WORKSPACE_FILE_ROW_VERTICAL_PADDING,
   WORKSPACE_TREE_ICON_LABEL_GAP,
+  WORKSPACE_TREE_DIRECTORY_ICON_FRAME_SIZE,
   WORKSPACE_TREE_ICON_FRAME_SIZE,
   WORKSPACE_TREE_ICON_SIZE,
   WORKSPACE_TREE_LOADING_ICON_SIZE,
+  useTreeIconSize,
 } from "@/components/tree-primitives";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
@@ -113,10 +115,12 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 });
 
 function DirectoryChevronIcon({ loading, expanded }: { loading: boolean; expanded: boolean }) {
+  const treeIconSize = useTreeIconSize();
   if (loading) {
     return (
       <ThemedLoadingSpinner
-        size={WORKSPACE_TREE_LOADING_ICON_SIZE}
+        // The spinner sits a hair inside the glyph it stands in for, at either scale.
+        size={treeIconSize - (WORKSPACE_TREE_ICON_SIZE - WORKSPACE_TREE_LOADING_ICON_SIZE)}
         uniProps={foregroundMutedColorMapping}
       />
     );
@@ -210,6 +214,7 @@ function EntryNameInputRow({
   onCancel,
 }: EntryNameInputRowProps) {
   const { t } = useTranslation();
+  const treeIconSize = useTreeIconSize();
   const [name, setName] = useState(initialName);
   const settledRef = useRef(false);
 
@@ -244,7 +249,7 @@ function EntryNameInputRow({
           {kind === "directory" ? (
             <TreeChevron expanded={false} />
           ) : (
-            <MaterialFileIcon fileName={name || "untitled"} size={WORKSPACE_TREE_ICON_SIZE} />
+            <MaterialFileIcon fileName={name || "untitled"} size={treeIconSize} />
           )}
         </View>
         <TextInput
@@ -296,6 +301,7 @@ function TreeRowItem({
   testID,
 }: TreeRowItemProps) {
   const { t } = useTranslation();
+  const treeIconSize = useTreeIconSize();
   const isDirectory = entry.kind === "directory";
   const dragSourceRef = useWorkspaceFileDragSource({
     enabled: !isDirectory,
@@ -413,13 +419,10 @@ function TreeRowItem({
             {isDirectory ? (
               <>
                 <DirectoryChevronIcon loading={loading} expanded={isExpanded} />
-                <ThemedFolder
-                  size={WORKSPACE_TREE_ICON_SIZE}
-                  uniProps={foregroundMutedColorMapping}
-                />
+                <ThemedFolder size={treeIconSize} uniProps={foregroundMutedColorMapping} />
               </>
             ) : (
-              <MaterialFileIcon fileName={entry.name} size={WORKSPACE_TREE_ICON_SIZE} />
+              <MaterialFileIcon fileName={entry.name} size={treeIconSize} />
             )}
           </View>
           <Text style={styles.entryName} numberOfLines={1}>
@@ -1977,8 +1980,11 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     flexShrink: 0,
   },
+  // Two glyphs share this slot - the disclosure chevron and the folder - so it
+  // is two frames wide. Held at a flat 32 it fit only the chevron once the frame
+  // scaled up, and the folder was squeezed out of the row entirely.
   directoryEntryIcon: {
-    width: 32,
+    width: WORKSPACE_TREE_DIRECTORY_ICON_FRAME_SIZE,
     flexDirection: "row",
   },
   entryName: {

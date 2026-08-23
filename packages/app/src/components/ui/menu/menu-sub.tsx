@@ -13,7 +13,7 @@ import type { Theme } from "@/styles/theme";
 import { useMenuContext, useMenuDepth } from "./menu-context";
 import { isSubPageOpen } from "./menu-navigation";
 import { useMenuSurface } from "./menu-surface";
-import { MenuItem } from "./menu-item";
+import { MenuItem, useMenuIconSize } from "./menu-item";
 
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -111,6 +111,10 @@ function MenuSubTrailing({
   value?: string;
   indicator: boolean;
 }): ReactElement {
+  // The disclosure chevron is a glyph in a menu row, so it is the row's glyph size. It sits
+  // inside a wrapper rather than in the row's own trailing slot, which is why it reads the size
+  // here instead of through `MenuItem`.
+  const iconSize = useMenuIconSize();
   return (
     <View style={styles.trailing}>
       {value ? (
@@ -119,7 +123,7 @@ function MenuSubTrailing({
         </Text>
       ) : null}
       {indicator ? <View style={styles.indicator} testID="menu-sub-indicator" /> : null}
-      <ThemedChevronRight size={14} uniProps={mutedIconMapping} />
+      <ThemedChevronRight size={iconSize} uniProps={mutedIconMapping} />
     </View>
   );
 }

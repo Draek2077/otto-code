@@ -34,30 +34,25 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
   useBottomSheetInternal,
-  type BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { ArrowLeft, Search, X } from "@/components/icons/material-icons";
 import { SearchClearButton } from "@/components/ui/search-clear-button";
-import {
-  IsolatedBottomSheetModal,
-  useIsolatedBottomSheetVisibility,
-} from "@/components/ui/isolated-bottom-sheet-modal";
+import { useIsolatedBottomSheetVisibility } from "@/components/ui/isolated-bottom-sheet-modal";
 import { getCompactSheetSafeAreaPadding } from "@/components/adaptive-modal-sheet-layout";
+import {
+  sheetChromeStyles,
+  SheetSurfaceModal,
+  SHEET_HORIZONTAL_PADDING_SCALE,
+} from "@/components/ui/sheet-chrome";
 import { createControlGeometry } from "@/components/ui/control-geometry";
 import { isNative, isWeb } from "@/constants/platform";
 import { useSheetScrollRegion } from "@/components/use-sheet-scroll-region";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// Content indent token shared by the sheet header (title, back arrow, leading
-// icon, search input icon), the body, and the footer - so the title, the fields
-// under it, and the action buttons all sit on one vertical line. Rows whose
-// leading icon should line up with the header must match this padding.
-//
-// Deliberately tight: a dialog is already a small, framed surface, so the
-// generous page-level indent (spacing[6]) reads as wasted width here and
-// squeezes the fields. Half that is enough to separate content from the frame.
-export const SHEET_HORIZONTAL_PADDING_SCALE = 3;
+// Re-exported so the many callers that align their own rows to the sheet's indent keep one
+// import. The token itself, and the rest of the shared sheet frame, live in sheet-chrome.tsx.
+export { SHEET_HORIZONTAL_PADDING_SCALE };
 
 export interface SheetHeaderSearch {
   onChange: (value: string) => void;
@@ -139,7 +134,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   headerRow: {
     paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
-    paddingVertical: theme.spacing[4],
+    // The menu sheet's rhythm, which is the lighter of the two the app had. A sheet header is a
+    // label for what is below it, not a band across the top of the surface.
+    paddingVertical: theme.spacing[3],
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
@@ -169,10 +166,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     minWidth: 0,
   },
-  title: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.medium,
-  },
   subtitle: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
@@ -189,12 +182,19 @@ const styles = StyleSheet.create((theme) => ({
   closeButtonHovered: {
     backgroundColor: theme.colors.surfaceHover,
   },
+  // A field, not a line of loose text. It used to be a magnifier and an input floating on the
+  // sheet with nothing bounding them, which is what made a searchable sheet - the model picker
+  // worst of all - read as a list with a stray label above it. The rule and the thumb-sized
+  // height match the title-bar popup search field, the app's other search-above-a-list.
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
-    paddingBottom: theme.spacing[3],
+    minHeight: { xs: 44, md: 36 },
+    marginHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
+    marginBottom: theme.spacing[3],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.borderAccent,
   },
   // Inline variants for InlineHeaderView inside the desktop Combobox popover.
   // Horizontal padding matches the model picker's row indent: the picker uses
@@ -356,22 +356,6 @@ function useSheetPartHeight(): [number, (event: LayoutChangeEvent) => void] {
 }
 const WEB_EXIT_DURATION_MS = 160;
 
-function SheetBackground({ style }: BottomSheetBackgroundProps) {
-  const { theme } = useUnistyles();
-  const combinedStyle = useMemo(
-    () => [
-      style,
-      {
-        backgroundColor: theme.colors.surface0,
-        borderTopLeftRadius: theme.borderRadius["2xl"],
-        borderTopRightRadius: theme.borderRadius["2xl"],
-      },
-    ],
-    [style, theme.colors.surface0, theme.borderRadius],
-  );
-  return <Animated.View pointerEvents="none" style={combinedStyle} />;
-}
-
 /**
  * The sheet body, indented to the sheet's content inset.
  *
@@ -502,10 +486,7 @@ export function SheetHeaderView({
 }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const titleStyle = useMemo(
-    () => [styles.title, { color: theme.colors.foreground }],
-    [theme.colors.foreground],
-  );
+  const titleStyle = sheetChromeStyles.title;
   const back = header.back;
   const handleBackPress = back?.onPress;
   const search = header.search;
@@ -888,10 +869,6 @@ export function AdaptiveModalSheet({
     ],
     [compactSafeAreaPadding.footerPaddingBottom, footerContainerStyle],
   );
-  const handleIndicatorStyle = useMemo(
-    () => ({ backgroundColor: theme.colors.palette.zinc[600] }),
-    [theme.colors.palette.zinc],
-  );
   const { sheetRef, handleSheetChange, handleSheetDismiss } = useIsolatedBottomSheetVisibility({
     visible,
     isEnabled: isMobile,
@@ -1024,7 +1001,7 @@ export function AdaptiveModalSheet({
     );
     return (
       <OverlayLayerProvider layer={modalOverlayLayer}>
-        <IsolatedBottomSheetModal
+        <SheetSurfaceModal
           ref={sheetRef}
           contextBridge={null}
           snapPoints={resolvedSnapPoints}
@@ -1034,8 +1011,6 @@ export function AdaptiveModalSheet({
           onDismiss={handleDismiss}
           backdropComponent={renderBackdrop}
           enablePanDownToClose
-          backgroundComponent={SheetBackground}
-          handleIndicatorStyle={handleIndicatorStyle}
           keyboardBehavior="extend"
           keyboardBlurBehavior="restore"
           accessible={false}
@@ -1046,7 +1021,7 @@ export function AdaptiveModalSheet({
           ) : (
             sheetContent
           )}
-        </IsolatedBottomSheetModal>
+        </SheetSurfaceModal>
       </OverlayLayerProvider>
     );
   }

@@ -20,7 +20,7 @@ import {
   StarFilled,
 } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { useIconSize, type Theme } from "@/styles/theme";
 import { headerIconSlotStyle } from "@/components/headers/header-toggle-button";
 import { StatusPulseGlow, notifyHaloColor } from "@/components/status-pulse-glow";
 import { Button } from "@/components/ui/button";
@@ -104,6 +104,11 @@ const statusHaloThemeMapping = (theme: Theme) => ({ theme });
 const ThemedZoomTeamChatTitleGlyph = withUnistyles(ZoomTeamChatTitleGlyph);
 const ThemedZoomRecorderGlyph = withUnistyles(ZoomRecorderGlyph);
 
+// Every control in the workspace title bar shares one chrome
+// (`headerIconSlotStyle`): the same box, the same hover / selected washes, and
+// the same reserved focus ring. Nothing here owns a separately-sized box - a
+// strip where one trigger is a different size than the one beside it reads as
+// a bug, and it was one.
 export function headerActionTriggerStyle({
   hovered,
   pressed,
@@ -114,13 +119,11 @@ export function headerActionTriggerStyle({
   open?: boolean;
 }) {
   return [
-    styles.headerActionButton,
-    (Boolean(hovered) || Boolean(pressed) || Boolean(open)) && styles.headerActionButtonHovered,
+    headerIconSlotStyle.slot,
+    (Boolean(hovered) || Boolean(pressed) || Boolean(open)) && headerIconSlotStyle.slotHovered,
   ];
 }
 
-// Mirrors the menu button's own chrome (`headerIconSlotStyle`) instead of a
-// separately-sized fixed box, so the mobile "..." trigger matches it exactly.
 export function compactHeaderActionTriggerStyle({
   hovered,
   pressed,
@@ -131,7 +134,7 @@ export function compactHeaderActionTriggerStyle({
   open?: boolean;
 }) {
   return [
-    headerIconSlotStyle.slot,
+    headerIconSlotStyle.compactSlot,
     (Boolean(hovered) || Boolean(pressed) || Boolean(open)) && headerIconSlotStyle.slotHovered,
   ];
 }
@@ -193,7 +196,30 @@ function ZoomRecorderGlyph({
   );
 }
 
-function meetingNotesTriggerStyle(
+/**
+ * What the two title-bar popup buttons have in common: one glyph size per form
+ * factor, and an open state the "..." menu can drive from outside once the
+ * compact header fit drops the button into it.
+ */
+function useTitlebarPopupControl(controlledOpen: boolean | undefined) {
+  const isCompact = useIsCompactFormFactor();
+  const iconSize = useIconSize(1.5);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  return {
+    isCompact,
+    iconSize,
+    // Compact matches every other glyph in the strip (lg); desktop stays on the
+    // smaller md glyph shared with the "..." trigger.
+    glyphSize: isCompact ? iconSize.lg : iconSize.md,
+    isOpen: controlledOpen ?? uncontrolledOpen,
+    setUncontrolledOpen,
+  };
+}
+
+// The Chat and Meetings triggers: the shared slot chrome plus the two states a
+// plain header toggle has no use for - a persistent "this is live" wash, and
+// the keyboard focus ring, whose 1px is already reserved inside the slot.
+function titlebarPopupTriggerStyle(
   {
     hovered,
     pressed,
@@ -205,13 +231,13 @@ function meetingNotesTriggerStyle(
     open?: boolean;
     focused?: boolean;
   },
-  active: boolean,
+  { active, isCompact }: { active: boolean; isCompact: boolean },
 ) {
   return [
-    styles.headerActionButton,
-    active && styles.headerActionButtonActive,
-    Boolean(focused) && styles.headerActionButtonFocused,
-    (Boolean(hovered) || Boolean(pressed) || Boolean(open)) && styles.headerActionButtonHovered,
+    isCompact ? headerIconSlotStyle.compactSlot : headerIconSlotStyle.slot,
+    active && headerIconSlotStyle.slotActive,
+    (Boolean(hovered) || Boolean(pressed) || Boolean(open)) && headerIconSlotStyle.slotHovered,
+    Boolean(focused) && headerIconSlotStyle.slotFocused,
   ];
 }
 
@@ -1122,9 +1148,27 @@ function ZoomChatPopupRoomPage({
 export function WorkspaceTeamChatButton({
   serverId,
   workspaceId,
+  hideTrigger = false,
+  open: openProp,
+  onOpenChange,
+  onAvailabilityChange,
 }: {
   serverId: string;
   workspaceId: string;
+  /**
+   * Render only a zero-size anchor instead of the button. Used when the compact
+   * header fit drops Chat into the "..." menu: the menu item there flips the
+   * controlled `open` on, and this popup anchors here.
+   */
+  hideTrigger?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /**
+   * Whether this button would show at all. The compact header fit spends the
+   * row's width on the controls that are actually there, and it cannot derive
+   * this - Chat appears only once the host reports a live chat connection.
+   */
+  onAvailabilityChange?: (available: boolean) => void;
 }) {
   const isDesktop = getIsElectron();
   const supportsCommunications = useHostFeature(serverId, "communications");
@@ -1146,8 +1190,8 @@ export function WorkspaceTeamChatButton({
   const isHostConnected = useHostRuntimeIsConnected(serverId);
   const isLocalDaemon = useIsLocalDaemon(serverId);
   const isAppVisible = useAppVisible();
-  const iconSize = useIconSize(1.5);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { isCompact, iconSize, glyphSize, isOpen, setUncontrolledOpen } =
+    useTitlebarPopupControl(openProp);
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatConnectionLabel, setChatConnectionLabel] = useState("Not connected");
   const [isStartingSignIn, setIsStartingSignIn] = useState(false);
@@ -1327,7 +1371,8 @@ export function WorkspaceTeamChatButton({
   });
   const handleMenuOpenChange = useCallback(
     (nextOpen: boolean) => {
-      setMenuOpen(nextOpen);
+      setUncontrolledOpen(nextOpen);
+      onOpenChange?.(nextOpen);
       // The status chooser belongs to this popup session only. Closing the
       // Chat popup never changes provider presence, but it must collapse the
       // chooser so the next open begins with the compact Chat Home.
@@ -1338,7 +1383,7 @@ export function WorkspaceTeamChatButton({
       }
       refreshWhenZoomChatMenuOpens(nextOpen, refreshCommunicationsState);
     },
-    [refreshCommunicationsState, resetChatSearch],
+    [onOpenChange, refreshCommunicationsState, resetChatSearch, setUncontrolledOpen],
   );
   const canStartSignIn = canStartZoomTeamChatSignIn({
     supportsCommunications,
@@ -1421,7 +1466,9 @@ export function WorkspaceTeamChatButton({
           // On success the status has landed; close the whole Chat popup so
           // the updated title-bar state is what the user sees. On failure the
           // popup stays open so the error callout is readable.
-          if (!presenceUpdateError) setMenuOpen(false);
+          // Through the shared close path so a parent driving `open` (the
+          // "..." menu fallback) sees the popup close too.
+          if (!presenceUpdateError) handleMenuOpenChange(false);
         } catch (error) {
           const availableAt = statusChangeAvailableAtFromError(error);
           if (availableAt) {
@@ -1435,7 +1482,14 @@ export function WorkspaceTeamChatButton({
       };
       void updatePresence();
     },
-    [client, isChatEnabled, isUpdatingPresence, pendingPresenceStatus, presenceStatus],
+    [
+      client,
+      handleMenuOpenChange,
+      isChatEnabled,
+      isUpdatingPresence,
+      pendingPresenceStatus,
+      presenceStatus,
+    ],
   );
   const presenceSelectHandlers = useMemo(() => {
     const handlers = new Map<string, () => void>();
@@ -1446,8 +1500,13 @@ export function WorkspaceTeamChatButton({
   }, [handlePresenceSelect]);
   const chatTitlebarTriggerStyle = useCallback(
     (state: { hovered?: boolean; pressed?: boolean; open?: boolean; focused?: boolean }) =>
-      meetingNotesTriggerStyle(state, isChatConnected && isChatEnabled),
-    [isChatConnected, isChatEnabled],
+      hideTrigger
+        ? styles.hiddenTrigger
+        : titlebarPopupTriggerStyle(state, {
+            active: isChatConnected && isChatEnabled,
+            isCompact,
+          }),
+    [hideTrigger, isChatConnected, isChatEnabled, isCompact],
   );
   const visibleChatHomeSections = useMemo(() => {
     const query = isChatDestinationSearch ? "" : chatSearch.trim().toLocaleLowerCase();
@@ -1535,9 +1594,15 @@ export function WorkspaceTeamChatButton({
         title: conversation.title,
       });
       setSelectedConversation(null);
-      setMenuOpen(false);
+      handleMenuOpenChange(false);
     },
-    [acknowledgeConversationNotifications, openWorkspaceTabFocused, serverId, workspaceId],
+    [
+      acknowledgeConversationNotifications,
+      handleMenuOpenChange,
+      openWorkspaceTabFocused,
+      serverId,
+      workspaceId,
+    ],
   );
   const closeConversation = useCallback(() => setSelectedConversation(null), []);
   const acknowledgeNotifications = useCallback(
@@ -1593,33 +1658,46 @@ export function WorkspaceTeamChatButton({
     },
     [client, favoriteUpdatingIds, refreshChatSearch, supportsChatFavorites],
   );
+  const isAvailable = shouldShowZoomTeamChatTitlebar({
+    isDesktop,
+    isChatConnected,
+    isChatEnabled,
+  });
+  useEffect(() => {
+    onAvailabilityChange?.(isAvailable);
+  }, [isAvailable, onAvailabilityChange]);
+
   // Connection earns the title-bar surface, not availability. The rule and the
   // reason it keeps getting reverted live in zoom-team-chat-titlebar-visibility.ts.
-  if (!shouldShowZoomTeamChatTitlebar({ isDesktop, isChatConnected, isChatEnabled })) {
+  if (!isAvailable) {
     return null;
   }
 
   return (
-    <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
+    <DropdownMenu open={isOpen} onOpenChange={handleMenuOpenChange}>
       <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild triggerRefProp="triggerRef">
           <DropdownMenuTrigger
             testID="workspace-zoom-team-chat-trigger"
             suppressFocusOutline
+            disabled={hideTrigger}
+            accessibilityElementsHidden={hideTrigger}
             accessibilityRole="button"
             accessibilityLabel={zoomTeamChatAccessibilityLabel(unreadCount, isChatEnabled)}
             style={chatTitlebarTriggerStyle}
           >
-            {() => (
-              <ZoomTeamChatTitleIcon
-                unreadCount={unreadCount}
-                connected={isChatConnected}
-                enabled={isChatEnabled}
-                presenceStatus={presenceStatus}
-                pendingPresence={pendingPresenceStatus !== null}
-                iconSize={iconSize.md}
-              />
-            )}
+            {() =>
+              hideTrigger ? null : (
+                <ZoomTeamChatTitleIcon
+                  unreadCount={unreadCount}
+                  connected={isChatConnected}
+                  enabled={isChatEnabled}
+                  presenceStatus={presenceStatus}
+                  pendingPresence={pendingPresenceStatus !== null}
+                  iconSize={glyphSize}
+                />
+              )
+            }
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="center" offset={8}>
@@ -1876,18 +1954,38 @@ export function WorkspaceMeetingNotesButton({
   serverId,
   workspaceId,
   activeChatAttachmentScopeKey,
+  hideTrigger = false,
+  open: openProp,
+  onOpenChange,
+  onAvailabilityChange,
 }: {
   serverId: string;
   workspaceId: string;
   activeChatAttachmentScopeKey: string | null;
+  /**
+   * Render only a zero-size anchor instead of the button, for when the compact
+   * header fit drops Meeting notes into the "..." menu. See
+   * `WorkspaceTeamChatButton`, which carries the same pair of props.
+   */
+  hideTrigger?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Whether this button would show at all - see `WorkspaceTeamChatButton`. */
+  onAvailabilityChange?: (available: boolean) => void;
 }) {
   const isDesktop = getIsElectron();
   const zoomRecorderEnabled = useAppSettingValue(selectZoomRecorderEnabled);
   const zoomRecorderPaused = useAppSettingValue(selectZoomRecorderPaused);
   const { status } = useZoomRecorderStatus();
-  const iconSize = useIconSize(1.5);
-  const [libraryOpen, setLibraryOpen] = useState(false);
-  const closeLibrary = useCallback(() => setLibraryOpen(false), []);
+  const { isCompact, glyphSize, isOpen, setUncontrolledOpen } = useTitlebarPopupControl(openProp);
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setUncontrolledOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+    },
+    [onOpenChange, setUncontrolledOpen],
+  );
+  const closeLibrary = useCallback(() => handleOpenChange(false), [handleOpenChange]);
   const attachmentScopeKey = useMemo(
     () =>
       activeChatAttachmentScopeKey
@@ -1898,10 +1996,15 @@ export function WorkspaceMeetingNotesButton({
   const recorderActive = !zoomRecorderPaused;
   const triggerStyle = useCallback(
     (triggerState: { hovered?: boolean; pressed?: boolean; open?: boolean; focused?: boolean }) =>
-      meetingNotesTriggerStyle(triggerState, recorderActive),
-    [recorderActive],
+      hideTrigger
+        ? styles.hiddenTrigger
+        : titlebarPopupTriggerStyle(triggerState, { active: recorderActive, isCompact }),
+    [hideTrigger, isCompact, recorderActive],
   );
   const supported = isDesktop && zoomRecorderEnabled && supportsZoomRecorder(getDesktopHost());
+  useEffect(() => {
+    onAvailabilityChange?.(supported);
+  }, [onAvailabilityChange, supported]);
 
   if (!supported) {
     return null;
@@ -1911,23 +2014,29 @@ export function WorkspaceMeetingNotesButton({
     ? getZoomMeetingTitlebarState(status.state, status.modelReady).label
     : "Disabled";
   return (
-    <DropdownMenu open={libraryOpen} onOpenChange={setLibraryOpen}>
+    <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
       <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild triggerRefProp="triggerRef">
           <DropdownMenuTrigger
             testID="workspace-zoom-meetings-trigger"
             suppressFocusOutline
+            disabled={hideTrigger}
+            accessibilityElementsHidden={hideTrigger}
             style={triggerStyle}
             accessibilityRole="button"
             accessibilityLabel={`Open Meeting notes. ${stateLabel}.`}
           >
-            <ThemedZoomRecorderGlyph
-              state={status.state}
-              modelReady={status.modelReady}
-              active={recorderActive}
-              iconSize={iconSize.md}
-              uniProps={statusHaloThemeMapping}
-            />
+            {() =>
+              hideTrigger ? null : (
+                <ThemedZoomRecorderGlyph
+                  state={status.state}
+                  modelReady={status.modelReady}
+                  active={recorderActive}
+                  iconSize={glyphSize}
+                  uniProps={statusHaloThemeMapping}
+                />
+              )
+            }
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="center" offset={8}>
@@ -1935,7 +2044,7 @@ export function WorkspaceMeetingNotesButton({
         </TooltipContent>
       </Tooltip>
       <MeetingTranscriptLibrary
-        open={libraryOpen}
+        open={isOpen}
         onClose={closeLibrary}
         serverId={serverId}
         attachmentScopeKey={attachmentScopeKey}
@@ -1945,25 +2054,14 @@ export function WorkspaceMeetingNotesButton({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  headerActionButton: {
-    // Reserve the focus border in the resting geometry. Reducing the padding
-    // by the same pixel keeps this title-bar control's outer size unchanged.
-    paddingVertical: compactUp(theme.spacing[2] - 1),
-    paddingHorizontal: compactUp(theme.spacing[2] - 1),
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: "transparent",
-  },
-  // Hover and selection colors are shared with `headerIconSlotStyle` - see the
-  // comments there, and the token derivations in `theme.ts`.
-  headerActionButtonHovered: {
-    backgroundColor: theme.colors.surfaceToggleHover,
-  },
-  headerActionButtonActive: {
-    backgroundColor: theme.colors.surfaceToggleSelected,
-  },
-  headerActionButtonFocused: {
-    borderColor: theme.colors.accent,
+  // The anchor a dropped button's popup opens against: out of the flex flow and
+  // invisible, so the "..." menu item can still position the surface it opens.
+  hiddenTrigger: {
+    position: "absolute",
+    width: 0,
+    height: 0,
+    opacity: 0,
+    overflow: "hidden",
   },
   teamChatPopup: {
     gap: 0,

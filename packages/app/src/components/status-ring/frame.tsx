@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { BlobLoader } from "@/components/blob-loader";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { compactUp } from "@/styles/theme";
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
 import { STATUS_RING_FRAME_SIZE } from "@/components/status-ring/geometry";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
@@ -15,6 +17,16 @@ export interface StatusRingProps {
   backdrop?: SurfaceBackdrop | null;
   /** Recolors the normal running-blue centre without changing the ring's running semantics. */
   centerStyle?: ViewStyle;
+}
+
+/**
+ * The ring doubles on a compact form factor, in step with the status dots it wraps and the icons
+ * around it. The plasma spinner takes its size as a plain prop, so it reads the scale from here
+ * rather than from the ambient theme patch, which never reaches a `size` prop.
+ */
+export function useStatusRingFrameSize(): number {
+  const isCompact = useIsCompactFormFactor();
+  return isCompact ? STATUS_RING_FRAME_SIZE * 2 : STATUS_RING_FRAME_SIZE;
 }
 
 /** The working ring is the app's live-model plasma spinner, fixed to status-info blue. */
@@ -62,8 +74,8 @@ function getBackdropStyle(backdrop: SurfaceBackdrop | null | undefined) {
 export const styles = StyleSheet.create((theme) => {
   return {
     frame: {
-      width: STATUS_RING_FRAME_SIZE,
-      height: STATUS_RING_FRAME_SIZE,
+      width: compactUp(STATUS_RING_FRAME_SIZE),
+      height: compactUp(STATUS_RING_FRAME_SIZE),
       borderRadius: theme.borderRadius.full,
       alignItems: "center",
       justifyContent: "center",
@@ -72,8 +84,8 @@ export const styles = StyleSheet.create((theme) => {
       position: "absolute",
       top: 0,
       left: 0,
-      width: STATUS_RING_FRAME_SIZE,
-      height: STATUS_RING_FRAME_SIZE,
+      width: compactUp(STATUS_RING_FRAME_SIZE),
+      height: compactUp(STATUS_RING_FRAME_SIZE),
       alignItems: "center",
       justifyContent: "center",
     },
@@ -84,8 +96,8 @@ export const styles = StyleSheet.create((theme) => {
     backdropSurface2: { backgroundColor: theme.colors.surface2 },
 
     centerDot: {
-      width: STATUS_INDICATOR_FILLED_DOT_SIZE,
-      height: STATUS_INDICATOR_FILLED_DOT_SIZE,
+      width: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
+      height: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
       borderRadius: theme.borderRadius.full,
       backgroundColor: theme.colors.statusInfo,
     },

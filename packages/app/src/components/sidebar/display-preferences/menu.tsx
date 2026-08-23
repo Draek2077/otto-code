@@ -29,7 +29,7 @@ import {
 import { HostStatusDot } from "@/components/host-status-dot";
 import { isWeb } from "@/constants/platform";
 import { useHosts } from "@/runtime/host-runtime";
-import type { Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import type { SidebarGroupMode } from "@/stores/sidebar-view-store";
 import type { WorkspaceTitleSource } from "@/hooks/use-settings";
 import { SIDEBAR_CHECKS_DISPLAYS, type SidebarChecksDisplay } from "./checks-display";
@@ -126,6 +126,9 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
   const { t } = useTranslation();
   const preferences = useSidebarDisplayPreferences();
   const hosts = useHosts();
+  // Matches the sibling header buttons (New workspace / History / Search), which size their
+  // glyphs off this hook - a static 14 left this one half-size on compact form factors.
+  const iconSize = useIconSize();
 
   const triggerStyle = useCallback(
     ({ hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -206,7 +209,7 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
         accessibilityLabel={t("sidebar.display.trigger")}
         testID="sidebar-display-preferences-menu"
       >
-        <ThemedSettings2 size={14} uniProps={mutedIconMapping} />
+        <ThemedSettings2 size={iconSize.sm} uniProps={mutedIconMapping} />
       </MenuTrigger>
       <MenuSurface
         align="end"
@@ -448,8 +451,8 @@ function HostFilterItem({
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,

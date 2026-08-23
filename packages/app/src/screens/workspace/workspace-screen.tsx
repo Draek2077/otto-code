@@ -24,6 +24,7 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   BookOpen,
+  Chat,
   ContextualToken,
   ChevronDown,
   Copy,
@@ -31,6 +32,7 @@ import {
   FileText,
   GitBranch,
   Globe,
+  HeadsetMic,
   Import as ImportIcon,
   PanelRight,
   PanelRightClose,
@@ -86,7 +88,10 @@ import {
   WorkspaceVoiceCuesButton,
   WorkspaceVoiceCuesMenuItem,
 } from "@/voice/workspace-voice-cues-button";
-import { WorkspaceWakeWordButton } from "@/voice/workspace-wake-word-button";
+import {
+  WorkspaceWakeWordButton,
+  WorkspaceWakeWordMenuItem,
+} from "@/voice/workspace-wake-word-button";
 import { shouldShowWakeWordToolbarButton } from "@/voice/wake-word-control-state";
 import { getWakeWordCapability } from "@/wake-word/wake-word-capability";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
@@ -347,6 +352,8 @@ const ThemedBookOpen = withUnistyles(BookOpen);
 const ThemedPanelRight = withUnistyles(PanelRight);
 const ThemedPanelRightClose = withUnistyles(PanelRightClose);
 const ThemedPlay = withUnistyles(Play);
+const ThemedChat = withUnistyles(Chat);
+const ThemedHeadsetMic = withUnistyles(HeadsetMic);
 
 interface DynamicProviderIconProps {
   iconKey: string;
@@ -397,6 +404,10 @@ const MENU_KNOWLEDGE_ICON = <ThemedBookOpen uniProps={mutedMdMapping} />;
 // resolveCompactHeaderActions): same glyphs as the header buttons they replace.
 const MENU_EXPLORER_ICON = <ThemedPanelRight uniProps={mutedMdMapping} />;
 const MENU_PLAY_ICON = <ThemedPlay uniProps={mutedMdMapping} />;
+// The connected/recording states of the two popup buttons, in their resting
+// form: the menu item names the surface, not what it is currently doing.
+const MENU_TEAM_CHAT_ICON = <ThemedChat uniProps={mutedMdMapping} />;
+const MENU_MEETINGS_ICON = <ThemedHeadsetMic uniProps={mutedMdMapping} />;
 const GATED_WORKSPACE_HEADER_LEFT = <SidebarMenuToggle />;
 
 interface WorkspaceScreenProps {
@@ -1144,6 +1155,13 @@ interface WorkspaceHeaderMenuProps {
   showVoiceCuesMenuItem: boolean;
   showExplorerMenuItem: boolean;
   showScriptsMenuItem: boolean;
+  showTeamChatMenuItem: boolean;
+  showMeetingsMenuItem: boolean;
+  showWakeWordMenuItem: boolean;
+  // Opens the Chat / Meeting notes popup on the zero-size anchor its button
+  // leaves behind in the action strip once the fit drops it.
+  onOpenTeamChat: () => void;
+  onOpenMeetings: () => void;
   // Scripts data for the collapsed Play fallback's hidden dropdown anchor.
   workspaceScripts: WorkspaceDescriptor["scripts"];
   liveTerminalIds: string[];
@@ -1214,9 +1232,12 @@ function HeaderMenuProfileItem({
 const COMPACT_HEADER_BUTTON_HIT_SLOP = { top: 8, bottom: 8 } as const;
 
 function WorkspaceHeaderMenuTriggerIcon({ hovered, open }: { hovered: boolean; open: boolean }) {
+  const isCompact = useIsCompactFormFactor();
   const iconSize = useIconSize(1.5);
   const colorMapping = hovered || open ? foregroundColorMapping : mutedColorMapping;
-  return <ThemedEllipsis size={iconSize.md} uniProps={colorMapping} />;
+  // The strip is one size on each form factor, this trigger included: lg on
+  // compact, md on desktop.
+  return <ThemedEllipsis size={isCompact ? iconSize.lg : iconSize.md} uniProps={colorMapping} />;
 }
 
 function WorkspaceHeaderMenu({
@@ -1230,6 +1251,11 @@ function WorkspaceHeaderMenu({
   showVoiceCuesMenuItem,
   showExplorerMenuItem,
   showScriptsMenuItem,
+  showTeamChatMenuItem,
+  showMeetingsMenuItem,
+  showWakeWordMenuItem,
+  onOpenTeamChat,
+  onOpenMeetings,
   workspaceScripts,
   liveTerminalIds,
   onToggleExplorer,
@@ -1383,6 +1409,25 @@ function WorkspaceHeaderMenu({
               resolveCompactHeaderActions): narrowing the window moves each
               control in here instead of removing it, in the buttons' own
               left-to-right order. Wide rows render none of these. */}
+          {showTeamChatMenuItem ? (
+            <DropdownMenuItem
+              testID="workspace-header-team-chat"
+              leading={MENU_TEAM_CHAT_ICON}
+              onSelect={onOpenTeamChat}
+            >
+              Chat
+            </DropdownMenuItem>
+          ) : null}
+          {showMeetingsMenuItem ? (
+            <DropdownMenuItem
+              testID="workspace-header-meeting-notes"
+              leading={MENU_MEETINGS_ICON}
+              onSelect={onOpenMeetings}
+            >
+              Meeting notes
+            </DropdownMenuItem>
+          ) : null}
+          {showWakeWordMenuItem ? <WorkspaceWakeWordMenuItem /> : null}
           {showVoiceCuesMenuItem ? <WorkspaceVoiceCuesMenuItem /> : null}
           {showVisualizerMenuItem ? (
             <WorkspaceVisualizerMenuItem
@@ -1575,7 +1620,13 @@ interface WorkspaceHeaderTitleBarProps {
   showVisualizerAction: boolean;
   showVoiceCuesAction: boolean;
   showPlayAction: boolean;
-  microphoneAvailable: boolean;
+  showTeamChatAction: boolean;
+  showMeetingsAction: boolean;
+  showWakeWordAction: boolean;
+  // Reported back up by the two popup buttons, which are the only things that
+  // know whether they can show. The fit spends width on what is actually there.
+  onTeamChatAvailabilityChange: (available: boolean) => void;
+  onMeetingsAvailabilityChange: (available: boolean) => void;
   // Pinned, not fitted: the Brain status light never drops to the "..." menu.
   // True whenever the sidebar is not showing its own Brain button.
   showBrainAction: boolean;
@@ -1584,6 +1635,9 @@ interface WorkspaceHeaderTitleBarProps {
   showVoiceCuesMenuItem: boolean;
   showExplorerMenuItem: boolean;
   showScriptsMenuItem: boolean;
+  showTeamChatMenuItem: boolean;
+  showMeetingsMenuItem: boolean;
+  showWakeWordMenuItem: boolean;
   onToggleExplorer: () => void;
   createTerminalDisabled: boolean;
   importAgentDisabled: boolean;
@@ -1645,12 +1699,19 @@ function WorkspaceHeaderTitleBar({
   showVisualizerAction,
   showVoiceCuesAction,
   showPlayAction,
-  microphoneAvailable,
+  showTeamChatAction,
+  showMeetingsAction,
+  showWakeWordAction,
+  onTeamChatAvailabilityChange,
+  onMeetingsAvailabilityChange,
   showBrainAction,
   showVisualizerMenuItem,
   showVoiceCuesMenuItem,
   showExplorerMenuItem,
   showScriptsMenuItem,
+  showTeamChatMenuItem,
+  showMeetingsMenuItem,
+  showWakeWordMenuItem,
   onToggleExplorer,
   createTerminalDisabled,
   importAgentDisabled,
@@ -1679,6 +1740,15 @@ function WorkspaceHeaderTitleBar({
   // Match the Explorer toggle's icon sizing so the mobile Play button in the
   // action strip shares the same chrome and glyph size.
   const headerActionIconSize = useIconSize(1.5);
+  // The two popup buttons stay mounted whether or not the fit gave them a slot:
+  // dropped, they render as a zero-size anchor here and the "..." menu item
+  // opens them through this state. Mounting them only when visible would also
+  // silence the availability they report, and the fit would never learn they
+  // exist.
+  const [teamChatOpen, setTeamChatOpen] = useState(false);
+  const [meetingsOpen, setMeetingsOpen] = useState(false);
+  const handleOpenTeamChat = useCallback(() => setTeamChatOpen(true), []);
+  const handleOpenMeetings = useCallback(() => setMeetingsOpen(true), []);
   return (
     <View style={containerStyle} dataSet={HEADER_LABEL_DRAG_DATASET}>
       {/* The "..." menu belongs to the workspace it acts on, so it rides with the
@@ -1713,6 +1783,11 @@ function WorkspaceHeaderTitleBar({
           showVoiceCuesMenuItem={showVoiceCuesMenuItem}
           showExplorerMenuItem={showExplorerMenuItem}
           showScriptsMenuItem={showScriptsMenuItem}
+          showTeamChatMenuItem={showTeamChatMenuItem}
+          showMeetingsMenuItem={showMeetingsMenuItem}
+          showWakeWordMenuItem={showWakeWordMenuItem}
+          onOpenTeamChat={handleOpenTeamChat}
+          onOpenMeetings={handleOpenMeetings}
           workspaceScripts={workspaceScripts}
           liveTerminalIds={liveTerminalIds}
           onToggleExplorer={onToggleExplorer}
@@ -1754,16 +1829,29 @@ function WorkspaceHeaderTitleBar({
         ) : null}
       </View>
       <View style={styles.compactHeaderMenuCluster}>
+        {/* Every button here can lose its slot to a narrow row, and each one
+            that does reappears in the "..." menu above. The two popup buttons
+            stay mounted either way so they can keep reporting whether they are
+            available at all - a control the fit never knew about could not be
+            budgeted for, which is how these three ended up crowding the title. */}
         <WorkspaceTeamChatButton
           serverId={normalizedServerId}
           workspaceId={normalizedWorkspaceId}
+          hideTrigger={!showTeamChatAction}
+          open={teamChatOpen}
+          onOpenChange={setTeamChatOpen}
+          onAvailabilityChange={onTeamChatAvailabilityChange}
         />
         <WorkspaceMeetingNotesButton
           serverId={normalizedServerId}
           workspaceId={normalizedWorkspaceId}
           activeChatAttachmentScopeKey={activeChatAttachmentScopeKey}
+          hideTrigger={!showMeetingsAction}
+          open={meetingsOpen}
+          onOpenChange={setMeetingsOpen}
+          onAvailabilityChange={onMeetingsAvailabilityChange}
         />
-        {microphoneAvailable ? <WorkspaceWakeWordButton /> : null}
+        {showWakeWordAction ? <WorkspaceWakeWordButton /> : null}
         {showVoiceCuesAction ? <WorkspaceVoiceCuesButton /> : null}
         {showVisualizerAction ? (
           <WorkspaceVisualizerButton
@@ -2616,6 +2704,12 @@ function WorkspaceScreenContent({
       isCompact: isMobile,
       isSidebarOpen,
     }) && brainRail.visible;
+  // Chat and Meeting notes decide their own visibility from state only they
+  // hold (a live chat connection; a supported recorder), so they report it up
+  // here rather than the fit guessing. Until they do, the fit budgets nothing
+  // for them - the same "not measured yet" stance `rowWidth` takes.
+  const [hasTeamChatButton, setHasTeamChatButton] = useState(false);
+  const [hasMeetingsButton, setHasMeetingsButton] = useState(false);
   const headerActionFit = useMemo(
     () =>
       resolveCompactHeaderActions({
@@ -2627,6 +2721,8 @@ function WorkspaceScreenContent({
         microphoneAvailable,
         hasWorkspaceScripts: workspaceScripts.length > 0,
         hasWorkspaceDirectory: Boolean(workspaceDirectory),
+        hasTeamChatButton,
+        hasMeetingsButton,
         hasBrainButton: showBrainAction,
       }),
     [
@@ -2638,6 +2734,8 @@ function WorkspaceScreenContent({
       microphoneAvailable,
       workspaceScripts.length,
       workspaceDirectory,
+      hasTeamChatButton,
+      hasMeetingsButton,
       showBrainAction,
     ],
   );
@@ -4803,12 +4901,19 @@ function WorkspaceScreenContent({
                 showVisualizerAction={headerActionFit.showVisualizer}
                 showVoiceCuesAction={headerActionFit.showVoiceCues}
                 showPlayAction={headerActionFit.showPlay}
-                microphoneAvailable={microphoneAvailable}
+                showTeamChatAction={headerActionFit.showTeamChat}
+                showMeetingsAction={headerActionFit.showMeetings}
+                showWakeWordAction={headerActionFit.showWakeWord}
+                onTeamChatAvailabilityChange={setHasTeamChatButton}
+                onMeetingsAvailabilityChange={setHasMeetingsButton}
                 showBrainAction={showBrainAction}
                 showVisualizerMenuItem={headerActionFit.menuVisualizer}
                 showVoiceCuesMenuItem={headerActionFit.menuVoiceCues}
                 showExplorerMenuItem={headerActionFit.menuExplorer}
                 showScriptsMenuItem={headerActionFit.menuPlay}
+                showTeamChatMenuItem={headerActionFit.menuTeamChat}
+                showMeetingsMenuItem={headerActionFit.menuMeetings}
+                showWakeWordMenuItem={headerActionFit.menuWakeWord}
                 onToggleExplorer={handleToggleExplorer}
                 createTerminalDisabled={createTerminalDisabled}
                 importAgentDisabled={!canOpenImportSheet}

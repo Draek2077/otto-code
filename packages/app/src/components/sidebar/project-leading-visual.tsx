@@ -3,7 +3,8 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { STATUS_BUCKET_LABELS } from "@/hooks/sidebar-status-view-model";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import {
   getProjectStatusBadgeContent,
@@ -31,7 +32,17 @@ const STATUS_BADGE_OFFSET = -4;
 //
 // Matches the workspace title's lineHeight (sidebar-workspace-row-content's
 // workspaceBranchText) so the icon centers on the title rather than floating above it.
+// Compact form factors double it in step with the doubled icon it holds - a 20pt slot
+// around a 32pt icon leaves the icon overhanging its own slot and riding above the title.
 const LEADING_SLOT_HEIGHT = 20;
+
+// The corner ring is re-centred on the shell it replaces, at each scale: doubling the
+// offset would move the ring off the icon's corner, because the correction is the gap
+// between two sizes rather than a size of its own.
+const STATUS_RING_ANCHOR_OFFSET = {
+  xs: getStatusRingOffset(STATUS_BADGE_OFFSET * 2, STATUS_BADGE_SIZE * 2, true),
+  md: getStatusRingOffset(STATUS_BADGE_OFFSET, STATUS_BADGE_SIZE),
+} as const;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 
@@ -75,7 +86,7 @@ export function ProjectLeadingVisual({
   if (isArchiving) {
     return (
       <View style={styles.projectLeadingVisualSlot} testID="project-status-indicator-archiving">
-        <ThemedActivityIndicator size={8} uniProps={foregroundMutedColorMapping} />
+        <ProjectArchivingSpinner />
       </View>
     );
   }
@@ -201,6 +212,13 @@ function ProjectStatusDot({ bucket }: { bucket: ProjectStatusBadgeDotBucket }) {
   return <View testID="project-status-dot" style={getStatusDotColorStyle(bucket)} />;
 }
 
+function ProjectArchivingSpinner() {
+  const isCompact = useIsCompactFormFactor();
+  return (
+    <ThemedActivityIndicator size={isCompact ? 16 : 8} uniProps={foregroundMutedColorMapping} />
+  );
+}
+
 function ProjectIcon({
   iconDataUri,
   placeholderInitial,
@@ -210,25 +228,29 @@ function ProjectIcon({
   placeholderInitial: string;
   projectViewKey: string;
 }) {
+  // The size prop is a plain number, so it needs the hook rather than the static token -
+  // `ICON_SIZE.md` never sees the compact doubling the surrounding slot already gets.
+  const iconSize = useIconSize();
   return (
     <ProjectIconView
       iconDataUri={iconDataUri}
       initial={placeholderInitial}
       projectViewKey={projectViewKey}
-      size={ICON_SIZE.md}
+      size={iconSize.md}
       textStyle={styles.projectIconFallbackText}
     />
   );
 }
 
 function ProjectInlineChevron({ chevron }: { chevron: "expand" | "collapse" | null }) {
+  const iconSize = useIconSize();
   if (chevron === null) {
     return null;
   }
   if (chevron === "collapse") {
-    return <ChevronDown size={14} color="#9ca3af" />;
+    return <ChevronDown size={iconSize.sm} color="#9ca3af" />;
   }
-  return <ChevronRight size={14} color="#9ca3af" />;
+  return <ChevronRight size={iconSize.sm} color="#9ca3af" />;
 }
 
 function getStatusDotColorStyle(bucket: ProjectStatusBadgeDotBucket): ViewStyle {
@@ -245,8 +267,8 @@ const styles = StyleSheet.create((theme) => {
   // so this badge can't drift from the status dots everywhere else.
   const statusDot = (bucket: ProjectStatusBadgeDotBucket) =>
     ({
-      width: STATUS_INDICATOR_FILLED_DOT_SIZE,
-      height: STATUS_INDICATOR_FILLED_DOT_SIZE,
+      width: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
+      height: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
       borderRadius: theme.borderRadius.full,
       backgroundColor: getStatusDotColor({ theme, bucket }) ?? undefined,
     }) as const;
@@ -258,7 +280,7 @@ const styles = StyleSheet.create((theme) => {
     // which is why the workspace status indicator is also 20 tall. Keep the two in step.
     projectLeadingVisualSlot: {
       width: theme.iconSize.md,
-      height: LEADING_SLOT_HEIGHT,
+      height: compactUp(LEADING_SLOT_HEIGHT),
       flexShrink: 0,
       alignItems: "center",
       justifyContent: "center",
@@ -269,8 +291,10 @@ const styles = StyleSheet.create((theme) => {
       width: theme.iconSize.md,
       height: theme.iconSize.md,
     },
+    // Sized off the icon box rather than the font ramp: it is the letter *inside* the icon,
+    // so it has to grow with the doubled box or the initial rattles around in it.
     projectIconFallbackText: {
-      fontSize: 9,
+      fontSize: compactUp(9),
     },
     // The shell the alert and dot statuses share. It straddles the icon's bottom-right corner
     // (half in, half out) so the lettered project box stays readable. The shell is a knockout:
@@ -278,20 +302,22 @@ const styles = StyleSheet.create((theme) => {
     // dot read as a gap in the icon rather than as a white halo drawn on top of it.
     statusBadge: {
       position: "absolute",
-      right: STATUS_BADGE_OFFSET,
-      bottom: STATUS_BADGE_OFFSET,
-      width: STATUS_BADGE_SIZE,
-      height: STATUS_BADGE_SIZE,
+      right: compactUp(STATUS_BADGE_OFFSET),
+      bottom: compactUp(STATUS_BADGE_OFFSET),
+      width: compactUp(STATUS_BADGE_SIZE),
+      height: compactUp(STATUS_BADGE_SIZE),
       borderRadius: theme.borderRadius.full,
       alignItems: "center",
       justifyContent: "center",
       overflow: "hidden",
     },
-    // Same corner as the shell, re-centred for the wider ring.
+    // Same corner as the shell, re-centred for the wider ring. Both the shell and
+    // the ring double on compact, so the correction is computed at each scale
+    // rather than doubled - it is a difference between two sizes, not a size.
     statusRingAnchor: {
       position: "absolute",
-      right: getStatusRingOffset(STATUS_BADGE_OFFSET, STATUS_BADGE_SIZE),
-      bottom: getStatusRingOffset(STATUS_BADGE_OFFSET, STATUS_BADGE_SIZE),
+      right: STATUS_RING_ANCHOR_OFFSET,
+      bottom: STATUS_RING_ANCHOR_OFFSET,
     },
     statusBadgeOnSidebar: { backgroundColor: theme.colors.surfaceSidebar },
     statusBadgeOnSidebarHover: { backgroundColor: theme.colors.surfaceSidebarHover },

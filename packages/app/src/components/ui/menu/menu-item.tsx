@@ -1,4 +1,6 @@
 import {
+  cloneElement,
+  isValidElement,
   useCallback,
   useMemo,
   type PropsWithChildren,
@@ -19,7 +21,8 @@ import { Check, CheckCircle } from "lucide-react-native";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { resolvePreviewFlag, useControlStatePreview } from "@/components/ui/control-state-preview";
-import type { Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { MenuDepthProvider, useMenuContext } from "./menu-context";
 
 const ThemedCheck = withUnistyles(Check);
@@ -45,6 +48,62 @@ const successMapping = (theme: Theme) => ({ color: theme.colors.palette.green[50
  */
 const MENU_ITEM_HEIGHT = { xs: 40, md: 28 } as const;
 const MENU_ITEM_LINE_HEIGHT = 18;
+
+/**
+ * Space between a row's leading icon and its label.
+ *
+ * Same split as the row height, and for the same reason: a thumb-sized row is taller and wider,
+ * and the 8pt that reads as a gap beside a 28pt row reads as the icon crowding the label once
+ * the row grows to 40. 12 restores the separation at compact size and leaves desktop where it is.
+ */
+const MENU_ITEM_GAP = { xs: 12, md: 8 } as const;
+
+/**
+ * The glyph the row draws itself - the check, the pending spinner, the success mark - and the
+ * width of the slots that hold one.
+ */
+const MENU_ITEM_ICON_SIZE = 16;
+
+/**
+ * The size every glyph in a menu row is drawn at: one number per form factor, not a multiplier.
+ *
+ * Same split as the row height and the icon gap, and for the same reason: the row grew for a
+ * thumb, and a 16pt glyph inside a 40pt row reads as a speck left behind by the row around it.
+ */
+export function useMenuIconSize(): number {
+  return useIsCompactFormFactor() ? MENU_ITEM_ICON_SIZE * 2 : MENU_ITEM_ICON_SIZE;
+}
+
+/**
+ * Draws a caller's glyph at the row's size.
+ *
+ * Leading icons are built at 14, 15 or 16 all over the app, usually as module-level constant
+ * elements that no hook can reach, so the row sizes what it is handed rather than the app
+ * sweeping a hundred call sites and waiting for the next one to reintroduce the drift.
+ *
+ * It **sets** the size; it must never scale it. Scaling looks equivalent and is not: a call site
+ * that already sized its glyph through `useIconSize()` hands over an *already compact-scaled*
+ * number, and doubling that lands at 4x - which is how one menu ended up drawing 28, 32 and 56pt
+ * glyphs in three consecutive rows. Setting is idempotent, so a row is one size no matter what
+ * the call site did.
+ *
+ * Only an element that already takes a numeric `size` is touched. A slot holding a View, an
+ * avatar, or an icon sized through `uniProps` (which resolves to `theme.iconSize.md`, the same
+ * number this returns) comes back exactly as it went in.
+ */
+export function withMenuIconSize(
+  leading: ReactElement | null | undefined,
+  size: number,
+): ReactElement | null {
+  if (!leading || !isValidElement<{ size?: unknown }>(leading)) {
+    return leading ?? null;
+  }
+  const current = leading.props.size;
+  if (typeof current !== "number" || current === size) {
+    return leading;
+  }
+  return cloneElement(leading, { size });
+}
 
 /**
  * Space between two rows, owned by the page rather than the rows. Zero because only one row is
@@ -133,13 +192,14 @@ function resolveLeadingContent(input: {
   isPending: boolean | undefined;
   isSuccess: boolean;
   leading: ReactElement | null;
+  iconSize: number;
 }): ReactElement | null {
-  const { isPending, isSuccess, leading } = input;
+  const { isPending, isSuccess, leading, iconSize } = input;
   if (isPending) {
-    return <ThemedLoadingSpinner size={16} uniProps={mutedMapping} />;
+    return <ThemedLoadingSpinner size={iconSize} uniProps={mutedMapping} />;
   }
   if (isSuccess) {
-    return <ThemedCheckCircle size={16} uniProps={successMapping} />;
+    return <ThemedCheckCircle size={iconSize} uniProps={successMapping} />;
   }
   return leading;
 }
@@ -219,17 +279,21 @@ export function MenuItem({
   const isSuccess = status === "success";
   const isDisabled = disabled || isPending || isSuccess;
 
+  const iconSize = useMenuIconSize();
   const leadingContent = resolveLeadingContent({
     isPending,
     isSuccess,
-    leading: leading ?? null,
+    leading: withMenuIconSize(leading, iconSize),
+    iconSize,
   });
 
   const label = resolveItemLabel({ children, isPending, isSuccess, pendingLabel, successLabel });
 
   const trailingContent =
-    trailing ??
-    (!showSelectedCheck && selected ? <ThemedCheck size={16} uniProps={mutedMapping} /> : null);
+    withMenuIconSize(trailing, iconSize) ??
+    (!showSelectedCheck && selected ? (
+      <ThemedCheck size={iconSize} uniProps={mutedMapping} />
+    ) : null);
 
   const handleItemPress = useCallback(
     (event: GestureResponderEvent) => {
@@ -279,7 +343,7 @@ export function MenuItem({
     >
       {showSelectedCheck ? (
         <View style={styles.checkSlot}>
-          {selected ? <ThemedCheck size={16} uniProps={foregroundMapping} /> : null}
+          {selected ? <ThemedCheck size={iconSize} uniProps={foregroundMapping} /> : null}
         </View>
       ) : null}
       {leadingContent ? <View style={styles.leadingSlot}>{leadingContent}</View> : null}
@@ -373,7 +437,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     minHeight: MENU_ITEM_HEIGHT,
-    gap: theme.spacing[2],
+    gap: MENU_ITEM_GAP,
     marginHorizontal: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
@@ -417,13 +481,14 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
   },
+  // Both slots hold one glyph, so they are one glyph wide at whatever scale the row is drawing.
   checkSlot: {
-    width: 16,
+    width: compactUp(MENU_ITEM_ICON_SIZE),
     alignItems: "center",
     justifyContent: "center",
   },
   leadingSlot: {
-    width: 16,
+    width: compactUp(MENU_ITEM_ICON_SIZE),
     alignItems: "center",
     justifyContent: "center",
   },
