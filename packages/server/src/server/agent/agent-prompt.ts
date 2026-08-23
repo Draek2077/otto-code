@@ -284,8 +284,20 @@ export async function sendPromptToAgent(
     await params.agentManager.setAgentMode(params.agentId, params.sessionMode);
   }
 
+  // The composer's id IS the submission identity. Providers stamp
+  // clientMessageId onto the submitted user_message so the client can retire its
+  // optimistic row by id instead of by text (docs/timeline-sync.md - content
+  // matching is the dated compatibility path, not the contract). Carrying only
+  // messageId here left clientMessageId undefined for every follow-up prompt,
+  // which silently downgraded every provider to text matching even though the
+  // daemon advertises `canonicalSubmittedPrompts`. The wire messageId is defined
+  // as that same value, so send both.
   const runOptions = params.messageId
-    ? { ...params.runOptions, messageId: params.messageId }
+    ? {
+        ...params.runOptions,
+        messageId: params.messageId,
+        clientMessageId: params.messageId,
+      }
     : params.runOptions;
 
   return startAgentRun(params.agentManager, params.agentId, params.prompt, params.logger, {

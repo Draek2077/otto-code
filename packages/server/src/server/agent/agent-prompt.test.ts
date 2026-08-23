@@ -181,9 +181,15 @@ test("sendPromptToAgent forwards the client message id as run options", async ()
     logger: createTestLogger(),
   });
 
+  // clientMessageId is the field providers stamp onto the submitted user_message
+  // so the client retires its optimistic row by id. Forwarding only messageId
+  // left it undefined and downgraded every provider to text matching, which
+  // breaks the moment a prompt carries an attachment (the provider's row also
+  // holds the flattened attachment text).
   expect(streamAgentSpy).toHaveBeenCalledWith("agent-1", "hello", {
     outputSchema: { type: "object" },
     messageId: "msg-client-1",
+    clientMessageId: "msg-client-1",
   });
 });
 

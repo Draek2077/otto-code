@@ -3373,6 +3373,10 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         type: "user_message",
         text: promptText,
         messageId: userMessageId,
+        // Carry the composer id explicitly rather than leaning on it happening
+        // to equal messageId, so the client retires its optimistic row by id
+        // like every other provider (docs/timeline-sync.md).
+        ...(options?.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
       },
     });
 

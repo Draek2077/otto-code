@@ -901,6 +901,55 @@ describe("ClaudeAgentSession features", () => {
     await session.close();
   });
 
+  test("stamps the composer id on a submitted prompt that carries an attachment", async () => {
+    // The submitted row's text is the MODEL-facing content: an attachment is
+    // already flattened into an extra text block by the time it reaches the SDK.
+    // Without the composer id the client can only reconcile its own optimistic
+    // row against this one by comparing text, which never matches once the
+    // flattening is appended - and the reader sees the prompt twice.
+    const { queryFactory } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.createSession({ provider: "claude", cwd: process.cwd() });
+
+    const events: AgentStreamEvent[] = [];
+    const unsubscribe = session.subscribe((event) => events.push(event));
+
+    await session.startTurn(
+      [
+        { type: "text", text: "Theres some UI bugs in Mobile mode." },
+        {
+          type: "uploaded_file",
+          id: "upload-1",
+          fileName: "shot.png",
+          mimeType: "image/png",
+          size: 249_921,
+          path: "/uploads/shot.png",
+        },
+      ],
+      { clientMessageId: "composer-1" },
+    );
+
+    const readUserRows = () =>
+      events.flatMap((event) =>
+        event.type === "timeline" && event.item.type === "user_message" ? [event.item] : [],
+      );
+    await vi.waitFor(() => {
+      expect(readUserRows()).toHaveLength(1);
+    });
+
+    const submitted = readUserRows()[0];
+    expect(submitted).toMatchObject({ clientMessageId: "composer-1" });
+    expect(submitted.text).toContain("Theres some UI bugs in Mobile mode.");
+    expect(submitted.text).toContain("Uploaded file: shot.png");
+
+    unsubscribe();
+    await session.close();
+  });
+
   test("turns Claude thinking off without retaining an effort level", async () => {
     const { queryFactory, launches } = createQueryMock();
     const client = new ClaudeAgentClient({
