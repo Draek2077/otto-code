@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSelectOption } from "./agent-sdk-types.js";
 import { EffortResolutionError, parseEffortLevel, resolveEffortOption } from "./effort-levels.js";
+import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 
 const CLAUDE_OPTIONS: AgentSelectOption[] = [
   { id: "low", label: "Low" },
@@ -95,5 +96,31 @@ describe("resolveEffortOption", () => {
     expect(
       resolveEffortOption({ requested: "variant-b", thinkingOptions: CUSTOM_OPTIONS }),
     ).toEqual({ optionId: "variant-b", matched: "exact-id" });
+  });
+
+  // An option that parses as no canonical rung - "ultracode" / "Ultra Code" -
+  // must never be what a canonical request lands on. It is opt-in: reachable by
+  // naming it exactly, never by asking for "max" and being upgraded into it.
+  // The stored-template editor offers the model's own option list precisely
+  // because this is the only way to pick it, so the two halves have to hold
+  // together: pickable deliberately, never selected automatically.
+  it("never maps a canonical level onto an off-ladder option", () => {
+    for (const level of EFFORT_LEVELS) {
+      let resolved: ReturnType<typeof resolveEffortOption> | null = null;
+      try {
+        resolved = resolveEffortOption({ requested: level, thinkingOptions: CLAUDE_OPTIONS });
+      } catch {
+        // "off"/"minimal" have no mapping in this set; not landing anywhere is
+        // also not landing on ultracode.
+        continue;
+      }
+      expect(resolved.optionId).not.toBe("ultracode");
+    }
+  });
+
+  it("resolves ultracode only when it is asked for by name", () => {
+    expect(
+      resolveEffortOption({ requested: "ultracode", thinkingOptions: CLAUDE_OPTIONS }),
+    ).toEqual({ optionId: "ultracode", matched: "exact-id" });
   });
 });

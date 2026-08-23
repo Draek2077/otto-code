@@ -15,9 +15,8 @@ describe("personality draft round-trip", () => {
     personalityPrompt: "Think first.",
     roles: ["advisor"],
     spinner: { glowA: "#111", glowB: "#222" },
-    // Fields the editor has no control for.
+    // A field the editor has no control for.
     featureValues: { fast_mode: true },
-    thinkingOptionId: "opus-high",
     // A field only a newer daemon knows about; the schema passes it through.
     somethingNewerDaemonsWrite: { keep: "me" },
   } as AgentProfile;
@@ -28,7 +27,6 @@ describe("personality draft round-trip", () => {
 
     expect(saved.name).toBe("Sage II");
     expect(saved.featureValues).toEqual({ fast_mode: true });
-    expect(saved.thinkingOptionId).toBe("opus-high");
     expect((saved as Record<string, unknown>)["somethingNewerDaemonsWrite"]).toEqual({
       keep: "me",
     });
@@ -37,7 +35,7 @@ describe("personality draft round-trip", () => {
   it("clears an editor field that the user emptied", () => {
     const draft = personalityToDraft(stored);
     const saved = draftToPersonality(
-      { ...draft, personalityPrompt: "   ", effortLevel: "" },
+      { ...draft, personalityPrompt: "   ", effort: "" },
       stored.id,
       stored,
     );
@@ -45,6 +43,47 @@ describe("personality draft round-trip", () => {
     // Absent, not an empty string: emptying the form has to reach the wire as
     // "unset", which a merge over `previous` would not do on its own.
     expect(saved).not.toHaveProperty("personalityPrompt");
+    expect(saved).not.toHaveProperty("effortLevel");
+    expect(saved).not.toHaveProperty("thinkingOptionId");
+  });
+
+  // One control, two wire fields. Everything below guards that only one of the
+  // pair is ever set, so the daemon resolver is never handed a contradiction.
+  it("stores a canonical rung as the portable effortLevel", () => {
+    const draft = { ...personalityToDraft(stored), effort: "high" };
+    const saved = draftToPersonality(draft, stored.id, stored);
+
+    expect(saved.effortLevel).toBe("high");
+    expect(saved).not.toHaveProperty("thinkingOptionId");
+  });
+
+  it("pins an off-ladder provider option that the canonical scale cannot name", () => {
+    // Claude advertises "ultracode" alongside the effort-named options. It
+    // parses as no canonical rung, so storing it as `effortLevel` would resolve
+    // to nothing; it has to be pinned exactly.
+    const draft = { ...personalityToDraft(stored), effort: "ultracode" };
+    const saved = draftToPersonality(draft, stored.id, stored);
+
+    expect(saved.thinkingOptionId).toBe("ultracode");
+    expect(saved).not.toHaveProperty("effortLevel");
+  });
+
+  it("reads a pinned option id back into the one effort control", () => {
+    const pinned = { ...stored, effortLevel: undefined, thinkingOptionId: "ultracode" };
+    expect(personalityToDraft(pinned as AgentProfile).effort).toBe("ultracode");
+  });
+
+  it("collapses a template carrying both effort fields down to one", () => {
+    // Contradictory input: the daemon resolver already prefers the pinned id,
+    // so saving normalizes to it rather than leaving a stale rung behind.
+    const both = { ...stored, effortLevel: "high", thinkingOptionId: "ultracode" };
+    const saved = draftToPersonality(
+      personalityToDraft(both as AgentProfile),
+      stored.id,
+      both as AgentProfile,
+    );
+
+    expect(saved.thinkingOptionId).toBe("ultracode");
     expect(saved).not.toHaveProperty("effortLevel");
   });
 

@@ -10,6 +10,7 @@
 import { CUE_MOMENTS, type CueMoment } from "@otto-code/protocol/messages";
 import type { AgentProfile, PersonalityRole } from "@otto-code/protocol/messages";
 import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
+import { parseEffortLevel } from "@otto-code/protocol/effort";
 
 export const DEFAULT_GLOW_A = "#4ec4ff";
 export const DEFAULT_GLOW_B = "#e14fe8";
@@ -73,7 +74,12 @@ export interface PersonalityDraft {
   provider: string;
   model: string;
   modeId: string; // "" = provider default
-  effortLevel: string; // "" = none
+  /**
+   * The picked thinking option, as one field. It lands on the wire as EITHER
+   * `effortLevel` or `thinkingOptionId` depending on what it is - see
+   * draftToPersonality. "" = none.
+   */
+  effort: string;
   personalityPrompt: string;
   /** Free text surfaced to orchestrating agents by list_personalities. */
   notes: string;
@@ -101,7 +107,9 @@ export function personalityToDraft(personality: AgentProfile): PersonalityDraft 
     // shows that as no model chosen rather than inventing one.
     model: personality.model ?? "",
     modeId: personality.modeId ?? "",
-    effortLevel: personality.effortLevel ?? "",
+    // A pinned provider-specific id wins over the canonical rung, matching how
+    // the daemon resolver reads the pair.
+    effort: personality.thinkingOptionId ?? personality.effortLevel ?? "",
     personalityPrompt: personality.personalityPrompt ?? "",
     notes: personality.notes ?? "",
     respectGlobalAppendPrompt: personality.respectGlobalAppendPrompt ?? true,
@@ -147,7 +155,15 @@ export function draftToPersonality(
   };
   setOrDelete(personality, "icon", draft.icon || undefined);
   setOrDelete(personality, "color", draft.color || undefined);
-  setOrDelete(personality, "effortLevel", draft.effortLevel || undefined);
+  // One control, two wire fields. A canonical rung ("high") stays in
+  // `effortLevel`, which is portable: the daemon re-maps it against whatever
+  // model is bound at spawn. Anything else is a provider-specific option id
+  // that the canonical scale cannot name (Claude's "ultracode"), so it is
+  // pinned exactly in `thinkingOptionId`. Only one is ever set.
+  const effort = draft.effort.trim();
+  const canonical = effort ? parseEffortLevel(effort) : null;
+  setOrDelete(personality, "effortLevel", canonical ?? undefined);
+  setOrDelete(personality, "thinkingOptionId", effort && !canonical ? effort : undefined);
   setOrDelete(personality, "modeId", draft.modeId || undefined);
   setOrDelete(personality, "personalityPrompt", draft.personalityPrompt.trim() || undefined);
   setOrDelete(personality, "notes", draft.notes.trim() || undefined);

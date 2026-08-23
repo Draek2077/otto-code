@@ -303,7 +303,7 @@ function emptyDraft(entries: readonly ProviderSnapshotEntry[]): PersonalityDraft
     provider: providerId,
     model: defaultModelForProvider(provider),
     modeId: "",
-    effortLevel: "medium",
+    effort: "medium",
     personalityPrompt: "",
     notes: "",
     respectGlobalAppendPrompt: true,
@@ -1122,13 +1122,26 @@ function PersonalityEditModal({
     if (!draft.modeId) return undefined;
     return providerEntry?.modes?.find((mode) => mode.id === draft.modeId)?.label;
   }, [providerEntry, draft.modeId]);
-  const effortOptions = useMemo<ComboboxOption[]>(
-    () => [
-      { id: "", label: "None" },
-      ...EFFORT_LEVELS.map((level) => ({ id: level, label: formatEffortLabel(level) })),
-    ],
-    [],
-  );
+  // The bound model's OWN thinking options, which is what the composer shows -
+  // so both surfaces offer one vocabulary instead of two. It matters beyond
+  // consistency: a provider may advertise an option that is deliberately off the
+  // canonical ladder (Claude's "Ultra Code"), and the canonical rungs cannot
+  // name it. Offering the model's list is what makes such an option pickable
+  // here at all. It stays opt-in: resolveEffortOption never MAPS a canonical
+  // rung onto an unparseable option, so nothing selects Ultra Code on a user's
+  // behalf - it has to be chosen deliberately.
+  //
+  // Falls back to the canonical ladder only when the model advertises nothing,
+  // so a template can still carry an intent for a model whose options the host
+  // has not loaded yet.
+  const effortOptions = useMemo<ComboboxOption[]>(() => {
+    const advertised = selectedModel?.thinkingOptions ?? [];
+    const options =
+      advertised.length > 0
+        ? advertised.map((option) => ({ id: option.id, label: option.label ?? option.id }))
+        : EFFORT_LEVELS.map((level) => ({ id: level, label: formatEffortLabel(level) }));
+    return [{ id: "", label: "None" }, ...options];
+  }, [selectedModel]);
   const voiceOptions = useMemo(() => buildVoiceOptions(speechOptions), [speechOptions]);
   // Only offer a voice when the host actually exposes TTS voices beyond "None".
   const showVoice = voiceOptions.length > 1;
@@ -1186,7 +1199,7 @@ function PersonalityEditModal({
     setDraft((current) => ({ ...current, modeId: value }));
   }, []);
   const setEffort = useCallback((value: string) => {
-    setDraft((current) => ({ ...current, effortLevel: value }));
+    setDraft((current) => ({ ...current, effort: value }));
   }, []);
   const setPrompt = useCallback((value: string) => {
     setDraft((current) => ({ ...current, personalityPrompt: value }));
@@ -1634,7 +1647,7 @@ function PersonalityEditModal({
             />
             <PickerRow
               label="Effort"
-              value={draft.effortLevel}
+              value={draft.effort}
               options={effortOptions}
               onChange={setEffort}
               testID="agent-personality-effort-picker"
