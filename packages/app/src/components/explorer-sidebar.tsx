@@ -427,11 +427,12 @@ function ExplorerTabButton({
   const tabStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType) => [
       styles.tab,
+      display === "icon" && styles.tabIconOnly,
       active && styles.tabActive,
       hovered && !pressed && styles.tabHovered,
       pressed && styles.tabPressed,
     ],
-    [active],
+    [active, display],
   );
   const tabTextStyle = useMemo(() => [styles.tabText, active && styles.tabTextActive], [active]);
   const accessibilityState = useMemo(() => ({ selected: active }), [active]);
@@ -879,9 +880,16 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
+  // The tabs are part of the same header series as the title-bar buttons, so
+  // they carry that row's gap (`headerRight` in workspace-screen). The measure
+  // twins below must keep the identical gap or the width tiers are decided
+  // against a row narrower than the one that actually renders.
   tabsContainer: {
     flexDirection: "row",
-    gap: theme.spacing[1],
+    gap: {
+      xs: theme.spacing[1],
+      md: theme.spacing[2],
+    },
   },
   // Off-layout twin of tabsContainer used only to measure the labeled width.
   tabsMeasureRow: {
@@ -889,20 +897,45 @@ const styles = StyleSheet.create((theme) => ({
     left: 0,
     top: 0,
     flexDirection: "row",
-    gap: theme.spacing[1],
+    gap: {
+      xs: theme.spacing[1],
+      md: theme.spacing[2],
+    },
     opacity: 0,
   },
   tab: {
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: theme.spacing[2],
     // Deliberately off the spacing scale: spacing[2] (8) makes these pills 2px
     // taller than they want to read inside the fixed-height sidebar header.
     // Local to this tab row - do not promote it into the shared control geometry.
     paddingVertical: TAB_VERTICAL_PADDING,
     paddingHorizontal: theme.spacing[3],
+    // Padding alone sizes the pill from its content, so an icon-only tab is
+    // measured from the icon box while a labeled one is measured from the
+    // taller text line box - the icon-only tier ends up shorter than the
+    // title-bar buttons it shares the header row with. Pin the floor to the
+    // header icon slot's resting height (icon + its padding + the reserved
+    // focus-ring border) so every display tier matches the title bar. Keep in
+    // step with `headerIconSlotStyle.slot` / `.compactSlot`.
+    minHeight: {
+      xs: theme.iconSize.md + (theme.spacing[3] - 3) * 2 + theme.borderWidth[1] * 2,
+      md: theme.iconSize.md + (theme.spacing[2] - 1) * 2 + theme.borderWidth[1] * 2,
+    },
     borderRadius: theme.borderRadius.md,
+  },
+  // Without a label there is nothing for the horizontal padding to frame, so
+  // the pill reads as a wide lozenge next to the square title-bar buttons.
+  // Drop the padding and make the slot square at the pinned height instead.
+  tabIconOnly: {
+    paddingHorizontal: 0,
+    width: {
+      xs: theme.iconSize.md + (theme.spacing[3] - 3) * 2 + theme.borderWidth[1] * 2,
+      md: theme.iconSize.md + (theme.spacing[2] - 1) * 2 + theme.borderWidth[1] * 2,
+    },
   },
   shortcutDiscoveryHint: {
     position: "absolute",
