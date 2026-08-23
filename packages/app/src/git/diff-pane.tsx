@@ -2925,7 +2925,7 @@ function CommitLogButton({
 }) {
   const { t } = useTranslation();
   // Doubled on mobile (14 -> 28); unchanged (14) on desktop.
-  const logIconSize = useIconSize(2).sm;
+  const logIconSize = useIconSize().sm;
   const handleOpenLog = useCallback(() => {
     if (workspaceId) {
       openGitLogTab({ serverId, workspaceId, operation: "commit" });

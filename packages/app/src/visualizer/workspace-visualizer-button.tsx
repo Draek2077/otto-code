@@ -56,10 +56,10 @@ export function WorkspaceVisualizerButton({
 }: WorkspaceVisualizerButtonProps) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
-  const iconSize = useIconSize(1.5);
+  const iconSize = useIconSize();
   // Compact matches the Play/Explorer glyphs beside it (lg), desktop stays at the
   // smaller md glyph shared with the "..." trigger.
-  const glyphSize = isCompact ? iconSize.lg : iconSize.md;
+  const glyphSize = iconSize.chromeMd;
   const { showing, toggle } = useVisualizerSurface(serverId, workspaceId);
   const isShowing = showing !== null;
   const triggerStyle = useMemo(

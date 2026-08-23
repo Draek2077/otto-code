@@ -79,7 +79,7 @@ import {
   buildStatsRoute,
   buildSettingsRoute,
 } from "@/utils/host-routes";
-import { compactUp, ICON_SIZE, useIconSize } from "@/styles/theme";
+import { compactUp, useIconSize } from "@/styles/theme";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
@@ -396,6 +396,7 @@ function SidebarHostPicker({
   onOpenHostSettings: (serverId: string) => void;
 }) {
   const hosts = useHosts();
+  const iconSize = useIconSize();
   const triggerRef = useRef<View | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -434,7 +435,7 @@ function SidebarHostPicker({
             testID="sidebar-hosts-trigger"
             accessibilityLabel="Hosts"
             icon={Server}
-            iconSize={ICON_SIZE.sm * 1.5}
+            iconSize={iconSize.chromeLg}
             theme={theme}
           />
         </TooltipTrigger>

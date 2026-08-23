@@ -70,10 +70,10 @@ export function useVoiceCuesAvailable(serverId: string): boolean {
  * `useVoiceCuesAvailable` and `resolveCompactHeaderActions`. */
 export function WorkspaceVoiceCuesButton() {
   const isCompact = useIsCompactFormFactor();
-  const iconSize = useIconSize(1.5);
+  const iconSize = useIconSize();
   // Compact matches the Play/Explorer/Visualizer glyphs beside it (lg), desktop
   // stays at the smaller md glyph shared with the "..." trigger.
-  const glyphSize = isCompact ? iconSize.lg : iconSize.md;
+  const glyphSize = iconSize.chromeMd;
   const { settings, updateSettings } = useAppSettings();
   const unmuted = !settings.agentVoiceCuesMuted;
 

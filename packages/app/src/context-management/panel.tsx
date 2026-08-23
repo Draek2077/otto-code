@@ -94,7 +94,7 @@ export function ContextManagementPanel(): ReactElement {
   const isCompact = useIsCompactFormFactor();
   // The back chevron carries a label, so it takes the gentler 1.5x compact bump
   // rather than the ×2 an icon-only control gets - the label only grows by +2.
-  const backIconSize = useIconSize(1.5);
+  const backIconSize = useIconSize();
 
   // The picker is a viewing preference, so it persists device-locally and the
   // tab reopens where the user left it.
@@ -445,7 +445,7 @@ export function ContextManagementPanel(): ReactElement {
     const banner = activeReveal ? (
       <FindingBanner
         message={activeReveal.message}
-        iconSize={backIconSize.sm}
+        iconSize={backIconSize.chromeSm}
         onDismiss={handleDismissReveal}
       />
     ) : null;
@@ -484,7 +484,7 @@ export function ContextManagementPanel(): ReactElement {
     );
   }, [
     activeReveal,
-    backIconSize.sm,
+    backIconSize.chromeSm,
     handleDismissReveal,
     isCompact,
     isEmptyReport,
@@ -508,7 +508,7 @@ export function ContextManagementPanel(): ReactElement {
             <CompactPaneHeader
               node={selectedNode}
               category={selectedCategory}
-              iconSize={backIconSize.md}
+              iconSize={backIconSize.chromeMd}
               onBack={handleCompactBack}
             />
             <View style={styles.fill}>{filePane}</View>

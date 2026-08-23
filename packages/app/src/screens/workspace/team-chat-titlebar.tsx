@@ -68,7 +68,7 @@ import { getIsElectron } from "@/constants/platform";
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const mutedSmMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
+  size: theme.iconSize.chromeSm,
 });
 
 // The title-bar notification glyph must reflect notifications raised while
@@ -203,14 +203,14 @@ function ZoomRecorderGlyph({
  */
 function useTitlebarPopupControl(controlledOpen: boolean | undefined) {
   const isCompact = useIsCompactFormFactor();
-  const iconSize = useIconSize(1.5);
+  const iconSize = useIconSize();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   return {
     isCompact,
     iconSize,
     // Compact matches every other glyph in the strip (lg); desktop stays on the
     // smaller md glyph shared with the "..." trigger.
-    glyphSize: isCompact ? iconSize.lg : iconSize.md,
+    glyphSize: iconSize.chromeMd,
     isOpen: controlledOpen ?? uncontrolledOpen,
     setUncontrolledOpen,
   };
@@ -1758,7 +1758,7 @@ export function WorkspaceTeamChatButton({
                         pendingStatus: pendingPresenceStatus,
                         status: presenceStatus,
                       })}
-                      size={iconSize.sm}
+                      size={iconSize.chromeSm}
                     />
                     {zoomChatPresenceDisplayText(
                       presenceStatus,
@@ -1835,7 +1835,7 @@ export function WorkspaceTeamChatButton({
                           disabled && styles.teamChatPresenceOptionDisabled,
                         ]}
                       >
-                        <ZoomChatPresenceIcon status={option.id} size={iconSize.sm} />
+                        <ZoomChatPresenceIcon status={option.id} size={iconSize.chromeSm} />
                         <Text
                           style={[
                             styles.teamChatPresenceOptionText,
@@ -1865,7 +1865,7 @@ export function WorkspaceTeamChatButton({
                 conversations={chatSearchConversations}
                 isSearching={isSearchingChat}
                 error={chatSearchError}
-                iconSize={iconSize.sm}
+                iconSize={iconSize.chromeSm}
                 onOpenConversation={openConversation}
                 canToggleFavorite={supportsChatFavorites && isChatConnected && isChatEnabled}
                 isFavoriteUpdating={isFavoriteUpdating}
@@ -1925,7 +1925,7 @@ export function WorkspaceTeamChatButton({
                   <ZoomChatHomeConversationRow
                     key={conversation.conversationId}
                     conversation={conversation}
-                    iconSize={iconSize.sm}
+                    iconSize={iconSize.chromeSm}
                     canToggleFavorite={supportsChatFavorites && isChatConnected && isChatEnabled}
                     isFavoriteUpdating={isFavoriteUpdating(conversation.conversationId)}
                     onOpenConversation={openConversation}

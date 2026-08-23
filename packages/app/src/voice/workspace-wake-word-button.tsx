@@ -81,10 +81,10 @@ export function WorkspaceWakeWordButton() {
     getWakeWordStatus,
     getWakeWordStatus,
   );
-  const iconSize = useIconSize(1.5);
+  const iconSize = useIconSize();
   // Compact matches the Chat / Meetings / Visualizer / Brain glyphs beside it
   // (lg); desktop stays on the smaller md glyph shared with the "..." trigger.
-  const size = isCompact ? iconSize.lg : iconSize.md;
+  const size = iconSize.chromeMd;
   const featureEnabled = settings.wakeWordEnabled;
   const listeningPaused = settings.wakeWordListeningPaused;
   const supported = getWakeWordCapability().available;

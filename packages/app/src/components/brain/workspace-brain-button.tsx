@@ -45,10 +45,10 @@ export function shouldShowHeaderBrainButton(input: {
 
 export function WorkspaceBrainButton() {
   const isCompact = useIsCompactFormFactor();
-  const iconSize = useIconSize(1.5);
+  const iconSize = useIconSize();
   // Compact matches the Play / Explorer / Visualizer glyphs beside it (lg);
   // desktop stays on the smaller md glyph shared with the "..." trigger.
-  const glyphSize = isCompact ? iconSize.lg : iconSize.md;
+  const glyphSize = iconSize.chromeMd;
   const rail = useBrainRail();
   // Same wording rule as the sidebar footer: the sentence is the state's own.
   // Two active slots name each half; three or more just count themselves.

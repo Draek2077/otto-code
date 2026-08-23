@@ -7,7 +7,7 @@ import { useBrainRail } from "@/components/brain/use-brain-rail-state";
 import { Gauge, Home, Settings, type IconComponent } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { compactUp, ICON_SIZE, type Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 
 type SidebarTheme = Theme;
 
@@ -63,12 +63,13 @@ export function FooterIconButton({
   // color, marking the surface the user is already on.
   active?: boolean;
 } & Omit<PressableProps, "onPress" | "testID" | "style" | "children">) {
-  const isCompactLayout = useIsCompactFormFactor();
-  // Footer icons are always scaled up on every form factor, and another 1.5x on
-  // compact so they stay comfortably tappable. Static ICON_SIZE (not
-  // theme.iconSize) - the theme tokens are already doubled on compact by
-  // applyAppearance, which would compound here.
-  const baseIconSize = iconSize ?? ICON_SIZE.md * 1.5;
+  // Footer icons run a step larger than an ordinary icon on every form factor, so
+  // they stay comfortably tappable: `chromeXl` is 24 on a pointer and 36 under a
+  // thumb. That used to be spelled `ICON_SIZE.md * 1.5` and then multiplied by 1.5
+  // again below, which is how the one caller that passed its own base ended up
+  // rendering at a fractional 31.5.
+  const ladder = useIconSize();
+  const resolvedIconSize = iconSize ?? ladder.chromeXl;
   return (
     <Pressable
       {...pressableProps}
@@ -83,7 +84,7 @@ export function FooterIconButton({
       onPress={onPress}
     >
       {({ hovered }) => {
-        const size = isCompactLayout ? baseIconSize * 1.5 : baseIconSize;
+        const size = resolvedIconSize;
         const color = footerIconColor(theme, { active, hovered: Boolean(hovered) });
         if (renderIcon) {
           return renderIcon({ size, color });

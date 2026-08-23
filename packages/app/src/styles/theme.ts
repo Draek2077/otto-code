@@ -104,36 +104,46 @@ export const ICON_SIZE = {
   chromeSm: 14,
   chromeMd: 16,
   chromeLg: 20,
+  chromeXl: 24,
 } as const;
 
-function scaleIconSizes(scale: number): Record<keyof typeof ICON_SIZE, number> {
-  return {
-    xs: ICON_SIZE.xs * scale,
-    sm: ICON_SIZE.sm * scale,
-    md: ICON_SIZE.md * scale,
-    mdPlus: ICON_SIZE.mdPlus * scale,
-    lg: ICON_SIZE.lg * scale,
-    chromeSm: ICON_SIZE.chromeSm * scale,
-    chromeMd: ICON_SIZE.chromeMd * scale,
-    chromeLg: ICON_SIZE.chromeLg * scale,
-  };
-}
-
-const ICON_SIZE_COMPACT = scaleIconSizes(2);
+/**
+ * The compact ladder, resolved exactly as `applyAppearance` resolves it: the ordinary
+ * ramp doubles, the `chrome*` ramp grows by half.
+ *
+ * Two copies of the same resolution, because `applyAppearance` patches the Unistyles
+ * theme and this serves the callers that need a number in hand. `apply-appearance.test`
+ * asserts the two agree, so a factor changed in one place fails rather than drifts.
+ */
+export const ICON_SIZE_COMPACT: Record<keyof typeof ICON_SIZE, number> = {
+  xs: ICON_SIZE.xs * 2,
+  sm: ICON_SIZE.sm * 2,
+  md: ICON_SIZE.md * 2,
+  mdPlus: ICON_SIZE.mdPlus * 2,
+  lg: ICON_SIZE.lg * 2,
+  chromeSm: ICON_SIZE.chromeSm * 1.5,
+  chromeMd: ICON_SIZE.chromeMd * 1.5,
+  chromeLg: ICON_SIZE.chromeLg * 1.5,
+  chromeXl: ICON_SIZE.chromeXl * 1.5,
+};
 
 /**
- * Icon size tokens, scaled on compact form factors (doubled by default - pass
- * `compactScale` for a different multiplier, e.g. `1.5` for controls that sit next
- * to a fixed-chrome sibling and shouldn't double as aggressively). For callers that
- * read `ICON_SIZE` as a static import (a plain `size` prop, not a `StyleSheet.create`
- * value) rather than through the live theme - those never see the runtime
- * `theme.iconSize` patch `applyAppearance` applies, so they need this hook instead.
- * Mirrors `useIsCompactFormFactor`'s pattern rather than calling `useUnistyles()` directly.
+ * The icon ladder resolved to numbers for the current form factor.
+ *
+ * **Prefer a size token on the icon itself.** `<Search size="md" />` resolves through
+ * the live theme and repaints when the breakpoint changes; this hook resolves once per
+ * render and only re-resolves because the component re-rendered. It exists for the few
+ * places that genuinely need the number rather than the glyph: a glow radius, an
+ * optical multiplier, an SVG viewBox, a blob-loader that lays out from it.
+ *
+ * There is no scale argument any more. A caller that wanted a gentler compact bump
+ * asked for `useIconSize(1.5)`, which multiplied every token uniformly and left five
+ * different hand-rolled scales across the app. That distinction is now in the token:
+ * name a `chrome*` size and get the 1.5 ramp, name an ordinary one and get the double.
  */
-export function useIconSize(compactScale: number = 2): Record<keyof typeof ICON_SIZE, number> {
+export function useIconSize(): Record<keyof typeof ICON_SIZE, number> {
   const isCompact = useIsCompactFormFactor();
-  if (!isCompact) return ICON_SIZE;
-  return compactScale === 2 ? ICON_SIZE_COMPACT : scaleIconSizes(compactScale);
+  return isCompact ? ICON_SIZE_COMPACT : ICON_SIZE;
 }
 
 export const FONT_WEIGHT = {

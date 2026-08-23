@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { darkHighlightColors, resolveSyntaxColors } from "@otto-code/highlight";
-import { DEFAULT_UI_FONT_STACK, REGISTERED_THEMES } from "@/styles/theme";
+import { DEFAULT_UI_FONT_STACK, ICON_SIZE_COMPACT, REGISTERED_THEMES } from "@/styles/theme";
 import { applyAppearance, type AppearanceInput } from "./apply-appearance";
 
 // Override the global react-native-unistyles mock (vitest.setup.ts) so that
@@ -40,7 +40,7 @@ interface FakeTheme {
   layout: { chatMaxWidth: number | undefined };
   colors: { foreground: string; syntax: Record<string, string> };
   iconSize: Record<
-    "xs" | "sm" | "md" | "mdPlus" | "lg" | "chromeSm" | "chromeMd" | "chromeLg",
+    "xs" | "sm" | "md" | "mdPlus" | "lg" | "chromeSm" | "chromeMd" | "chromeLg" | "chromeXl",
     number
   >;
 }
@@ -72,6 +72,7 @@ function makeFakeTheme(): FakeTheme {
       chromeSm: 14,
       chromeMd: 16,
       chromeLg: 20,
+      chromeXl: 24,
     },
   };
 }
@@ -224,6 +225,7 @@ describe("applyAppearance", () => {
       chromeSm: 14,
       chromeMd: 16,
       chromeLg: 20,
+      chromeXl: 24,
     });
   });
 
@@ -231,6 +233,15 @@ describe("applyAppearance", () => {
   // header glyphs sit in a row whose height the window fixes, so they grow by half
   // rather than doubling. Desktop values are identical across both ladders, which is
   // what makes migrating a call site to a chrome token a no-op on a pointer.
+  // `useIconSize` serves callers that need the number in hand rather than a token on the
+  // glyph, so it resolves the same ladder a second time. If a factor moves in one place
+  // and not the other, phones get two different answers for the same token.
+  it("agrees with the ladder useIconSize hands out", () => {
+    applyAppearance(makeInput({ isCompact: true }));
+
+    expect(runCapturedUpdater().iconSize).toEqual(ICON_SIZE_COMPACT);
+  });
+
   it("doubles every iconSize token when compact", () => {
     applyAppearance(makeInput({ isCompact: true }));
 
@@ -243,6 +254,7 @@ describe("applyAppearance", () => {
       chromeSm: 21,
       chromeMd: 24,
       chromeLg: 30,
+      chromeXl: 36,
     });
   });
 

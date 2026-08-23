@@ -1232,12 +1232,11 @@ function HeaderMenuProfileItem({
 const COMPACT_HEADER_BUTTON_HIT_SLOP = { top: 8, bottom: 8 } as const;
 
 function WorkspaceHeaderMenuTriggerIcon({ hovered, open }: { hovered: boolean; open: boolean }) {
-  const isCompact = useIsCompactFormFactor();
-  const iconSize = useIconSize(1.5);
+  const iconSize = useIconSize();
   const colorMapping = hovered || open ? foregroundColorMapping : mutedColorMapping;
   // The strip is one size on each form factor, this trigger included: lg on
   // compact, md on desktop.
-  return <ThemedEllipsis size={isCompact ? iconSize.lg : iconSize.md} uniProps={colorMapping} />;
+  return <ThemedEllipsis size={iconSize.chromeMd} uniProps={colorMapping} />;
 }
 
 function WorkspaceHeaderMenu({
@@ -1739,7 +1738,7 @@ function WorkspaceHeaderTitleBar({
   const containerStyle = useMemo(() => [styles.headerTitleContainer, HEADER_LABEL_DRAG_STYLE], []);
   // Match the Explorer toggle's icon sizing so the mobile Play button in the
   // action strip shares the same chrome and glyph size.
-  const headerActionIconSize = useIconSize(1.5);
+  const headerActionIconSize = useIconSize();
   // The two popup buttons stay mounted whether or not the fit gave them a slot:
   // dropped, they render as a zero-size anchor here and the "..." menu item
   // opens them through this state. Mounting them only when visible would also
@@ -1875,7 +1874,7 @@ function WorkspaceHeaderTitleBar({
             onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
             hideLabels
             presentation="ghost"
-            ghostIconSize={headerActionIconSize.lg}
+            ghostIconSize={headerActionIconSize.chromeLg}
           />
         ) : null}
         {/* The Brain status light, standing in for the sidebar's own whenever
@@ -2281,7 +2280,7 @@ function WorkspaceScreenContent({
   const isDeveloperMode = useIsDeveloperMode();
   // The mobile diff/explorer toggle sits in the menu button's auto-sized chrome,
   // so its icon scales at 1.5x instead of the usual compact doubling.
-  const headerActionIconSize = useIconSize(1.5);
+  const headerActionIconSize = useIconSize();
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const normalizedServerId = useMemo(() => trimNonEmpty(decodeSegment(serverId)) ?? "", [serverId]);
@@ -4654,14 +4653,14 @@ function WorkspaceScreenContent({
                   if (isExplorerOpen) {
                     return (
                       <ThemedPanelRightClose
-                        size={headerActionIconSize.lg}
+                        size={headerActionIconSize.chromeLg}
                         uniProps={accentColorMapping}
                       />
                     );
                   }
                   return (
                     <ThemedPanelRight
-                      size={headerActionIconSize.lg}
+                      size={headerActionIconSize.chromeLg}
                       uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
                     />
                   );
@@ -4712,7 +4711,7 @@ function WorkspaceScreenContent({
       headerActionFit.showCompactExplorer,
       headerActionFit.showPlainExplorer,
       settings.workspaceToolsPlacement,
-      headerActionIconSize.lg,
+      headerActionIconSize.chromeLg,
       t,
     ],
   );

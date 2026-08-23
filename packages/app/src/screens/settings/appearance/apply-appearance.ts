@@ -89,6 +89,7 @@ function scaleIconSize(isCompact: boolean): Theme["iconSize"] {
     chromeSm: ICON_SIZE.chromeSm * chromeFactor,
     chromeMd: ICON_SIZE.chromeMd * chromeFactor,
     chromeLg: ICON_SIZE.chromeLg * chromeFactor,
+    chromeXl: ICON_SIZE.chromeXl * chromeFactor,
   };
 }
 
