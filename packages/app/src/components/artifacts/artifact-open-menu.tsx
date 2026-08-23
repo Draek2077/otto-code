@@ -44,9 +44,9 @@ export interface ArtifactOpenMenuProps {
 }
 
 const ThemedTriangleAlert = withUnistyles(TriangleAlert);
-const generatingLeading = <ThemedBlobLoader size={14} />;
+const generatingLeading = <ThemedBlobLoader size="sm" />;
 const errorLeadingColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
-const errorLeading = <ThemedTriangleAlert size={14} uniProps={errorLeadingColorMapping} />;
+const errorLeading = <ThemedTriangleAlert size="sm" uniProps={errorLeadingColorMapping} />;
 
 function menuItemLeading(status: AggregatedArtifact["status"]): ReactElement | undefined {
   if (status === "generating") {
@@ -120,7 +120,7 @@ export function ArtifactOpenMenu({
 
   const handleOpenCreate = useCallback(() => setCreateOpen(true), []);
   const handleCloseCreate = useCallback(() => setCreateOpen(false), []);
-  const createLeading = useMemo(() => <Robot size={16} color={styles.icon.color} />, []);
+  const createLeading = useMemo(() => <Robot size="md" color={styles.icon.color} />, []);
 
   if (!supportsArtifacts) {
     return null;
@@ -182,7 +182,7 @@ export function ArtifactOpenMenu({
           accessibilityLabel="Add artifact"
           style={triggerStyle}
         >
-          <FileText size={14} color={styles.icon.color} />
+          <FileText size="sm" color={styles.icon.color} />
         </DropdownMenuTrigger>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
@@ -245,7 +245,7 @@ function ArtifactSheetTriggerButton(): ReactElement {
           onPress={handlePress}
           style={pressableStyle}
         >
-          <FileText size={14} color={styles.icon.color} />
+          <FileText size="sm" color={styles.icon.color} />
         </Pressable>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>

@@ -37,7 +37,7 @@ export function PinnedSectionHeader({
         <>
           <Text style={styles.title}>{t("sidebar.pinned.title")}</Text>
           {hovered || isNative || isCompact ? (
-            <Chevron size={12} uniProps={foregroundMutedColorMapping} />
+            <Chevron size="xs" uniProps={foregroundMutedColorMapping} />
           ) : null}
         </>
       )}

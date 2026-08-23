@@ -48,7 +48,7 @@ export function SearchField({
 
   return (
     <View style={[styles.field, isFocused && styles.fieldFocused]}>
-      <ThemedSearch size={14} uniProps={mutedColorMapping} />
+      <ThemedSearch size="sm" uniProps={mutedColorMapping} />
       <ThemedTextInput
         testID={testID}
         value={value}
@@ -70,7 +70,7 @@ export function SearchField({
           accessibilityLabel={clearAccessibilityLabel}
           hitSlop={8}
         >
-          <ThemedX size={14} uniProps={mutedColorMapping} />
+          <ThemedX size="sm" uniProps={mutedColorMapping} />
         </Pressable>
       ) : null}
     </View>

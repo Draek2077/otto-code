@@ -75,9 +75,9 @@ export function PrBadge({ hint }: { hint: PrHint }) {
       style={prBadgePressableStyle}
     >
       {isHovered ? (
-        <ThemedExternalLink size={12} uniProps={iconUniProps} />
+        <ThemedExternalLink size="xs" uniProps={iconUniProps} />
       ) : (
-        <ThemedGitPullRequest size={12} uniProps={iconUniProps} />
+        <ThemedGitPullRequest size="xs" uniProps={iconUniProps} />
       )}
       <Text style={textStyle} numberOfLines={1}>
         {hint.number}

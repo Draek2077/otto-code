@@ -27,11 +27,11 @@ interface RewindMenuProps {
 function getIcon(mode: RewindMode, color: string): ReactElement {
   switch (mode) {
     case "conversation":
-      return <MessageSquare size={16} color={color} />;
+      return <MessageSquare size="md" color={color} />;
     case "files":
-      return <FileText size={16} color={color} />;
+      return <FileText size="md" color={color} />;
     case "both":
-      return <Layers size={16} color={color} />;
+      return <Layers size="md" color={color} />;
   }
 }
 
@@ -113,7 +113,7 @@ export const RewindMenu = memo(function RewindMenu({
             >
               {({ hovered, open }) => (
                 <Undo2
-                  size={16}
+                  size="md"
                   color={hovered || open ? theme.colors.foreground : theme.colors.foregroundMuted}
                 />
               )}

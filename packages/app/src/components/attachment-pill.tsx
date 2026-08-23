@@ -68,7 +68,7 @@ export function AttachmentPill({
         accessibilityLabel={removeAccessibilityLabel}
         style={closeButtonStyle}
       >
-        <ThemedX size={12} uniProps={iconForegroundMutedMapping} />
+        <ThemedX size="xs" uniProps={iconForegroundMutedMapping} />
       </Pressable>
     </View>
   );

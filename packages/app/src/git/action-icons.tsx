@@ -24,27 +24,27 @@ const ThemedGitHostingIcon = withUnistyles(GitHostingIcon);
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 export const GIT_ACTION_ICONS = {
-  commit: <ThemedGitCommitHorizontal size={16} uniProps={mutedColorMapping} />,
-  pull: <ThemedDownload size={16} uniProps={mutedColorMapping} />,
-  push: <ThemedUpload size={16} uniProps={mutedColorMapping} />,
-  pullAndPush: <ThemedArrowDownUp size={16} uniProps={mutedColorMapping} />,
-  fetch: <ThemedRefreshCcw size={16} uniProps={mutedColorMapping} />,
+  commit: <ThemedGitCommitHorizontal size="md" uniProps={mutedColorMapping} />,
+  pull: <ThemedDownload size="md" uniProps={mutedColorMapping} />,
+  push: <ThemedUpload size="md" uniProps={mutedColorMapping} />,
+  pullAndPush: <ThemedArrowDownUp size="md" uniProps={mutedColorMapping} />,
+  fetch: <ThemedRefreshCcw size="md" uniProps={mutedColorMapping} />,
   viewPr: (provider: GitHostingProviderId) => (
-    <ThemedGitHostingIcon provider={provider} size={16} uniProps={mutedColorMapping} />
+    <ThemedGitHostingIcon provider={provider} size="md" uniProps={mutedColorMapping} />
   ),
   createPr: (provider: GitHostingProviderId) => (
-    <ThemedGitHostingIcon provider={provider} size={16} uniProps={mutedColorMapping} />
+    <ThemedGitHostingIcon provider={provider} size="md" uniProps={mutedColorMapping} />
   ),
   mergePrSquash: (provider: GitHostingProviderId) => (
-    <ThemedGitHostingIcon provider={provider} size={16} uniProps={mutedColorMapping} />
+    <ThemedGitHostingIcon provider={provider} size="md" uniProps={mutedColorMapping} />
   ),
   mergePrMerge: (provider: GitHostingProviderId) => (
-    <ThemedGitHostingIcon provider={provider} size={16} uniProps={mutedColorMapping} />
+    <ThemedGitHostingIcon provider={provider} size="md" uniProps={mutedColorMapping} />
   ),
   mergePrRebase: (provider: GitHostingProviderId) => (
-    <ThemedGitHostingIcon provider={provider} size={16} uniProps={mutedColorMapping} />
+    <ThemedGitHostingIcon provider={provider} size="md" uniProps={mutedColorMapping} />
   ),
-  merge: <ThemedGitMerge size={16} uniProps={mutedColorMapping} />,
-  mergeFromBase: <ThemedRefreshCcw size={16} uniProps={mutedColorMapping} />,
-  archive: <ThemedArchive size={16} uniProps={mutedColorMapping} />,
+  merge: <ThemedGitMerge size="md" uniProps={mutedColorMapping} />,
+  mergeFromBase: <ThemedRefreshCcw size="md" uniProps={mutedColorMapping} />,
+  archive: <ThemedArchive size="md" uniProps={mutedColorMapping} />,
 };

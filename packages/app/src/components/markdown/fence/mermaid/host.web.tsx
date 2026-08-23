@@ -20,6 +20,7 @@ import { MermaidRuntimeRequestDriver } from "./runtime/request-driver";
 import { buildMermaidDiagramTheme, type MermaidDiagramTheme } from "./theme";
 import { useMermaidRenderModel } from "./use-render-model";
 import { getDiagramBoxStyle } from "./presentation";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 interface MermaidFenceHostImplProps extends MarkdownFenceRendererProps {
   diagramTheme: MermaidDiagramTheme;
@@ -433,7 +434,7 @@ function MermaidFenceHostImpl({
 }
 
 interface DiagramControlButtonProps {
-  icon: ComponentType<{ size?: number; color?: string }>;
+  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
   label: string;
   onPress: () => void;
   visible: boolean;
@@ -459,7 +460,7 @@ const DiagramControlButton = React.memo(function DiagramControlButton({
     >
       {({ hovered }) => (
         <Icon
-          size={14}
+          size="sm"
           color={hovered ? controlStyles.iconHovered.color : controlStyles.icon.color}
         />
       )}

@@ -62,7 +62,7 @@ export function TextFieldPicker({
           <Text style={value ? styles.triggerText : styles.triggerPlaceholder} numberOfLines={1}>
             {value || placeholder}
           </Text>
-          <ChevronDown size={16} color={styles.chevron.color} />
+          <ChevronDown size="md" color={styles.chevron.color} />
         </Pressable>
       </View>
       <Combobox

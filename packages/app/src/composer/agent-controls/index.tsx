@@ -1383,7 +1383,7 @@ function ThinkingComboboxOption({
   onPress: () => void;
   iconColor: string;
 }) {
-  const leadingSlot = useMemo(() => <ThinkingIcon size={16} color={iconColor} />, [iconColor]);
+  const leadingSlot = useMemo(() => <ThinkingIcon size="md" color={iconColor} />, [iconColor]);
   return (
     <ComboboxItem
       label={option.label}

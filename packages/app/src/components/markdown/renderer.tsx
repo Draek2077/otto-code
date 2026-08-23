@@ -864,9 +864,9 @@ function MarkdownDetails({
     <View style={detailsStyles.container}>
       <Pressable style={detailsStyles.summaryRow} onPress={toggle} accessibilityRole="button">
         {open ? (
-          <ChevronDown size={14} color={detailsStyles.summaryIcon.color} />
+          <ChevronDown size="sm" color={detailsStyles.summaryIcon.color} />
         ) : (
-          <ChevronRight size={14} color={detailsStyles.summaryIcon.color} />
+          <ChevronRight size="sm" color={detailsStyles.summaryIcon.color} />
         )}
         <Text style={detailsStyles.summaryText}>{part.summary}</Text>
       </Pressable>

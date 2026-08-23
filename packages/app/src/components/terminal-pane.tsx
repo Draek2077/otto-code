@@ -202,7 +202,7 @@ function KeyboardToggleButton({
       onPress={onToggle}
       style={pressableStyle}
     >
-      <Icon color={iconColor} size={16} />
+      <Icon color={iconColor} size="md" />
     </Pressable>
   );
 }

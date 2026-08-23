@@ -16,6 +16,7 @@ import {
   type PinnedTabTarget,
 } from "@/workspace-pins/target";
 import { usePinnedTargetsStore } from "@/workspace-pins/store";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 export interface ResolvedPin {
   key: string;
@@ -42,7 +43,7 @@ function ProviderPinIcon({
   color = "",
 }: {
   iconKey: string;
-  size: number;
+  size: IconSizeProp;
   color?: string;
 }) {
   const Icon = getProviderIcon(iconKey);
@@ -53,9 +54,9 @@ const ThemedProviderPinIcon = withUnistyles(ProviderPinIcon);
 
 export function ProfileIcon({ iconKey }: { iconKey: string | undefined }): ReactElement {
   if (!iconKey) {
-    return <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />;
+    return <ThemedSquareTerminal size="sm" uniProps={mutedColorMapping} />;
   }
-  return <ThemedProviderPinIcon iconKey={iconKey} size={14} uniProps={mutedColorMapping} />;
+  return <ThemedProviderPinIcon iconKey={iconKey} size="sm" uniProps={mutedColorMapping} />;
 }
 
 export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInput): ResolvedPin[] {
@@ -78,7 +79,7 @@ export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInp
           key: pinnedTargetKey(target),
           target,
           label: t("workspace.tabs.actions.newAgent"),
-          icon: <ThemedSquarePen size={14} uniProps={mutedColorMapping} />,
+          icon: <ThemedSquarePen size="sm" uniProps={mutedColorMapping} />,
           onPress: () => onLaunch(target),
         });
         continue;
@@ -88,7 +89,7 @@ export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInp
           key: pinnedTargetKey(target),
           target,
           label: t("workspace.tabs.actions.newTerminal"),
-          icon: <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />,
+          icon: <ThemedSquareTerminal size="sm" uniProps={mutedColorMapping} />,
           onPress: () => onLaunch(target),
         });
         continue;
@@ -98,7 +99,7 @@ export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInp
           key: pinnedTargetKey(target),
           target,
           label: t("workspace.tabs.actions.newBrowser"),
-          icon: <ThemedGlobe size={14} uniProps={mutedColorMapping} />,
+          icon: <ThemedGlobe size="sm" uniProps={mutedColorMapping} />,
           onPress: () => onLaunch(target),
         });
         continue;

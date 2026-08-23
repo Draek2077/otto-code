@@ -216,9 +216,9 @@ function MermaidDiagramViewer({
             hitSlop={12}
           >
             {showSource ? (
-              <ThemedDiagramIcon size={20} uniProps={closeIconColor} />
+              <ThemedDiagramIcon size="lg" uniProps={closeIconColor} />
             ) : (
-              <ThemedSourceIcon size={20} uniProps={closeIconColor} />
+              <ThemedSourceIcon size="lg" uniProps={closeIconColor} />
             )}
           </Pressable>
           <Pressable
@@ -228,7 +228,7 @@ function MermaidDiagramViewer({
             accessibilityLabel={t("common.actions.close")}
             hitSlop={12}
           >
-            <ThemedCloseIcon size={20} uniProps={closeIconColor} />
+            <ThemedCloseIcon size="lg" uniProps={closeIconColor} />
           </Pressable>
         </View>
       </View>

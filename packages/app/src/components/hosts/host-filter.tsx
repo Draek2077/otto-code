@@ -80,14 +80,14 @@ export function HostFilter({
           accessibilityLabel={`Filter: ${selectedHostLabel}`}
         >
           {selectedHost === ALL_HOSTS_OPTION_ID ? (
-            <ThemedServer size={14} uniProps={mutedColorMapping} />
+            <ThemedServer size="sm" uniProps={mutedColorMapping} />
           ) : (
             <HostStatusDotSlot serverId={selectedHost} />
           )}
           <Text style={styles.filterTriggerText} numberOfLines={1}>
             {selectedHostLabel}
           </Text>
-          <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
+          <ThemedChevronDown size="sm" uniProps={mutedColorMapping} />
         </Pressable>
       </View>
     </HostPicker>

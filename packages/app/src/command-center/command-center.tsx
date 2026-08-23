@@ -397,7 +397,7 @@ function ResultContent({ result }: { result: CommandCenterResult }) {
       <View style={styles.rowContent}>
         <View style={styles.rowMain}>
           <View style={styles.iconSlot} testID="command-center-file-icon">
-            <MaterialFileIcon fileName={result.title} size={16} />
+            <MaterialFileIcon fileName={result.title} size="md" />
           </View>
           <Text style={styles.fileLine} numberOfLines={1} testID="command-center-file-line">
             <Text style={styles.fileName} testID="command-center-file-name">
@@ -444,7 +444,7 @@ function ResultContent({ result }: { result: CommandCenterResult }) {
       <View style={styles.rowContent} testID={`command-center-workspace-${key}`}>
         <View style={styles.rowMain}>
           <View style={styles.iconSlot}>
-            <ThemedFolder size={16} strokeWidth={2.2} />
+            <ThemedFolder size="md" strokeWidth={2.2} />
           </View>
           <View style={styles.textContent}>
             <Text style={styles.title} numberOfLines={1}>
@@ -470,7 +470,7 @@ function ResultContent({ result }: { result: CommandCenterResult }) {
         <View style={styles.rowMain}>
           {Icon ? (
             <View style={styles.iconSlot}>
-              <Icon size={16} />
+              <Icon size="md" />
             </View>
           ) : null}
           <View style={styles.textContent}>
@@ -493,7 +493,7 @@ function ResultContent({ result }: { result: CommandCenterResult }) {
       <View style={styles.rowMain}>
         {Icon ? (
           <View style={styles.iconSlot}>
-            <Icon size={16} />
+            <Icon size="md" />
           </View>
         ) : null}
         <View style={styles.breadcrumb}>
@@ -517,7 +517,7 @@ function ResultContent({ result }: { result: CommandCenterResult }) {
       </View>
       {presentation.selected ? (
         <View style={styles.iconSlot}>
-          <ThemedCheck size={16} strokeWidth={2.2} />
+          <ThemedCheck size="md" strokeWidth={2.2} />
         </View>
       ) : null}
     </View>
@@ -779,7 +779,7 @@ function FileSearchLoadingIndicator({ loading, label }: { loading: boolean; labe
           accessibilityRole="progressbar"
           testID="command-center-file-search-loading"
         >
-          <ThemedLoadingSpinner size={14} />
+          <ThemedLoadingSpinner size="sm" />
         </View>
       ) : null}
     </View>
@@ -798,9 +798,9 @@ function ScopeChip({ label, onRemove }: { label: string; onRemove(): void }) {
       style={styles.scopeChip}
       testID="command-center-files-scope"
     >
-      <ThemedFolder size={14} strokeWidth={2.2} />
+      <ThemedFolder size="sm" strokeWidth={2.2} />
       <Text style={styles.scopeChipLabel}>{label}</Text>
-      <ThemedX size={12} strokeWidth={2.2} />
+      <ThemedX size="xs" strokeWidth={2.2} />
     </Pressable>
   );
 }

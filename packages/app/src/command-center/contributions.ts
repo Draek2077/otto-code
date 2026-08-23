@@ -1,8 +1,9 @@
 import type { ComponentType } from "react";
 import type { ShortcutKey } from "@/utils/format-shortcut";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 export interface CommandCenterIconProps {
-  size: number;
+  size?: IconSizeProp;
 }
 
 export type CommandCenterIcon = ComponentType<CommandCenterIconProps>;

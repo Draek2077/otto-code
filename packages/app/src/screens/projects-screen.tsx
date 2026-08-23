@@ -166,7 +166,7 @@ function ProjectRowIcon({
       iconDataUri={iconDataUri}
       initial={initial}
       projectViewKey={projectViewKey}
-      size={16}
+      size="md"
       textStyle={styles.iconFallbackText}
     />
   );

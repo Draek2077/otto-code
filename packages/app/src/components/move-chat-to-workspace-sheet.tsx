@@ -198,7 +198,7 @@ function WorkspaceOptionRow({
           {option.projectLabel}
         </Text>
       </View>
-      {selected ? <ThemedCheckIcon size={16} uniProps={selectedIconMapping} /> : null}
+      {selected ? <ThemedCheckIcon size="md" uniProps={selectedIconMapping} /> : null}
     </Pressable>
   );
 }

@@ -160,7 +160,7 @@ function ArtifactCardComponent({
         testID={`artifact-card-${artifact.id}`}
       >
         <View style={styles.headerRow}>
-          <FileText size={16} color={styles.icon.color} />
+          <FileText size="md" color={styles.icon.color} />
           <Text style={styles.name} numberOfLines={1}>
             {artifact.name || artifact.id}
           </Text>
@@ -205,7 +205,7 @@ function ArtifactCardComponent({
 
         {artifact.status === "error" ? (
           <View style={styles.statusRow}>
-            <TriangleAlert size={14} color={styles.errorText.color} />
+            <TriangleAlert size="sm" color={styles.errorText.color} />
             <Text style={styles.errorText} numberOfLines={2}>
               {artifact.errorMessage ?? "Generation failed"}
             </Text>
@@ -346,9 +346,9 @@ function ArtifactStatusBadge({ artifact }: { artifact: AggregatedArtifact }) {
     return (
       <View style={styles.statusRow}>
         {spinner ? (
-          <BlobLoader size={16} glowA={spinner.glowA} glowB={spinner.glowB} />
+          <BlobLoader size="md" glowA={spinner.glowA} glowB={spinner.glowB} />
         ) : (
-          <ThemedBlobLoader size={16} />
+          <ThemedBlobLoader size="md" />
         )}
         <StatusBadge label="Generating" variant="warning" />
       </View>

@@ -829,13 +829,13 @@ function ScheduleTargetFields({
     // not that specific personality.
     if (selectedPersonality?.roleIcon) {
       const RoleIcon = selectedPersonality.roleIcon;
-      return <RoleIcon size={16} color={styles.providerIcon.color} />;
+      return <RoleIcon size="md" color={styles.providerIcon.color} />;
     }
     if (selectedPersonality) {
       return (
         <PersonalityProviderIcon
           provider={selectedPersonality.provider}
-          size={16}
+          size="md"
           glowA={selectedPersonality.glowA}
           glowB={selectedPersonality.glowB}
         />
@@ -1017,9 +1017,9 @@ function ScheduleIsolationField({
     () => (
       <View style={styles.optionIconBox}>
         {state.effectiveIsolation === "worktree" ? (
-          <GitBranch size={16} color={styles.providerIcon.color} />
+          <GitBranch size="md" color={styles.providerIcon.color} />
         ) : (
-          <Folder size={16} color={styles.providerIcon.color} />
+          <Folder size="md" color={styles.providerIcon.color} />
         )}
       </View>
     ),
@@ -1095,9 +1095,9 @@ function IsolationOptionItem({
     () => (
       <View style={styles.optionIconBox}>
         {option.value === "worktree" ? (
-          <GitBranch size={16} color={styles.providerIcon.color} />
+          <GitBranch size="md" color={styles.providerIcon.color} />
         ) : (
-          <Folder size={16} color={styles.providerIcon.color} />
+          <Folder size="md" color={styles.providerIcon.color} />
         )}
       </View>
     ),
@@ -1145,7 +1145,7 @@ function ProjectOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Folder size={16} color={styles.providerIcon.color} />
+        <Folder size="md" color={styles.providerIcon.color} />
       </View>
     ),
     [],
@@ -1172,7 +1172,7 @@ function ThinkingOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Psychology size={16} color={styles.providerIcon.color} />
+        <Psychology size="md" color={styles.providerIcon.color} />
       </View>
     ),
     [],
@@ -1195,7 +1195,7 @@ function ProviderGlyph({ provider }: { provider: string | null }): ReactElement 
     return null;
   }
   const Icon = getProviderIcon(provider);
-  return <Icon size={16} color={styles.providerIcon.color} />;
+  return <Icon size="md" color={styles.providerIcon.color} />;
 }
 
 const styles = StyleSheet.create((theme) => {

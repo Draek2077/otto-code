@@ -108,7 +108,7 @@ export function ContextHealthTrack({ serverId, agentId }: ContextHealthTrackProp
       <View style={styles.outer} testID="composer-context-health-track">
         <ChatWidthBounds style={styles.track}>
           <View style={surfaceStyle}>
-            <ThemedTriangleAlert size={14} style={critical ? styles.iconCritical : styles.icon} />
+            <ThemedTriangleAlert size="sm" style={critical ? styles.iconCritical : styles.icon} />
             <Text style={textStyle} numberOfLines={2} testID="composer-context-health-warning">
               {message}
             </Text>
@@ -155,7 +155,7 @@ function ContextHealthDismissButton({
           style={styles.dismissButton}
           hitSlop={8}
         >
-          <ThemedX size={14} style={critical ? styles.iconCritical : styles.icon} />
+          <ThemedX size="sm" style={critical ? styles.iconCritical : styles.icon} />
         </Pressable>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>

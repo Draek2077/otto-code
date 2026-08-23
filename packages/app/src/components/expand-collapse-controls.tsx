@@ -57,7 +57,7 @@ export function ExpandCollapseControls({
         style={styles.button}
         testID="expand-all-control"
       >
-        <ThemedExpandIcon size={14} uniProps={mutedColor} />
+        <ThemedExpandIcon size="sm" uniProps={mutedColor} />
       </Pressable>
       <Pressable
         accessibilityRole={isNative ? "button" : undefined}
@@ -67,7 +67,7 @@ export function ExpandCollapseControls({
         style={styles.button}
         testID="collapse-all-control"
       >
-        <ThemedCollapseIcon size={14} uniProps={mutedColor} />
+        <ThemedCollapseIcon size="sm" uniProps={mutedColor} />
       </Pressable>
     </View>
   );

@@ -94,7 +94,7 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
                   onPress={onClose}
                   style={styles.closeButton}
                 >
-                  <X size={16} color={theme.colors.foregroundMuted} />
+                  <X size="md" color={theme.colors.foregroundMuted} />
                 </Pressable>
               </View>
             )}

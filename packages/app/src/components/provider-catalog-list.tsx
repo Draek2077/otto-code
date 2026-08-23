@@ -101,7 +101,7 @@ function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
           <Text style={styles.installLinkText} numberOfLines={1}>
             {t("providerCatalog.actions.installInstructions")}
           </Text>
-          <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
+          <ThemedExternalLink size="xs" uniProps={foregroundMutedColorMapping} />
         </Pressable>
       </View>
       <Button

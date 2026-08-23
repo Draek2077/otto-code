@@ -417,7 +417,7 @@ function InfoRow({
 }) {
   return (
     <View style={styles.cardInfoRow}>
-      <Icon size={12} uniProps={foregroundMutedColorMapping} />
+      <Icon size="xs" uniProps={foregroundMutedColorMapping} />
       <Text style={styles.cardInfoText} numberOfLines={1} testID={testID}>
         {value}
       </Text>
@@ -475,12 +475,12 @@ function CopyableInfoRow({
     >
       {(() => {
         if (copied) {
-          return <ThemedCheck size={12} uniProps={iconUniProps} />;
+          return <ThemedCheck size="xs" uniProps={iconUniProps} />;
         }
         if (isHovered) {
-          return <ThemedCopy size={12} uniProps={iconUniProps} />;
+          return <ThemedCopy size="xs" uniProps={iconUniProps} />;
         }
-        return <Icon size={12} uniProps={iconUniProps} />;
+        return <Icon size="xs" uniProps={iconUniProps} />;
       })()}
       <Text style={textStyle} numberOfLines={1} testID={testID}>
         {value}
@@ -513,7 +513,7 @@ function ChecksSummaryPill({
   if (kind === "passed") {
     return (
       <View style={styles.checksSummaryPill}>
-        <ThemedCircleCheck size={12} uniProps={successColorMapping} />
+        <ThemedCircleCheck size="xs" uniProps={successColorMapping} />
         <Text style={styles.checksStatusTextPassed}>{count}</Text>
       </View>
     );
@@ -522,7 +522,7 @@ function ChecksSummaryPill({
   if (kind === "failed") {
     return (
       <View style={styles.checksSummaryPill}>
-        <ThemedCircleX size={12} uniProps={dangerColorMapping} />
+        <ThemedCircleX size="xs" uniProps={dangerColorMapping} />
         <Text style={styles.checksStatusTextFailed}>{count}</Text>
       </View>
     );
@@ -530,7 +530,7 @@ function ChecksSummaryPill({
 
   return (
     <View style={styles.checksSummaryPill}>
-      <ThemedCircleDot size={12} uniProps={warningColorMapping} />
+      <ThemedCircleDot size="xs" uniProps={warningColorMapping} />
       <Text style={styles.checksStatusTextPending}>{count}</Text>
     </View>
   );
@@ -554,11 +554,11 @@ function ChecksSummaryContent({
   return (
     <>
       {hovered ? (
-        <ThemedExternalLink size={12} uniProps={iconUniProps} />
+        <ThemedExternalLink size="xs" uniProps={iconUniProps} />
       ) : (
         <ThemedGitHostingIcon
           provider={forgeToHostingProvider(forge)}
-          size={12}
+          size="xs"
           uniProps={iconUniProps}
         />
       )}

@@ -92,6 +92,7 @@ import type { AddProjectFlowRequest } from "@/stores/add-project-flow-store";
 import type { Theme } from "@/styles/theme";
 import { shortenPath } from "@/utils/shorten-path";
 import { buildNewWorkspaceRoute, buildSettingsAddHostRoute } from "@/utils/host-routes";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 interface AddProjectFlowProps {
   request: AddProjectFlowRequest;
@@ -102,7 +103,7 @@ interface FlowRowOption {
   id: string;
   title: string;
   subtitle: string | null;
-  icon: ComponentType<{ size?: number; color?: string }>;
+  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
   disabled?: boolean;
   testID: string;
   select: () => void;
@@ -111,8 +112,8 @@ interface FlowRowOption {
 type GithubLocationPage = Extract<AddProjectPage, { kind: "github-location" }>;
 
 interface FlowIconProps {
-  icon: ComponentType<{ size?: number; color?: string }>;
-  size?: number;
+  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
+  size?: IconSizeProp;
   color?: string;
 }
 
@@ -271,7 +272,7 @@ function FlowRow({ option, active }: { option: FlowRowOption; active: boolean })
       testID={option.testID}
     >
       <View style={styles.iconSlot}>
-        <MutedFlowIcon icon={option.icon} size={16} />
+        <MutedFlowIcon icon={option.icon} size="md" />
       </View>
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1}>

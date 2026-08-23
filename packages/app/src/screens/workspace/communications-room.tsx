@@ -498,7 +498,7 @@ function CommunicationsRoomContent({
             style={styles.scrollToLatestButton}
             testID="communications-room-scroll-to-latest"
           >
-            <ChevronDown size={20} color={styles.scrollToLatestIcon.color} />
+            <ChevronDown size="lg" color={styles.scrollToLatestIcon.color} />
           </Pressable>
         ) : null}
       </View>
@@ -720,7 +720,7 @@ function RoomMessageBubble({
   const renderReplyIcon = useCallback(
     ({ active }: { active: boolean }) => (
       <ThemedCornerDownLeft
-        size={16}
+        size="md"
         uniProps={active ? foregroundIconMapping : mutedIconMapping}
       />
     ),
@@ -729,7 +729,7 @@ function RoomMessageBubble({
   const renderThreadToggleIcon = useCallback(
     ({ active }: { active: boolean }) => {
       const Icon = repliesExpanded ? ThemedListChevronsDownUp : ThemedListChevronsUpDown;
-      return <Icon size={16} uniProps={active ? foregroundIconMapping : mutedIconMapping} />;
+      return <Icon size="md" uniProps={active ? foregroundIconMapping : mutedIconMapping} />;
     },
     [repliesExpanded],
   );

@@ -78,7 +78,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
   }, []);
 
   const pairIcon = useMemo(
-    () => <Link size={16} color={theme.colors.accentForeground} />,
+    () => <Link size="md" color={theme.colors.accentForeground} />,
     [theme.colors.accentForeground],
   );
 

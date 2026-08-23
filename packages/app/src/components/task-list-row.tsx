@@ -15,12 +15,12 @@ const runningIcon = (theme: Theme) => ({ color: theme.colors.statusInfo });
 
 function TaskStatusIcon({ isCompleted, isRunning }: { isCompleted: boolean; isRunning: boolean }) {
   if (isCompleted) {
-    return <ThemedCircleCheck size={16} uniProps={extraMutedIcon} />;
+    return <ThemedCircleCheck size="md" uniProps={extraMutedIcon} />;
   }
   if (isRunning) {
-    return <ThemedCircleDot size={16} uniProps={runningIcon} />;
+    return <ThemedCircleDot size="md" uniProps={runningIcon} />;
   }
-  return <ThemedCircle size={16} uniProps={mutedIcon} />;
+  return <ThemedCircle size="md" uniProps={mutedIcon} />;
 }
 
 export const TaskListRow = memo(function TaskListRow({ task }: { task: TodoEntry }) {

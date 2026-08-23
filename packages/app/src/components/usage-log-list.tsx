@@ -235,7 +235,7 @@ export function UsageTotalsBar({
           <Text style={styles.totalsTokensIn}>{`↑ ${formatTokenCount(totals.fresh)} fresh`}</Text>
           {totals.cached > 0 ? (
             <View style={styles.rowTokenSeg}>
-              <ThemedLayers size={12} uniProps={mutedColor} />
+              <ThemedLayers size="xs" uniProps={mutedColor} />
               <Text style={styles.totalsTokens}>{`${formatTokenCount(totals.cached)} cached`}</Text>
             </View>
           ) : null}
@@ -352,7 +352,7 @@ function UsageLogRow({
         </View>
       ) : (
         <View style={cardStyle}>
-          <Icon size={20} uniProps={mutedColor} />
+          <Icon size="lg" uniProps={mutedColor} />
           <View style={styles.rowMain}>
             {title}
             {tokensLine}
@@ -393,7 +393,7 @@ function RowTokens({
       <Text style={styles.rowTokensIn}>{`↑ ${formatTokenCount(fresh)} fresh`}</Text>
       {cached > 0 ? (
         <View style={styles.rowTokenSeg}>
-          <ThemedLayers size={12} uniProps={mutedColor} />
+          <ThemedLayers size="xs" uniProps={mutedColor} />
           <Text style={styles.rowTokens}>{`${formatTokenCount(cached)} cached`}</Text>
         </View>
       ) : null}
@@ -428,7 +428,7 @@ function RowTreeTokens({ totals }: { totals: UsageParentTotals }): ReactElement 
       <Text style={styles.rowTreeTotalIn}>{`Σ ↑ ${formatTokenCount(totals.fresh)} fresh`}</Text>
       {totals.cached > 0 ? (
         <View style={styles.rowTokenSeg}>
-          <ThemedLayers size={12} uniProps={mutedColor} />
+          <ThemedLayers size="xs" uniProps={mutedColor} />
           <Text style={styles.rowTreeTotal}>{`${formatTokenCount(totals.cached)} cached`}</Text>
         </View>
       ) : null}

@@ -86,7 +86,7 @@ function ArtifactPanel() {
   if (artifact?.status === "error" && !content) {
     return (
       <View style={styles.centered}>
-        <TriangleAlert size={20} color={theme.colors.palette.red[500]} />
+        <TriangleAlert size="lg" color={theme.colors.palette.red[500]} />
         <Text style={errorStyle}>{artifact.errorMessage ?? error ?? "Generation failed"}</Text>
         {generationAgentId ? (
           <Button variant="ghost" size="sm" onPress={handleViewGenerationLog}>
@@ -117,7 +117,7 @@ function ArtifactPanel() {
     <View style={styles.container}>
       {artifact?.status === "error" ? (
         <View style={styles.errorBanner}>
-          <TriangleAlert size={14} color={theme.colors.palette.red[300]} />
+          <TriangleAlert size="sm" color={theme.colors.palette.red[300]} />
           <Text style={styles.errorBannerText} numberOfLines={2}>
             {artifact.errorMessage ?? "Regeneration failed - showing the last successful version."}
           </Text>

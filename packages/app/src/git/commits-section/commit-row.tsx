@@ -51,7 +51,7 @@ export const CommitRow = memo(function CommitRow({
       </View>
       <Text style={styles.timestamp}>{formatTimeAgo(new Date(commit.authorDate), now)}</Text>
       <View style={styles.caret}>
-        <ThemedChevron size={14} uniProps={chevronColorMapping} />
+        <ThemedChevron size="sm" uniProps={chevronColorMapping} />
       </View>
     </Pressable>
   );

@@ -26,7 +26,7 @@ import type { IconSizeProp } from "@/components/icons/icon-size";
 // the band went away, taking the exit animation with it.
 
 const ThemedIcon = withUnistyles(
-  ({ Icon, color, size }: { Icon: FlyoutIcon; color?: string; size: number }) => (
+  ({ Icon, color, size }: { Icon: FlyoutIcon; color?: string; size: IconSizeProp }) => (
     <Icon size={size} color={color ?? "transparent"} />
   ),
 );
@@ -72,7 +72,7 @@ export function FlyoutBand({
       <ChatWidthBounds style={styles.track}>
         <View style={surfaceStyle}>
           <View style={styles.icon}>
-            <ThemedIcon Icon={icon} size={14} uniProps={iconColor} />
+            <ThemedIcon Icon={icon} size="sm" uniProps={iconColor} />
           </View>
           <Text style={messageStyle} testID={messageTestID}>
             {message}
@@ -115,7 +115,7 @@ function BandDismissButton({
           hitSlop={8}
         >
           {/* X matches the message color, same tone. */}
-          <ThemedIcon Icon={X} size={14} uniProps={iconColor} />
+          <ThemedIcon Icon={X} size="sm" uniProps={iconColor} />
         </Pressable>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>

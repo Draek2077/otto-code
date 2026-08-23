@@ -149,7 +149,7 @@ function ScheduleFailureBanner({
 }): ReactElement {
   return (
     <View style={styles.statusRow}>
-      <TriangleAlert size={14} color={styles.errorText.color} />
+      <TriangleAlert size="sm" color={styles.errorText.color} />
       <Text style={styles.errorText} numberOfLines={2}>
         {errorMessage ?? "Last run failed"}
       </Text>

@@ -66,6 +66,8 @@ export const UI_STATE_GALLERY_EXEMPTIONS: Readonly<Record<string, string>> = {
     "Web pass-through to Pressable behind the covered context menu; no chrome of its own.",
   "search-field.tsx":
     "Standalone filter field used in app screens; the gallery shows the titlebar variant.",
+  "sheet-chrome.tsx":
+    "Shared bottom-sheet frame - handle, corners, title, indent - rendered beneath every covered sheet fixture.",
   "tabbed-modal-sheet.tsx": "Composition of the gallery's modal surface and segmented controls.",
   "text-area.tsx": "Unstyled platform pass-through; field chrome is caller-owned.",
   "text-area.web.tsx": "Web scrolling implementation of the unstyled TextArea pass-through.",

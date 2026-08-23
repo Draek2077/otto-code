@@ -413,23 +413,23 @@ function StatusGroupLeadingVisual({
     return <StatusGroupIcon bucket={bucket} />;
   }
   if (collapsed) {
-    return <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />;
+    return <ThemedChevronRight size="sm" uniProps={foregroundMutedColorMapping} />;
   }
-  return <ThemedChevronDown size={14} uniProps={foregroundMutedColorMapping} />;
+  return <ThemedChevronDown size="sm" uniProps={foregroundMutedColorMapping} />;
 }
 
 function StatusGroupIcon({ bucket }: { bucket: StatusGroup["bucket"] }) {
   switch (bucket) {
     case "needs_input":
-      return <ThemedCircleAlert size={14} uniProps={needsInputColorMapping} />;
+      return <ThemedCircleAlert size="sm" uniProps={needsInputColorMapping} />;
     case "failed":
-      return <ThemedCircleX size={14} uniProps={failedColorMapping} />;
+      return <ThemedCircleX size="sm" uniProps={failedColorMapping} />;
     case "attention":
-      return <ThemedCircleCheck size={14} uniProps={attentionColorMapping} />;
+      return <ThemedCircleCheck size="sm" uniProps={attentionColorMapping} />;
     case "running":
-      return <ThemedCircleDot size={14} uniProps={runningColorMapping} />;
+      return <ThemedCircleDot size="sm" uniProps={runningColorMapping} />;
     case "done":
-      return <ThemedCircleCheck size={14} uniProps={foregroundMutedColorMapping} />;
+      return <ThemedCircleCheck size="sm" uniProps={foregroundMutedColorMapping} />;
   }
 }
 

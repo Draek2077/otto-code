@@ -206,7 +206,7 @@ function GitLabPipelineSection({
         ) : null}
         {summary.url ? (
           <View style={sectionKitStyles.checkTrailing}>
-            <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
+            <ThemedExternalLink size="xs" uniProps={foregroundMutedColorMapping} />
           </View>
         ) : null}
       </Pressable>

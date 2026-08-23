@@ -76,7 +76,7 @@ export function SidebarCallout({
               >
                 {({ hovered }) => (
                   <X
-                    size={14}
+                    size="sm"
                     color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                   />
                 )}

@@ -501,7 +501,7 @@ function CommentRow({
           onPress={handleEdit}
           style={iconButtonStyle}
         >
-          <ThemedPencil size={14} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedPencil size="sm" uniProps={foregroundMutedIconColorMapping} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -511,7 +511,7 @@ function CommentRow({
           onPress={handleDelete}
           style={iconButtonDestructiveStyle}
         >
-          <ThemedTrash2 size={14} uniProps={destructiveIconColorMapping} />
+          <ThemedTrash2 size="sm" uniProps={destructiveIconColorMapping} />
         </Pressable>
       </View>
     </View>
@@ -670,7 +670,7 @@ export function InlineReviewEditor({
             onPress={onDelete}
             style={iconButtonDestructiveStyle}
           >
-            <ThemedTrash2 size={14} uniProps={destructiveIconColorMapping} />
+            <ThemedTrash2 size="sm" uniProps={destructiveIconColorMapping} />
           </Pressable>
         ) : null}
         <Button

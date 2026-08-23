@@ -190,7 +190,7 @@ export function SolutionTreePane(props: SolutionTreePaneProps) {
   if (isTreeLoading || tree === null) {
     return (
       <View style={styles.centerState}>
-        <ThemedLoadingSpinner size={20} uniProps={mutedColor} />
+        <ThemedLoadingSpinner size="lg" uniProps={mutedColor} />
         <Text style={styles.mutedText}>{t("workspace.solution.loading")}</Text>
       </View>
     );

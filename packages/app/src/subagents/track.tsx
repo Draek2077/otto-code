@@ -171,9 +171,9 @@ export function SubagentsTrack({
               style={headerStyle}
             >
               {expanded ? (
-                <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
+                <ThemedChevronDown size="xs" uniProps={foregroundMutedColorMapping} />
               ) : (
-                <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
+                <ThemedChevronRight size="xs" uniProps={foregroundMutedColorMapping} />
               )}
               <Text style={styles.headerLabel} numberOfLines={1}>
                 {headerLabel}
@@ -268,9 +268,9 @@ function CompletedSubagentsGroup({
           style={styles.completedToggle}
         >
           {expanded ? (
-            <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
+            <ThemedChevronDown size="xs" uniProps={foregroundMutedColorMapping} />
           ) : (
-            <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
+            <ThemedChevronRight size="xs" uniProps={foregroundMutedColorMapping} />
           )}
           <Text style={styles.completedLabel} numberOfLines={1}>
             {headerLabel}
@@ -536,12 +536,12 @@ type SubagentActionIcon = "archive" | "detach" | "stop";
 function renderSubagentActionIcon(icon: SubagentActionIcon, isActive: boolean): ReactElement {
   const uniProps = isActive ? foregroundColorMapping : foregroundMutedColorMapping;
   if (icon === "detach") {
-    return <ThemedUnlink size={14} uniProps={uniProps} />;
+    return <ThemedUnlink size="sm" uniProps={uniProps} />;
   }
   if (icon === "stop") {
-    return <ThemedStop size={14} uniProps={uniProps} />;
+    return <ThemedStop size="sm" uniProps={uniProps} />;
   }
-  return <ThemedArchive size={14} uniProps={uniProps} />;
+  return <ThemedArchive size="sm" uniProps={uniProps} />;
 }
 
 function SubagentActionButton({

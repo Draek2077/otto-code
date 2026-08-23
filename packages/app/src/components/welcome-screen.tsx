@@ -298,7 +298,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
             {isNative ? (
               <Pressable style={styles.setupLink} onPress={handleOpenOttoSite}>
                 <Text style={styles.setupLinkText}>otto-code.me</Text>
-                <ExternalLink size={14} color={theme.colors.accent} />
+                <ExternalLink size="sm" color={theme.colors.accent} />
               </Pressable>
             ) : null}
           </View>

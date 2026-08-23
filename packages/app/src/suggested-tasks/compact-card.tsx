@@ -75,11 +75,11 @@ export function CompactSuggestedTasksCard({
           style={styles.toggle}
         >
           {expanded ? (
-            <ThemedChevronDown size={16} uniProps={foregroundMutedColorMapping} />
+            <ThemedChevronDown size="md" uniProps={foregroundMutedColorMapping} />
           ) : (
-            <ThemedChevronRight size={16} uniProps={foregroundMutedColorMapping} />
+            <ThemedChevronRight size="md" uniProps={foregroundMutedColorMapping} />
           )}
-          <ThemedLightbulb size={14} uniProps={statusInfoColorMapping} />
+          <ThemedLightbulb size="sm" uniProps={statusInfoColorMapping} />
           <Text style={styles.label} numberOfLines={1}>
             {summary}
           </Text>

@@ -142,7 +142,7 @@ export function ConfirmDialogHost() {
             testID="confirm-dialog-checkbox"
           >
             <View style={checkboxStyle}>
-              {checkboxChecked ? <ThemedCheck size={14} uniProps={checkColorMapping} /> : null}
+              {checkboxChecked ? <ThemedCheck size="sm" uniProps={checkColorMapping} /> : null}
             </View>
             <Text style={styles.checkboxLabel}>{active.checkboxLabel}</Text>
           </Pressable>

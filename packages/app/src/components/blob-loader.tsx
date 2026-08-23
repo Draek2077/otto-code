@@ -18,6 +18,7 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 import { withUnistyles } from "react-native-unistyles";
+import { withIconSizeToken } from "@/components/icons/icon-size";
 
 // One full loop. Glow A makes 2 revolutions per loop and glow B 3 (same
 // direction), so they lap each other exactly once per loop - merging into a
@@ -216,7 +217,7 @@ function GlowLayer({
  * use `ThemedBlobLoader`, which reads the per-theme `spinnerPrimary` /
  * `spinnerSecondary` tokens.
  */
-export function BlobLoader({
+function BlobLoaderBase({
   size = 20,
   glowA = GLOW_CYAN,
   glowB = GLOW_MAGENTA,
@@ -329,6 +330,10 @@ export function BlobLoader({
     </View>
   );
 }
+
+// A blob loader stands in for an icon while a model works, so it takes the same size
+// tokens the icon it replaces would.
+export const BlobLoader = withIconSizeToken(BlobLoaderBase, "BlobLoader");
 
 // Theme-reactive wrapper: every theme defines a spinner glow pair (two
 // distinct hues, always including the theme's namesake color). Only this

@@ -133,7 +133,7 @@ function ProviderActionsMenu({
     ],
     [],
   );
-  const trashLeading = useMemo(() => <Trash2 size={16} color={dangerColor} />, [dangerColor]);
+  const trashLeading = useMemo(() => <Trash2 size="md" color={dangerColor} />, [dangerColor]);
 
   return (
     <DropdownMenu>

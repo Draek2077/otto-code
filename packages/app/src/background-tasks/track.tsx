@@ -121,9 +121,9 @@ export function BackgroundTasksTrack({
               style={headerStyle}
             >
               {expanded ? (
-                <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
+                <ThemedChevronDown size="xs" uniProps={foregroundMutedColorMapping} />
               ) : (
-                <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
+                <ThemedChevronRight size="xs" uniProps={foregroundMutedColorMapping} />
               )}
               <Text style={styles.headerLabel} numberOfLines={1}>
                 {headerLabel}
@@ -233,9 +233,9 @@ function BackgroundTasksGroup({
           style={styles.completedToggle}
         >
           {expanded ? (
-            <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
+            <ThemedChevronDown size="xs" uniProps={foregroundMutedColorMapping} />
           ) : (
-            <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
+            <ThemedChevronRight size="xs" uniProps={foregroundMutedColorMapping} />
           )}
           <Text style={styles.completedLabel} numberOfLines={1}>
             {headerLabel}
@@ -311,7 +311,7 @@ function BackgroundTaskTrackRow({
       testID={`background-tasks-track-row-${row.id}`}
     >
       <ThemedTerminal
-        size={14}
+        size="sm"
         uniProps={isFailed ? dangerColorMapping : foregroundMutedColorMapping}
       />
       <Text style={isFailed ? styles.rowLabelFailed : styles.rowLabel} numberOfLines={1}>
@@ -425,9 +425,9 @@ function renderBackgroundTaskActionIcon(
 ): ReactElement {
   const uniProps = isActive ? foregroundColorMapping : foregroundMutedColorMapping;
   if (icon === "stop") {
-    return <ThemedStop size={14} uniProps={uniProps} />;
+    return <ThemedStop size="sm" uniProps={uniProps} />;
   }
-  return <ThemedClear size={14} uniProps={uniProps} />;
+  return <ThemedClear size="sm" uniProps={uniProps} />;
 }
 
 function BackgroundTaskActionButton({

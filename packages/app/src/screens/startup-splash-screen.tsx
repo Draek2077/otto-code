@@ -274,19 +274,19 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
   }, [daemonLogs?.logPath, daemonLogs?.contents, logsText]);
 
   const copyIcon = useMemo(
-    () => <Copy size={16} color={theme.colors.foreground} />,
+    () => <Copy size="md" color={theme.colors.foreground} />,
     [theme.colors.foreground],
   );
   const warningIcon = useMemo(
-    () => <TriangleAlert size={16} color={theme.colors.foreground} />,
+    () => <TriangleAlert size="md" color={theme.colors.foreground} />,
     [theme.colors.foreground],
   );
   const bookIcon = useMemo(
-    () => <BookOpen size={16} color={theme.colors.foreground} />,
+    () => <BookOpen size="md" color={theme.colors.foreground} />,
     [theme.colors.foreground],
   );
   const retryIcon = useMemo(
-    () => <RotateCw size={16} color={theme.colors.palette.white} />,
+    () => <RotateCw size="md" color={theme.colors.palette.white} />,
     [theme.colors.palette.white],
   );
 

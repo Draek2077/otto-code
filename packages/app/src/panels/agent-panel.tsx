@@ -1625,7 +1625,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
     }
   }, []);
   const exportMenuChevron = useMemo(
-    () => <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />,
+    () => <ThemedChevronRight size="sm" uniProps={foregroundMutedColorMapping} />,
     [],
   );
   const expandAll = useCallback(

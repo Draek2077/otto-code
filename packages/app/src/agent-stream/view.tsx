@@ -1472,7 +1472,7 @@ function PermissionActionButton({
         <ThemedLoadingSpinner size="small" uniProps={colorMapping} />
       ) : (
         <View style={permissionStyles.optionContent}>
-          <Icon size={14} uniProps={colorMapping} />
+          <Icon size="sm" uniProps={colorMapping} />
           <Text style={optionTextStyle}>{action.label}</Text>
         </View>
       )}

@@ -91,7 +91,7 @@ export function DownloadToast() {
         </View>
         {activeDownload.status !== "downloading" && (
           <Pressable onPress={handleDismiss} hitSlop={8} style={styles.dismiss}>
-            <X size={16} color={theme.colors.foregroundMuted} />
+            <X size="md" color={theme.colors.foregroundMuted} />
           </Pressable>
         )}
       </View>

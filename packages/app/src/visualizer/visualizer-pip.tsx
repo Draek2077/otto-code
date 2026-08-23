@@ -281,7 +281,7 @@ function PipButton({
         accessibilityLabel={label}
         style={controlButtonStyle}
       >
-        <Icon size={14} color={pipIconColor} />
+        <Icon size="sm" color={pipIconColor} />
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={6}>
         <Text style={styles.tooltipText}>{label}</Text>

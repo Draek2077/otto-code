@@ -73,7 +73,7 @@ export function FilePanelBar({
           ) : null}
           {editorStatus === "saving" ? (
             <>
-              <ThemedSpinner size={14} uniProps={spinnerMapping} />
+              <ThemedSpinner size="sm" uniProps={spinnerMapping} />
               <Text style={styles.secondary}>{t("panels.file.editor.saving")}</Text>
             </>
           ) : null}

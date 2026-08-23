@@ -21,7 +21,7 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
 
-const leadingIcon = <ThemedFolderOpen size={14} uniProps={foregroundMutedColorMapping} />;
+const leadingIcon = <ThemedFolderOpen size="sm" uniProps={foregroundMutedColorMapping} />;
 
 export function OpenInFileManagerMenuItem({
   path,

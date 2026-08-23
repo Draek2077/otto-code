@@ -64,12 +64,12 @@ export function SidebarGroupToggleRow({
           <View style={styles.iconSlot}>
             {expanded ? (
               <ThemedChevronUp
-                size={14}
+                size="sm"
                 uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
               />
             ) : (
               <ThemedChevronDown
-                size={14}
+                size="sm"
                 uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
               />
             )}

@@ -866,7 +866,7 @@ function RunCard({
         testID={`run-card-${run.id}`}
       >
         <View style={styles.headerRow}>
-          <Network size={16} color={styles.icon.color} />
+          <Network size="md" color={styles.icon.color} />
           <Text style={styles.cardTitle} numberOfLines={1}>
             {run.title}
           </Text>

@@ -67,9 +67,9 @@ export function CompactPinnedTaskListCard({
             style={styles.toggle}
           >
             {expanded ? (
-              <ThemedChevronDown size={16} uniProps={foregroundMutedColorMapping} />
+              <ThemedChevronDown size="md" uniProps={foregroundMutedColorMapping} />
             ) : (
-              <ThemedChevronRight size={16} uniProps={foregroundMutedColorMapping} />
+              <ThemedChevronRight size="md" uniProps={foregroundMutedColorMapping} />
             )}
             <TodoSummaryMarker phase={phase} animationsEnabled={animationsEnabled} />
             <Text style={styles.label} numberOfLines={1}>
@@ -86,7 +86,7 @@ export function CompactPinnedTaskListCard({
             style={styles.dismiss}
             hitSlop={8}
           >
-            <ThemedX size={16} uniProps={foregroundMutedColorMapping} />
+            <ThemedX size="md" uniProps={foregroundMutedColorMapping} />
           </Pressable>
         </View>
         <TodoTaskListProgress items={item.items} animationsEnabled={animationsEnabled} />

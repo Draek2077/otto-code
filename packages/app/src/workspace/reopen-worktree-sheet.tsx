@@ -259,7 +259,7 @@ function CandidateRow({
       accessibilityRole="button"
       testID={`reopen-worktree-candidate-${candidateKey(candidate)}`}
     >
-      <GitBranch size={16} color="#9ca3af" />
+      <GitBranch size="md" color="#9ca3af" />
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1}>
           {title}

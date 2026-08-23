@@ -82,9 +82,9 @@ const ThemedX = withUnistyles(X);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-const bindLeadingIcon = <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />;
-const clearLeadingIcon = <ThemedX size={14} uniProps={foregroundMutedColorMapping} />;
-const resetLeadingIcon = <ThemedUndo2 size={14} uniProps={foregroundMutedColorMapping} />;
+const bindLeadingIcon = <ThemedPencil size="sm" uniProps={foregroundMutedColorMapping} />;
+const clearLeadingIcon = <ThemedX size="sm" uniProps={foregroundMutedColorMapping} />;
+const resetLeadingIcon = <ThemedUndo2 size="sm" uniProps={foregroundMutedColorMapping} />;
 
 function ShortcutSequence({
   chord,
@@ -235,7 +235,7 @@ function ShortcutActionsMenu({
       >
         {({ hovered, open }) => (
           <ThemedMoreHorizontal
-            size={14}
+            size="sm"
             uniProps={hovered || open ? foregroundColorMapping : foregroundMutedColorMapping}
           />
         )}

@@ -2,6 +2,7 @@ import { FolderOpen, SquareTerminal } from "@/components/icons/material-icons";
 import { useMemo } from "react";
 import { Image, type ImageSourcePropType } from "react-native";
 import { isKnownEditorTargetId, type EditorTargetId } from "@/workspace/editor-targets";
+import { withIconSizeToken } from "@/components/icons/icon-size";
 
 interface EditorAppIconProps {
   editorId: EditorTargetId;
@@ -40,7 +41,7 @@ export function hasBundledEditorAppIcon(editorId: EditorTargetId): boolean {
   );
 }
 
-export function EditorAppIcon({ editorId, size = 16, color }: EditorAppIconProps) {
+function EditorAppIconBase({ editorId, size = 16, color }: EditorAppIconProps) {
   const imageStyle = useMemo(() => ({ width: size, height: size }), [size]);
 
   if (FILE_MANAGER_TARGET_IDS.has(editorId)) {
@@ -54,3 +55,6 @@ export function EditorAppIcon({ editorId, size = 16, color }: EditorAppIconProps
 
   return <Image source={source} style={imageStyle} resizeMode="contain" />;
 }
+
+// Lays out an Image from its size, so the token resolves on the outside.
+export const EditorAppIcon = withIconSizeToken(EditorAppIconBase, "EditorAppIcon");

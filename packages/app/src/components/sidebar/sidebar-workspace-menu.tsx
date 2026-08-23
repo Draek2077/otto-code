@@ -67,20 +67,20 @@ const ThemedBookOpen = withUnistyles(BookOpen);
 const ThemedContextualToken = withUnistyles(ContextualToken);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
 
-const copyLeadingIcon = <ThemedCopy size={14} uniProps={foregroundMutedColorMapping} />;
-const renameLeadingIcon = <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />;
+const copyLeadingIcon = <ThemedCopy size="sm" uniProps={foregroundMutedColorMapping} />;
+const renameLeadingIcon = <ThemedPencil size="sm" uniProps={foregroundMutedColorMapping} />;
 const markAsReadLeadingIcon = (
-  <ThemedCircleCheck size={14} uniProps={foregroundMutedColorMapping} />
+  <ThemedCircleCheck size="sm" uniProps={foregroundMutedColorMapping} />
 );
-const archiveLeadingIcon = <ThemedArchive size={14} uniProps={foregroundMutedColorMapping} />;
-const pinLeadingIcon = <ThemedPin size={14} uniProps={foregroundMutedColorMapping} />;
-const unpinLeadingIcon = <ThemedPinOff size={14} uniProps={foregroundMutedColorMapping} />;
+const archiveLeadingIcon = <ThemedArchive size="sm" uniProps={foregroundMutedColorMapping} />;
+const pinLeadingIcon = <ThemedPin size="sm" uniProps={foregroundMutedColorMapping} />;
+const unpinLeadingIcon = <ThemedPinOff size="sm" uniProps={foregroundMutedColorMapping} />;
 const contextLeadingIcon = (
-  <ThemedContextualToken size={14} uniProps={foregroundMutedColorMapping} />
+  <ThemedContextualToken size="sm" uniProps={foregroundMutedColorMapping} />
 );
-const knowledgeLeadingIcon = <ThemedBookOpen size={14} uniProps={foregroundMutedColorMapping} />;
+const knowledgeLeadingIcon = <ThemedBookOpen size="sm" uniProps={foregroundMutedColorMapping} />;
 const openBaseWorkspaceLeadingIcon = (
-  <ThemedFolderOpen size={14} uniProps={foregroundMutedColorMapping} />
+  <ThemedFolderOpen size="sm" uniProps={foregroundMutedColorMapping} />
 );
 
 function renderTriggerIcon({ hovered }: { hovered?: boolean }) {

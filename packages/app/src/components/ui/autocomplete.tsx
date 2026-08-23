@@ -84,9 +84,9 @@ function AutocompleteRow({
         <>
           <View style={styles.itemLeading}>
             {option.kind === "directory" ? (
-              <Folder size={14} color={mutedColor} />
+              <Folder size="sm" color={mutedColor} />
             ) : (
-              <File size={14} color={mutedColor} />
+              <File size="sm" color={mutedColor} />
             )}
           </View>
           <View style={styles.itemMain}>

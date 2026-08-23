@@ -327,7 +327,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
   }, []);
 
   const connectIcon = useMemo(
-    () => <Link2 size={16} color={theme.colors.accentForeground} />,
+    () => <Link2 size="md" color={theme.colors.accentForeground} />,
     [theme.colors.accentForeground],
   );
   const hostFieldStyle = useMemo(() => [styles.field, styles.hostField], []);
@@ -584,7 +584,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
         <View style={checkboxStyle}>
           {useTls ? (
             <View testID="direct-ssl-toggle-checked">
-              <Check size={14} color={theme.colors.accentForeground} />
+              <Check size="sm" color={theme.colors.accentForeground} />
             </View>
           ) : null}
         </View>
@@ -640,7 +640,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
           }
           testID="direct-host-advanced-toggle"
         >
-          <AdvancedIcon size={16} color={theme.colors.foregroundMuted} />
+          <AdvancedIcon size="md" color={theme.colors.foregroundMuted} />
           <Text style={styles.advancedText}>{t("pairing.direct.advanced.label")}</Text>
         </Pressable>
         {isAdvancedOpen ? (

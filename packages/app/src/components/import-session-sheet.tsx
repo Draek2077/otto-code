@@ -175,7 +175,7 @@ function RefreshAction({ isRefreshing, onPress }: { isRefreshing: boolean; onPre
         {isRefreshing ? (
           <LoadingSpinner color={theme.colors.foregroundMuted} />
         ) : (
-          <RotateCw size={16} color={theme.colors.foregroundMuted} />
+          <RotateCw size="md" color={theme.colors.foregroundMuted} />
         )}
       </View>
     </Pressable>
@@ -380,10 +380,10 @@ export function ImportSessionSheet({
 
   const filterOptionIcons = useMemo(() => {
     const map = new Map<string, React.ReactNode>();
-    map.set(ALL_FILTER_VALUE, <Layers size={14} color={theme.colors.foregroundMuted} />);
+    map.set(ALL_FILTER_VALUE, <Layers size="sm" color={theme.colors.foregroundMuted} />);
     for (const provider of filterProviders) {
       const ProviderIcon = getProviderIcon(provider);
-      map.set(provider, <ProviderIcon size={14} color={theme.colors.foregroundMuted} />);
+      map.set(provider, <ProviderIcon size="sm" color={theme.colors.foregroundMuted} />);
     }
     return map;
   }, [filterProviders, theme.colors.foregroundMuted]);
@@ -508,17 +508,17 @@ export function ImportSessionSheet({
             accessibilityLabel={`Filter: ${selectedProviderLabel}`}
           >
             {selectedProvider === ALL_FILTER_VALUE ? (
-              <Layers size={14} color={theme.colors.foregroundMuted} />
+              <Layers size="sm" color={theme.colors.foregroundMuted} />
             ) : (
               (() => {
                 const ProviderIcon = getProviderIcon(selectedProvider);
-                return <ProviderIcon size={14} color={theme.colors.foregroundMuted} />;
+                return <ProviderIcon size="sm" color={theme.colors.foregroundMuted} />;
               })()
             )}
             <Text style={styles.filterTriggerText} numberOfLines={1}>
               {selectedProviderLabel}
             </Text>
-            <ChevronDown size={14} color={theme.colors.foregroundMuted} />
+            <ChevronDown size="sm" color={theme.colors.foregroundMuted} />
           </Pressable>
           <Combobox
             options={filterComboboxOptions}

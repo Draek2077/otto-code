@@ -70,12 +70,12 @@ export function PinnableMenuItem({
   // hydration-breaking HTML (a <button> inside a <button>) on web.
   const trailingSpacer = useMemo(() => <View style={slotStyle} />, [slotStyle]);
 
-  let icon = <ThemedPin size={14} uniProps={mutedColorMapping} />;
+  let icon = <ThemedPin size="sm" uniProps={mutedColorMapping} />;
   if (isPinned) {
     icon = isHovered ? (
-      <ThemedPinOff size={14} uniProps={mutedColorMapping} />
+      <ThemedPinOff size="sm" uniProps={mutedColorMapping} />
     ) : (
-      <ThemedPinFilled size={14} uniProps={starColorMapping} />
+      <ThemedPinFilled size="sm" uniProps={starColorMapping} />
     );
   }
 

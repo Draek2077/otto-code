@@ -68,12 +68,12 @@ type CommandStatus = "running" | "completed" | "failed";
 
 function CommandStatusIcon({ status }: { status: CommandStatus }) {
   if (status === "running") {
-    return <ThemedLoadingSpinner size={14} uniProps={foregroundColorMapping} />;
+    return <ThemedLoadingSpinner size="sm" uniProps={foregroundColorMapping} />;
   }
   if (status === "completed") {
-    return <ThemedCheckCircle2 size={14} uniProps={greenColorMapping} />;
+    return <ThemedCheckCircle2 size="sm" uniProps={greenColorMapping} />;
   }
-  return <ThemedCircleAlert size={14} uniProps={redColorMapping} />;
+  return <ThemedCircleAlert size="sm" uniProps={redColorMapping} />;
 }
 
 function formatDuration(ms: number): string {
@@ -407,7 +407,7 @@ function SetupCommandChevron({ showDetail }: { showDetail: boolean }) {
     [showDetail],
   );
   return (
-    <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} style={chevronStyle} />
+    <ThemedChevronRight size="sm" uniProps={foregroundMutedColorMapping} style={chevronStyle} />
   );
 }
 

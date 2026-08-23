@@ -119,7 +119,7 @@ function QuestionOptionRow({
       <View style={styles.optionItemContent}>
         <View style={controlStyle}>
           {isSelected && multiSelect ? (
-            <Check size={12} color={theme.colors.accentForeground} />
+            <Check size="xs" color={theme.colors.accentForeground} />
           ) : null}
           {isSelected && !multiSelect ? <View style={radioDotStyle} /> : null}
         </View>
@@ -199,7 +199,7 @@ function QuestionNavButton({
     >
       {isAnswered ? (
         <Check
-          size={12}
+          size="xs"
           color={isActive ? theme.colors.foreground : theme.colors.foregroundMuted}
         />
       ) : null}
@@ -578,7 +578,7 @@ export function QuestionFormCard({ permission, onRespond, isResponding }: Questi
             <LoadingSpinner size="small" color={theme.colors.foregroundMuted} />
           ) : (
             <View style={styles.actionContent}>
-              <X size={14} color={theme.colors.foregroundMuted} />
+              <X size="sm" color={theme.colors.foregroundMuted} />
               <Text style={dismissActionTextStyle}>{dismissLabel}</Text>
             </View>
           )}
@@ -596,7 +596,7 @@ export function QuestionFormCard({ permission, onRespond, isResponding }: Questi
             <LoadingSpinner size="small" color={theme.colors.accentForeground} />
           ) : (
             <View style={styles.actionContent}>
-              <Check size={14} color={submitActionTextColor} />
+              <Check size="sm" color={submitActionTextColor} />
               <Text style={submitActionTextStyle}>{primaryActionLabel}</Text>
             </View>
           )}

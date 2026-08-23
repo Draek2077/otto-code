@@ -60,7 +60,7 @@ interface OpenTargetMenuItemProps {
 function OpenTargetMenuItem({ target, isPreferred, onOpen }: OpenTargetMenuItemProps) {
   const handleSelect = useCallback(() => onOpen(target), [onOpen, target]);
   const trailing = useMemo(
-    () => (isPreferred ? <ThemedCheckIcon size={16} uniProps={mutedColorMapping} /> : undefined),
+    () => (isPreferred ? <ThemedCheckIcon size="md" uniProps={mutedColorMapping} /> : undefined),
     [isPreferred],
   );
   return (
@@ -126,14 +126,14 @@ export function WorkspaceOpenInEditorButton({
           return {
             id: target.id,
             label: target.label,
-            icon: <ForgeBrandIcon iconKind={target.forge} size={16} uniProps={mutedColorMapping} />,
+            icon: <ForgeBrandIcon iconKind={target.forge} size="md" uniProps={mutedColorMapping} />,
             onOpen: () => openLink(target.url),
           };
         }
         return {
           id: target.id,
           label: target.label,
-          icon: <ThemedEditorAppIcon editorId={target.id} size={16} uniProps={mutedColorMapping} />,
+          icon: <ThemedEditorAppIcon editorId={target.id} size="md" uniProps={mutedColorMapping} />,
           onOpen: () => openDesktopTarget(target.openInput),
         };
       }),
@@ -255,7 +255,7 @@ export function WorkspaceOpenInEditorButton({
                   accessibilityRole="button"
                   accessibilityLabel={t("workspace.git.openInEditor.chooseEditor")}
                 >
-                  <ThemedChevronDown size={16} uniProps={mutedColorMapping} />
+                  <ThemedChevronDown size="md" uniProps={mutedColorMapping} />
                 </SplitButtonMenuTrigger>
               </TooltipTrigger>
               <TooltipContent side={tooltipSide} align="center" offset={8}>

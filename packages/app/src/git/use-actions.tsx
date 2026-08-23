@@ -49,7 +49,7 @@ export function useGitActionRunner(): (action: GitAction) => void {
       if (action.unavailableMessage) {
         toast.show(action.unavailableMessage, {
           durationMs: 3200,
-          icon: <ThemedInfo size={16} />,
+          icon: <ThemedInfo size="md" />,
         });
         return;
       }

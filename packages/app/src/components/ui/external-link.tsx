@@ -41,7 +41,7 @@ export function ExternalLink({
       style={styles.trigger}
     >
       <Text style={styles.label}>{label}</Text>
-      <ArrowUpRight size={12} color={theme.colors.foregroundMuted} />
+      <ArrowUpRight size="xs" color={theme.colors.foregroundMuted} />
     </Pressable>
   );
 

@@ -56,25 +56,25 @@ export const MODE_META: Record<TasksSuggestedStartMode, ModeMeta> = {
     primaryLabel: "New chat",
     menuLabel: "New chat",
     description: "Separate chat in its own tab, no link",
-    leading: <ThemedMessageSquarePlus size={14} uniProps={foregroundMutedColorMapping} />,
+    leading: <ThemedMessageSquarePlus size="sm" uniProps={foregroundMutedColorMapping} />,
   },
   subagent: {
     primaryLabel: "Sub-agent",
     menuLabel: "Sub-agent",
     description: "Linked child of this chat",
-    leading: <ThemedSchema size={14} uniProps={foregroundMutedColorMapping} />,
+    leading: <ThemedSchema size="sm" uniProps={foregroundMutedColorMapping} />,
   },
   worktree: {
     primaryLabel: "Worktree",
     menuLabel: "New worktree",
     description: "Isolated worktree on a new branch",
-    leading: <ThemedGitBranch size={14} uniProps={foregroundMutedColorMapping} />,
+    leading: <ThemedGitBranch size="sm" uniProps={foregroundMutedColorMapping} />,
   },
   in_session: {
     primaryLabel: "This session",
     menuLabel: "This session",
     description: "Send the task to this agent",
-    leading: <ThemedCornerDownLeft size={14} uniProps={foregroundMutedColorMapping} />,
+    leading: <ThemedCornerDownLeft size="sm" uniProps={foregroundMutedColorMapping} />,
   },
 };
 
@@ -143,7 +143,7 @@ export function SplitStartButton({
         {({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => (
           <>
             <ThemedPlay
-              size={12}
+              size="xs"
               uniProps={hovered || pressed ? foregroundColorMapping : accentColorMapping}
             />
             <Text
@@ -173,7 +173,7 @@ export function SplitStartButton({
             open?: boolean;
           }) => (
             <ThemedChevronDown
-              size={14}
+              size="sm"
               uniProps={
                 hovered || pressed || open ? foregroundColorMapping : foregroundMutedColorMapping
               }
@@ -208,7 +208,7 @@ export function SplitStartButton({
   );
 }
 
-const DISMISS_LEADING = <ThemedTrash2 size={14} uniProps={destructiveColorMapping} />;
+const DISMISS_LEADING = <ThemedTrash2 size="sm" uniProps={destructiveColorMapping} />;
 
 interface StartMenuItemProps {
   mode: TasksSuggestedStartMode;
@@ -266,7 +266,7 @@ export function DismissButton({
         >
           {({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => (
             <ThemedX
-              size={16}
+              size="md"
               uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
             />
           )}

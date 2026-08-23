@@ -73,7 +73,7 @@ export function ProjectFilter({
           <Text style={styles.triggerText} numberOfLines={1}>
             {selectedLabel}
           </Text>
-          <ChevronDown size={16} color={styles.chevron.color} />
+          <ChevronDown size="md" color={styles.chevron.color} />
         </Pressable>
       </View>
       <Combobox

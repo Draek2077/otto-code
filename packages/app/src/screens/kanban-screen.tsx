@@ -393,7 +393,7 @@ function FilterTrigger({
         <Text style={styles.filterTriggerText} numberOfLines={1}>
           {label}
         </Text>
-        <ChevronDown size={14} color={styles.chevron.color} />
+        <ChevronDown size="sm" color={styles.chevron.color} />
       </Pressable>
     </View>
   );
@@ -454,7 +454,7 @@ function KanbanHostFilter({
           <Text style={styles.filterTriggerText} numberOfLines={1}>
             {selectedLabel}
           </Text>
-          <ChevronDown size={14} color={styles.chevron.color} />
+          <ChevronDown size="sm" color={styles.chevron.color} />
         </Pressable>
       </View>
     </HostPicker>
@@ -1191,7 +1191,7 @@ function KanbanColumnView({
             testID={`kanban-add-card-${column.id}`}
             accessibilityRole="button"
           >
-            <KanbanIcon icon={Plus} size={16} color={styles.addCardText.color} />
+            <KanbanIcon icon={Plus} size="md" color={styles.addCardText.color} />
             <Text style={styles.addCardText}>{t("kanban.addCard")}</Text>
           </Pressable>
         )}
@@ -1286,7 +1286,7 @@ function KanbanCardView({
               testID={`kanban-card-link-${card.id}`}
               accessibilityRole="link"
             >
-              <KanbanIcon icon={ExternalLink} size={14} color={styles.cardAssignees.color} />
+              <KanbanIcon icon={ExternalLink} size="sm" color={styles.cardAssignees.color} />
             </Pressable>
           ) : null}
           <KanbanCardMoveMenu
@@ -1327,7 +1327,7 @@ function KanbanCardMoveMenu({
         testID={`kanban-card-menu-${card.id}`}
         accessibilityLabel={`${t("kanban.moveTo", { column: card.title })}`}
       >
-        <KanbanIcon icon={MoreVertical} size={16} color={styles.cardAssignees.color} />
+        <KanbanIcon icon={MoreVertical} size="md" color={styles.cardAssignees.color} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {targets.map((column) => (

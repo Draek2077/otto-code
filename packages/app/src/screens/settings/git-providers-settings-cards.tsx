@@ -70,7 +70,7 @@ function GitHubProviderCard({ serverId }: { serverId: string }) {
     <View style={settingsStyles.card} testID="git-providers-github-card">
       <View style={settingsStyles.row}>
         <View style={styles.providerHeading}>
-          <GitHubIcon size={20} color={styles.iconColor.color} />
+          <GitHubIcon size="lg" color={styles.iconColor.color} />
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>
               {t("settings.host.gitProviders.github.name")}
@@ -230,7 +230,7 @@ function AtlassianProviderCard({ serverId }: { serverId: string }) {
     <View style={settingsStyles.card} testID="git-providers-atlassian-card">
       <View style={settingsStyles.row}>
         <View style={styles.providerHeading}>
-          <BitbucketIcon size={20} color={styles.iconColor.color} />
+          <BitbucketIcon size="lg" color={styles.iconColor.color} />
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>
               {t("settings.host.gitProviders.atlassian.name")}

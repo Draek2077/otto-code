@@ -310,7 +310,7 @@ function EditorSyncBanners({
     <>
       {diskChange ? (
         <View style={styles.conflictBanner} testID="editor-disk-banner">
-          <ThemedTriangleAlert size={16} uniProps={warningIconColorMapping} />
+          <ThemedTriangleAlert size="md" uniProps={warningIconColorMapping} />
           <Text style={styles.conflictText}>
             {diskChange.kind === "deleted"
               ? t("editor.diskChange.deletedMessage")
@@ -338,14 +338,14 @@ function EditorSyncBanners({
             onPress={onDiskDismiss}
             style={iconButtonStyle}
           >
-            <ThemedX size={14} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedX size="sm" uniProps={foregroundMutedIconColorMapping} />
           </Pressable>
         </View>
       ) : null}
 
       {hasConflict ? (
         <View style={styles.conflictBanner} testID="editor-conflict-banner">
-          <ThemedTriangleAlert size={16} uniProps={warningIconColorMapping} />
+          <ThemedTriangleAlert size="md" uniProps={warningIconColorMapping} />
           <Text style={styles.conflictText}>{t("editor.conflict.message")}</Text>
           <Button
             size="sm"
@@ -370,7 +370,7 @@ function EditorSyncBanners({
             onPress={onConflictDismiss}
             style={iconButtonStyle}
           >
-            <ThemedX size={14} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedX size="sm" uniProps={foregroundMutedIconColorMapping} />
           </Pressable>
         </View>
       ) : null}
@@ -463,7 +463,7 @@ function PreviewFindStrip({
           onPress={handlers.onFindPrevious}
           style={iconButtonStyle}
         >
-          <ThemedArrowUp size={14} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedArrowUp size="sm" uniProps={foregroundMutedIconColorMapping} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -472,7 +472,7 @@ function PreviewFindStrip({
           onPress={handlers.onFindNext}
           style={iconButtonStyle}
         >
-          <ThemedArrowDown size={14} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedArrowDown size="sm" uniProps={foregroundMutedIconColorMapping} />
         </Pressable>
         <FindToggle
           label="Cc"
@@ -506,7 +506,7 @@ function PreviewFindStrip({
           onPress={handlers.onClose}
           style={iconButtonStyle}
         >
-          <ThemedX size={14} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedX size="sm" uniProps={foregroundMutedIconColorMapping} />
         </Pressable>
       </View>
     </View>
@@ -1215,9 +1215,9 @@ function EditorFindStrip({
           style={iconButtonStyle}
         >
           {find.replaceOpen ? (
-            <ThemedChevronDown size={14} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedChevronDown size="sm" uniProps={foregroundMutedIconColorMapping} />
           ) : (
-            <ThemedChevronRight size={14} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedChevronRight size="sm" uniProps={foregroundMutedIconColorMapping} />
           )}
         </Pressable>
         {/* No autoFocus: the focusSignal effect owns focus, and it has to run on
@@ -1247,7 +1247,7 @@ function EditorFindStrip({
           onPress={handlers.onFindPrevious}
           style={iconButtonStyle}
         >
-          <ThemedArrowUp size={14} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedArrowUp size="sm" uniProps={foregroundMutedIconColorMapping} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -1256,7 +1256,7 @@ function EditorFindStrip({
           onPress={handlers.onFindNext}
           style={iconButtonStyle}
         >
-          <ThemedArrowDown size={14} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedArrowDown size="sm" uniProps={foregroundMutedIconColorMapping} />
         </Pressable>
         <FindToggle
           label="Cc"
@@ -1290,7 +1290,7 @@ function EditorFindStrip({
           onPress={handlers.onClose}
           style={iconButtonStyle}
         >
-          <ThemedX size={14} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedX size="sm" uniProps={foregroundMutedIconColorMapping} />
         </Pressable>
       </View>
       {find.replaceOpen ? (

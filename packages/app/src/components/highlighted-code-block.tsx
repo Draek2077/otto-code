@@ -234,9 +234,9 @@ const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButt
           ? copyButtonStyles.iconHoveredColor.color
           : copyButtonStyles.iconColor.color;
         return copied ? (
-          <Check size={14} color={iconColor} />
+          <Check size="sm" color={iconColor} />
         ) : (
-          <Copy size={14} color={iconColor} />
+          <Copy size="sm" color={iconColor} />
         );
       }}
     </Pressable>

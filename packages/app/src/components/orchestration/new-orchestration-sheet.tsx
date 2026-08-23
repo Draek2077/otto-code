@@ -1301,14 +1301,14 @@ function GraphField({
           accessibilityLabel={`Select graph (${displayValue})`}
           testID="orchestration-graph-trigger"
         >
-          <Schema size={16} color={styles.chevron.color} />
+          <Schema size="md" color={styles.chevron.color} />
           <Text
             style={selected ? styles.selectTriggerText : styles.selectTriggerPlaceholder}
             numberOfLines={1}
           >
             {displayValue}
           </Text>
-          <ChevronDown size={16} color={styles.chevron.color} />
+          <ChevronDown size="md" color={styles.chevron.color} />
         </Pressable>
       </View>
       <Combobox
@@ -1343,7 +1343,7 @@ function GraphOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Schema size={16} color={styles.chevron.color} />
+        <Schema size="md" color={styles.chevron.color} />
       </View>
     ),
     [],
@@ -1470,7 +1470,7 @@ function WorkspaceField({
           >
             {displayValue}
           </Text>
-          <ChevronDown size={16} color={styles.chevron.color} />
+          <ChevronDown size="md" color={styles.chevron.color} />
         </Pressable>
       </View>
       {description ? <Text style={styles.hint}>{description}</Text> : null}
@@ -1509,9 +1509,9 @@ function WorkspaceOptionItem({
     () => (
       <View style={styles.optionIconBox}>
         {isProjectRoot ? (
-          <Folder size={16} color={styles.chevron.color} />
+          <Folder size="md" color={styles.chevron.color} />
         ) : (
-          <GitBranch size={16} color={styles.chevron.color} />
+          <GitBranch size="md" color={styles.chevron.color} />
         )}
       </View>
     ),
@@ -1635,7 +1635,7 @@ function ProjectField({
           >
             {displayValue}
           </Text>
-          <ChevronDown size={16} color={styles.chevron.color} />
+          <ChevronDown size="md" color={styles.chevron.color} />
         </Pressable>
       </View>
       {description ? <Text style={styles.hint}>{description}</Text> : null}
@@ -1760,7 +1760,7 @@ function ThinkingField({
           >
             {displayValue}
           </Text>
-          <ChevronDown size={16} color={styles.chevron.color} />
+          <ChevronDown size="md" color={styles.chevron.color} />
         </Pressable>
       </View>
       <Combobox
@@ -1795,7 +1795,7 @@ function ThinkingOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Psychology size={16} color={styles.chevron.color} />
+        <Psychology size="md" color={styles.chevron.color} />
       </View>
     ),
     [],
@@ -1825,7 +1825,7 @@ function ProjectOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Folder size={16} color={styles.chevron.color} />
+        <Folder size="md" color={styles.chevron.color} />
       </View>
     ),
     [],
@@ -1847,7 +1847,7 @@ function ProviderGlyph({ provider }: { provider: string | null }): ReactElement 
     return null;
   }
   const Icon = getProviderIcon(provider);
-  return <Icon size={16} color={styles.providerIcon.color} />;
+  return <Icon size="md" color={styles.providerIcon.color} />;
 }
 
 function ModelTrigger({
@@ -1882,12 +1882,12 @@ function ModelTrigger({
   // its colored glyph; otherwise the plain provider glyph.
   let leadingIcon: ReactElement | null;
   if (RoleIcon) {
-    leadingIcon = <RoleIcon size={16} color={styles.providerIcon.color} />;
+    leadingIcon = <RoleIcon size="md" color={styles.providerIcon.color} />;
   } else if (hasPersonality && provider) {
     leadingIcon = (
       <PersonalityProviderIcon
         provider={provider}
-        size={16}
+        size="md"
         glowA={personalitySpinner?.glowA}
         glowB={personalitySpinner?.glowB}
       />
@@ -1904,7 +1904,7 @@ function ModelTrigger({
       >
         {label}
       </Text>
-      <ChevronDown size={16} color={styles.chevron.color} />
+      <ChevronDown size="md" color={styles.chevron.color} />
     </View>
   );
 }

@@ -13,6 +13,7 @@ import {
   type ForgeIconComponent,
 } from "@/git/client-forge-module";
 import { CLIENT_FORGE_VIEW_MODULES } from "@/git/forges/view";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 const FORGE_ICON_BY_KIND = new Map(
   CLIENT_FORGE_VIEW_MODULES.map((module) => [module.id, module.icon]),
@@ -64,7 +65,7 @@ export function ForgeBrandIcon({
   uniProps,
 }: {
   iconKind: string;
-  size: number;
+  size: IconSizeProp;
   uniProps: ForgeIconColorMapping;
 }) {
   const ThemedIcon = THEMED_ICON_BY_KIND[iconKind] ?? ThemedGitPullRequest;
