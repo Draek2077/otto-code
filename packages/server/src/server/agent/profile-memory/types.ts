@@ -19,25 +19,25 @@
  * - `global`: injected everywhere on the host. For observations about the
  *   personality's own craft or its crew, which travel.
  */
-export type PersonalityMemoryScope = "project" | "global";
+export type ProfileMemoryScope = "project" | "global";
 
 /**
  * How the entry got here. Purely provenance - it never gates injection, and the
  * agent that records a lesson does not choose it.
  */
-export type PersonalityMemorySource = "agent" | "user" | "review" | "transfer";
+export type ProfileMemorySource = "agent" | "user" | "review" | "transfer";
 
-export interface PersonalityMemoryEntry {
+export interface ProfileMemoryEntry {
   /** Machine-generated. Never surfaced to a recording agent (fire-and-forget). */
   id: string;
   /** The lesson itself - one short paragraph. */
   text: string;
-  scope: PersonalityMemoryScope;
+  scope: ProfileMemoryScope;
   /** Absolute project root. Set when (and only when) `scope === "project"`. */
   projectRoot?: string;
   createdAt: string;
   updatedAt: string;
-  source: PersonalityMemorySource;
+  source: ProfileMemorySource;
   /**
    * How many times the lesson has been restated. A near-duplicate recording
    * bumps this instead of adding a row, which is what makes dedup the system's
@@ -53,7 +53,7 @@ export interface PersonalityMemoryEntry {
 /** The whole persisted file for one personality. */
 export interface PersonalityMemoryFile {
   personalityId: string;
-  entries: PersonalityMemoryEntry[];
+  entries: ProfileMemoryEntry[];
 }
 
 /** What `remember_lesson` did, so the tool can answer honestly. */

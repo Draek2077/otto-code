@@ -11,7 +11,7 @@
  */
 
 import { estimateTokens } from "../context-composition.js";
-import type { PersonalityMemoryEntry } from "./types.js";
+import type { ProfileMemoryEntry } from "./types.js";
 
 /**
  * Ceiling on the injected brief. This rides EVERY request for the life of the
@@ -26,7 +26,7 @@ export interface ComposeMemoryBriefInput {
   /** The personality's name, so the brief addresses the agent as itself. */
   personalityName: string;
   /** Already scope-filtered: global entries plus this project's. */
-  entries: readonly PersonalityMemoryEntry[];
+  entries: readonly ProfileMemoryEntry[];
   /** Override for tests and for tuning; defaults to the budget above. */
   tokenBudget?: number;
 }
@@ -50,8 +50,8 @@ export interface MemoryBrief {
  * no benefit.
  */
 export function orderEntriesForInjection(
-  entries: readonly PersonalityMemoryEntry[],
-): PersonalityMemoryEntry[] {
+  entries: readonly ProfileMemoryEntry[],
+): ProfileMemoryEntry[] {
   return [...entries].sort((a, b) => {
     const reinforced = (b.reinforcedCount ?? 0) - (a.reinforcedCount ?? 0);
     if (reinforced !== 0) return reinforced;
@@ -97,7 +97,7 @@ function flattenLessonText(text: string): string {
     .replace(/^#+\s*/, "");
 }
 
-function formatEntry(entry: PersonalityMemoryEntry, index: number): string {
+function formatEntry(entry: ProfileMemoryEntry, index: number): string {
   const reinforced = entry.reinforcedCount ?? 0;
   // The reinforcement count is shown, not hidden: "learned 4 times" is real
   // evidence about how load-bearing a lesson is, and the model should weigh a
@@ -148,9 +148,9 @@ export function composeMemoryBrief(input: ComposeMemoryBriefInput): MemoryBrief 
  * here - the point of the scope split.
  */
 export function selectEntriesForProject(
-  entries: readonly PersonalityMemoryEntry[],
+  entries: readonly ProfileMemoryEntry[],
   projectRoot: string | undefined,
-): PersonalityMemoryEntry[] {
+): ProfileMemoryEntry[] {
   return entries.filter((entry) => {
     if (entry.scope === "global") return true;
     if (!projectRoot || !entry.projectRoot) return false;

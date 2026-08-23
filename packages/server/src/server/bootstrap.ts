@@ -152,9 +152,10 @@ import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { RetainedTranscriptStore } from "./agent/retained-transcript-store.js";
-import { PersonalityStatsStore } from "./agent/personality-stats-store.js";
-import { PersonalityMemoryStore } from "./agent/personality-memory/personality-memory-store.js";
-import { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
+import { migrateProfileStorePaths } from "./migrations/profile-store-paths.migration.js";
+import { ProfileStatsStore } from "./agent/profile-stats-store.js";
+import { ProfileMemoryStore } from "./agent/profile-memory/profile-memory-store.js";
+import { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
 import { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
 import { loadInstructionFiles } from "./agent/context-management/instruction-files.js";
 import { resolveProjectRootForCwd } from "./agent/context-management/context-management-service.js";
@@ -1291,14 +1292,19 @@ export async function createOttoDaemon(
   }
 
   const agentStorage = new AgentStorage(config.agentStoragePath, logger);
-  const personalityStatsStore = new PersonalityStatsStore(
-    path.join(config.ottoHome, "stats", "personality-usage.json"),
+  // COMPAT(profileStorePaths): added in v0.8.13, remove after 2027-02-22.
+  // Must run BEFORE either store is constructed, or the first read creates an
+  // empty store at the new path and the rename below then declines to clobber
+  // it - stranding the user's lessons at the old one.
+  await migrateProfileStorePaths({ ottoHome: config.ottoHome, logger });
+  const profileStatsStore = new ProfileStatsStore(
+    path.join(config.ottoHome, "stats", "profile-usage.json"),
     logger,
   );
-  // The lessons personalities accrue. One file per personality, so the store is
-  // handed a directory rather than a path.
-  const personalityMemoryStore = new PersonalityMemoryStore(
-    path.join(config.ottoHome, "personality-memory"),
+  // The lessons profiles accrue. One file per profile, so the store is handed a
+  // directory rather than a path.
+  const profileMemoryStore = new ProfileMemoryStore(
+    path.join(config.ottoHome, "profile-memory"),
     logger,
   );
   const activityStatsStore = new ActivityStatsStore(
@@ -1374,8 +1380,8 @@ export async function createOttoDaemon(
   // inject each personality's accrued lessons at spawn, and it needs the git
   // service to scope project lessons to a repo root rather than a bare cwd
   // (a worktree and its main checkout are the same project's lessons).
-  const personalityMemory = new PersonalityMemoryService({
-    store: personalityMemoryStore,
+  const personalityMemory = new ProfileMemoryService({
+    store: profileMemoryStore,
     readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
     resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
     logger,
@@ -1418,7 +1424,7 @@ export async function createOttoDaemon(
     // Counted at the createAgent choke point so composer, MCP create_agent,
     // and schedule spawns all land in the per-personality usage stats.
     onPersonalitySpawn: (personalityId) => {
-      void personalityStatsStore.increment(personalityId);
+      void profileStatsStore.increment(personalityId);
     },
     // Injected at the same choke point, so every spawn path - composer, MCP
     // create_agent, schedule runs, orchestration, resume - carries the
@@ -2462,7 +2468,7 @@ export async function createOttoDaemon(
             });
             await hubRelationships.start();
 
-            wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());
+            wsServer.setPersonalityStatsProvider(() => profileStatsStore.get());
             wsServer.setPersonalityMemoryService(personalityMemory);
             wsServer.setProjectKnowledgeService(projectKnowledge);
             wsServer.setNodeOutputStore(nodeOutputStore);

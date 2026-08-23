@@ -6,7 +6,7 @@ import type { AgentMode, AgentModelDefinition, AgentProvider } from "../agent-sd
 import type { AgentManager } from "../agent-manager.js";
 import { resolveEffortOption } from "../effort-levels.js";
 import { resolveProfile, type ResolvedProfileSnapshot } from "../agent-profiles.js";
-import type { PersonalityMemoryService } from "../personality-memory/personality-memory-service.js";
+import type { ProfileMemoryService } from "../profile-memory/profile-memory-service.js";
 import type { ProjectKnowledgeService } from "../project-knowledge/project-knowledge-service.js";
 import {
   composeTeamAndPersonalityPrompt,
@@ -185,7 +185,7 @@ export interface OttoToolHostDependencies {
    * case the tools are never registered at all - a tool that can only fail is
    * worse than a missing one.
    */
-  personalityMemory?: PersonalityMemoryService | null;
+  personalityMemory?: ProfileMemoryService | null;
   /** Repository-scoped durable knowledge, injected for every agent in the repo. */
   projectKnowledge?: ProjectKnowledgeService | null;
   github?: ForgeService;

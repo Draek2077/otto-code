@@ -12,16 +12,16 @@
 import type { Logger } from "pino";
 import type { AgentProfile } from "@otto-code/protocol/messages";
 import { composeMemoryBrief, selectEntriesForProject, type MemoryBrief } from "./memory-brief.js";
-import { PersonalityMemoryStore } from "./personality-memory-store.js";
+import { ProfileMemoryStore } from "./profile-memory-store.js";
 import type {
-  PersonalityMemoryEntry,
-  PersonalityMemoryScope,
-  PersonalityMemorySource,
+  ProfileMemoryEntry,
+  ProfileMemoryScope,
+  ProfileMemorySource,
   RecordLessonResult,
 } from "./types.js";
 
-export interface PersonalityMemoryServiceDeps {
-  store: PersonalityMemoryStore;
+export interface ProfileMemoryServiceDeps {
+  store: ProfileMemoryStore;
   /** The live roster, for names and the per-personality memory switch. */
   readAgentProfiles: () => readonly AgentProfile[];
   /** git repo root for a cwd, else the cwd. Scopes project lessons. */
@@ -35,26 +35,26 @@ export interface PersonalityMemoryServiceDeps {
  * the feature never starts working for anyone who did not go looking for a
  * switch. The switch exists to stop a personality accruing, not to start it.
  */
-export function isPersonalityMemoryEnabled(personality: AgentProfile | undefined): boolean {
+export function isProfileMemoryEnabled(personality: AgentProfile | undefined): boolean {
   if (!personality) return false;
   const value = (personality as { memoryEnabled?: unknown }).memoryEnabled;
   return value !== false;
 }
 
-export interface PersonalityMemoryView {
+export interface ProfileMemoryView {
   personalityId: string;
   personalityName: string;
   enabled: boolean;
   /** Every stored entry, not just this project's - the Memory tab shows all. */
-  entries: PersonalityMemoryEntry[];
+  entries: ProfileMemoryEntry[];
   /** The exact text that would be injected for `projectRoot`. */
   brief: MemoryBrief;
 }
 
-export class PersonalityMemoryService {
-  private readonly store: PersonalityMemoryStore;
+export class ProfileMemoryService {
+  private readonly store: ProfileMemoryStore;
 
-  constructor(private readonly deps: PersonalityMemoryServiceDeps) {
+  constructor(private readonly deps: ProfileMemoryServiceDeps) {
     this.store = deps.store;
   }
 
@@ -80,7 +80,7 @@ export class PersonalityMemoryService {
       // An unknown id is normal, not an error: an agent keeps its spawn snapshot
       // after the personality is deleted from the roster, and it should keep the
       // lessons that identity accrued too.
-      if (personality && !isPersonalityMemoryEnabled(personality)) return null;
+      if (personality && !isProfileMemoryEnabled(personality)) return null;
 
       const entries = await this.store.list(params.personalityId);
       if (entries.length === 0) return null;
@@ -101,10 +101,7 @@ export class PersonalityMemoryService {
   }
 
   /** Everything the Memory tab and the visibility requirement need. */
-  async view(params: {
-    personalityId: string;
-    projectRoot?: string;
-  }): Promise<PersonalityMemoryView> {
+  async view(params: { personalityId: string; projectRoot?: string }): Promise<ProfileMemoryView> {
     const personality = this.findPersonality(params.personalityId);
     const entries = await this.store.list(params.personalityId);
     const brief = composeMemoryBrief({
@@ -114,7 +111,7 @@ export class PersonalityMemoryService {
     return {
       personalityId: params.personalityId,
       personalityName: personality?.name ?? params.personalityId,
-      enabled: isPersonalityMemoryEnabled(personality),
+      enabled: isProfileMemoryEnabled(personality),
       entries,
       brief,
     };
@@ -128,9 +125,9 @@ export class PersonalityMemoryService {
   async record(params: {
     personalityId: string;
     lesson: string;
-    scope: PersonalityMemoryScope;
+    scope: ProfileMemoryScope;
     cwd?: string;
-    source?: PersonalityMemorySource;
+    source?: ProfileMemorySource;
   }): Promise<RecordLessonResult> {
     const projectRoot =
       params.scope === "project" && params.cwd ? await this.safeProjectRoot(params.cwd) : undefined;
@@ -143,7 +140,7 @@ export class PersonalityMemoryService {
     });
   }
 
-  async list(personalityId: string): Promise<PersonalityMemoryEntry[]> {
+  async list(personalityId: string): Promise<ProfileMemoryEntry[]> {
     return this.store.list(personalityId);
   }
 
@@ -157,7 +154,7 @@ export class PersonalityMemoryService {
     personalityId: string;
     entryId: string;
     text?: string;
-    scope?: PersonalityMemoryScope;
+    scope?: ProfileMemoryScope;
     projectRoot?: string;
     cwd?: string;
     drop?: boolean;
@@ -171,7 +168,7 @@ export class PersonalityMemoryService {
   async addUserEntry(params: {
     personalityId: string;
     text: string;
-    scope: PersonalityMemoryScope;
+    scope: ProfileMemoryScope;
     projectRoot?: string;
   }): Promise<RecordLessonResult> {
     return this.store.add({

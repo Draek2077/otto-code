@@ -1,6 +1,6 @@
 /**
  * File-backed storage for personality memory: one JSON file per personality
- * under `$OTTO_HOME/personality-memory/`, atomic writes, no migrations -
+ * under `$OTTO_HOME/profile-memory/`, atomic writes, no migrations -
  * the pattern from docs/data-model.md.
  *
  * One file per personality rather than one file per fact. The harness's own
@@ -21,9 +21,9 @@ import type { Logger } from "pino";
 import { writeJsonFileAtomic } from "../../atomic-file.js";
 import { findDuplicateLesson } from "./lesson-dedup.js";
 import type {
-  PersonalityMemoryEntry,
-  PersonalityMemoryScope,
-  PersonalityMemorySource,
+  ProfileMemoryEntry,
+  ProfileMemoryScope,
+  ProfileMemorySource,
   RecordLessonResult,
 } from "./types.js";
 
@@ -42,22 +42,22 @@ export const MAX_LESSON_CHARS = 1200;
 export interface RecordLessonInput {
   personalityId: string;
   lesson: string;
-  scope: PersonalityMemoryScope;
+  scope: ProfileMemoryScope;
   projectRoot?: string;
-  source: PersonalityMemorySource;
+  source: ProfileMemorySource;
 }
 
 export interface ReviseLessonInput {
   personalityId: string;
   entryId: string;
   text?: string;
-  scope?: PersonalityMemoryScope;
+  scope?: ProfileMemoryScope;
   projectRoot?: string;
   drop?: boolean;
 }
 
-export class PersonalityMemoryStore {
-  private readonly cache = new Map<string, PersonalityMemoryEntry[]>();
+export class ProfileMemoryStore {
+  private readonly cache = new Map<string, ProfileMemoryEntry[]>();
   private readonly queues = new Map<string, Promise<unknown>>();
   private readonly logger?: Logger;
 
@@ -69,7 +69,7 @@ export class PersonalityMemoryStore {
   }
 
   /** Entries for one personality, newest-first by update time. Never throws. */
-  async list(personalityId: string): Promise<PersonalityMemoryEntry[]> {
+  async list(personalityId: string): Promise<ProfileMemoryEntry[]> {
     return [...(await this.load(personalityId))];
   }
 
@@ -129,7 +129,7 @@ export class PersonalityMemoryStore {
         return { entries: next, result: { outcome: "reinforced", total: next.length } };
       }
 
-      const entry: PersonalityMemoryEntry = {
+      const entry: ProfileMemoryEntry = {
         id: randomUUID(),
         text: lesson,
         scope: input.scope,
@@ -164,7 +164,7 @@ export class PersonalityMemoryStore {
         };
       }
       const scope = input.scope ?? existing.scope;
-      const next: PersonalityMemoryEntry = {
+      const next: ProfileMemoryEntry = {
         ...existing,
         ...(input.text !== undefined ? { text: normalizeLesson(input.text) } : {}),
         scope,
@@ -242,7 +242,7 @@ export class PersonalityMemoryStore {
         transferred += 1;
         // A fresh id: the entry is now the destination's, and reusing the source
         // id would collide the moment the same lessons are transferred twice.
-        const moved: PersonalityMemoryEntry = {
+        const moved: ProfileMemoryEntry = {
           ...incoming,
           id: randomUUID(),
           source: "transfer",
@@ -277,10 +277,10 @@ export class PersonalityMemoryStore {
     return path.join(this.rootDir, `${safe}.json`);
   }
 
-  private async load(personalityId: string): Promise<PersonalityMemoryEntry[]> {
+  private async load(personalityId: string): Promise<ProfileMemoryEntry[]> {
     const cached = this.cache.get(personalityId);
     if (cached) return cached;
-    let entries: PersonalityMemoryEntry[] = [];
+    let entries: ProfileMemoryEntry[] = [];
     try {
       const raw = await readFile(this.filePath(personalityId), "utf8");
       entries = sanitizeEntries(JSON.parse(raw));
@@ -303,8 +303,8 @@ export class PersonalityMemoryStore {
    */
   private mutate<T>(
     personalityId: string,
-    apply: (entries: PersonalityMemoryEntry[]) => {
-      entries: PersonalityMemoryEntry[];
+    apply: (entries: ProfileMemoryEntry[]) => {
+      entries: ProfileMemoryEntry[];
       result: T;
     },
   ): Promise<T> {
@@ -359,7 +359,7 @@ function normalizeLesson(text: string): string {
  * oldest. The same ranking the injection budget uses, so what falls out of
  * storage is what had already fallen out of the brief.
  */
-function enforceCap(entries: readonly PersonalityMemoryEntry[]): PersonalityMemoryEntry[] {
+function enforceCap(entries: readonly ProfileMemoryEntry[]): ProfileMemoryEntry[] {
   if (entries.length <= MAX_ENTRIES_PER_PERSONALITY) return [...entries];
   const ranked = [...entries].sort((a, b) => {
     const reinforced = (b.reinforcedCount ?? 0) - (a.reinforcedCount ?? 0);
@@ -379,20 +379,20 @@ function sameRoot(a: string | undefined, b: string | undefined): boolean {
   return norm(a) === norm(b);
 }
 
-const VALID_SCOPES = new Set<PersonalityMemoryScope>(["project", "global"]);
-const VALID_SOURCES = new Set<PersonalityMemorySource>(["agent", "user", "review", "transfer"]);
+const VALID_SCOPES = new Set<ProfileMemoryScope>(["project", "global"]);
+const VALID_SOURCES = new Set<ProfileMemorySource>(["agent", "user", "review", "transfer"]);
 
 /**
  * Hand-written rather than Zod: the store is the only reader of this file, the
  * shape is five fields, and a malformed entry must be dropped rather than fail
  * the whole load - one bad row should never cost a personality its memory.
  */
-function sanitizeEntries(value: unknown): PersonalityMemoryEntry[] {
+function sanitizeEntries(value: unknown): ProfileMemoryEntry[] {
   const raw =
     value && typeof value === "object" && Array.isArray((value as { entries?: unknown }).entries)
       ? ((value as { entries: unknown[] }).entries as unknown[])
       : [];
-  const entries: PersonalityMemoryEntry[] = [];
+  const entries: ProfileMemoryEntry[] = [];
   for (const item of raw) {
     const entry = sanitizeEntry(item);
     if (entry) entries.push(entry);
@@ -401,7 +401,7 @@ function sanitizeEntries(value: unknown): PersonalityMemoryEntry[] {
 }
 
 /** One row, or null when it is too broken to mean anything. */
-function sanitizeEntry(item: unknown): PersonalityMemoryEntry | null {
+function sanitizeEntry(item: unknown): ProfileMemoryEntry | null {
   if (!item || typeof item !== "object") return null;
   const candidate = item as Record<string, unknown>;
   const id = typeof candidate.id === "string" ? candidate.id : null;
@@ -412,7 +412,7 @@ function sanitizeEntry(item: unknown): PersonalityMemoryEntry | null {
   const scope = readEnum(candidate.scope, VALID_SCOPES, "project");
   const createdAt =
     typeof candidate.createdAt === "string" ? candidate.createdAt : new Date(0).toISOString();
-  const entry: PersonalityMemoryEntry = {
+  const entry: ProfileMemoryEntry = {
     id,
     text,
     scope,

@@ -4,11 +4,8 @@ import path from "node:path";
 import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
-import {
-  isPersonalityMemoryEnabled,
-  PersonalityMemoryService,
-} from "./personality-memory-service.js";
-import { PersonalityMemoryStore } from "./personality-memory-store.js";
+import { isProfileMemoryEnabled, ProfileMemoryService } from "./profile-memory-service.js";
+import { ProfileMemoryStore } from "./profile-memory-store.js";
 
 const logger = pino({ level: "silent" });
 const PID = "personality_sprocket";
@@ -25,15 +22,15 @@ function personality(overrides: Partial<AgentPersonality> = {}): AgentPersonalit
 }
 
 let root: string;
-let store: PersonalityMemoryStore;
+let store: ProfileMemoryStore;
 let roster: AgentPersonality[];
-let service: PersonalityMemoryService;
+let service: ProfileMemoryService;
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), "otto-memory-service-"));
-  store = new PersonalityMemoryStore(root);
+  store = new ProfileMemoryStore(root);
   roster = [personality()];
-  service = new PersonalityMemoryService({
+  service = new ProfileMemoryService({
     store,
     readAgentProfiles: () => roster,
     // Every cwd under the fixture repo resolves to the repo, the way a worktree
@@ -47,17 +44,17 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-describe("isPersonalityMemoryEnabled", () => {
+describe("isProfileMemoryEnabled", () => {
   it("treats an absent flag as on, because empty memory costs nothing", () => {
-    expect(isPersonalityMemoryEnabled(personality())).toBe(true);
+    expect(isProfileMemoryEnabled(personality())).toBe(true);
   });
 
   it("honours an explicit opt-out", () => {
-    expect(isPersonalityMemoryEnabled(personality({ memoryEnabled: false }))).toBe(false);
+    expect(isProfileMemoryEnabled(personality({ memoryEnabled: false }))).toBe(false);
   });
 
   it("has nothing to enable for an unknown personality", () => {
-    expect(isPersonalityMemoryEnabled(undefined)).toBe(false);
+    expect(isProfileMemoryEnabled(undefined)).toBe(false);
   });
 });
 
@@ -124,7 +121,7 @@ describe("resolveBriefForSpawn", () => {
       scope: "project",
       cwd: REPO,
     });
-    const elsewhere = new PersonalityMemoryService({
+    const elsewhere = new ProfileMemoryService({
       store,
       readAgentProfiles: () => roster,
       resolveProjectRoot: async () => "/repos/somewhere-else",
@@ -140,7 +137,7 @@ describe("resolveBriefForSpawn", () => {
   });
 
   it("never fails a spawn when memory cannot be read", async () => {
-    const broken = new PersonalityMemoryService({
+    const broken = new ProfileMemoryService({
       store,
       readAgentProfiles: () => {
         throw new Error("roster exploded");

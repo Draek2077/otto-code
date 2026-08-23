@@ -113,7 +113,7 @@ import {
 } from "./agent/context-management/context-management-service.js";
 import { convertEdge } from "./agent/context-management/edge-convert.js";
 import { fixFindings } from "./agent/context-management/finding-fix.js";
-import type { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
+import type { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
 import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
 import { composeSystemPromptParts } from "./agent/system-prompt.js";
 import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
@@ -230,7 +230,7 @@ import {
 import {
   createPersonalityProfileGenerator,
   type PersonalityProfileGenerator,
-} from "./agent/personality-profile-generator.js";
+} from "./agent/profile-prompt-generator.js";
 import {
   RefineError,
   createRefineGenerator,
@@ -714,7 +714,7 @@ export interface SessionOptions {
    * which case the daemon doesn't advertise `features.personalityMemory` and the
    * memory RPCs answer with a plain "not available on this host".
    */
-  personalityMemory?: PersonalityMemoryService | null;
+  personalityMemory?: ProfileMemoryService | null;
   /** Repo-owned knowledge, used to make its recurring prompt cost inspectable. */
   projectKnowledge?: ProjectKnowledgeService | null;
   serverId?: string;
@@ -904,7 +904,7 @@ export class Session {
   // Left as the option's own `| null | undefined` rather than coalesced to null:
   // every read is a truthiness check, and normalizing would add a branch to a
   // constructor already at the complexity ceiling.
-  private readonly personalityMemory: PersonalityMemoryService | null | undefined;
+  private readonly personalityMemory: ProfileMemoryService | null | undefined;
   private readonly projectKnowledge: ProjectKnowledgeService | null | undefined;
   // Generates the Visualizer's short spoken cue lines for a personality (join /
   // thinking / done), via the Writer mini-task chain. Cached per personality.

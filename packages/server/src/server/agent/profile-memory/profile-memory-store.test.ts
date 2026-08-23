@@ -2,14 +2,14 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PersonalityMemoryStore, MAX_LESSON_CHARS } from "./personality-memory-store.js";
+import { ProfileMemoryStore, MAX_LESSON_CHARS } from "./profile-memory-store.js";
 
 let root: string;
-let store: PersonalityMemoryStore;
+let store: ProfileMemoryStore;
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), "otto-personality-memory-"));
-  store = new PersonalityMemoryStore(root);
+  store = new ProfileMemoryStore(root);
 });
 
 afterEach(async () => {
@@ -39,7 +39,7 @@ describe("recording", () => {
       scope: "global",
       source: "agent",
     });
-    const reopened = new PersonalityMemoryStore(root);
+    const reopened = new ProfileMemoryStore(root);
     expect((await reopened.list(PID)).map((entry) => entry.text)).toEqual(["a durable fact"]);
   });
 
@@ -336,7 +336,7 @@ describe("counts and clearing", () => {
   });
 
   it("reports no counts on a host that has never recorded anything", async () => {
-    expect(await new PersonalityMemoryStore(path.join(root, "missing")).counts()).toEqual({});
+    expect(await new ProfileMemoryStore(path.join(root, "missing")).counts()).toEqual({});
   });
 
   it("clears a personality's store and removes its file", async () => {
@@ -373,14 +373,14 @@ describe("resilience", () => {
       }),
       "utf8",
     );
-    const entries = await new PersonalityMemoryStore(root).list(PID);
+    const entries = await new ProfileMemoryStore(root).list(PID);
     expect(entries.map((entry) => entry.id)).toEqual(["good"]);
   });
 
   it("starts empty on unreadable JSON rather than throwing at the caller", async () => {
     await mkdir(root, { recursive: true });
     await writeFile(path.join(root, `${PID}.json`), "{ not json", "utf8");
-    expect(await new PersonalityMemoryStore(root).list(PID)).toEqual([]);
+    expect(await new ProfileMemoryStore(root).list(PID)).toEqual([]);
   });
 
   it("never writes outside its own directory for a hostile id", async () => {

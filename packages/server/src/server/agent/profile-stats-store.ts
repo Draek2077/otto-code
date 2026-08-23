@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import { writeJsonFileAtomic } from "../atomic-file.js";
 
 /** Per-personality spawn counts, keyed by personality id. */
-export type PersonalityUsageStats = Record<string, number>;
+export type ProfileUsageStats = Record<string, number>;
 
 /**
  * A tiny file-backed counter for personality spawns. Kept OUT of the daemon
@@ -12,8 +12,8 @@ export type PersonalityUsageStats = Record<string, number>;
  * own JSON file with atomic writes and a serialized read-modify-write queue so
  * concurrent spawns can't lose increments.
  */
-export class PersonalityStatsStore {
-  private cache: PersonalityUsageStats | null = null;
+export class ProfileStatsStore {
+  private cache: ProfileUsageStats | null = null;
   private queue: Promise<void> = Promise.resolve();
   private readonly logger?: Logger;
 
@@ -21,10 +21,10 @@ export class PersonalityStatsStore {
     private readonly filePath: string,
     logger?: Logger,
   ) {
-    this.logger = logger?.child({ component: "personality-stats-store" });
+    this.logger = logger?.child({ component: "profile-stats-store" });
   }
 
-  private async load(): Promise<PersonalityUsageStats> {
+  private async load(): Promise<ProfileUsageStats> {
     if (this.cache) {
       return this.cache;
     }
@@ -41,7 +41,7 @@ export class PersonalityStatsStore {
   }
 
   /** A snapshot copy of the current counts. */
-  async get(): Promise<PersonalityUsageStats> {
+  async get(): Promise<ProfileUsageStats> {
     return { ...(await this.load()) };
   }
 
@@ -61,11 +61,11 @@ export class PersonalityStatsStore {
   }
 }
 
-function sanitizeStats(value: unknown): PersonalityUsageStats {
+function sanitizeStats(value: unknown): ProfileUsageStats {
   if (!value || typeof value !== "object") {
     return {};
   }
-  const out: PersonalityUsageStats = {};
+  const out: ProfileUsageStats = {};
   for (const [key, count] of Object.entries(value as Record<string, unknown>)) {
     if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
       out[key] = count;

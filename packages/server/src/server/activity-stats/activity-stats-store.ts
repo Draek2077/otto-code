@@ -169,7 +169,7 @@ function sanitizePersisted(value: unknown): PersistedShape {
  * created, runs, subagents, background tasks, thoughts, tool calls, artifacts,
  * schedules. Bucketed by calendar day (not by session/connection) so activity
  * that happens while no client is connected is never lost, and restarts don't
- * need any recovery bookkeeping. Modeled on PersonalityStatsStore/PushTokenStore:
+ * need any recovery bookkeeping. Modeled on ProfileStatsStore/PushTokenStore:
  * atomic writes, serialized read-modify-write queue for concurrent increments.
  */
 export class ActivityStatsStore {

@@ -4,11 +4,9 @@ import {
   orderEntriesForInjection,
   selectEntriesForProject,
 } from "./memory-brief.js";
-import type { PersonalityMemoryEntry } from "./types.js";
+import type { ProfileMemoryEntry } from "./types.js";
 
-function entry(
-  overrides: Partial<PersonalityMemoryEntry> & { id: string },
-): PersonalityMemoryEntry {
+function entry(overrides: Partial<ProfileMemoryEntry> & { id: string }): ProfileMemoryEntry {
   return {
     text: `lesson ${overrides.id}`,
     scope: "global",

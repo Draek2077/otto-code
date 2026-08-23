@@ -17,7 +17,7 @@ import type { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
 import type { NodeOutputStore } from "./orchestration/node-output.js";
-import type { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
+import type { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
 import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
 import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
@@ -653,7 +653,7 @@ export class VoiceAssistantWebSocketServer {
   private getPersonalityStatsFn:
     | (() => Record<string, number> | Promise<Record<string, number>>)
     | null = null;
-  private personalityMemoryService: PersonalityMemoryService | null = null;
+  private personalityMemoryService: ProfileMemoryService | null = null;
   private projectKnowledgeService: ProjectKnowledgeService | null = null;
   private terminalManager!: TerminalManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
@@ -956,7 +956,7 @@ export class VoiceAssistantWebSocketServer {
    * daemon does not advertise `features.personalityMemory` and the client hides
    * the whole feature - there is no client-side substitute for daemon storage.
    */
-  public setPersonalityMemoryService(service: PersonalityMemoryService | null): void {
+  public setPersonalityMemoryService(service: ProfileMemoryService | null): void {
     this.personalityMemoryService = service;
   }
 

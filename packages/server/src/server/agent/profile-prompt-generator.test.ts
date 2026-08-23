@@ -7,7 +7,7 @@ import { StructuredAgentResponseError } from "./agent-response-loop.js";
 import {
   createPersonalityProfileGenerator,
   describeGlowColor,
-} from "./personality-profile-generator.js";
+} from "./profile-prompt-generator.js";
 
 const PARTS = {
   pronouns: "she/her",
