@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
-import { useAgentProfiles } from "@/agent-profiles";
+
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import {
   useAgentFormState,
@@ -10,7 +10,6 @@ import {
 } from "@/hooks/use-agent-form-state";
 import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import {
-  buildBoundPersonality,
   buildDraftAgentControls,
   hasDraftContent,
   resolveDraftKey,
@@ -22,9 +21,13 @@ import {
   resolveEffectiveComposerThinkingOptionId,
   type ProviderSelectionState,
 } from "@/provider-selection/provider-selection";
+import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { useDraftStore } from "@/stores/draft-store";
 import { toDraftInputIfReady } from "@/stores/draft-store/state";
-import type { RolePersonality } from "@/provider-selection/role-model-personality";
+import {
+  useFormRolePersonality,
+  type RolePersonality,
+} from "@/provider-selection/role-model-personality";
 
 type AttachmentUpdater =
   | UserComposerAttachment[]
@@ -41,9 +44,60 @@ interface AgentInputDraftComposerOptions {
   initialPersonalityId?: string | null;
 }
 
+// The synthetic "Team's Chatter" picker entry - the composer's binding of the
+// shared team-role picker pattern (mirrors the artifact sheet's "Team's
+// Artificer"). New chat runs immediately, so there is no persisted sentinel;
+// selecting it resolves the active team's Chatter NOW and applies its values.
+// Its id never leaves the draft form.
+const TEAM_CHATTER_ENTRY_ID = "__team-chatter__";
+
 interface UseAgentInputDraftInput {
   draftKey: DraftKeyInput;
   composer?: AgentInputDraftComposerOptions;
+}
+
+/**
+ * New-chat (Chatter) Personality picker. Applies a Personality's
+ * provider/model/mode/effort/features to the draft form; mode matters here
+ * because chat is attended, unlike artifacts and schedules.
+ */
+function useChatterPersonalitySelection(input: {
+  formState: UseAgentFormStateResult;
+  onApply: (values: PersonalityFormValues) => void;
+  initialPersonalityId: string | null;
+}): RolePersonality {
+  const { formState } = input;
+  const currentSelection = useMemo(
+    () => ({
+      provider: formState.selectedProvider,
+      model: formState.selectedModel,
+      modeId: formState.selectedMode,
+      thinkingOptionId: formState.selectedThinkingOptionId,
+    }),
+    [
+      formState.selectedProvider,
+      formState.selectedModel,
+      formState.selectedMode,
+      formState.selectedThinkingOptionId,
+    ],
+  );
+  return useFormRolePersonality({
+    serverId: formState.selectedServerId,
+    role: "chatter",
+    entries: formState.allProviderEntries ?? [],
+    onApply: input.onApply,
+    currentSelection,
+    team: {
+      entryId: TEAM_CHATTER_ENTRY_ID,
+      label: "Team's Chatter",
+      roleLabel: "Chatter",
+    },
+    // The chat composer runs the full ladder like every other apply-now
+    // surface: team's Chatter, else the remembered Chatter, else the first
+    // available one. Seeing a bare model here means you have no Chatter at all.
+    autoSelectDefault: "always",
+    initialPersonalityId: input.initialPersonalityId,
+  });
 }
 
 type DraftAgentControlsWithProfileCompatibility = DraftAgentControlsProps & {
@@ -286,12 +340,16 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     initialFeatureValues: composerOptions?.initialFeatureValues,
   });
 
-  const applyDraftAgentProfile = useCallback(
-    (profile: Parameters<typeof formState.applyProfileFromUser>[0]) => {
-      formState.applyProfileFromUser(profile);
-      applyProfileFeatureValues(profile.featureValues);
+  // Applying a Personality is one form transition: its provider/model/mode/
+  // effort through the form's own personality path (which deliberately skips
+  // the last-used-model preference), plus the provider feature toggles it pins.
+  const { applyPersonalityValues } = formState;
+  const applyChatterPersonality = useCallback(
+    (values: PersonalityFormValues) => {
+      applyPersonalityValues(values);
+      applyProfileFeatureValues(values.featureValues ?? {});
     },
-    [applyProfileFeatureValues, formState],
+    [applyPersonalityValues, applyProfileFeatureValues],
   );
 
   const commandDraftConfig = useMemo(
@@ -315,16 +373,11 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     ],
   );
 
-  const { profiles: profileRoster } = useAgentProfiles(formState.selectedServerId);
-  const boundPersonality = useMemo(
-    () =>
-      buildBoundPersonality(
-        formState.selectedAgentProfileId,
-        formState.selectedAgentProfile,
-        profileRoster,
-      ),
-    [formState.selectedAgentProfile, formState.selectedAgentProfileId, profileRoster],
-  );
+  const personalitySelection = useChatterPersonalitySelection({
+    formState,
+    onApply: applyChatterPersonality,
+    initialPersonalityId: composerOptions?.initialPersonalityId ?? null,
+  });
 
   const composerState = useMemo<DraftComposerState | null>(() => {
     if (!composerOptions) {
@@ -342,9 +395,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
           formState,
           features: draftFeatures,
           onSetFeature: setDraftFeatureValue,
-          onApplyAgentProfile: applyDraftAgentProfile,
         }),
-        personality: boundPersonality,
+        personality: personalitySelection,
       },
       commandDraftConfig,
     };
@@ -355,9 +407,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     effectiveThinkingOptionId,
     draftFeatures,
     draftFeatureValues,
-    applyDraftAgentProfile,
     formState,
-    boundPersonality,
+    personalitySelection,
     setDraftFeatureValue,
     workingDir,
   ]);

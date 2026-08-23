@@ -2,17 +2,15 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { ComposerControlPresentation } from "@/composer/agent-controls/layout";
 
 interface ComposerControlLayoutValue {
-  glyphSize: number;
   presentation: ComposerControlPresentation;
 }
 
 const DEFAULT_LAYOUT: ComposerControlLayoutValue = {
-  glyphSize: 16,
   presentation: {
-    showCarets: true,
+    showModelLabel: true,
     showThinkingLabel: true,
     showModeLabel: true,
-    aggregateFeatures: false,
+    showFeatureLabels: true,
   },
 };
 

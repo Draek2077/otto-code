@@ -3,7 +3,6 @@ import {
   Text,
   TextInput,
   useWindowDimensions,
-  type LayoutChangeEvent,
   type PressableStateCallbackType,
   NativeSyntheticEvent,
   TextInputContentSizeChangeEventData,
@@ -32,7 +31,12 @@ import {
   Paperclip,
   Square,
 } from "@/components/icons/material-icons";
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  type AnimatedStyle,
+} from "react-native-reanimated";
 import { useDictation } from "@/hooks/use-dictation";
 import { useWakeWordListening } from "@/hooks/use-wake-word-listening";
 import { shouldStartWakeWordListening } from "@/voice/wake-word-control-state";
@@ -85,11 +89,12 @@ import {
   resolveVoiceTooltipText,
 } from "./labels";
 import { computeCanStartDictation, runAlternateSendAction, runDefaultSendAction } from "./state";
-import { ComposerToolbarWidthContext } from "./toolbar-width-context";
-import { computeToolbarScale } from "./toolbar-scale";
+import { ComposerToolbarProvider } from "./toolbar-provider";
+import { TOOLBAR_GROUP_GAP, useComposerToolbarLayout } from "./toolbar-stage";
 import { applyDictationTranscript } from "./dictation-delivery";
 import { playDictationStartCue } from "@/voice/dictation-start-cue";
 import type { IconSizeProp, IconSizeToken } from "@/components/icons/icon-size";
+import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
 const COMPOSER_INPUT_DATASET = { composerInput: "" } as const;
 
 export interface AttachmentMenuItem {
@@ -216,131 +221,6 @@ export interface MessageInputRef {
    * May return null if not mounted or on native.
    */
   getNativeElement?: () => HTMLElement | null;
-}
-
-// Keep a small separation between the left and right toolbar groups when the
-// row has enough room. Once it does not, the complete row scales uniformly.
-const TOOLBAR_GROUP_GAP = 8;
-
-interface ToolbarMeasurements {
-  key: string;
-  rowWidth: number;
-  leftWidth: number;
-  rightWidth: number;
-  rowReady: boolean;
-  leftReady: boolean;
-  rightReady: boolean;
-}
-
-type ToolbarMeasurementSlot = "row" | "left" | "right";
-
-function createToolbarMeasurements(key: string): ToolbarMeasurements {
-  return {
-    key,
-    rowWidth: 0,
-    leftWidth: 0,
-    rightWidth: 0,
-    rowReady: false,
-    leftReady: false,
-    rightReady: false,
-  };
-}
-
-function updateToolbarMeasurements(
-  previous: ToolbarMeasurements,
-  key: string,
-  slot: ToolbarMeasurementSlot,
-  width: number,
-): ToolbarMeasurements {
-  const current =
-    previous.key === key
-      ? previous
-      : {
-          ...previous,
-          key,
-          rowReady: false,
-        };
-  if (slot === "row") {
-    if (current.rowReady && current.rowWidth === width) return current;
-    return { ...current, rowWidth: width, rowReady: true };
-  }
-  if (slot === "left") {
-    if (current.leftReady && current.leftWidth === width) return current;
-    return { ...current, leftWidth: width, leftReady: true };
-  }
-  if (current.rightReady && current.rightWidth === width) return current;
-  return { ...current, rightWidth: width, rightReady: true };
-}
-
-function useToolbarScale({
-  windowWidth,
-  windowHeight,
-  isCompact,
-}: {
-  windowWidth: number;
-  windowHeight: number;
-  isCompact: boolean;
-}) {
-  const measurementKey = `${windowWidth}:${windowHeight}`;
-  const toolbarRowWidthRef = useRef(0);
-  const toolbarScaleRef = useRef(1);
-  const [measurements, setMeasurements] = useState<ToolbarMeasurements>(() =>
-    createToolbarMeasurements(measurementKey),
-  );
-
-  const updateMeasurement = useCallback(
-    (slot: ToolbarMeasurementSlot, width: number) => {
-      if (width < 0) return;
-      setMeasurements((previous) =>
-        updateToolbarMeasurements(previous, measurementKey, slot, width),
-      );
-    },
-    [measurementKey],
-  );
-  const handleRowLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      const width = event.nativeEvent.layout.width;
-      toolbarRowWidthRef.current = width;
-      updateMeasurement("row", width);
-    },
-    [updateMeasurement],
-  );
-  const handleLeftLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      updateMeasurement("left", event.nativeEvent.layout.width);
-    },
-    [updateMeasurement],
-  );
-  const handleRightLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      updateMeasurement("right", event.nativeEvent.layout.width);
-    },
-    [updateMeasurement],
-  );
-
-  const measurementsReady =
-    measurements.key === measurementKey &&
-    measurements.rowReady &&
-    measurements.leftReady &&
-    measurements.rightReady &&
-    measurements.rowWidth > 0;
-  const scale = computeToolbarScale({
-    toolbarRowWidth: measurementsReady ? measurements.rowWidth : toolbarRowWidthRef.current,
-    toolbarNeededWidth: measurements.leftWidth + measurements.rightWidth + TOOLBAR_GROUP_GAP,
-    isCompact,
-  });
-  const appliedScale = measurementsReady ? scale : toolbarScaleRef.current;
-  useLayoutEffect(() => {
-    if (measurementsReady) toolbarScaleRef.current = scale;
-  }, [measurementsReady, scale]);
-
-  return {
-    toolbarRowWidth: toolbarRowWidthRef.current,
-    toolbarScale: appliedScale,
-    handleToolbarRowLayout: handleRowLayout,
-    handleToolbarLeftLayout: handleLeftLayout,
-    handleToolbarRightLayout: handleRightLayout,
-  };
 }
 
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
@@ -1254,6 +1134,17 @@ function computeIsDictationStartEnabled(
   return (isReadyForDictation ?? isConnected) && !disabled;
 }
 
+/** The toolbar row's content box: width compensation plus the uniform shrink. */
+function ToolbarContentBox({
+  style,
+  children,
+}: {
+  style: AnimatedStyle<import("react-native").ViewStyle>;
+  children: React.ReactNode;
+}) {
+  return <Animated.View style={[styles.buttonRowContent, style]}>{children}</Animated.View>;
+}
+
 function computeFocusHintVisible(input: {
   isPaneFocused: boolean;
   isInputFocused: boolean;
@@ -1493,14 +1384,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const mode = resolveComposerInputMode(inputMode);
     const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
-    const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+    const { height: windowHeight } = useWindowDimensions();
     // The window is the fallback, not the truth: a composer in a short split
     // pane has far less room than the window suggests.
     const maxInputHeight = resolveMaxInputHeight({
       viewportHeight: viewportHeight && viewportHeight > 0 ? viewportHeight : windowHeight,
       isCompact,
     });
-    const buttonIconSize = isWeb ? "md" : "lg";
+    const buttonIconSize = COMPOSER_ICON_SIZE;
     const toast = useToast();
     const { settings: appSettings } = useAppSettings();
     const voice = useVoiceOptional();
@@ -1768,24 +1659,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }));
 
     const {
-      toolbarRowWidth,
-      toolbarScale,
+      canFitFeatures,
+      toolbarStage,
+      toolbarContentStyle,
       handleToolbarRowLayout,
       handleToolbarLeftLayout,
       handleToolbarRightLayout,
-    } = useToolbarScale({
-      windowWidth,
-      windowHeight,
-      isCompact,
-    });
-    const toolbarContentStyle = useMemo(
-      () => [
-        styles.buttonRowContent,
-        toolbarScale < 1 ? styles.buttonRowContentScaled : styles.buttonRowContentFull,
-        toolbarScale < 1 ? { transform: [{ scale: toolbarScale }] } : null,
-      ],
-      [toolbarScale],
-    );
+    } = useComposerToolbarLayout({ isCompact });
 
     const handleVoicePress = useCallback(
       () =>
@@ -2230,8 +2110,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
           {/* Button row */}
           <View style={styles.buttonRow} onLayout={handleToolbarRowLayout}>
-            <ComposerToolbarWidthContext.Provider value={toolbarRowWidth}>
-              <View style={toolbarContentStyle}>
+            <ComposerToolbarProvider canFitFeatures={canFitFeatures} stage={toolbarStage}>
+              <ToolbarContentBox style={toolbarContentStyle}>
                 {/* Toolbar left: attachment button + usage ring + agent controls */}
                 <View style={styles.leftButtonGroup} onLayout={handleToolbarLeftLayout}>
                   {showAttachmentButton ? (
@@ -2291,8 +2171,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     sendTooltipLabel={sendTooltipLabel}
                   />
                 </View>
-              </View>
-            </ComposerToolbarWidthContext.Provider>
+              </ToolbarContentBox>
+            </ComposerToolbarProvider>
           </View>
         </Animated.View>
 
@@ -2421,16 +2301,18 @@ const styles = StyleSheet.create((theme: Theme) => ({
   buttonRowContent: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: TOOLBAR_GROUP_GAP,
-  },
-  buttonRowContentFull: {
-    width: "100%",
     justifyContent: "space-between",
-  },
-  buttonRowContentScaled: {
     alignSelf: "flex-start",
-    justifyContent: "flex-start",
-    transformOrigin: "left center",
+    gap: TOOLBAR_GROUP_GAP,
+    // Native-only pivot: RCTView honors transformOrigin, so on Android/iOS the
+    // scaled row pivots at the left edge from this static style. Web ignores
+    // it (unistyles mangles the array into junk CSS, and reanimated's web
+    // update path writes via setAttribute, which a <div> ignores), so web bakes
+    // the same left-edge pivot into the animated transform in
+    // composer/input/toolbar-stage.ts.
+    // Array form, never a CSS string: the native RCTView transformOrigin setter
+    // casts to ReadableArray, so "left center" throws ClassCastException on Android.
+    transformOrigin: [0, "50%"],
   },
   leftButtonGroup: {
     flexShrink: 0,

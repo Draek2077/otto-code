@@ -33,7 +33,6 @@ describe("resolveAgentControlsMode", () => {
         thinkingOptions: [],
         selectedThinkingOptionId: "",
         onSelectThinkingOption: () => undefined,
-        onApplyAgentProfile: () => undefined,
       }),
     ).toBe("draft");
   });

@@ -441,10 +441,13 @@ export function WorkspaceDraftAgentTab({
     };
   }, [pendingAutoSubmit, pendingCreateAttempt]);
   const allowsEmptyAutoSubmit = pendingAutoSubmit?.allowEmptyText === true;
-  const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
-    COMPACT_FORM_FACTOR_WIDTH,
-    { initialIsBelow: isCompactFormFactor },
-  );
+  // The composer row degrades one control at a time from its own measurements
+  // (see composer/input/toolbar-stage.ts), so pane width must not flip the whole
+  // control group to the mobile surface at a 500px cliff. Only a real compact
+  // form factor selects that branch now.
+  const { onLayout: onInputAreaLayout } = useContainerWidthBelow(COMPACT_FORM_FACTOR_WIDTH, {
+    initialIsBelow: isCompactFormFactor,
+  });
   // The tab, not the window, is what the composer has to fit inside - measured
   // on the outermost box, whose height its own parent owns, so a growing
   // composer can never feed back into it.
@@ -740,7 +743,6 @@ export function WorkspaceDraftAgentTab({
           onFocusInput={handleFocusInputCallback}
           commandDraftConfig={composerState.commandDraftConfig}
           agentControls={composerAgentControls}
-          isCompactLayout={isCompactComposerLayout}
           viewportHeight={tabHeight}
         />
       </ReanimatedAnimated.View>

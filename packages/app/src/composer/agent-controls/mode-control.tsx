@@ -32,6 +32,8 @@ import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispat
 import { resolveModeSelection, resolveNextAgentModeId } from "@/composer/agent-controls/mode";
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { useComposerControlLayout } from "@/composer/agent-controls/layout-context";
+import { ComposerToolbarGlyph } from "@/composer/agent-controls/glyph";
+import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
 import { useSessionStore } from "@/stores/session-store";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-preferences";
@@ -172,7 +174,6 @@ function LockedAgentModeBadge({
   label,
   iconOnly,
 }: LockedAgentModeBadgeProps): ReactElement {
-  const { theme } = useUnistyles();
   const badgeStyle = useMemo(
     () => [
       iconOnly ? styles.iconChip : styles.chip,
@@ -194,7 +195,11 @@ function LockedAgentModeBadge({
           accessibilityLabel={`${label} (locked)`}
           testID="mode-control-locked"
         >
-          {Icon ? <Icon size={theme.iconSize.md} color={iconColor} /> : null}
+          {Icon ? (
+            <ComposerToolbarGlyph>
+              <Icon size={COMPOSER_ICON_SIZE} color={iconColor} />
+            </ComposerToolbarGlyph>
+          ) : null}
           {iconOnly ? null : (
             <Text style={labelStyle} numberOfLines={1} ellipsizeMode="tail">
               {label}
@@ -397,7 +402,11 @@ function AgentModeControlView({
             testID="mode-control"
             chevron={iconOnly ? null : undefined}
           >
-            {Icon ? <Icon size={theme.iconSize.md} color={iconColor} /> : null}
+            {Icon ? (
+              <ComposerToolbarGlyph>
+                <Icon size={COMPOSER_ICON_SIZE} color={iconColor} />
+              </ComposerToolbarGlyph>
+            ) : null}
             {iconOnly ? null : (
               <Text style={labelStyle} numberOfLines={1} ellipsizeMode="tail">
                 {selectedModeLabel}

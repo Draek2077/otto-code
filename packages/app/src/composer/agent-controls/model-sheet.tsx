@@ -3,12 +3,14 @@ import { useTranslation } from "react-i18next";
 import { Keyboard, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
-import type { AgentProfilePicker } from "@/agent-profiles";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import type { RolePersonality } from "@/provider-selection/role-model-personality";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { getProviderIcon } from "@/components/provider-icons";
 import { ModelBrowser, useModelBrowser } from "@/components/model-browser";
 import { ComposerToolbarGlyph } from "@/composer/agent-controls/glyph";
+import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
 import type { ProviderSelectorProvider } from "@/provider-selection/provider-selection";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { compactUp } from "@/styles/theme";
@@ -25,8 +27,9 @@ interface CompactModelSheetProps {
   selectedModel: string;
   onSelect: (provider: string, modelId: string) => void;
   isLoading: boolean;
-  profiles?: AgentProfilePicker | null;
-  onApplyProfile?: (profileId: string) => void;
+  personality?: RolePersonality | null;
+  /** A live Personality switch is in flight: the trigger spins. */
+  isSwitchingPersonality?: boolean;
   onEditProfiles?: () => void;
   onOpen?: () => void;
   onClose?: () => void;
@@ -34,7 +37,6 @@ interface CompactModelSheetProps {
   isRetryingProvider?: boolean;
   disabled?: boolean;
   serverId?: string | null;
-  glyphSize: number;
   children?: ReactNode;
   iconOnly?: boolean;
 }
@@ -50,8 +52,8 @@ export function CompactModelSheet({
   selectedModel,
   onSelect,
   isLoading,
-  profiles = null,
-  onApplyProfile,
+  personality = null,
+  isSwitchingPersonality = false,
   onEditProfiles,
   onOpen,
   onClose,
@@ -59,7 +61,6 @@ export function CompactModelSheet({
   isRetryingProvider = false,
   disabled = false,
   serverId = null,
-  glyphSize,
   children,
   iconOnly = false,
 }: CompactModelSheetProps) {
@@ -71,12 +72,31 @@ export function CompactModelSheet({
     selectedProvider,
     selectedModel,
     isLoading,
-    profiles,
+    personality,
     serverId,
   });
   const { prepareToOpen, reset } = browser;
   const ProviderIcon =
     selectedProvider.trim().length > 0 ? getProviderIcon(selectedProvider) : null;
+  // A live Personality switch replaces the provider glyph with a spinner, the
+  // same signal the desktop trigger gives.
+  const triggerGlyph = useMemo(() => {
+    if (isSwitchingPersonality) {
+      return (
+        <ComposerToolbarGlyph>
+          <LoadingSpinner size={COMPOSER_ICON_SIZE} color={styles.providerIcon.color} />
+        </ComposerToolbarGlyph>
+      );
+    }
+    if (!ProviderIcon) {
+      return null;
+    }
+    return (
+      <ComposerToolbarGlyph>
+        <ProviderIcon size={COMPOSER_ICON_SIZE} color={styles.providerIcon.color} />
+      </ComposerToolbarGlyph>
+    );
+  }, [ProviderIcon, isSwitchingPersonality]);
   const compactFooter = useMemo(
     () =>
       usesBottomSheet ? (
@@ -109,13 +129,18 @@ export function CompactModelSheet({
     [close, onSelect],
   );
 
-  const handleApplyProfile = useCallback(
-    (profileId: string) => {
-      onApplyProfile?.(profileId);
+  const handleSelectPersonality = useCallback(
+    (id: string) => {
+      personality?.onSelectPersonality?.(id);
       close();
     },
-    [close, onApplyProfile],
+    [close, personality],
   );
+
+  const handleClearPersonality = useCallback(() => {
+    personality?.onClearPersonality?.();
+    close();
+  }, [close, personality]);
 
   const handleEditProfiles = useCallback(() => {
     close();
@@ -155,11 +180,7 @@ export function CompactModelSheet({
         testID="combined-model-selector"
         chevron={null}
       >
-        {ProviderIcon ? (
-          <ComposerToolbarGlyph size={glyphSize}>
-            <ProviderIcon size={glyphSize} color={styles.providerIcon.color} />
-          </ComposerToolbarGlyph>
-        ) : null}
+        {triggerGlyph}
         {iconOnly ? null : (
           <Text style={styles.triggerText} numberOfLines={1}>
             {shortModelLabel(browser.triggerLabel)}
@@ -188,7 +209,12 @@ export function CompactModelSheet({
           <ModelBrowser
             state={browser}
             onSelect={handleSelect}
-            onApplyProfile={handleApplyProfile}
+            onSelectPersonality={
+              personality?.onSelectPersonality ? handleSelectPersonality : undefined
+            }
+            onClearPersonality={
+              personality?.onClearPersonality ? handleClearPersonality : undefined
+            }
             onEditProfiles={onEditProfiles ? handleEditProfiles : undefined}
             onRetryProvider={onRetryProvider}
             isRetryingProvider={isRetryingProvider}

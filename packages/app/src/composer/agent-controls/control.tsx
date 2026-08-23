@@ -2,9 +2,10 @@ import { forwardRef, useCallback, type ComponentProps } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
-import { useComposerControlLayout } from "@/composer/agent-controls/layout-context";
 import { ComposerToolbarGlyph } from "@/composer/agent-controls/glyph";
+import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
 import { compactUp } from "@/styles/theme";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 import type { AgentControlIcon } from "@/agent-controls/icons";
 
 type AgentControlTriggerProps = Omit<
@@ -42,9 +43,11 @@ export const AgentControlTrigger = forwardRef<View, AgentControlTriggerProps>(
     },
     ref,
   ) {
-    const { glyphSize } = useComposerControlLayout();
     const isSheet = surface === "sheet";
-    const resolvedGlyphSize = isSheet ? 16 : glyphSize;
+    // The overflow sheet is a dense list of rows, not a toolbar with room to grow, so
+    // its glyphs ride the `chrome*` ladder (up by half on compact) rather than the
+    // ordinary one (double). `sheetGlyph` grows by the same half so the box still fits.
+    const sheetGlyphSize: IconSizeProp = "chromeMd";
     const resolvedIconColor = iconColor ?? styles.iconColor.color;
     const showValue = isSheet || showToolbarLabel;
     const triggerStyle = useCallback(
@@ -73,11 +76,11 @@ export const AgentControlTrigger = forwardRef<View, AgentControlTriggerProps>(
       >
         {isSheet ? (
           <View style={styles.sheetGlyph}>
-            <Icon size={resolvedGlyphSize} color={resolvedIconColor} />
+            <Icon size={sheetGlyphSize} color={resolvedIconColor} />
           </View>
         ) : (
-          <ComposerToolbarGlyph size={resolvedGlyphSize}>
-            <Icon size={resolvedGlyphSize} color={resolvedIconColor} />
+          <ComposerToolbarGlyph>
+            <Icon size={COMPOSER_ICON_SIZE} color={resolvedIconColor} />
           </ComposerToolbarGlyph>
         )}
         {isSheet ? (
@@ -136,8 +139,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   sheetGlyph: {
-    width: 20,
-    height: 20,
+    width: compactUp(20, 1.5),
+    height: compactUp(20, 1.5),
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",

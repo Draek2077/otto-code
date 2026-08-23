@@ -17,22 +17,21 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
 import {
   ArrowUp,
+  AudioLines,
   ChevronDown,
   ChevronUp,
-  Stop,
-  Undo2,
-  AudioLines,
   CircleDot,
+  ClipboardPaste,
   FileText,
   Folder,
-  GitPullRequest,
-  Github,
   Image as ImageIcon,
-  ClipboardPaste,
   Paperclip,
   Publish,
+  Stop,
+  Undo2,
   UploadFile,
 } from "@/components/icons/material-icons";
+import { Github, GitPullRequest } from "@/components/icons/lucide";
 import * as Clipboard from "expo-clipboard";
 import {
   appendWorkspaceFileAttachment,
@@ -139,7 +138,8 @@ import { readClipboardImage } from "./clipboard-image";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
 import { ComposerFrame } from "@/composer/composer-frame";
 import { focusMessageInputWithPlatformStrategy } from "@/composer/message-input-keyboard";
-import type { IconSizeProp, IconSizeToken } from "@/components/icons/icon-size";
+import type { IconSizeProp } from "@/components/icons/icon-size";
+import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
 
 const composerImageAttachmentPersister: Pick<
   AttachmentPersister,
@@ -166,12 +166,6 @@ function resolveErrorMessage(error: unknown): string | null {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   return null;
-}
-
-// Native gets the larger glyph: the composer buttons are worked with a thumb there even
-// on a tablet, where the breakpoint still reads as wide.
-function resolveComposerButtonIconSize(): IconSizeToken {
-  return isWeb ? "md" : "lg";
 }
 
 function resolveIsComposerLocked(
@@ -1227,7 +1221,7 @@ export function Composer({
 }: ComposerProps) {
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
-  const buttonIconSize = resolveComposerButtonIconSize();
+  const buttonIconSize = COMPOSER_ICON_SIZE;
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
