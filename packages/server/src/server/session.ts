@@ -11376,6 +11376,20 @@ export class Session {
    * profile name with the profile-named response, and stop tracking it.
    */
   private restoreProfileRpcAlias(msg: SessionOutboundMessage): SessionOutboundMessage {
+    // `rpc_error` is the other terminal answer to a request: the scope check
+    // above denied it, or its handler threw. It has no profile-named twin, so
+    // there is nothing to rewrite - but the id still has to stop being tracked
+    // here. Otherwise a single denied or failed aliased request leaks its id
+    // for the life of the session, which both grows the Set without bound and
+    // leaves the per-outbound-message lookup in emit() permanently switched on
+    // for a client the comment there promises never pays for it.
+    if (msg.type === "rpc_error") {
+      const failedRequestId = readRpcRequestId(msg);
+      if (failedRequestId !== null) {
+        this.aliasedProfileRpcRequestIds.delete(failedRequestId);
+      }
+      return msg;
+    }
     if (!isAliasableResponseType(msg.type)) {
       return msg;
     }

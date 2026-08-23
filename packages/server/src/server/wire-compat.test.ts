@@ -217,6 +217,7 @@ function createSessionForWireCompatTest(options?: {
   clientCapabilities?: Record<string, unknown> | null;
   messages?: SessionOutboundMessage[];
   observedPayloads?: Map<string, AgentSnapshotPayload>;
+  scopes?: string[];
 }): Session {
   const messages = options?.messages ?? [];
   const rows: AgentTimelineRow[] = [
@@ -239,7 +240,7 @@ function createSessionForWireCompatTest(options?: {
 
   const session = new Session({
     clientId: "wire-compat-client",
-    scopes: ["*"],
+    scopes: options?.scopes ?? ["*"],
     clientCapabilities: options?.clientCapabilities ?? null,
     onMessage: (message) => messages.push(message),
     logger: pino({ level: "silent" }),
@@ -602,5 +603,27 @@ describe("wire compatibility", () => {
     }
     expect(response.payload.agent).toBeNull();
     expect(response.payload.error).toContain("not found");
+  });
+
+  test("a denied profile-named request stops being tracked for aliasing", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    // Scoped away from the personality RPCs, so the request is denied before it
+    // ever reaches a handler and is answered with rpc_error.
+    const session = createSessionForWireCompatTest({ messages, scopes: ["workspace.*"] });
+    const tracked = (session as unknown as { aliasedProfileRpcRequestIds: Set<string> })
+      .aliasedProfileRpcRequestIds;
+
+    await session.handleMessage({
+      type: "agent.profile.set.request",
+      requestId: "req-denied-alias",
+      payload: { agentId: "agent-1", personalityId: "p-dash" },
+    } as never);
+
+    const error = messages.find((message) => message.type === "rpc_error");
+    expect(error).toBeDefined();
+    // rpc_error has no profile-named twin, so nothing is rewritten - but the id
+    // still has to drain here. Leaving it behind grows the Set for the life of
+    // the session and keeps emit()'s alias lookup permanently switched on.
+    expect(tracked.size).toBe(0);
   });
 });
