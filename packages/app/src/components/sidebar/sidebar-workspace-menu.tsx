@@ -26,7 +26,7 @@ import { isWeb } from "@/constants/platform";
 import { getForgePresentation, normalizeForge } from "@/git/forge";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
-import { compactUp, type Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import {
   DropdownMenu,
@@ -45,6 +45,7 @@ import {
 import { Shortcut } from "@/components/ui/shortcut";
 import { OpenInFileManagerMenuItem } from "@/workspace/open-in-file-manager/menu-item";
 import { resolveSidebarWorkspaceAccessibilityLabel } from "@/components/sidebar/sidebar-workspace-title";
+import { SIDEBAR_ROW_ACTION_SIZE } from "@/components/sidebar/sidebar-workspace-row-content";
 import {
   workspaceServiceLabelKey,
   type WorkspaceServiceSummary,
@@ -83,9 +84,17 @@ const openBaseWorkspaceLeadingIcon = (
 );
 
 function renderTriggerIcon({ hovered }: { hovered?: boolean }) {
+  return <WorkspaceKebabTriggerIcon hovered={hovered} />;
+}
+
+// A component rather than an inline glyph so it can read the compact-doubled icon scale:
+// `size` is a plain number prop, which the ambient theme patch never reaches. The trigger box
+// around it is already `compactUp(24)`, so the glyph was the only half left behind on mobile.
+function WorkspaceKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
+  const iconSize = useIconSize();
   return (
     <ThemedMoreVertical
-      size={14}
+      size={iconSize.sm}
       uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
     />
   );
@@ -464,8 +473,10 @@ function triggerStyle({
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    width: compactUp(24),
-    height: compactUp(24),
+    // Size and the slot that holds it come from one constant; the compact target is twice this,
+    // and the row reserves exactly that much so the control never paints outside the row.
+    width: compactUp(SIDEBAR_ROW_ACTION_SIZE),
+    height: compactUp(SIDEBAR_ROW_ACTION_SIZE),
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",

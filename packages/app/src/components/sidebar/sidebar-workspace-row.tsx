@@ -19,6 +19,7 @@ import { useClearWorkspaceAttention } from "@/hooks/use-clear-workspace-attentio
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { requireWorkspaceDirectory } from "@/utils/workspace-directory";
 import { isNative as platformIsNative } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useLongPressDragInteraction } from "@/components/sidebar/use-long-press-drag-interaction";
 import {
   SidebarWorkspaceContextMenu,
@@ -424,18 +425,19 @@ function WorkspaceRowTrailingActions({
   onRename?: () => void;
 }) {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const {
     showTrailing,
     showKebab: showKebabInSlot,
     renderSlot,
-    reserveSlotWidth,
   } = resolveTrailingActionVisibility({
     workspace,
     trailing,
     hasArchiveAction: Boolean(onArchive),
     isHovered,
     isTouchPlatform,
+    isCompact,
     showShortcut,
   });
   const kebab = useOpenKebabMenuVisibility(showKebabInSlot);
@@ -446,7 +448,7 @@ function WorkspaceRowTrailingActions({
         <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
       ) : null}
       {renderSlot ? (
-        <SidebarWorkspaceTrailingActionSlot reserveWidth={reserveSlotWidth}>
+        <SidebarWorkspaceTrailingActionSlot reserveWidth={kebab.showKebab}>
           <SidebarWorkspaceTrailingActionBase visible={showTrailing}>
             <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
           </SidebarWorkspaceTrailingActionBase>
@@ -506,7 +508,9 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[1],
     paddingVertical: theme.spacing[2],
     paddingLeft: theme.spacing[2],
-    paddingRight: theme.spacing[3],
+    // Compact drops the extra right inset to match the vertical padding, so the doubled kebab
+    // target sits in an even gutter instead of being pushed off-centre by a wider right edge.
+    paddingRight: { xs: theme.spacing[2], md: theme.spacing[3] },
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
     alignItems: "stretch",

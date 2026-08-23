@@ -8,6 +8,7 @@ import { type SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list"
 import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
 import type { HostBadgeModel } from "@/hosts/appearance";
 import { isWeb as platformIsWeb, isNative as platformIsNative } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { StyleSheet } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import { withUnistyles } from "react-native-unistyles";
@@ -708,6 +709,7 @@ function StatusWorkspaceRowInner({
   inStatusGroup?: boolean;
 }) {
   const isTouchPlatform = platformIsNative;
+  const isCompact = useIsCompactFormFactor();
   const [isPressed, setIsPressed] = useState(false);
   const trailing = useSidebarWorkspaceTrailing();
   const workspaceAnchorRef = useSidebarRowAnchor(
@@ -729,13 +731,13 @@ function StatusWorkspaceRowInner({
           showTrailing,
           showKebab: showKebabInSlot,
           renderSlot,
-          reserveSlotWidth,
         } = resolveTrailingActionVisibility({
           workspace,
           trailing,
           hasArchiveAction: Boolean(onArchive),
           isHovered,
           isTouchPlatform,
+          isCompact,
           showShortcut,
         });
         const workspaceRowStyle = getStatusWorkspaceRowStyle({
@@ -796,7 +798,6 @@ function StatusWorkspaceRowInner({
                     trailing={trailing}
                     showBase={showTrailing}
                     showKebab={showKebabInSlot}
-                    reserveSlotWidth={reserveSlotWidth}
                     isPinned={isPinned}
                     onTogglePin={onTogglePin}
                     onCopyPath={onCopyPath}
@@ -824,7 +825,6 @@ function StatusWorkspaceActionSlot({
   trailing,
   showBase,
   showKebab,
-  reserveSlotWidth,
   isPinned,
   onTogglePin,
   onCopyPath,
@@ -841,7 +841,6 @@ function StatusWorkspaceActionSlot({
   trailing: SidebarWorkspaceTrailing;
   showBase: boolean;
   showKebab: boolean;
-  reserveSlotWidth: boolean;
   isPinned?: boolean;
   onTogglePin?: () => void;
   onCopyPath?: () => void;
@@ -856,7 +855,7 @@ function StatusWorkspaceActionSlot({
 }) {
   const kebab = useOpenKebabMenuVisibility(showKebab);
   return (
-    <SidebarWorkspaceTrailingActionSlot reserveWidth={reserveSlotWidth}>
+    <SidebarWorkspaceTrailingActionSlot reserveWidth={kebab.showKebab}>
       <SidebarWorkspaceTrailingActionBase visible={showBase}>
         <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
       </SidebarWorkspaceTrailingActionBase>
@@ -981,7 +980,9 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[0.5],
     paddingVertical: theme.spacing[2],
     paddingLeft: theme.spacing[2],
-    paddingRight: theme.spacing[3],
+    // Compact drops the extra right inset to match the vertical padding, so the doubled kebab
+    // target sits in an even gutter instead of being pushed off-centre by a wider right edge.
+    paddingRight: { xs: theme.spacing[2], md: theme.spacing[3] },
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
     alignItems: "stretch",

@@ -15,6 +15,7 @@ import {
   type SidebarWorkspaceTrailing,
 } from "@/components/sidebar/workspace-trailing";
 import { useAppSettings } from "@/hooks/use-settings";
+import { compactUp } from "@/styles/theme";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
 import { StatusRing } from "@/components/status-ring";
@@ -208,6 +209,31 @@ function getWorkspaceStatusDotColor(bucket: SidebarWorkspaceEntry["statusBucket"
   }
 }
 
+/**
+ * The kebab's touch target. Shared with the trigger box in `sidebar-workspace-menu.tsx` so the
+ * slot that has to hold the control cannot drift from the control itself. `compactUp` doubles it
+ * on compact form factors, which is the whole reason the slot has to reserve room for it.
+ */
+export const SIDEBAR_ROW_ACTION_SIZE = 24;
+
+// What the trailing slot reserves for the action. Desktop keeps the 20px title-line box: a 24px
+// control overhangs it by 2px per side and still lands inside the row's padding. Compact doubles
+// the control to a 48px touch target, which cannot overhang anything without painting outside the
+// row entirely - on a single-line row it used to spill onto the row below - so there the slot
+// reserves the target's full size and the row grows to hold it.
+const trailingActionSlotMinHeight = {
+  ...compactUp(SIDEBAR_ROW_ACTION_SIZE),
+  md: 20,
+  lg: 20,
+  xl: 20,
+};
+// The width the slot holds while the action is painted. The kebab is drawn as an overlay so it
+// cannot push the title itself, and a slot narrower than the control lets it paint over the
+// title's truncation ellipsis. Held only while the action is actually visible: with the action
+// away the title is free to use the whole row, and reserving a rail for something that is not
+// there reads as a ragged right edge.
+const trailingActionSlotMinWidth = compactUp(SIDEBAR_ROW_ACTION_SIZE);
+
 export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   // How far a workspace row sits inside the group header above it — a project row or a
   // status group header. Both groupings share this one indent, so every grouped workspace row
@@ -245,19 +271,23 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     lineHeight: 14,
   },
   hidden: { opacity: 0 },
-  // Stays position:relative at zero width so the absolutely-positioned kebab keeps
-  // anchoring to the same right edge whether or not the slot holds anything.
+  // Stays position:relative so the absolutely-positioned kebab anchors to the same right edge
+  // whether or not the slot currently holds trailing content. Height is held unconditionally -
+  // it is what centres the action on the row - but width is not, so an idle row spends none of
+  // it on an action that is not painted.
   trailingActionSlot: {
     position: "relative",
-    minHeight: 20,
+    minHeight: trailingActionSlotMinHeight,
     flexShrink: 0,
     alignItems: "flex-end",
     justifyContent: "flex-start",
   },
+  // While the action is painted the slot holds its full box, so the title truncates beside the
+  // control rather than underneath it.
   trailingActionSlotReserved: {
     position: "relative",
-    minWidth: 18,
-    minHeight: 20,
+    minWidth: trailingActionSlotMinWidth,
+    minHeight: trailingActionSlotMinHeight,
     flexShrink: 0,
     alignItems: "flex-end",
     justifyContent: "flex-start",
@@ -265,12 +295,14 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   trailingActionOverlay: {
     position: "absolute",
     top: 0,
+    bottom: 0,
     right: 0,
+    // The action target is taller than the title glyph, so it centers on the slot rather than
+    // hanging off its top edge - stretching to both edges and centering keeps a 24px control
+    // optically on the desktop title line and keeps the 48px compact target inside the row.
+    // The trailing diff or timestamp stays on the title line and must not ride along with it.
+    justifyContent: "center",
     zIndex: 1,
-    // The compact action target includes more vertical touch space than the title glyph. Lift
-    // the painted control so it centers optically with the row content; the trailing diff or
-    // timestamp stays on the title line and must not ride along with the kebab.
-    transform: [{ translateY: -theme.spacing[0.5] }],
   },
 }));
 
@@ -297,6 +329,7 @@ export function resolveTrailingActionVisibility({
   hasArchiveAction,
   isHovered,
   isTouchPlatform,
+  isCompact,
   showShortcut,
 }: {
   workspace: SidebarWorkspaceEntry;
@@ -304,25 +337,26 @@ export function resolveTrailingActionVisibility({
   hasArchiveAction: boolean;
   isHovered: boolean;
   isTouchPlatform: boolean;
+  /**
+   * Compact layouts show the action outright. Hover is the desktop reveal, and it either never
+   * fires (touch) or is a pointer the layout is not designed around, so gating on it there
+   * leaves the row with no visible way into its own menu.
+   */
+  isCompact: boolean;
   showShortcut: boolean;
 }): {
   showTrailing: boolean;
   showKebab: boolean;
   renderSlot: boolean;
-  reserveSlotWidth: boolean;
 } {
   const hasTrailing = hasSidebarWorkspaceTrailing({ workspace, trailing });
-  const showKebab = Boolean(hasArchiveAction && (isHovered || isTouchPlatform)) && !showShortcut;
+  const showKebab =
+    Boolean(hasArchiveAction && (isHovered || isTouchPlatform || isCompact)) && !showShortcut;
   const showTrailing = hasTrailing && !showShortcut && !showKebab;
   return {
     showTrailing,
     showKebab,
     renderSlot: hasArchiveAction || hasTrailing,
-    // The slot only holds width for something that permanently sits in it. Trailing content
-    // does; the kebab only does on touch, where there is no hover for it to appear on and so
-    // the slot is permanently reserved for trailing content or touch actions. On desktop hover,
-    // the action overlay can occupy the zero-width slot without reflowing the row.
-    reserveSlotWidth: hasTrailing || (hasArchiveAction && isTouchPlatform),
   };
 }
 
@@ -330,6 +364,10 @@ export function SidebarWorkspaceTrailingActionSlot({
   reserveWidth,
   children,
 }: {
+  /**
+   * Whether the action is on screen right now - pass the painted state, not whether the row
+   * *has* an action. The title gets the width back whenever the action is away.
+   */
   reserveWidth: boolean;
   children: ReactNode;
 }) {
@@ -396,15 +434,19 @@ const styles = StyleSheet.create((theme) => ({
   workspaceStatusDot: {
     position: "relative",
     width: theme.iconSize.md,
-    height: 20,
+    // Tall enough for the doubled running ring on compact; the desktop value is
+    // the title's line box, which is what centres the dot on the workspace name.
+    height: { xs: 28, md: 20 },
     borderRadius: theme.borderRadius.full,
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
   },
+  // Doubled on compact with everything else in the leading column. A 6pt dot is
+  // a legible mark beside a pointer and barely a mark at all on a phone.
   statusDot: {
-    width: STATUS_INDICATOR_FILLED_DOT_SIZE,
-    height: STATUS_INDICATOR_FILLED_DOT_SIZE,
+    width: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
+    height: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
     borderRadius: theme.borderRadius.full,
   },
   statusDotAttention: {

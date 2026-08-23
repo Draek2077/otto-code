@@ -32,7 +32,7 @@ import {
   type ActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop";
 import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
@@ -496,9 +496,16 @@ const openInNewWindowLeadingIcon = (
 );
 
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
+  return <ProjectKebabTriggerIcon hovered={hovered} />;
+}
+
+// A component rather than an inline glyph so it can read the compact-doubled icon scale:
+// `size` is a plain number prop, which the ambient theme patch never reaches.
+function ProjectKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
+  const iconSize = useIconSize();
   return (
     <ThemedMoreVertical
-      size={14}
+      size={iconSize.sm}
       uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
     />
   );
@@ -680,18 +687,19 @@ function WorkspaceRowRightGroup({
   const workspacePath = workspace.workspaceDirectory ?? workspace.projectRootPath;
   const { t } = useTranslation();
   const trailing = useSidebarWorkspaceTrailing();
+  const isCompact = useIsCompactFormFactor();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const {
     showTrailing,
     showKebab: showKebabInSlot,
     renderSlot,
-    reserveSlotWidth,
   } = resolveTrailingActionVisibility({
     workspace,
     trailing,
     hasArchiveAction: Boolean(onArchive),
     isHovered,
     isTouchPlatform,
+    isCompact,
     showShortcut,
   });
   const kebab = useOpenKebabMenuVisibility(showKebabInSlot);
@@ -702,7 +710,7 @@ function WorkspaceRowRightGroup({
         <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
       ) : null}
       {renderSlot ? (
-        <SidebarWorkspaceTrailingActionSlot reserveWidth={reserveSlotWidth}>
+        <SidebarWorkspaceTrailingActionSlot reserveWidth={kebab.showKebab}>
           <SidebarWorkspaceTrailingActionBase visible={showTrailing}>
             <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
           </SidebarWorkspaceTrailingActionBase>
@@ -752,6 +760,9 @@ function NewWorktreeButton({
 }) {
   const { t } = useTranslation();
   const newWorktreeKeys = useShortcutKeys("new-worktree");
+  // The plus sits a hair above the icon ramp on desktop, so it doubles from its own value
+  // rather than through an icon token that would shrink it back to 14.
+  const isCompact = useIsCompactFormFactor();
 
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -787,10 +798,13 @@ function NewWorktreeButton({
           >
             {({ hovered, pressed }) =>
               loading ? (
-                <ThemedLoadingSpinner size={14} uniProps={foregroundMutedColorMapping} />
+                <ThemedLoadingSpinner
+                  size={isCompact ? 28 : 14}
+                  uniProps={foregroundMutedColorMapping}
+                />
               ) : (
                 <ThemedPlus
-                  size={15}
+                  size={isCompact ? 30 : 15}
                   uniProps={
                     hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping
                   }
@@ -2668,8 +2682,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   projectIconActionButton: {
-    width: 24,
-    height: 24,
+    width: compactUp(24),
+    height: compactUp(24),
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
@@ -2691,8 +2705,8 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   projectKebabButton: {
-    width: 24,
-    height: 24,
+    width: compactUp(24),
+    height: compactUp(24),
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
@@ -2711,8 +2725,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   projectTrailingControlSlot: {
-    width: 24,
-    height: 24,
+    width: compactUp(24),
+    height: compactUp(24),
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -2737,7 +2751,9 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[0.5],
     paddingVertical: theme.spacing[2],
     paddingLeft: theme.spacing[2],
-    paddingRight: theme.spacing[3],
+    // Compact drops the extra right inset to match the vertical padding, so the doubled kebab
+    // target sits in an even gutter instead of being pushed off-centre by a wider right edge.
+    paddingRight: { xs: theme.spacing[2], md: theme.spacing[3] },
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
     alignItems: "stretch",
