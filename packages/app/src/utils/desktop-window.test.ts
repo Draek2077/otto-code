@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isTransitionResize,
   resolveOverlayInsets,
   resolveRawWindowControlsPadding,
   resolveWindowControlsPadding,
@@ -185,5 +186,27 @@ describe("resolveOverlayInsets", () => {
       right: 140,
       top: 0,
     });
+  });
+});
+
+describe("isTransitionResize", () => {
+  it("treats a continuous drag as work the renderer must not repeat", () => {
+    // A drag already delivers a real resize to every web layout consumer. The
+    // synthetic reflow and the isFullscreen round-trip both hang off this, and
+    // at one per frame they stuttered the window with nothing on screen.
+    expect(isTransitionResize({ reason: "resize" })).toBe(false);
+  });
+
+  it("still reflows for maximize, unmaximize and fullscreen", () => {
+    // These do not deliver a settled resize, which is why the reflow exists.
+    expect(isTransitionResize({ reason: "transition" })).toBe(true);
+  });
+
+  it("reflows when the payload carries no reason", () => {
+    // An older main process sends `{}`; preserving the reflow keeps it correct
+    // rather than fast.
+    expect(isTransitionResize({})).toBe(true);
+    expect(isTransitionResize(undefined)).toBe(true);
+    expect(isTransitionResize(null)).toBe(true);
   });
 });

@@ -71,7 +71,10 @@ function startFullscreenSubscription() {
     if (typeof win.onResized !== "function") return;
 
     try {
-      await win.onResized(async () => {
+      await win.onResized(async (payload: unknown) => {
+        // Never during a drag: this is an IPC round-trip back to the main
+        // process, and at one per frame it stutters the whole window.
+        if (!isTransitionResize(payload)) return;
         if (typeof win.isFullscreen !== "function") return;
         try {
           setCachedFullscreen(await win.isFullscreen());
@@ -130,6 +133,21 @@ export function resolveOverlayInsets(input: {
   return { left, right };
 }
 
+/**
+ * A window-resized signal from the desktop main process.
+ *
+ * "resize" is a continuous drag: the renderer's own layout systems already see
+ * a real resize for it, so the handlers below must do nothing per frame.
+ * "transition" is maximize/unmaximize/fullscreen, which do not deliver a
+ * settled resize and are what the reflow exists for. A payload with no reason
+ * is treated as a transition so an older main process keeps working.
+ */
+export function isTransitionResize(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) return true;
+  const reason = (payload as { reason?: unknown }).reason;
+  return reason !== "resize";
+}
+
 function refreshOverlayInsets() {
   const overlay = getWindowControlsOverlay();
   if (!overlay) return;
@@ -181,12 +199,22 @@ export function startDesktopResizeReflow(): void {
     refreshOverlayInsets();
   };
 
-  void win.onResized(() => {
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(reflow);
-    } else {
+  let reflowScheduled = false;
+  void win.onResized((payload: unknown) => {
+    // A drag already delivers a real resize to every web layout consumer;
+    // dispatching a synthetic one on top of it runs the entire cascade twice
+    // per frame for no benefit.
+    if (!isTransitionResize(payload)) return;
+    if (typeof requestAnimationFrame !== "function") {
       reflow();
+      return;
     }
+    if (reflowScheduled) return;
+    reflowScheduled = true;
+    requestAnimationFrame(() => {
+      reflowScheduled = false;
+      reflow();
+    });
   });
 }
 

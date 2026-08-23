@@ -348,24 +348,29 @@ export function setupWindowResizeEvents(win: BrowserWindow): void {
   // A resize/fullscreen event can fire while the window is tearing down; sending
   // to a destroyed webContents throws. Guard so multi-window close doesn't surface
   // "Object has been destroyed" exceptions.
-  const notifyResized = () => {
+  // `reason` separates the two very different callers. A manual drag fires
+  // continuously and the renderer's web layout systems already see a real
+  // resize for it, so it must stay cheap: no synthetic reflow, no round-trip
+  // back here. The transitions below are the ones that need the extra nudge.
+  const notifyResized = (reason: "resize" | "transition") => () => {
     if (win.isDestroyed() || win.webContents.isDestroyed()) {
       return;
     }
-    win.webContents.send("otto:window:resized", {});
+    win.webContents.send("otto:window:resized", { reason });
   };
+  const notifyTransition = notifyResized("transition");
 
-  win.on("resize", notifyResized);
-  win.on("enter-full-screen", notifyResized);
-  win.on("leave-full-screen", notifyResized);
+  win.on("resize", notifyResized("resize"));
+  win.on("enter-full-screen", notifyTransition);
+  win.on("leave-full-screen", notifyTransition);
   // Maximize/unmaximize doesn't reliably deliver a settled `geometrychange` to
   // the renderer's window-controls overlay: it can fire while innerWidth still
   // reflects the previous size, leaving the header's right-pinned controls
   // padded off a stale width until the next manual resize. Emit an explicit
   // resized signal on these transitions so the renderer recomputes overlay
   // insets once the new size has settled.
-  win.on("maximize", notifyResized);
-  win.on("unmaximize", notifyResized);
+  win.on("maximize", notifyTransition);
+  win.on("unmaximize", notifyTransition);
 }
 
 // Pixels under -webkit-app-region: drag (the titlebar strips and pane tab-bar
