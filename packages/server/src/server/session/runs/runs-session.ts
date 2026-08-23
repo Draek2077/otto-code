@@ -381,8 +381,7 @@ export class RunsSession {
             scheduleAutoTitle: (request) => this.host.scheduleAutoTitle(request),
           },
           logger: this.logger,
-          getPersonalityRoster: () =>
-            this.daemonConfigStore.get().agentPersonalities?.personalities ?? [],
+          getPersonalityRoster: () => this.daemonConfigStore.get().agentProfiles ?? [],
           getAgentTeams: () => this.daemonConfigStore.get().agentTeams,
           listProviderEntries: (cwd) =>
             this.providerSnapshotManager.listProviders({ cwd, wait: true }),

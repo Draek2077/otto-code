@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
-import type { MaterializedAgentProfile } from "@/agent-profiles";
+import { useAgentProfiles } from "@/agent-profiles";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import {
   useAgentFormState,
@@ -10,6 +10,7 @@ import {
 } from "@/hooks/use-agent-form-state";
 import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import {
+  buildBoundPersonality,
   buildDraftAgentControls,
   hasDraftContent,
   resolveDraftKey,
@@ -47,8 +48,10 @@ interface UseAgentInputDraftInput {
 
 type DraftAgentControlsWithProfileCompatibility = DraftAgentControlsProps & {
   /**
-   * COMPAT(agentProfiles): added in v0.8.12, remove after 2027-02-21 once creation
-   * accepts profileId directly. This is a legacy wire bridge, not a second picker.
+   * The draft's bound identity, which creation sends as `personality`. Since the
+   * two stored-template systems converged this is a real roster binding, not a
+   * bridge: the id names an entry in `daemon.agentProfiles` and the daemon
+   * resolves it at spawn.
    */
   personality: RolePersonality | null;
 };
@@ -71,38 +74,6 @@ export interface AgentInputDraft {
   isHydrated: boolean;
   attachmentFocusRequestId: number;
   composerState: DraftComposerState | null;
-}
-
-function buildAgentProfileCompatibility(
-  profileId: string | null,
-  profile: MaterializedAgentProfile | null,
-): RolePersonality | null {
-  if (!profileId) return null;
-  const selectedProfile = profile?.id === profileId ? profile : null;
-  const selectedName = selectedProfile?.name || profileId;
-  return {
-    personalities: selectedProfile
-      ? [
-          {
-            id: profileId,
-            name: selectedName,
-            provider: selectedProfile.provider,
-            subtitle: "",
-            glowA: selectedProfile.spinner?.glowA,
-            glowB: selectedProfile.spinner?.glowB,
-            available: true,
-          },
-        ]
-      : undefined,
-    selectedPersonalityId: profileId,
-    spawnPersonalityId: profileId,
-    onSelectPersonality: undefined,
-    onClearPersonality: undefined,
-    hasBoundPersonality: true,
-    isSwitching: false,
-    selectedName,
-    selectedSpinner: selectedProfile?.spinner,
-  };
 }
 
 export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDraft {
@@ -344,13 +315,15 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     ],
   );
 
-  const profileCompatibility = useMemo(
+  const { profiles: profileRoster } = useAgentProfiles(formState.selectedServerId);
+  const boundPersonality = useMemo(
     () =>
-      buildAgentProfileCompatibility(
+      buildBoundPersonality(
         formState.selectedAgentProfileId,
         formState.selectedAgentProfile,
+        profileRoster,
       ),
-    [formState.selectedAgentProfile, formState.selectedAgentProfileId],
+    [formState.selectedAgentProfile, formState.selectedAgentProfileId, profileRoster],
   );
 
   const composerState = useMemo<DraftComposerState | null>(() => {
@@ -371,7 +344,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
           onSetFeature: setDraftFeatureValue,
           onApplyAgentProfile: applyDraftAgentProfile,
         }),
-        personality: profileCompatibility,
+        personality: boundPersonality,
       },
       commandDraftConfig,
     };
@@ -384,7 +357,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     draftFeatureValues,
     applyDraftAgentProfile,
     formState,
-    profileCompatibility,
+    boundPersonality,
     setDraftFeatureValue,
     workingDir,
   ]);
@@ -408,5 +381,4 @@ export const __private__ = {
   buildDraftCommandConfig,
   buildDraftComposerCommandConfig: buildDraftCommandConfig,
   buildDraftAgentControls,
-  buildAgentProfileCompatibility,
 };

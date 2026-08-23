@@ -6694,7 +6694,7 @@ export class Session {
     if (!personalityId) {
       return config;
     }
-    const roster = this.daemonConfigStore.get().agentPersonalities?.personalities ?? [];
+    const roster = this.daemonConfigStore.get().agentProfiles ?? [];
     const personality = roster.find((entry) => entry.id === personalityId);
     if (!personality) {
       this.sessionLogger.warn(
@@ -6752,7 +6752,7 @@ export class Session {
     if (!agent) {
       throw new Error(`Agent not found: ${agentId}`);
     }
-    const roster = this.daemonConfigStore.get().agentPersonalities?.personalities ?? [];
+    const roster = this.daemonConfigStore.get().agentProfiles ?? [];
     const personality = roster.find((entry) => entry.id === personalityId);
     if (!personality) {
       throw new Error(`Personality not found: ${personalityId}`);

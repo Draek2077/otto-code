@@ -146,15 +146,38 @@ export function useAgentProfilePicker(
       if (!client) {
         return;
       }
+      // Binding the identity is what makes this "apply the template" rather
+      // than "copy four settings off it": the daemon re-resolves the id against
+      // the roster and the agent's cwd, then applies the prompt, roles, spinner
+      // and voice live. It also carries the brain (model/mode/effort), so the
+      // settings apply below is only needed for hosts that reject a live
+      // identity switch - and it is second so a provider that CAN switch is not
+      // left with the template's settings and none of its identity.
       void client
-        .applyAgentConfig(target.agentId, toAgentConfigApply(reconciled))
-        .then((notice) => showProviderNoticeToast(toast, notice))
-        .catch((error) => {
+        .setAgentPersonality(target.agentId, reconciled.id)
+        .catch(async (error: unknown) => {
+          // A provider that cannot change its system prompt mid-session rejects.
+          // Fall back to the settings-only apply so the picker still does
+          // something useful, and say plainly that the identity did not take.
+          console.warn("[useAgentProfilePicker] setAgentPersonality failed", error);
+          const notice = await client.applyAgentConfig(
+            target.agentId,
+            toAgentConfigApply(reconciled),
+          );
+          showProviderNoticeToast(toast, notice);
+          toast.error(
+            t("composer.profiles.identitySwitchRejected", {
+              defaultValue:
+                "Applied the model settings, but this agent could not switch personality mid-session.",
+            }),
+          );
+        })
+        .catch((error: unknown) => {
           console.warn("[useAgentProfilePicker] applyAgentConfig failed", error);
           toast.error(toErrorMessage(error));
         });
     },
-    [applicableProfiles, client, persistSelection, target, toast],
+    [applicableProfiles, client, persistSelection, t, target, toast],
   );
 
   return useMemo(
