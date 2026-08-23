@@ -18,10 +18,10 @@ result
 packages/dotnet-probe/bin/
 packages/dotnet-probe/obj/
 
-# graphify - knowledge graph outputs are personal/derived; .graphifyignore stays tracked
+# graphify / understand-anything - both toolchains are retired here and their
+# outputs were deleted on 2026-08-22. The ignore rules stay as a guard: a stray
+# run would otherwise drop tens of MB of derived graph into git status.
 graphify-out/
-
-# understand-anything - all tool output (intermediate/, tmp/, knowledge-graph.json); .understandignore lives inside and is ignored with it
 .ua/
 
 # Environment variables
@@ -102,6 +102,11 @@ CLAUDE.local.md
 
 # Local agent/tooling artifacts (do not commit)
 PLAN.md
+.pk-files.txt
+# Runtime CLI identity, written to $OTTO_HOME/cli-client-id by
+# packages/cli/src/utils/client-id.ts. It lands in the checkout whenever OTTO_HOME
+# points here, and a copy was committed once already.
+cli-client-id
 .valknut/
 valknut-report.html/
 valknut-report.json/
