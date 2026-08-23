@@ -1434,6 +1434,16 @@ function concatByteChunks(chunks: Uint8Array[], size: number): Uint8Array {
   return bytes;
 }
 
+function extractDispatchAgentId(message: SessionOutboundMessage): string | undefined {
+  if (message.type === "agent_stream") {
+    return message.payload.agentId;
+  }
+  if (message.type === "agent_update") {
+    return message.payload.kind === "upsert" ? message.payload.agent.id : message.payload.agentId;
+  }
+  return undefined;
+}
+
 function getTransportFrameSize(frame: string | Uint8Array | ArrayBuffer): number {
   if (typeof frame === "string") {
     return frame.length;
@@ -9106,6 +9116,7 @@ export class DaemonClient {
     this.runtimeMetrics?.recordInboundDispatch({
       at: dispatchAt,
       type: msgType,
+      agentId: extractDispatchAgentId(parsed.data.message),
       bytes,
       decodeAndValidateMs: phases.startedAtMs - startMs,
       internalDispatchMs: phases.internalDispatchMs,

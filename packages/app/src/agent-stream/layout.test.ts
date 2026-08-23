@@ -262,6 +262,25 @@ describe("layoutStream", () => {
     expect(assistantRow.frameOrder).toBe("content-then-footer");
   });
 
+  it.each(["web", "android"] as const)(
+    "places the completed footer after the final assistant block before a follow-up on %s",
+    (platform) => {
+      const firstAssistant = assistantMessage("a1", 2);
+      const finalAssistant = assistantMessage("a2", 3);
+      const layout = layoutFor({
+        platform,
+        tail: [userMessage("u1", 1), firstAssistant, finalAssistant, userMessage("u2", 4)],
+        timingIds: [firstAssistant.id, finalAssistant.id],
+      });
+
+      expect(findLayoutItem(layout, firstAssistant.id).completedFooter).toBeNull();
+      expect(findLayoutItem(layout, finalAssistant.id).completedFooter?.itemId).toBe(
+        finalAssistant.id,
+      );
+      expect(footerOwners(layout)).toEqual([finalAssistant.id]);
+    },
+  );
+
   it("compacts assistant block spacing across the history and live-head boundary", () => {
     const historyBlock = assistantMessage("turn:block:0", 2, { groupId: "turn", index: 0 });
     const headBlock = assistantMessage("turn:head", 3, { groupId: "turn", index: 1 });

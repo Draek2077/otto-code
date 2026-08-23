@@ -70,6 +70,16 @@ export const BRAIN_STATE_LABELS: Record<BrainState, string> = {
 
 export const BRAIN_DISABLED_LABEL = "Brain - Disabled";
 
+/**
+ * The rail is an entry point for an available Brain, not a disabled-state
+ * indicator. Keep it visible while the host setting is still loading so the
+ * first paint does not flicker, then remove it once the setting explicitly
+ * disables Brain.
+ */
+export function shouldShowBrainRail(enabled: boolean | undefined): boolean {
+  return enabled !== false;
+}
+
 export interface BrainRailPresentation {
   state: BrainState;
   label: string | null;

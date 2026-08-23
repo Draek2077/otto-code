@@ -9,6 +9,7 @@ import {
   resolveBrainActivityLabel,
   resolveBrainRailLabel,
   resolveBrainRailPresentation,
+  shouldShowBrainRail,
   type BrainState,
 } from "@/components/brain/brain-state";
 
@@ -268,6 +269,12 @@ describe("brain state visuals", () => {
 });
 
 describe("Brain rail enablement", () => {
+  it("hides the rail only after the setting explicitly disables Brain", () => {
+    expect(shouldShowBrainRail(undefined)).toBe(true);
+    expect(shouldShowBrainRail(true)).toBe(true);
+    expect(shouldShowBrainRail(false)).toBe(false);
+  });
+
   it("keeps a disabled Brain grey and labels it as disabled", () => {
     expect(resolveBrainRailPresentation("idle", false)).toEqual({
       state: "off",

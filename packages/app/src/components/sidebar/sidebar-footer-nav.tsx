@@ -209,7 +209,7 @@ export function SidebarFooterNavRow({
             <FooterNavTooltipContent label={labels.home} />
           </TooltipContent>
         </Tooltip>
-        {onBrain ? (
+        {onBrain && brainRail.visible ? (
           <Tooltip delayDuration={300}>
             <TooltipTrigger asChild triggerRefProp="buttonRef">
               <FooterIconButton

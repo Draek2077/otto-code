@@ -272,6 +272,30 @@ test("retains timestamped inbound dispatch phases for a performance capture", as
   if (!timing) throw new Error("Expected an inbound dispatch timing.");
   timing.type = "mutated";
   expect(client.getInboundDispatchTimings().at(-1)?.type).toBe("status");
+
+  // Agent-scoped messages carry the agent id; the status record above does not.
+  expect(timing.agentId).toBeUndefined();
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "agent_stream",
+      payload: {
+        agentId: "agent-dispatch-a",
+        timestamp: "2026-08-22T00:00:00.000Z",
+        event: {
+          type: "attention_required",
+          provider: "codex",
+          agentId: "agent-dispatch-a",
+          reason: "finished",
+          timestamp: "2026-08-22T00:00:00.000Z",
+          shouldNotify: false,
+        },
+      },
+    }),
+  );
+  expect(client.getInboundDispatchTimings().at(-1)).toMatchObject({
+    type: "agent_stream",
+    agentId: "agent-dispatch-a",
+  });
 });
 
 test("does not infer browser automation capabilities from Electron runtime", async () => {

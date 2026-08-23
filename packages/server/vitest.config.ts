@@ -36,6 +36,10 @@ export default defineConfig({
       "**/src/server/hub/daemon-executions.test.ts",
       "**/src/server/hub/execution-session.websocket.test.ts",
       "**/src/server/hub/relationship-controller.test.ts",
+      // Added upstream in the v0.4.0 merge; its harness also boots a real
+      // daemon through `createOttoDaemon`, so it joins the exclusion above for
+      // the same reason.
+      "**/src/server/hub/hub-cli-contract.test.ts",
     ],
   },
 });

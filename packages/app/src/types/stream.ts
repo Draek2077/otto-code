@@ -983,6 +983,99 @@ export function clearOptimisticUserMessages(state: StreamItem[]): StreamItem[] {
   return next.length === state.length ? state : next;
 }
 
+function findTrailingUserStart(state: StreamItem[]): number {
+  let trailingUserStart = state.length;
+  while (trailingUserStart > 0 && state[trailingUserStart - 1]?.kind === "user_message") {
+    trailingUserStart -= 1;
+  }
+  return trailingUserStart;
+}
+
+function assistantChunkMatches(input: {
+  assistant: AssistantMessageItem;
+  messageId?: string;
+  turnId?: string;
+}): boolean {
+  const messageMatches =
+    input.messageId === undefined || input.assistant.messageId === input.messageId;
+  const turnMatches =
+    input.turnId === undefined ||
+    input.assistant.turnId === undefined ||
+    input.assistant.turnId === input.turnId;
+  return messageMatches && turnMatches;
+}
+
+function extendAssistantMessage(input: {
+  assistant: AssistantMessageItem;
+  chunk: string;
+  timestamp: Date;
+  timelineCursor?: TimelinePosition;
+  turnId?: string;
+}): AssistantMessageItem {
+  return {
+    ...input.assistant,
+    text: `${input.assistant.text}${input.chunk}`,
+    timestamp: input.timestamp,
+    ...(input.timelineCursor ? { timelineCursor: input.timelineCursor } : {}),
+    ...(input.turnId ? { turnId: input.turnId } : {}),
+  };
+}
+
+interface AssistantMessageChunkInput {
+  state: StreamItem[];
+  chunk: string;
+  timestamp: Date;
+  messageId?: string;
+  reservedItemIds?: ReadonlySet<string>;
+  timelineCursor?: TimelinePosition;
+  turnId?: string;
+}
+
+function createAssistantMessageItem(input: AssistantMessageChunkInput): AssistantMessageItem {
+  return {
+    kind: "assistant_message",
+    id: createAssistantItemId(
+      input.state,
+      input.messageId,
+      input.chunk.trim() || input.chunk,
+      input.timestamp,
+      input.reservedItemIds,
+    ),
+    ...(input.messageId ? { messageId: input.messageId } : {}),
+    ...(input.turnId ? { turnId: input.turnId } : {}),
+    ...(input.timelineCursor ? { timelineCursor: input.timelineCursor } : {}),
+    text: input.chunk,
+    timestamp: input.timestamp,
+  };
+}
+
+function appendAssistantBeforeTrailingUsers(
+  input: AssistantMessageChunkInput & { source: StreamUpdateSource },
+): StreamItem[] | null {
+  if (input.source !== "live") return null;
+  const trailingUserStart = findTrailingUserStart(input.state);
+  if (trailingUserStart === input.state.length) return null;
+
+  const precedingAssistant = input.state[trailingUserStart - 1];
+  if (precedingAssistant?.kind !== "assistant_message") return null;
+  const belongsToPrecedingTurn =
+    input.turnId !== undefined && precedingAssistant.turnId === input.turnId;
+  if (
+    !assistantChunkMatches({ assistant: precedingAssistant, ...input }) &&
+    !belongsToPrecedingTurn
+  ) {
+    return null;
+  }
+
+  const messageMatches =
+    input.messageId === undefined || precedingAssistant.messageId === input.messageId;
+  const assistant = messageMatches
+    ? extendAssistantMessage({ assistant: precedingAssistant, ...input })
+    : createAssistantMessageItem(input);
+  const prefixEnd = messageMatches ? trailingUserStart - 1 : trailingUserStart;
+  return [...input.state.slice(0, prefixEnd), assistant, ...input.state.slice(trailingUserStart)];
+}
+
 function appendAssistantMessage(
   state: StreamItem[],
   text: string,
@@ -991,60 +1084,54 @@ function appendAssistantMessage(
   messageId?: string,
   reservedItemIds?: ReadonlySet<string>,
   timelineCursor?: TimelinePosition,
+  turnId?: string,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
-  if (!chunk) {
-    return state;
-  }
+  if (!chunk) return state;
 
   const last = state[state.length - 1];
-  const shouldAppendToLast =
-    last &&
-    last.kind === "assistant_message" &&
-    (messageId === undefined || last.messageId === messageId);
-  if (shouldAppendToLast) {
-    const updated: AssistantMessageItem = {
-      ...last,
-      text: `${last.text}${chunk}`,
-      timestamp,
-      ...(timelineCursor ? { timelineCursor } : {}),
-    };
-    return [...state.slice(0, -1), updated];
+  if (
+    last?.kind === "assistant_message" &&
+    assistantChunkMatches({ assistant: last, messageId, turnId })
+  ) {
+    return [
+      ...state.slice(0, -1),
+      extendAssistantMessage({ assistant: last, chunk, timestamp, timelineCursor, turnId }),
+    ];
   }
 
-  // If the last item is a user_message (optimistic append to head during
-  // interrupt), look one further back for the streaming assistant_message.
-  const secondLast = state[state.length - 2];
-  if (
-    source === "live" &&
-    last?.kind === "user_message" &&
-    secondLast?.kind === "assistant_message" &&
-    (messageId === undefined || secondLast.messageId === messageId)
-  ) {
-    const updated: AssistantMessageItem = {
-      ...secondLast,
-      text: `${secondLast.text}${chunk}`,
-      timestamp,
-      ...(timelineCursor ? { timelineCursor } : {}),
-    };
-    return [...state.slice(0, -2), updated, last];
-  }
+  // Submitted follow-up rows can already trail the active assistant. A final
+  // provider segment from the older turn must remain before those rows, even
+  // when the provider gives that segment a fresh message id. Otherwise the
+  // turn footer lands between assistant blocks on an inverted native list.
+  const insertedBeforeUsers = appendAssistantBeforeTrailingUsers({
+    state,
+    chunk,
+    timestamp,
+    source,
+    messageId,
+    reservedItemIds,
+    timelineCursor,
+    turnId,
+  });
+  if (insertedBeforeUsers) return insertedBeforeUsers;
 
   if (!hasContent) {
     return state;
   }
 
-  const idSeed = chunk.trim() || chunk;
-  const entryId = createAssistantItemId(state, messageId, idSeed, timestamp, reservedItemIds);
-  const item: AssistantMessageItem = {
-    kind: "assistant_message",
-    id: entryId,
-    ...(messageId ? { messageId } : {}),
-    ...(timelineCursor ? { timelineCursor } : {}),
-    text: chunk,
-    timestamp,
-  };
-  return [...state, item];
+  return [
+    ...state,
+    createAssistantMessageItem({
+      state,
+      chunk,
+      timestamp,
+      messageId,
+      reservedItemIds,
+      timelineCursor,
+      turnId,
+    }),
+  ];
 }
 
 function appendThought(
@@ -1673,6 +1760,7 @@ function reduceTimelineEvent(
           item.messageId,
           reservedItemIds,
           timelineCursor,
+          readTimelineTurnId(event),
         ),
       );
     case "reasoning":
@@ -2010,6 +2098,22 @@ function incomingTextIsVisible(event: AgentStreamEventPayload): boolean {
   return normalizeChunk(event.item.text).hasContent;
 }
 
+function incomingAssistantBelongsBeforeTrailingUsers(
+  head: StreamItem[],
+  event: AgentStreamEventPayload,
+): boolean {
+  if (event.type !== "timeline" || event.item.type !== "assistant_message") return false;
+  const incomingTurnId = readTimelineTurnId(event);
+  if (!incomingTurnId) return false;
+  const trailingUserStart = findTrailingUserStart(head);
+  const precedingAssistant = head[trailingUserStart - 1];
+  return (
+    trailingUserStart < head.length &&
+    precedingAssistant?.kind === "assistant_message" &&
+    precedingAssistant.turnId === incomingTurnId
+  );
+}
+
 function shouldFlushHead(input: {
   head: StreamItem[];
   incomingKind: StreamItem["kind"] | null;
@@ -2069,6 +2173,9 @@ function shouldFlushHead(input: {
 
   if (incomingKind === "assistant_message" && lastStreamable.kind === "assistant_message") {
     const incomingMessageId = getIncomingAssistantMessageId(event);
+    if (incomingAssistantBelongsBeforeTrailingUsers(head, event)) {
+      return false;
+    }
     return incomingMessageId !== undefined && lastStreamable.messageId !== incomingMessageId;
   }
 

@@ -61,6 +61,10 @@ export function WorkspaceBrainButton() {
     router.push(resolveBrainRailRoute({ disabled, serverId }));
   }, [disabled, serverId]);
 
+  if (!rail.visible) {
+    return null;
+  }
+
   return (
     <HeaderToggleButton
       testID="workspace-brain-button"

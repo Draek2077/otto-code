@@ -477,12 +477,12 @@ describe("CheckoutDiffManager", () => {
     const getCheckoutDiff = vi
       .fn()
       .mockResolvedValueOnce({
-        diff: "",
+        diff: "v1",
         structured: [{ path: "tracked.ts", additions: 1, deletions: 0, status: "modified" }],
       })
       .mockImplementationOnce(() => inFlightDiff.promise)
       .mockResolvedValue({
-        diff: "",
+        diff: "v3",
         structured: [{ path: "tracked.ts", additions: 100, deletions: 25, status: "modified" }],
       });
     const { manager, getOnChange } = createManager({
@@ -502,11 +502,17 @@ describe("CheckoutDiffManager", () => {
     expect(getCheckoutDiff).toHaveBeenCalledTimes(2);
 
     inFlightDiff.resolve({
-      diff: "",
+      diff: "v2",
       structured: [{ path: "tracked.ts", additions: 2, deletions: 1, status: "modified" }],
     });
+    // Two extra reads land here versus the naive count: the probe fingerprint
+    // (raw diff text, cheap) runs before every forced re-check once a baseline
+    // exists, and only a text change earns the full structured recompute. The
+    // blocked read above was itself a probe; its resolution differs from the
+    // baseline, so it triggers one real recompute, which a still-queued event
+    // then re-probes and finds unchanged.
     await vi.waitFor(() => {
-      expect(getCheckoutDiff).toHaveBeenCalledTimes(3);
+      expect(getCheckoutDiff).toHaveBeenCalledTimes(4);
       expect(listener).toHaveBeenLastCalledWith({
         cwd: "/tmp/repo",
         files: [{ path: "tracked.ts", additions: 100, deletions: 25, status: "modified" }],

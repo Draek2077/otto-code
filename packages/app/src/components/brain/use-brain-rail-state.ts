@@ -22,6 +22,7 @@ import {
   deriveBrainActivity,
   deriveBrainState,
   resolveBrainRailPresentation,
+  shouldShowBrainRail,
   type BrainRailActivity,
   type BrainState,
 } from "@/components/brain/brain-state";
@@ -103,7 +104,12 @@ export function useBrainRail() {
     ? { kind: "single", state: presentation.state }
     : deriveBrainActivity(status);
 
-  return { ...presentation, activity, serverId };
+  return {
+    ...presentation,
+    activity,
+    serverId,
+    visible: shouldShowBrainRail(config?.brain.enabled),
+  };
 }
 
 export function useBrainRailState(): BrainState {

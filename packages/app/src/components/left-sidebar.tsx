@@ -502,10 +502,7 @@ function SidebarNavigationHeader({
 
   return (
     <View onLayout={handleLayout} style={styles.sidebarNavigationHeader}>
-      <SidebarActiveTeamSwitchers
-        onBeforeNavigate={onBeforeNavigate}
-        contentAlignment={isSingleColumn ? "start" : "center"}
-      />
+      <SidebarActiveTeamSwitchers onBeforeNavigate={onBeforeNavigate} />
       <SidebarNavigationGrid {...navigationGridProps} isSingleColumn={isSingleColumn} />
     </View>
   );

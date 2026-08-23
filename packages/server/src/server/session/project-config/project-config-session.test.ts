@@ -52,11 +52,11 @@ describe("ProjectConfigSession", () => {
     execFileSync("git", ["init", "-b", "main"], { cwd: repoRoot });
     execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: repoRoot });
     execFileSync("git", ["config", "user.name", "Test"], { cwd: repoRoot });
-    writeFileSync(join(repoRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
-    execFileSync("git", ["add", "paseo.json"], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, "otto.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
+    execFileSync("git", ["add", "otto.json"], { cwd: repoRoot });
     execFileSync("git", ["commit", "-m", "add config"], { cwd: repoRoot });
     writeFileSync(
-      join(repoRoot, "paseo.json"),
+      join(repoRoot, "otto.json"),
       JSON.stringify({ worktree: { setup: "npm install" } }),
     );
     const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);

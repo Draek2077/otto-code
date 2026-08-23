@@ -175,6 +175,7 @@ function collectInboundDispatches(sinceMs: number): CapturedInboundDispatch[] {
         serverId: snapshot.serverId,
         at: entry.at,
         type: entry.type,
+        agentId: entry.agentId,
         bytes: entry.bytes,
         decodeAndValidateMs: entry.decodeAndValidateMs,
         internalDispatchMs: entry.internalDispatchMs,

@@ -290,10 +290,22 @@ function TodoProgressBar({ progress, animationsEnabled }: TodoProgressBarProps) 
   );
 }
 
+export interface TodoTaskListProgressProps {
+  items: TodoEntry[];
+  animationsEnabled: boolean;
+}
+
+/** An animated checklist progress bar that can stay visible while rows are collapsed. */
+export function TodoTaskListProgress({ items, animationsEnabled }: TodoTaskListProgressProps) {
+  const { progress } = useTodoCounts(items);
+  return <TodoProgressBar progress={progress} animationsEnabled={animationsEnabled} />;
+}
+
 export interface TodoTaskListProps {
   items: TodoEntry[];
   animationsEnabled: boolean;
   emptyLabel: string;
+  showProgress?: boolean;
 }
 
 /**
@@ -302,16 +314,21 @@ export interface TodoTaskListProps {
  * floating pinned overlay's tinted header + dismiss). Shared so the transcript
  * card and the pinned overlay render one identical, consistent list.
  */
-export function TodoTaskList({ items, animationsEnabled, emptyLabel }: TodoTaskListProps) {
-  const { progress } = useTodoCounts(items);
-
+export function TodoTaskList({
+  items,
+  animationsEnabled,
+  emptyLabel,
+  showProgress = true,
+}: TodoTaskListProps) {
   if (items.length === 0) {
     return <Text style={styles.emptyText}>{emptyLabel}</Text>;
   }
 
   return (
     <>
-      <TodoProgressBar progress={progress} animationsEnabled={animationsEnabled} />
+      {showProgress ? (
+        <TodoTaskListProgress items={items} animationsEnabled={animationsEnabled} />
+      ) : null}
       <View style={styles.list}>
         {items.map((item) => (
           <TodoTaskRow

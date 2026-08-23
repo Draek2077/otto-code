@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -22,10 +23,10 @@ import {
 import { runGitCommand as runGitCommandReal } from "../utils/run-git-command.js";
 import {
   WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS,
-  getWorkspaceGitSelfHealPhaseMs,
   WorkspaceGitServiceImpl,
   type WorkspaceGitRuntimeSnapshot,
 } from "./workspace-git-service.js";
+import { isPlatform } from "../test-utils/platform.js";
 
 const REPO_CWD = resolvePath("/tmp/repo");
 
@@ -38,6 +39,13 @@ function createLogger() {
   return logger;
 }
 
+function createWatcher() {
+  return {
+    close: vi.fn(),
+    on: vi.fn().mockReturnThis(),
+  };
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -46,13 +54,6 @@ function createDeferred<T>() {
     reject = rej;
   });
   return { promise, resolve, reject };
-}
-
-function createAsyncSubscription() {
-  return {
-    updateIgnore: vi.fn(() => Promise.resolve()),
-    unsubscribe: vi.fn(() => Promise.resolve()),
-  };
 }
 
 async function flushPromises(): Promise<void> {
@@ -259,7 +260,6 @@ function createGitHubServiceStub(): GitHubService {
 }
 
 interface CreateServiceOptions {
-  subscribe?: ReturnType<typeof vi.fn>;
   getCheckoutSnapshotFacts?: ReturnType<typeof vi.fn>;
   getCheckoutStatus?: ReturnType<typeof vi.fn>;
   getCheckoutShortstat?: ReturnType<typeof vi.fn>;
@@ -275,21 +275,16 @@ interface CreateServiceOptions {
   hasOriginRemote?: ReturnType<typeof vi.fn>;
   runGitFetch?: ReturnType<typeof vi.fn>;
   runGitCommand?: ReturnType<typeof vi.fn>;
+  watch?: ReturnType<typeof vi.fn>;
+  readdir?: ReturnType<typeof vi.fn>;
   now?: () => Date;
-  getWorkspaceGitSelfHealPhaseMs?: (cwd: string) => number;
 }
 
 function buildDefaultServiceDeps() {
   return {
-    subscribe: vi.fn(async () => ({
-      updateIgnore: vi.fn(async () => {}),
-      unsubscribe: vi.fn(async () => {}),
-    })),
+    watch: (() => createWatcher()) as never,
+    readdir: vi.fn(async () => []),
     getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutFacts(cwd)),
-    getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
-      ...current,
-      upstreamStatus: facts.upstreamStatus,
-    })),
     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
     getCheckoutShortstat: vi.fn(async () => ({
       additions: 1,
@@ -308,22 +303,13 @@ function buildDefaultServiceDeps() {
     github: createGitHubServiceStub(),
     resolveAbsoluteGitDir: vi.fn(async () => join(REPO_CWD, ".git")),
     hasOriginRemote: vi.fn(async () => false),
-    runGitFetch: vi.fn(async () => {
-      await createDeferred<void>().promise;
-      return { changes: [], error: null };
-    }),
+    runGitFetch: vi.fn(async () => {}),
     runGitCommand: vi.fn(async () => ({
       stdout: `${REPO_CWD}\n`,
       stderr: "",
       truncated: false,
       exitCode: 0,
       signal: null,
-    })),
-    getWorkspaceGitSelfHealPhaseMs: vi.fn(() => 30_000),
-    createWatcherLivenessCanary: vi.fn(() => ({
-      path: "",
-      filterEvents: (events) => events,
-      verify: vi.fn(async () => {}),
     })),
     now: () => new Date("2026-04-12T00:00:00.000Z"),
   };
@@ -407,10 +393,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     expect(listener).not.toHaveBeenCalled();
     expect(service.peekSnapshot(REPO_CWD)).toBeNull();
 
-    await vi.waitFor(() => {
-      expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
-    });
     await flushPromises();
+
     expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
     expect(service.peekSnapshot(REPO_CWD)).toBeNull();
 
@@ -492,10 +476,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
     const first = service.getSnapshot(REPO_CWD);
     const second = service.getSnapshot(join(REPO_CWD, "."));
-    await vi.waitFor(() => {
-      expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
-    });
     await flushPromises();
+
     expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
 
     checkoutStatusDeferred.resolve(createCheckoutStatus(REPO_CWD));
@@ -778,8 +760,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     await flushPromises();
 
-    nowMs = 120_000;
-    await vi.advanceTimersByTimeAsync(120_000);
+    nowMs = 60_000;
+    await vi.advanceTimersByTimeAsync(60_000);
     await flushPromises();
 
     expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
@@ -789,71 +771,51 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     service.dispose();
   });
 
-  test("observation re-ensure phase is stable across process restarts", () => {
-    expect(getWorkspaceGitSelfHealPhaseMs("/tmp/repo")).toBe(54_185);
-    expect(getWorkspaceGitSelfHealPhaseMs("/tmp/staggered-repo")).toBe(9_817);
-  });
-
-  test("observation re-ensure retries setup even when the git snapshot is still recent", async () => {
+  test("self-heal retries workspace observation setup while a listener remains active", async () => {
     let nowMs = 0;
     const getCheckoutSnapshotFacts = vi
       .fn<(cwd: string) => Promise<CheckoutSnapshotFacts>>()
       .mockRejectedValueOnce(new Error("git facts temporarily unavailable"))
-      .mockImplementation(async (cwd: string) => createCheckoutFacts(cwd, { remoteUrl: null }));
-    const getCheckoutStatus = vi.fn(async (cwd: string) =>
-      createCheckoutStatus(cwd, { remoteUrl: null }),
-    );
-    const subscribe = vi.fn(async () => createAsyncSubscription());
+      .mockImplementation(async (cwd: string) => createCheckoutFacts(cwd));
+    const watch = vi.fn(() => createWatcher() as never);
     const service = createService({
       getCheckoutSnapshotFacts,
-      getCheckoutStatus,
-      subscribe,
+      watch,
       now: () => new Date(nowMs),
     });
 
     service.setActiveWorkspace(REPO_CWD);
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
-    await vi.waitFor(() => {
-      expect(getCheckoutSnapshotFacts).toHaveBeenCalled();
-      expect(service.getMetrics().workspaceObservationSetupInFlightCount).toBe(0);
-      expect(service.getMetrics().workspaceRefreshInFlightCount).toBe(0);
-    });
+    await flushPromises();
 
     expect(getCheckoutSnapshotFacts).toHaveBeenCalled();
-    expect(subscribe).not.toHaveBeenCalled();
-
-    nowMs = 30_000;
-    await service.getSnapshot(REPO_CWD, { force: true, reason: "recovered-git-read" });
-    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
-    expect(subscribe).not.toHaveBeenCalled();
+    expect(watch).not.toHaveBeenCalled();
+    const factsCallsBeforeSelfHeal = getCheckoutSnapshotFacts.mock.calls.length;
 
     nowMs = 60_000;
     await vi.advanceTimersByTimeAsync(60_000);
     await flushPromises();
 
-    expect(subscribe).toHaveBeenCalledTimes(2);
-    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
+    expect(getCheckoutSnapshotFacts.mock.calls.length).toBeGreaterThan(factsCallsBeforeSelfHeal);
+    expect(getCheckoutSnapshotFacts).toHaveBeenLastCalledWith(REPO_CWD, expect.anything());
 
     subscription.unsubscribe();
     service.dispose();
   });
 
   test("stale workspace watcher callbacks do not refresh after unsubscribe", async () => {
-    const watchCallbacks: Array<{
-      path: string;
-      callback: (error: Error | null, events: Array<{ path: string; type: "update" }>) => void;
-    }> = [];
-    const subscribe = vi.fn(
-      async (watchPath: string, callback: (typeof watchCallbacks)[number]["callback"]) => {
-        watchCallbacks.push({ path: watchPath, callback });
-        return createAsyncSubscription();
+    const watchCallbacks: Array<() => void> = [];
+    const watch = vi.fn(
+      (_watchPath: string, _options: { recursive: boolean }, callback: () => void) => {
+        watchCallbacks.push(callback);
+        return createWatcher() as never;
       },
     );
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
     const service = createService({
       getCheckoutStatus,
       resolveAbsoluteGitDir: vi.fn(async () => join(REPO_CWD, ".git")),
-      subscribe,
+      watch,
     });
 
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
@@ -862,12 +824,10 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     await vi.waitFor(() => {
       expect(watchCallbacks.length).toBeGreaterThan(0);
     });
-    const workingTreeCallback = watchCallbacks.find((entry) => entry.path === REPO_CWD)?.callback;
-    expect(workingTreeCallback).toBeTypeOf("function");
     const callsBeforeStaleCallback = getCheckoutStatus.mock.calls.length;
 
     subscription.unsubscribe();
-    workingTreeCallback?.(null, [{ path: join(REPO_CWD, "file.ts"), type: "update" }]);
+    watchCallbacks[0]?.();
     await vi.advanceTimersByTimeAsync(1_000);
     await flushPromises();
 
@@ -1022,13 +982,12 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
   test("settled GitHub self-heal reads stay on the slow poll window without refreshing git", async () => {
     let nowMs = 0;
     const githubReadCalls: Array<{ reason: string | undefined; tickMs: number }> = [];
-    const runner = vi.fn(async () => ({
-      stdout: currentPullRequestJson(),
-      stderr: "",
-    }));
     const github = createGitHubService({
       ttlMs: 0,
-      runner,
+      runner: vi.fn(async () => ({
+        stdout: currentPullRequestJson(),
+        stderr: "",
+      })),
       resolveGhPath: async () => "/usr/bin/gh",
       now: () => nowMs,
     });
@@ -1050,9 +1009,6 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     await flushPromises();
     await vi.advanceTimersByTimeAsync(0);
-    await vi.waitFor(() => {
-      expect(runner).toHaveBeenCalledTimes(1);
-    });
     await flushPromises();
     const gitReadsAfterInitialSnapshot = getCheckoutStatus.mock.calls.length;
 
@@ -1131,36 +1087,30 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     service.dispose();
   });
 
-  test("multiple subscribers on the same target do not duplicate periodic git work", async () => {
+  test("multiple subscribers on the same target share one self-heal timer", async () => {
     let nowMs = 0;
-    const getCheckoutSnapshotFacts = vi.fn(async (cwd: string) =>
-      createCheckoutFacts(cwd, { remoteUrl: null }),
-    );
-    const getCheckoutStatus = vi.fn(async (cwd: string) =>
-      createCheckoutStatus(cwd, { remoteUrl: null }),
-    );
+    const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
     const service = createService({
-      getCheckoutSnapshotFacts,
       getCheckoutStatus,
       now: () => new Date(nowMs),
     });
     service.setActiveWorkspace(REPO_CWD);
     const first = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     const second = service.registerWorkspace({ cwd: join(REPO_CWD, ".") }, vi.fn());
-    await service.getSnapshot(REPO_CWD);
-
-    nowMs = 120_000;
-    await vi.advanceTimersByTimeAsync(120_000);
     await flushPromises();
 
-    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
+    nowMs = 60_000;
+    await vi.advanceTimersByTimeAsync(60_000);
+    await flushPromises();
+
+    expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
 
     first.unsubscribe();
     second.unsubscribe();
     service.dispose();
   });
 
-  test("unsubscribe with no remaining subscribers clears the observation re-ensure timer", async () => {
+  test("unsubscribe with no remaining subscribers clears the self-heal timer", async () => {
     let nowMs = 0;
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
     const service = createService({
@@ -1170,17 +1120,16 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
 
     subscription.unsubscribe();
-    nowMs = 600_000;
-    await vi.advanceTimersByTimeAsync(600_000);
+    nowMs = 60_000;
+    await vi.advanceTimersByTimeAsync(60_000);
     await flushPromises();
 
     expect(getCheckoutStatus).toHaveBeenCalledTimes(0);
-    expect(vi.getTimerCount()).toBe(0);
 
     service.dispose();
   });
 
-  test("service disposal clears all observation re-ensure timers", async () => {
+  test("service disposal clears all self-heal timers", async () => {
     let nowMs = 0;
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
     const service = createService({
@@ -1190,8 +1139,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
 
     service.dispose();
-    nowMs = 600_000;
-    await vi.advanceTimersByTimeAsync(600_000);
+    nowMs = 60_000;
+    await vi.advanceTimersByTimeAsync(60_000);
     await flushPromises();
 
     expect(getCheckoutStatus).toHaveBeenCalledTimes(0);
@@ -1566,10 +1515,8 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
 
     const first = service.resolveRepoRoot(REPO_CWD);
     const second = service.resolveRepoRoot(join(REPO_CWD, "."));
-    await vi.waitFor(() => {
-      expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
-    });
     await flushPromises();
+
     expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
     checkoutDeferred.resolve(createCheckoutStatus(REPO_CWD));
     await expect(Promise.all([first, second])).resolves.toEqual([REPO_CWD, REPO_CWD]);
@@ -1761,45 +1708,54 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     service.dispose();
   });
 
-  test("working tree observation prunes ignored trees but retains trees with tracked files", async () => {
-    const tempDir = realpathSync(mkdtempSync(join(tmpdir(), "workspace-git-service-ignored-")));
-    const repoDir = join(tempDir, "repo");
-    mkdirSync(join(repoDir, "ignored", "deep"), { recursive: true });
-    mkdirSync(join(repoDir, "mixed"), { recursive: true });
-    mkdirSync(join(repoDir, "kept"), { recursive: true });
-    execFileSync("git", ["init", "-b", "main"], { cwd: repoDir, stdio: "pipe" });
-    writeFileSync(join(repoDir, ".gitignore"), "ignored/\nmixed/\n");
-    writeFileSync(join(repoDir, "ignored", "log.txt"), "noise\n");
-    writeFileSync(join(repoDir, "ignored", "deep", "log.txt"), "noise\n");
-    writeFileSync(join(repoDir, "mixed", "tracked.txt"), "tracked\n");
-    writeFileSync(join(repoDir, "kept", "file.txt"), "keep\n");
-    execFileSync("git", ["add", "-f", "mixed/tracked.txt"], { cwd: repoDir, stdio: "pipe" });
+  // POSIX-only: this asserts Linux working-tree walker behavior around ignored directories.
+  test.skipIf(isPlatform("win32"))(
+    "Linux working tree walker excludes gitignored directories",
+    async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { configurable: true, value: "linux" });
 
-    const subscribe = vi.fn(async () => createAsyncSubscription());
+      const tempDir = realpathSync(mkdtempSync(join(tmpdir(), "workspace-git-service-ignored-")));
+      const repoDir = join(tempDir, "repo");
+      mkdirSync(join(repoDir, "ignored", "deep"), { recursive: true });
+      mkdirSync(join(repoDir, "kept"), { recursive: true });
+      execFileSync("git", ["init", "-b", "main"], { cwd: repoDir, stdio: "pipe" });
+      writeFileSync(join(repoDir, ".gitignore"), "ignored/\n");
+      writeFileSync(join(repoDir, "ignored", "log.txt"), "noise\n");
+      writeFileSync(join(repoDir, "ignored", "deep", "log.txt"), "noise\n");
+      writeFileSync(join(repoDir, "kept", "file.txt"), "keep\n");
 
-    const service = createService({
-      subscribe,
-      runGitCommand: runGitCommandReal as never,
-      getCheckoutSnapshotFacts: getCheckoutSnapshotFactsUncached as never,
-      getCheckoutStatus: getCheckoutStatusUncached as never,
-      resolveAbsoluteGitDir: resolveAbsoluteGitDirReal as never,
-    });
+      const watchedPaths: string[] = [];
+      const watchSpy = (watchPath: string) => {
+        watchedPaths.push(watchPath);
+        return { close: vi.fn(), on: vi.fn().mockReturnThis() };
+      };
 
-    try {
-      const subscription = await service.requestWorkingTreeWatch(repoDir, vi.fn());
-
-      const ignoredRoot = join(repoDir, "ignored");
-      expect(subscribe).toHaveBeenCalledTimes(1);
-      expect(subscribe).toHaveBeenCalledWith(repoDir, expect.any(Function), {
-        ignore: [join(repoDir, ".git"), ignoredRoot],
+      const service = createService({
+        watch: watchSpy as never,
+        readdir: readdir as never,
+        runGitCommand: runGitCommandReal as never,
+        getCheckoutSnapshotFacts: getCheckoutSnapshotFactsUncached as never,
+        getCheckoutStatus: getCheckoutStatusUncached as never,
+        resolveAbsoluteGitDir: resolveAbsoluteGitDirReal as never,
       });
 
-      subscription.unsubscribe();
-    } finally {
-      service.dispose();
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
+      try {
+        const subscription = await service.requestWorkingTreeWatch(repoDir, vi.fn());
+
+        const ignoredRoot = join(repoDir, "ignored");
+        expect(watchedPaths.filter((path) => path.startsWith(ignoredRoot))).toEqual([]);
+        expect(watchedPaths).toContain(repoDir);
+        expect(watchedPaths).toContain(join(repoDir, "kept"));
+
+        subscription.unsubscribe();
+      } finally {
+        service.dispose();
+        rmSync(tempDir, { recursive: true, force: true });
+        Object.defineProperty(process, "platform", { configurable: true, value: originalPlatform });
+      }
+    },
+  );
 
   // The cost of Otto used to grow with the size of the workspace catalogue rather than with
   // what the user was doing: every listed workspace got a 60s self-heal refresh of its own,

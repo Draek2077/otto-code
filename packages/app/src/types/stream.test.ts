@@ -129,10 +129,12 @@ function assistantTimeline(
   text: string,
   provider: AgentProvider = "claude",
   messageId?: string,
+  turnId?: string,
 ): AgentStreamEventPayload {
   return {
     type: "timeline",
     provider,
+    ...(turnId ? { turnId } : {}),
     item: { type: "assistant_message", text, ...(messageId ? { messageId } : {}) },
   };
 }
@@ -1263,6 +1265,49 @@ describe("stream reducer canonical tool calls", () => {
       next[0]?.kind === "assistant_message" ? next[0].text : null,
       "Saved that preference. Right. And it probably isn't.",
     );
+  });
+
+  it("keeps a late assistant segment before a queued follow-up from the next turn", () => {
+    const tail: StreamItem[] = [];
+    const head: StreamItem[] = [
+      {
+        kind: "assistant_message",
+        id: "assistant-first",
+        messageId: "assistant-first",
+        turnId: "turn-first",
+        text: "Done.",
+        timestamp: new Date("2025-01-01T11:22:00Z"),
+      },
+      {
+        kind: "user_message",
+        id: "user-follow-up",
+        clientMessageId: "user-follow-up",
+        turnId: "turn-second",
+        text: "One more thing.",
+        timestamp: new Date("2025-01-01T11:22:01Z"),
+      },
+    ];
+
+    const result = applyStreamEvent({
+      tail,
+      head,
+      event: assistantTimeline("Checks pass.", "claude", "assistant-final", "turn-first"),
+      timestamp: new Date("2025-01-01T11:22:02Z"),
+      source: "live",
+    });
+
+    expect(result.tail).toEqual([]);
+    expect(
+      result.head.map((item) => [item.kind, item.kind === "assistant_message" ? item.text : null]),
+    ).toEqual([
+      ["assistant_message", "Done."],
+      ["assistant_message", "Checks pass."],
+      ["user_message", null],
+    ]);
+    expect(result.head[1]).toMatchObject({
+      messageId: "assistant-final",
+      turnId: "turn-first",
+    });
   });
 });
 

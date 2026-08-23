@@ -3,7 +3,12 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, ChevronRight, X } from "@/components/icons/material-icons";
-import { TodoSummaryMarker, TodoTaskList, useTodoCounts } from "@/components/todo-task-list";
+import {
+  TodoSummaryMarker,
+  TodoTaskList,
+  TodoTaskListProgress,
+  useTodoCounts,
+} from "@/components/todo-task-list";
 import type { Theme } from "@/styles/theme";
 import type { TodoListStreamItem } from "./select";
 
@@ -28,14 +33,10 @@ export interface CompactPinnedTaskListCardProps {
 }
 
 /**
- * The phone form of the pinned checklist: one row deep until the user asks for
- * more. Collapsed, it spends its whole width on the two things worth a glance -
- * how far along the agent is (done/total) and a single glyph for the phase:
- * hollow for nothing started, pulsing while working, a filled check when every
- * task is done (see TodoSummaryMarker). Tapping the row expands the same
- * checkable body the desktop card shows, so starting collapsed costs nothing.
- * The desktop card is unusable here - it eats a third of a phone screen to show
- * rows the user is not reading yet.
+ * The shared checklist form: one row deep until the user asks for more. The
+ * progress bar stays at the top even while collapsed, while the summary row
+ * carries done/total plus a phase glyph. Tapping the row opens the task detail
+ * only when the user wants it, on desktop and compact screens alike.
  */
 export function CompactPinnedTaskListCard({
   item,
@@ -55,37 +56,40 @@ export function CompactPinnedTaskListCard({
 
   return (
     <>
-      <View style={styles.row}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={expanded ? EXPANDED_STATE : COLLAPSED_STATE}
-          accessibilityLabel={total > 0 ? `${title} ${progress}` : title}
-          testID="pinned-task-list-compact-toggle"
-          onPress={toggle}
-          style={styles.toggle}
-        >
-          <TodoSummaryMarker phase={phase} animationsEnabled={animationsEnabled} />
-          <Text style={styles.label} numberOfLines={1}>
-            {title}
-          </Text>
-          {total > 0 ? <Text style={styles.count}>{progress}</Text> : null}
-          <View style={styles.spacer} />
-          {expanded ? (
-            <ThemedChevronDown size={16} uniProps={foregroundMutedColorMapping} />
-          ) : (
-            <ThemedChevronRight size={16} uniProps={foregroundMutedColorMapping} />
-          )}
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("message.todo.dismiss")}
-          testID="pinned-task-list-overlay-dismiss"
-          onPress={onDismiss}
-          style={styles.dismiss}
-          hitSlop={8}
-        >
-          <ThemedX size={16} uniProps={foregroundMutedColorMapping} />
-        </Pressable>
+      <View style={styles.header}>
+        <View style={styles.row}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={expanded ? EXPANDED_STATE : COLLAPSED_STATE}
+            accessibilityLabel={total > 0 ? `${title} ${progress}` : title}
+            testID="pinned-task-list-compact-toggle"
+            onPress={toggle}
+            style={styles.toggle}
+          >
+            {expanded ? (
+              <ThemedChevronDown size={16} uniProps={foregroundMutedColorMapping} />
+            ) : (
+              <ThemedChevronRight size={16} uniProps={foregroundMutedColorMapping} />
+            )}
+            <TodoSummaryMarker phase={phase} animationsEnabled={animationsEnabled} />
+            <Text style={styles.label} numberOfLines={1}>
+              {title}
+            </Text>
+            {total > 0 ? <Text style={styles.count}>{progress}</Text> : null}
+            <View style={styles.spacer} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("message.todo.dismiss")}
+            testID="pinned-task-list-overlay-dismiss"
+            onPress={onDismiss}
+            style={styles.dismiss}
+            hitSlop={8}
+          >
+            <ThemedX size={16} uniProps={foregroundMutedColorMapping} />
+          </Pressable>
+        </View>
+        <TodoTaskListProgress items={item.items} animationsEnabled={animationsEnabled} />
       </View>
       {expanded ? (
         <ScrollView
@@ -94,7 +98,12 @@ export function CompactPinnedTaskListCard({
           showsVerticalScrollIndicator={false}
           nestedScrollEnabled
         >
-          <TodoTaskList items={item.items} animationsEnabled={animationsEnabled} emptyLabel="" />
+          <TodoTaskList
+            items={item.items}
+            animationsEnabled={animationsEnabled}
+            emptyLabel=""
+            showProgress={false}
+          />
         </ScrollView>
       ) : null}
     </>
@@ -102,6 +111,12 @@ export function CompactPinnedTaskListCard({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  // The header owns both the always-visible summary and its progress rail. The
+  // detail list begins only below the divider, so collapsing never hides the
+  // work-state visual.
+  header: {
+    paddingTop: theme.spacing[1],
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",

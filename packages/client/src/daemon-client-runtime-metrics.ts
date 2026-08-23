@@ -65,6 +65,8 @@ export interface DaemonClientTrafficHotspot {
 export interface DaemonClientInboundDispatchTiming {
   at: number;
   type: string;
+  /** Set for agent-scoped messages, so a capture can tell one hot agent from a spread. */
+  agentId?: string;
   bytes: number;
   decodeAndValidateMs: number;
   internalDispatchMs: number;
@@ -338,6 +340,7 @@ function cloneInboundDispatchTiming(
   return {
     at: timing.at,
     type: timing.type,
+    agentId: timing.agentId,
     bytes: timing.bytes,
     decodeAndValidateMs: timing.decodeAndValidateMs,
     internalDispatchMs: timing.internalDispatchMs,

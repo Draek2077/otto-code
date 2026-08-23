@@ -5,7 +5,7 @@ title: "Integrate Paseo v0.4.0 and converge on upstream structure"
 status: "confirmed"
 tags: ["upstream","paseo","integration","v0-4-0","merge"]
 created_at: "2026-08-21T13:40:49.704Z"
-updated_at: "2026-08-21T22:35:49.459Z"
+updated_at: "2026-08-22T20:33:33.278Z"
 ---
 # Integrate Paseo v0.4.0 and converge on upstream structure
 
@@ -71,3 +71,8 @@ Otto must integrate Paseo v0.4.0 from the v0.2.5 merge baseline on an isolated m
   summary: "Post-merge visual repair: `packages/app/src/agent-controls/icons.ts` now restores the pre-Paseo Material Symbols mapping for mode metadata (`LocalPolice`, `PrivacyTip`, `ShieldPerson`, `ShieldToggle`, and the established shield variants) and uses `ShieldQuestionMark` for unknown mode metadata instead of the Lucide `Bot` fallback. Existing mode names and tier-color rendering in `mode-control.tsx` remain unchanged. `packages/app/src/agent-controls/icons.test.ts` covers the mapping and fallback; app typecheck, targeted lint, and 14 focused mode/icon tests pass."
   source: "Verified local code comparison and focused app checks on 2026-08-21"
   affects: ["agent-mode-picker-preserves-otto-visual-language"]
+- time: "2026-08-22T20:33:33.278Z"
+  kind: "evidence"
+  summary: "Release validation finding for v0.8.13 (2026-08-22): the tag was cut before the v0.4.0 convergence fixes had landed. CI run 32591566818 failed in the client SDK, module-size ceiling, app unit, desktop unit, server unit, and Playwright jobs; Android native tests inside CI passed, while the Android APK release run 32591570260 failed earlier in `packages/app`'s `eas-build-post-install`. The tag invokes missing npm script `build:mermaid-webview`; post-tag commit c1825c164 changes this to the existing `build:mermaid-runtime` and documents the incomplete Mermaid merge. Post-tag commits 42f7b5ea3, f05e42183, b78d2ff93, 7a5bfa2fe, c918c32a9, and 8c07bf166 directly repair failures reported by the tag's app, project-routing, server, and E2E checks. Desktop Release run 32591570302 succeeded for Linux, Windows, and unsigned macOS artifacts and finalized the release. Deploy App run 32591570283 reached its combined `Build and deploy to Cloudflare Pages` step after dependency build, typecheck, and project setup passed; raw step logs were not publicly available, so whether its final failure was Expo web export or Cloudflare authentication/deployment remains unproven from the accessible record."
+  source: "GitHub Actions run 32591566818, Deploy App run 32591570283, Android APK Release run 32591570260, Desktop Release run 32591570302; release tag v0.8.13 at a9000ee"
+  affects: ["paseo-v040-upstream-integration"]

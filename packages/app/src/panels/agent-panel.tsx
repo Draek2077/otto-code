@@ -163,6 +163,11 @@ import { openProviderSubagentTab } from "@/subagents/open-provider-subagent-tab"
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
 
+// Otto's pinned task-list overlay is the task-tracking surface. Keep Paseo's
+// inline composer panel available for upstream convergence, but do not mount a
+// second task-list UI.
+const SHOW_PASEO_TASK_LIST_PANEL = false;
+
 interface ChatAgentStateShape {
   serverId: string | null;
   id: string | null;
@@ -2031,7 +2036,7 @@ function ActiveAgentComposer({
           typed, and carries the Stop for the chain. Only renders once a
           suggestion has actually been followed. */}
       <FollowSuggestionTrack serverId={serverId} agentId={agentId} />
-      <AgentTaskList serverId={serverId} agentId={agentId} />
+      {SHOW_PASEO_TASK_LIST_PANEL ? <AgentTaskList serverId={serverId} agentId={agentId} /> : null}
       <SubagentsTrack
         rows={subagentRows}
         onOpenSubagent={handleOpenSubagent}

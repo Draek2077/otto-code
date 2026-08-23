@@ -50,6 +50,7 @@ import {
   shouldShowHeaderBrainButton,
   WorkspaceBrainButton,
 } from "@/components/brain/workspace-brain-button";
+import { useBrainRail } from "@/components/brain/use-brain-rail-state";
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { ScreenTitle } from "@/components/headers/screen-title";
@@ -2609,10 +2610,12 @@ function WorkspaceScreenContent({
   // The Brain status light moves into the header whenever the sidebar is not
   // showing its own, so the local AI host's state is visible at all times rather
   // than only while the sidebar happens to be open.
-  const showBrainAction = shouldShowHeaderBrainButton({
-    isCompact: isMobile,
-    isSidebarOpen,
-  });
+  const brainRail = useBrainRail();
+  const showBrainAction =
+    shouldShowHeaderBrainButton({
+      isCompact: isMobile,
+      isSidebarOpen,
+    }) && brainRail.visible;
   const headerActionFit = useMemo(
     () =>
       resolveCompactHeaderActions({

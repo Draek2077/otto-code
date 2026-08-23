@@ -27,6 +27,17 @@ if (-not $env:OTTO_DEV_HOME) {
 }
 if (-not $env:OTTO_DEV_DAEMON_PORT) { $env:OTTO_DEV_DAEMON_PORT = "6799" }
 
+# Shed daemon-inherited Otto variables before establishing the lane. When the
+# lane is spawned by a running Otto (a Preview start, a worktree service), the
+# child inherits that daemon's OTTO_HOME and OTTO_LISTEN - and dev-home honors
+# an inherited OTTO_HOME, so the "isolated" lane daemon would try to start over
+# the parent's home and die on its single-instance lock instead of ever
+# reaching agent-home. The lane owns its home and port outright; anything it
+# inherited pointing at another lane is noise, not intent.
+Remove-Item Env:OTTO_HOME -ErrorAction SilentlyContinue
+Remove-Item Env:OTTO_LISTEN -ErrorAction SilentlyContinue
+Remove-Item Env:OTTO_DEV_DAEMON_ENDPOINT -ErrorAction SilentlyContinue
+
 $Dev = Initialize-OttoDevEnvironment
 
 $MetroPort = if ($env:OTTO_AGENT_METRO_PORT) { $env:OTTO_AGENT_METRO_PORT } else { "8095" }

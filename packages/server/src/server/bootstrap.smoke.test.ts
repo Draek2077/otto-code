@@ -234,13 +234,19 @@ describe("otto daemon bootstrap", () => {
     }
   });
 
-  test("relay config changes during Hub enrollment reach the live runtime", async () => {
-    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-relay-startup-"));
-    const paseoHome = path.join(paseoHomeRoot, ".paseo");
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
-    await mkdir(paseoHome, { recursive: true });
+  // DISABLED(hub): Hub is a permanent exclusion (docs/upstream-merges.md) -
+  // bootstrap.ts's HubRelationshipController import now resolves to the inert
+  // stand-in in hub-disabled.ts, so a real daemon booted through
+  // createOttoDaemon never reaches enrollment. `rg "DISABLED\(hub\)"` finds
+  // every piece; re-enabling means repointing those specifiers and un-skipping
+  // this test.
+  test.skip("relay config changes during Hub enrollment reach the live runtime", async () => {
+    const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-relay-startup-"));
+    const ottoHome = path.join(ottoHomeRoot, ".otto");
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
+    await mkdir(ottoHome, { recursive: true });
     await writeFile(
-      path.join(paseoHome, "hub-relationship.json"),
+      path.join(ottoHome, "hub-relationship.json"),
       `${JSON.stringify({
         version: 1,
         state: "pending",
@@ -281,24 +287,24 @@ describe("otto daemon bootstrap", () => {
         return { close: () => undefined };
       },
     };
-    const config: PaseoDaemonConfig = {
+    const config: OttoDaemonConfig = {
       listen: "127.0.0.1:0",
-      paseoHome,
+      ottoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: false,
       staticDir,
       mcpDebug: false,
       agentClients: createTestAgentClients(),
-      agentStoragePath: path.join(paseoHome, "agents"),
+      agentStoragePath: path.join(ottoHome, "agents"),
       relayEnabled: false,
       relayEndpoint: "127.0.0.1:9",
       relayUseTls: false,
-      appBaseUrl: "https://app.paseo.sh",
+      appBaseUrl: "https://app.otto-code.ai",
       openai: undefined,
       speech: undefined,
     };
-    const daemon = await createPaseoDaemon(config, pino({ level: "silent" }), {
+    const daemon = await createOttoDaemon(config, pino({ level: "silent" }), {
       hubRelationshipRemote: remote,
     });
     const starting = daemon.start();
@@ -326,7 +332,7 @@ describe("otto daemon bootstrap", () => {
       await starting.catch(() => undefined);
       await client?.close().catch(() => undefined);
       await daemon.stop().catch(() => undefined);
-      await rm(paseoHomeRoot, { recursive: true, force: true });
+      await rm(ottoHomeRoot, { recursive: true, force: true });
       await rm(staticDir, { recursive: true, force: true });
     }
   });
