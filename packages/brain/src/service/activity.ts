@@ -221,6 +221,79 @@ export interface InferenceActivitySnapshot {
 }
 
 /**
+ * A caller's exclusive claim on one tracked request.
+ *
+ * Handed out by `ReasoningTracker.begin` and released exactly once. Releasing
+ * is terminal: every method on a released lease is a no-op, so a chunk that
+ * arrives after the client has gone cannot revive the request it names. That is
+ * not a theoretical concern - it is the shape of the bug this type exists to
+ * make impossible (see `begin`).
+ */
+export interface InferenceLease {
+  /** This request's id, for logs and for joining to an engine slot. */
+  readonly id: string;
+  observe(text: string): void;
+  setSlot(slotId: number): void;
+  /** Idempotent, and safe to call from every branch that can end a stream. */
+  end(): void;
+}
+
+/** What the engine says about itself, for `ReasoningTracker.reconcile`. */
+export interface EngineSlotTruth {
+  /**
+   * Slot ids llama-server reports as actively processing, or null when this
+   * build reports a count but no per-slot rows. Null demotes every request to
+   * the conservative unpinned rule.
+   */
+  busySlots: ReadonlySet<number> | null;
+  /** How many slots are busy, or null when the sample failed - which reaps nothing. */
+  busyCount: number | null;
+}
+
+/** One request the reaper cleared, and the evidence worth logging about it. */
+export interface ReapedRequest {
+  id: string;
+  stage: InferenceStage;
+  slotId: number | null;
+  ageMs: number;
+}
+
+/** Everything known about one in-flight request. */
+interface RequestState {
+  stage: InferenceStage;
+  /** The engine slot this request was pinned to at dispatch, when it was. */
+  slotId: number | null;
+  /** Tail of the last transport chunk, so a field name split by TCP is still detected. */
+  tail: string;
+  /** This runtime leaves reasoning inline as `<think>...</think>`. */
+  inlineReasoning: boolean;
+  startedAt: number;
+  /** The last chunk, pin, or dispatch. Recent activity is proof of life. */
+  lastSignalAt: number;
+  /** Consecutive samples in which the engine has contradicted this request. */
+  strikes: number;
+}
+
+/**
+ * How long a request may be silent before the reaper will consider it at all.
+ *
+ * Long enough to cover the gap between proxy dispatch and llama-server picking
+ * the task up, which is the one window where a healthy request and an idle
+ * engine legitimately coexist.
+ */
+const INFERENCE_QUIET_MS = 5_000;
+
+/**
+ * How many consecutive contradicting samples clear a request.
+ *
+ * More than one because a single sample can catch a real dispatch mid-flight;
+ * small because the status sampler runs about once a second while anything
+ * claims to be busy, so a genuine leak is gone in seconds rather than surviving
+ * until someone restarts the service.
+ */
+const INFERENCE_STRIKES = 3;
+
+/**
  * Which in-flight completions are currently mid-thought.
  *
  * A request counts as thinking once reasoning has gone past and before any
@@ -235,19 +308,10 @@ export interface InferenceActivitySnapshot {
  * generates content; the aggregate counts must preserve all three.
  */
 export class ReasoningTracker {
-  #requests = new Map<string, InferenceStage>();
-  /**
-   * The llama-server slot a request was pinned to at dispatch, so its proxy-side
-   * stage can be attributed to the engine row the panel actually shows. Set once
-   * per request (see `setSlot`), never on the per-chunk path.
-   */
-  #slots = new Map<string, number>();
-  /** Tail of the last transport chunk, so a field name split by TCP is still detected. */
-  #tails = new Map<string, string>();
-  /** Models/runtimes that leave reasoning inline as `<think>…</think>`. */
-  #inlineReasoning = new Set<string>();
+  #requests = new Map<string, RequestState>();
   #listeners = new Set<() => void>();
-  #lastSnapshot = "0:0:0:0";
+  #lastSnapshot = "";
+  #counter = 0;
 
   /**
    * Watch stage counts, not the per-chunk traffic behind them.
@@ -285,73 +349,207 @@ export class ReasoningTracker {
     }
   }
 
-  /** A completion was dispatched to llama-server and awaits its first output delta. */
-  begin(requestId: string): void {
-    if (this.#requests.has(requestId)) return;
-    this.#requests.set(requestId, "processing");
+  /**
+   * Open a lease for a completion that has just been dispatched to
+   * llama-server and awaits its first output delta.
+   *
+   * A lease rather than an id the caller carries around, because every stuck
+   * "thinking" this tracker has produced was a release that did not happen on
+   * some branch of the proxy's event wiring. A lease makes both halves of that
+   * bug unrepresentable: nothing can advance a request without holding its
+   * lease, and a released lease is inert, so a chunk that lands after the
+   * release cannot resurrect the request it belongs to. (The same shape as
+   * `beginActivity` above, for the same reason.)
+   *
+   * Ids are minted here rather than by the caller: two callers sharing one id
+   * would silently share one request's state.
+   */
+  begin(): InferenceLease {
+    this.#counter += 1;
+    const id = `s${this.#counter}`;
+    const now = Date.now();
+    this.#requests.set(id, {
+      stage: "processing",
+      slotId: null,
+      tail: "",
+      inlineReasoning: false,
+      startedAt: now,
+      lastSignalAt: now,
+      strikes: 0,
+    });
     this.#announce();
+
+    let open = true;
+    return {
+      id,
+      observe: (text: string) => {
+        if (!open) return;
+        this.#observe(id, text);
+      },
+      setSlot: (slotId: number) => {
+        if (!open) return;
+        this.#setSlot(id, slotId);
+      },
+      end: () => {
+        if (!open) return;
+        open = false;
+        this.#drop([id]);
+      },
+    };
   }
 
   /**
-   * Record the engine slot this request was pinned to. Called exactly once per
-   * request, at dispatch - the pin is injected into the outbound body before
-   * the request goes out, so the association exists before the first chunk and
-   * `observe` never has to learn about it.
+   * Record the engine slot this request was pinned to. Called at dispatch: the
+   * pin is injected into the outbound body before the request goes out, so the
+   * association exists before the first chunk and `observe` never has to learn
+   * about it.
    *
-   * Idempotent and self-cleaning: a repeat for the same slot is a no-op, and a
-   * different slot replaces it, so a request that somehow moves slots (a
-   * restarted engine hands a task out again) reports where it is now.
+   * The pin is also the reaper's best evidence. A pinned request can be checked
+   * against the one engine row that would be busy if it were really running,
+   * which is what lets a leak be cleared while other chats keep working.
    */
-  setSlot(requestId: string, slotId: number): void {
+  #setSlot(id: string, slotId: number): void {
     if (!Number.isInteger(slotId) || slotId < 0) return;
-    if (this.#slots.get(requestId) === slotId) return;
-    this.#slots.set(requestId, slotId);
+    const state = this.#requests.get(id);
+    if (!state || state.slotId === slotId) return;
+    state.slotId = slotId;
+    this.#touch(state);
     this.#announce();
   }
 
-  /** Note a chunk of `requestId`'s stream. Cheap enough to call per chunk. */
-  observe(requestId: string, text: string): void {
-    const current = this.#requests.get(requestId);
-    if (current === "generating") return;
-    if (!current) this.#requests.set(requestId, "processing");
+  /** Note a chunk of this request's stream. Cheap enough to call per chunk. */
+  #observe(id: string, text: string): void {
+    const state = this.#requests.get(id);
+    if (!state) return;
+    this.#touch(state);
+    if (state.stage === "generating") return;
 
     // Node can split an SSE JSON field name at any byte. Keeping a small tail
     // makes stage recognition independent of transport chunk boundaries without
     // parsing or retaining the generated content itself.
-    const combined = `${this.#tails.get(requestId) ?? ""}${text}`;
-    this.#tails.set(requestId, combined.slice(-128));
-    if (this.#inlineReasoning.has(requestId)) {
+    const combined = `${state.tail}${text}`;
+    state.tail = combined.slice(-128);
+    if (state.inlineReasoning) {
       if (combined.includes("</think>")) {
-        this.#inlineReasoning.delete(requestId);
-        this.#requests.set(requestId, "generating");
+        state.inlineReasoning = false;
+        state.stage = "generating";
         this.#announce();
       }
       return;
     }
     if (combined.includes("<think>")) {
-      this.#inlineReasoning.add(requestId);
-      this.#requests.set(requestId, "thinking");
+      state.inlineReasoning = true;
+      state.stage = "thinking";
       this.#announce();
       return;
     }
     if (chunkHasContent(combined)) {
-      this.#requests.set(requestId, "generating");
+      state.stage = "generating";
       this.#announce();
       return;
     }
-    if (chunkHasReasoning(combined) && current !== "thinking") {
-      this.#requests.set(requestId, "thinking");
+    if (chunkHasReasoning(combined) && state.stage !== "thinking") {
+      state.stage = "thinking";
       this.#announce();
     }
   }
 
-  /** Forget the request. Must be called on end *and* on error, or the flag sticks. */
-  end(requestId: string): void {
-    this.#requests.delete(requestId);
-    this.#slots.delete(requestId);
-    this.#tails.delete(requestId);
-    this.#inlineReasoning.delete(requestId);
-    this.#announce();
+  /** Any sign of life resets the reaper's case against a request. */
+  #touch(state: RequestState): void {
+    state.lastSignalAt = Date.now();
+    state.strikes = 0;
+  }
+
+  #drop(ids: readonly string[]): void {
+    let removed = false;
+    for (const id of ids) removed = this.#requests.delete(id) || removed;
+    if (removed) this.#announce();
+  }
+
+  /**
+   * Forget every slot pin, because the engine's slots did not survive its
+   * relaunch.
+   *
+   * The mirror of `Scheduler.forgetSlots`, and required for the same reason: a
+   * pin that outlives the process it named is no longer evidence. Worse than
+   * useless, in fact - a stale pin can collide with a NEW request's slot id,
+   * and the reaper would read that unrelated busy row as proof the dead request
+   * is still alive. Dropping the pins demotes those requests to the
+   * conservative unpinned rule, which clears them once the engine is quiet.
+   */
+  forgetSlots(): void {
+    let changed = false;
+    for (const state of this.#requests.values()) {
+      if (state.slotId === null) continue;
+      state.slotId = null;
+      changed = true;
+    }
+    if (changed) this.#announce();
+  }
+
+  /**
+   * Drop tracked requests the engine's own account of itself contradicts.
+   *
+   * The safety net under the lease, and it exists because `active` outranks
+   * every engine signal on the rail: one release that never happened claims
+   * "thinking" until the service restarts. The ops tracker already refuses that
+   * bargain by probing the recorded pid, on the principle that a status stuck
+   * on "calibrating" forever is worse than no status at all. This is the
+   * inference half of the same rule.
+   *
+   * **It must never clear valid work**, so it acts only on positive evidence,
+   * and only on evidence a live request could not produce:
+   *
+   *  1. A request that has sent a chunk (or been pinned, or been dispatched)
+   *     within `INFERENCE_QUIET_MS` is alive. A streaming request is therefore
+   *     never a candidate at all, whatever the engine says this instant.
+   *  2. A PINNED request is checked against its own slot. llama-server marks a
+   *     slot processing for the whole task, prefill included, so a request that
+   *     is genuinely running makes its row busy. That row being idle is the
+   *     contradiction. This is what lets one chat's leak be cleared while
+   *     another chat keeps generating.
+   *  3. An UNPINNED request - or any request when the engine reports no
+   *     per-slot rows - cannot be attributed to a row, so it is cleared only
+   *     when the engine reports nothing running at all. Ambiguity is not
+   *     evidence.
+   *  4. The contradiction has to hold for `INFERENCE_STRIKES` samples in a row.
+   *     A single sample can race the dispatch window, where a request has been
+   *     begun and the engine has not picked it up yet; a run of them cannot.
+   *
+   * A failed slot sample is not evidence either, and reconciles nothing.
+   *
+   * Returns what it reaped, so the caller can log a leak rather than silently
+   * paper over it.
+   */
+  reconcile(truth: EngineSlotTruth): ReapedRequest[] {
+    if (truth.busyCount === null) return [];
+    const now = Date.now();
+    const quietBefore = now - INFERENCE_QUIET_MS;
+    const reaped: ReapedRequest[] = [];
+    for (const [id, state] of this.#requests) {
+      if (state.lastSignalAt > quietBefore) {
+        state.strikes = 0;
+        continue;
+      }
+      const contradicted =
+        state.slotId !== null && truth.busySlots
+          ? !truth.busySlots.has(state.slotId)
+          : truth.busyCount === 0;
+      if (!contradicted) {
+        state.strikes = 0;
+        continue;
+      }
+      state.strikes += 1;
+      if (state.strikes < INFERENCE_STRIKES) continue;
+      reaped.push({
+        id,
+        stage: state.stage,
+        slotId: state.slotId,
+        ageMs: now - state.startedAt,
+      });
+    }
+    this.#drop(reaped.map((entry) => entry.id));
+    return reaped;
   }
 
   get active(): boolean {
@@ -371,11 +569,10 @@ export class ReasoningTracker {
       generating: 0,
     };
     let slotStages: Record<string, InferenceStage> | undefined;
-    for (const [requestId, stage] of this.#requests) {
-      result[stage] += 1;
-      const slot = this.#slots.get(requestId);
-      if (slot === undefined) continue;
-      (slotStages ??= {})[String(slot)] = stage;
+    for (const state of this.#requests.values()) {
+      result[state.stage] += 1;
+      if (state.slotId === null) continue;
+      (slotStages ??= {})[String(state.slotId)] = state.stage;
     }
     if (slotStages) result.slotStages = slotStages;
     return result;

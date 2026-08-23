@@ -788,3 +788,75 @@ test("the handoff erase is acknowledged BEFORE the job's run reaches the engine"
     "the erase lands in the engine's queue ahead of the completion that follows",
   );
 });
+
+test("drops a queued job whose caller went away, without running it", async () => {
+  // The interrupt-while-queued case: a chat is cancelled while its request
+  // still waits behind another model's turn. Admitting it anyway would spend a
+  // full generation on a reader that is gone and hold a slot the live chats are
+  // queued for.
+  const { supervisor, loadModel } = harness(A);
+  const sched = new Scheduler({ supervisor, loadModel });
+
+  const order: string[] = [];
+  const run = (tag: string) => () => {
+    order.push(tag);
+    return Promise.resolve();
+  };
+  let gone = false;
+  const [, dropped] = await Promise.all([
+    sched.submit(A, run("A1")),
+    sched.submit(B, run("B1"), { abandoned: () => gone }),
+    sched.submit(A, run("A2"), {
+      onStart: () => {
+        // B is still queued behind A's turn at this point.
+        gone = true;
+      },
+    }),
+  ]);
+
+  assert.deepEqual(order, ["A1", "A2"], "the abandoned job never ran");
+  assert.equal(dropped, undefined, "an abandoned job resolves rather than rejecting");
+  assert.equal(sched.stats().queued, 0, "and it is gone from the queue");
+});
+
+test("keeps running a job that is abandoned after it has already started", async () => {
+  // Only queued work may be dropped. A running job owns engine state, and only
+  // the work itself can say when that state is finished with.
+  const { supervisor, loadModel } = harness(A);
+  const sched = new Scheduler({ supervisor, loadModel });
+
+  let gone = false;
+  let finished = false;
+  await sched.submit(
+    A,
+    async () => {
+      gone = true;
+      await tick();
+      finished = true;
+    },
+    { abandoned: () => gone },
+  );
+
+  assert.equal(finished, true, "the started job ran to completion");
+});
+
+test("an abandoned check that throws is not permission to drop the job", async () => {
+  const { supervisor, loadModel } = harness(A);
+  const sched = new Scheduler({ supervisor, loadModel });
+
+  let ran = false;
+  await sched.submit(
+    A,
+    () => {
+      ran = true;
+      return Promise.resolve();
+    },
+    {
+      abandoned: () => {
+        throw new Error("predicate blew up");
+      },
+    },
+  );
+
+  assert.equal(ran, true, "a broken predicate must not silently discard work");
+});

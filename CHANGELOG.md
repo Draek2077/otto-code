@@ -29,6 +29,7 @@
 - Keep the composer toolbar stable during rotation and attachment-pill layouts compact
 - Repair upstream drift checks and tag resolution for the Paseo integration
 - Restore Settings search indexing, so matching rows appear and open reliably
+- Stop Otto Brain reporting a thinking slot after a chat is interrupted: request stages are now leased, a cancelled request is never dispatched, and any stage the engine contradicts is released automatically
 
 ## 0.8.12 - 2026-08-20
 

@@ -398,17 +398,6 @@ function handleModelsRoute(
 }
 
 /**
- * Correlates the chunks of one proxied stream for the reasoning tracker. A
- * counter rather than a uuid: it never leaves the process and only has to be
- * unique among the handful of streams in flight at once.
- */
-let streamCounter = 0;
-function nextStreamId(): string {
-  streamCounter += 1;
-  return `s${streamCounter}`;
-}
-
-/**
  * The reasoning tracker is module-scoped rather than per-router because both
  * proxy paths need it and `proxyBuffered` is a free function. One service
  * process hosts exactly one router, so there is nothing to collide with; the
@@ -603,12 +592,16 @@ function proxyBuffered({
   const slotId = slot ?? null;
   return new Promise((resolve) => {
     let settled = false;
-    const streamId = nextStreamId();
+    // Opened before anything can fail, so every exit below has a lease to
+    // release. Releasing is terminal and idempotent, which is what makes it
+    // safe to call `done()` from all six paths that can end this request
+    // without any of them having to know whether another got there first.
+    const lease = reasoning?.begin() ?? null;
     const done = (): void => {
-      // Always release the reasoning flag, including on the error and abort
-      // paths: a stream that dies mid-thought would otherwise pin the rail on
+      // Always release the stage, including on the error and abort paths: a
+      // stream that dies mid-thought would otherwise pin the rail on
       // "thinking" until the service restarts.
-      reasoning?.end(streamId);
+      lease?.end();
       if (!settled) {
         settled = true;
         resolve();
@@ -653,7 +646,13 @@ function proxyBuffered({
         res.writeHead(upstreamRes.statusCode ?? 502, outHeaders);
         const isStream = String(upstreamRes.headers["content-type"] || "").includes("event-stream");
         const upstreamResponseFailed = (error: Error): void => {
-          if (settled) return;
+          // The release runs even when the queue has already settled. On an
+          // interrupt the client's socket close settles first, and this is the
+          // event that says the upstream stream is finally over.
+          if (settled) {
+            lease?.end();
+            return;
+          }
           const message = `llama-server response ended unexpectedly: ${error.message}`;
           telemetry.record({
             at: new Date().toISOString(),
@@ -677,7 +676,7 @@ function proxyBuffered({
           let sawReasoning = false;
           upstreamRes.on("data", (chunk: Buffer) => {
             const text = String(chunk);
-            reasoning?.observe(streamId, text);
+            lease?.observe(text);
             if (chunkHasContent(text)) sawContent = true;
             if (chunkHasReasoning(text)) sawReasoning = true;
           });
@@ -759,12 +758,10 @@ function proxyBuffered({
       done();
     });
 
-    // This is the first authoritative inference-stage signal: the request is
-    // being dispatched to llama-server and is waiting for prompt processing or
-    // its first output delta. The slot association is set once here, at the
-    // same moment, so `observe` stays free of any per-chunk slot work.
-    reasoning?.begin(streamId);
-    if (slotId !== null) reasoning?.setSlot(streamId, slotId);
+    // The slot association is set once, here at dispatch, so `observe` stays
+    // free of any per-chunk slot work - and so the reaper has a row to check
+    // this request against if its release is ever missed.
+    if (slotId !== null) lease?.setSlot(slotId);
     upstream.end(outbound);
   });
 }
@@ -972,6 +969,18 @@ function scheduleCompletion({
     // relaunched - and not at dispatch time either, where a sibling admitted in
     // the same pass could see the same slot free and pin it too.
     let slot: number | null = null;
+    // A queued request outlives its client. The reader can interrupt, close the
+    // chat, or lose the socket while the job still waits behind another model's
+    // turn, and without this the job is admitted anyway: a full generation for
+    // nobody, on a slot the live chats are queued for, wired to a response that
+    // closed before the proxy could listen to it. One flag, read by the
+    // scheduler before it pins anything, keeps the request from ever reaching
+    // the engine. (`close` also fires on a healthy finish, by which point the
+    // job has long since been dispatched and the flag is never read again.)
+    let abandoned = false;
+    res.on("close", () => {
+      abandoned = true;
+    });
     const queued = scheduler.submit(
       model,
       (resident) =>
@@ -987,14 +996,17 @@ function scheduleCompletion({
           reasoning: reasoningTracker,
           slot,
         }),
-      { session, onSlotFree: (id) => (slot = id) },
+      { session, onSlotFree: (id) => (slot = id), abandoned: () => abandoned },
     );
     logger?.info?.(
       `queued ${req.method ?? "POST"} ${req.url ?? "completion"} for ${model.displayName}; queue depth ${scheduler.stats().queued}`,
     );
-    queued.catch((error: unknown) =>
-      sendError(res, 502, `could not serve ${model.displayName}: ${errorMessage(error)}`),
-    );
+    queued.catch((error: unknown) => {
+      // The client may be the reason this failed, and writing into a socket it
+      // already closed throws where nothing is left to catch it.
+      if (res.writableEnded || res.destroyed) return;
+      sendError(res, 502, `could not serve ${model.displayName}: ${errorMessage(error)}`);
+    });
   });
 }
 
@@ -1120,6 +1132,10 @@ export function createRouter({
     if (state === "starting") {
       telemetry.reset();
       scheduler?.forgetSlots();
+      // The tracker's pins name the same vanished slots, and a pin that
+      // outlives the process it named is not evidence - it can collide with a
+      // new request's slot id and shield a dead request from the reaper.
+      reasoningTracker.forgetSlots();
     }
   });
 
@@ -1239,6 +1255,25 @@ export function createRouter({
             () => null,
           )
         : null;
+    // Both truths are in hand exactly here, and nowhere else: `slots` is what
+    // llama-server says is running, `inference` is what the proxy believes. A
+    // missed release used to survive until the service restarted, because
+    // `reasoning` outranks every engine signal on the rail. Reconciling the two
+    // makes any such leak self-heal within a few samples, and `reconcile` is
+    // built so it can only ever clear a request the engine contradicts (see
+    // its own contract).
+    const reaped = reasoningTracker.reconcile({
+      busySlots: slots?.threads ? new Set(slots.threads.map((thread) => thread.slot)) : null,
+      busyCount: slots ? slots.busy : null,
+    });
+    for (const request of reaped) {
+      logger?.warn?.(
+        `released inference stage ${request.id} (${request.stage}` +
+          `${request.slotId === null ? "" : `, slot ${request.slotId}`}) after ` +
+          `${Math.round(request.ageMs / 1000)}s the engine reported it idle - ` +
+          `a completion did not report its end`,
+      );
+    }
     return {
       version,
       // Additive, and separate from `version`: the package version says which
@@ -1407,13 +1442,13 @@ export function createRouter({
           let sawContent = false;
           let sawReasoning = false;
           if (isCompletion) {
-            const streamId = nextStreamId();
+            const lease = reasoningTracker.begin();
             // Released on close, not just on end: an aborted stream would
             // otherwise pin `/__host/status` on "thinking" forever.
-            const releaseReasoning = () => reasoningTracker.end(streamId);
+            const releaseReasoning = () => lease.end();
             upstreamRes.on("data", (chunk: Buffer) => {
               const text = String(chunk);
-              reasoningTracker.observe(streamId, text);
+              lease.observe(text);
               if (chunkHasContent(text)) sawContent = true;
               if (chunkHasReasoning(text)) sawReasoning = true;
             });

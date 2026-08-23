@@ -222,6 +222,20 @@ export interface SchedulerSubmitOptions {
    * and their attribution is not per-slot.
    */
   onSlotFree?: ((slotId: number | null) => void) | null;
+  /**
+   * Asked before this job is admitted: has whoever queued it stopped caring?
+   *
+   * A completion whose client left is the ordinary case - an interrupt, a
+   * closed chat, a dead socket - and it can happen at any point while the job
+   * waits behind another model's turn. Admitting it anyway costs a full
+   * generation of GPU time for a reader that is gone, holds one of the slots
+   * the remaining chats are queued for, and hands the proxy a response that
+   * closed before it could wire a listener to it. Dropping the job here, before
+   * it is pinned to a slot, is the cheapest and least surprising place to
+   * refuse: nothing reaches the engine, no slot is erased for a handoff that
+   * will not happen, and the job's promise settles like any other.
+   */
+  abandoned?: (() => boolean) | null;
 }
 
 /** A queued request or host operation bound to a resolved catalog model. */
@@ -233,6 +247,7 @@ export interface QueuedJob<TSupervisor extends SchedulerSupervisor = SchedulerSu
   session: string | null;
   onStart: (() => void) | null;
   onSlotFree: ((slotId: number | null) => void) | null;
+  abandoned: (() => boolean) | null;
   /**
    * The engine slot this job was pinned to at admission, or null when none was
    * named. Kept on the job so a later pass can exclude it from the ids it hands
@@ -362,6 +377,7 @@ export class Scheduler<
       onStart = null,
       session = null,
       onSlotFree = null,
+      abandoned = null,
     }: SchedulerSubmitOptions = {},
   ): Promise<unknown> {
     return new Promise((resolve, reject) => {
@@ -373,6 +389,7 @@ export class Scheduler<
         session: session ?? null,
         onStart,
         onSlotFree,
+        abandoned: abandoned ?? null,
         slotId: null,
         run,
         resolve,
@@ -407,6 +424,38 @@ export class Scheduler<
     this.queue = kept;
     if (taken.length > 0) this.#announce();
     return taken;
+  }
+
+  /**
+   * Settle and forget every queued or batched job whose caller has given up.
+   *
+   * Run once at the top of each pass, which is every point at which the
+   * scheduler was going to make a decision anyway. Jobs already running are
+   * left alone: they own engine state, and only the work they are doing can say
+   * when it is finished.
+   */
+  #purgeAbandoned(): void {
+    const dropped: QueuedJob<TSupervisor>[] = [];
+    const isAbandoned = (job: QueuedJob<TSupervisor>): boolean => {
+      try {
+        return job.abandoned?.() === true;
+      } catch {
+        // A predicate that throws is not permission to drop the job.
+        return false;
+      }
+    };
+    this.#batch = this.#batch.filter((job) => {
+      if (!isAbandoned(job)) return true;
+      dropped.push(job);
+      return false;
+    });
+    for (const job of this.#take(isAbandoned)) dropped.push(job);
+    if (dropped.length === 0) return;
+    this.logger?.(`dropping ${dropped.length} queued job(s) whose caller went away`);
+    // Resolved, not rejected: the caller asked for this by leaving, and a
+    // rejection would only be reported into a socket that is already gone.
+    for (const job of dropped) job.resolve(undefined);
+    this.#announce();
   }
 
   /** Sessions that currently hold a slot, for affinity. */
@@ -643,6 +692,12 @@ export class Scheduler<
     this.#freeSlotIds = null;
 
     for (;;) {
+      // Before any decision is derived from the queue, drop what nobody is
+      // waiting for, so every count read below is honest. Per iteration rather
+      // than once per pass: a turn boundary is crossed inside this loop, and a
+      // caller can leave while the job ahead of it is being started.
+      this.#purgeAbandoned();
+
       // An exclusive operation owns the engine alone.
       if (this.activeJob !== null) return;
 

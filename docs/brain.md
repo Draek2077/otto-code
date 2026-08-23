@@ -195,6 +195,49 @@ requests. The slot sampler supplies engine-measured output counts and throughput
 nests its generated-token counter under `next_token`; the reader also accepts older top-level field
 spellings so changing the selected runtime does not erase the live view.
 
+### Inference stages are leased, and reconciled against the engine
+
+`inference` is proxy-side state, and it outranks every engine signal the rail derives from: one
+request stuck in `thinking` makes the rail claim "thinking" over a `/slots` sample that reports every
+slot idle. Two rules keep that from happening, and the second exists because the first will
+eventually be got wrong again.
+
+**A tracked request is a lease, not an id.** `ReasoningTracker.begin()` mints the id itself and hands
+back the only handle that can advance or release that request. Releasing is terminal and idempotent,
+so every branch that can end a stream calls `end()` without having to know whether another branch got
+there first, and a chunk that arrives after the client has gone cannot resurrect the request it
+names. That last case is not hypothetical: an interrupt releases on the client's socket close, and
+the upstream socket can still flush a buffered chunk afterwards.
+
+**A queued request whose client left is never dispatched.** `Scheduler.submit` takes an `abandoned`
+predicate, checked before the job is pinned to a slot. A reader can interrupt while its request still
+waits behind another model's turn, and admitting it anyway spends a full generation on nobody, holds
+a slot the live chats are queued for, and hands the proxy a response that closed before it could
+listen to it.
+
+**Anything that still leaks is reaped from the engine's own account of itself.** `/__host/status` is
+the one place where both truths are in hand, so it reconciles them there. The reaper only ever acts
+on positive evidence, and only on evidence a live request could not produce:
+
+- A request that has produced a chunk, been pinned, or been dispatched in the last few seconds is
+  alive. A streaming request is therefore never a candidate, whatever the sample says this instant.
+- A **pinned** request is checked against its own slot row. llama-server marks a slot processing for
+  the whole task, prefill included, so a running request makes its row busy; that row being idle is
+  the contradiction. This is what lets one chat's leak clear while another chat keeps generating.
+- An **unpinned** request, or any request on a build that reports no per-slot rows, cannot be
+  attributed to a row, so it clears only when the engine reports nothing running at all. Ambiguity is
+  not evidence.
+- The contradiction has to hold for several consecutive samples. One sample can race the window
+  between dispatch and the engine picking the task up; a run of them cannot.
+- A failed slot sample reconciles nothing. A brain that cannot see its engine does not get to guess
+  which of its requests are real.
+
+Every reap is logged with the request's stage, slot and age, because a reap means a release was
+missed and that is a bug worth finding, not a state worth quietly absorbing. Slot pins are dropped
+whenever the engine relaunches, for the same reason the scheduler drops its slot owners: an id that
+outlives the process that named it is not evidence, and a stale pin can collide with a new request's
+slot and shield a dead one forever.
+
 The client reads `features.brainConsole` to decide whether the Brain page is offered at all, then
 reads `status.capabilities` to decide which tabs are live. A brain too old for a capability shows
 "Update the brain on this host." There is no fallback path and no degraded reimplementation, per the
