@@ -1,4 +1,4 @@
-appId: ai.ottocode
+appId: me.ottocode.mobile
 ---
 - runFlow:
     when:

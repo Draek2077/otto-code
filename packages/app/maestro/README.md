@@ -7,7 +7,7 @@ failure screenshot proves the intended behavior, not just that the app launched.
 
 `ios-sidebar-close-regression.yaml` exercises close swipes over a semantic header
 and the nested workspace list without activating the content below the swipe.
-Start the `sh.paseo.debug` dev client against the intended Metro server first;
+Start the `me.ottocode.mobile.debug` dev client against the intended Metro server first;
 the flow preserves that running connection.
 
 ```bash
@@ -76,10 +76,23 @@ Do not weaken this flow to only wait for `message-input-root`. That can pass on
 the wrong route. The header assertion and the `New workspace` negative assertion
 are what prove the redirect actually completed.
 
-The scripts assume a development build with package id `ai.ottocode.debug`, an
-already-running local daemon on `127.0.0.1:6868`, and a connected Android device
-or emulator. They call `adb reverse tcp:6868 tcp:6868`; they do not restart the
-daemon.
+The scripts assume a development build with package id `me.ottocode.mobile.debug`, an
+already-running local daemon, and a connected Android device or emulator. They
+call `adb reverse` for the daemon port; they do not restart the daemon.
+
+> **Their default endpoint is `127.0.0.1:6868`, which is the _installed_ app's
+> daemon over `~/.otto`.** The harness creates projects and workspaces, so
+> running it as-is writes test state into your real Otto. Point it at the dev
+> lane instead unless you specifically mean to target the installed app:
+>
+> ```bash
+> OTTO_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6788 \
+>   OTTO_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6788/ws \
+>   bash packages/app/maestro/test-workspace-create-android-crash.sh
+> ```
+>
+> `flows/land-in-chat.yaml` already uses 6788 for this reason. The shell
+> harnesses were written before that convention and still default the other way.
 
 ```bash
 bash packages/app/maestro/test-workspace-create-android-crash.sh
@@ -89,7 +102,7 @@ bash packages/app/maestro/record-workspace-create-android-focus.sh
 Optional environment:
 
 ```bash
-OTTO_MAESTRO_APP_ID=ai.ottocode.debug
+OTTO_MAESTRO_APP_ID=me.ottocode.mobile.debug
 OTTO_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6868
 OTTO_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6868/ws
 OTTO_MAESTRO_PROJECT_PATH=/path/to/git/repo

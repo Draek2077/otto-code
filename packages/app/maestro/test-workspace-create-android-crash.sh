@@ -14,7 +14,7 @@
 #   bash packages/app/maestro/test-workspace-create-android-crash.sh
 #
 # Optional environment:
-#   OTTO_MAESTRO_APP_ID=ai.ottocode.debug
+#   OTTO_MAESTRO_APP_ID=me.ottocode.mobile.debug
 #   OTTO_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6868
 #   OTTO_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6868/ws
 #   OTTO_MAESTRO_PROJECT_PATH=/path/to/git/repo
@@ -26,7 +26,7 @@ FLOW_TEMPLATE_DIR="$REPO_ROOT/packages/app/maestro"
 OUT_DIR="/tmp/otto-workspace-create-android-$(date +%s)"
 CLIENT_EXPORTS="$REPO_ROOT/packages/client/dist/daemon-client.js"
 
-export OTTO_MAESTRO_APP_ID="${OTTO_MAESTRO_APP_ID:-ai.ottocode.debug}"
+export OTTO_MAESTRO_APP_ID="${OTTO_MAESTRO_APP_ID:-me.ottocode.mobile.debug}"
 export OTTO_MAESTRO_DIRECT_ENDPOINT="${OTTO_MAESTRO_DIRECT_ENDPOINT:-127.0.0.1:6868}"
 export OTTO_MAESTRO_DAEMON_WS_URL="${OTTO_MAESTRO_DAEMON_WS_URL:-ws://127.0.0.1:6868/ws}"
 

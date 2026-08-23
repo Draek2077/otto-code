@@ -41,6 +41,8 @@ android {
       // Package the shared, checksum-pinned model as assets/wake-word/*.
       assets.srcDir file("../models")
       assets.srcDir file("$buildDir/generated/wake-word-assets")
+      // sherpa-onnx native libs, unpacked from the pinned AAR (see below).
+      jniLibs.srcDir file("$buildDir/generated/sherpa-onnx/jni")
     }
   }
   defaultConfig {
@@ -52,9 +54,28 @@ android {
   }
 }
 
+// AGP forbids direct local .aar file dependencies in library modules
+// ("bundleDebugAar: hasLocalAarDeps"), so the pinned sherpa-onnx runtime is
+// unpacked at build time into a plain classes.jar (a file dependency, which is
+// allowed) plus its jni/ tree wired in as a jniLibs source dir (see the
+// android block above). Both are derived from the checksum-verified AAR in
+// libs/, so nothing new is committed.
+def sherpaAar = file("libs/sherpa-onnx-1.12.28.aar")
+def unpackSherpaOnnx = tasks.register("unpackSherpaOnnx", Copy) {
+  from { zipTree(sherpaAar) }
+  into file("$buildDir/generated/sherpa-onnx")
+}
+
 dependencies {
-  implementation files("libs/sherpa-onnx-1.12.28.aar")
+  // A plain .jar file dep (allowed in library modules unlike a local .aar),
+  // unpacked from the pinned AAR by the task above.
+  implementation files("$buildDir/generated/sherpa-onnx/classes.jar")
   testImplementation "junit:junit:4.13.2"
+}
+
+// Ensure the unpack runs before any compile task that needs the jar.
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+  dependsOn unpackSherpaOnnx
 }
 
 def sha256 = { File input ->
@@ -115,4 +136,5 @@ def prepareWakeWordLegalAssets = tasks.register("prepareWakeWordLegalAssets", Sy
 
 tasks.named("preBuild").configure {
   dependsOn prepareWakeWordLegalAssets
+  dependsOn unpackSherpaOnnx
 }

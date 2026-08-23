@@ -109,6 +109,7 @@
     "android:release": "npm run android:production --workspace=@otto-code/app",
     "android:clear": "npm run android:clear --workspace=@otto-code/app",
     "android:clean": "npm run android:clean --workspace=@otto-code/app",
+    "android:emu": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/android-emulator.ps1",
     "ios": "npm run ios --workspace=@otto-code/app",
     "web": "npm run web --workspace=@otto-code/app",
     "dev:desktop": "npm run dev --workspace=@otto-code/desktop",

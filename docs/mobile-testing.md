@@ -7,7 +7,7 @@ Agent Device `.ad` scripts are the primary mobile E2E format. An agent discovers
 Record a flow while driving the app normally:
 
 ```bash
-agent-device open sh.paseo.debug \
+agent-device open me.ottocode.mobile.debug \
   --platform ios \
   --session terminal-author \
   --save-script ./packages/app/e2e/mobile/agent-device/terminal.ios.ad
@@ -141,7 +141,7 @@ Two reusable flows handle Expo dev client screens after launch:
 `flows/land-in-chat.yaml` is the canonical "get into a chat" primitive. It `clearState`s, runs `launch.yaml`, taps the welcome screen's direct-connection option, types `127.0.0.1:6788` (the repo dev daemon - **not** the installed app's `6868`), submits, and waits for `message-input-root`. Compose any composer-level fixture on top of it:
 
 ```yaml
-appId: ai.ottocode
+appId: me.ottocode.mobile
 ---
 - runFlow: flows/land-in-chat.yaml
 # ...your scenario here, starting from a ready composer
@@ -244,7 +244,7 @@ done
 Voice mode uses the custom `expo-two-way-audio` Android module, so incoming calls and other system audio owners must be tested with emulator/system commands, not a JS-only test. To verify that voice resume handles denied audio focus without crashing:
 
 ```bash
-adb shell am start -n ai.ottocode/.MainActivity
+adb shell am start -n me.ottocode.mobile/.MainActivity
 # Start voice mode in an existing composer, then background Otto with Home.
 adb emu gsm call 5551234
 # Foreground Otto while the call is still ringing.
@@ -364,8 +364,8 @@ APP_VARIANT=development npx expo run:ios --device
 ```
 
 `APP_VARIANT=development` is required. The `ios` npm script does not set it, and `app.config.js` defaults
-to `production` — so a bare `npm run ios` builds `sh.paseo` and collides with the App Store install instead
-of the `sh.paseo.debug` dev client. Ignore prebuild's `--non-interactive is not supported` warning; use
+to `production`, so a bare `npm run ios` builds `me.ottocode.mobile` and collides with the App Store install instead
+of the `me.ottocode.mobile.debug` dev client. Ignore prebuild's `--non-interactive is not supported` warning; use
 `CI=1` if you need non-interactive.
 
 ### Signing needs a working Apple ID token in Xcode
@@ -443,6 +443,70 @@ after launch when the phone's screen is off — the app is suspended and killed 
 This is **not** a build defect. Confirm with a control: launch `com.apple.Preferences` the same way and
 watch it exit identically. Headless install and launch prove the binary is valid and that startup reaches
 RN init; anything about on-screen behavior needs a human holding the phone.
+
+## Android emulator
+
+Setup, the `npm run android:emu` lane, `adb reverse`, and what does and does not hot-reload are all
+in [android.md](android.md). This section is only about driving the emulator for a test.
+
+### Driving and observing with adb alone
+
+`adb` needs no extra tooling and works natively on Windows, which makes it the fastest way to get a
+reproduction, a log and a screenshot. Everything here assumes `npm run android:emu -- start` has
+already booted a device and applied the port reverses.
+
+```bash
+# Evidence
+npm run android:emu -- shot                 # PNG into .tmp/
+npm run android:emu -- logs --crash         # scan the buffer for crash signatures
+npm run android:emu -- logs                 # live tail, filtered to the app
+
+# App lifecycle
+adb shell am start -n me.ottocode.mobile.debug/.MainActivity
+adb shell am force-stop me.ottocode.mobile.debug
+adb shell pm clear me.ottocode.mobile.debug   # wipe app state, including the setup wizard
+
+# Input
+adb shell input tap <x> <y>
+adb shell input swipe <x1> <y1> <x2> <y2> <ms>
+adb shell input text "hello"
+adb shell input keyevent KEYCODE_BACK
+
+# What is actually on screen right now
+adb shell dumpsys window | grep mCurrentFocus
+```
+
+To find coordinates for a tap, take a screenshot and read them off it. Remember that a screenshot is
+in device pixels, so a coordinate measured on a scaled-down copy has to be scaled back up.
+
+> **`pm clear` is the Android equivalent of a fresh install.** It is the only reliable way to get
+> back to the first-run wizard, because the app's settings live in AsyncStorage on device. The
+> `localStorage` trick used to skip the wizard on the web lane does **not** apply here.
+
+### Crash signatures worth grepping for
+
+`logs --crash` fails only on genuine process death: `FATAL EXCEPTION`, `ANR in `, and the two Fabric
+view-parent strings (`failed to insert view`, `specified child already has a parent`) that the
+workspace-creation harness watches for. Ordinary `ReactNativeJS` error lines are reported but do not
+fail, because the app logs handled errors at that level constantly and a check that cries wolf stops
+being read.
+
+Do not add `--------- beginning of crash` to a crash pattern. logcat prints it as a buffer section
+divider on any device that has ever crashed, so it matches when nothing is wrong.
+
+### Maestro on Windows
+
+Maestro is a JVM CLI that expects a POSIX environment; the flows in `packages/app/maestro/` and the
+shell harnesses around them are written for macOS and Linux. On Windows, run them from **WSL**:
+install Maestro inside the distro, and point it at the Windows emulator over adb. The emulator
+itself stays on the Windows side; only the test runner moves.
+
+The flows themselves are platform-neutral and correct to run once Maestro is available.
+
+> **Package ids drifted once and silenced every flow.** `packages/app/maestro/` targeted
+> `ai.ottocode` long after `app.config.js` moved to `me.ottocode.mobile`, so flows failed to find an
+> app that was installed and working. When `APP_VARIANT` or a package id changes, grep the whole
+> repo for the old id, not just `packages/app/src`.
 
 ## iOS Simulator
 

@@ -1,4 +1,4 @@
-appId: ai.ottocode
+appId: me.ottocode.mobile
 ---
 # Ensure sidebar is closed: if sidebar-sessions is visible, close it via swipe left
 - runFlow:

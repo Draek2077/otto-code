@@ -17,7 +17,7 @@ DEVICE_VIDEO="/sdcard/otto-maestro-workspace-create-focused.mp4"
 LOCAL_VIDEO="$VIDEO_DIR/otto-maestro-workspace-create-focused.mp4"
 CLIENT_EXPORTS="$REPO_ROOT/packages/client/dist/daemon-client.js"
 
-export OTTO_MAESTRO_APP_ID="${OTTO_MAESTRO_APP_ID:-ai.ottocode.debug}"
+export OTTO_MAESTRO_APP_ID="${OTTO_MAESTRO_APP_ID:-me.ottocode.mobile.debug}"
 export OTTO_MAESTRO_DIRECT_ENDPOINT="${OTTO_MAESTRO_DIRECT_ENDPOINT:-127.0.0.1:6868}"
 export OTTO_MAESTRO_DAEMON_WS_URL="${OTTO_MAESTRO_DAEMON_WS_URL:-ws://127.0.0.1:6868/ws}"
 

@@ -27,7 +27,9 @@ The formula reserves three digits each for minor and patch. If either reaches `1
 
 ## Prerequisites (local dev)
 
-Local Android builds run on macOS (or Linux) and need the Android toolchain, pinned in `.tool-versions` (`java 21`, `android-sdk 21.0`) and wired up by `.mise.toml` (which derives `ANDROID_HOME` and the command-line tool paths from the `android-sdk` entry). With [mise](https://mise.jdx.dev):
+### macOS and Linux (mise)
+
+The Android toolchain is pinned in `.tool-versions` (`java 21`, `android-sdk 21.0`) and wired up by `.mise.toml` (which derives `ANDROID_HOME` and the command-line tool paths from the `android-sdk` entry). With [mise](https://mise.jdx.dev):
 
 ```bash
 mise install        # java 21 + android-sdk 21.0 command-line tools
@@ -57,6 +59,135 @@ emulator @otto     # start it; leave running
 
 Gradle auto-fetches the platform/build-tools it needs once licenses are accepted, so adjust `android-35` only if it asks for a different level.
 
+### Windows (Android Studio)
+
+Windows does not use mise. Install **Android Studio** and let it own the SDK; everything else is
+already on the machine or comes from the repo.
+
+1. Android Studio → **SDK Manager** → SDK Platforms: install one platform (API 36 is current).
+2. Same dialog → **SDK Tools**: make sure `Android SDK Platform-Tools` and `Android Emulator` are
+   ticked.
+3. SDK Platforms → **Show Package Details**: tick a system image. `google_apis` x86_64 is the right
+   default; take `google_apis_playstore` only if the scenario needs the Play Store app.
+4. **Device Manager** → create a virtual device.
+
+You do **not** need `cmdline-tools` (`sdkmanager` / `avdmanager`) if you create devices through
+Android Studio. It is only worth installing if you want to script AVD creation.
+
+Then verify the whole toolchain in one command:
+
+```bash
+npm run android:emu -- doctor
+```
+
+`doctor` checks the SDK path, the JDK major version, that a system image actually contains a
+`system.img`, that at least one AVD exists, that hardware acceleration is usable, and which of the
+host ports are listening. It prints `[FAIL]` only for things that will genuinely stop a build, so a
+clean run means you can go straight to building.
+
+> **JDK 17 or newer.** The Android Gradle plugin will not run on older Java. `doctor` fails loudly
+> rather than letting Gradle produce a confusing class-version error much later.
+
+> **Hardware acceleration on Windows is WHPX, not HAXM.** HAXM is dead on modern Windows and
+> irrelevant here. If Hyper-V or the Windows Hypervisor Platform is enabled, the emulator uses WHPX
+> automatically. `emulator-check accel` is the authority, and `doctor` runs it for you. Do not go
+> hunting in BIOS before checking it.
+
+## The emulator lane on Windows
+
+`scripts/android-emulator.ps1` (through `npm run android:emu`) is the one entry point. It never
+starts, stops or reconfigures a daemon, so it is safe to run while the installed app (6868) and the
+dev lane (6788) are both up.
+
+```bash
+npm run android:emu -- doctor       # check the toolchain
+npm run android:emu -- start        # boot the AVD, wait for boot, wire up ports
+npm run android:emu -- launch       # start the installed app
+npm run android:emu -- logs --crash # scan the log buffer for crash signatures
+npm run android:emu -- logs         # tail the app log
+npm run android:emu -- shot         # PNG screenshot into .tmp/
+npm run android:emu -- stop
+```
+
+Defaults, all overridable by environment variable:
+
+| Variable                   | Default                    | Notes                                        |
+| -------------------------- | -------------------------- | -------------------------------------------- |
+| `OTTO_ANDROID_AVD`         | `Android_Phone`            | Any name from `emulator -list-avds`          |
+| `OTTO_ANDROID_METRO_PORT`  | `8081`                     | Expo's default                               |
+| `OTTO_ANDROID_DAEMON_PORT` | the dev lane port (`6788`) | Read from `scripts/dev-home.ps1`, never 6868 |
+| `OTTO_ANDROID_APP_ID`      | `me.ottocode.mobile.debug` | Must match `APP_VARIANT` in `app.config.js`  |
+
+### Why `start` waits, and what it waits for
+
+`adb devices` reporting `device` only means `adbd` answered. The property that means the launcher is
+actually up is `sys.boot_completed`. Installing before it flips gives you a silent no-op or an
+`INSTALL_FAILED_*`, so `start` polls for the property rather than the device state.
+
+If a boot hangs or the device comes up wedged, cold-boot it:
+
+```bash
+npm run android:emu -- start --cold
+```
+
+### `adb reverse`, and why it is the default here
+
+The emulator does not share the host's loopback: `localhost` inside the emulator is the emulator.
+There are two ways to reach the host, and they are not equivalent.
+
+- **`adb reverse` (what `start` does).** Forwards the emulator's `localhost:8081` and
+  `localhost:<daemon>` to the host's. The app keeps using its ordinary `localhost` addresses, so
+  **the same JS bundle works unchanged** and you can point the emulator at a Metro and daemon that
+  are already running. Nothing to rebuild.
+- **`10.0.2.2` (the AVD's host alias).** Requires `REACT_NATIVE_PACKAGER_HOSTNAME` and
+  `EXPO_PUBLIC_LOCAL_DAEMON` to be set at build time, because both are inlined into the JS bundle.
+  Changing either one therefore needs a fresh bundle. Use it when `adb reverse` misbehaves, or for
+  the worktree-daemon flow below.
+
+`adb reverse` does not survive an emulator reboot or an `adb kill-server`. Re-apply it with
+`npm run android:emu -- reverse` rather than rebuilding anything.
+
+## What reloads, and what does not
+
+This is the question that wastes the most time, because the answer depends entirely on **where** the
+change is. Metro's Fast Refresh is not a general "picks up changes" mechanism.
+
+| Change                                                              | What it takes                                      |
+| ------------------------------------------------------------------- | -------------------------------------------------- |
+| `packages/app/src/**` (components, hooks, screens)                  | Nothing. Fast Refresh applies it on save           |
+| `packages/protocol`, `packages/client`, `packages/highlight`        | Rebuild the package **and restart Metro**          |
+| `app.config.js`, a config plugin, a native dependency, a permission | `expo prebuild` + a full rebuild and reinstall     |
+| `EXPO_PUBLIC_*` values                                              | Rebuild the bundle; `npx expo start -c` to be safe |
+
+> **Metro snapshots its file map at startup.** `@otto-code/protocol`, `@otto-code/client` and
+> `@otto-code/highlight` resolve through each package's compiled `dist`. A Metro that started while
+> one of those was stale or missing keeps failing with `Unable to resolve @otto-code/...` for the
+> whole session, **even after the watcher rebuilds it**. Restarting Metro is the fix, not another
+> rebuild. `scripts/ensure-app-deps.mjs` builds them before Metro starts for exactly this reason,
+> and skips the work when every `dist` is newer than its sources.
+
+So if you changed daemon-facing protocol or client code and the emulator seems to be ignoring you,
+you are almost certainly right that it is stale. Restart Metro.
+
+## Troubleshooting
+
+| Symptom                                                      | Cause and fix                                                                                                                        |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `Unable to resolve @otto-code/<pkg>` that survives a rebuild | Metro's startup file map is stale. Restart Metro; see above                                                                          |
+| App loads, then cannot reach the daemon                      | `adb reverse` was lost (emulator reboot, `adb kill-server`). Run `npm run android:emu -- reverse`                                    |
+| `Failed to connect to /<lan-ip>:8081`                        | Expo baked a LAN IP into the bundle. Either use `adb reverse`, or rebuild with `REACT_NATIVE_PACKAGER_HOSTNAME=10.0.2.2`             |
+| App connects to the wrong Otto                               | `EXPO_PUBLIC_LOCAL_DAEMON` is unset, so the client defaults to `localhost:6868`, the **installed** app. Set it, or reverse that port |
+| Screenshot file will not open                                | Something captured `exec-out screencap` through a shell. Use `npm run android:emu -- shot`; see the multi-display note below         |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE`                         | A build with a different signing key is installed. `adb uninstall me.ottocode.mobile.debug` first                                    |
+| Emulator boots to a black screen                             | Try `--cold`. If it persists, the GPU mode is suspect: `emulator @<avd> -gpu swiftshader_indirect`                                   |
+| Gradle fails on a Java class version                         | Wrong JDK. `npm run android:emu -- doctor` reports the major version                                                                 |
+
+> **Screenshots and multi-display AVDs.** `adb exec-out screencap -p` prepends a
+> `Multiple displays were found` warning to **stdout** on any AVD with more than one display (the
+> Resizable device is one). The PNG arrives with a few hundred bytes of English before its magic
+> number and no viewer will open it. `npm run android:emu -- shot` captures on the device and pulls
+> the file instead, which cannot hit this.
+
 ## Local build + install
 
 From repo root:
@@ -70,13 +201,14 @@ npm run android:clear          # Remove generated Android project
 For a production-ID release APK that local Android profiling tools can attach to:
 
 ```bash
-PASEO_PROFILE_BUILD=1 npm run android:production
+OTTO_PROFILE_BUILD=1 npm run android:production
 ```
 
-This keeps the `sh.paseo` package id, release Hermes bundle, and release optimizations. It adds
-`<profileable android:shell="true" />` and enables local Android trace markers for workspace mounts
-and daemon WebSocket traffic. The markers contain message types and sizes, never payload contents,
-and emit only while a system trace records the `sh.paseo` app (`perfetto -a sh.paseo ...`).
+This keeps the `me.ottocode.mobile` package id, release Hermes bundle, and release optimizations. It
+adds `<profileable android:shell="true" />` and enables local Android trace markers for workspace
+mounts and daemon WebSocket traffic. The markers contain message types and sizes, never payload
+contents, and emit only while a system trace records the app
+(`perfetto -a me.ottocode.mobile ...`).
 
 Or from `packages/app`:
 

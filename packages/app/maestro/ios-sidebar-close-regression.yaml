@@ -1,4 +1,4 @@
-appId: ai.ottocode.debug
+appId: me.ottocode.mobile.debug
 ---
 # Establish History with the sidebar closed. The host filter then proves a close
 # swipe did not activate the row below it.
