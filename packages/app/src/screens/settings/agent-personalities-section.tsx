@@ -43,6 +43,8 @@ import {
   normalizePersonalityRoles,
 } from "@otto-code/protocol/agent-personalities";
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
+import type { AgentFeature } from "@otto-code/protocol/agent-types";
+import { usePersonalityFeatures } from "./use-personality-features";
 import { isUserSelectableMode } from "@otto-code/protocol/provider-manifest";
 import { ChevronDown, Pencil, Plus, Robot, Trash2 } from "@/components/icons/material-icons";
 import { AgentProfileGlyph } from "@/agent-profiles/internal/agent-profile-glyph";
@@ -315,6 +317,7 @@ function emptyDraft(entries: readonly ProviderSnapshotEntry[]): PersonalityDraft
     glowA: DEFAULT_GLOW_A,
     glowB: DEFAULT_GLOW_B,
     voice: null,
+    featureValues: {},
     voiceCues: emptyDraftVoiceCues(),
   };
 }
@@ -1142,6 +1145,16 @@ function PersonalityEditModal({
         : EFFORT_LEVELS.map((level) => ({ id: level, label: formatEffortLabel(level) }));
     return [{ id: "", label: "None" }, ...options];
   }, [selectedModel]);
+  // The provider feature toggles this template can pin. Host-scoped and driven
+  // by the draft's own provider/model/mode, so the rows track the brain the
+  // user is editing rather than whatever the last chat happened to use.
+  const providerFeatures = usePersonalityFeatures({
+    serverId,
+    provider: draft.provider,
+    modelId: draft.model,
+    modeId: draft.modeId,
+    values: draft.featureValues,
+  });
   const voiceOptions = useMemo(() => buildVoiceOptions(speechOptions), [speechOptions]);
   // Only offer a voice when the host actually exposes TTS voices beyond "None".
   const showVoice = voiceOptions.length > 1;
@@ -1203,6 +1216,12 @@ function PersonalityEditModal({
   }, []);
   const setPrompt = useCallback((value: string) => {
     setDraft((current) => ({ ...current, personalityPrompt: value }));
+  }, []);
+  const setFeatureValue = useCallback((featureId: string, value: unknown) => {
+    setDraft((current) => ({
+      ...current,
+      featureValues: { ...current.featureValues, [featureId]: value },
+    }));
   }, []);
   const setNotes = useCallback((value: string) => {
     setDraft((current) => ({ ...current, notes: value }));
@@ -1652,6 +1671,13 @@ function PersonalityEditModal({
               onChange={setEffort}
               testID="agent-personality-effort-picker"
             />
+            {providerFeatures.features.map((feature) => (
+              <PersonalityFeatureRow
+                key={feature.id}
+                feature={feature}
+                onChange={setFeatureValue}
+              />
+            ))}
           </>
         ) : null}
 
@@ -1890,6 +1916,56 @@ interface PickerRowProps {
   // Overrides the trigger label - used when the current value is intentionally
   // absent from `options` (a hidden mode) but must still display its real name.
   displayLabel?: string;
+}
+
+// One provider feature the template can pin. Its own component so the change
+// handler binds the feature id once instead of allocating a closure per row on
+// every render of the editor.
+function PersonalityFeatureRow({
+  feature,
+  onChange,
+}: {
+  feature: AgentFeature;
+  onChange: (featureId: string, value: unknown) => void;
+}): ReactElement {
+  const handleChange = useCallback(
+    (value: unknown) => onChange(feature.id, value),
+    [feature.id, onChange],
+  );
+  const options = useMemo<ComboboxOption[]>(
+    () =>
+      feature.type === "select"
+        ? feature.options.map((option) => ({ id: option.id, label: option.label ?? option.id }))
+        : [],
+    [feature],
+  );
+
+  if (feature.type === "select") {
+    return (
+      <PickerRow
+        label={feature.label}
+        value={feature.value ?? ""}
+        options={options}
+        onChange={handleChange}
+        testID={`agent-personality-feature-${feature.id}`}
+      />
+    );
+  }
+  return (
+    <View style={styles.toggleRow}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{feature.label}</Text>
+        {feature.description ? (
+          <Text style={settingsStyles.rowHint}>{feature.description}</Text>
+        ) : null}
+      </View>
+      <Switch
+        value={feature.value}
+        onValueChange={handleChange}
+        testID={`agent-personality-feature-${feature.id}`}
+      />
+    </View>
+  );
 }
 
 function PickerRow({

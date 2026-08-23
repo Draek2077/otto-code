@@ -94,6 +94,8 @@ export interface PersonalityDraft {
   glowB: string;
   /** NonNullable so "no voice" is exactly null, never a second absent value. */
   voice: NonNullable<AgentProfile["voice"]> | null;
+  /** Provider feature toggles this template pins; empty = provider defaults. */
+  featureValues: Record<string, unknown>;
   // Pre-generated (editable) spoken cue lines, always present as arrays for
   // simple list editing; persisted only when non-empty.
   voiceCues: DraftVoiceCues;
@@ -122,6 +124,7 @@ export function personalityToDraft(personality: AgentProfile): PersonalityDraft 
     glowA: personality.spinner?.glowA ?? DEFAULT_GLOW_A,
     glowB: personality.spinner?.glowB ?? DEFAULT_GLOW_B,
     voice: personality.voice ?? null,
+    featureValues: personality.featureValues ?? {},
     voiceCues: draftVoiceCuesFrom(personality.voiceCues),
   };
 }
@@ -130,11 +133,10 @@ export function personalityToDraft(personality: AgentProfile): PersonalityDraft 
  * Rebuild a stored template from the editor draft.
  *
  * `previous` is the entry being edited, spread in FIRST so anything this editor
- * does not model survives a round-trip. The stored type carries fields with no
- * control here - `featureValues` and `thinkingOptionId` - plus, because the
- * schema is `.passthrough()`, whatever a newer daemon has written. Rebuilding
- * from scratch would silently drop all of it the first time someone opened an
- * imported template and pressed Save.
+ * does not model survives a round-trip. The schema is `.passthrough()`, so that
+ * includes whatever a newer daemon has written and this build has never heard
+ * of. Rebuilding from scratch would silently drop all of it the first time
+ * someone opened an imported template and pressed Save.
  *
  * The editor's own fields are then set or deleted outright, never merged, so
  * clearing one in the form actually clears it on the wire.
@@ -168,6 +170,13 @@ export function draftToPersonality(
   setOrDelete(personality, "personalityPrompt", draft.personalityPrompt.trim() || undefined);
   setOrDelete(personality, "notes", draft.notes.trim() || undefined);
   setOrDelete(personality, "voice", draft.voice ?? undefined);
+  // An empty map is stored as absent, so a template that pins nothing does not
+  // carry a dead key and an older daemon sees what it saw before.
+  setOrDelete(
+    personality,
+    "featureValues",
+    Object.keys(draft.featureValues).length > 0 ? draft.featureValues : undefined,
+  );
   setOrDelete(personality, "voiceCues", draftVoiceCuesToPersistable(draft.voiceCues));
   // Both switches default to ON, and both are written only when OFF: the
   // default state stays absent on the wire, so an older daemon reading this

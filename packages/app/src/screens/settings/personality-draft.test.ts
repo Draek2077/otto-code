@@ -15,7 +15,6 @@ describe("personality draft round-trip", () => {
     personalityPrompt: "Think first.",
     roles: ["advisor"],
     spinner: { glowA: "#111", glowB: "#222" },
-    // A field the editor has no control for.
     featureValues: { fast_mode: true },
     // A field only a newer daemon knows about; the schema passes it through.
     somethingNewerDaemonsWrite: { keep: "me" },
@@ -26,7 +25,6 @@ describe("personality draft round-trip", () => {
     const saved = draftToPersonality({ ...draft, name: "Sage II" }, stored.id, stored);
 
     expect(saved.name).toBe("Sage II");
-    expect(saved.featureValues).toEqual({ fast_mode: true });
     expect((saved as Record<string, unknown>)["somethingNewerDaemonsWrite"]).toEqual({
       keep: "me",
     });
@@ -97,7 +95,7 @@ describe("personality draft round-trip", () => {
     const saved = draftToPersonality(draft, "personality_new", undefined);
 
     expect(saved.id).toBe("personality_new");
-    expect(saved).not.toHaveProperty("featureValues");
+    expect((saved as Record<string, unknown>)["somethingNewerDaemonsWrite"]).toBeUndefined();
   });
 
   it("keeps the default-on switches absent and writes them only when off", () => {
@@ -121,6 +119,23 @@ describe("personality draft round-trip", () => {
   it("reads a template that names no model as no model chosen", () => {
     const modelless = { ...stored, model: undefined } as AgentProfile;
     expect(personalityToDraft(modelless).model).toBe("");
+  });
+
+  it("carries pinned provider feature values both ways", () => {
+    const draft = personalityToDraft(stored);
+    expect(draft.featureValues).toEqual({ fast_mode: true });
+
+    const saved = draftToPersonality(
+      { ...draft, featureValues: { fast_mode: false } },
+      stored.id,
+      stored,
+    );
+    expect(saved.featureValues).toEqual({ fast_mode: false });
+
+    // Pinning nothing stores nothing, rather than a dead empty map.
+    expect(
+      draftToPersonality({ ...draft, featureValues: {} }, stored.id, stored),
+    ).not.toHaveProperty("featureValues");
   });
 
   it("carries notes both ways", () => {
