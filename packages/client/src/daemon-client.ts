@@ -286,6 +286,7 @@ import {
 } from "./daemon-client-transport.js";
 import {
   DaemonClientRuntimeMetrics,
+  type DaemonClientInboundDispatchTiming,
   type DaemonClientTrafficHotspot,
   type DaemonClientTrafficTotals,
 } from "./daemon-client-runtime-metrics.js";
@@ -299,6 +300,8 @@ import type {
   BrowserAutomationExecuteRequest,
   BrowserAutomationExecuteResponse,
 } from "@otto-code/protocol/browser-automation/rpc-schemas";
+
+export type { DaemonClientInboundDispatchTiming } from "./daemon-client-runtime-metrics.js";
 
 export interface Logger {
   debug(obj: object, msg?: string): void;
@@ -442,6 +445,12 @@ export interface DaemonClientTrace {
   isEnabled(): boolean;
   beginSection(name: string, args?: Record<string, string>): void;
   endSection(): void;
+}
+
+interface InboundSessionDispatchPhases {
+  internalDispatchMs: number;
+  rawListenersMs: number;
+  typedHandlersMs: number;
 }
 
 export interface SendMessageOptions {
@@ -8906,6 +8915,15 @@ export class DaemonClient {
     return this.runtimeMetrics?.getTrafficHotspots(limit) ?? [];
   }
 
+  /**
+   * Bounded, timestamped dispatch phases for matching an inbound daemon
+   * message to a browser Long Animation Frame. This is diagnostic evidence,
+   * not a protocol surface.
+   */
+  getInboundDispatchTimings(sinceMs?: number): DaemonClientInboundDispatchTiming[] {
+    return this.runtimeMetrics?.getInboundDispatchTimings(sinceMs) ?? [];
+  }
+
   private resolveTransportUrlForAttempt(): string {
     return this.config.url;
   }
@@ -9030,6 +9048,7 @@ export class DaemonClient {
 
   private handleJsonPayload(payload: string, rawBytesLength: number | undefined): void {
     const bytes = rawBytesLength ?? payload.length;
+    const dispatchAt = Date.now();
     const startMs = perfNow();
     let parsedJson: unknown;
     const parseTraceOpen = this.beginTraceSection("otto.ws.json.parse", {
@@ -9080,9 +9099,20 @@ export class DaemonClient {
       envelopeType: "session",
       messageType: parsed.data.message.type,
     });
-    this.handleSessionMessage(parsed.data.message);
+    const phases = this.handleSessionMessage(parsed.data.message);
     const msgType = parsed.data.message.type;
-    this.runtimeMetrics?.recordMessage(msgType, bytes, perfNow() - startMs);
+    const totalMs = perfNow() - startMs;
+    this.runtimeMetrics?.recordMessage(msgType, bytes, totalMs);
+    this.runtimeMetrics?.recordInboundDispatch({
+      at: dispatchAt,
+      type: msgType,
+      bytes,
+      decodeAndValidateMs: phases.startedAtMs - startMs,
+      internalDispatchMs: phases.internalDispatchMs,
+      rawListenersMs: phases.rawListenersMs,
+      typedHandlersMs: phases.typedHandlersMs,
+      totalMs,
+    });
     if (parsed.data.message.type === "agent_stream") {
       this.runtimeMetrics?.recordAgentStream(parsed.data.message.payload);
     }
@@ -9331,7 +9361,10 @@ export class DaemonClient {
     });
   }
 
-  private handleSessionMessage(msg: SessionOutboundMessage): void {
+  private handleSessionMessage(msg: SessionOutboundMessage): InboundSessionDispatchPhases & {
+    startedAtMs: number;
+  } {
+    const startedAtMs = perfNow();
     const consumerMessage = normalizeProviderSnapshotUpdateMessage(msg);
 
     if (consumerMessage.type === "status") {
@@ -9365,6 +9398,8 @@ export class DaemonClient {
       );
     }
 
+    const rawListenersStartedAtMs = perfNow();
+
     if (this.rawMessageListeners.size > 0) {
       for (const handler of this.rawMessageListeners) {
         try {
@@ -9374,6 +9409,8 @@ export class DaemonClient {
         }
       }
     }
+
+    const typedHandlersStartedAtMs = perfNow();
 
     const handlers = this.messageHandlers.get(consumerMessage.type);
     if (handlers) {
@@ -9394,6 +9431,13 @@ export class DaemonClient {
     }
 
     this.resolveWaiters(consumerMessage);
+    const finishedAtMs = perfNow();
+    return {
+      startedAtMs,
+      internalDispatchMs: rawListenersStartedAtMs - startedAtMs,
+      rawListenersMs: typedHandlersStartedAtMs - rawListenersStartedAtMs,
+      typedHandlersMs: finishedAtMs - typedHandlersStartedAtMs,
+    };
   }
 
   private resolveWaiters(msg: SessionOutboundMessage): void {

@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
+import type { DaemonClientInboundDispatchTiming } from "@otto-code/client/internal/daemon-client";
 
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 import { isElectronRuntime } from "@/desktop/host";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { collectQueryHotspots, collectTrafficHotspots } from "./collect-resource-metrics";
-import { getLongFrameReport, type LongFrameReport } from "./long-frame-attribution";
+import {
+  getLongFrameReport,
+  type LongFrameReport,
+  type LongFrameSummary,
+} from "./long-frame-attribution";
 import { resourceMonitor } from "./resource-monitor";
 import { analyzeResourceTrend, type ResourceSample } from "./resource-trend";
 
@@ -14,6 +19,17 @@ export interface PerformanceCaptureState {
   saving: boolean;
   lastSavedPath: string | null;
   error: string | null;
+}
+
+interface CapturedInboundDispatch extends DaemonClientInboundDispatchTiming {
+  serverId: string;
+}
+
+interface InboundDispatchLongFrameMatch {
+  frameAt: number;
+  frameDurationMs: number;
+  blockingMs: number;
+  dispatches: CapturedInboundDispatch[];
 }
 
 interface PersistedPerformanceCapture {
@@ -34,6 +50,15 @@ interface PersistedPerformanceCapture {
   } | null;
   /** What ran inside the long frames: capture-window entries + session totals. */
   longFrames: LongFrameReport;
+  /**
+   * The inbound daemon messages whose synchronous dispatch overlapped a long
+   * frame. This turns a generic WebSocket callback attribution into a concrete
+   * message type and dispatch phase without retaining unbounded telemetry.
+   */
+  inboundDispatch: {
+    entries: CapturedInboundDispatch[];
+    longFrameMatches: InboundDispatchLongFrameMatch[];
+  };
   hotspots: {
     traffic: ReturnType<typeof collectTrafficHotspots>;
     queries: ReturnType<typeof collectQueryHotspots>;
@@ -100,6 +125,8 @@ export async function stopPerformanceCapture(): Promise<void> {
     resourceMonitor.takeSample();
     const samples = copySamples();
     const daemonDiagnostics = await collectDaemonDiagnostics();
+    const longFrames = getLongFrameReport(state.startedAt);
+    const inboundDispatchEntries = collectInboundDispatches(state.startedAt);
     const capture: PersistedPerformanceCapture = {
       format: "otto-performance-capture-v1",
       startedAt: new Date(state.startedAt).toISOString(),
@@ -107,7 +134,14 @@ export async function stopPerformanceCapture(): Promise<void> {
       samples,
       trend: analyzeResourceTrend(samples),
       preCapture: preCaptureSnapshot,
-      longFrames: getLongFrameReport(state.startedAt),
+      longFrames,
+      inboundDispatch: {
+        entries: inboundDispatchEntries,
+        longFrameMatches: matchInboundDispatchesToLongFrames(
+          longFrames.entries,
+          inboundDispatchEntries,
+        ),
+      },
       hotspots: {
         traffic: collectTrafficHotspots(24),
         queries: collectQueryHotspots(24),
@@ -130,6 +164,47 @@ export async function stopPerformanceCapture(): Promise<void> {
     state.saving = false;
     notify();
   }
+}
+
+function collectInboundDispatches(sinceMs: number): CapturedInboundDispatch[] {
+  return getHostRuntimeStore()
+    .getSnapshots()
+    .flatMap((snapshot) => {
+      if (!snapshot.client) return [];
+      return snapshot.client.getInboundDispatchTimings(sinceMs).map((entry) => ({
+        serverId: snapshot.serverId,
+        at: entry.at,
+        type: entry.type,
+        bytes: entry.bytes,
+        decodeAndValidateMs: entry.decodeAndValidateMs,
+        internalDispatchMs: entry.internalDispatchMs,
+        rawListenersMs: entry.rawListenersMs,
+        typedHandlersMs: entry.typedHandlersMs,
+        totalMs: entry.totalMs,
+      }));
+    });
+}
+
+function matchInboundDispatchesToLongFrames(
+  frames: readonly LongFrameSummary[],
+  dispatches: readonly CapturedInboundDispatch[],
+): InboundDispatchLongFrameMatch[] {
+  return frames.flatMap((frame) => {
+    const frameEnd = frame.at + frame.durationMs;
+    const matches = dispatches.filter((dispatch) => {
+      const dispatchEnd = dispatch.at + Math.max(0, dispatch.totalMs);
+      return dispatch.at <= frameEnd && dispatchEnd >= frame.at;
+    });
+    if (matches.length === 0) return [];
+    return [
+      {
+        frameAt: frame.at,
+        frameDurationMs: frame.durationMs,
+        blockingMs: frame.blockingMs,
+        dispatches: matches,
+      },
+    ];
+  });
 }
 
 async function collectDaemonDiagnostics(): Promise<

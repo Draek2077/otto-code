@@ -234,6 +234,46 @@ test("traces WebSocket frames, message types, and JSON parse duration", async ()
   ]);
 });
 
+test("retains timestamped inbound dispatch phases for a performance capture", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "dispatch_timing_unit_test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+
+  const rawListener = vi.fn();
+  const typedListener = vi.fn();
+  client.subscribeRawMessages(rawListener);
+  client.on("status", typedListener);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const timings = client.getInboundDispatchTimings();
+  const timing = timings.at(-1);
+  expect(timing).toMatchObject({
+    at: expect.any(Number),
+    type: "status",
+    bytes: expect.any(Number),
+    decodeAndValidateMs: expect.any(Number),
+    internalDispatchMs: expect.any(Number),
+    rawListenersMs: expect.any(Number),
+    typedHandlersMs: expect.any(Number),
+    totalMs: expect.any(Number),
+  });
+  expect(timing?.totalMs).toBeGreaterThanOrEqual(0);
+  expect(rawListener).toHaveBeenCalledTimes(1);
+  expect(typedListener).toHaveBeenCalledTimes(1);
+
+  if (!timing) throw new Error("Expected an inbound dispatch timing.");
+  timing.type = "mutated";
+  expect(client.getInboundDispatchTimings().at(-1)?.type).toBe("status");
+});
+
 test("does not infer browser automation capabilities from Electron runtime", async () => {
   vi.stubGlobal("navigator", {
     userAgent:

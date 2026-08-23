@@ -21,18 +21,18 @@ its heap, or what it does with what the daemon sends it. None of those were meas
 
 `packages/app/src/diagnostics/resource-report/`:
 
-| Module                        | Does                                                                                                           |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `frame-rate-sampler.ts`       | Turns `requestAnimationFrame` timestamps into fps / p95 / jank counts. Pure - driven by timestamps, not a loop |
-| `container-census.ts`         | Walks client state and emits one metric per container it finds, keyed by path                                  |
-| `collect-resource-metrics.ts` | The only impure module: reads the zustand stores, the react-query cache, the DOM, the heap, the daemon clients |
-| `resource-metrics.ts`         | Shapes those readings into the flat metric record (pins the metric namespace)                                  |
-| `resource-trend.ts`           | Least-squares fit over the sample ring → **ranked growth**, the leak finder                                    |
-| `resource-monitor.ts`         | The singleton: rAF loop + census interval + bounded ring buffer                                                |
-| `long-frame-attribution.ts`   | Long Animation Frames observer → per-script breakdown of every >50ms frame, bounded ring + session aggregate   |
-| `performance-capture.ts`      | The Metrics bar's Capture: samples + trend + hotspots + long frames + daemon diagnostics, saved as one JSON    |
-| `runtime-counters.ts`         | Patches the timer globals to count live intervals and pending timeouts                                         |
-| `format-resource-report.ts`   | Renders it as the `label: value` text the rest of `diagnostics/` produces                                      |
+| Module                        | Does                                                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `frame-rate-sampler.ts`       | Turns `requestAnimationFrame` timestamps into fps / p95 / jank counts. Pure - driven by timestamps, not a loop                             |
+| `container-census.ts`         | Walks client state and emits one metric per container it finds, keyed by path                                                              |
+| `collect-resource-metrics.ts` | The only impure module: reads the zustand stores, the react-query cache, the DOM, the heap, the daemon clients                             |
+| `resource-metrics.ts`         | Shapes those readings into the flat metric record (pins the metric namespace)                                                              |
+| `resource-trend.ts`           | Least-squares fit over the sample ring → **ranked growth**, the leak finder                                                                |
+| `resource-monitor.ts`         | The singleton: rAF loop + census interval + bounded ring buffer                                                                            |
+| `long-frame-attribution.ts`   | Long Animation Frames observer → per-script breakdown of every >50ms frame, bounded ring + session aggregate                               |
+| `performance-capture.ts`      | The Metrics bar's Capture: samples + trend + hotspots + long frames + inbound-dispatch attribution + daemon diagnostics, saved as one JSON |
+| `runtime-counters.ts`         | Patches the timer globals to count live intervals and pending timeouts                                                                     |
+| `format-resource-report.ts`   | Renders it as the `label: value` text the rest of `diagnostics/` produces                                                                  |
 
 Surfaces:
 
@@ -123,8 +123,13 @@ Two bounded views, started and stopped with the monitor's frame sampler:
   what has been janking all session, surviving the ring rolling over.
 
 A performance capture persists both: `longFrames.entries` is the capture window, `longFrames.aggregate`
-is the whole session. Read `blockingMs` as the felt cost (time beyond the 50ms budget), and a high
-`styleAndLayoutMs` with cheap scripts as "the DOM write was cheap, the layout it forced was not".
+is the whole session. It also persists `inboundDispatch`: a bounded record of the daemon messages
+whose decode/validation, internal client handling, raw listeners, and typed handlers overlapped each
+captured long frame. A LoAF source that resolves only to the generic WebSocket listener is therefore
+still actionable: read its matching `inboundDispatch.longFrameMatches` row to name the message type
+and which phase consumed the frame. Read `blockingMs` as the felt cost (time beyond the 50ms budget),
+and a high `styleAndLayoutMs` with cheap scripts as "the DOM write was cheap, the layout it forced was
+not".
 
 The capture also persists `preCapture`: the growth trend over the monitor history that existed
 _before_ the capture reset the ring. A capture is usually taken seconds after the symptom, so the

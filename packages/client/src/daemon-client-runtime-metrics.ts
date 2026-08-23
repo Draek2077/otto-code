@@ -54,7 +54,28 @@ export interface DaemonClientTrafficHotspot {
   bytes: number;
 }
 
+/**
+ * One inbound session-message dispatch, retained only long enough to align it
+ * with a browser Long Animation Frame in the app's performance capture.
+ *
+ * `at` is an epoch timestamp so callers can compare it directly to the LoAF
+ * API. The phase timings are synchronous main-thread work and sum to
+ * approximately `totalMs`; small gaps are metric bookkeeping.
+ */
+export interface DaemonClientInboundDispatchTiming {
+  at: number;
+  type: string;
+  bytes: number;
+  decodeAndValidateMs: number;
+  internalDispatchMs: number;
+  rawListenersMs: number;
+  typedHandlersMs: number;
+  totalMs: number;
+}
+
 const DEFAULT_ROLLING_WINDOW_MS = 60_000;
+/** Bounded independently from rolling log buckets: this is capture evidence, not telemetry. */
+export const INBOUND_DISPATCH_TIMING_CAPACITY = 500;
 
 export class DaemonClientRuntimeMetrics {
   private readonly startedAt = Date.now();
@@ -72,6 +93,7 @@ export class DaemonClientRuntimeMetrics {
   private totalHandlerMs = 0;
   private totalBinaryFrames = 0;
   private readonly cumulativeByType = new Map<string, DaemonClientTrafficHotspot>();
+  private readonly inboundDispatchTimings: DaemonClientInboundDispatchTiming[] = [];
 
   constructor(
     private readonly logger: RuntimeMetricsLogger,
@@ -117,6 +139,26 @@ export class DaemonClientRuntimeMetrics {
     }
     rows.sort((left, right) => right.totalMs - left.totalMs);
     return rows.slice(0, limit);
+  }
+
+  recordInboundDispatch(timing: DaemonClientInboundDispatchTiming): void {
+    this.inboundDispatchTimings.push(cloneInboundDispatchTiming(timing));
+    if (this.inboundDispatchTimings.length > INBOUND_DISPATCH_TIMING_CAPACITY) {
+      this.inboundDispatchTimings.splice(
+        0,
+        this.inboundDispatchTimings.length - INBOUND_DISPATCH_TIMING_CAPACITY,
+      );
+    }
+  }
+
+  /**
+   * Recent inbound dispatches for a performance capture. Copies keep capture
+   * consumers from mutating a live client's bounded ring.
+   */
+  getInboundDispatchTimings(sinceMs?: number): DaemonClientInboundDispatchTiming[] {
+    return this.inboundDispatchTimings
+      .filter((timing) => sinceMs === undefined || timing.at >= sinceMs)
+      .map(cloneInboundDispatchTiming);
   }
 
   // Shared by JSON messages and binary frames; the per-sink totals
@@ -288,6 +330,21 @@ function cloneHandlerTimingMap(
       { count: value.count, totalMs: value.totalMs, maxMs: value.maxMs },
     ]),
   );
+}
+
+function cloneInboundDispatchTiming(
+  timing: DaemonClientInboundDispatchTiming,
+): DaemonClientInboundDispatchTiming {
+  return {
+    at: timing.at,
+    type: timing.type,
+    bytes: timing.bytes,
+    decodeAndValidateMs: timing.decodeAndValidateMs,
+    internalDispatchMs: timing.internalDispatchMs,
+    rawListenersMs: timing.rawListenersMs,
+    typedHandlersMs: timing.typedHandlersMs,
+    totalMs: timing.totalMs,
+  };
 }
 
 function mergeCountMap(target: Map<string, number>, source: Map<string, number>): void {
