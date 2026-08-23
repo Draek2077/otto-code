@@ -4,9 +4,10 @@ import { Globe, Play } from "@/components/icons/material-icons";
 import invariant from "tiny-invariant";
 import { BrowserPane } from "@/desktop/browser/pane";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelIconProps, PanelRegistration } from "@/panels/panel-registry";
+import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { useBrowserStore } from "@/desktop/browser/store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { withIconSizeToken } from "@/components/icons/icon-size";
 
 function getBrowserLabel(input: { title: string; url: string }): string {
   const title = input.title.trim();
@@ -23,7 +24,7 @@ function getBrowserLabel(input: { title: string; url: string }): string {
 }
 
 function createBrowserTabIcon(input: { faviconUrl: string | null; isPreview: boolean }) {
-  return function BrowserTabIcon({ size, color }: PanelIconProps) {
+  function BrowserTabIcon({ size, color }: { size: number; color?: string }) {
     const source = useMemo(() => (input.faviconUrl ? { uri: input.faviconUrl } : undefined), []);
     const imageStyle = useMemo(() => ({ width: size, height: size, borderRadius: 3 }), [size]);
 
@@ -38,7 +39,8 @@ function createBrowserTabIcon(input: { faviconUrl: string | null; isPreview: boo
     }
 
     return <Globe size={size} color={color} />;
-  };
+  }
+  return withIconSizeToken(BrowserTabIcon, "BrowserTabIcon");
 }
 
 function useBrowserPanelDescriptor(target: {

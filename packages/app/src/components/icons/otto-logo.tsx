@@ -1,5 +1,6 @@
 import Svg, { Circle, Line, Path, Polyline, Rect } from "react-native-svg";
 import { withUnistyles } from "react-native-unistyles";
+import { withIconSizeToken } from "@/components/icons/icon-size";
 
 // Otto's mark: the letters O·T·T·O drawn as a robot face (O's = eyes, T bars = brows,
 // T stems = nose bridge). Geometry contract lives in branding/README.md - the masters
@@ -95,7 +96,10 @@ const themedForeground = (theme: { colors: { foreground: string } }) => ({
 });
 
 // Face icon - the general-purpose mark for inline UI.
-export const OttoLogo = withUnistyles(OttoLogoBase, themedForeground);
+export const OttoLogo = withIconSizeToken(
+  withUnistyles(OttoLogoBase, themedForeground),
+  "OttoLogo",
+);
 
 // Layers of the full logo (branding/otto-logo.svg). The splash screen stacks them and
 // pulses the robot layer's opacity while the wordmark stays solid.

@@ -11,10 +11,11 @@ import { PiIcon } from "@/components/icons/pi-icon";
 import { ACP_PROVIDER_CATALOG } from "@/data/acp-provider-catalog";
 import { resolveProviderIconName } from "@/components/provider-icon-name";
 import { MATERIAL_SYMBOL_SVGS } from "@/assets/material-symbol-icons";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 export interface ProviderIconProps {
-  size: number;
-  color: string;
+  size?: IconSizeProp;
+  color?: string;
 }
 
 export type ProviderIconComponent = ComponentType<ProviderIconProps>;

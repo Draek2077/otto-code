@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Svg, { Circle, Line, Path } from "react-native-svg";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
+import { withIconSizeToken } from "@/components/icons/icon-size";
 
 // Otto's face as an inline glyph, for icon rails that sit next to running text.
 //
@@ -125,7 +126,7 @@ interface OttoFaceIconProps extends OttoFaceGlyphProps {
   isActive?: boolean;
 }
 
-export function OttoFaceIcon({ size, color, isActive = false }: OttoFaceIconProps) {
+function OttoFaceIconBase({ size, color, isActive = false }: OttoFaceIconProps) {
   const animationsEnabled = useAnimationsEnabled();
   const [isWinking, setIsWinking] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,3 +162,5 @@ export function OttoFaceIcon({ size, color, isActive = false }: OttoFaceIconProp
 
   return <OttoFaceGlyph size={size} color={color} winking={isWinking} />;
 }
+
+export const OttoFaceIcon = withIconSizeToken(OttoFaceIconBase, "OttoFaceIcon");

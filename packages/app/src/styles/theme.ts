@@ -74,11 +74,30 @@ export const LINE_HEIGHT = {
   diff: 22,
 } as const;
 
+/**
+ * The sizes an icon may be drawn at, as authored for a pointer.
+ *
+ * Two ladders, not one. `xs`-`lg` is the app's icon ramp and doubles on a compact
+ * form factor, because a 16pt glyph authored for a mouse is a speck under a thumb.
+ * `chrome*` is the same ramp for icons that sit inside fixed chrome - title-bar and
+ * header buttons, whose surrounding row cannot grow with them - and scales by 1.5
+ * instead, which is as far as those glyphs can go before they overrun the bar.
+ *
+ * Desktop values are identical across the two ladders. They diverge only on compact,
+ * which is the whole reason the distinction lives in the token rather than in a
+ * multiplier argument at each call site.
+ *
+ * The scaling itself happens in exactly one place, `applyAppearance`. Never scale an
+ * icon at a call site.
+ */
 export const ICON_SIZE = {
   xs: 12,
   sm: 14,
   md: 16,
   lg: 20,
+  chromeSm: 14,
+  chromeMd: 16,
+  chromeLg: 20,
 } as const;
 
 function scaleIconSizes(scale: number): Record<keyof typeof ICON_SIZE, number> {
@@ -87,6 +106,9 @@ function scaleIconSizes(scale: number): Record<keyof typeof ICON_SIZE, number> {
     sm: ICON_SIZE.sm * scale,
     md: ICON_SIZE.md * scale,
     lg: ICON_SIZE.lg * scale,
+    chromeSm: ICON_SIZE.chromeSm * scale,
+    chromeMd: ICON_SIZE.chromeMd * scale,
+    chromeLg: ICON_SIZE.chromeLg * scale,
   };
 }
 

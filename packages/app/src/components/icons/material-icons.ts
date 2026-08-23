@@ -1,21 +1,31 @@
-import { createElement, type ComponentType } from "react";
-import type { StyleProp, ViewStyle } from "react-native";
+import { createElement } from "react";
 import { SvgXml } from "react-native-svg";
 import { MATERIAL_SYMBOL_SVGS } from "@/assets/material-symbol-icons";
 import { withBrainGlyphScale } from "@/components/icons/brain-glyph-scale";
+import { withIconSizeToken, type NumericIconComponent } from "@/components/icons/icon-size";
 
-export type IconComponent = ComponentType<{
-  size: number;
-  color: string;
-  style?: StyleProp<ViewStyle>;
-}>;
+export type { IconComponent, IconSizeToken } from "@/components/icons/icon-size";
 
-function createMaterialSymbolIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS): IconComponent {
+/**
+ * The glyph itself, drawn at a measured size.
+ *
+ * Every decorator below - the vertical nudge, the brain overflow - composes on this
+ * numeric form and stays numeric, because each does arithmetic on the size it is
+ * given. `withIconSizeToken` then goes on the outside of the finished stack, so a
+ * token is resolved to pixels exactly once, before any of them see it.
+ */
+function createNumericMaterialSymbolIcon(
+  name: keyof typeof MATERIAL_SYMBOL_SVGS,
+): NumericIconComponent {
   const svg = MATERIAL_SYMBOL_SVGS[name];
-  const MaterialSymbolIcon: IconComponent = ({ size, color, style }) =>
+  const MaterialSymbolIcon: NumericIconComponent = ({ size, color, style }) =>
     createElement(SvgXml, { xml: svg, width: size, height: size, color, style });
   MaterialSymbolIcon.displayName = `MaterialSymbolIcon(${name})`;
   return MaterialSymbolIcon;
+}
+
+function createMaterialSymbolIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS) {
+  return withIconSizeToken(createNumericMaterialSymbolIcon(name), `MaterialSymbolIcon(${name})`);
 }
 
 // The `chat` / `mark_unread_chat_alt` pair draws optically high in its box
@@ -25,16 +35,19 @@ function createMaterialSymbolIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS): Icon
 function createVerticallyNudgedMaterialSymbolIcon(
   name: keyof typeof MATERIAL_SYMBOL_SVGS,
   offsetY: number,
-): IconComponent {
-  const Icon = createMaterialSymbolIcon(name);
-  const NudgedIcon: IconComponent = ({ size, color, style }) =>
+) {
+  const Icon = createNumericMaterialSymbolIcon(name);
+  const NudgedIcon: NumericIconComponent = ({ size, color, style }) =>
     createElement(Icon, { size, color, style: [{ transform: [{ translateY: offsetY }] }, style] });
   NudgedIcon.displayName = `NudgedMaterialSymbolIcon(${name})`;
-  return NudgedIcon;
+  return withIconSizeToken(NudgedIcon, `NudgedMaterialSymbolIcon(${name})`);
 }
 
-function createScaledBrainIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS): IconComponent {
-  return withBrainGlyphScale(createMaterialSymbolIcon(name), name);
+function createScaledBrainIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS) {
+  return withIconSizeToken(
+    withBrainGlyphScale(createNumericMaterialSymbolIcon(name), name),
+    `ScaledBrainIcon(${name})`,
+  );
 }
 
 export const Abc = createMaterialSymbolIcon("Abc");

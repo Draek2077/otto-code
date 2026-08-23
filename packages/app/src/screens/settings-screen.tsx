@@ -178,6 +178,7 @@ import { rememberLastSettingsView } from "@/stores/last-settings-view";
 // Matches MIN_CHAT_WIDTH in left-sidebar.tsx so both sidebars clamp the shared
 // panel-store width identically.
 import { SettingsSearchOverview } from "@/screens/settings-search-overview";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 const MIN_SETTINGS_CONTENT_WIDTH = 400;
 
@@ -218,7 +219,7 @@ function settingsViewKey(view: SettingsView): string {
 interface SidebarSectionItem {
   id: SettingsSectionSlug;
   labelKey: string;
-  icon: ComponentType<{ size: number; color: string }>;
+  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
   desktopOnly?: boolean;
   // Hidden from the sidebar (and content gated to null) in User mode.
   developerOnly?: boolean;
@@ -267,7 +268,7 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
 interface HostSectionItem {
   id: HostSectionSlug;
   labelKey: string;
-  icon: ComponentType<{ size: number; color: string }>;
+  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
   // Developer-only host sections - hidden from the sidebar and their content
   // gated to null in User mode (see renderHostSettingsContent).
   developerOnly?: boolean;
@@ -1599,7 +1600,7 @@ function useSortedHosts(hosts: HostProfile[], localServerId: string | null): Hos
 interface SidebarSectionButtonProps {
   itemId: SettingsSectionSlug;
   label: string;
-  icon: ComponentType<{ size: number; color: string }>;
+  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
   isSelected: boolean;
   onSelect: (section: SettingsSectionSlug) => void;
 }
@@ -1641,7 +1642,7 @@ function SidebarSectionButton({
 interface SidebarHostSectionButtonProps {
   itemId: HostSectionSlug;
   label: string;
-  icon: ComponentType<{ size: number; color: string }>;
+  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
   isSelected: boolean;
   onSelect: (section: HostSectionSlug) => void;
 }
@@ -2547,7 +2548,7 @@ export default function SettingsScreen({
 
   const detailHeader = ((): {
     title: string;
-    Icon: ComponentType<{ size: number; color: string }>;
+    Icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
     titleAccessory?: ReactNode;
   } | null => {
     if (view.kind === "host") {

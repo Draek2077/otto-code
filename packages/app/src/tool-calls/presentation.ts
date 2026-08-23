@@ -7,9 +7,10 @@ import {
   hasMeaningfulToolCallDetail,
   isPendingToolCallDetail,
 } from "@/utils/tool-call-detail-state";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 type ToolCallStatus = "executing" | "running" | "completed" | "failed" | "canceled";
-export type ToolCallPresentationIcon = ComponentType<{ size: number; color: string }>;
+export type ToolCallPresentationIcon = ComponentType<{ size?: IconSizeProp; color?: string }>;
 
 interface BuildToolCallPresentationInput {
   toolName: string;

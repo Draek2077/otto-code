@@ -14,10 +14,11 @@ import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
 import { OttoFaceIcon } from "@/components/icons/otto-face-icon";
 import { OttoLogo } from "@/components/icons/otto-logo";
 import { resolveToolCallIconName, type ToolCallIcon } from "./tool-call-icon-name";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 export type ToolCallIconComponent = ComponentType<{
-  size: number;
-  color: string;
+  size?: IconSizeProp;
+  color?: string;
   // Only the Otto face reads this - it winks while the call is running.
   isActive?: boolean;
 }>;

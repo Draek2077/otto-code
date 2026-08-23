@@ -26,13 +26,14 @@ import {
 import { useControlStatePreview } from "@/components/ui/control-state-preview";
 import { compactUp } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 type ButtonVariant = "default" | "secondary" | "outline" | "ghost" | "destructive";
 type ButtonSize = ButtonControlSize;
 
 type LeftIcon =
   | ReactElement
-  | ComponentType<{ color: string; size: number }>
+  | ComponentType<{ color?: string; size?: IconSizeProp }>
   | { render: (color: string) => ReactElement }
   | null;
 

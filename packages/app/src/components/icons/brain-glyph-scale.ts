@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { View } from "react-native";
-import type { IconComponent } from "@/components/icons/material-icons";
+import type { NumericIconComponent } from "@/components/icons/icon-size";
 
 /**
  * How much larger the `network_intelligence` family draws than the box it is
@@ -48,8 +48,11 @@ export function brainGlyphInset(size: number): number {
  * grid with other icons, and growing the box would shove that layout around
  * rather than just making the mark read.
  */
-export function withBrainGlyphScale(Icon: IconComponent, name: string): IconComponent {
-  const ScaledBrainIcon: IconComponent = ({ size, color, style }) =>
+export function withBrainGlyphScale(
+  Icon: NumericIconComponent,
+  name: string,
+): NumericIconComponent {
+  const ScaledBrainIcon: NumericIconComponent = ({ size, color, style }) =>
     createElement(
       View,
       {

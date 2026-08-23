@@ -12,6 +12,7 @@ import {
   toneText,
   type FlyoutTone,
 } from "@/styles/status-tone";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 // The composer's tinted fly-out: a band that emerges from the top of the message
 // box, tucked behind it so only its top edge shows. Geometry lives here once;
@@ -30,7 +31,7 @@ const ThemedIcon = withUnistyles(
   ),
 );
 
-type FlyoutIcon = ComponentType<{ size: number; color: string }>;
+type FlyoutIcon = ComponentType<{ size?: IconSizeProp; color?: string }>;
 
 export interface FlyoutBandProps {
   /** Which color the band wears. The only knob that changes its look. */

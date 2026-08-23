@@ -1,10 +1,11 @@
 import type { ComponentType } from "react";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 export interface PanelIconProps {
-  size: number;
-  color: string;
+  size?: IconSizeProp;
+  color?: string;
 }
 
 export interface PanelDescriptor {

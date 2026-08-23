@@ -29,6 +29,7 @@ import { isWeb } from "@/constants/platform";
 import { useOpenProject } from "@/hooks/use-open-project";
 import type { Href } from "expo-router";
 import type { KeyboardActionId } from "@/keyboard/actions";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 interface HomeQuote {
   text: string;
@@ -196,7 +197,7 @@ export function OpenProjectScreen() {
 }
 
 interface HomeTileProps {
-  icon: ComponentType<{ size: number; color: string }>;
+  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
   title: string;
   description: string;
   onPress: () => void;

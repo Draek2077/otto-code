@@ -39,7 +39,7 @@ interface FakeTheme {
   lineHeight: { diff: number };
   layout: { chatMaxWidth: number | undefined };
   colors: { foreground: string; syntax: Record<string, string> };
-  iconSize: { xs: number; sm: number; md: number; lg: number };
+  iconSize: Record<"xs" | "sm" | "md" | "lg" | "chromeSm" | "chromeMd" | "chromeLg", number>;
 }
 
 function makeFakeTheme(): FakeTheme {
@@ -60,7 +60,7 @@ function makeFakeTheme(): FakeTheme {
     lineHeight: { diff: 22 },
     layout: { chatMaxWidth: 820 },
     colors: { foreground: "#fff", syntax: {} },
-    iconSize: { xs: 12, sm: 14, md: 16, lg: 20 },
+    iconSize: { xs: 12, sm: 14, md: 16, lg: 20, chromeSm: 14, chromeMd: 16, chromeLg: 20 },
   };
 }
 
@@ -203,13 +203,33 @@ describe("applyAppearance", () => {
   it("leaves iconSize at authored values when not compact", () => {
     applyAppearance(makeInput({ isCompact: false }));
 
-    expect(runCapturedUpdater().iconSize).toEqual({ xs: 12, sm: 14, md: 16, lg: 20 });
+    expect(runCapturedUpdater().iconSize).toEqual({
+      xs: 12,
+      sm: 14,
+      md: 16,
+      lg: 20,
+      chromeSm: 14,
+      chromeMd: 16,
+      chromeLg: 20,
+    });
   });
 
+  // The chrome ladder is the reason this is not a single multiplier: title-bar and
+  // header glyphs sit in a row whose height the window fixes, so they grow by half
+  // rather than doubling. Desktop values are identical across both ladders, which is
+  // what makes migrating a call site to a chrome token a no-op on a pointer.
   it("doubles every iconSize token when compact", () => {
     applyAppearance(makeInput({ isCompact: true }));
 
-    expect(runCapturedUpdater().iconSize).toEqual({ xs: 24, sm: 28, md: 32, lg: 40 });
+    expect(runCapturedUpdater().iconSize).toEqual({
+      xs: 24,
+      sm: 28,
+      md: 32,
+      lg: 40,
+      chromeSm: 21,
+      chromeMd: 24,
+      chromeLg: 30,
+    });
   });
 
   it("bumps the interface font size by 2px before scaling the ramp when compact", () => {

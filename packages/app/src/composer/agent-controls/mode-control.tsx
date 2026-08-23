@@ -45,13 +45,14 @@ import {
   type AgentProviderDefinition,
 } from "@otto-code/protocol/provider-manifest";
 import { getAgentModeIcon, getAgentModeOptionIcon } from "@/agent-controls/icons";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 // The Mode chip always lives inline in the toolbar - it shrinks to an icon-only
 // badge when compact rather than dropping below the input box.
 
 interface ModeIconProps {
-  size: number;
-  color: string;
+  size?: IconSizeProp;
+  color?: string;
 }
 interface ModeComboboxOptionProps {
   option: ComboboxOption;

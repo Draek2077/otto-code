@@ -177,6 +177,7 @@ import {
   markdownCopyTableCellDataSet,
   type MarkdownCopyInlineTag,
 } from "@/assistant-selection-copy/markup";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 export type { InlinePathTarget } from "@/assistant-file-links";
 export type { AssistantForkTarget };
 
@@ -3199,7 +3200,7 @@ export type ExpandableBadgeErrorLevel = "error" | "warning";
 interface ExpandableBadgeProps {
   label: string;
   secondaryLabel?: string;
-  icon?: ComponentType<{ size: number; color: string }>;
+  icon?: ComponentType<{ size?: IconSizeProp; color?: string }>;
   isExpanded: boolean;
   style?: StyleProp<ViewStyle>;
   onToggle?: () => void;

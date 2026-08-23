@@ -20,6 +20,9 @@ import { applyRootUiFont } from "./apply-root-font";
 // the Visualizer guest page (visualizer-appearance.ts).
 export const COMPACT_UI_FONT_SIZE_BUMP = 2;
 const COMPACT_ICON_SIZE_FACTOR = 2;
+// Title-bar and header glyphs, whose surrounding row is fixed by the window chrome
+// and cannot grow with them. See `ICON_SIZE`'s `chrome*` ladder.
+const COMPACT_CHROME_ICON_SIZE_FACTOR = 1.5;
 
 // Derive the registry keys from the one theme registry shared with Unistyles.
 const ALL_THEME_KEYS = Object.keys(REGISTERED_THEMES) as (keyof typeof REGISTERED_THEMES)[];
@@ -62,14 +65,29 @@ function scaleFontSize(uiSize: number, codeSize: number): Theme["fontSize"] {
   };
 }
 
-/** Every icon size token, doubled when on a compact form factor. */
+/**
+ * Every icon size token, scaled for a compact form factor.
+ *
+ * **This is the only place an icon is scaled for a phone.** A call site names a size
+ * token and gets the right pixels for the form factor it is on; it never multiplies.
+ * Scaling at the call site is what produced the drift this replaced, and it compounds:
+ * a glyph sized through an already-scaled token and then doubled again lands at 4x.
+ *
+ * The `chrome*` ladder scales by 1.5 rather than 2. Those icons sit in title bars and
+ * header buttons whose height is fixed by the window chrome around them, so doubling
+ * overruns the bar instead of filling it.
+ */
 function scaleIconSize(isCompact: boolean): Theme["iconSize"] {
   const factor = isCompact ? COMPACT_ICON_SIZE_FACTOR : 1;
+  const chromeFactor = isCompact ? COMPACT_CHROME_ICON_SIZE_FACTOR : 1;
   return {
     xs: ICON_SIZE.xs * factor,
     sm: ICON_SIZE.sm * factor,
     md: ICON_SIZE.md * factor,
     lg: ICON_SIZE.lg * factor,
+    chromeSm: ICON_SIZE.chromeSm * chromeFactor,
+    chromeMd: ICON_SIZE.chromeMd * chromeFactor,
+    chromeLg: ICON_SIZE.chromeLg * chromeFactor,
   };
 }
 

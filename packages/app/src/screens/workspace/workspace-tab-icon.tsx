@@ -9,6 +9,7 @@ import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import { useIconSize } from "@/styles/theme";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 export interface WorkspaceTabPresentation {
   key: string;
@@ -16,7 +17,7 @@ export interface WorkspaceTabPresentation {
   label: string;
   subtitle: string;
   titleState: "ready" | "loading";
-  icon: React.ComponentType<{ size: number; color: string }>;
+  icon: React.ComponentType<{ size?: IconSizeProp; color?: string }>;
   statusBucket: SidebarStateBucket | null;
   /** Personality spinner colors for the busy loader; null ⇒ theme spinner. */
   personalitySpinner?: { glowA: string; glowB: string } | null;

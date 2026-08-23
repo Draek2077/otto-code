@@ -18,10 +18,11 @@ import {
   getModeVisuals,
   type AgentProviderDefinition,
 } from "@otto-code/protocol/provider-manifest";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 export interface AgentControlIconProps {
-  size: number;
-  color: string;
+  size?: IconSizeProp;
+  color?: string;
 }
 
 export type AgentControlIcon = ComponentType<AgentControlIconProps>;
