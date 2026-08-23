@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.8.14 - 2026-08-23
+
+### Added
+
+- Let a Personality pin provider feature toggles, and choose its effort from the bound model's own thinking options
+
+### Changed
+
+- Converge agent personalities onto Paseo's agent profiles, end to end: the daemon, the stored records, and the wire all speak profiles, while every existing client keeps working under the names it already knows
+- Make the Personality editor the single roster surface, so the composer, Settings, and schedules all read the same list
+- Resolve every icon size from one ramp, and put the title-bar, sidebar, sheet, and menu chrome on one shared ladder
+- Give a selected left-sidebar item the same accent a selected tab uses
+- Move the project's Knowledge pages out of the source tree
+
+### Fixed
+
+- Stop Otto Brain reporting a thinking slot after a chat is interrupted: request stages are now leased, a cancelled request is never dispatched, and any stage the engine contradicts is released automatically
+- Stop a prompt that carries an attachment posting the user's message twice
+- Stop one legacy review attachment wiping every other draft
+- Keep a disabled Brain presented as disabled on the rail
+- Keep flat provider fields on configs and schedules instead of stripping them, so a schedule keeps the approval, sandbox, and network settings it was saved with
+- Fork into a new workspace with the host's real project id
+- Make Rollback the single revert path in the Changes pane
+- Route Command Center's Add project through the same picker the rest of the app uses
+- Keep the shortcut discovery overlay above browser panes
+- Finish the Mermaid renderer convergence, and load its web runtime lazily
+- Keep the sidebar diff stat on the title line, align changes-tree folder stats with their file rows, and fix workspace row action geometry on compact layouts
+- Align explorer tabs with the title-bar button geometry, and settle the workspace splitter hover seams
+- Stop a whitespace-only reply fragment inserting an empty assistant bubble ahead of a queued follow-up
+- Bind a Personality that names no model to its provider's default, so mini-task routing keeps the effort level it was given
+- Release the request bookkeeping for a profile-named call that fails or is denied, instead of holding it for the life of the connection
+
 ## 0.8.13 - 2026-08-22
 
 ### Added
@@ -12,6 +44,7 @@
 - Name the code inside slow frames: performance captures now record long-frame script attribution and keep the pre-capture growth trend
 - Let OpenAI-compatible and Otto Brain models ask up to three multiple-choice questions mid-turn, using Otto's shared question UI
 - Carry the active workspace's host and project into History, Artifacts, Schedules, Runs, and Kanban, with matching scope controls on each page
+- Offer "Edit file" in the file explorer's right-click menu, opening the file tab in editor view the way the Changes menu does
 
 ### Changed
 
@@ -20,6 +53,7 @@
 - Use clearer semantic icons and theme-aware accent colors throughout the app
 - Improve rendered Markdown table borders and mobile chat presentation
 - Give the public site and documentation pages a shared, consistent frame
+- Group the Changes right-click menu into sections, with the edit action named "Edit file" on both sides
 
 ### Fixed
 
@@ -29,7 +63,8 @@
 - Keep the composer toolbar stable during rotation and attachment-pill layouts compact
 - Repair upstream drift checks and tag resolution for the Paseo integration
 - Restore Settings search indexing, so matching rows appear and open reliably
-- Stop Otto Brain reporting a thinking slot after a chat is interrupted: request stages are now leased, a cancelled request is never dispatched, and any stage the engine contradicts is released automatically
+- Stop UI stutter from repeated unchanged agent snapshots: re-broadcasts no longer re-render every mounted chat surface
+- Keep the resource monitor from stacking duplicate census loops across dev-session code reloads
 
 ## 0.8.12 - 2026-08-20
 
