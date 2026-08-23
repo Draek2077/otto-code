@@ -23,7 +23,7 @@ import {
   normalizePersonalityRoles,
   personalityHasRole,
   summarizePersonalityForSelection,
-} from "@otto-code/protocol/agent-personalities";
+} from "@otto-code/protocol/agent-profiles";
 import type { AgentProfile } from "@otto-code/protocol/messages";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {

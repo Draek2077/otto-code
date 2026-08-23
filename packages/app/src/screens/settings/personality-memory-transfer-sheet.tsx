@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
+import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
 import type { AgentProfile } from "@otto-code/protocol/messages";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";

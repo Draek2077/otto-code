@@ -9,7 +9,7 @@
 
 import { CUE_MOMENTS, type CueMoment } from "@otto-code/protocol/messages";
 import type { AgentProfile, PersonalityRole } from "@otto-code/protocol/messages";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
+import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
 import { parseEffortLevel } from "@otto-code/protocol/effort";
 
 export const DEFAULT_GLOW_A = "#4ec4ff";

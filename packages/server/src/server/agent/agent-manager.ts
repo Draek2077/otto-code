@@ -13,7 +13,7 @@ import {
 import {
   normalizePersonalityRoles,
   OTTO_WORK_VOCABULARY_DIRECTIVE,
-} from "@otto-code/protocol/agent-personalities";
+} from "@otto-code/protocol/agent-profiles";
 import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
 import { composeTeamAndPersonalityPrompt } from "./agent-teams.js";
 import { deltaAgentUsage } from "./subagent-usage.js";

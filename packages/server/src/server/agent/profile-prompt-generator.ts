@@ -3,7 +3,7 @@ import type { PersonalityRole } from "@otto-code/protocol/messages";
 import {
   normalizePersonalityRoles,
   PERSONALITY_ROLE_INFO,
-} from "@otto-code/protocol/agent-personalities";
+} from "@otto-code/protocol/agent-profiles";
 import type { StructuredTextGeneration } from "../session/checkout/git-metadata-generator.js";
 import { isStructuredGenerationFailure } from "./agent-response-loop.js";
 

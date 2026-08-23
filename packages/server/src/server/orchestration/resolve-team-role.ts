@@ -1,5 +1,5 @@
 import type { AgentProfile, AgentTeam } from "@otto-code/protocol/messages";
-import { isPersonalityRole, personalityHasRole } from "@otto-code/protocol/agent-personalities";
+import { isPersonalityRole, personalityHasRole } from "@otto-code/protocol/agent-profiles";
 
 // Resolve which member of the active team fills a role - the daemon-side mirror
 // of the app's buildTeamRoleEntry. Returns the FIRST member (in team member

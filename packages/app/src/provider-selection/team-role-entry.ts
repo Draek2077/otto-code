@@ -1,6 +1,6 @@
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { AgentProfile, AgentTeam, PersonalityRole } from "@otto-code/protocol/messages";
-import { personalityHasRole } from "@otto-code/protocol/agent-personalities";
+import { personalityHasRole } from "@otto-code/protocol/agent-profiles";
 import { resolveTeamMembers } from "@otto-code/protocol/agent-teams";
 import type { SelectorPersonality } from "@/components/combined-model-selector";
 import {

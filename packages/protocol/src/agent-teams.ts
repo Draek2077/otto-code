@@ -1,4 +1,4 @@
-import { normalizePersonalityRoles } from "./agent-personalities.js";
+import { normalizePersonalityRoles } from "./agent-profiles.js";
 import type { AgentProfile, AgentTeam, PersonalityRole } from "./messages.js";
 
 // Pure, dependency-free team helpers shared by the daemon (spawn-time active

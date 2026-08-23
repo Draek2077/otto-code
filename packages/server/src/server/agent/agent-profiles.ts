@@ -2,7 +2,7 @@ import {
   checkPersonalityAvailability,
   normalizePersonalityRoles,
   type PersonalityUnavailableCode,
-} from "@otto-code/protocol/agent-personalities";
+} from "@otto-code/protocol/agent-profiles";
 import type {
   AgentPersonalityVoice,
   AgentProfile,

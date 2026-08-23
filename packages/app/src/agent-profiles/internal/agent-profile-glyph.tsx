@@ -3,22 +3,21 @@ import {
   BookOpen,
   Bot,
   Boxes,
-  Brain,
   Bug,
   Cloud,
   Code,
-  Compass,
   Cpu,
   Database,
+  Explore,
   Eye,
   Feather,
   FileText,
   FlaskConical,
-  GitBranch,
+  Gavel,
   Globe,
-  Hammer,
   Layers,
   Microscope,
+  Neurology,
   Package,
   Palette,
   Pencil,
@@ -30,7 +29,8 @@ import {
   Terminal,
   TestTube,
   Wrench,
-} from "@/components/icons/lucide";
+} from "@/components/icons/material-icons";
+import { GitBranch } from "@/components/icons/lucide";
 import { identityForeground } from "@/styles/identity-colors";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import {
@@ -47,14 +47,14 @@ const ThemedDefaultIcon = withUnistyles(Bot);
 
 /**
  * `withUnistyles` has to wrap each icon once at module scope, so the registry
- * stores the themed component rather than the raw lucide one.
+ * stores the themed component rather than the raw icon.
  */
 const THEMED_ICONS: Record<AgentProfileIconKey, typeof ThemedDefaultIcon> = {
   code: withUnistyles(Code),
   terminal: withUnistyles(Terminal),
   bug: withUnistyles(Bug),
   wrench: withUnistyles(Wrench),
-  hammer: withUnistyles(Hammer),
+  hammer: withUnistyles(Gavel),
 
   flask: withUnistyles(FlaskConical),
   testTube: withUnistyles(TestTube),
@@ -80,8 +80,10 @@ const THEMED_ICONS: Record<AgentProfileIconKey, typeof ThemedDefaultIcon> = {
   gitBranch: withUnistyles(GitBranch),
   layers: withUnistyles(Layers),
 
-  compass: withUnistyles(Compass),
-  brain: withUnistyles(Brain),
+  compass: withUnistyles(Explore),
+  // `neurology`, not the `network_intelligence` circuit brain: that glyph is
+  // reserved for Otto Brain and must not appear on an unrelated profile cell.
+  brain: withUnistyles(Neurology),
   sparkles: withUnistyles(Sparkles),
   shield: withUnistyles(Shield),
 };

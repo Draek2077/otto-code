@@ -15,7 +15,7 @@ import type { AgentProfile, AgentTeam, PersonalityRole } from "@otto-code/protoc
 import {
   checkPersonalityAvailability,
   normalizePersonalityRoles,
-} from "@otto-code/protocol/agent-personalities";
+} from "@otto-code/protocol/agent-profiles";
 import {
   pruneTeamMemberIds,
   resolveExclusiveTeamMembers,

@@ -1,6 +1,6 @@
 import type { AgentModelDefinition, ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { AgentProfile } from "@otto-code/protocol/messages";
-import { checkPersonalityAvailability } from "@otto-code/protocol/agent-personalities";
+import { checkPersonalityAvailability } from "@otto-code/protocol/agent-profiles";
 import { resolveEffortOption } from "@otto-code/protocol/effort";
 import { coerceModeForModel } from "./mode-support";
 
@@ -16,6 +16,11 @@ export interface PersonalityFormValues {
   modeId: string;
   /** "" when no effort resolves (no effortLevel, or the model has no thinking options). */
   thinkingOptionId: string;
+  /**
+   * Provider feature toggles the template pins. Undefined when it pins none, so
+   * a surface without a features row can ignore the field entirely.
+   */
+  featureValues?: Record<string, unknown>;
 }
 
 export type PersonalityFormResolution =
@@ -100,6 +105,11 @@ export function resolvePersonalityForForm(
       model: modelId,
       modeId: resolvePersonalityModeId(personality, entry, model) ?? "",
       thinkingOptionId: resolveFormThinkingOptionId(personality, model),
+      // Only carried when the template actually pins something, so a surface
+      // can tell "pins nothing" from "pins an empty set".
+      ...(personality.featureValues && Object.keys(personality.featureValues).length > 0
+        ? { featureValues: personality.featureValues }
+        : {}),
     },
   };
 }

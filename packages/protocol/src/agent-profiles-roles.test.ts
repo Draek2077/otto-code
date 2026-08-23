@@ -4,7 +4,7 @@ import {
   composeRoleFocusDirective,
   personalityCanLaunch,
   summarizePersonalityForSelection,
-} from "./agent-personalities.js";
+} from "./agent-profiles.js";
 
 describe("personality role tiers", () => {
   test("only the surface + conductor roles can launch", () => {

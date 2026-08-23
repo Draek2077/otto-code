@@ -33,7 +33,7 @@ export function usePersonalityRoster(serverId: string): readonly AgentProfile[] 
 
 const EMPTY_ROSTER: readonly AgentProfile[] = [];
 
-export interface PersonalityMemoryView {
+export interface ProfileMemoryView {
   personalityId: string;
   personalityName: string;
   enabled: boolean;
@@ -52,7 +52,7 @@ export interface PersonalityMemoryView {
 }
 
 export interface PersonalityMemoryResult {
-  view: PersonalityMemoryView | null;
+  view: ProfileMemoryView | null;
   isLoading: boolean;
   error: string | null;
   reload: () => void;
@@ -77,7 +77,7 @@ export function usePersonalityMemory(
 ): PersonalityMemoryResult {
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const enabled = usePersonalityMemoryEnabled(serverId);
-  const [view, setView] = useState<PersonalityMemoryView | null>(null);
+  const [view, setView] = useState<ProfileMemoryView | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);

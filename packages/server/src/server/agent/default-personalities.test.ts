@@ -9,7 +9,7 @@ import {
   AgentTeamSchema,
   PERSONALITY_ROLES,
 } from "@otto-code/protocol/messages";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
+import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 import { isClaudeManifestModelId } from "./providers/claude/model-manifest.js";
 import { listLocalTtsVoices } from "../speech/providers/local/sherpa/tts-voices.js";

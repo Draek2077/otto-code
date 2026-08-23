@@ -41,7 +41,7 @@ import {
 import {
   checkPersonalityAvailability,
   normalizePersonalityRoles,
-} from "@otto-code/protocol/agent-personalities";
+} from "@otto-code/protocol/agent-profiles";
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 import type { AgentFeature } from "@otto-code/protocol/agent-types";
 import { usePersonalityFeatures } from "./use-personality-features";

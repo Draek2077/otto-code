@@ -11,7 +11,7 @@ import { isNative, isWeb } from "@/constants/platform";
 import { i18n } from "@/i18n/i18next";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { formatTokens } from "./format";
-import type { PersonalityMemoryView } from "./use-personality-memory";
+import type { ProfileMemoryView } from "./use-personality-memory";
 
 // Theme-reactive icon colors without useUnistyles (docs/unistyles.md).
 const ThemedCognition = withUnistyles(Cognition);
@@ -25,7 +25,7 @@ const ROW_ICON_SIZE = 15;
 
 interface ContextMemoryListProps {
   /** null when no personality is selected - the list says so rather than blanking. */
-  view: PersonalityMemoryView | null;
+  view: ProfileMemoryView | null;
   isLoading: boolean;
   error: string | null;
   hasPersonalitySelected: boolean;
@@ -181,7 +181,7 @@ export function ContextMemoryList({
  * feature's honesty: everything below it is storage, and this is what is
  * actually sent.
  */
-function InjectedBrief({ view }: { view: PersonalityMemoryView }): ReactElement {
+function InjectedBrief({ view }: { view: ProfileMemoryView }): ReactElement {
   const { t } = useTranslation();
   return (
     <View style={styles.briefCard} testID="context-memory-brief">

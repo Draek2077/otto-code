@@ -5,10 +5,7 @@ import {
   type AgentProfile,
   type PersonalityRole,
 } from "@otto-code/protocol/messages";
-import {
-  normalizePersonalityRoles,
-  personalityHasRole,
-} from "@otto-code/protocol/agent-personalities";
+import { normalizePersonalityRoles, personalityHasRole } from "@otto-code/protocol/agent-profiles";
 import {
   getActiveAgentTeam,
   isTeamMember,
