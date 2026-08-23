@@ -371,7 +371,7 @@ function ModelDetailHeader({
       <View style={styles.detailTitleRow}>
         <ThemedBrainModelFamilyIcon
           family={model.family}
-          size={22}
+          size="lg"
           uniProps={mutedModelFamilyIconMapping}
         />
         <Text style={styles.detailTitle} numberOfLines={2}>

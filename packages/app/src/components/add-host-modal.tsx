@@ -624,7 +624,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             }
             testID="direct-password-visibility-toggle"
           >
-            <PasswordIcon size={18} color={theme.colors.foregroundMuted} />
+            <PasswordIcon size="mdPlus" color={theme.colors.foregroundMuted} />
           </Pressable>
         </View>
       </View>

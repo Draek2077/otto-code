@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveDraftKey } from "./input-draft-core";
+import { buildBoundPersonality, resolveDraftKey } from "./input-draft-core";
 import {
   buildDraftCommandConfig,
   resolveEffectiveComposerModelId,
@@ -159,5 +159,53 @@ describe("buildDraftComposerCommandConfig", () => {
       model: "gpt-5.4",
       thinkingOptionId: "high",
     });
+  });
+});
+
+describe("buildBoundPersonality", () => {
+  const roster = [
+    {
+      id: "personality_builtin_sage",
+      name: "Sage",
+      provider: "claude",
+      model: "claude-opus-4-8",
+      spinner: { glowA: "#111", glowB: "#222" },
+    },
+  ];
+
+  it("returns null when the draft has no bound identity", () => {
+    expect(buildBoundPersonality(null, null, roster)).toBeNull();
+  });
+
+  it("resolves an inherited id against the roster rather than showing the raw id", () => {
+    // A fork, a "new tab from this agent", or a workspace-setup initial value
+    // supplies only an id - nothing was picked in this composer. Before the two
+    // template systems converged this fell through to the id string with no
+    // colours, because only the just-applied profile was consulted.
+    const bound = buildBoundPersonality("personality_builtin_sage", null, roster);
+    expect(bound?.selectedName).toBe("Sage");
+    expect(bound?.selectedSpinner).toEqual({ glowA: "#111", glowB: "#222" });
+    expect(bound?.personalities?.[0]?.provider).toBe("claude");
+  });
+
+  it("prefers the profile applied in this composer over the stored roster entry", () => {
+    const applied = {
+      id: "personality_builtin_sage",
+      name: "Sage (edited)",
+      provider: "codex",
+      spinner: { glowA: "#333", glowB: "#444" },
+    };
+    const bound = buildBoundPersonality("personality_builtin_sage", applied as never, roster);
+    expect(bound?.selectedName).toBe("Sage (edited)");
+    expect(bound?.personalities?.[0]?.provider).toBe("codex");
+  });
+
+  it("keeps the chip labelled with the id while the roster is still loading", () => {
+    const bound = buildBoundPersonality("personality_builtin_sage", null, null);
+    expect(bound?.selectedName).toBe("personality_builtin_sage");
+    expect(bound?.personalities).toBeUndefined();
+    // The spawn id is bound either way - a slow config load must not silently
+    // drop the identity the spawn is supposed to carry.
+    expect(bound?.spawnPersonalityId).toBe("personality_builtin_sage");
   });
 });

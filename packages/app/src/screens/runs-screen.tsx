@@ -1054,7 +1054,7 @@ function RunKebabMenu({
         accessibilityLabel="Orchestration actions"
         testID={`run-kebab-${run.id}`}
       >
-        <MoreVertical size={18} color={styles.icon.color} />
+        <MoreVertical size="mdPlus" color={styles.icon.color} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" width={220}>
         {/* Drafts only: reopens the New Orchestration dialog on this record so

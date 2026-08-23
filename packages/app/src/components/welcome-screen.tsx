@@ -356,7 +356,7 @@ function WelcomeActionButton({ action }: WelcomeActionButtonProps) {
   return (
     <Pressable style={buttonStyle} onPress={action.onPress} testID={action.testID}>
       <Icon
-        size={18}
+        size="mdPlus"
         color={action.primary ? theme.colors.accentForeground : theme.colors.foreground}
       />
       <Text style={textStyle}>{action.label}</Text>

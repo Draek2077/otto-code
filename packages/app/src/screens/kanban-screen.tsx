@@ -45,6 +45,7 @@ import {
   resolveKanbanScreenBodyState,
   type KanbanScreenBodyState,
 } from "./kanban-screen-state";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 // ── Shared types ────────────────────────────────────────────────────────────
 
@@ -342,7 +343,7 @@ function KanbanIcon({
   color,
 }: {
   icon: IconComponent;
-  size: number;
+  size: IconSizeProp;
   color: string;
 }): ReactElement {
   return <Icon size={size} color={color} />;
@@ -1272,7 +1273,7 @@ function KanbanCardView({
           </Text>
         ) : null}
         <View style={styles.cardFooter}>
-          <KanbanIcon icon={ListChevronsUpDown} size={13} color={styles.cardAssignees.color} />
+          <KanbanIcon icon={ListChevronsUpDown} size="sm" color={styles.cardAssignees.color} />
           {card.assignees.length > 0 ? (
             <Text style={styles.cardAssignees} numberOfLines={1}>
               {card.assignees.join(", ")}

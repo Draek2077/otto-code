@@ -338,7 +338,7 @@ function UsageLogRow({
       {isCompact ? (
         <View style={cardStyle}>
           <View style={styles.rowHeader}>
-            <Icon size={18} uniProps={mutedColor} />
+            <Icon size="mdPlus" uniProps={mutedColor} />
             <View style={styles.rowHeaderTitle}>{title}</View>
             {cost}
           </View>

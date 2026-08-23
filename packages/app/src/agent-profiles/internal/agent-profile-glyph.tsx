@@ -40,6 +40,7 @@ import {
   type AgentProfileColor,
   type AgentProfileIconKey,
 } from "./profile-appearance";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 /** Drawn when a profile names no icon, and as the "default" cell in the picker grid. */
 const ThemedDefaultIcon = withUnistyles(Bot);
@@ -119,7 +120,7 @@ export function AgentProfileGlyph({
 }: {
   icon?: string | undefined;
   color?: string | undefined;
-  size?: number;
+  size?: IconSizeProp;
 }) {
   const iconKey = resolveAgentProfileIconKey(icon);
   const mapping = COLOR_MAPPINGS[resolveAgentProfileColor(color)];

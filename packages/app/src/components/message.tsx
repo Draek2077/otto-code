@@ -3132,7 +3132,7 @@ export const TodoListCard = memo(function TodoListCard({
   return (
     <View style={cardStyle}>
       <View style={todoListCardStylesheet.header}>
-        <ThemedTodoHeaderIcon size={13} uniProps={foregroundColorMapping} />
+        <ThemedTodoHeaderIcon size="sm" uniProps={foregroundColorMapping} />
         <Text style={todoListCardStylesheet.headerTitle} numberOfLines={1}>
           {t("message.todo.title")}
         </Text>

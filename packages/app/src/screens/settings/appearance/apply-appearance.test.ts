@@ -39,7 +39,10 @@ interface FakeTheme {
   lineHeight: { diff: number };
   layout: { chatMaxWidth: number | undefined };
   colors: { foreground: string; syntax: Record<string, string> };
-  iconSize: Record<"xs" | "sm" | "md" | "lg" | "chromeSm" | "chromeMd" | "chromeLg", number>;
+  iconSize: Record<
+    "xs" | "sm" | "md" | "mdPlus" | "lg" | "chromeSm" | "chromeMd" | "chromeLg",
+    number
+  >;
 }
 
 function makeFakeTheme(): FakeTheme {
@@ -60,7 +63,16 @@ function makeFakeTheme(): FakeTheme {
     lineHeight: { diff: 22 },
     layout: { chatMaxWidth: 820 },
     colors: { foreground: "#fff", syntax: {} },
-    iconSize: { xs: 12, sm: 14, md: 16, lg: 20, chromeSm: 14, chromeMd: 16, chromeLg: 20 },
+    iconSize: {
+      xs: 12,
+      sm: 14,
+      md: 16,
+      mdPlus: 18,
+      lg: 20,
+      chromeSm: 14,
+      chromeMd: 16,
+      chromeLg: 20,
+    },
   };
 }
 
@@ -207,6 +219,7 @@ describe("applyAppearance", () => {
       xs: 12,
       sm: 14,
       md: 16,
+      mdPlus: 18,
       lg: 20,
       chromeSm: 14,
       chromeMd: 16,
@@ -225,6 +238,7 @@ describe("applyAppearance", () => {
       xs: 24,
       sm: 28,
       md: 32,
+      mdPlus: 36,
       lg: 40,
       chromeSm: 21,
       chromeMd: 24,

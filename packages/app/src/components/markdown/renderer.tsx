@@ -145,10 +145,10 @@ function HeadingAnnotationAction({
     >
       {annotated ? (
         <View style={annotationStyles.annotatedHeadingIcon}>
-          <ThemedAnnotatedHeadingIcon size={15} uniProps={annotatedHeadingIconMapping} />
+          <ThemedAnnotatedHeadingIcon size="md" uniProps={annotatedHeadingIconMapping} />
         </View>
       ) : (
-        <ThemedHeadingCommentIcon size={15} uniProps={annotationActionIconMapping} />
+        <ThemedHeadingCommentIcon size="md" uniProps={annotationActionIconMapping} />
       )}
     </DropdownMenuTrigger>
   );

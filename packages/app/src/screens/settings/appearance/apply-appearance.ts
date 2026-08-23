@@ -84,6 +84,7 @@ function scaleIconSize(isCompact: boolean): Theme["iconSize"] {
     xs: ICON_SIZE.xs * factor,
     sm: ICON_SIZE.sm * factor,
     md: ICON_SIZE.md * factor,
+    mdPlus: ICON_SIZE.mdPlus * factor,
     lg: ICON_SIZE.lg * factor,
     chromeSm: ICON_SIZE.chromeSm * chromeFactor,
     chromeMd: ICON_SIZE.chromeMd * chromeFactor,

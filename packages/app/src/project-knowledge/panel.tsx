@@ -61,6 +61,7 @@ import {
   summarizeProjectKnowledge,
   uniqueTags,
 } from "./model";
+import type { IconSizeProp } from "@/components/icons/icon-size";
 
 const MIN_SIDEBAR_WIDTH = 260;
 const MAX_SIDEBAR_WIDTH = 520;
@@ -925,7 +926,7 @@ function KnowledgeRecordRow({
       ]}
     >
       <View style={styles.rowIcon}>
-        <ThemedKnowledgeKindIcon kind={record.kind} size={18} />
+        <ThemedKnowledgeKindIcon kind={record.kind} size="mdPlus" />
       </View>
       <View style={styles.rowContent}>
         <Text numberOfLines={2} style={styles.rowTitle}>
@@ -1051,7 +1052,7 @@ function KnowledgeKindIcon({
   color,
 }: {
   kind: KnowledgeRecord["kind"];
-  size: number;
+  size: IconSizeProp;
   color: string;
 }): ReactElement {
   if (kind === "architecture") return <Architecture size={size} color={color} />;

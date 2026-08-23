@@ -73,10 +73,10 @@ export function DownloadToast() {
           <LoadingSpinner size="small" color={theme.colors.foreground} />
         ) : null}
         {activeDownload.status === "complete" ? (
-          <Check size={18} color={theme.colors.primary} />
+          <Check size="mdPlus" color={theme.colors.primary} />
         ) : null}
         {activeDownload.status !== "downloading" && activeDownload.status !== "complete" ? (
-          <XCircle size={18} color={theme.colors.destructive} />
+          <XCircle size="mdPlus" color={theme.colors.destructive} />
         ) : null}
         <View style={styles.textContainer}>
           <Text style={styles.fileName} numberOfLines={1}>

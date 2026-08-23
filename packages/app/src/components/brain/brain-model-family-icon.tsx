@@ -1,5 +1,7 @@
 import { createElement } from "react";
 import { SvgXml } from "react-native-svg";
+import { withIconSizeToken } from "@/components/icons/icon-size";
+import { ICON_SIZE } from "@/styles/theme";
 
 /**
  * Brand marks from LobeHub lobe-icons (MIT License, Copyright (c) 2023 LobeHub).
@@ -24,16 +26,23 @@ export function hasBrainModelFamilyIcon(family: string | null | undefined): bool
   return Boolean(family && FAMILY_SVGS[family]);
 }
 
-export function BrainModelFamilyIcon({
+function BrainModelFamilyIconBase({
   family,
-  size = 18,
+  size = ICON_SIZE.mdPlus,
   color,
 }: {
   family: string | null | undefined;
   size?: number;
-  color: string;
+  color?: string;
 }) {
   const xml = family ? FAMILY_SVGS[family] : undefined;
   if (!xml) return null;
   return createElement(SvgXml, { xml, width: size, height: size, color });
 }
+
+// Defaulted to `mdPlus` because that is the 18 this component always drew at, and it
+// is one of the sites that made 18 a real step rather than a stray number.
+export const BrainModelFamilyIcon = withIconSizeToken(
+  BrainModelFamilyIconBase,
+  "BrainModelFamilyIcon",
+);

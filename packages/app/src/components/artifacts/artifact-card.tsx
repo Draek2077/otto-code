@@ -178,9 +178,9 @@ function ArtifactCardComponent({
             testID={`artifact-star-${artifact.id}`}
           >
             {artifact.starred ? (
-              <StarFilled size={18} color={styles.starOn.color} />
+              <StarFilled size="mdPlus" color={styles.starOn.color} />
             ) : (
-              <Star size={18} color={styles.icon.color} />
+              <Star size="mdPlus" color={styles.icon.color} />
             )}
           </Pressable>
           <ArtifactKebabMenu
@@ -264,7 +264,7 @@ function ArtifactKebabMenu({
         accessibilityLabel="Artifact actions"
         testID={`artifact-menu-${artifact.id}`}
       >
-        <MoreVertical size={18} color={styles.icon.color} />
+        <MoreVertical size="mdPlus" color={styles.icon.color} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" width={200}>
         <DropdownMenuItem

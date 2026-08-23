@@ -94,7 +94,7 @@ export function useToastHost(): {
       copied: (label?: string) =>
         show(label ? t("common.states.copiedLabel", { label }) : t("common.states.copied"), {
           variant: "success",
-          icon: <CheckCircle2 size={18} color={theme.colors.foreground} />,
+          icon: <CheckCircle2 size="mdPlus" color={theme.colors.foreground} />,
         }),
       error: (message: string) => show(message, { variant: "error", durationMs: 3200 }),
     }),
@@ -299,9 +299,9 @@ export function ToastViewport({
 
   let defaultIcon: ReactNode = null;
   if (toast.variant === "success") {
-    defaultIcon = <CheckCircle2 size={18} color={theme.colors.primary} />;
+    defaultIcon = <CheckCircle2 size="mdPlus" color={theme.colors.primary} />;
   } else if (toast.variant === "error") {
-    defaultIcon = <AlertTriangle size={18} color={theme.colors.destructive} />;
+    defaultIcon = <AlertTriangle size="mdPlus" color={theme.colors.destructive} />;
   }
   const icon = toast.icon ?? defaultIcon;
 

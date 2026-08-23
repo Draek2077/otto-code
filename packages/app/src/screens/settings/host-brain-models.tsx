@@ -1014,7 +1014,7 @@ function CatalogRow({
     <View style={rowStyle}>
       <View style={styles.modelHeader}>
         <View style={styles.catalogModelName}>
-          <ThemedBrainModelFamilyIcon family={model.family} size={18} />
+          <ThemedBrainModelFamilyIcon family={model.family} size="mdPlus" />
           <Text style={[settingsStyles.rowTitle, styles.modelTitle]} numberOfLines={1}>
             {model.name}
           </Text>

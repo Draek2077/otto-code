@@ -149,7 +149,7 @@ function FlowBackButton({ onPress }: { onPress: () => void }) {
     >
       {({ hovered, pressed }) => (
         <ThemedArrowLeft
-          size={18}
+          size="mdPlus"
           uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
         />
       )}

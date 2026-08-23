@@ -80,7 +80,7 @@ export function AddHostMethodModal({
         accessibilityLabel={t("pairing.connectionMethods.direct.title")}
         testID="add-host-method-direct"
       >
-        <Link2 size={18} color={theme.colors.foreground} />
+        <Link2 size="mdPlus" color={theme.colors.foreground} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>{t("pairing.connectionMethods.direct.title")}</Text>
           <Text style={styles.optionSubtext}>
@@ -96,7 +96,7 @@ export function AddHostMethodModal({
           accessibilityRole="button"
           accessibilityLabel={t("pairing.connectionMethods.scanQr.title")}
         >
-          <QrCode size={18} color={theme.colors.foreground} />
+          <QrCode size="mdPlus" color={theme.colors.foreground} />
           <View style={styles.optionBody}>
             <Text style={styles.optionText}>{t("pairing.connectionMethods.scanQr.title")}</Text>
             <Text style={styles.optionSubtext}>
@@ -113,7 +113,7 @@ export function AddHostMethodModal({
         accessibilityLabel={t("pairing.connectionMethods.pasteLink.title")}
         testID="add-host-method-pair-link"
       >
-        <ClipboardPaste size={18} color={theme.colors.foreground} />
+        <ClipboardPaste size="mdPlus" color={theme.colors.foreground} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>{t("pairing.connectionMethods.pasteLink.title")}</Text>
           <Text style={styles.optionSubtext}>

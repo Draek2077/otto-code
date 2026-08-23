@@ -502,7 +502,7 @@ function ResultContent({ result }: { result: CommandCenterResult }) {
               key={presentation.path.slice(0, index + 1).join("\u0000")}
               style={styles.breadcrumbPart}
             >
-              {index > 0 ? <ThemedChevronRight size={13} strokeWidth={2} /> : null}
+              {index > 0 ? <ThemedChevronRight size="sm" strokeWidth={2} /> : null}
               <Text
                 style={
                   index === presentation.path.length - 1 ? styles.title : styles.breadcrumbGroup

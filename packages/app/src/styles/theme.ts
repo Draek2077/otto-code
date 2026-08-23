@@ -87,6 +87,11 @@ export const LINE_HEIGHT = {
  * which is the whole reason the distinction lives in the token rather than in a
  * multiplier argument at each call site.
  *
+ * `mdPlus` is 18, a step the ramp did not have and twenty-two call sites hardcoded
+ * anyway - toast status glyphs, card stars and kebabs, modal row leading icons, list
+ * type glyphs. A step that many places reach for independently is a real step, and
+ * hardcoding it froze every one of them at 18 on a phone.
+ *
  * The scaling itself happens in exactly one place, `applyAppearance`. Never scale an
  * icon at a call site.
  */
@@ -94,6 +99,7 @@ export const ICON_SIZE = {
   xs: 12,
   sm: 14,
   md: 16,
+  mdPlus: 18,
   lg: 20,
   chromeSm: 14,
   chromeMd: 16,
@@ -105,6 +111,7 @@ function scaleIconSizes(scale: number): Record<keyof typeof ICON_SIZE, number> {
     xs: ICON_SIZE.xs * scale,
     sm: ICON_SIZE.sm * scale,
     md: ICON_SIZE.md * scale,
+    mdPlus: ICON_SIZE.mdPlus * scale,
     lg: ICON_SIZE.lg * scale,
     chromeSm: ICON_SIZE.chromeSm * scale,
     chromeMd: ICON_SIZE.chromeMd * scale,
