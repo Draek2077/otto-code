@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 
 import { resolveTeamRoleMember } from "./resolve-team-role.js";
 
-function personality(id: string, roles: string[]): AgentPersonality {
+function personality(id: string, roles: string[]): AgentProfile {
   return { id, name: id, provider: "claude", model: "claude-sonnet-5", roles };
 }
 
-const roster: AgentPersonality[] = [
+const roster: AgentProfile[] = [
   personality("atlas", ["orchestrator", "chatter"]),
   personality("sage", ["advisor", "researcher", "planner"]),
   personality("vera", ["judger"]),

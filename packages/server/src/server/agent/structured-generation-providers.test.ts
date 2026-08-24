@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import type { AgentPersonality, AgentProfile } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import {
   resolveStructuredGenerationAgent,
   resolveStructuredGenerationProviders,
@@ -21,7 +21,7 @@ class ProviderSnapshots {
   }
 }
 
-function personality(overrides: Partial<AgentPersonality> = {}): AgentPersonality {
+function personality(overrides: Partial<AgentProfile> = {}): AgentProfile {
   return {
     id: "p-dash",
     name: "Dash",

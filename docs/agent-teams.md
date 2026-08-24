@@ -68,12 +68,12 @@ Deliberate boundaries of the rule:
 
 ### Snapshot semantics
 
-At spawn the active team resolves to a frozen `ResolvedTeamSnapshot` (`{ teamId, name, avatarColor?, teamPrompt? }`) on `AgentSessionConfig.teamSnapshot`, persisted via `SERIALIZABLE_CONFIG_SCHEMA` next to `personalitySnapshot`. It mirrors the personality snapshot's lifecycle exactly:
+At spawn the active team resolves to a frozen `ResolvedTeamSnapshot` (`{ teamId, name, avatarColor?, teamPrompt? }`) on `AgentSessionConfig.teamSnapshot`, persisted via `SERIALIZABLE_CONFIG_SCHEMA` next to `profileSnapshot`. It mirrors the personality snapshot's lifecycle exactly:
 
 - **Switching the active team never mutates a running or observed agent.** Agents keep the snapshot they were born with; switching changes only what _new_ spawns get, instantly, and nothing else.
 - **A live personality switch keeps the born team.** `agent.personality.set` swaps only the personality layer; the prompt recomposes as `frozen teamSnapshot.teamPrompt + new personality prompt`. Switching to a personality outside the frozen team keeps the team prompt anyway - the agent's team is part of its birth identity, like its cwd.
 
-The three daemon spawn paths that compose the team layer - interactive create (`session.ts` `applyPersonalityIdentityToConfig`), MCP `create_agent`, and schedule runs - all resolve through the one helper in `agent/agent-teams.ts` (`resolveTeamSnapshotForPersonality`), so the logic lives in one place. A schedule **resolves the active team at run time**, not at authoring time: a schedule that fires under Team B runs with Team B's framing (iff its bound personality is a member; otherwise no team layer - teamlessness is a valid state, never a hard-fail).
+The three daemon spawn paths that compose the team layer - interactive create (`session.ts` `applyPersonalityIdentityToConfig`), MCP `create_chat`, and schedule runs - all resolve through the one helper in `agent/agent-teams.ts` (`resolveTeamSnapshotForPersonality`), so the logic lives in one place. A schedule **resolves the active team at run time**, not at authoring time: a schedule that fires under Team B runs with Team B's framing (iff its bound personality is a member; otherwise no team layer - teamlessness is a valid state, never a hard-fail).
 
 ## What the active team gates (beyond the prompt)
 
@@ -136,7 +136,7 @@ A fresh host seeds `DEFAULT_AGENT_TEAMS` (`packages/protocol/src/default-persona
 ## Where the code lives
 
 - **Shared (app + daemon):** `packages/protocol/src/messages.ts` (`AgentTeamSchema`, `agentTeams` section + patch on `MutableDaemonConfig`, `features.agentTeams`), `packages/protocol/src/agent-teams.ts` (pure helpers: `getActiveAgentTeam`, `resolveTeamMembers`, `resolveExclusiveTeamMembers`, `isTeamMember`, `getEffectiveTeamPrompt`), `default-personalities.ts` (`DEFAULT_AGENT_TEAMS`).
-- **Daemon:** `packages/server/src/server/agent/agent-teams.ts` (active-team resolution → `teamSnapshot`, `composeTeamAndPersonalityPrompt`, `resolveTeamSchedulerSnapshot`), `agent-manager.ts` (compose at spawn + `setAgentPersonality` recomposition), `session.ts` (`applyPersonalityIdentityToConfig`), `tools/otto-tools.ts` (`create_agent`/`list_personalities` scoping), `schedule/service.ts` (run-time team resolution), `structured-generation-providers.ts` (Writer team preference), `daemon-config-store.ts` (persistence + seed).
+- **Daemon:** `packages/server/src/server/agent/agent-teams.ts` (active-team resolution → `teamSnapshot`, `composeTeamAndPersonalityPrompt`, `resolveTeamSchedulerSnapshot`), `agent-manager.ts` (compose at spawn + `setAgentPersonality` recomposition), `session.ts` (`applyPersonalityIdentityToConfig`), `tools/otto-tools.ts` (`create_chat`/`list_personalities` scoping), `schedule/service.ts` (run-time team resolution), `structured-generation-providers.ts` (Writer team preference), `daemon-config-store.ts` (persistence + seed).
 - **App:** `screens/settings/agent-teams-section.tsx` (card + `TeamEditModal`), `components/active-team-switcher.tsx` (switcher) + `components/active-team-group-switcher.tsx` (the multi-host collapsed control), `hooks/use-personality-selection.ts` + `components/combined-model-selector.tsx` (team filtering), `provider-selection/team-role-entry.ts` (`buildTeamRoleEntry`).
 
 ## Deferred

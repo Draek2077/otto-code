@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import { resolveProfile } from "./agent-profiles.js";
 import type { AgentSelectOption, ProviderSnapshotEntry } from "./agent-sdk-types.js";
 
-function personality(overrides: Partial<AgentPersonality> = {}): AgentPersonality {
+function personality(overrides: Partial<AgentProfile> = {}): AgentProfile {
   return {
     id: "p-sparky",
     name: "Sparky",

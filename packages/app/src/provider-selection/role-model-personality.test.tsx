@@ -3,7 +3,7 @@
  */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { AgentPersonality, AgentTeam } from "@otto-code/protocol/messages";
+import type { AgentProfile, AgentTeam } from "@otto-code/protocol/messages";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
 import type { PersonalityFormValues } from "@/provider-selection/personality-form";
@@ -79,7 +79,7 @@ const READY_ENTRIES: ProviderSnapshotEntry[] = [
   },
 ];
 
-const CHATTER: AgentPersonality = {
+const CHATTER: AgentProfile = {
   id: "p-chatter",
   name: "Chatty",
   provider: "mock",
@@ -87,7 +87,7 @@ const CHATTER: AgentPersonality = {
   roles: ["chatter"],
 };
 
-const OTHER_CHATTER: AgentPersonality = {
+const OTHER_CHATTER: AgentProfile = {
   id: "p-other",
   name: "Other",
   provider: "mock",
@@ -97,7 +97,7 @@ const OTHER_CHATTER: AgentPersonality = {
 
 // Carries a role this surface is NOT (the composer is "chatter"), so it only
 // ever appears in the picker's grouped "All personalities" browse section.
-const OFF_ROLE_CODER: AgentPersonality = {
+const OFF_ROLE_CODER: AgentProfile = {
   id: "p-coder",
   name: "Codey",
   provider: "mock",
@@ -113,7 +113,7 @@ const TEAM: AgentTeam = {
 
 const TEAM_ENTRY_ID = "__team-chatter__";
 
-function setConfig(input: { personalities: AgentPersonality[]; activeTeamId: string | null }) {
+function setConfig(input: { personalities: AgentProfile[]; activeTeamId: string | null }) {
   mocks.config.config = {
     agentProfiles: input.personalities,
     agentTeams: { teams: [TEAM], activeTeamId: input.activeTeamId },

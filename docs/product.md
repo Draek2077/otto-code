@@ -76,7 +76,7 @@ Anyone who builds software:
 - Artifacts: agents generate self-contained HTML artifacts stored with the project
 - Agent personalities: named, reusable per-host agent templates (provider→model, effort, mode, prompt, roles, and a name/spinner/voice identity) - the ergonomic "who does the work" pick shown atop every model picker, spawnable by orchestrating agents; see [agent-personalities.md](agent-personalities.md)
 - Voice mode: dictate prompts or talk through problems hands-free
-- MCP server exposes the daemon to other agents (create_agent by personality, list_personalities, send_agent_prompt, schedules, terminals, worktrees, workspace renaming)
+- MCP server exposes the daemon to other agents (create_chat by Personality, list_personalities, send_chat_prompt, schedules, terminals, worktrees, workspace renaming)
 - Scheduled agents (cron-style triggers) via app, CLI, and MCP
 - Frequent releases (multiple per week)
 - Community contributions across packaging, providers, and bug fixes

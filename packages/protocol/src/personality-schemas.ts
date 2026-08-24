@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Otto agent-personality wire schemas. Kept out of agent-personalities.ts because that module imports from messages.ts, and out of messages.ts because personalities are a fork-only capability.
+ * Otto Personality wire schemas. Kept out of agent-profiles.ts because that module imports from messages.ts, and out of messages.ts because Personalities are a fork-only capability.
  */
 
 // Canonical personality roles, in display order. Kept as an exported const so
@@ -9,7 +9,7 @@ import { z } from "zod";
 // plain strings (below) - adding a role later must never break an older peer's
 // parsing. Consumers filter incoming role arrays to this known set. The retired
 // "worker" role is mapped to "coder" on the way in (see LEGACY_ROLE_ALIASES in
-// agent-personalities.ts) so personalities persisted before the split keep their
+// agent-profiles.ts) so personalities persisted before the split keep their
 // role rather than silently losing it.
 export const PERSONALITY_ROLES = [
   // Surfaces - the interactive / host-facing entry points.

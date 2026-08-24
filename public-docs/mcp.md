@@ -14,20 +14,20 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 
 ## Tools
 
-### Agents
+### Chats
 
-| Tool                 | Function                                                                                                                                    |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `create_agent`       | Create an agent tied to a working directory, optionally with initial settings, a [personality](/docs/personalities), or a new git worktree. |
-| `send_agent_prompt`  | Send a task to a running agent.                                                                                                             |
-| `get_agent_status`   | Return the latest snapshot for an agent.                                                                                                    |
-| `list_agents`        | List recent agents as compact metadata.                                                                                                     |
-| `cancel_agent`       | Abort an agent's current run but keep the agent alive.                                                                                      |
-| `archive_agent`      | Soft-delete an agent and remove it from the active list.                                                                                    |
-| `kill_agent`         | Terminate an agent session permanently.                                                                                                     |
-| `update_agent`       | Update an agent name, labels, or runtime settings such as mode/model/effort/features.                                                       |
-| `get_agent_activity` | Return recent agent timeline entries as a curated summary.                                                                                  |
-| `set_agent_mode`     | Switch an agent's session mode.                                                                                                             |
+| Tool                | Function                                                                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `create_chat`       | Start a chat tied to a working directory, optionally with initial settings, a [Personality](/docs/personalities), or a new git worktree. |
+| `send_chat_prompt`  | Send a task to a running chat.                                                                                                           |
+| `get_chat_status`   | Return the latest snapshot for a chat.                                                                                                   |
+| `list_chats`        | List recent chats as compact metadata.                                                                                                   |
+| `cancel_chat`       | Stop the chat's current turn but keep the chat available for future work.                                                                |
+| `archive_chat`      | Stop and archive a chat. It leaves the active list but stays recoverable in the archive.                                                 |
+| `delete_chat`       | Permanently terminate and delete a chat session.                                                                                         |
+| `update_chat`       | Update a chat's name, labels, or runtime settings such as mode/model/effort/features.                                                    |
+| `get_chat_activity` | Return recent chat timeline entries as a curated summary.                                                                                |
+| `set_chat_mode`     | Switch a chat's session mode.                                                                                                            |
 
 ### Terminals
 
@@ -64,7 +64,7 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 | -------------------- | ---------------------------------------------------------------------------------------------------- |
 | `list_personalities` | List [agent personalities](/docs/personalities) with roles and availability. Available to any agent. |
 
-Personalities are also spawned through `create_agent` (its `personality` argument) and bound to schedules through `create_schedule` / `update_schedule`.
+Personalities are also spawned through `create_chat` (its `personality` argument) and bound to schedules through `create_schedule` / `update_schedule`.
 
 ### Worktrees
 

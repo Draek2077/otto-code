@@ -6,7 +6,7 @@ import {
   resolveTeamSnapshotForPersonality,
 } from "./agent-teams.js";
 import type { AgentTeamsConfigView } from "@otto-code/protocol/agent-teams";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import type { ProviderSnapshotEntry } from "./agent-sdk-types.js";
 
 const crew = {
@@ -64,7 +64,7 @@ describe("resolveTeamSnapshotForPersonality", () => {
 });
 
 describe("resolveTeamSchedulerSnapshot", () => {
-  function makeScheduler(overrides: Partial<AgentPersonality> & { id: string }): AgentPersonality {
+  function makeScheduler(overrides: Partial<AgentProfile> & { id: string }): AgentProfile {
     return {
       name: overrides.id,
       provider: "codex",

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
 
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import { resolvePersonalityForForm } from "./personality-form";
 
-function personality(overrides: Partial<AgentPersonality> = {}): AgentPersonality {
+function personality(overrides: Partial<AgentProfile> = {}): AgentProfile {
   return {
     id: "p1",
     name: "Sparky",

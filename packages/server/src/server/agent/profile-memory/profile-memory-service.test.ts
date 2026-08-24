@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@otto-code/protocol/messages";
 import { isProfileMemoryEnabled, ProfileMemoryService } from "./profile-memory-service.js";
 import { ProfileMemoryStore } from "./profile-memory-store.js";
 
@@ -11,19 +11,19 @@ const logger = pino({ level: "silent" });
 const PID = "personality_sprocket";
 const REPO = "/repos/otto";
 
-function personality(overrides: Partial<AgentPersonality> = {}): AgentPersonality {
+function personality(overrides: Partial<AgentProfile> = {}): AgentProfile {
   return {
     id: PID,
     name: "Sprocket",
     provider: "claude",
     model: "sonnet",
     ...overrides,
-  } as AgentPersonality;
+  } as AgentProfile;
 }
 
 let root: string;
 let store: ProfileMemoryStore;
-let roster: AgentPersonality[];
+let roster: AgentProfile[];
 let service: ProfileMemoryService;
 
 beforeEach(async () => {

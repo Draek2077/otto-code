@@ -129,7 +129,7 @@ Both call `toClaudeSubagentUsage(totals, model)` (`claude-subagent-usage.ts`) - 
 
 For each provider, answer these before writing code:
 
-1. **Does it surface sub-agents at all?** If sub-agents are real, **attended** Otto agents (e.g. openai-compat spawns via the native `create_agent` tools), they already get their own `turn_completed` with their own usage/cost through the normal path - no observed-accounting work applies. Only providers with **provider-managed** (observed) sub-agents need this.
+1. **Does it surface sub-agents at all?** If sub-agents are real, **attended** Otto agents (e.g. openai-compat spawns via the native `create_chat` tools), they already get their own `turn_completed` with their own usage/cost through the normal path - no observed-accounting work applies. Only providers with **provider-managed** (observed) sub-agents need this.
 2. **Where is per-sub-agent usage?** A live sidechain/delegated-thread stream (map frames → `observe`), an on-disk transcript (tail + map), or a per-turn total only (scalar `cumulativeTokens`, no split - honest blank row, no ledger entry).
 3. **What are the usage field names?** Write the provider's `readUsageTotals` equivalent.
 4. **Is the parent turn's cost whole-tree or parent-only?** Whole-tree ⇒ the residual de-inflation applies automatically once sub-agent costs carry `totalCostUsd`. Parent-only ⇒ no de-inflation needed (sub-agent costs are simply additive).

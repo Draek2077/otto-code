@@ -4,7 +4,7 @@ A lightweight "how much has Otto done" dashboard: daemon-tracked lifetime usage 
 
 ## The counter store
 
-`ActivityStatsStore` (`packages/server/src/server/activity-stats/activity-stats-store.ts`) follows the "tiny file-backed daemon-wide counter" pattern - cf. `PushTokenStore` (`push/token-store.ts`) and `PersonalityStatsStore` (`agent/personality-stats-store.ts`). Persisted at `$OTTO_HOME/activity-stats.json`, atomic writes via `writeJsonFileAtomic`, with a serialized in-memory queue so concurrent increments never lose counts.
+`ActivityStatsStore` (`packages/server/src/server/activity-stats/activity-stats-store.ts`) follows the "tiny file-backed daemon-wide counter" pattern - cf. `PushTokenStore` (`push/token-store.ts`) and `ProfileStatsStore` (`agent/profile-stats-store.ts`). Persisted at `$OTTO_HOME/activity-stats.json`, atomic writes via `writeJsonFileAtomic`, with a serialized in-memory queue so concurrent increments never lose counts.
 
 Stats are bucketed by **calendar day** (`YYYY-MM-DD`, local daemon date) plus running all-time totals - no session start/end lifecycle and no crash-recovery bookkeeping. The day bucket is decided at increment time, so counting survives daemon restarts, multiple concurrent clients, and the phone app backgrounding/foregrounding.
 
@@ -88,7 +88,7 @@ On the wire, `UsageEvent` `kind`/`provider` are `z.string()` rather than enums s
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `agentsCreated`                                                  | `AgentManager.createAgent` → `createAgentInternal`                                                                                                    |
 | `subagentsInvoked`                                               | Same `createAgent` path when `relationship.kind === "subagent"`, plus `appendObservedSubagentTaskEvent` on `task_started` (observed Claude subagents) |
-| `backgroundTasksInvoked`                                         | The `background: true` resolution point in `agent/tools/otto-tools.ts` (create_agent / send_message handlers)                                         |
+| `backgroundTasksInvoked`                                         | The `background: true` resolution point in `agent/tools/otto-tools.ts` (create_chat / send_message handlers)                                          |
 | `runsOrchestrated`                                               | `RunService.startRun`                                                                                                                                 |
 | `schedulesExecuted`                                              | `ScheduleService.runSchedule`                                                                                                                         |
 | `artifactsCreated`                                               | `ArtifactService.create`                                                                                                                              |

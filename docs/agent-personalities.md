@@ -2,7 +2,7 @@
 
 An **agent personality** (UI label: "Agent personalities", Host settings → Agents) is a named, reusable agent template stored per-host in the daemon config. It is the primary way a user picks "who does the work": instead of choosing a raw provider + model + effort + mode every time, they pick a personality once and it fills all of that in - on a local LM Studio model just as much as a frontier API. This is the provider-agnostic leveling-up pattern from [CLAUDE.md](../CLAUDE.md): a personality bound to a local model is as capable a Chatter or Judger as one bound to a hosted API.
 
-Personalities shipped in 0.5.0. This doc is the durable architecture. The one open product decision - persisting a client schedule-form personality binding - is tracked in [the projects ledger](../projects/README.md#onboarding--ux).
+Personalities shipped in 0.5.0, and converged with Paseo's agent profiles onto one stored template in 0.8.13. This doc is the durable architecture. A schedule's personality binding persists as the stable `id`, so renaming a personality no longer breaks it; see the identity invariant under [Data model](#data-model).
 
 ## What a personality binds
 
@@ -18,19 +18,26 @@ Each personality bundles a **brain** and an **identity**:
 
 ## Data model
 
-`agentPersonalities` is a section on `MutableDaemonConfig` (`packages/protocol/src/messages.ts`, alongside `MutableDaemonConfigSchema` / its patch variant, both `.passthrough()`). It persists through `daemon-config-store.ts`'s merge whitelist and hot-reloads over `status:daemon_config_changed`. The capability flag is `features.agentPersonalities` on `ServerInfoStatusPayloadSchema.features` - tagged `COMPAT(agentPersonalities)`.
+The roster is `agentProfiles` on `MutableDaemonConfig` (`packages/protocol/src/messages.ts`, alongside `MutableDaemonConfigSchema` / its patch variant, both `.passthrough()`). It persists through `daemon-config-store.ts`'s merge whitelist and hot-reloads over `status:daemon_config_changed`.
+
+**One system, two names on purpose.** The stored template is `AgentProfile` in code, from the Paseo base this fork builds on; every string a human or a model reads calls it a **Personality**. Otto's older `agents.agentPersonalities` section is a tombstone: it is imported once, ids intact, then left on disk untouched. Its capability flag `features.agentPersonalities` stays advertised for old clients, tagged `COMPAT(agentPersonalities)`.
 
 ```
-AgentPersonality {
+AgentProfile {                // "Personality" in every user-facing string
   id: string                    // stable, machine-generated; the ONLY thing references bind to
   name: string                  // human label, freely renamable, unique per host
   provider: string              // provider id (e.g. "codex", "openai-compat")
-  model: string                 // provider-scoped model id
-  effortLevel: EffortLevel      // canonical: off|minimal|low|medium|high|xhigh|max
-  modeId: string                // default permission mode (provider-scoped)
+  model?: string                // provider-scoped model id; absent means the provider's default
+  effortLevel?: EffortLevel     // canonical: off|minimal|low|medium|high|xhigh|max
+  thinkingOptionId?: string     // a provider's own option id, when it maps to no canonical rung
+  modeId?: string               // default permission mode (provider-scoped)
+  featureValues?: Record<string, unknown>  // provider feature toggles this template pins
+  notes?: string                // free text, written for orchestrating agents
   personalityPrompt?: string    // → per-agent systemPrompt
   respectGlobalAppendPrompt: boolean   // default true
   roles: PersonalityRole[]      // one or more
+  icon?: string                 // key into a fixed icon registry
+  color?: string                // identity-palette colour name
   spinner: { glowA: string; glowB: string }         // two hex colors for BlobLoader
   voice?: { provider: string; model: string; name: string }  // TTS voice; soft binding
   voiceCues?: { join?: string[]; thinking?: string[]; waiting?: string[]; done?: string[] }  // Visualizer spoken cues
@@ -42,33 +49,36 @@ AgentPersonality {
 
 `voiceCues` are the pre-generated (and hand-editable) short lines an agent **speaks** in the personality's voice at four moments - it joins, first starts thinking, waits on still-running sub-agents, completes a turn. Stored on the personality so they're deterministic and tunable (playback reads them directly, no runtime generation). Authored in the editor's Voice tab (Generate button + auto-generate on save when empty); see [Voice cues](#voice-cues) below.
 
-This is the logical shape; on the wire everything past `provider`/`model` is an optional plain string (`AgentPersonalitySchema`, `messages.ts` - no enums) for forward compat, and the daemon validates values against its own catalog when applying a patch.
+This is the logical shape; on the wire everything past `provider` is optional and plain (`AgentProfileSchema`, `messages.ts` - no enums) for forward compat, and the daemon validates values against its own catalog when applying a patch.
 
 Two invariants:
 
-- **Identity is the `id`, never the `name`.** Renaming a personality must not break any schedule, remembered picker selection, or in-flight agent. Everything binds `id`.
+- **Identity is the `id`, never the `name`.** Renaming a personality must not break any schedule, remembered picker selection, or in-flight agent. Everything **stores** the `id`. Surfaces a human or a model types into (the `personality` field on `create_chat` and the schedule tools) accept either, through one shared lookup - `findProfileByRef` (`packages/protocol/src/agent-profiles.ts`), which matches id first, then exact name, then case-insensitively - and what they persist is always the id.
 - **Effort is stored canonical, resolved at spawn.** Store the `EffortLevel`, never a raw `thinkingOptionId` (option ids differ per model). Resolve against the bound model at spawn with `resolveEffortOption` (`packages/protocol/src/effort.ts`; `packages/server/src/server/agent/effort-levels.ts` re-exports).
 
-## Roles (8)
+## Roles
 
-A personality carries one or more roles. Roles gate where a personality shows up. A new personality defaults to **all roles**; the editor has an All / None toggle.
+A personality carries one or more roles. Roles gate where a personality **shows up**; they are not a permission gate. A new personality defaults to **all roles**; the editor has an All / None toggle.
 
 | Role             | Consumed by                                                                                                         | App picker surface today                           |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | **Chatter**      | Interactive agent chats                                                                                             | Composer agent-controls picker                     |
 | **Artificer**    | Creating & managing artifacts                                                                                       | Artifact create sheet                              |
 | **Scheduler**    | Creating & managing schedules                                                                                       | Schedule form sheet                                |
-| **Writer**       | Fast small-text generation - commit messages, PR text, branch/workspace names (mini-tasks)                          | None (daemon-internal, see below)                  |
-| **Coder**        | Spawned as a coding sub-agent (incl. text-editor AI refactor)                                                       | None yet - via skills / MCP                        |
+| **Researcher**   | Read-only surveying - maps the code or domain and reports findings                                                  | None yet - via skills / orchestration              |
+| **Planner**      | Turns a goal into a typed, sequenced phase plan for others to execute                                               | None yet - via skills / orchestration              |
 | **Judger**       | Judging / review passes                                                                                             | None yet - via committee / review skills           |
 | **Advisor**      | Planning / second opinion; **read-only / advisory**                                                                 | None yet - via advisor / committee skills          |
+| **Coder**        | Spawned as a coding sub-agent (incl. text-editor AI refactor)                                                       | None yet - via skills / MCP                        |
+| **Designer**     | Styling and layout, plus the human-skill text (copy, naming)                                                        | None yet - via skills / orchestration              |
+| **Writer**       | Fast small-text generation - commit messages, PR text, branch/workspace names (mini-tasks)                          | None (daemon-internal, see below)                  |
 | **Orchestrator** | Drives multi-agent workflows. **Semantic label only** - enumerating & spawning personalities is open to every agent | None yet - via committee / panels / handoff / loop |
 
-The role catalog lives in `PERSONALITY_ROLES` and the shared predicate/helpers in `packages/protocol/src/agent-personalities.ts` (used by both app pickers and the daemon).
+The role catalog lives in `PERSONALITY_ROLES` (`packages/protocol/src/personality-schemas.ts`) and the shared predicates, tier metadata, and roster lookup in `packages/protocol/src/agent-profiles.ts` (used by both app pickers and the daemon). The table is in catalog order.
 
 ### Role tiers: coordinators vs focused workers
 
-Roles fall into two behavioral **tiers** (`PERSONALITY_ROLE_INFO` in `agent-personalities.ts`):
+Roles fall into two behavioral **tiers** (`PERSONALITY_ROLE_INFO` in `agent-profiles.ts`):
 
 - **Coordinators** - **Chatter, Artificer, Scheduler, Advisor, Orchestrator.** They converse, plan, and may delegate when the task benefits from a dedicated worker or multi-agent coordination.
 - **Focused workers** - **Writer, Coder, Judger.** They lift a single thing someone is waiting on and should stay on task, not fan out into sub-agents.
@@ -80,7 +90,7 @@ A personality that carries **any** coordinator role is a coordinator (`personali
 - **A chat-start role directive** (`composeRoleFocusDirective`) folded into the personality's system prompt: the orchestrator selects direct work, `create_chat`, `suggest_task`, or `start_orchestration` by the capability the task actually needs; other coordinators may delegate only when that helps; focused personalities are told "someone is waiting on this - stay on it, don't create child chats unless essential."
 - **`list_personalities` decision-aid fields** - every entry carries `tier`, `canLaunch`, and a `guidance` "why you'd choose me" blurb (joined from its roles' taglines), so a deciding agent self-selects the right teammate from the list alone.
 
-**Writer and Coder replaced the old single `Worker` role.** Worker split into the fast small-text tier (`writer`) and the coding sub-agent tier (`coder`). A personality persisted with the retired `worker` tag resolves to `coder` via `LEGACY_ROLE_ALIASES` in `agent-personalities.ts` - normalization maps it before filtering, so no personality silently loses its role. Roles still ride the wire as plain strings, so old peers keep parsing.
+**Writer and Coder replaced the old single `Worker` role.** Worker split into the fast small-text tier (`writer`) and the coding sub-agent tier (`coder`). A personality persisted with the retired `worker` tag resolves to `coder` via `LEGACY_ROLE_ALIASES` in `agent-profiles.ts` - normalization maps it before filtering, so no personality silently loses its role. Roles still ride the wire as plain strings, so old peers keep parsing.
 
 ### Writer routing (mini-tasks prefer a personality first)
 
@@ -97,11 +107,11 @@ If any check fails the personality is **out of commission**:
 
 The voice is the one exception: it is a **soft binding** and never gates availability - an unresolvable voice degrades to the host default at playback.
 
-A personality that omits `modeId` inherits the provider's default mode - but resolution validates that fallback against the provider's live modes catalog before using it (`resolveFallbackModeId`, `agent-personalities.ts`). A provider's advertised `defaultModeId` can go stale relative to its modes; availability only checks the personality's _own_ `modeId`, so an unvalidated fallback would pass resolution and then throw inside `setMode` at apply time. When the fallback is itself absent from the catalog, resolution drops it and the provider picks its own default.
+A personality that omits `modeId` inherits the provider's default mode - but resolution validates that fallback against the provider's live modes catalog before using it (`resolveFallbackModeId`, `agent-profiles.ts`). A provider's advertised `defaultModeId` can go stale relative to its modes; availability only checks the personality's _own_ `modeId`, so an unvalidated fallback would pass resolution and then throw inside `setMode` at apply time. When the fallback is itself absent from the catalog, resolution drops it and the provider picks its own default.
 
 ## Resolution & lifecycle
 
-**Spawn snapshots the personality onto the agent.** At spawn the personality resolves to a concrete blob - `ResolvedPersonalitySnapshot` (`packages/server/src/server/agent/agent-personalities.ts`) - stored as `AgentSessionConfig.personalitySnapshot` and persisted via `SERIALIZABLE_CONFIG_SCHEMA`. From then on the agent is frozen to its snapshot.
+**Spawn snapshots the personality onto the agent.** At spawn the personality resolves to a concrete blob - `ResolvedProfileSnapshot` (`packages/server/src/server/agent/agent-profiles.ts`) - stored as `AgentSessionConfig.profileSnapshot` and persisted via `SERIALIZABLE_CONFIG_SCHEMA`. From then on the agent is frozen to its snapshot.
 
 - **Editing a personality never mutates an in-flight or observe-only agent.** Running streams and read-only observed agents keep the snapshot they were born with - there is no automatic re-resolution, next-turn or otherwise. The only way an existing agent picks up roster edits is an explicit live switch (below), which re-resolves the personality fresh; re-selecting the same personality via the switcher is how you pull edits into a running chat.
 - **New jobs re-resolve.** Any fresh spawn picks up the current (edited) settings.
@@ -159,7 +169,7 @@ A RUNNING chat agent can be switched to another personality - or cleared - witho
 
 - **Brain** (model/mode/effort) rides the existing live-session setters (`setModel`/`setMode`/`setThinkingOption`) - applied only when _binding_; **clearing keeps the brain** (model, mode, and effort stay as they are).
 - **Prompt** goes through the provider session's optional `applyPersonality` (`AgentSession`, `agent-sdk-types.ts`). Providers that don't implement it (they can't change a system prompt mid-conversation) **reject cleanly** before anything is applied. A personality bound to a different provider than the agent's also rejects.
-- **Identity** (name/spinner) follows automatically: the resolved snapshot persists as `config.personalitySnapshot`, and `agent_state` projects `personalityId`/`personalityName`/`personalitySpinner` from it.
+- **Identity** (name/spinner) follows automatically: the resolved snapshot persists as `config.profileSnapshot`, and `agent_state` projects `personalityId`/`personalityName`/`personalitySpinner` from it.
 - **Serialization:** config mutations on one agent (personality set, model/mode/effort/feature changes) run through a per-agent promise-chain lock in `AgentManager`, so two racing RPCs can't interleave into a mixed half-and-half state.
 - **Prompt ownership** mirrors spawn: the personality prompt only owns `config.systemPrompt` when the caller set none at spawn (or it equals the outgoing personality's prompt) - a caller-authored prompt survives switches. `respectGlobalAppendPrompt === false` drops the daemon-global append prompt, same rule as at spawn.
 
@@ -176,7 +186,7 @@ The RPC shares the per-agent config envelope in `AgentConfigSession` (`packages/
 
 ## Generating a personality profile
 
-The Personality tab has its own **Generate with AI** button, which writes the `personalityPrompt` from the only three things the editor knows before one exists: the **name**, the **roles** it will be spawned for, and its two **spinner colors**. Same shape as cue generation: persona passed inline so an unsaved draft can generate, one structured pass, editor-time only. RPC: `agentPersonalities.generate_profile` (`session.ts`, generator in `packages/server/src/server/agent/personality-profile-generator.ts`), gated by the `personalityProfile` capability.
+The Personality tab has its own **Generate with AI** button, which writes the `personalityPrompt` from the only three things the editor knows before one exists: the **name**, the **roles** it will be spawned for, and its two **spinner colors**. Same shape as cue generation: persona passed inline so an unsaved draft can generate, one structured pass, editor-time only. RPC: `agentPersonalities.generate_profile` (`session.ts`, generator in `packages/server/src/server/agent/profile-prompt-generator.ts`), gated by the `personalityProfile` capability.
 
 Three decisions worth keeping:
 
@@ -254,7 +264,7 @@ Only **same-scope** entries are dedup candidates. "Always true here" and "always
 
 ### Injection
 
-**Where:** `AgentManager.prepareSessionConfig` - the single choke point every spawn, resume and refresh path already funnels through (composer, MCP `create_agent`, schedule runs, orchestration runs, reattach). One site, above every provider adapter, no per-caller threading. The live personality switch composes it through the same helper (`withPersonalityMemory`), so a personality behaves identically however you attached it.
+**Where:** `AgentManager.prepareSessionConfig` - the single choke point every spawn, resume and refresh path already funnels through (composer, MCP `create_chat`, schedule runs, orchestration runs, reattach). One site, above every provider adapter, no per-caller threading. The live personality switch composes it through the same helper (`withPersonalityMemory`), so a personality behaves identically however you attached it.
 
 **Runtime-only, never stored.** The brief is appended to the **launch** config's system prompt and deliberately not to `storedConfig`, mirroring how `daemonAppendSystemPrompt` is re-derived on resume. Two consequences, both wanted:
 
@@ -319,11 +329,11 @@ Kept because "we thought about it and said no" is the only useful form of a dele
 
 Personalities are first-class in the agent-management MCP tools, so multi-agent skills can say "spawn a Worker and a Judger" without hardcoding providers:
 
-- **`create_agent`** gained an optional `personality` arg (by name; one of provider/personality required). It resolves against the caller cwd's provider snapshot and expands to provider/model/effort/mode/systemPrompt; explicit sibling fields override per-field. Hard-fails when the personality is missing or out of commission.
+- **`create_chat`** gained an optional `personality` arg (by name; one of provider/personality required). It resolves against the caller cwd's provider snapshot and expands to provider/model/effort/mode/systemPrompt; explicit sibling fields override per-field. Hard-fails when the personality is missing or out of commission.
 - **`list_personalities`** enumerates the roster (name, roles, availability, resolved brain, plus the `tier`/`canLaunch`/`guidance` decision-aid). **Open to every agent** - personalities are aware of each other, and any agent can enumerate the roster and spawn any personality by name (personality-named spawns are just another way to pick a provider/model/effort). No role gates this; the coordinator/focused tier only steers behavior in-context (see [Role tiers](#role-tiers-coordinators-vs-focused-workers)).
 - **`create_schedule` / `update_schedule`** accept a `personality` arg; a bound schedule re-resolves against the run's workspace each run and hard-fails on unavailability.
 
-Separately from the MCP tools, the **`agentPersonalities.get_stats`** WebSocket RPC serves per-personality spawn counts from a separate atomic-write stats file under `$OTTO_HOME/stats/` (not `config.json` - avoids spamming the config-changed broadcast). Spawns are counted at the `AgentManager.createAgent` choke point (`onPersonalitySpawn`), so composer, MCP `create_agent`, and schedule runs all increment. The editor surfaces "Used N times" per row.
+Separately from the MCP tools, the **`agentPersonalities.get_stats`** WebSocket RPC serves per-personality spawn counts from a separate atomic-write stats file under `$OTTO_HOME/stats/` (not `config.json` - avoids spamming the config-changed broadcast). Spawns are counted at the `AgentManager.createAgent` choke point (`onPersonalitySpawn`), so composer, MCP `create_chat`, and schedule runs all increment. The editor surfaces "Used N times" per row.
 
 The five `skills/*/SKILL.md` files teach role-aware discovery: committee prefers contrasting `advisor`/`judger`, advisor prefers `advisor`, handoff prefers `coder`, loop maps worker→`coder`/verifier→`judger`.
 
@@ -353,8 +363,8 @@ Seeding is first-run-only and delete-safe: `bootstrap.ts` seeds the in-memory ro
 
 ## Where the code lives
 
-- **Shared (app + daemon):** `packages/protocol/src/messages.ts` (`AgentPersonalitySchema` incl. `memoryEnabled`, `PERSONALITY_ROLES`, the `agent.personality.set` and `personality.memory.*` schemas), `agent-personalities.ts` (role helpers, availability predicate), `default-personalities.ts`, `effort.ts`.
-- **Daemon:** `packages/server/src/server/agent/agent-personalities.ts` (resolution + snapshot), `agent-manager.ts` (`setAgentPersonality` live switch, `prepareSessionConfig` memory injection), `session/agent-config/agent-config-session.ts` (the `agent.personality.set` RPC envelope), providers' optional `applyPersonality` (`providers/claude/agent.ts`, `providers/openai-compat-agent.ts`), `daemon-config-store.ts` (persistence/seeding), `tools/otto-tools.ts` (`create_agent`/`list_personalities`, the three memory tools), `PersonalityStatsStore`, `agent/voice-cue-generator.ts` + `agent/personality-profile-generator.ts` (the two editor-time authoring passes, both on the Writer chain).
+- **Shared (app + daemon):** `packages/protocol/src/messages.ts` (`AgentPersonalitySchema` incl. `memoryEnabled`, `PERSONALITY_ROLES`, the `agent.personality.set` and `personality.memory.*` schemas), `agent-profiles.ts` (role helpers, availability predicate), `default-personalities.ts`, `effort.ts`.
+- **Daemon:** `packages/server/src/server/agent/agent-profiles.ts` (resolution + snapshot), `agent-manager.ts` (`setAgentPersonality` live switch, `prepareSessionConfig` memory injection), `session/agent-config/agent-config-session.ts` (the `agent.personality.set` RPC envelope), providers' optional `applyPersonality` (`providers/claude/agent.ts`, `providers/openai-compat-agent.ts`), `daemon-config-store.ts` (persistence/seeding), `tools/otto-tools.ts` (`create_chat`/`list_personalities`, the three memory tools), `ProfileStatsStore`, `agent/voice-cue-generator.ts` + `agent/profile-prompt-generator.ts` (the two editor-time authoring passes, both on the Writer chain).
 - **Memory (daemon):** `packages/server/src/server/agent/personality-memory/` - `types.ts`, `personality-memory-store.ts` (file-backed, serialized RMW), `lesson-dedup.ts`, `memory-brief.ts` (the pure composer), `personality-memory-service.ts` (the façade every caller talks to). Wired in `bootstrap.ts`; RPCs handled in `session.ts`.
 - **App:** `packages/app/src/screens/settings/agent-personalities-section.tsx` (editor), `screens/settings/personality-memory-transfer-sheet.tsx` (transfer on delete), `components/combined-model-selector.tsx` (picker section), `hooks/use-personality-selection.ts`, `provider-selection/personality-form.ts`, `composer/agent-controls/index.tsx` (`useRunningChatPersonality`, the running-agent live switch).
 - **Memory (app):** `packages/app/src/context-management/` - `use-personality-memory.ts` (RPC hooks), `use-context-personality.tsx` (the panel's bundled wiring), `personality-selector.tsx`, `memory-list.tsx`.
