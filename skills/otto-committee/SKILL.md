@@ -6,24 +6,24 @@ user-invocable: true
 
 # Committee Skill
 
-Two agents from contrasting Personalities, fresh context, planning a solution in parallel.
+Two agents from contrasting agent profiles, fresh context, planning a solution in parallel.
 
 **User's additional context:** $ARGUMENTS
 
 ## Prerequisites
 
-Read the **otto** skill. Call `list_personalities` before choosing committee members, and read every entry's `roles` and `guidance`. Do not create committee agents until you have inspected the available personalities.
+Read the **otto** skill. Call `list_agent_profiles` before choosing committee members, and read every entry's `roles` and `guidance`. Do not create committee agents until you have inspected the available agent profiles.
 
-Contrast is the point of a committee, so prefer two suitable Personalities from different provider families. Pass each name as `create_chat`'s `personality`, as described by the **otto** skill. If fewer than two fit, use Otto's provider-discovery fallback for the missing member and tell the user.
+Contrast is the point of a committee, so prefer two suitable agent profiles from different provider families. Pass each name as `create_chat`'s `agentProfile`, as described by the **otto** skill. If fewer than two fit, use Otto's provider-discovery fallback for the missing member and tell the user.
 
 ## Composition
 
 Two members with different reasoning styles:
 
-- One Personality whose notes fit planning, research, or root-cause analysis.
-- One contrasting high-reasoning Personality, from another provider family when possible.
+- One agent profile whose notes fit planning, research, or root-cause analysis.
+- One contrasting high-reasoning agent profile, from another provider family when possible.
 
-If the user names Personalities, use those. Override the selection only when the user explicitly asks for different members.
+If the user names agent profiles, use those. Override the selection only when the user explicitly asks for different members.
 
 ## Hard rules
 

@@ -99,8 +99,8 @@ This needs an up-to-date host; older daemons simply don't offer the switcher.
 
 Personalities are first-class in Otto's agent-management tooling, so an orchestrating agent can build a team by role:
 
-- `create_chat` accepts a `personality` (its name, or its id) and expands it to the right provider, model, effort, mode, features, and prompt.
-- `list_personalities` enumerates the roster with roles and availability, available to any agent, so every personality can see the others and spawn them by name.
+- `create_chat` accepts an `agentProfile` (its name, or its id) and expands it to the right provider, model, effort, mode, features, and prompt.
+- `list_agent_profiles` enumerates the roster with roles and availability, available to any agent, so every personality can see the others and spawn them by name.
 - Schedules can be bound to a personality and re-resolve it on every run, so edits land between runs. The binding is stored by id, so renaming a personality never breaks a schedule.
 
 The bundled [orchestration skills](/docs/skills) already use this: `/otto-committee` prefers contrasting Advisor and Judger personalities, `/otto-advisor` prefers an Advisor, `/otto-handoff` prefers a Coder, and `/otto-loop` maps its worker and verifier to Coder and Judger roles.

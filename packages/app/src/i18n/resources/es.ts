@@ -4179,7 +4179,7 @@ export const es: TranslationResources = {
         notesLabel: "Notas para los agentes",
         notesPlaceholder: "Úselo para trabajo de UI: componentes, diseño y tokens de diseño.",
         notesHint:
-          'Devuelto por la herramienta MCP "list_profiles". Escríbalo como una instrucción para otro agente.',
+          'Devuelto por la herramienta MCP "list_agent_profiles". Escríbalo como una instrucción para otro agente.',
         save: "Guardar",
         saving: "Guardando...",
         remove: "Eliminar",

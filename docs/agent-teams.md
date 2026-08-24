@@ -10,11 +10,11 @@ When a team is active:
 
 - **Pickers narrow to the team.** The personalities section in every picker (composer, artifact sheet, schedule sheet) shows only the active team's members - still role-filtered per surface, still availability-grayed. Raw provider/model selection is never filtered; teams scope _personalities_, not models.
 - **Agents stack the team prompt.** An agent spawned from a member personality composes its system prompt with the team prompt directly ahead of the personality prompt (see [Prompt composition](#prompt-composition)).
-- **The rest of the host follows.** Writer mini-task routing prefers team members; the Orchestrator's `list_personalities` enumerates the team.
+- **The rest of the host follows.** Writer mini-task routing prefers team members; the Orchestrator's `list_agent_profiles` enumerates the team.
 
 **No active team = exactly legacy behavior.** The full roster shows everywhere and no team prompt stacks. "No team" is the implicit default, not an error - it degrades cleanly, the same shape as every other feature gate in the repo:
 
-- **No personalities** (roster cleared): pickers show no personalities section at all - just the raw provider/model chooser; Writer routing runs the legacy chain; `list_personalities` returns empty.
+- **No personalities** (roster cleared): pickers show no personalities section at all - just the raw provider/model chooser; Writer routing runs the legacy chain; `list_agent_profiles` returns empty.
 - **Personalities but no teams**: everything works exactly as personalities ship. The Teams card shows its empty state; the main-window switcher does not render (it requires ≥ 1 team).
 - **Teams exist but none active**: full roster in pickers, no team prompt, no scoping - teams are inert until activated. The switcher renders with "No team" selected.
 - **Active team whose members are all deleted/unavailable**: the personalities section grays/empties per existing availability rules, and the raw chooser underneath is always reachable - a team can never brick agent creation.
@@ -79,7 +79,7 @@ The three daemon spawn paths that compose the team layer - interactive create (`
 
 - **Pickers** (`use-personality-selection.ts` / `combined-model-selector.tsx`): with a team active, the personalities section shows only members - **strict, no off-team group**. One exception: a schedule form editing a schedule already bound to an off-team personality keeps that bound entry selectable (it was valid when authored). The running-agent switcher also filters its pinned roster to team members, but the display-only entry for the _current_ personality keeps working when it's off-team so the trigger never lies.
 - **Writer mini-task routing** (`resolveStructuredGenerationProviders`): available Writer **team members** are prepended ahead of available non-team Writers, which stay ahead of the legacy chain. This is a preference ladder, not an availability gate - an all-out-of-commission team must not break commit-message generation. (This is the one place "no fallback" does not apply; it never applied to mini-task routing.)
-- **MCP `list_personalities`**: with a team active, returns members only, plus a note naming the active team (so an orchestrator knows its bench). `create_chat` by explicit personality name still resolves the full roster - an orchestrator can pull in an off-team specialist deliberately, it just won't carry the team prompt.
+- **MCP `list_agent_profiles`**: with a team active, returns members only, plus a note naming the active team (so an orchestrator knows its bench). `create_chat` by explicit personality name still resolves the full roster - an orchestrator can pull in an off-team specialist deliberately, it just won't carry the team prompt.
 - **Role-matched daemon lookups** (Writer routing, `checkout.git.commit_agent`, etc.): prefer team members with the role, fall back to the full roster - same ladder as Writer routing.
 
 Availability stays per-personality - a team is never "out of commission"; its members individually are.
@@ -136,7 +136,7 @@ A fresh host seeds `DEFAULT_AGENT_TEAMS` (`packages/protocol/src/default-persona
 ## Where the code lives
 
 - **Shared (app + daemon):** `packages/protocol/src/messages.ts` (`AgentTeamSchema`, `agentTeams` section + patch on `MutableDaemonConfig`, `features.agentTeams`), `packages/protocol/src/agent-teams.ts` (pure helpers: `getActiveAgentTeam`, `resolveTeamMembers`, `resolveExclusiveTeamMembers`, `isTeamMember`, `getEffectiveTeamPrompt`), `default-personalities.ts` (`DEFAULT_AGENT_TEAMS`).
-- **Daemon:** `packages/server/src/server/agent/agent-teams.ts` (active-team resolution → `teamSnapshot`, `composeTeamAndPersonalityPrompt`, `resolveTeamSchedulerSnapshot`), `agent-manager.ts` (compose at spawn + `setAgentPersonality` recomposition), `session.ts` (`applyPersonalityIdentityToConfig`), `tools/otto-tools.ts` (`create_chat`/`list_personalities` scoping), `schedule/service.ts` (run-time team resolution), `structured-generation-providers.ts` (Writer team preference), `daemon-config-store.ts` (persistence + seed).
+- **Daemon:** `packages/server/src/server/agent/agent-teams.ts` (active-team resolution → `teamSnapshot`, `composeTeamAndPersonalityPrompt`, `resolveTeamSchedulerSnapshot`), `agent-manager.ts` (compose at spawn + `setAgentPersonality` recomposition), `session.ts` (`applyPersonalityIdentityToConfig`), `tools/otto-tools.ts` (`create_chat`/`list_agent_profiles` scoping), `schedule/service.ts` (run-time team resolution), `structured-generation-providers.ts` (Writer team preference), `daemon-config-store.ts` (persistence + seed).
 - **App:** `screens/settings/agent-teams-section.tsx` (card + `TeamEditModal`), `components/active-team-switcher.tsx` (switcher) + `components/active-team-group-switcher.tsx` (the multi-host collapsed control), `hooks/use-personality-selection.ts` + `components/combined-model-selector.tsx` (team filtering), `provider-selection/team-role-entry.ts` (`buildTeamRoleEntry`).
 
 ## Deferred

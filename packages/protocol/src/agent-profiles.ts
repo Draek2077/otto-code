@@ -51,7 +51,7 @@ export function personalityHasRole(
  * Resolve one roster entry from either identifier a caller might hold.
  *
  * Two kinds of caller reach the roster and they hold different things. A model
- * reads `list_personalities` and passes the display name it saw. Daemon-internal
+ * reads `list_agent_profiles` and passes the display name it saw. Daemon-internal
  * callers (orchestration role resolution, a stored schedule binding) already
  * hold the stable id and must not round-trip through a name: names carry no
  * uniqueness constraint, so a name lookup can land on a different entry than the
@@ -81,13 +81,13 @@ export function findProfileByRef<T extends { id: string; name: string }>(
 // thing someone is waiting on and should stay on task. A personality that
 // carries ANY coordinator role counts as a coordinator (a chatter+coder can
 // both code and delegate). Every agent keeps the same tools; the tier only
-// drives the spawn-time role directive and the list_personalities decision aid.
+// drives the spawn-time role directive and the list_agent_profiles decision aid.
 export type PersonalityRoleTier = "coordinator" | "focused";
 
 interface PersonalityRoleInfo {
   tier: PersonalityRoleTier;
   // "Why you'd choose me" - a one-line decision aid surfaced in
-  // list_personalities so a deciding agent can self-select a role by intent.
+  // list_agent_profiles so a deciding agent can self-select a role by intent.
   guidance: string;
 }
 
@@ -175,7 +175,7 @@ export interface PersonalitySelectionSummary {
 /**
  * Build the selection decision-aid for a personality from its roles: the tier
  * (coordinator if any role coordinates), whether it may launch, and a short
- * multi-role "why choose me" blurb. Surfaced by list_personalities so a
+ * multi-role "why choose me" blurb. Surfaced by list_agent_profiles so a
  * deciding agent can pick the right teammate from the list alone.
  */
 export function summarizePersonalityForSelection(
@@ -196,7 +196,7 @@ export function summarizePersonalityForSelection(
 // treating orchestration as the default. Kept here as one exported constant so
 // the wording is testable and shared. See projects/agent-orchestration/agent-orchestration.md.
 export const OTTO_WORK_VOCABULARY_DIRECTIVE =
-  "Otto work vocabulary: a suggested task is deferred work for the user and does not start work; a chat is an active Otto chat session; a child chat is created by another chat; a Personality is a reusable provider, model, mode, effort, and behavior template; an orchestration coordinates multiple chats; a schedule starts a background chat when due; a heartbeat sends a reminder or prompt and does not start a chat. Use suggest_task for concrete work to preserve for later, create_chat to start one chat now, and start_orchestration only for managed multi-chat coordination. Use list_personalities, optionally filtered by roles, before choosing a Personality. Never substitute a harness-native agent-spawn tool for suggest_task, and when a user names an Otto tool exactly, use that exact Otto tool.";
+  "Otto work vocabulary: a suggested task is deferred work for the user and does not start work; a chat is an active Otto chat session; a child chat is created by another chat; a Personality is a reusable provider, model, mode, effort, and behavior template; an orchestration coordinates multiple chats; a schedule starts a background chat when due; a heartbeat sends a reminder or prompt and does not start a chat. Use suggest_task for concrete work to preserve for later, create_chat to start one chat now, and start_orchestration only for managed multi-chat coordination. Use list_agent_profiles, optionally filtered by roles, before choosing a Personality. Never substitute a harness-native agent-spawn tool for suggest_task, and when a user names an Otto tool exactly, use that exact Otto tool.";
 
 export const ORCHESTRATOR_METHOD_DIRECTIVE =
   "You are the orchestrator - the team's sole conductor. Choose tools because the task needs their specific capability, never because a tool is available or named. " +
@@ -223,9 +223,9 @@ export function composeRoleFocusDirective(
     return `${ORCHESTRATOR_METHOD_DIRECTIVE} (Your roles: ${roleList}.)`;
   }
   if (normalized.some((role) => PERSONALITY_ROLE_INFO[role].tier === "coordinator")) {
-    return `You are a coordinator personality (roles: ${roleList}). You front interactive work and may delegate when the task benefits from it: use list_personalities to see who else is available, then either do the work directly, create a child chat for an independent active piece, or hand off genuinely multi-chat work to the team's orchestrator.`;
+    return `You are a coordinator personality (roles: ${roleList}). You front interactive work and may delegate when the task benefits from it: use list_agent_profiles to see who else is available, then either do the work directly, create a child chat for an independent active piece, or hand off genuinely multi-chat work to the team's orchestrator.`;
   }
-  return `You are a focused personality (roles: ${roleList}). Someone is waiting on this specific task - stay on it and finish it. You can still call list_personalities to see the roster, but don't create child chats or start side workflows unless it is genuinely essential to completing this job.`;
+  return `You are a focused personality (roles: ${roleList}). Someone is waiting on this specific task - stay on it and finish it. You can still call list_agent_profiles to see the roster, but don't create child chats or start side workflows unless it is genuinely essential to completing this job.`;
 }
 
 export type PersonalityUnavailableCode =

@@ -4047,7 +4047,7 @@ export const zhCN: TranslationResources = {
         featureCountOne: "{{count}} 个 Feature",
         notesLabel: "给 Agent 的说明",
         notesPlaceholder: "用于 UI 工作：组件、布局和设计 token。",
-        notesHint: "由 list_profiles MCP 工具返回。请将其写成给另一个 Agent 的指令。",
+        notesHint: "由 list_agent_profiles MCP 工具返回。请将其写成给另一个 Agent 的指令。",
         save: "保存",
         saving: "保存中...",
         remove: "移除",

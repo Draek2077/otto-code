@@ -4158,7 +4158,7 @@ export const ptBR: TranslationResources = {
         notesLabel: "Notas para os agentes",
         notesPlaceholder: "Use para trabalho de UI: componentes, layout e tokens de design.",
         notesHint:
-          'Retornado pela ferramenta MCP "list_profiles". Escreva como uma instrução para outro agente.',
+          'Retornado pela ferramenta MCP "list_agent_profiles". Escreva como uma instrução para outro agente.',
         save: "Salvar",
         saving: "Salvando...",
         remove: "Remover",

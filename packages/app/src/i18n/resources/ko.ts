@@ -4120,7 +4120,7 @@ export const ko: TranslationResources = {
         notesLabel: "에이전트를 위한 메모",
         notesPlaceholder: "UI 작업에 사용: 컴포넌트, 레이아웃, 디자인 토큰.",
         notesHint:
-          "list_profiles MCP 도구가 반환합니다. 다른 에이전트에게 전달할 지침으로 작성하세요.",
+          "list_agent_profiles MCP 도구가 반환합니다. 다른 에이전트에게 전달할 지침으로 작성하세요.",
         save: "저장",
         saving: "저장하는 중...",
         remove: "제거",

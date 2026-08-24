@@ -12,11 +12,11 @@ Transfer the current task - context, decisions, failed attempts, constraints - t
 
 ## Prerequisites
 
-Read the **otto** skill. Call `list_personalities` before choosing the receiving agent, and read every entry's `roles` and `guidance`. Do not create the receiving agent until you have inspected the available personalities.
+Read the **otto** skill. Call `list_agent_profiles` before choosing the receiving agent, and read every entry's `roles` and `guidance`. Do not create the receiving agent until you have inspected the available agent profiles.
 
 ## Parsing arguments
 
-1. **Personality** - an explicitly named one first; otherwise the one whose `notes` best match the work. Pass its name as `create_chat`'s `personality`, as described by the **otto** skill. If none fits, use Otto's provider-discovery fallback and tell the user.
+1. **Agent profile** - an explicitly named one first; otherwise the one whose `notes` best match the work. Pass its name as `create_chat`'s `agentProfile`, as described by the **otto** skill. If none fits, use Otto's provider-discovery fallback and tell the user.
 2. **Worktree** - "in a worktree" / "worktree" → create a worktree via Otto with a short branch name derived from the task, based on the current branch.
 3. **Task description** - anything else the user said.
 

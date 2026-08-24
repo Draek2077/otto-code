@@ -124,7 +124,7 @@ const SAFE_SCENARIOS: readonly Scenario[] = [
     id: "personality-discovery",
     prompt:
       "Before choosing someone for a code review, show me the available personality profiles for researcher or judger work. Do not start a chat.",
-    expected: ["list_personalities"],
+    expected: ["list_agent_profiles"],
     forbidden: ["create_chat", "start_orchestration"],
   },
   {

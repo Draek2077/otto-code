@@ -4141,7 +4141,7 @@ export const ja: TranslationResources = {
         notesLabel: "エージェントへのメモ",
         notesPlaceholder: "UI作業に使用：コンポーネント、レイアウト、デザイントークンなど。",
         notesHint:
-          "list_profiles MCPツールによって返されます。他のエージェントへの指示として記述してください。",
+          "list_agent_profiles MCPツールによって返されます。他のエージェントへの指示として記述してください。",
         save: "保存",
         saving: "保存中...",
         remove: "削除",

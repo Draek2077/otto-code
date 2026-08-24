@@ -64,27 +64,27 @@ Agent-scoped `create_chat` defaults `notifyOnFinish` to true. Set it to `false` 
 
 Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look for `fast_mode` and pass `settings: { features: { "fast_mode": true } }` to `create_chat` or `update_chat`.
 
-## Personalities
+## Agent profiles
 
-**`list_personalities`** - the roster of named Personalities the human configured on this host. Each one binds a provider, model, mode, effort, behavior prompt, and identity. Before choosing how to launch a delegated agent, call this tool and read every entry's `roles` and `guidance`. Optionally filter with `roles`.
+**`list_agent_profiles`** - the roster of named agent profiles the human configured on this host. Each one binds a provider, model, mode, effort, behavior prompt, and identity. Before choosing how to launch a delegated agent, call this tool and read every entry's `roles` and `guidance`. Optionally filter with `roles`. (Otto's own settings UI calls these "Agent personalities"; same thing.)
 
-Pass the name you read to `create_chat`'s `personality` field. That one field is the whole pick:
-
-```
-create_chat({ relationship, workspace, personality: "Sage" })
-```
-
-Let the daemon expand it. It resolves the Personality against the target workspace and applies the provider, model, mode, effort, feature values, behavior prompt, roles, spinner colors, voice, and team framing. Copying those values into `provider` and `settings` by hand gets you the brain without the identity: the prompt, roles, voice, and memory binding are only attached when the daemon resolves the Personality itself.
-
-Override a single field when you have a reason, and only that field. `provider` and `settings` win over the Personality per field:
+Pass the name you read to `create_chat`'s `agentProfile` field. That one field is the whole pick:
 
 ```
-create_chat({ personality: "Sage", settings: { thinkingOptionId: "high" } })
+create_chat({ relationship, workspace, agentProfile: "Sage" })
 ```
 
-If no Personality fits, or none is configured, pass `provider` (as `provider/model`) instead and use the provider discovery tools rather than guessing. Tell the user when you fall back.
+Let the daemon expand it. It resolves the profile against the target workspace and applies the provider, model, mode, effort, feature values, behavior prompt, roles, spinner colors, voice, and team framing. Copying those values into `provider` and `settings` by hand gets you the brain without the identity: the prompt, roles, voice, and memory binding are only attached when the daemon resolves the profile itself.
 
-A Personality is a launch pick, not state: do not remember the one you chose or infer drift later.
+Override a single field when you have a reason, and only that field. `provider` and `settings` win over the profile per field:
+
+```
+create_chat({ agentProfile: "Sage", settings: { thinkingOptionId: "high" } })
+```
+
+If no profile fits, or none is configured, pass `provider` (as `provider/model`) instead and use the provider discovery tools rather than guessing. Tell the user when you fall back.
+
+An agent profile is a launch pick, not state: do not remember the one you chose or infer drift later.
 
 ## Schedules and heartbeats
 
@@ -98,7 +98,7 @@ A Personality is a launch pick, not state: do not remember the one you chose or 
 
 ## Orchestration preferences
 
-User-specific configuration at `~/.otto/orchestration-preferences.json`. Before an Otto skill chooses a raw provider because no configured [Personality](#personalities) fits, it must read this file. Reading means an actual file read, not relying on these examples or defaults. Never hardcode a provider string in another skill - resolve through this file.
+User-specific configuration at `~/.otto/orchestration-preferences.json`. Before an Otto skill chooses a raw provider because no configured [agent profile](#agent-profiles) fits, it must read this file. Reading means an actual file read, not relying on these examples or defaults. Never hardcode a provider string in another skill - resolve through this file.
 
 Two parts:
 

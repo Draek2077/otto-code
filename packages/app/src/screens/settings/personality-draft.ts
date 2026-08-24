@@ -81,7 +81,7 @@ export interface PersonalityDraft {
    */
   effort: string;
   personalityPrompt: string;
-  /** Free text surfaced to orchestrating agents by list_personalities. */
+  /** Free text surfaced to orchestrating agents by list_agent_profiles. */
   notes: string;
   respectGlobalAppendPrompt: boolean;
   /** Whether this personality accrues lessons across sessions. Default on. */

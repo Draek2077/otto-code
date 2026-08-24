@@ -4118,7 +4118,7 @@ export const en = {
         notesLabel: "Notes for agents",
         notesPlaceholder: "Use for UI work: components, layout and design tokens.",
         notesHint:
-          "Returned by the list_profiles MCP tool. Write it as an instruction to another agent.",
+          "Returned by the list_agent_profiles MCP tool. Write it as an instruction to another agent.",
         save: "Save",
         saving: "Saving...",
         remove: "Remove",

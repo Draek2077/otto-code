@@ -4088,7 +4088,7 @@ export const ar: TranslationResources = {
         featureCountOne: "{{count}} سمة",
         notesLabel: "ملاحظات للوكلاء",
         notesPlaceholder: "استخدمه لعمل الواجهة: المكونات والتخطيط ورموز التصميم.",
-        notesHint: 'تُعاد بواسطة أداة MCP "list_profiles". اكتبها كتعليمة لوكيل آخر.',
+        notesHint: 'تُعاد بواسطة أداة MCP "list_agent_profiles". اكتبها كتعليمة لوكيل آخر.',
         save: "حفظ",
         saving: "جارٍ الحفظ...",
         remove: "إزالة",

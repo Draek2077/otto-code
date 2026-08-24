@@ -1508,7 +1508,7 @@ describe("create_chat MCP tool", () => {
     await registeredTool(server, "create_chat").handler({
       ...detachedDirectoryWorkspace(existingCwd),
       title: "Profile test",
-      personality: "Review profile",
+      agentProfile: "Review profile",
       initialPrompt: "Review this change",
       background: true,
     });
@@ -1626,7 +1626,7 @@ describe("create_chat MCP tool", () => {
       ...detachedDirectoryWorkspace(existingCwd),
       settings: { modeId: "default" },
       title: "Short title",
-      personality: "Backend Specialist",
+      agentProfile: "Backend Specialist",
       initialPrompt: "test",
     });
     expect(personalityOnly.success).toBe(true);
@@ -5056,7 +5056,7 @@ describe("provider listing MCP tool", () => {
 describe("agent profile listing MCP tool", () => {
   const logger = createTestLogger();
 
-  // The profiles listing folded into list_personalities' concept: personalities
+  // The profiles listing folded into list_agent_profiles' concept: personalities
   // are the one roster agents choose collaborators from, and profile-named
   // spawns still resolve through create_chat's `personality` field.
   it("does not register the retired list_profiles tool", async () => {
@@ -5095,8 +5095,8 @@ describe("agent profile listing MCP tool", () => {
       logger,
     });
 
-    const result = await registeredTool(server, "list_personalities").handler({});
-    const listed = result.structuredContent.personalities as Array<Record<string, unknown>>;
+    const result = await registeredTool(server, "list_agent_profiles").handler({});
+    const listed = result.structuredContent.agentProfiles as Array<Record<string, unknown>>;
 
     expect(listed.find((entry) => entry.id === "p-noted")?.notes).toBe(
       "Use for release-blocking reviews.",

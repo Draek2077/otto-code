@@ -2,7 +2,7 @@ import { normalizePersonalityRoles } from "./agent-profiles.js";
 import type { AgentProfile, AgentTeam, PersonalityRole } from "./messages.js";
 
 // Pure, dependency-free team helpers shared by the daemon (spawn-time active
-// team resolution, list_personalities scoping) and the app (team cards,
+// team resolution, list_agent_profiles scoping) and the app (team cards,
 // pickers, the Active Team switcher). Availability is deliberately NOT here -
 // a team is never "out of commission"; its members are individually available
 // or not, judged by checkPersonalityAvailability per member.

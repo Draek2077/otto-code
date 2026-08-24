@@ -60,11 +60,11 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 
 ### Personalities
 
-| Tool                 | Function                                                                                             |
-| -------------------- | ---------------------------------------------------------------------------------------------------- |
-| `list_personalities` | List [agent personalities](/docs/personalities) with roles and availability. Available to any agent. |
+| Tool                  | Function                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `list_agent_profiles` | List [agent profiles](/docs/personalities) with roles and availability. Available to any agent. |
 
-Personalities are also spawned through `create_chat` (its `personality` argument) and bound to schedules through `create_schedule` / `update_schedule`.
+Personalities are also spawned through `create_chat` (its `agentProfile` argument) and bound to schedules through `create_schedule` / `update_schedule`.
 
 ### Worktrees
 
