@@ -56,6 +56,8 @@ export const UI_STATE_GALLERY_EXEMPTIONS: Readonly<Record<string, string>> = {
     "Submenu variant of the covered MenuItem engine; no gallery fixture opens a submenu page.",
   "menu/menu-surface.tsx":
     "Popover and sheet engine rendered through the covered DropdownMenuContent fixture.",
+  "pinnable-toolbar.tsx":
+    "Composition of the covered toolbar buttons, dropdown menu, and tooltip primitives.",
   "overlay-scrollbar/use-overlay-flat-list-scrollbar.tsx":
     "Native/base stub with no visual chrome; the web override renders the actual thumb.",
   "overlay-scrollbar/use-overlay-flat-list-scrollbar.web.tsx":

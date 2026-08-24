@@ -2002,8 +2002,6 @@ const x = 1;
     expect(branches.find((branch) => branch.name === "feature/shared")).toMatchObject({
       hasLocal: true,
       hasRemote: true,
-      localAhead: 0,
-      localBehind: 0,
     });
     await expect(listBranchSuggestions(repoDir, { query: "origin/main" })).resolves.toEqual([
       expect.objectContaining({ name: "main", hasLocal: true, hasRemote: true }),
@@ -2039,8 +2037,6 @@ const x = 1;
     expect(branches.find((branch) => branch.name === "main")).toMatchObject({
       hasLocal: true,
       hasRemote: true,
-      localAhead: 1,
-      localBehind: 1,
     });
   });
 

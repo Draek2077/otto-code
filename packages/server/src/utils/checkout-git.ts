@@ -28,8 +28,10 @@ import {
 import { isOttoOwnedWorktreeCwd, resolveOttoWorktreesBaseRoot } from "./worktree.js";
 import {
   branchNameFromRef,
+  getOttoWorktreeChangeRequestHintForBranch,
   normalizeAndValidateBaseRefName,
   readOttoWorktreeMetadata,
+  rebindOttoWorktreeChangeRequestHint,
   setOttoWorktreeBaseRefName,
   validateBaseRefNameAllowingRemote,
 } from "./worktree-metadata.js";
@@ -1121,6 +1123,10 @@ export async function renameCurrentBranch(
   });
 
   const currentBranch = await getCurrentBranch(cwd);
+  const worktreeRoot = await getWorktreeRoot(cwd);
+  if (currentBranch && worktreeRoot) {
+    rebindOttoWorktreeChangeRequestHint(worktreeRoot, previousBranch, currentBranch);
+  }
   return { previousBranch, currentBranch };
 }
 
@@ -2060,11 +2066,15 @@ async function inspectCheckoutContext(
 // be uniquified away from the head ref.
 function buildPullRequestLookupTargetFromMetadata(
   worktreeRoot: string | null,
+  currentBranch: string,
 ): PullRequestStatusLookupTarget | null {
   if (!worktreeRoot) {
     return null;
   }
-  const target = readOttoWorktreeMetadata(worktreeRoot)?.changeRequestLookupTarget;
+  const target = getOttoWorktreeChangeRequestHintForBranch(
+    readOttoWorktreeMetadata(worktreeRoot),
+    currentBranch,
+  );
   if (!target) {
     return null;
   }
@@ -2220,6 +2230,7 @@ export async function getCheckoutSnapshotFacts(
   let pullRequestLookupTarget = inspected.currentBranch
     ? (buildPullRequestLookupTargetFromMetadata(
         inspected.ottoWorktree.isOttoOwnedWorktree ? inspected.ottoWorktree.worktreeRoot : null,
+        inspected.currentBranch,
       ) ??
       buildPullRequestLookupTargetFromBranchConfig({
         currentBranch: inspected.currentBranch,
@@ -2563,7 +2574,7 @@ export async function getCheckoutStatus(
   const hasRemote = remoteUrl !== null;
   const comparisonBaseRef = facts.resolvedBaseRef;
   const baseRef = ottoWorktree.isOttoOwnedWorktree
-    ? (readOttoWorktreeMetadata(ottoWorktree.worktreeRoot)?.baseRefName ?? comparisonBaseRef)
+    ? (readOttoWorktreeMetadata(ottoWorktree.worktreeRoot)?.baseRef ?? comparisonBaseRef)
     : comparisonBaseRef;
   const mainRepoRoot = facts.mainRepoRoot;
   const factsContext = { ...context, facts };

@@ -530,7 +530,7 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
           { ottoHome },
         ),
       ).rejects.toThrow(
-        "Base ref mismatch: stored refs/remotes/upstream/main, requested refs/remotes/origin/main",
+        "Base ref mismatch: expected refs/remotes/upstream/main, got refs/remotes/origin/main",
       );
       expect(
         await getCheckoutDiff(result.worktreePath, { mode: "base", baseRef: "main" }, { ottoHome }),
