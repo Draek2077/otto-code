@@ -382,17 +382,6 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     homepage: "https://deepwiki.com",
   },
   {
-    id: "semgrep",
-    label: "Semgrep",
-    category: "Observability",
-    audience: "developer",
-    description: "Scan code for security and correctness findings with Semgrep.",
-    setup: { kind: "none", transport: "http", url: "https://mcp.semgrep.ai/mcp" },
-    verifiedOn: VERIFIED,
-    source: "https://github.com/semgrep/mcp",
-    homepage: "https://semgrep.dev",
-  },
-  {
     id: "filesystem",
     label: "Local files",
     category: "Local tools",
