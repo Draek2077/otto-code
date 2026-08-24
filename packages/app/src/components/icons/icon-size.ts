@@ -67,6 +67,7 @@ const SIZE_UNIPROPS: Record<IconSizeToken, (theme: Theme) => { size: number }> =
   md: (theme) => ({ size: theme.iconSize.md }),
   mdPlus: (theme) => ({ size: theme.iconSize.mdPlus }),
   lg: (theme) => ({ size: theme.iconSize.lg }),
+  chromeXs: (theme) => ({ size: theme.iconSize.chromeXs }),
   chromeSm: (theme) => ({ size: theme.iconSize.chromeSm }),
   chromeMd: (theme) => ({ size: theme.iconSize.chromeMd }),
   chromeLg: (theme) => ({ size: theme.iconSize.chromeLg }),

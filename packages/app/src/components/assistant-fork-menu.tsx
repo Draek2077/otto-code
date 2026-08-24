@@ -69,7 +69,10 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
     [t],
   );
 
-  const forkIcon = useMemo(() => <ThemedSplit size="sm" uniProps={foregroundColorMapping} />, []);
+  const forkIcon = useMemo(
+    () => <ThemedSplit size="chromeSm" uniProps={foregroundColorMapping} />,
+    [],
+  );
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
@@ -85,7 +88,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
             >
               {({ hovered, open }) => (
                 <ThemedSplit
-                  size="sm"
+                  size="chromeSm"
                   uniProps={hovered || open ? foregroundColorMapping : foregroundMutedColorMapping}
                 />
               )}

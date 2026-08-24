@@ -1,12 +1,12 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { View, type StyleProp, type ViewStyle } from "react-native";
+import { type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { PanelLeft, PanelLeftClose } from "@/components/icons/material-icons";
-import { compactUp, type Theme } from "@/styles/theme";
+import { type Theme } from "@/styles/theme";
 import { ScreenHeader } from "./screen-header";
 import { ScreenTitle } from "./screen-title";
-import { HeaderToggleButton } from "./header-toggle-button";
+import { HeaderToggleButton, headerIconSlotStyle } from "./header-toggle-button";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
@@ -24,10 +24,6 @@ interface SidebarMenuToggleProps {
   nativeID?: string;
 }
 
-const MOBILE_MENU_LINE_WIDTH = 16;
-const MOBILE_MENU_LINE_SHORT_WIDTH = 8;
-const MOBILE_MENU_LINE_HEIGHT = 2;
-
 const ThemedPanelLeft = withUnistyles(PanelLeft);
 const ThemedPanelLeftClose = withUnistyles(PanelLeftClose);
 
@@ -43,16 +39,11 @@ const mutedMdMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
   size: theme.iconSize.md,
 });
-
-function MobileMenuIcon() {
-  return (
-    <View style={styles.mobileMenuIcon} pointerEvents="none">
-      <View style={styles.mobileMenuLine} />
-      <View style={styles.mobileMenuLine} />
-      <View style={mobileMenuShortLineStyle} />
-    </View>
-  );
-}
+// Compact carries its size through the `size` prop instead, so the mobile
+// mappings only supply colour - matching the explorer toggle on the right.
+const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright });
+const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 export function SidebarMenuToggle({
   style,
@@ -70,6 +61,14 @@ export function SidebarMenuToggle({
   }, [toggleAgentListForLayout, isMobile]);
 
   const accessibilityState = useMemo(() => ({ expanded: isOpen }), [isOpen]);
+  // Compact pairs this button with the explorer toggle on the opposite end of
+  // the same header row, so it takes the same trimmed slot: matching padding
+  // against a symmetric row inset puts both glyphs the same distance from
+  // their screen edge, at the same touch-target size.
+  const slotStyle = useMemo(
+    () => (isMobile ? [headerIconSlotStyle.compactSlot, style] : style),
+    [isMobile, style],
+  );
 
   return (
     <HeaderToggleButton
@@ -80,25 +79,32 @@ export function SidebarMenuToggle({
       shortcutDiscoveryAction="sidebar.toggle.left"
       testID={testID}
       nativeID={nativeID}
-      style={style}
-      active={!isMobile && isOpen}
+      style={slotStyle}
+      active={isOpen}
       accessible
       accessibilityRole="button"
       accessibilityLabel={isOpen ? t("shell.menu.close") : t("shell.menu.open")}
       accessibilityState={accessibilityState}
     >
-      {isMobile ? (
-        <MobileMenuIcon />
-      ) : (
-        ({ hovered, pressed }) => {
-          if (isOpen) {
-            return <ThemedPanelLeftClose uniProps={accentMdMapping} />;
-          }
-          return (
-            <ThemedPanelLeft uniProps={hovered || pressed ? foregroundMdMapping : mutedMdMapping} />
+      {({ hovered, pressed }) => {
+        // The same left-panel glyph pair in both form factors; only the icon
+        // scale differs, so mobile matches the explorer toggle opposite it.
+        if (isMobile) {
+          return isOpen ? (
+            <ThemedPanelLeftClose size="chromeLg" uniProps={accentColorMapping} />
+          ) : (
+            <ThemedPanelLeft
+              size="chromeLg"
+              uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
+            />
           );
         }
-      )}
+        return isOpen ? (
+          <ThemedPanelLeftClose uniProps={accentMdMapping} />
+        ) : (
+          <ThemedPanelLeft uniProps={hovered || pressed ? foregroundMdMapping : mutedMdMapping} />
+        );
+      }}
     </HeaderToggleButton>
   );
 }
@@ -123,21 +129,4 @@ const styles = StyleSheet.create((theme) => ({
   left: {
     gap: theme.spacing[2],
   },
-  mobileMenuIcon: {
-    width: compactUp(MOBILE_MENU_LINE_WIDTH),
-    height: compactUp(12),
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  mobileMenuLine: {
-    width: compactUp(MOBILE_MENU_LINE_WIDTH),
-    height: compactUp(MOBILE_MENU_LINE_HEIGHT),
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.foregroundMuted,
-  },
-  mobileMenuLineShort: {
-    width: compactUp(MOBILE_MENU_LINE_SHORT_WIDTH),
-  },
 }));
-
-const mobileMenuShortLineStyle = [styles.mobileMenuLine, styles.mobileMenuLineShort];
