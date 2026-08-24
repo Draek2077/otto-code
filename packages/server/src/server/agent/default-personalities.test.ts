@@ -7,9 +7,9 @@ import {
 import {
   AgentPersonalitySchema,
   AgentTeamSchema,
-  PERSONALITY_ROLES,
+  PROFILE_ROLES,
 } from "@otto-code/protocol/messages";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
+import { normalizeProfileRoles } from "@otto-code/protocol/agent-profiles";
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 import { isClaudeManifestModelId } from "./providers/claude/model-manifest.js";
 import { listLocalTtsVoices } from "../speech/providers/local/sherpa/tts-voices.js";
@@ -59,9 +59,9 @@ describe("DEFAULT_AGENT_PROFILES", () => {
 
   test("the roster covers all seven roles", () => {
     const covered = new Set(
-      DEFAULT_AGENT_PROFILES.flatMap((personality) => normalizePersonalityRoles(personality.roles)),
+      DEFAULT_AGENT_PROFILES.flatMap((personality) => normalizeProfileRoles(personality.roles)),
     );
-    for (const role of PERSONALITY_ROLES) {
+    for (const role of PROFILE_ROLES) {
       expect(covered.has(role)).toBe(true);
     }
   });

@@ -11,7 +11,7 @@ import {
   PARENT_AGENT_ID_LABEL,
 } from "@otto-code/protocol/agent-labels";
 import {
-  normalizePersonalityRoles,
+  normalizeProfileRoles,
   OTTO_WORK_VOCABULARY_DIRECTIVE,
 } from "@otto-code/protocol/agent-profiles";
 import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
@@ -290,10 +290,10 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
   if (record.config.mcpServers != null) config.mcpServers = record.config.mcpServers;
   if (record.config.profileSnapshot != null) {
     // Storage keeps roles as a loose string array; normalize back to the known
-    // PersonalityRole set on the way in.
+    // ProfileRole set on the way in.
     config.profileSnapshot = {
       ...record.config.profileSnapshot,
-      roles: normalizePersonalityRoles(record.config.profileSnapshot.roles),
+      roles: normalizeProfileRoles(record.config.profileSnapshot.roles),
     };
   }
   if (record.config.teamSnapshot != null) {

@@ -138,7 +138,7 @@ describe("resolveProfile", () => {
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
     // "worker" normalizes to "coder"; both survive in canonical order, deduped - canonical
-    // meaning PERSONALITY_ROLES order, where "coder" precedes "writer", not the input order.
+    // meaning PROFILE_ROLES order, where "coder" precedes "writer", not the input order.
     expect(result.snapshot.roles).toEqual(["coder", "writer"]);
   });
 

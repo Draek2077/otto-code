@@ -11,10 +11,10 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { AgentProfile, AgentTeam, PersonalityRole } from "@otto-code/protocol/messages";
+import type { AgentProfile, AgentTeam, ProfileRole } from "@otto-code/protocol/messages";
 import {
-  checkPersonalityAvailability,
-  normalizePersonalityRoles,
+  checkProfileAvailability,
+  normalizeProfileRoles,
 } from "@otto-code/protocol/agent-profiles";
 import {
   pruneTeamMemberIds,
@@ -545,7 +545,7 @@ function MemberIcons({
   );
 }
 
-function RolePills({ roles }: { roles: readonly PersonalityRole[] }): ReactElement | null {
+function RolePills({ roles }: { roles: readonly ProfileRole[] }): ReactElement | null {
   if (roles.length === 0) {
     return null;
   }
@@ -731,7 +731,7 @@ function TeamEditModal({
     if (!query) return personalities;
     return personalities.filter((personality) => {
       if (personality.name.toLowerCase().includes(query)) return true;
-      return normalizePersonalityRoles(personality.roles).some((role) =>
+      return normalizeProfileRoles(personality.roles).some((role) =>
         ROLE_LABELS[role].toLowerCase().includes(query),
       );
     });
@@ -1038,7 +1038,7 @@ function MemberRow({ personality, entries, checked, onToggle }: MemberRowProps):
   // shown here purely as information.
   const availability = useMemo(() => {
     const entry = entries.find((candidate) => candidate.provider === personality.provider);
-    return checkPersonalityAvailability(personality, {
+    return checkProfileAvailability(personality, {
       providerStatus: entry?.status,
       providerEnabled: entry?.enabled,
       modelIds: entry?.models?.map((model) => model.id),
@@ -1046,7 +1046,7 @@ function MemberRow({ personality, entries, checked, onToggle }: MemberRowProps):
     });
   }, [entries, personality]);
 
-  const roles = useMemo(() => normalizePersonalityRoles(personality.roles), [personality]);
+  const roles = useMemo(() => normalizeProfileRoles(personality.roles), [personality]);
   const providerEntry = useMemo(
     () => entries.find((entry) => entry.provider === personality.provider),
     [entries, personality.provider],

@@ -3,52 +3,50 @@ import { describe, expect, it, test } from "vitest";
 import {
   composeRoleFocusDirective,
   findProfileByRef,
-  personalityCanLaunch,
-  summarizePersonalityForSelection,
+  profileCanLaunch,
+  summarizeProfileForSelection,
 } from "./agent-profiles.js";
 
 describe("personality role tiers", () => {
   test("only the surface + conductor roles can launch", () => {
-    expect(personalityCanLaunch({ roles: ["chatter"] })).toBe(true);
-    expect(personalityCanLaunch({ roles: ["orchestrator"] })).toBe(true);
-    expect(personalityCanLaunch({ roles: ["artificer"] })).toBe(true);
-    expect(personalityCanLaunch({ roles: ["scheduler"] })).toBe(true);
+    expect(profileCanLaunch({ roles: ["chatter"] })).toBe(true);
+    expect(profileCanLaunch({ roles: ["orchestrator"] })).toBe(true);
+    expect(profileCanLaunch({ roles: ["artificer"] })).toBe(true);
+    expect(profileCanLaunch({ roles: ["scheduler"] })).toBe(true);
   });
 
   test("a personality whose roles are entirely focused cannot launch", () => {
     // advisor is read-only now (was wrongly coordinator-tier); the new
     // thinking/making roles are focused too.
-    expect(personalityCanLaunch({ roles: ["advisor"] })).toBe(false);
-    expect(personalityCanLaunch({ roles: ["researcher"] })).toBe(false);
-    expect(personalityCanLaunch({ roles: ["planner"] })).toBe(false);
-    expect(personalityCanLaunch({ roles: ["designer"] })).toBe(false);
-    expect(personalityCanLaunch({ roles: ["writer"] })).toBe(false);
-    expect(personalityCanLaunch({ roles: ["coder"] })).toBe(false);
-    expect(personalityCanLaunch({ roles: ["judger"] })).toBe(false);
-    expect(personalityCanLaunch({ roles: ["writer", "coder", "judger"] })).toBe(false);
+    expect(profileCanLaunch({ roles: ["advisor"] })).toBe(false);
+    expect(profileCanLaunch({ roles: ["researcher"] })).toBe(false);
+    expect(profileCanLaunch({ roles: ["planner"] })).toBe(false);
+    expect(profileCanLaunch({ roles: ["designer"] })).toBe(false);
+    expect(profileCanLaunch({ roles: ["writer"] })).toBe(false);
+    expect(profileCanLaunch({ roles: ["coder"] })).toBe(false);
+    expect(profileCanLaunch({ roles: ["judger"] })).toBe(false);
+    expect(profileCanLaunch({ roles: ["writer", "coder", "judger"] })).toBe(false);
   });
 
   test("any coordinator role in a mixed set makes it a coordinator", () => {
     // Sprocket-style chatter+coder both codes and delegates.
-    expect(personalityCanLaunch({ roles: ["coder", "chatter"] })).toBe(true);
-    expect(summarizePersonalityForSelection({ roles: ["coder", "chatter"] }).tier).toBe(
-      "coordinator",
-    );
+    expect(profileCanLaunch({ roles: ["coder", "chatter"] })).toBe(true);
+    expect(summarizeProfileForSelection({ roles: ["coder", "chatter"] }).tier).toBe("coordinator");
   });
 
   test("unknown roles cannot acquire coordinator privileges", () => {
-    expect(personalityCanLaunch({ roles: ["unknown-role"] })).toBe(false);
+    expect(profileCanLaunch({ roles: ["unknown-role"] })).toBe(false);
   });
 
   test("a roleless personality defaults to focused and cannot launch", () => {
-    expect(personalityCanLaunch({ roles: [] })).toBe(false);
-    expect(summarizePersonalityForSelection({ roles: undefined }).tier).toBe("focused");
+    expect(profileCanLaunch({ roles: [] })).toBe(false);
+    expect(summarizeProfileForSelection({ roles: undefined }).tier).toBe("focused");
   });
 });
 
-describe("summarizePersonalityForSelection", () => {
+describe("summarizeProfileForSelection", () => {
   test("joins per-role guidance into one blurb", () => {
-    const summary = summarizePersonalityForSelection({ roles: ["judger"] });
+    const summary = summarizeProfileForSelection({ roles: ["judger"] });
     expect(summary.canLaunch).toBe(false);
     expect(summary.tier).toBe("focused");
     expect(summary.guidance).toContain("Review specialist");

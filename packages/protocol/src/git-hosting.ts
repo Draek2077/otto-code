@@ -10,7 +10,7 @@ export const GitHostingProviderIdSchema = z.enum(["github", "bitbucket-cloud"]);
 // Wire form of the provider id. Deliberately an OPEN string, not the enum, so a
 // newer peer that adds a third provider (e.g. "gitlab") never makes an older
 // peer's validator drop the whole message. Consumers normalize to the known set
-// with normalizeGitHostingProviderId (mirrors normalizePersonalityRoles) and
+// with normalizeGitHostingProviderId (mirrors normalizeProfileRoles) and
 // degrade gracefully for unknown ids. Keep the enum for otto.json config and the
 // GIT_HOSTING_PROVIDER_IDS known-set.
 export const GitHostingProviderIdWireSchema = z.string();

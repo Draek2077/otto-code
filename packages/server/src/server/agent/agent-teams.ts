@@ -5,7 +5,7 @@ import {
   resolveTeamMembers,
   type AgentTeamsConfigView,
 } from "@otto-code/protocol/agent-teams";
-import { composeRoleFocusDirective, personalityHasRole } from "@otto-code/protocol/agent-profiles";
+import { composeRoleFocusDirective, profileHasRole } from "@otto-code/protocol/agent-profiles";
 import type { AgentProfile } from "@otto-code/protocol/messages";
 import { resolveProfile, type ResolvedProfileSnapshot } from "./agent-profiles.js";
 import type { ProviderSnapshotEntry } from "./agent-sdk-types.js";
@@ -75,7 +75,7 @@ export function resolveTeamSchedulerSnapshot(params: {
     );
   }
   const schedulers = resolveTeamMembers(team, params.roster).filter((member) =>
-    personalityHasRole(member, "scheduler"),
+    profileHasRole(member, "scheduler"),
   );
   if (schedulers.length === 0) {
     throw new Error(

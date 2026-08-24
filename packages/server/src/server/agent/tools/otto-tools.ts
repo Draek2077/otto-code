@@ -20,10 +20,10 @@ import {
 } from "@otto-code/protocol/agent-teams";
 import {
   findProfileByRef,
-  isPersonalityRole,
-  normalizePersonalityRoles,
-  personalityHasRole,
-  summarizePersonalityForSelection,
+  isProfileRole,
+  normalizeProfileRoles,
+  profileHasRole,
+  summarizeProfileForSelection,
 } from "@otto-code/protocol/agent-profiles";
 import type { AgentProfile } from "@otto-code/protocol/messages";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
@@ -2247,13 +2247,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .filter(
             (personality) =>
               roleFilters.length === 0 ||
-              roleFilters.some(
-                (role) => isPersonalityRole(role) && personalityHasRole(personality, role),
-              ),
+              roleFilters.some((role) => isProfileRole(role) && profileHasRole(personality, role)),
           )
           .map((personality) => {
             const resolution = resolveProfile(personality, entries);
-            const selection = summarizePersonalityForSelection(personality);
+            const selection = summarizeProfileForSelection(personality);
             const entryOut: {
               id: string;
               name: string;
@@ -2272,7 +2270,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             } = {
               id: personality.id,
               name: personality.name,
-              roles: normalizePersonalityRoles(personality.roles),
+              roles: normalizeProfileRoles(personality.roles),
               provider: personality.provider,
               // A personality may name no model, meaning "this provider's
               // default". Report the model the resolver actually bound so a

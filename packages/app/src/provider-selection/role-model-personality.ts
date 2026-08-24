@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { PersonalityRole } from "@otto-code/protocol/messages";
+import type { ProfileRole } from "@otto-code/protocol/messages";
 import { getActiveAgentTeam } from "@otto-code/protocol/agent-teams";
 import type {
   SelectorPersonality,
@@ -95,7 +95,7 @@ export interface RolePersonalityBindingConfig {
 export interface UseFormRolePersonalityInput {
   serverId: string | null;
   /** Which surface this picker is - only personalities tagged with this role show. */
-  role: PersonalityRole;
+  role: ProfileRole;
   entries: readonly ProviderSnapshotEntry[];
   /** Apply the resolved personality/role values to the host form. Must be stable. */
   onApply: (values: PersonalityFormValues) => void;

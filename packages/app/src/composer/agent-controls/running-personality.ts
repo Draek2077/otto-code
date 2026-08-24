@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { AgentProfile } from "@otto-code/protocol/messages";
 import { getActiveAgentTeam, isTeamMember } from "@otto-code/protocol/agent-teams";
-import { personalityHasRole } from "@otto-code/protocol/agent-profiles";
+import { profileHasRole } from "@otto-code/protocol/agent-profiles";
 import type { SelectorPersonality } from "@/components/model-selector/selector-content";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
@@ -246,7 +246,7 @@ export function useRunningChatPersonality(input: {
     () =>
       (rosterSource ?? EMPTY_PROFILE_ROSTER).filter(
         (personality) =>
-          personalityHasRole(personality, "chatter") &&
+          profileHasRole(personality, "chatter") &&
           personality.provider === provider &&
           (!activeTeam ||
             isTeamMember(activeTeam, personality.id) ||

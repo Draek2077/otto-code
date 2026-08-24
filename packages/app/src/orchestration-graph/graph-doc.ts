@@ -9,7 +9,7 @@ import type {
 // Pure helpers for orchestration graph documents (projects/orchestration-graphs)
 // shared by the New Orchestration dialog and the designer tab.
 
-/** Roles a graph node can dispatch to - the worker subset of PERSONALITY_ROLES
+/** Roles a graph node can dispatch to - the worker subset of PROFILE_ROLES
  * (surfaces like chatter/artificer/scheduler don't fill graph seats, and the
  * orchestrator seat is the root node itself). */
 export const GRAPH_NODE_ROLES = [

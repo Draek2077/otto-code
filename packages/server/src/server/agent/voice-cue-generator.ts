@@ -1,9 +1,6 @@
 import { z } from "zod";
-import { CUE_MOMENTS, PERSONALITY_ROLES, type CueMoment } from "@otto-code/protocol/messages";
-import {
-  normalizePersonalityRoles,
-  PERSONALITY_ROLE_INFO,
-} from "@otto-code/protocol/agent-profiles";
+import { CUE_MOMENTS, PROFILE_ROLES, type CueMoment } from "@otto-code/protocol/messages";
+import { normalizeProfileRoles, PROFILE_ROLE_INFO } from "@otto-code/protocol/agent-profiles";
 import type { StructuredTextGeneration } from "../session/checkout/git-metadata-generator.js";
 import { isStructuredGenerationFailure } from "./agent-response-loop.js";
 
@@ -127,11 +124,11 @@ const MOMENT_SPECS: Record<CueMoment, MomentSpec> = {
 
 function personaBlock(name: string, prompt?: string, roles?: string[]): string[] {
   const persona = prompt?.trim();
-  const known = normalizePersonalityRoles(roles);
+  const known = normalizeProfileRoles(roles);
   // A personality holding every role carries no information about what it does
   // - and the editor hands new personalities the full set by default - so
   // feeding that back as flavor is pure noise that dilutes the name/persona.
-  const rolesAreDistinguishing = known.length > 0 && known.length < PERSONALITY_ROLES.length;
+  const rolesAreDistinguishing = known.length > 0 && known.length < PROFILE_ROLES.length;
   return [
     `Name: ${name.trim() || "the agent"}`,
     persona ? `Persona: ${persona}` : `Persona: (no description - infer a tone from the name)`,
@@ -140,7 +137,7 @@ function personaBlock(name: string, prompt?: string, roles?: string[]): string[]
           `Roles (what this agent is actually for; let the job color its word choice):`,
           // The role's own "why you'd choose me" blurb, so the writer knows what
           // the agent DOES rather than just the role's name.
-          ...known.map((role) => `- ${role}: ${PERSONALITY_ROLE_INFO[role].guidance}`),
+          ...known.map((role) => `- ${role}: ${PROFILE_ROLE_INFO[role].guidance}`),
         ]
       : []),
   ];

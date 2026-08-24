@@ -31,7 +31,7 @@ import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { AgentProfile } from "@otto-code/protocol/messages";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
+import { normalizeProfileRoles } from "@otto-code/protocol/agent-profiles";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 import type { InterfaceMode } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
@@ -462,7 +462,7 @@ function CustomTeamBuilder({
     [available, selectedIds],
   );
   const roleUnion = useMemo(
-    () => normalizePersonalityRoles(selectedMembers.flatMap((member) => member.roles ?? [])),
+    () => normalizeProfileRoles(selectedMembers.flatMap((member) => member.roles ?? [])),
     [selectedMembers],
   );
   const hasOrchestrator = roleUnion.includes("orchestrator");
@@ -569,7 +569,7 @@ function CustomTeamBuilder({
 
 function MemberRow({ personality }: { personality: AgentProfile }) {
   const { t } = useTranslation();
-  const roles = useMemo(() => normalizePersonalityRoles(personality.roles), [personality]);
+  const roles = useMemo(() => normalizeProfileRoles(personality.roles), [personality]);
   const chipStyle = useMemo(
     () => [styles.memberChip, { backgroundColor: personality.spinner?.glowA ?? "#888888" }],
     [personality.spinner?.glowA],
@@ -600,7 +600,7 @@ function SelectableMemberRow({
 }) {
   const { t } = useTranslation();
   const handlePress = useCallback(() => onToggle(personality.id), [onToggle, personality.id]);
-  const roles = useMemo(() => normalizePersonalityRoles(personality.roles), [personality]);
+  const roles = useMemo(() => normalizeProfileRoles(personality.roles), [personality]);
   const rowStyle = useMemo(
     () => [styles.selectableRow, selected && styles.selectableRowSelected],
     [selected],

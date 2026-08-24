@@ -11,7 +11,7 @@ import { z } from "zod";
 // "worker" role is mapped to "coder" on the way in (see LEGACY_ROLE_ALIASES in
 // agent-profiles.ts) so personalities persisted before the split keep their
 // role rather than silently losing it.
-export const PERSONALITY_ROLES = [
+export const PROFILE_ROLES = [
   // Surfaces - the interactive / host-facing entry points.
   "chatter",
   "artificer",
@@ -29,7 +29,7 @@ export const PERSONALITY_ROLES = [
   "orchestrator",
 ] as const;
 
-export type PersonalityRole = (typeof PERSONALITY_ROLES)[number];
+export type ProfileRole = (typeof PROFILE_ROLES)[number];
 
 // Plain strings on the wire, like personality roles and effort levels, so the
 // daemon can grow the vocabulary without breaking old peers. Logical values:

@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import {
-  PERSONALITY_ROLES,
-  type AgentProfile,
-  type PersonalityRole,
-} from "@otto-code/protocol/messages";
-import { normalizePersonalityRoles, personalityHasRole } from "@otto-code/protocol/agent-profiles";
+import { PROFILE_ROLES, type AgentProfile, type ProfileRole } from "@otto-code/protocol/messages";
+import { normalizeProfileRoles, profileHasRole } from "@otto-code/protocol/agent-profiles";
 import {
   getActiveAgentTeam,
   isTeamMember,
@@ -61,7 +57,7 @@ export interface PersonalityCurrentSelection {
 export interface UsePersonalitySelectionInput {
   serverId: string | null;
   /** Which surface this picker is - only personalities tagged with this role show. */
-  role: PersonalityRole;
+  role: ProfileRole;
   entries: readonly ProviderSnapshotEntry[];
   /**
    * Apply the resolved form values (provider/model/mode/effort) to the host
@@ -226,7 +222,7 @@ export function usePersonalitySelection(
   const roster = useMemo(
     () =>
       fullRoster.filter((personality) => {
-        if (!personalityHasRole(personality, role)) {
+        if (!profileHasRole(personality, role)) {
           return false;
         }
         if (!activeTeam) {
@@ -319,8 +315,8 @@ export function usePersonalitySelection(
     }
     const buildRoleGroups = (list: readonly AgentProfile[]): SelectorPersonalityRoleGroup[] => {
       const groups: SelectorPersonalityRoleGroup[] = [];
-      for (const groupRole of PERSONALITY_ROLES) {
-        const members = list.filter((personality) => personalityHasRole(personality, groupRole));
+      for (const groupRole of PROFILE_ROLES) {
+        const members = list.filter((personality) => profileHasRole(personality, groupRole));
         if (members.length > 0) {
           groups.push({
             key: groupRole,
@@ -331,7 +327,7 @@ export function usePersonalitySelection(
         }
       }
       const roleless = list.filter(
-        (personality) => normalizePersonalityRoles(personality.roles).length === 0,
+        (personality) => normalizeProfileRoles(personality.roles).length === 0,
       );
       if (roleless.length > 0) {
         groups.push({

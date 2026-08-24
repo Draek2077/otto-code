@@ -8,8 +8,8 @@
  */
 
 import { CUE_MOMENTS, type CueMoment } from "@otto-code/protocol/messages";
-import type { AgentProfile, PersonalityRole } from "@otto-code/protocol/messages";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
+import type { AgentProfile, ProfileRole } from "@otto-code/protocol/messages";
+import { normalizeProfileRoles } from "@otto-code/protocol/agent-profiles";
 import { parseEffortLevel } from "@otto-code/protocol/effort";
 
 export const DEFAULT_GLOW_A = "#4ec4ff";
@@ -86,7 +86,7 @@ export interface PersonalityDraft {
   respectGlobalAppendPrompt: boolean;
   /** Whether this personality accrues lessons across sessions. Default on. */
   memoryEnabled: boolean;
-  roles: PersonalityRole[];
+  roles: ProfileRole[];
   /** Icon registry key and identity colour; "" draws the defaults. */
   icon: string;
   color: string;
@@ -118,7 +118,7 @@ export function personalityToDraft(personality: AgentProfile): PersonalityDraft 
     // Absent means on: memory costs nothing until a lesson exists, so the switch
     // is there to stop a personality accruing, not to start it.
     memoryEnabled: personality.memoryEnabled ?? true,
-    roles: normalizePersonalityRoles(personality.roles),
+    roles: normalizeProfileRoles(personality.roles),
     icon: personality.icon ?? "",
     color: personality.color ?? "",
     glowA: personality.spinner?.glowA ?? DEFAULT_GLOW_A,

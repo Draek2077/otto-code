@@ -1,12 +1,12 @@
 import {
-  checkPersonalityAvailability,
-  normalizePersonalityRoles,
+  checkProfileAvailability,
+  normalizeProfileRoles,
   type PersonalityUnavailableCode,
 } from "@otto-code/protocol/agent-profiles";
 import type {
   AgentPersonalityVoice,
   AgentProfile,
-  PersonalityRole,
+  ProfileRole,
 } from "@otto-code/protocol/messages";
 import { resolveEffortOption } from "./effort-levels.js";
 import type { AgentSelectOption, ProviderSnapshotEntry } from "./agent-sdk-types.js";
@@ -51,7 +51,7 @@ export interface ResolvedProfileSnapshot {
    * host's speech options, never gated here (the resolver has no TTS catalog).
    */
   voice?: AgentPersonalityVoice;
-  roles: PersonalityRole[];
+  roles: ProfileRole[];
   /** Provider feature toggles the profile pins. Applied alongside the brain. */
   featureValues?: Record<string, unknown>;
 }
@@ -82,7 +82,7 @@ export function resolveProfile(
   const modelId = profile.model ?? resolveDefaultModelId(entry);
   const model = entry?.models?.find((candidate) => candidate.id === modelId);
 
-  const availability = checkPersonalityAvailability(
+  const availability = checkProfileAvailability(
     { provider: profile.provider, model: modelId, modeId: profile.modeId },
     {
       providerStatus: entry?.status,
@@ -157,7 +157,7 @@ function buildSnapshot(
     model: modelId,
     effortDegraded: effort.degraded,
     respectGlobalAppendPrompt: profile.respectGlobalAppendPrompt ?? true,
-    roles: normalizePersonalityRoles(profile.roles),
+    roles: normalizeProfileRoles(profile.roles),
   };
   if (modeId !== undefined) {
     snapshot.modeId = modeId;

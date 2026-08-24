@@ -124,7 +124,7 @@ describe("resolveExclusiveTeamMembers", () => {
 
 describe("teamRoleUnion", () => {
   test("unions member roles in canonical order", () => {
-    // Canonical PERSONALITY_ROLES order, not member order: chatter before
+    // Canonical PROFILE_ROLES order, not member order: chatter before
     // scheduler/writer, orchestrator last.
     expect(teamRoleUnion(crew, roster)).toEqual(["chatter", "scheduler", "writer", "orchestrator"]);
   });

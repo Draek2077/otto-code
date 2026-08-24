@@ -21,10 +21,10 @@ import type {
   AgentProfile,
   AgentPersonalityVoice,
   CueMoment,
-  PersonalityRole,
+  ProfileRole,
   SpeechSettingsOptions,
 } from "@otto-code/protocol/messages";
-import { CUE_MOMENTS, PERSONALITY_ROLES } from "@otto-code/protocol/messages";
+import { CUE_MOMENTS, PROFILE_ROLES } from "@otto-code/protocol/messages";
 import { DEFAULT_AGENT_PROFILES } from "@otto-code/protocol/default-personalities";
 import {
   DEFAULT_GLOW_A,
@@ -39,8 +39,8 @@ import {
   type PersonalityDraft,
 } from "./personality-draft";
 import {
-  checkPersonalityAvailability,
-  normalizePersonalityRoles,
+  checkProfileAvailability,
+  normalizeProfileRoles,
 } from "@otto-code/protocol/agent-profiles";
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 import type { AgentFeature } from "@otto-code/protocol/agent-types";
@@ -237,7 +237,7 @@ function encodeVoice(voice: AgentPersonalityVoice | null): string {
 
 // Builds a short spoken introduction for the voice-preview button from the
 // personality's name and first role - plain string templating, no model call.
-function buildPersonalityIntro(name: string, roles: readonly PersonalityRole[]): string {
+function buildPersonalityIntro(name: string, roles: readonly ProfileRole[]): string {
   const cleanName = name.trim() || "your agent";
   const firstRole = roles[0];
   const roleLabel = firstRole ? ROLE_LABELS[firstRole].toLowerCase() : "agent";
@@ -311,7 +311,7 @@ function emptyDraft(entries: readonly ProviderSnapshotEntry[]): PersonalityDraft
     respectGlobalAppendPrompt: true,
     memoryEnabled: true,
     // A new personality is available everywhere by default; the user narrows it.
-    roles: [...PERSONALITY_ROLES],
+    roles: [...PROFILE_ROLES],
     icon: "",
     color: "",
     glowA: DEFAULT_GLOW_A,
@@ -831,7 +831,7 @@ function derivePersonalityRowInfo(
   entries: readonly ProviderSnapshotEntry[],
 ) {
   const entry = entries.find((candidate) => candidate.provider === personality.provider);
-  const availability = checkPersonalityAvailability(personality, {
+  const availability = checkProfileAvailability(personality, {
     providerStatus: entry?.status,
     providerEnabled: entry?.enabled,
     modelIds: entry?.models?.map((model) => model.id),
@@ -840,7 +840,7 @@ function derivePersonalityRowInfo(
   const providerLabel = entry?.label ?? personality.provider;
   const modelLabel =
     entry?.models?.find((model) => model.id === personality.model)?.label ?? personality.model;
-  const roles = normalizePersonalityRoles(personality.roles);
+  const roles = normalizeProfileRoles(personality.roles);
   return { availability, providerLabel, modelLabel, roles };
 }
 
@@ -850,7 +850,7 @@ function RolePills({
   roles,
   align = "start",
 }: {
-  roles: readonly PersonalityRole[];
+  roles: readonly ProfileRole[];
   align?: "start" | "end";
 }): ReactElement | null {
   if (roles.length === 0) {
@@ -1245,18 +1245,18 @@ function PersonalityEditModal({
     setDraft((current) => ({ ...current, voice: decodeVoice(id) }));
   }, []);
 
-  const toggleRole = useCallback((role: PersonalityRole) => {
+  const toggleRole = useCallback((role: ProfileRole) => {
     setDraft((current) => {
       const has = current.roles.includes(role);
       const nextRoles = has
         ? current.roles.filter((entry) => entry !== role)
-        : PERSONALITY_ROLES.filter((entry) => entry === role || current.roles.includes(entry));
+        : PROFILE_ROLES.filter((entry) => entry === role || current.roles.includes(entry));
       return { ...current, roles: nextRoles };
     });
   }, []);
 
   const setAllRoles = useCallback((all: boolean) => {
-    setDraft((current) => ({ ...current, roles: all ? [...PERSONALITY_ROLES] : [] }));
+    setDraft((current) => ({ ...current, roles: all ? [...PROFILE_ROLES] : [] }));
   }, []);
 
   const setCueLine = useCallback((kind: CueMoment, id: string, value: string) => {
@@ -2039,13 +2039,13 @@ function PickerRow({
 }
 
 interface RolesFieldProps {
-  roles: PersonalityRole[];
-  onToggle: (role: PersonalityRole) => void;
+  roles: ProfileRole[];
+  onToggle: (role: ProfileRole) => void;
   onSetAll: (all: boolean) => void;
 }
 
 function RolesField({ roles, onToggle, onSetAll }: RolesFieldProps): ReactElement {
-  const allSelected = roles.length === PERSONALITY_ROLES.length;
+  const allSelected = roles.length === PROFILE_ROLES.length;
   const handleToggleAll = useCallback(() => onSetAll(!allSelected), [onSetAll, allSelected]);
   return (
     <View style={styles.rolesField}>
@@ -2061,7 +2061,7 @@ function RolesField({ roles, onToggle, onSetAll }: RolesFieldProps): ReactElemen
         </Button>
       </View>
       <View style={styles.roleChips}>
-        {PERSONALITY_ROLES.map((role) => (
+        {PROFILE_ROLES.map((role) => (
           <RoleChip key={role} role={role} selected={roles.includes(role)} onToggle={onToggle} />
         ))}
       </View>
@@ -2070,9 +2070,9 @@ function RolesField({ roles, onToggle, onSetAll }: RolesFieldProps): ReactElemen
 }
 
 interface RoleChipProps {
-  role: PersonalityRole;
+  role: ProfileRole;
   selected: boolean;
-  onToggle: (role: PersonalityRole) => void;
+  onToggle: (role: ProfileRole) => void;
 }
 
 function RoleChip({ role, selected, onToggle }: RoleChipProps): ReactElement {

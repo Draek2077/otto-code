@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentMode, AgentModelDefinition } from "@otto-code/protocol/agent-types";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
+import { normalizeProfileRoles } from "@otto-code/protocol/agent-profiles";
 import { TEAM_BLUEPRINTS, findBlueprint } from "./blueprints";
 import { VARIATIONS } from "./variations";
 import { generateTeam, makeRng, resolveTierModels } from "./generate";
@@ -163,7 +163,7 @@ describe("generateTeam", () => {
       // template type allows "use the provider's default".
       expect(personality.model).toBeDefined();
       expect(modelIds.has(personality.model ?? "")).toBe(true);
-      expect(normalizePersonalityRoles(personality.roles).length).toBeGreaterThan(0);
+      expect(normalizeProfileRoles(personality.roles).length).toBeGreaterThan(0);
       expect(personality.personalityPrompt && personality.personalityPrompt.length).toBeTruthy();
     }
 

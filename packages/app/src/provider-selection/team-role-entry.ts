@@ -1,6 +1,6 @@
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { AgentProfile, AgentTeam, PersonalityRole } from "@otto-code/protocol/messages";
-import { personalityHasRole } from "@otto-code/protocol/agent-profiles";
+import type { AgentProfile, AgentTeam, ProfileRole } from "@otto-code/protocol/messages";
+import { profileHasRole } from "@otto-code/protocol/agent-profiles";
 import { resolveTeamMembers } from "@otto-code/protocol/agent-teams";
 import type { SelectorPersonality } from "@/components/combined-model-selector";
 import {
@@ -28,7 +28,7 @@ export interface BuildTeamRoleEntryInput {
   /** Local picker id for the synthetic row (never leaves the form). */
   entryId: string;
   /** Role the entry follows within the team. */
-  role: PersonalityRole;
+  role: ProfileRole;
   /** Row display name, e.g. "Team's Scheduler". */
   label: string;
   /** Human role label used in the unavailable messages, e.g. "Scheduler". */
@@ -50,7 +50,7 @@ export function buildTeamRoleEntry(input: BuildTeamRoleEntryInput): TeamRoleEntr
   // team, so it never wears a concrete personality's colored provider icon.
   const roleIcon = ROLE_ICONS[input.role];
   const members = resolveTeamMembers(input.team, input.roster).filter((member) =>
-    personalityHasRole(member, input.role),
+    profileHasRole(member, input.role),
   );
   if (members.length === 0) {
     return {

@@ -1,9 +1,6 @@
 import { z } from "zod";
-import type { PersonalityRole } from "@otto-code/protocol/messages";
-import {
-  normalizePersonalityRoles,
-  PERSONALITY_ROLE_INFO,
-} from "@otto-code/protocol/agent-profiles";
+import type { ProfileRole } from "@otto-code/protocol/messages";
+import { normalizeProfileRoles, PROFILE_ROLE_INFO } from "@otto-code/protocol/agent-profiles";
 import type { StructuredTextGeneration } from "../session/checkout/git-metadata-generator.js";
 import { isStructuredGenerationFailure } from "./agent-response-loop.js";
 
@@ -41,9 +38,9 @@ export interface PersonalityProfileGenerator {
 
 // What a GREAT holder of each role is like: the positive traits the generated
 // character must be built from, plus the failure mode that role must never have.
-// Exhaustive by PersonalityRole so adding a role fails typecheck here rather
+// Exhaustive by ProfileRole so adding a role fails typecheck here rather
 // than silently producing a character with no idea what its job is.
-const ROLE_VIRTUES: Readonly<Record<PersonalityRole, string>> = {
+const ROLE_VIRTUES: Readonly<Record<ProfileRole, string>> = {
   chatter:
     "reads the room, asks the one clarifying question that actually matters, and keeps the human oriented; never goes silent mid-task or buries the answer",
   artificer:
@@ -201,7 +198,7 @@ function paletteLine(glowA?: string, glowB?: string): string | null {
 
 function buildProfilePrompt(input: {
   name: string;
-  roles: PersonalityRole[];
+  roles: ProfileRole[];
   glowA?: string;
   glowB?: string;
 }): string {
@@ -219,7 +216,7 @@ function buildProfilePrompt(input: {
           `ROLES IT WILL BE SPAWNED FOR (the job it must be good at):`,
           ...input.roles.map(
             (role) =>
-              `- ${role}: ${PERSONALITY_ROLE_INFO[role].guidance}\n  A great ${role} ${ROLE_VIRTUES[role]}.`,
+              `- ${role}: ${PROFILE_ROLE_INFO[role].guidance}\n  A great ${role} ${ROLE_VIRTUES[role]}.`,
           ),
         ]
       : ["", `ROLES: none specified. Make it a capable, adaptable generalist.`]),
@@ -285,7 +282,7 @@ export function createPersonalityProfileGenerator(deps: {
           cwd: resolvedCwd,
           prompt: buildProfilePrompt({
             name,
-            roles: normalizePersonalityRoles(roles),
+            roles: normalizeProfileRoles(roles),
             ...(glowA ? { glowA } : {}),
             ...(glowB ? { glowB } : {}),
           }),

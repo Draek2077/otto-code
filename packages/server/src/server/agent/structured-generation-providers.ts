@@ -1,9 +1,6 @@
-import {
-  checkPersonalityAvailability,
-  personalityHasRole,
-} from "@otto-code/protocol/agent-profiles";
+import { checkProfileAvailability, profileHasRole } from "@otto-code/protocol/agent-profiles";
 import { getActiveAgentTeam, type AgentTeamsConfigView } from "@otto-code/protocol/agent-teams";
-import type { AgentProfile, PersonalityRole } from "@otto-code/protocol/messages";
+import type { AgentProfile, ProfileRole } from "@otto-code/protocol/messages";
 import type { ModelTier } from "@otto-code/protocol/agent-types";
 import type {
   AgentModelDefinition,
@@ -69,7 +66,7 @@ export interface ResolveStructuredGenerationProvidersOptions {
    * prefers a user's role-matched personality - a Writer - before falling back
    * to the built-in preference list.
    */
-  role?: PersonalityRole;
+  role?: ProfileRole;
   currentSelection?: {
     provider?: AgentProvider | null;
     model?: string | null;
@@ -230,7 +227,7 @@ export async function resolveStructuredGenerationAgent(
 // The first available role-matched personality is the prepended head of the
 // chain, so it is the primary when its bound provider/model equals `primary`.
 function findPrimaryPersonalityMatch(
-  role: PersonalityRole,
+  role: ProfileRole,
   personalities: readonly AgentProfile[],
   entries: readonly ProviderSnapshotEntry[],
   primary: StructuredGenerationProvider,
@@ -239,11 +236,11 @@ function findPrimaryPersonalityMatch(
     entries.map((entry) => [entry.provider, entry]),
   );
   for (const personality of personalities) {
-    if (!personalityHasRole(personality, role)) {
+    if (!profileHasRole(personality, role)) {
       continue;
     }
     const entry = entryByProvider.get(personality.provider);
-    const availability = checkPersonalityAvailability(personality, {
+    const availability = checkProfileAvailability(personality, {
       providerStatus: entry?.status,
       providerEnabled: entry?.enabled,
       modelIds: entry?.models?.map((model) => model.id),
@@ -537,7 +534,7 @@ function orderPersonalitiesByTeamPreference(
  * never routes to a personality whose provider/model/mode can't resolve here.
  */
 function resolvePersonalityProviders(
-  role: PersonalityRole,
+  role: ProfileRole,
   personalities: readonly AgentProfile[],
   entries: readonly ProviderSnapshotEntry[],
 ): StructuredGenerationProvider[] {
@@ -546,11 +543,11 @@ function resolvePersonalityProviders(
   );
   const resolved: StructuredGenerationProvider[] = [];
   for (const personality of personalities) {
-    if (!personalityHasRole(personality, role)) {
+    if (!profileHasRole(personality, role)) {
       continue;
     }
     const entry = entryByProvider.get(personality.provider);
-    const availability = checkPersonalityAvailability(personality, {
+    const availability = checkProfileAvailability(personality, {
       providerStatus: entry?.status,
       providerEnabled: entry?.enabled,
       modelIds: entry?.models?.map((model) => model.id),

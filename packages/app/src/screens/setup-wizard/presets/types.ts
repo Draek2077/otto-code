@@ -24,7 +24,7 @@
  * as valid as a Claude one.
  */
 
-import type { PersonalityRole } from "@otto-code/protocol/messages";
+import type { ProfileRole } from "@otto-code/protocol/messages";
 
 /** Which brain a slot wants; resolved to a concrete model per provider. */
 export type Tier = "deep" | "standard" | "fast";
@@ -45,7 +45,7 @@ export interface Archetype {
   /** Human label for previews, e.g. "Team Lead". */
   label: string;
   /** Canonical roles (drives orchestration + picker scoping). */
-  roles: PersonalityRole[];
+  roles: ProfileRole[];
   /** Brain tier; resolved to a model per provider. */
   tier: Tier;
   /** Canonical effort level ("off".."max"); resolved to the model's nearest option. */

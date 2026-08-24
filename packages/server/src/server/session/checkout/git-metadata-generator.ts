@@ -12,7 +12,7 @@ import {
   type ResolveStructuredGenerationProvidersOptions,
   type StructuredGenerationDaemonConfig,
 } from "../../agent/structured-generation-providers.js";
-import type { CommitMessageAgent, PersonalityRole } from "@otto-code/protocol/messages";
+import type { CommitMessageAgent, ProfileRole } from "@otto-code/protocol/messages";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import {
   buildMetadataPrompt,
@@ -56,7 +56,7 @@ export interface StructuredTextGeneration {
    */
   resolveAgent(request: {
     cwd: string;
-    role: PersonalityRole;
+    role: ProfileRole;
   }): Promise<ResolvedStructuredGenerationAgent | null>;
 }
 

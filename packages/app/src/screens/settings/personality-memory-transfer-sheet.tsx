@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { normalizePersonalityRoles } from "@otto-code/protocol/agent-profiles";
+import { normalizeProfileRoles } from "@otto-code/protocol/agent-profiles";
 import type { AgentProfile } from "@otto-code/protocol/messages";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
@@ -162,7 +162,7 @@ function DestinationRow({
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   const roleLabels = useMemo(
     () =>
-      normalizePersonalityRoles(personality.roles)
+      normalizeProfileRoles(personality.roles)
         .map((role) => ROLE_LABELS[role])
         .join(", "),
     [personality.roles],
@@ -202,12 +202,12 @@ function orderBySharedRole(
   source: AgentProfile,
   candidates: readonly AgentProfile[],
 ): OrderedCandidate[] {
-  const sourceRoles = new Set(normalizePersonalityRoles(source.roles));
+  const sourceRoles = new Set(normalizeProfileRoles(source.roles));
   const scored = candidates
     .filter((candidate) => candidate.id !== source.id)
     .map((candidate) => ({
       personality: candidate,
-      sharesRole: normalizePersonalityRoles(candidate.roles).some((role) => sourceRoles.has(role)),
+      sharesRole: normalizeProfileRoles(candidate.roles).some((role) => sourceRoles.has(role)),
     }));
   return [
     ...scored.filter((entry) => entry.sharesRole),

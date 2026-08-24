@@ -1,11 +1,11 @@
-import { normalizePersonalityRoles } from "./agent-profiles.js";
-import type { AgentProfile, AgentTeam, PersonalityRole } from "./messages.js";
+import { normalizeProfileRoles } from "./agent-profiles.js";
+import type { AgentProfile, AgentTeam, ProfileRole } from "./messages.js";
 
 // Pure, dependency-free team helpers shared by the daemon (spawn-time active
 // team resolution, list_agent_profiles scoping) and the app (team cards,
 // pickers, the Active Team switcher). Availability is deliberately NOT here -
 // a team is never "out of commission"; its members are individually available
-// or not, judged by checkPersonalityAvailability per member.
+// or not, judged by checkProfileAvailability per member.
 
 /**
  * The dynamic "Team's Scheduler" schedule binding. Stored in the schedule's
@@ -136,16 +136,16 @@ export function resolveExclusiveTeamMembers(
 
 /**
  * The union of all members' roles, normalized and returned in canonical
- * `PERSONALITY_ROLES` order - the team card's role-pill strip.
+ * `PROFILE_ROLES` order - the team card's role-pill strip.
  */
 export function teamRoleUnion(
   team: Pick<AgentTeam, "memberIds"> | null | undefined,
   personalities: readonly AgentProfile[] | undefined,
-): PersonalityRole[] {
+): ProfileRole[] {
   const roles = resolveTeamMembers(team, personalities).flatMap(
     (personality) => personality.roles ?? [],
   );
-  return normalizePersonalityRoles(roles);
+  return normalizeProfileRoles(roles);
 }
 
 /**

@@ -1,11 +1,11 @@
 // Shared neutral role glyphs for personality roles. Keyed exhaustively by
-// PersonalityRole so adding a role forces a choice here (typecheck fails
+// ProfileRole so adding a role forces a choice here (typecheck fails
 // otherwise). These are deliberately distinct from the app's functional icons
 // (schedules, artifacts, search, git, etc.) so a role glyph reads as "you are
 // picking a ROLE" - most importantly on the synthetic "Team's <Role>" picker
 // entry, whose holder changes with the active team and so must NOT wear any one
 // personality's colored provider glyph. See buildTeamRoleEntry.
-import type { PersonalityRole } from "@otto-code/protocol/messages";
+import type { ProfileRole } from "@otto-code/protocol/messages";
 import {
   Architecture,
   Assignment,
@@ -21,7 +21,7 @@ import {
   TravelExplore,
 } from "@/components/icons/material-icons";
 
-export const ROLE_ICONS: Record<PersonalityRole, IconComponent> = {
+export const ROLE_ICONS: Record<ProfileRole, IconComponent> = {
   // Surfaces
   chatter: Forum, // conversation
   // Not Handyman: that glyph is reserved app-wide for "skill".

@@ -1,11 +1,11 @@
 // Shared display strings for personality roles. Keyed exhaustively by
-// PersonalityRole so adding a new role forces both maps to be updated in one
+// ProfileRole so adding a new role forces both maps to be updated in one
 // place (typecheck fails otherwise). Imported by the personalities editor, the
 // teams settings section, and the setup-wizard team step - keep these three in
 // sync by importing from here, not re-declaring.
-import type { PersonalityRole } from "@otto-code/protocol/messages";
+import type { ProfileRole } from "@otto-code/protocol/messages";
 
-export const ROLE_LABELS: Record<PersonalityRole, string> = {
+export const ROLE_LABELS: Record<ProfileRole, string> = {
   chatter: "Chatter",
   artificer: "Artificer",
   scheduler: "Scheduler",
@@ -19,7 +19,7 @@ export const ROLE_LABELS: Record<PersonalityRole, string> = {
   orchestrator: "Orchestrator",
 };
 
-export const ROLE_HINTS: Record<PersonalityRole, string> = {
+export const ROLE_HINTS: Record<ProfileRole, string> = {
   chatter: "Interactive agent chats",
   artificer: "Creating & managing artifacts",
   scheduler: "Creating & managing schedules",

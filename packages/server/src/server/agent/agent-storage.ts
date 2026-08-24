@@ -11,7 +11,7 @@ import type { AgentSessionConfig } from "./agent-sdk-types.js";
 import { AgentOwnerSchema, daemonExecutionKey, type DaemonAgentOwner } from "./agent-owner.js";
 
 // Frozen profile snapshot as stored on disk. Roles are kept as a loose string
-// array here (not the PersonalityRole enum) so an old record whose role
+// array here (not the ProfileRole enum) so an old record whose role
 // vocabulary drifted never fails to load - buildStoredAgentConfig re-normalizes
 // them to the known set on read. Mirrors ResolvedProfileSnapshot.
 const PROFILE_SNAPSHOT_STORAGE_SCHEMA = z

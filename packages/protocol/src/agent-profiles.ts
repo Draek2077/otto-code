@@ -1,50 +1,50 @@
-import { PERSONALITY_ROLES, type AgentPersonality, type PersonalityRole } from "./messages.js";
+import { PROFILE_ROLES, type AgentPersonality, type ProfileRole } from "./messages.js";
 
 // Pure, dependency-free personality helpers shared by the daemon (spawn-time
 // resolution) and the app (picker availability + role filtering). Effort
 // resolution is NOT here - it needs the model's advertised thinking options and
 // lives with the daemon's effort resolver; availability does not depend on it.
 
-const ROLE_SET: ReadonlySet<string> = new Set(PERSONALITY_ROLES);
+const ROLE_SET: ReadonlySet<string> = new Set(PROFILE_ROLES);
 
 // Retired role names, mapped to their canonical replacement. "worker" was split
 // into "writer" (fast small-text generation) and "coder" (sub-agent coding); a
 // personality that still carries the old tag resolves to "coder", the closer
 // heir of what a worker did. Normalization applies these before filtering so
 // personalities persisted before the split keep a real role.
-const LEGACY_ROLE_ALIASES: Readonly<Record<string, PersonalityRole>> = {
+const LEGACY_ROLE_ALIASES: Readonly<Record<string, ProfileRole>> = {
   worker: "coder",
 };
 
-export function isPersonalityRole(value: string): value is PersonalityRole {
+export function isProfileRole(value: string): value is ProfileRole {
   return ROLE_SET.has(value);
 }
 
 /**
  * Filter an arbitrary role array (roles ride the wire as plain strings) down to
- * the known set, deduped and returned in canonical `PERSONALITY_ROLES` order.
+ * the known set, deduped and returned in canonical `PROFILE_ROLES` order.
  * Retired role names are mapped through `LEGACY_ROLE_ALIASES`; anything else
  * unknown (e.g. a role from a newer peer) is dropped rather than trusted.
  */
-export function normalizePersonalityRoles(roles: readonly string[] | undefined): PersonalityRole[] {
+export function normalizeProfileRoles(roles: readonly string[] | undefined): ProfileRole[] {
   if (!roles || roles.length === 0) {
     return [];
   }
-  const present = new Set<PersonalityRole>();
+  const present = new Set<ProfileRole>();
   for (const raw of roles) {
-    const canonical = LEGACY_ROLE_ALIASES[raw] ?? (isPersonalityRole(raw) ? raw : null);
+    const canonical = LEGACY_ROLE_ALIASES[raw] ?? (isProfileRole(raw) ? raw : null);
     if (canonical) {
       present.add(canonical);
     }
   }
-  return PERSONALITY_ROLES.filter((role) => present.has(role));
+  return PROFILE_ROLES.filter((role) => present.has(role));
 }
 
-export function personalityHasRole(
+export function profileHasRole(
   personality: Pick<AgentPersonality, "roles">,
-  role: PersonalityRole,
+  role: ProfileRole,
 ): boolean {
-  return normalizePersonalityRoles(personality.roles).includes(role);
+  return normalizeProfileRoles(personality.roles).includes(role);
 }
 
 /**
@@ -82,16 +82,16 @@ export function findProfileByRef<T extends { id: string; name: string }>(
 // carries ANY coordinator role counts as a coordinator (a chatter+coder can
 // both code and delegate). Every agent keeps the same tools; the tier only
 // drives the spawn-time role directive and the list_agent_profiles decision aid.
-export type PersonalityRoleTier = "coordinator" | "focused";
+export type ProfileRoleTier = "coordinator" | "focused";
 
-interface PersonalityRoleInfo {
-  tier: PersonalityRoleTier;
+interface ProfileRoleInfo {
+  tier: ProfileRoleTier;
   // "Why you'd choose me" - a one-line decision aid surfaced in
   // list_agent_profiles so a deciding agent can self-select a role by intent.
   guidance: string;
 }
 
-export const PERSONALITY_ROLE_INFO: Readonly<Record<PersonalityRole, PersonalityRoleInfo>> = {
+export const PROFILE_ROLE_INFO: Readonly<Record<ProfileRole, ProfileRoleInfo>> = {
   // ── Surfaces ──────────────────────────────────────────────────────────────
   chatter: {
     tier: "coordinator",
@@ -159,14 +159,14 @@ export const PERSONALITY_ROLE_INFO: Readonly<Record<PersonalityRole, Personality
  * judger, advisor, coder, designer, writer), or that has no roles at all, is a
  * "lifter": it should finish its task, not fan out.
  */
-export function personalityCanLaunch(personality: Pick<AgentPersonality, "roles">): boolean {
-  return normalizePersonalityRoles(personality.roles).some(
-    (role) => PERSONALITY_ROLE_INFO[role].tier === "coordinator",
+export function profileCanLaunch(personality: Pick<AgentPersonality, "roles">): boolean {
+  return normalizeProfileRoles(personality.roles).some(
+    (role) => PROFILE_ROLE_INFO[role].tier === "coordinator",
   );
 }
 
-export interface PersonalitySelectionSummary {
-  tier: PersonalityRoleTier;
+export interface ProfileSelectionSummary {
+  tier: ProfileRoleTier;
   canLaunch: boolean;
   /** The "why you'd choose me" blurb - each of the personality's roles, joined. */
   guidance: string;
@@ -178,15 +178,15 @@ export interface PersonalitySelectionSummary {
  * multi-role "why choose me" blurb. Surfaced by list_agent_profiles so a
  * deciding agent can pick the right teammate from the list alone.
  */
-export function summarizePersonalityForSelection(
+export function summarizeProfileForSelection(
   personality: Pick<AgentPersonality, "roles">,
-): PersonalitySelectionSummary {
-  const roles = normalizePersonalityRoles(personality.roles);
-  const canLaunch = roles.some((role) => PERSONALITY_ROLE_INFO[role].tier === "coordinator");
+): ProfileSelectionSummary {
+  const roles = normalizeProfileRoles(personality.roles);
+  const canLaunch = roles.some((role) => PROFILE_ROLE_INFO[role].tier === "coordinator");
   return {
     tier: canLaunch ? "coordinator" : "focused",
     canLaunch,
-    guidance: roles.map((role) => PERSONALITY_ROLE_INFO[role].guidance).join(" "),
+    guidance: roles.map((role) => PROFILE_ROLE_INFO[role].guidance).join(" "),
   };
 }
 
@@ -214,7 +214,7 @@ export const ORCHESTRATOR_METHOD_DIRECTIVE =
 export function composeRoleFocusDirective(
   roles: readonly string[] | undefined,
 ): string | undefined {
-  const normalized = normalizePersonalityRoles(roles);
+  const normalized = normalizeProfileRoles(roles);
   if (normalized.length === 0) {
     return undefined;
   }
@@ -222,7 +222,7 @@ export function composeRoleFocusDirective(
   if (normalized.includes("orchestrator")) {
     return `${ORCHESTRATOR_METHOD_DIRECTIVE} (Your roles: ${roleList}.)`;
   }
-  if (normalized.some((role) => PERSONALITY_ROLE_INFO[role].tier === "coordinator")) {
+  if (normalized.some((role) => PROFILE_ROLE_INFO[role].tier === "coordinator")) {
     return `You are a coordinator personality (roles: ${roleList}). You front interactive work and may delegate when the task benefits from it: use list_agent_profiles to see who else is available, then either do the work directly, create a child chat for an independent active piece, or hand off genuinely multi-chat work to the team's orchestrator.`;
   }
   return `You are a focused personality (roles: ${roleList}). Someone is waiting on this specific task - stay on it and finish it. You can still call list_agent_profiles to see the roster, but don't create child chats or start side workflows unless it is genuinely essential to completing this job.`;
@@ -238,7 +238,7 @@ export type PersonalityUnavailableCode =
 // Structural view of the target provider's snapshot entry, so both the app's
 // snapshot shape and the daemon's ProviderSnapshotEntry can feed this without
 // importing each other's types.
-export interface PersonalityAvailabilityInput {
+export interface ProfileAvailabilityInput {
   /** Provider snapshot status, or undefined when the provider is absent entirely. */
   providerStatus: "ready" | "loading" | "error" | "unavailable" | undefined;
   providerEnabled: boolean | undefined;
@@ -246,7 +246,7 @@ export interface PersonalityAvailabilityInput {
   modeIds: readonly string[] | undefined;
 }
 
-export type PersonalityAvailability =
+export type ProfileAvailability =
   | { available: true }
   | { available: false; code: PersonalityUnavailableCode; reason: string };
 
@@ -261,10 +261,10 @@ export type PersonalityAvailability =
  * means the provider only has to advertise SOME model; the concrete id is
  * chosen at resolution time, not here.
  */
-export function checkPersonalityAvailability(
+export function checkProfileAvailability(
   personality: { provider: string; model?: string | undefined; modeId?: string | undefined },
-  input: PersonalityAvailabilityInput,
-): PersonalityAvailability {
+  input: ProfileAvailabilityInput,
+): ProfileAvailability {
   if (input.providerStatus === undefined) {
     return {
       available: false,

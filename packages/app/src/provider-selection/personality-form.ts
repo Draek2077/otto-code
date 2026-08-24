@@ -1,6 +1,6 @@
 import type { AgentModelDefinition, ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { AgentProfile } from "@otto-code/protocol/messages";
-import { checkPersonalityAvailability } from "@otto-code/protocol/agent-profiles";
+import { checkProfileAvailability } from "@otto-code/protocol/agent-profiles";
 import { resolveEffortOption } from "@otto-code/protocol/effort";
 import { coerceModeForModel } from "./mode-support";
 
@@ -82,7 +82,7 @@ export function resolvePersonalityForForm(
   const modelId = resolveFormModelId(personality, entry);
   const model = entry?.models?.find((candidate) => candidate.id === modelId);
 
-  const availability = checkPersonalityAvailability(
+  const availability = checkProfileAvailability(
     { ...personality, model: modelId },
     {
       providerStatus: entry?.status,
