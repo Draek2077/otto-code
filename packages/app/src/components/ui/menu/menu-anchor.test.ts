@@ -67,11 +67,13 @@ describe("computePosition", () => {
 });
 
 describe("getTransformOrigin", () => {
+  // The resolved [x, y, z] array is the only form Reanimated can hand to
+  // RCTView without a ClassCastException; see getTransformOrigin.
   it.each([
-    ["bottom", "start", "left top"],
-    ["top", "end", "right bottom"],
-    ["right", "center", "center center"],
+    ["bottom", "start", [0, 0, 0]],
+    ["top", "end", ["100%", "100%", 0]],
+    ["right", "center", ["50%", "50%", 0]],
   ] as const)("maps %s/%s to %s", (placement, alignment, expected) => {
-    expect(getTransformOrigin(placement, alignment)).toBe(expected);
+    expect(getTransformOrigin(placement, alignment)).toEqual(expected);
   });
 });

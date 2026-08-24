@@ -144,18 +144,25 @@ export function computePosition({
   return { ...clampToDisplayArea({ ...anchored, contentSize, displayArea }), actualPlacement };
 }
 
-export function getTransformOrigin(placement: Placement, alignment: Alignment): string {
-  let vertical: string;
-  if (placement === "bottom") vertical = "top";
-  else if (placement === "top") vertical = "bottom";
-  else vertical = "center";
+export function getTransformOrigin(
+  placement: Placement,
+  alignment: Alignment,
+): (string | number)[] {
+  let vertical: string | number;
+  if (placement === "bottom") vertical = 0;
+  else if (placement === "top") vertical = "100%";
+  else vertical = "50%";
 
-  let horizontal: string;
-  if (alignment === "start") horizontal = "left";
-  else if (alignment === "end") horizontal = "right";
-  else horizontal = "center";
+  let horizontal: string | number;
+  if (alignment === "start") horizontal = 0;
+  else if (alignment === "end") horizontal = "100%";
+  else horizontal = "50%";
 
-  // React Native parses transform-origin positionally (x then y), unlike CSS
-  // which accepts keyword pairs in either order.
-  return `${horizontal} ${vertical}`;
+  // Must be the resolved [x, y, z] array, never a CSS keyword string. React
+  // Native only converts the string form inside its own style pipeline
+  // (ReactNativeStyleAttributes -> processTransformOrigin); Reanimated applies
+  // layout-animation props directly, so a string reaches RCTView's
+  // ArrayPropSetter and throws ClassCastException. react-native-web accepts the
+  // array too, so one value is correct on every platform.
+  return [horizontal, vertical, 0];
 }
