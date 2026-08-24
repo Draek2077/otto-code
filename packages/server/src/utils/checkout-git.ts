@@ -358,7 +358,9 @@ export async function listBranchSuggestions(
 
   const requestedLimit = options?.limit ?? 50;
   const limit = Math.max(1, Math.min(200, requestedLimit));
-  const query = options?.query?.trim().toLowerCase() ?? "";
+  const rawQuery = options?.query ?? "";
+  const query =
+    normalizeBranchSuggestionName(rawQuery)?.toLowerCase() ?? rawQuery.trim().toLowerCase();
 
   const [localRefs, remoteRefs, checkedOutElsewhereNames] = await Promise.all([
     listGitRefs(cwd, "refs/heads"),
@@ -2088,7 +2090,7 @@ function buildPullRequestLookupTargetFromBranchConfig(
   input: PullRequestLookupTargetBranchConfig,
 ): PullRequestStatusLookupTarget {
   const trackedHeadRef = parseBranchMergeHeadRef(input.branchMergeRef);
-  if (!input.branchRemoteName || !trackedHeadRef || trackedHeadRef === input.currentBranch) {
+  if (!input.branchRemoteName || !trackedHeadRef) {
     return { headRef: input.currentBranch };
   }
 
@@ -2103,7 +2105,13 @@ function buildPullRequestLookupTargetFromBranchConfig(
   const normalizedBaseRef = input.resolvedBaseRef
     ? normalizeLocalBranchRefName(input.resolvedBaseRef)
     : null;
-  if (trackedHeadRef === normalizedBaseRef && !headRepositoryOwner) {
+  if (trackedHeadRef === input.currentBranch) {
+    return {
+      headRef: input.currentBranch,
+      ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
+    };
+  }
+  if (trackedHeadRef === normalizedBaseRef) {
     return { headRef: input.currentBranch };
   }
 
@@ -2121,7 +2129,7 @@ function buildPullRequestLookupTargetFromPushConfig(
   input: PullRequestLookupTargetPushConfig,
 ): PullRequestStatusLookupTarget | null {
   const pushedHeadRef = parseHeadPushRefspec(input.pushRefspec);
-  if (!input.pushRemoteName || !pushedHeadRef || pushedHeadRef === input.currentBranch) {
+  if (!input.pushRemoteName || !pushedHeadRef) {
     return null;
   }
 
@@ -2134,7 +2142,13 @@ function buildPullRequestLookupTargetFromPushConfig(
   const normalizedBaseRef = input.resolvedBaseRef
     ? normalizeLocalBranchRefName(input.resolvedBaseRef)
     : null;
-  if (pushedHeadRef === normalizedBaseRef && !headRepositoryOwner) {
+  if (pushedHeadRef === input.currentBranch) {
+    return {
+      headRef: input.currentBranch,
+      ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
+    };
+  }
+  if (pushedHeadRef === normalizedBaseRef) {
     return null;
   }
 

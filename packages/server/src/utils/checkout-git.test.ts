@@ -731,7 +731,7 @@ const x = 1;
     expect(status).toMatchObject({
       isGit: true,
       isOttoOwnedWorktree: true,
-      baseRef: "main",
+      baseRef: "refs/heads/main",
       aheadBehind: { ahead: 0, behind: 0 },
       aheadOfOrigin: null,
     });
@@ -755,7 +755,7 @@ const x = 1;
     expect(status).toMatchObject({
       isGit: true,
       isOttoOwnedWorktree: true,
-      baseRef: "main",
+      baseRef: "refs/heads/main",
       aheadBehind: { ahead: 1, behind: 0 },
       aheadOfOrigin: null,
     });
@@ -2420,7 +2420,8 @@ const x = 1;
       },
     });
     expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
-      headRef: "new-change",
+      headRef: "old-change",
+      headRepositoryOwner: "contributor",
     });
 
     execFileSync(
@@ -2581,7 +2582,7 @@ const x = 1;
 
     expect(requestedTargets.at(-1)).toMatchObject({
       headRef: "old-change",
-      headRepositoryOwner: "OtherOwner",
+      headRepositoryOwner: "MixedOwner",
     });
   });
 
@@ -3174,7 +3175,7 @@ const x = 1;
 
     const status = await getCheckoutStatus(worktree.worktreePath, { ottoHome });
     expect(status.isGit).toBe(true);
-    expect(status.baseRef).toBe("develop");
+    expect(status.baseRef).toBe("refs/heads/develop");
     expect(status.aheadBehind?.ahead).toBe(1);
 
     const baseDiff = await getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { ottoHome });

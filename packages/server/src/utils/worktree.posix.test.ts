@@ -519,9 +519,9 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
       if (!status.isGit) {
         return;
       }
-      // The wire keeps the display name; the exact ref above is what the comparison used,
-      // which is why an untouched child reports no work of its own.
-      expect(status.baseRef).toBe("main");
+      // The wire preserves the exact ref so it can identify the upstream commit the child
+      // was cut from; that is why an untouched child reports no work of its own.
+      expect(status.baseRef).toBe("refs/remotes/upstream/main");
       expect(status.aheadBehind).toEqual({ ahead: 0, behind: 0 });
       await expect(
         getCheckoutDiff(

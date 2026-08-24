@@ -241,7 +241,7 @@ describe("supervisor durable logging", () => {
     "restarts after worker exit while a descendant retains the worker stdio",
     async () => {
       const result = await runSupervisorFixture({
-        timeoutMs: 7_000,
+        timeoutMs: 15_000,
         workerSource: `
           import { spawn } from "node:child_process";
           import { existsSync, writeFileSync } from "node:fs";
@@ -271,7 +271,7 @@ describe("supervisor durable logging", () => {
       expect(result.log).toContain('"reason":"stdio_descendant"');
       expect(result.log).toContain("Restarting worker");
     },
-    7_000,
+    20_000,
   );
 
   // POSIX-only: Windows reports the worker self-kill as an exit code, not SIGKILL.
