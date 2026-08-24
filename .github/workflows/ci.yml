@@ -450,9 +450,13 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
+      # The desktop-overlay specs live in packages/desktop/e2e/ (docs/testing.md),
+      # not in the app package. They drive the renderer in a plain Chromium with
+      # E2E_DESKTOP_RUNTIME=1, so they need this job's Metro/server stack rather
+      # than the Electron binary the desktop-tests job builds.
       - name: Run desktop-overlay Playwright tests
         if: ${{ matrix.desktop }}
-        run: npm run test:e2e:desktop --workspace=@otto-code/app
+        run: npm run test:e2e:renderer --workspace=@otto-code/desktop
 
       - name: Upload test artifacts
         uses: actions/upload-artifact@v7
@@ -462,6 +466,8 @@ jobs:
           path: |
             packages/app/test-results/
             packages/app/playwright-report/
+            packages/desktop/test-results/
+          if-no-files-found: ignore
           retention-days: 7
 
   relay-tests:

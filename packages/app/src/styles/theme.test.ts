@@ -38,7 +38,19 @@ describe("Pure black theme", () => {
 
   it("keeps selected sidebar rows distinct from the black sidebar", () => {
     expect(darkPureBlackTheme.colors.surfaceSidebar).toBe("#000000");
-    expect(darkPureBlackTheme.colors.surfaceSidebarHover).toBe("#161616");
+    // Sidebar interaction rides the one theme-accent ladder rather than a hex
+    // frozen into this file, so assert the property that matters on a zero
+    // luminance sidebar: the row reads as a row, and it reads as this theme's
+    // accent rather than a neutral grey step.
+    expect(darkPureBlackTheme.colors.surfaceSidebarHover).not.toBe(
+      darkPureBlackTheme.colors.surfaceSidebar,
+    );
+    expect(darkPureBlackTheme.colors.surfaceSidebarHover).toBe(
+      darkPureBlackTheme.colors.surfaceInteractiveHover,
+    );
+    expect(darkPureBlackTheme.colors.surfaceSidebarSelected).not.toBe(
+      darkPureBlackTheme.colors.surfaceSidebarHover,
+    );
   });
 
   it("keeps ANSI black output readable on its zero-luminance terminal background", () => {

@@ -41,6 +41,29 @@ function listSourceFiles(directory: string): string[] {
   });
 }
 
+/**
+ * A call whose callee name ends in `ProjectId` is a resolution boundary, not an
+ * assignment: `getHostProjectId(project, serverId)` and the local
+ * `resolveForkRouteProjectId({ projectKey, ... })` helper exist precisely to turn
+ * a key into a host id, so a `projectKey` in their arguments is the fix this test
+ * recommends rather than the bug it hunts. Only the arguments are skipped -- the
+ * callee expression itself is still walked, so `p.projectKey.toProjectId()` still
+ * reads as a direct assignment.
+ */
+function isProjectIdResolverCall(node: ts.Node): node is ts.CallExpression {
+  if (!ts.isCallExpression(node)) {
+    return false;
+  }
+  const callee = node.expression;
+  if (ts.isIdentifier(callee)) {
+    return callee.text.endsWith("ProjectId");
+  }
+  if (ts.isPropertyAccessExpression(callee)) {
+    return callee.name.text.endsWith("ProjectId");
+  }
+  return false;
+}
+
 /** True when the expression reads a `projectKey` anywhere it is not shadowed by a nested function. */
 function readsProjectKey(expression: ts.Expression): boolean {
   let found = false;
@@ -50,6 +73,10 @@ function readsProjectKey(expression: ts.Expression): boolean {
       return;
     }
     if (node !== expression && ts.isFunctionLike(node)) {
+      return;
+    }
+    if (isProjectIdResolverCall(node)) {
+      visit(node.expression);
       return;
     }
     if (ts.isPropertyAccessExpression(node) && node.name.text === "projectKey") {

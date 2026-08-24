@@ -996,6 +996,8 @@ const DAEMON_CONFIG_SCHEMA_DEFAULTS = {
     autoStart: false,
     mode: "local",
     defaultModel: null,
+    maxLoadedModels: 1,
+    lockedModels: [],
     lockModel: false,
     allowInsecureBind: false,
     allowRemoteConfig: false,

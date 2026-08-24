@@ -69,24 +69,32 @@ if (
   });
 }
 
-vi.mock("react-native-unistyles", () => ({
-  StyleSheet: {
-    create: <T>(styles: T) => styles,
-  },
-  useUnistyles: () => ({
-    theme: {},
-    rt: {},
-    breakpoint: undefined,
-  }),
-  UnistylesRuntime: {
-    setTheme: vi.fn(),
-    themeName: "light",
-  },
-  // Wraps a leaf component so it can read theme values (see docs/unistyles.md - it wraps
-  // leaves, never composites). The real one returns an equivalent component; passing the
-  // component straight through is enough for tests, which assert behaviour rather than theming.
-  withUnistyles: <T>(Component: T) => Component,
-}));
+// This mock wins over the `react-native-unistyles` alias in vitest.config.ts for
+// every file that loads this setup, so it has to be at least as capable as the
+// stub that alias points at. It borrows `StyleSheet` from that stub rather than
+// keeping a second copy: `StyleSheet.create` takes a theme factory as often as a
+// plain object, and a passthrough `create` hands the factory itself back, so
+// `styles.someName.color` reads off a function and throws
+// "Cannot read properties of undefined".
+vi.mock("react-native-unistyles", async () => {
+  const stub = await import("./test-stubs/react-native-unistyles");
+  return {
+    StyleSheet: stub.StyleSheet,
+    useUnistyles: () => ({
+      theme: {},
+      rt: {},
+      breakpoint: undefined,
+    }),
+    UnistylesRuntime: {
+      setTheme: vi.fn(),
+      themeName: "light",
+    },
+    // Wraps a leaf component so it can read theme values (see docs/unistyles.md - it wraps
+    // leaves, never composites). The real one returns an equivalent component; passing the
+    // component straight through is enough for tests, which assert behaviour rather than theming.
+    withUnistyles: <T>(Component: T) => Component,
+  };
+});
 
 // `@gorhom/bottom-sheet` resolves to sources that reach React Native internals no node test
 // environment can parse, so importing it throws `SyntaxError: Unexpected token 'typeof'`. The

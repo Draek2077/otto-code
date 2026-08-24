@@ -114,7 +114,14 @@ describe("desktop packaging", () => {
     ).toBe(manifest.androidRuntime.sha256);
 
     const androidBuild = readFileSync(join(sharedPackageRoot, "android", "build.gradle"), "utf8");
-    expect(androidBuild).toContain('implementation files("libs/sherpa-onnx-1.12.28.aar")');
+    // AGP forbids a local .aar file dependency in a library module, so the pinned
+    // runtime is unpacked into a plain classes.jar at build time. Assert both ends:
+    // the AAR the checksum above covers is still the source, and the jar derived
+    // from it is what the module compiles against.
+    expect(androidBuild).toContain('file("libs/sherpa-onnx-1.12.28.aar")');
+    expect(androidBuild).toContain(
+      'implementation files("$buildDir/generated/sherpa-onnx/classes.jar")',
+    );
     expect(androidBuild).toContain('assets.srcDir file("../models")');
     expect(androidBuild).toContain('tasks.register("verifyWakeWordDistribution")');
   });
