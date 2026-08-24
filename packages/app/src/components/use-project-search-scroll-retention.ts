@@ -10,6 +10,9 @@ import {
   rememberProjectSearchScrollOffset,
 } from "@/stores/project-search-session-store";
 
+/** Below this, a scroll event is the list settling at the top, not the reader. */
+const READER_SCROLL_EPSILON = 1;
+
 interface ScrollbarHandlers {
   onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onLayout: (event: LayoutChangeEvent) => void;
@@ -42,10 +45,18 @@ export function useProjectSearchScrollRetention<ItemT>({
   const onScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       scrollbar.onScroll(event);
-      // Before the restore lands, the list is still reporting offsets from its
-      // own mounting; recording those would overwrite the position to return to.
+      const offset = event.nativeEvent.contentOffset.y;
+      // A scroll away from the top before the restore has landed is the reader
+      // moving the list themselves, and the remembered position is theirs to
+      // overwrite from here. Left pending, it would fire the moment the list
+      // grew tall enough and yank them off wherever they had scrolled to.
+      if (!restoredRef.current && offset > READER_SCROLL_EPSILON) {
+        restoredRef.current = true;
+      }
+      // Before that, the list is still reporting offsets from its own mounting;
+      // recording those would overwrite the position to return to.
       if (restoredRef.current) {
-        rememberProjectSearchScrollOffset(scopeKey, event.nativeEvent.contentOffset.y);
+        rememberProjectSearchScrollOffset(scopeKey, offset);
       }
     },
     [scopeKey, scrollbar],

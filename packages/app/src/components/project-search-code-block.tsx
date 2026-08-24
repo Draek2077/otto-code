@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState, type ComponentProps } from "react";
-import { Pressable, Text, View, type TextStyle } from "react-native";
+import { Pressable, Text, View, type LayoutChangeEvent, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Check } from "@/components/icons/material-icons";
 import { lineNumberGutterWidth } from "@/components/code-insets";
@@ -30,6 +30,22 @@ const accentForegroundIconColorMapping = (theme: Theme) => ({
 const ThemedCheck = withUnistyles(Check);
 
 const selectCodeFontSize = (settings: { codeFontSize: number }) => settings.codeFontSize;
+
+/**
+ * One code line's height, which is both the row's minimum height and its text's
+ * line height. Exported because the results list sizes its rows from it before
+ * they render (see @/components/project-search-row-metrics), and a second copy
+ * of the ratio there would drift.
+ */
+export function searchCodeLineHeight(codeFontSize: number): number {
+  return Math.round(codeFontSize * 1.5);
+}
+
+/**
+ * How far a measured row may sit from the height the list assumed before it is
+ * worth correcting. Sub-pixel differences are rounding, not layout.
+ */
+const HEIGHT_REPORT_EPSILON = 0.5;
 
 // The number cell's own right inset (theme.spacing[2]). It lives inside the
 // cell rather than on the gutter container so the cell spans the full gutter,
@@ -149,6 +165,16 @@ interface SearchCodeBlockProps {
    * or two chunks would report the same line indices.
    */
   lineOffset: number;
+  /** This chunk's key in the results list, for reporting its measured height. */
+  rowKey: string;
+  /**
+   * The height the list has this row down as. A chunk of unwrapped lines is
+   * exactly its lines, so the common case reports nothing at all; a wrapped
+   * line or an open review thread is what makes a row taller than its lines,
+   * and only those rows correct the list.
+   */
+  expectedHeight: number;
+  onHeightChange: (rowKey: string, height: number) => void;
 }
 
 /**
@@ -172,10 +198,13 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
   reviewActions,
   testIDPrefix,
   lineOffset,
+  rowKey,
+  expectedHeight,
+  onHeightChange,
 }: SearchCodeBlockProps) {
   const codeFontSize = useAppSettingValue(selectCodeFontSize);
   const { settings } = useAppSettings();
-  const codeLineHeight = Math.round(codeFontSize * 1.5);
+  const codeLineHeight = searchCodeLineHeight(codeFontSize);
   const typography = useMemo(() => {
     const monoFontFamily = settings.monoFontFamily.trim();
     return {
@@ -243,8 +272,22 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
     [isFirstChunk, isLastChunk],
   );
 
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const height = event.nativeEvent.layout.height;
+      if (!Number.isFinite(height) || height <= 0) {
+        return;
+      }
+      if (Math.abs(height - expectedHeight) <= HEIGHT_REPORT_EPSILON) {
+        return;
+      }
+      onHeightChange(rowKey, height);
+    },
+    [expectedHeight, onHeightChange, rowKey],
+  );
+
   return (
-    <View style={surfaceStyle} dataSet={CODE_SURFACE_DATASET}>
+    <View style={surfaceStyle} dataSet={CODE_SURFACE_DATASET} onLayout={handleLayout}>
       {lines.map((line, index) => (
         <SearchCodeLine
           key={line.key}

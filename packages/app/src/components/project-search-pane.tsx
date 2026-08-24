@@ -4,6 +4,7 @@ import type {
   LayoutChangeEvent,
   ListRenderItemInfo,
   PressableStateCallbackType,
+  ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -26,7 +27,15 @@ import {
   WORKSPACE_TREE_ICON_FRAME_SIZE,
   WORKSPACE_TREE_ICON_LABEL_GAP,
 } from "@/components/tree-primitives";
-import { SearchCodeBlock, SearchSelectionBox } from "@/components/project-search-code-block";
+import {
+  searchCodeLineHeight,
+  SearchCodeBlock,
+  SearchSelectionBox,
+} from "@/components/project-search-code-block";
+import {
+  buildSearchRowOffsets,
+  estimateSearchRowHeight,
+} from "@/components/project-search-row-metrics";
 import { useProjectSearchNotes } from "@/components/use-project-search-notes";
 import { revealFileInFiles } from "@/git/changes-reveal";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
@@ -72,7 +81,7 @@ import {
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import { confirmBulkReplace } from "@/components/project-search-replace-warning";
-import { compactUp, type Theme } from "@/styles/theme";
+import { BORDER_WIDTH, compactUp, type Theme } from "@/styles/theme";
 import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
@@ -123,6 +132,18 @@ interface ResultRow {
 }
 
 const EMPTY_LINES: readonly SearchDisplayLine[] = [];
+
+/**
+ * The browser's own scroll anchoring works against a virtualized list: it reads
+ * a row mounting as the content shifting and moves the scroller to compensate,
+ * which moves rows in and out of the window, which mounts more rows. The chat
+ * transcript turns it off for the same reason (see @/agent-stream/strategy-web).
+ */
+const WEB_SCROLL_ANCHORING_OFF = (isWeb ? { overflowAnchor: "none" } : null) as ViewStyle | null;
+
+/** Sub-pixel differences between an assumed and a measured row are rounding. */
+const ROW_HEIGHT_EPSILON = 0.5;
+const EMPTY_ROW_HEIGHTS: ReadonlyMap<string, number> = new Map();
 
 /**
  * How many hits one list row carries.
@@ -749,6 +770,79 @@ export function ProjectSearchPane({
     onRefresh: handleSubmit,
   });
 
+  // ── Row geometry ─────────────────────────────────────────────────────────
+  // The list is told where every row sits rather than left to average its way
+  // there (see @/components/project-search-row-metrics for why). Heights are
+  // computed from the row's own lines, and a row that lands somewhere else -
+  // a wrapped line, an open review thread - reports what it measured.
+  const codeLineHeight = searchCodeLineHeight(appSettings.codeFontSize);
+  const paneTreeIconSize = useTreeIconSize();
+  const [measuredFileRowHeight, setMeasuredFileRowHeight] = useState(0);
+  const [measuredRowHeights, setMeasuredRowHeights] =
+    useState<ReadonlyMap<string, number>>(EMPTY_ROW_HEIGHTS);
+
+  // A row's height depends on the code metrics, on wrapping, and on whether the
+  // replace band's checkboxes are in the line. Change any of them and every
+  // measurement taken under the old geometry is worth nothing.
+  const rowGeometryKey = `${codeLineHeight}:${wrapLines ? "wrap" : "clip"}:${
+    showReplaceControls && replaceOpen ? "select" : "plain"
+  }`;
+  useEffect(() => {
+    setMeasuredRowHeights(EMPTY_ROW_HEIGHTS);
+  }, [rowGeometryKey]);
+  // A new run reuses these keys for other files, so what the last run measured
+  // says nothing about this one.
+  useEffect(() => {
+    if (phase === "searching") {
+      setMeasuredRowHeights(EMPTY_ROW_HEIGHTS);
+    }
+  }, [phase]);
+
+  const rowGeometry = useMemo(
+    () => ({
+      fileRowHeight:
+        measuredFileRowHeight || paneTreeIconSize + 2 * WORKSPACE_FILE_ROW_VERTICAL_PADDING,
+      codeLineHeight,
+      chunkBorderWidth: BORDER_WIDTH[1],
+    }),
+    [codeLineHeight, measuredFileRowHeight, paneTreeIconSize],
+  );
+  const rowHeights = useMemo(
+    () =>
+      rows.map(
+        (row) => measuredRowHeights.get(row.key) ?? estimateSearchRowHeight(row, rowGeometry),
+      ),
+    [measuredRowHeights, rowGeometry, rows],
+  );
+  const rowOffsets = useMemo(() => buildSearchRowOffsets(rowHeights), [rowHeights]);
+  const getItemLayout = useCallback(
+    (_data: ArrayLike<ResultRow> | null | undefined, index: number) => ({
+      length: rowHeights[index] ?? 0,
+      offset: rowOffsets[index] ?? rowOffsets[rowOffsets.length - 1] ?? 0,
+      index,
+    }),
+    [rowHeights, rowOffsets],
+  );
+  const handleFileRowHeight = useCallback((height: number) => {
+    setMeasuredFileRowHeight((current) =>
+      Math.abs(current - height) <= ROW_HEIGHT_EPSILON ? current : height,
+    );
+  }, []);
+  const handleMatchRowHeight = useCallback((rowKey: string, height: number) => {
+    setMeasuredRowHeights((current) => {
+      const previous = current.get(rowKey);
+      if (previous !== undefined && Math.abs(previous - height) <= ROW_HEIGHT_EPSILON) {
+        return current;
+      }
+      // Copied rather than mutated so the memo above re-runs. Only the rows
+      // that defeat the estimate land here, so the map stays small on the
+      // ordinary result set and the copy stays cheap.
+      const next = new Map(current);
+      next.set(rowKey, height);
+      return next;
+    });
+  }, []);
+
   const renderRow = useCallback(
     (info: ListRenderItemInfo<ResultRow>) => {
       const row = info.item;
@@ -759,6 +853,8 @@ export function ProjectSearchPane({
             collapsed={collapsedFiles.has(row.file.path)}
             showSelection={showReplaceControls && replaceOpen}
             uncheckedMatches={uncheckedMatches}
+            expectedHeight={rowGeometry.fileRowHeight}
+            onHeightChange={handleFileRowHeight}
             onToggleCollapsed={toggleFileCollapsed}
             onToggleChecked={toggleFileChecked}
             onShowContextMenu={handleShowFileContextMenu}
@@ -782,17 +878,24 @@ export function ProjectSearchPane({
           reviewActions={reviewActions}
           testIDPrefix={`project-search-match-${row.file.path}`}
           lineOffset={row.chunkStart ?? 0}
+          rowKey={row.key}
+          expectedHeight={rowHeights[info.index] ?? 0}
+          onHeightChange={handleMatchRowHeight}
         />
       );
     },
     [
       collapsedFiles,
+      handleFileRowHeight,
       handleLineContextMenu,
+      handleMatchRowHeight,
       handleOpenLine,
       handleShowFileContextMenu,
       isLineChecked,
       reviewActions,
       replaceOpen,
+      rowGeometry,
+      rowHeights,
       showReplaceControls,
       t,
       toggleFileChecked,
@@ -804,6 +907,8 @@ export function ProjectSearchPane({
   );
 
   const keyExtractor = useCallback((row: ResultRow) => row.key, []);
+
+  const resultsListStyle = useMemo(() => [styles.resultsList, WEB_SCROLL_ANCHORING_OFF], []);
 
   const searchHeaderStyle = useMemo(
     () => [
@@ -950,9 +1055,13 @@ export function ProjectSearchPane({
           data={rows}
           renderItem={renderRow}
           keyExtractor={keyExtractor}
-          style={styles.resultsList}
+          style={resultsListStyle}
           contentContainerStyle={styles.resultsListContent}
           stickyHeaderIndices={stickyHeaderIndices}
+          // Exact row geometry, so the rows the window drops are replaced by
+          // spacers of the right size instead of by an average that is re-taken
+          // on every batch - which is what threw the list around mid-scroll.
+          getItemLayout={getItemLayout}
           // A wide search runs to thousands of hits, so the window is held
           // close: the defaults keep ten viewports of rows either side mounted,
           // which for code rows is tens of thousands of nodes.
@@ -1046,6 +1155,8 @@ function FileRow({
   collapsed,
   showSelection,
   uncheckedMatches,
+  expectedHeight,
+  onHeightChange,
   onToggleCollapsed,
   onToggleChecked,
   onShowContextMenu,
@@ -1054,6 +1165,12 @@ function FileRow({
   collapsed: boolean;
   showSelection: boolean;
   uncheckedMatches: ReadonlySet<string>;
+  /**
+   * The height the list has file rows down as. Every file row is the same row,
+   * so the first one to disagree corrects the list for all of them.
+   */
+  expectedHeight: number;
+  onHeightChange: (height: number) => void;
   onToggleCollapsed: (path: string) => void;
   onToggleChecked: (file: SearchFileResult) => void;
   onShowContextMenu?: (input: { file: SearchFileResult; x: number; y: number }) => void;
@@ -1091,6 +1208,19 @@ function FileRow({
     [collapsed],
   );
   const accessibilityState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const height = event.nativeEvent.layout.height;
+      if (!Number.isFinite(height) || height <= 0) {
+        return;
+      }
+      if (Math.abs(height - expectedHeight) <= ROW_HEIGHT_EPSILON) {
+        return;
+      }
+      onHeightChange(height);
+    },
+    [expectedHeight, onHeightChange],
+  );
   const fileName = file.path.split("/").pop() ?? file.path;
   // The whole path, not just the name: two hits in two `index.ts` files have to
   // be tellable apart. The directory leads and gives way first, ellipsized from
@@ -1105,6 +1235,7 @@ function FileRow({
       onPress={handleToggleCollapsed}
       // @ts-ignore - onContextMenu is web-only and not in RN types.
       onContextMenu={isWeb && onShowContextMenu ? handleContextMenu : undefined}
+      onLayout={handleLayout}
       style={rowStyle}
       testID={`project-search-file-${file.path}`}
     >
