@@ -2,7 +2,7 @@
 name: otto-advisor
 description: Spin up a single agent as an advisor - second opinion on the current task. Use when the user says "advisor", "second opinion", "what does X think", or wants an outside take without delegating the work itself.
 user-invocable: true
-argument-hint: "[--profile <name>] <question or topic>"
+argument-hint: "[--personality <name>] <question or topic>"
 ---
 
 # Otto Advisor
@@ -17,11 +17,11 @@ Read the **otto** skill. Call `list_personalities` before choosing the advisor, 
 
 ## Picking the advisor
 
-1. **User named a profile** (`--profile UI Work`) → select it by name.
-2. **Otherwise** choose the profile whose `notes` best fit the question: design and approach, audit and review, or research and root-cause analysis.
-3. **Contrast helps.** When several profiles fit, prefer a different provider family from your own so the second opinion is genuinely fresh.
+1. **User named one** (`--personality "UI Work"`, or the older `--profile`) → select it by name.
+2. **Otherwise** choose the Personality whose `notes` best fit the question: design and approach, audit and review, or research and root-cause analysis.
+3. **Contrast helps.** When several fit, prefer a different provider family from your own so the second opinion is genuinely fresh.
 
-Materialize the selected profile into `create_agent` as described by the **otto** skill. If no profile fits, use Otto's provider-discovery fallback and tell the user.
+Pass its name as `create_chat`'s `personality`, as described by the **otto** skill. If none fits, use Otto's provider-discovery fallback and tell the user.
 
 ## The briefing
 

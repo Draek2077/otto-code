@@ -16,7 +16,7 @@ Read the **otto** skill. Call `list_personalities` before choosing the receiving
 
 ## Parsing arguments
 
-1. **Agent profile** - explicit profile name first; otherwise choose the profile whose `notes` best match the work. Materialize it into `create_agent` as described by the **otto** skill. If no profile fits, use Otto's provider-discovery fallback and tell the user.
+1. **Personality** - an explicitly named one first; otherwise the one whose `notes` best match the work. Pass its name as `create_chat`'s `personality`, as described by the **otto** skill. If none fits, use Otto's provider-discovery fallback and tell the user.
 2. **Worktree** - "in a worktree" / "worktree" → create a worktree via Otto with a short branch name derived from the task, based on the current branch.
 3. **Task description** - anything else the user said.
 
