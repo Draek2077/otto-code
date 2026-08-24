@@ -2304,15 +2304,20 @@ const styles = StyleSheet.create((theme: Theme) => ({
     justifyContent: "space-between",
     alignSelf: "flex-start",
     gap: TOOLBAR_GROUP_GAP,
-    // Native-only pivot: RCTView honors transformOrigin, so on Android/iOS the
-    // scaled row pivots at the left edge from this static style. Web ignores
-    // it (unistyles mangles the array into junk CSS, and reanimated's web
-    // update path writes via setAttribute, which a <div> ignores), so web bakes
-    // the same left-edge pivot into the animated transform in
-    // composer/input/toolbar-stage.ts.
-    // Array form, never a CSS string: the native RCTView transformOrigin setter
-    // casts to ReadableArray, so "left center" throws ClassCastException on Android.
-    transformOrigin: [0, "50%"],
+    // Deliberately no `transformOrigin`. The scaled row's left-edge pivot is
+    // baked into the animated transform itself (composer/input/toolbar-stage.ts),
+    // and it has to be the only pivot in play: declaring both compensates
+    // twice and pushes the row off the row's left edge, under a parent that
+    // clips. It also cannot be made to work here. Web never receives it
+    // (unistyles mangles the array into junk CSS and reanimated's web update
+    // path drops it), and on Android Fabric the origin offset is derived from
+    // the view's measured width at the moment the transform prop lands - a
+    // width this row animates - so the pivot resolves against a stale size and
+    // the row settles off-center. The transform-baked pivot is immune: it
+    // rides the same worklet as the width it compensates for.
+    // If it ever comes back, array form only, never a CSS string: the native
+    // RCTView setter casts to ReadableArray, so "left center" throws
+    // ClassCastException on Android.
   },
   leftButtonGroup: {
     flexShrink: 0,
