@@ -186,7 +186,7 @@ someone to run it by hand.
 | Provider removal (settings, disappears from pickers)                                           | 🟡     | `provider-removal.spec.ts`                                          | T1   | -   |
 | Agent profiles repair a stale modeless provider preference when applied                        | ✅     | `agent-profile-modeless-preferences.spec.ts`                        | T1   | -   |
 | Agent profiles in the model picker (pinned profile materializes into the composer)             | ✅     | `agent-profiles-picker.spec.ts`                                     | T1   | -   |
-| Agent profiles settings (create/edit/reorder host profiles; legacy favourites migrate)         | ✅     | `agent-profiles-settings.spec.ts`                                   | T1   | -   |
+| Legacy model favourites migrate into the one roster and are editable there                     | ✅     | `agent-profile-favorites-migration.spec.ts`                         | T1   | -   |
 | Cross-provider model search (one query reaches every provider, stable/virtualized results)     | ✅     | `model-search-across-providers.spec.ts`                             | T1   | -   |
 | Metadata generation model selection (auto-title/summary model choice, reset to automatic)      | ✅     | `metadata-generation-settings.spec.ts`                              | T1   | -   |
 
