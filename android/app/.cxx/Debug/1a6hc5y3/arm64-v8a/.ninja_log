@@ -1,0 +1,5 @@
+# ninja log v5
+6	397	0	C:/Users/phili/Projects/otto-code/android/app/.cxx/Debug/1a6hc5y3/arm64-v8a/CMakeFiles/cmake.verify_globs	cffd0d1063b9530e
+18	6472	8092441022169497	CMakeFiles/appmodules.dir/C_/Users/phili/Projects/otto-code/android/app/build/generated/autolinking/src/main/jni/autolinking.cpp.o	27a8d87444033c8e
+4	6843	8092441026073241	CMakeFiles/appmodules.dir/OnLoad.cpp.o	c334b25ca9560a8c
+6844	8434	8092441042049887	C:/Users/phili/Projects/otto-code/android/app/build/intermediates/cxx/Debug/1a6hc5y3/obj/arm64-v8a/libappmodules.so	e4a62a2d00e150fb

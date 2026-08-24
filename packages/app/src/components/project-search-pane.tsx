@@ -7,10 +7,7 @@ import type {
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import type {
-  FileSearchResultPayload,
-  FileSearchSummary,
-} from "@otto-code/client/internal/daemon-client";
+import type { FileSearchResultPayload } from "@otto-code/client/internal/daemon-client";
 import type { FileSearchMatch } from "@otto-code/protocol/messages";
 import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import {
@@ -19,9 +16,11 @@ import {
   Paperclip,
   Play,
   Search,
+  X,
 } from "@/components/icons/material-icons";
 import { MaterialFileIcon } from "@/components/material-file-icon";
 import {
+  TreeChevron,
   useTreeIconSize,
   WORKSPACE_FILE_ROW_VERTICAL_PADDING,
   WORKSPACE_TREE_ICON_FRAME_SIZE,
@@ -48,6 +47,19 @@ import {
   contextMenuAnchorFromEvent,
 } from "@/components/ui/context-menu";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { useProjectSearchScrollRetention } from "@/components/use-project-search-scroll-retention";
+import { useProjectSearchToolbarItems } from "@/components/use-project-search-toolbar-items";
+import { PinnableToolbar } from "@/components/ui/pinnable-toolbar";
+import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
+import { useProjectSearchPreferencesStore } from "@/stores/project-search-preferences-store";
+import {
+  buildProjectSearchScopeKey,
+  EMPTY_PROJECT_SEARCH_SESSION,
+  useProjectSearchSessionStore,
+  type SearchFileResult,
+  type SearchPhase,
+} from "@/stores/project-search-session-store";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
@@ -74,6 +86,7 @@ const ThemedPaperclip = withUnistyles(Paperclip);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedFolderTree = withUnistyles(FolderTree);
 const ThemedSquarePen = withUnistyles(SquarePen);
+const ThemedX = withUnistyles(X);
 const SEARCH_CONTEXT_EDIT_ICON = (
   <ThemedSquarePen size="sm" uniProps={foregroundMutedIconColorMapping} />
 );
@@ -94,14 +107,6 @@ const ThemedSearchInput = withUnistyles(TextInput, (theme) => ({
 function iconButtonStyle({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) {
   return [styles.iconButton, (Boolean(hovered) || pressed) && styles.iconButtonActive];
 }
-
-interface SearchFileResult {
-  path: string;
-  hash: string;
-  matches: FileSearchMatch[];
-}
-
-type SearchPhase = "idle" | "searching" | "done" | "error";
 
 interface ResultRow {
   key: string;
@@ -275,111 +280,139 @@ export function ProjectSearchPane({
     queryInputRef.current?.focus();
   }, [focusToken]);
 
+  // The session - query, options, results - is held per workspace outside this
+  // component, so leaving the Search tab to read a hit does not throw the
+  // results away (see @/stores/project-search-session-store).
+  const scopeKey = useMemo(
+    () => buildProjectSearchScopeKey({ serverId, workspaceId, workspaceRoot }),
+    [serverId, workspaceId, workspaceRoot],
+  );
+
   const resultsListRef = useRef<FlatList<ResultRow>>(null);
   const scrollbar = useWebScrollViewScrollbar(resultsListRef, {
     enabled: showDesktopWebScrollbar,
   });
 
-  const [query, setQuery] = useState("");
-  const [caseSensitive, setCaseSensitive] = useState(false);
-  const [wholeWord, setWholeWord] = useState(false);
-  const [regexp, setRegexp] = useState(false);
-  const [phase, setPhase] = useState<SearchPhase>("idle");
-  const [results, setResults] = useState<SearchFileResult[]>([]);
-  const [summary, setSummary] = useState<FileSearchSummary | null>(null);
-  const [collapsedFiles, setCollapsedFiles] = useState<ReadonlySet<string>>(new Set());
-  const [replaceOpen, setReplaceOpen] = useState(false);
-  const [replacement, setReplacement] = useState("");
-  // Default everything selected; this records the exceptions.
-  const [uncheckedMatches, setUncheckedMatches] = useState<ReadonlySet<string>>(new Set());
-  const [replacing, setReplacing] = useState(false);
+  const resultsScroll = useProjectSearchScrollRetention({
+    scopeKey,
+    listRef: resultsListRef,
+    scrollbar,
+  });
 
-  // Ignores late stream events from a superseded search.
-  const runTokenRef = useRef(0);
-  const queryRef = useRef(query);
-  queryRef.current = query;
+  const session = useProjectSearchSessionStore(
+    (state) => state.sessions[scopeKey] ?? EMPTY_PROJECT_SEARCH_SESSION,
+  );
+  const {
+    query,
+    caseSensitive,
+    wholeWord,
+    regexp,
+    phase,
+    results,
+    summary,
+    collapsedFiles,
+    uncheckedMatches,
+    replaceOpen,
+    replacement,
+    replacing,
+  } = session;
+
+  const updateSessionForScope = useProjectSearchSessionStore((state) => state.updateSession);
+  const updateSession = useCallback(
+    (update: Parameters<typeof updateSessionForScope>[1]) =>
+      updateSessionForScope(scopeKey, update),
+    [scopeKey, updateSessionForScope],
+  );
+  const setQuery = useCallback((value: string) => updateSession({ query: value }), [updateSession]);
+  const setReplacement = useCallback(
+    (value: string) => updateSession({ replacement: value }),
+    [updateSession],
+  );
 
   const runSearch = useCallback(async () => {
-    const trimmed = queryRef.current.trim();
+    // Read the live session rather than closing over it: this callback is
+    // handed to the stream and re-entered after a replace, and a stale copy of
+    // the query or its options would search for the wrong thing.
+    const store = useProjectSearchSessionStore.getState();
+    const current = store.sessions[scopeKey] ?? EMPTY_PROJECT_SEARCH_SESSION;
+    const trimmed = current.query.trim();
     if (!client || !trimmed) {
       return;
     }
-    const token = runTokenRef.current + 1;
-    runTokenRef.current = token;
-    setPhase("searching");
-    setResults([]);
-    setSummary(null);
-    setUncheckedMatches(new Set());
-    setCollapsedFiles(new Set());
+    const token = store.beginRun(scopeKey);
     try {
       const outcome = await client.searchFiles({
         cwd: workspaceRoot,
         query: trimmed,
-        caseSensitive,
-        wholeWord,
-        regexp,
+        caseSensitive: current.caseSensitive,
+        wholeWord: current.wholeWord,
+        regexp: current.regexp,
         onFileResult: (result: FileSearchResultPayload) => {
-          if (runTokenRef.current !== token) {
-            return;
-          }
-          setResults((previous) => [
-            ...previous,
-            { path: result.path, hash: result.hash, matches: result.matches },
-          ]);
+          store.appendResult(scopeKey, token, {
+            path: result.path,
+            hash: result.hash,
+            matches: result.matches,
+          });
         },
       });
-      if (runTokenRef.current !== token) {
-        return;
-      }
-      if (outcome.status === "error") {
-        setPhase("error");
-        toast.error(outcome.error ?? t("projectSearch.error"));
-        return;
-      }
       if (outcome.status === "superseded") {
         return;
       }
-      setSummary(outcome);
-      setPhase("done");
-    } catch (error) {
-      if (runTokenRef.current === token) {
-        setPhase("error");
-        toast.error(getErrorMessage(error));
+      if (!store.isCurrentRun(scopeKey, token)) {
+        return;
       }
+      if (outcome.status === "error") {
+        store.finishRun(scopeKey, token, { failed: true });
+        toast.error(outcome.error ?? t("projectSearch.error"));
+        return;
+      }
+      store.finishRun(scopeKey, token, { summary: outcome });
+    } catch (error) {
+      if (!store.isCurrentRun(scopeKey, token)) {
+        return;
+      }
+      store.finishRun(scopeKey, token, { failed: true });
+      toast.error(getErrorMessage(error));
     }
-  }, [caseSensitive, client, regexp, t, toast, wholeWord, workspaceRoot]);
+  }, [client, scopeKey, t, toast, workspaceRoot]);
 
   const handleSubmit = useCallback(() => {
     void runSearch();
   }, [runSearch]);
 
-  const toggleFileCollapsed = useCallback((path: string) => {
-    setCollapsedFiles((previous) => {
-      const next = new Set(previous);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  }, []);
-
-  const toggleFileChecked = useCallback((file: SearchFileResult) => {
-    setUncheckedMatches((previous) => {
-      const keys = file.matches.map((match) => buildMatchKey(file.path, match));
-      const anyChecked = keys.some((key) => !previous.has(key));
-      const next = new Set(previous);
-      for (const key of keys) {
-        if (anyChecked) {
-          next.add(key);
+  const toggleFileCollapsed = useCallback(
+    (path: string) => {
+      updateSession((current) => {
+        const next = new Set(current.collapsedFiles);
+        if (next.has(path)) {
+          next.delete(path);
         } else {
-          next.delete(key);
+          next.add(path);
         }
-      }
-      return next;
-    });
-  }, []);
+        return { collapsedFiles: next };
+      });
+    },
+    [updateSession],
+  );
+
+  const toggleFileChecked = useCallback(
+    (file: SearchFileResult) => {
+      updateSession((current) => {
+        const keys = file.matches.map((match) => buildMatchKey(file.path, match));
+        const anyChecked = keys.some((key) => !current.uncheckedMatches.has(key));
+        const next = new Set(current.uncheckedMatches);
+        for (const key of keys) {
+          if (anyChecked) {
+            next.add(key);
+          } else {
+            next.delete(key);
+          }
+        }
+        return { uncheckedMatches: next };
+      });
+    },
+    [updateSession],
+  );
 
   const selection = useMemo(() => {
     let matches = 0;
@@ -419,7 +452,7 @@ export function ProjectSearchPane({
     if (!confirmed) {
       return;
     }
-    setReplacing(true);
+    updateSession({ replacing: true });
     try {
       const payload = await client.replaceFiles({
         cwd: workspaceRoot,
@@ -450,7 +483,7 @@ export function ProjectSearchPane({
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
-      setReplacing(false);
+      updateSession({ replacing: false });
     }
   }, [
     client,
@@ -461,6 +494,7 @@ export function ProjectSearchPane({
     serverId,
     t,
     toast,
+    updateSession,
     workspaceId,
     workspaceRoot,
   ]);
@@ -478,13 +512,23 @@ export function ProjectSearchPane({
     [replaceDisabled],
   );
 
-  const toggleReplaceOpen = useCallback(() => {
-    setReplaceOpen((previous) => !previous);
-  }, []);
+  const toggleReplaceOpen = useCallback(
+    () => updateSession((current) => ({ replaceOpen: !current.replaceOpen })),
+    [updateSession],
+  );
 
-  const handleToggleCase = useCallback(() => setCaseSensitive((value) => !value), []);
-  const handleToggleWord = useCallback(() => setWholeWord((value) => !value), []);
-  const handleToggleRegexp = useCallback(() => setRegexp((value) => !value), []);
+  const handleToggleCase = useCallback(
+    () => updateSession((current) => ({ caseSensitive: !current.caseSensitive })),
+    [updateSession],
+  );
+  const handleToggleWord = useCallback(
+    () => updateSession((current) => ({ wholeWord: !current.wholeWord })),
+    [updateSession],
+  );
+  const handleToggleRegexp = useCallback(
+    () => updateSession((current) => ({ regexp: !current.regexp })),
+    [updateSession],
+  );
 
   // The replace row trails a spacer matching the toggle group so both inputs
   // end at the same edge (the two icon buttons already match widths).
@@ -551,20 +595,23 @@ export function ProjectSearchPane({
       line.matchKeys.some((key) => !uncheckedMatches.has(key)),
     [uncheckedMatches],
   );
-  const toggleLineChecked = useCallback((_filePath: string, line: SearchDisplayLine) => {
-    setUncheckedMatches((previous) => {
-      const anyChecked = line.matchKeys.some((key) => !previous.has(key));
-      const next = new Set(previous);
-      for (const key of line.matchKeys) {
-        if (anyChecked) {
-          next.add(key);
-        } else {
-          next.delete(key);
+  const toggleLineChecked = useCallback(
+    (_filePath: string, line: SearchDisplayLine) => {
+      updateSession((current) => {
+        const anyChecked = line.matchKeys.some((key) => !current.uncheckedMatches.has(key));
+        const next = new Set(current.uncheckedMatches);
+        for (const key of line.matchKeys) {
+          if (anyChecked) {
+            next.add(key);
+          } else {
+            next.delete(key);
+          }
         }
-      }
-      return next;
-    });
-  }, []);
+        return { uncheckedMatches: next };
+      });
+    },
+    [updateSession],
+  );
   const handleOpenLine = useCallback(
     (filePath: string, line: SearchDisplayLine) => {
       onOpenFile?.(filePath, { lineStart: line.line });
@@ -589,6 +636,54 @@ export function ProjectSearchPane({
 
   const showReplaceControls = !isCompact;
 
+  // Line wrapping and toolbar pins are device-local preferences, held the way
+  // the other persisted pane preferences are.
+  const wrapLines = useProjectSearchPreferencesStore((state) => state.wrapLines);
+  const pinnedToolbarItems = useProjectSearchPreferencesStore((state) => state.pinnedToolbarItems);
+  const handleToggleWrapLines = useProjectSearchPreferencesStore((state) => state.toggleWrapLines);
+  const handleToggleToolbarPin = useProjectSearchPreferencesStore(
+    (state) => state.toggleToolbarPin,
+  );
+  const { settings: appSettings } = useAppSettings();
+  const isSearching = phase === "searching";
+
+  // Hover reveal for the pinned strip, tracked on the plain toolbar row below
+  // (see docs/hover.md). Always visible on native and compact.
+  const [toolbarHovered, setToolbarHovered] = useState(false);
+  const handleToolbarPointerEnter = useCallback(() => setToolbarHovered(true), []);
+  const handleToolbarPointerLeave = useCallback(() => setToolbarHovered(false), []);
+
+  const clearSessionForScope = useProjectSearchSessionStore((state) => state.clearSession);
+  const handleClear = useCallback(() => {
+    clearSessionForScope(scopeKey);
+    queryInputRef.current?.focus();
+  }, [clearSessionForScope, scopeKey]);
+  // Nothing to clear once the query is empty and no results are left standing.
+  const clearDisabled = query.length === 0 && results.length === 0 && summary === null;
+
+  // "Expanded" is the absence of collapsed files, so a fresh search starts
+  // expanded and the button offers Collapse all.
+  const allFilesExpanded = collapsedFiles.size === 0;
+  const handleToggleExpandAll = useCallback(() => {
+    updateSession((current) => ({
+      collapsedFiles:
+        current.collapsedFiles.size === 0
+          ? new Set(current.results.map((file) => file.path))
+          : new Set<string>(),
+    }));
+  }, [updateSession]);
+
+  const toolbarItems = useProjectSearchToolbarItems({
+    wrapLines,
+    hasResults: results.length > 0,
+    allFilesExpanded,
+    isSearching,
+    canRefresh: query.trim().length > 0,
+    onToggleWrapLines: handleToggleWrapLines,
+    onToggleExpandAll: handleToggleExpandAll,
+    onRefresh: handleSubmit,
+  });
+
   const renderRow = useCallback(
     (info: ListRenderItemInfo<ResultRow>) => {
       const row = info.item;
@@ -610,6 +705,7 @@ export function ProjectSearchPane({
           filePath={row.file.path}
           lines={row.lines ?? EMPTY_LINES}
           showSelection={showReplaceControls && replaceOpen}
+          wrapLines={wrapLines}
           isLineChecked={isLineChecked}
           toggleLabel={t("projectSearch.toggleMatch")}
           onToggleLine={toggleLineChecked}
@@ -634,6 +730,7 @@ export function ProjectSearchPane({
       toggleFileCollapsed,
       toggleLineChecked,
       uncheckedMatches,
+      wrapLines,
     ],
   );
 
@@ -750,6 +847,53 @@ export function ProjectSearchPane({
         ) : null}
       </View>
 
+      <View
+        style={styles.toolbarRow}
+        onPointerEnter={handleToolbarPointerEnter}
+        onPointerLeave={handleToolbarPointerLeave}
+        testID="project-search-toolbar"
+      >
+        {/* The toolbar's one left-hand action, where Changes keeps its diff-mode
+            picker: clearing the query and the results it produced. */}
+        <ToolbarIconButton
+          label={t("projectSearch.clear")}
+          Icon={ThemedX}
+          onPress={handleClear}
+          disabled={clearDisabled}
+          testID="project-search-clear"
+        />
+        <PinnableToolbar
+          items={toolbarItems}
+          pinnedItems={pinnedToolbarItems}
+          onTogglePin={handleToggleToolbarPin}
+          hovered={toolbarHovered}
+          isMobile={isCompact}
+          hideUntilHover={appSettings.hidePinnedToolbarOptions}
+          optionsLabel={t("projectSearch.options")}
+          testIDPrefix="project-search"
+        />
+      </View>
+
+      <View style={styles.resultsArea}>
+        <SearchPlaceholder phase={phase} hasResults={results.length > 0} />
+        <FlatList
+          ref={resultsListRef}
+          data={rows}
+          renderItem={renderRow}
+          keyExtractor={keyExtractor}
+          style={styles.resultsList}
+          contentContainerStyle={styles.resultsListContent}
+          stickyHeaderIndices={stickyHeaderIndices}
+          onLayout={resultsScroll.onLayout}
+          onScroll={resultsScroll.onScroll}
+          onContentSizeChange={resultsScroll.onContentSizeChange}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+          testID="project-search-results"
+        />
+        {rows.length > 0 ? scrollbar.overlay : null}
+      </View>
+
       {summary ? (
         <View style={styles.searchDetails} testID="project-search-details">
           <Text style={styles.summaryText} testID="project-search-summary">
@@ -763,41 +907,6 @@ export function ProjectSearchPane({
           ) : null}
         </View>
       ) : null}
-
-      <View style={styles.resultsArea}>
-        {phase === "searching" && results.length === 0 ? (
-          <View style={styles.centerState}>
-            <ThemedLoadingSpinner uniProps={foregroundMutedIconColorMapping} />
-            <Text style={styles.mutedText}>{t("projectSearch.searching")}</Text>
-          </View>
-        ) : null}
-        {phase === "done" && results.length === 0 ? (
-          <View style={styles.centerState}>
-            <Text style={styles.mutedText}>{t("projectSearch.noResults")}</Text>
-          </View>
-        ) : null}
-        {phase === "idle" ? (
-          <View style={styles.centerState}>
-            <Text style={styles.mutedText}>{t("projectSearch.idleHint")}</Text>
-          </View>
-        ) : null}
-        <FlatList
-          ref={resultsListRef}
-          data={rows}
-          renderItem={renderRow}
-          keyExtractor={keyExtractor}
-          style={styles.resultsList}
-          contentContainerStyle={styles.resultsListContent}
-          stickyHeaderIndices={stickyHeaderIndices}
-          onLayout={scrollbar.onLayout}
-          onScroll={scrollbar.onScroll}
-          onContentSizeChange={scrollbar.onContentSizeChange}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!showDesktopWebScrollbar}
-          testID="project-search-results"
-        />
-        {rows.length > 0 ? scrollbar.overlay : null}
-      </View>
       <SearchEntryContextMenu
         request={contextMenuRequest}
         serverId={serverId}
@@ -818,6 +927,42 @@ export function ProjectSearchPane({
       />
     </View>
   );
+}
+
+/**
+ * What the results area shows before there is anything to show: the running
+ * search, an empty result, or the standing hint. An errored run says nothing -
+ * the failure arrives as a toast, and a second copy of it here would outlive
+ * the toast with no way to dismiss it.
+ */
+function SearchPlaceholder({ phase, hasResults }: { phase: SearchPhase; hasResults: boolean }) {
+  const { t } = useTranslation();
+  if (hasResults) {
+    return null;
+  }
+  if (phase === "searching") {
+    return (
+      <View style={styles.centerState}>
+        <ThemedLoadingSpinner uniProps={foregroundMutedIconColorMapping} />
+        <Text style={styles.mutedText}>{t("projectSearch.searching")}</Text>
+      </View>
+    );
+  }
+  if (phase === "done") {
+    return (
+      <View style={styles.centerState}>
+        <Text style={styles.mutedText}>{t("projectSearch.noResults")}</Text>
+      </View>
+    );
+  }
+  if (phase === "idle") {
+    return (
+      <View style={styles.centerState}>
+        <Text style={styles.mutedText}>{t("projectSearch.idleHint")}</Text>
+      </View>
+    );
+  }
+  return null;
 }
 
 function FileRow({
@@ -864,7 +1009,7 @@ function FileRow({
   const rowStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.fileRow,
-      collapsed ? styles.fileRowCollapsed : styles.fileRowExpanded,
+      collapsed ? null : styles.fileRowExpanded,
       (Boolean(hovered) || pressed) && styles.fileRowActive,
     ],
     [collapsed],
@@ -895,6 +1040,9 @@ function FileRow({
           onPress={handleToggleChecked}
         />
       ) : null}
+      {/* Disclosure state, drawn with the Files tree's own chevron so a
+          collapsed result file reads like a collapsed folder. */}
+      <TreeChevron expanded={!collapsed} />
       <View style={styles.fileIcon}>
         <MaterialFileIcon fileName={fileName} size={treeIconSize} />
       </View>
@@ -1135,13 +1283,29 @@ const styles = StyleSheet.create((theme) => ({
       md: 22,
     },
   },
+  // The option strip, on the Changes toolbar's own geometry (same height, same
+  // trailing inset) so the divider lines up with the neighboring pane's.
+  toolbarRow: {
+    height: PANE_TOOLBAR_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    // Two corner-pinned ends, like the Changes toolbar: the clear action leads,
+    // the options strip trails.
+    justifyContent: "space-between",
+    paddingLeft: theme.spacing[2],
+    paddingRight: theme.spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  // The result count reads as a footer under the list, not a banner over it, so
+  // the toolbar keeps the top edge and the divider sits above the summary.
   searchDetails: {
     alignItems: "center",
     gap: 2,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
   },
   summaryText: {
     color: theme.colors.foregroundMuted,
@@ -1231,7 +1395,12 @@ const styles = StyleSheet.create((theme) => ({
   fileRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: theme.colors.surface2,
+    // Collapsed, the row takes the panel's own surface and reads flat against
+    // the pane - the way a collapsed file reads in Changes, whose header row
+    // carries no fill of its own. It is painted rather than left transparent
+    // because these rows are sticky headers, and a transparent one would show
+    // the code well scrolling underneath it.
+    backgroundColor: theme.colors.surfaceSidebarPanel,
     paddingLeft: 10,
     paddingRight: theme.spacing[2],
     paddingVertical: WORKSPACE_FILE_ROW_VERTICAL_PADDING,
@@ -1239,13 +1408,11 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   // Expanded, the header takes the code well's own surface so the two read as
-  // one block - the same pairing the Changes file section uses.
+  // one block - the same pairing the Changes file section uses. The well draws
+  // the divider under itself (SearchCodeBlock), so a collapsed row needs none,
+  // matching the Changes list where only an expanded body is underlined.
   fileRowExpanded: {
     backgroundColor: theme.colors.surface1,
-  },
-  fileRowCollapsed: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
   },
   fileRowActive: {
     backgroundColor: theme.colors.surfaceSidebarHover,

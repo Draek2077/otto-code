@@ -10,8 +10,9 @@ specifically (its own coalescers, its own benchmark). This page covers the app a
 
 ## Why the client needs its own instrument
 
-The daemon has had runtime metrics for a long time (`ws_runtime_metrics` in `daemon.log`, plus
-`diagnostics.request`). The client had none. That is the wrong way round for the most common
+The daemon has had runtime metrics for a long time (the `ws_runtime_metrics` window, read through
+`diagnostics.request`; since 0.8.15 the periodic window is logged at `debug` only, so `daemon.log`
+carries just the shutdown flush at `info`). The client had none. That is the wrong way round for the most common
 complaint - "the app gets slower the longer it stays open" - because the Visualizer, which runs in a
 **separate Electron `<webview>` process**, stays perfectly smooth while the rest of the app
 degrades. A separate process being unaffected is the tell: the problem is the app's own JS thread,
@@ -137,6 +138,15 @@ and which phase consumed the frame. Read `blockingMs` as the felt cost (time bey
 and a high `styleAndLayoutMs` with cheap scripts as "the DOM write was cheap, the layout it forced was
 not".
 
+A script whose invoker is `TimerHandler:setTimeout` or `TimerHandler:setInterval` carries a `timer`
+block: the handler's name, its first 240 source characters, and the stack that registered it. It is
+matched by start time (within 5ms, on the `performance.now()` clock) against the ring of recent
+fires the wrapped timer globals keep in `runtime-counters.ts`, and the aggregate keys on it as
+`bundle@timer:<name>`. This is the attribution that survives two things the LoAF fields alone do
+not: a dev bundle whose char offsets drift under a running app, and a handler that returns in a few
+ms while the microtasks it resolved carry the cost - LoAF folds those into the script, so the
+handler-only `slowTimers` record stays empty and the frame still names its timer.
+
 The capture also persists `preCapture`: the growth trend over the monitor history that existed
 _before_ the capture reset the ring. A capture is usually taken seconds after the symptom, so the
 climb that led to it lives there - without it, a short capture reports an empty trend and the 6h of
@@ -157,7 +167,10 @@ connection is not the problem" - quote it as "decoding is not the problem".
 **The client's wire metrics were dormant until 0.6.7.** `DaemonClientRuntimeMetrics` existed but was
 only constructed when an embedder passed `runtimeMetricsIntervalMs`, and nothing in `packages/app`
 ever did. The counters are now always constructed; the interval still gates only the periodic
-`ws_runtime_metrics_client` log line.
+`ws_runtime_metrics_client` line, which is emitted at `debug` since 0.8.15. The Performance
+Diagnostics Capture is the record: it carries the client totals, the long-frame attribution, the
+slow timer callbacks, and the daemon's last runtime window, so nothing performance-related needs to
+be read out of a log any more.
 
 ## Measuring
 

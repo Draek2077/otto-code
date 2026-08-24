@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Stop writing the periodic runtime-metrics windows to `daemon.log` and the app console; the Performance Diagnostics Capture from the Metrics bar carries them instead, so the logs read as logs again
+- Give project Search the Changes toolbar: pinnable options for wrapping long lines, expanding or collapsing every file, and re-running the search, with the match summary moved under the results where it reads as a footer
+- Mark a Search file row's collapsed state with the same chevron the file tree and the Changes tree use
+- Keep Search results while you leave the Search tab to read a hit, including where the list was scrolled to, and add a Clear action to the toolbar for putting the pane back to empty
+- Give a collapsed Search file row the panel's own surface, so it reads flat against the pane the way a collapsed file does in Changes
+
+### Fixed
+
+- Center the Search gutter's comment button on the gutter divider, where the Changes diff already puts it
+
 ## 0.8.14 - 2026-08-23
 
 ### Added

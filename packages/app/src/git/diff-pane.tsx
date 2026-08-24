@@ -116,8 +116,12 @@ import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { GitActionsSplitButton } from "@/git/actions-split-button";
-import { ChangesToolbar, type ChangesToolbarItem } from "@/git/changes-toolbar/toolbar";
-import { toggleChangesToolbarItem, type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
+import {
+  PinnableToolbar,
+  togglePinnedToolbarItem,
+  type PinnableToolbarItem,
+} from "@/components/ui/pinnable-toolbar";
+import { type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
 import { BranchSwitcher } from "@/components/branch-switcher";
 import { DiffBaseSwitcher } from "@/git/diff-base-switcher";
 import { useGitActions } from "@/git/use-actions";
@@ -3159,7 +3163,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   const handleToggleToolbarPin = useCallback(
     (id: ChangesToolbarItemId) => {
       void updateChangesPreferences({
-        pinnedToolbarItems: toggleChangesToolbarItem(changesPreferences.pinnedToolbarItems, id),
+        pinnedToolbarItems: togglePinnedToolbarItem(changesPreferences.pinnedToolbarItems, id),
       });
     },
     [changesPreferences.pinnedToolbarItems, updateChangesPreferences],
@@ -3838,8 +3842,8 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   // the current state (the action it performs), shared verbatim by the pinned
   // strip button and its ▾-menu row. Unavailable options (split off the split
   // layout, tree/expand with no files, refresh unsupported) are simply omitted.
-  const toolbarItems = useMemo<ChangesToolbarItem[]>(() => {
-    const list: ChangesToolbarItem[] = [];
+  const toolbarItems = useMemo<PinnableToolbarItem<ChangesToolbarItemId>[]>(() => {
+    const list: PinnableToolbarItem<ChangesToolbarItemId>[] = [];
 
     if (canUseSplitLayout) {
       const isSplit = changesPreferences.layout === "split";
@@ -4329,7 +4333,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
                 isBaseEditable={isBaseEditable}
               />
             </View>
-            <ChangesToolbar
+            <PinnableToolbar
               items={toolbarItems}
               pinnedItems={pinnedToolbarItems}
               onTogglePin={handleToggleToolbarPin}
@@ -4337,6 +4341,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
               isMobile={isMobile}
               hideUntilHover={appSettings.hidePinnedToolbarOptions}
               optionsLabel={t("workspace.git.diff.options")}
+              testIDPrefix="changes"
             />
           </View>
         </View>

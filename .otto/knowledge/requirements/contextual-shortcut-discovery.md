@@ -5,7 +5,7 @@ title: "Contextual shortcut discovery reveals currently available commands"
 status: "confirmed"
 tags: ["keyboard","shortcuts","discoverability","focus","ux"]
 created_at: "2026-08-14T00:44:23.691Z"
-updated_at: "2026-08-22T19:19:27.305Z"
+updated_at: "2026-08-24T13:25:39.401Z"
 ---
 # Contextual shortcut discovery reveals currently available commands
 
@@ -147,3 +147,8 @@ This requirement is confirmed. The first vertical slice is built; broad UI ancho
   summary: "Fixed the centered shortcut-discovery fallback when an Electron browser tab occupies a split pane. Browser webviews are mounted in a body-level browser plane; the sheet previously stayed in the React root and could be painted beneath the webview. `ShortcutDiscoveryOverlay` now portals to the shared overlay root, whose plane is above browser surfaces, so the sheet remains whole and centered across the workspace. Targeted lint, app typecheck, focused shortcut-overlay tests, and `git diff --check` passed."
   source: "Implementation and targeted verification, 2026-08-22"
   affects: ["contextual-shortcut-discovery"]
+- time: "2026-08-24T13:25:39.401Z"
+  kind: "evidence"
+  summary: "Doubled the modifier-hold threshold for contextual shortcut discovery from 150 ms to 300 ms so ordinary keyboard shortcuts are less likely to flash the HUD. Added a boundary regression proving badges remain hidden at 299 ms and appear at 300 ms; Shift-alone discovery uses the same threshold. Focused Vitest passed (5 tests); targeted lint, app typecheck, formatting, and scoped diff checking passed."
+  source: "Implementation and focused verification, 2026-08-24"
+  affects: ["packages-app-src-stores-keyboard-shortcuts-store-ts","packages-app-src-stores-keyboard-shortcuts-store-test-ts"]

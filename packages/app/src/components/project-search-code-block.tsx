@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState, type ComponentProps } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, View, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { isLanguageSupported } from "@otto-code/highlight";
 import { Check } from "@/components/icons/material-icons";
@@ -10,7 +10,7 @@ import {
 } from "@/components/project-search-code-lines";
 import { splitTokensForMatches, type MatchedTokenSegment } from "@/components/file-preview-find";
 import { findHighlightStyles } from "@/components/find-highlight-styles";
-import { isWeb } from "@/constants/platform";
+import { isNative, isWeb } from "@/constants/platform";
 import { useAppSettings, useAppSettingValue } from "@/hooks/use-settings";
 import {
   getInlineReviewThreadState,
@@ -32,6 +32,26 @@ const accentForegroundIconColorMapping = (theme: Theme) => ({
 const ThemedCheck = withUnistyles(Check);
 
 const selectCodeFontSize = (settings: { codeFontSize: number }) => settings.codeFontSize;
+
+// The number cell's own right inset (theme.spacing[2]). It lives inside the
+// cell rather than on the gutter container so the cell spans the full gutter,
+// which is what the review "+" button anchors to.
+const GUTTER_RIGHT_INSET = 8;
+
+type WrappedWebTextStyle = TextStyle & {
+  whiteSpace?: "pre" | "pre-wrap";
+  overflowWrap?: "normal" | "anywhere";
+};
+
+/** Web line-wrapping switch, matching the diff viewer's (see @/git/diff-pane). */
+function getWrappedTextStyle(wrapLines: boolean): WrappedWebTextStyle | undefined {
+  if (isNative) {
+    return undefined;
+  }
+  return wrapLines
+    ? { whiteSpace: "pre-wrap", overflowWrap: "anywhere" }
+    : { whiteSpace: "pre", overflowWrap: "normal" };
+}
 
 const EMPTY_SEGMENTS: MatchedTokenSegment[] = [];
 const EMPTY_COMMENTS: readonly ReviewDraftComment[] = [];
@@ -104,6 +124,8 @@ interface SearchCodeBlockProps {
   lines: readonly SearchDisplayLine[];
   /** Replace mode: each line carries the selection for its own matches. */
   showSelection: boolean;
+  /** Wrap long hits across several rows instead of clipping them to one. */
+  wrapLines: boolean;
   // The pane owns these, so they take the path rather than closing over it -
   // per-block closures would change identity on every render and defeat the
   // row memoization a long result list depends on.
@@ -126,6 +148,7 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
   filePath,
   lines,
   showSelection,
+  wrapLines,
   isLineChecked,
   toggleLabel,
   onToggleLine,
@@ -150,7 +173,11 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
     for (const line of lines) {
       maxLine = Math.max(maxLine, line.line);
     }
-    return lineNumberGutterWidth(maxLine, codeFontSize, 0, 1);
+    // The right inset rides inside the number cell (not on the gutter View), so
+    // the cell reaches the divider: the review gutter's "+" button anchors to
+    // the cell's right edge, and that is what centers it on the divider line -
+    // the same geometry the diff gutter uses.
+    return lineNumberGutterWidth(maxLine, codeFontSize, GUTTER_RIGHT_INSET, 1);
   }, [codeFontSize, lines]);
   const gutterNumberStyle = useMemo(
     () => [styles.gutterNumber, typography, inlineUnistylesStyle({ width: gutterWidth })],
@@ -184,8 +211,13 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
   }, [filePath, lines]);
 
   const codeTextStyle = useMemo(
-    () => [styles.codeText, !isHighlighted && styles.codeTextPlain, typography],
-    [isHighlighted, typography],
+    () => [
+      styles.codeText,
+      !isHighlighted && styles.codeTextPlain,
+      typography,
+      getWrappedTextStyle(wrapLines),
+    ],
+    [isHighlighted, typography, wrapLines],
   );
   const handleToggleLine = useCallback(
     (line: SearchDisplayLine) => onToggleLine(filePath, line),
@@ -213,6 +245,7 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
           lineIndex={index}
           segments={segmentsByLine[index] ?? EMPTY_SEGMENTS}
           showSelection={showSelection}
+          wrapLines={wrapLines}
           checked={isLineChecked(filePath, line)}
           toggleLabel={toggleLabel}
           codeLineHeight={codeLineHeight}
@@ -240,6 +273,7 @@ const SearchCodeLine = memo(function SearchCodeLine({
   lineIndex,
   segments,
   showSelection,
+  wrapLines,
   checked,
   toggleLabel,
   codeLineHeight,
@@ -258,6 +292,7 @@ const SearchCodeLine = memo(function SearchCodeLine({
   lineIndex: number;
   segments: readonly MatchedTokenSegment[];
   showSelection: boolean;
+  wrapLines: boolean;
   checked: boolean;
   toggleLabel: string;
   codeLineHeight: number;
@@ -291,12 +326,30 @@ const SearchCodeLine = memo(function SearchCodeLine({
     : EMPTY_COMMENTS;
   const threadState = getInlineReviewThreadState({ reviewTarget, reviewActions });
   const rowStyle = useMemo(
-    () => [styles.codeLine, rowMinHeightStyle, isHovered && styles.codeLineHovered],
-    [isHovered, rowMinHeightStyle],
+    () => [
+      styles.codeLine,
+      rowMinHeightStyle,
+      // Wrapped, the row grows past one line: the columns stretch to its full
+      // height (so the gutter's divider runs the whole way down) and each one
+      // holds its own content at the top.
+      wrapLines && styles.codeLineWrapped,
+      isHovered && styles.codeLineHovered,
+    ],
+    [isHovered, rowMinHeightStyle, wrapLines],
   );
   const keyedSegments = useMemo(
     () => segments.map((segment, index) => ({ key: `${index}-${segment.text}`, segment })),
     [segments],
+  );
+  const lineBodyStyle = useMemo(
+    () => [styles.lineBody, wrapLines && styles.lineBodyWrapped],
+    [wrapLines],
+  );
+  // Held to one line's height while wrapping, so the box centers on the first
+  // wrapped line instead of on the middle of a tall block.
+  const selectionSlotStyle = useMemo(
+    () => [styles.selectionSlot, wrapLines && inlineUnistylesStyle({ height: codeLineHeight })],
+    [codeLineHeight, wrapLines],
   );
   const gutterNumber = <Text style={gutterNumberStyle}>{line.line}</Text>;
   return (
@@ -307,7 +360,7 @@ const SearchCodeLine = memo(function SearchCodeLine({
         onPointerLeave={handlePointerLeave}
       >
         {showSelection ? (
-          <View style={styles.selectionSlot}>
+          <View style={selectionSlotStyle}>
             <SearchSelectionBox
               checked={checked}
               compact
@@ -338,13 +391,13 @@ const SearchCodeLine = memo(function SearchCodeLine({
           onPress={handlePress}
           // @ts-ignore - onContextMenu is web-only and not in RN types.
           onContextMenu={isWeb && onLineContextMenu ? handleContextMenu : undefined}
-          style={styles.lineBody}
+          style={lineBodyStyle}
           testID={testID}
         >
           <Text style={markerStyle} accessibilityElementsHidden>
             {" "}
           </Text>
-          <Text style={codeTextStyle} numberOfLines={1}>
+          <Text style={codeTextStyle} numberOfLines={wrapLines ? undefined : 1}>
             {keyedSegments.map(({ key, segment }) => (
               <Text
                 key={key}
@@ -388,6 +441,9 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
     backgroundColor: theme.colors.surface1,
   },
+  codeLineWrapped: {
+    alignItems: "stretch",
+  },
   codeLineHovered: {
     backgroundColor: theme.colors.surfaceInteractiveHover,
   },
@@ -401,14 +457,19 @@ const styles = StyleSheet.create((theme) => ({
   gutter: {
     flexShrink: 0,
     flexDirection: "row",
+    // The cell stretches to the row (its right border is the rail), but the
+    // number itself stays on the first wrapped line.
+    alignItems: "flex-start",
     paddingLeft: theme.spacing[1],
-    paddingRight: theme.spacing[2],
     borderRightColor: theme.colors.border,
     borderRightWidth: theme.borderWidth[1],
     position: "relative",
     overflow: "visible",
   },
   gutterNumber: {
+    // GUTTER_RIGHT_INSET, inside the cell's width (border-box), so the cell's
+    // right edge is the divider itself.
+    paddingRight: theme.spacing[2],
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.code,
@@ -420,6 +481,9 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     minWidth: 0,
+  },
+  lineBodyWrapped: {
+    alignItems: "flex-start",
   },
   // The diff's marker column, carrying a context line's blank marker. It is
   // what puts the code column of a result and the code column of a diff on the
@@ -441,7 +505,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.code,
     lineHeight: theme.lineHeight.diff,
     color: theme.colors.foreground,
-    ...(isWeb ? { whiteSpace: "pre", overflowWrap: "normal" } : null),
   },
   // No grammar for this file, so there are no token colours to carry. The diff
   // viewer mutes an unhighlighted context line the same way.

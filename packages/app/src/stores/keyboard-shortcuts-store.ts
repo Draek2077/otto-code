@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { SidebarShortcutWorkspaceTarget } from "@/utils/sidebar-shortcuts";
 
-const SHORTCUT_BADGE_DELAY_MS = 150;
+const SHORTCUT_BADGE_DELAY_MS = 300;
 
 export type CommandCenterScope = "files" | null;
 

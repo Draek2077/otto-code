@@ -15,6 +15,7 @@
 // from the observer wiring so it is testable without a browser frame loop.
 
 import { getGlobalSingleton } from "./global-singleton";
+import { describeTimerFireAt, type TimerFireDescription } from "./runtime-counters";
 
 /** Chromium's `PerformanceScriptTiming` - not in the TS lib yet. */
 interface PerformanceScriptTiming extends PerformanceEntry {
@@ -46,6 +47,12 @@ export interface LongFrameScriptSummary {
   durationMs: number;
   forcedStyleAndLayoutMs: number;
   charPosition: number;
+  /**
+   * For a timer-invoked script, the handler that fired, matched by start time
+   * against the wrapped timer globals. Names the callback even when its own
+   * run was cheap and the frame's cost sat in the microtasks it resolved.
+   */
+  timer?: TimerFireDescription;
 }
 
 export interface LongFrameSummary {
@@ -86,32 +93,66 @@ export const LONG_FRAME_SCRIPTS_PER_ENTRY = 5;
 export const LONG_FRAME_AGGREGATE_CAPACITY = 200;
 const AGGREGATE_OVERFLOW_KEY = "(other)";
 
-function scriptSource(script: PerformanceScriptTiming): string {
+/** Chromium names timer invokers "TimerHandler:setTimeout" / "TimerHandler:setInterval". */
+function isTimerInvoker(script: PerformanceScriptTiming): boolean {
+  return (
+    script.invokerType === "user-callback" && (script.invoker ?? "").startsWith("TimerHandler:")
+  );
+}
+
+function timerLabel(timer: TimerFireDescription): string {
+  if (timer.name !== "(anonymous)") {
+    return timer.name;
+  }
+  // An anonymous handler is named by whoever scheduled it - the first
+  // registration frame reads like "at flushPendingTranscript (...)".
+  const registrar = /at\s+([^\s(]+)/.exec(timer.registeredAt)?.[1];
+  return registrar ? `(anonymous from ${registrar})` : "(anonymous)";
+}
+
+function scriptSource(script: PerformanceScriptTiming, timer?: TimerFireDescription): string {
   const url = script.sourceURL ?? "";
   const fn = script.sourceFunctionName ?? "";
+  if (timer) {
+    // A timer script arrives with no function name (the wrapper is anonymous),
+    // so the matched handler is the identity the aggregate should key on.
+    return `${url}@timer:${timerLabel(timer)}`;
+  }
   if (url || fn) {
     return fn ? `${url}@${fn}` : url;
   }
   return script.invoker || "(unknown)";
 }
 
+export type TimerFireResolver = (startedAtMs: number) => TimerFireDescription | null;
+
 export function summarizeLongAnimationFrame(
   entry: PerformanceLongAnimationFrameTiming,
   timeOrigin: number,
+  resolveTimerFire: TimerFireResolver = describeTimerFireAt,
 ): LongFrameSummary {
   const styleAndLayoutStart = entry.styleAndLayoutStart ?? 0;
   const frameEnd = entry.startTime + entry.duration;
   const scripts = [...(entry.scripts ?? [])]
     .sort((left, right) => right.duration - left.duration)
     .slice(0, LONG_FRAME_SCRIPTS_PER_ENTRY)
-    .map((script) => ({
-      source: scriptSource(script),
-      invokerType: script.invokerType ?? "",
-      invoker: script.invoker ?? "",
-      durationMs: round(script.duration),
-      forcedStyleAndLayoutMs: round(script.forcedStyleAndLayoutDuration ?? 0),
-      charPosition: script.sourceCharPosition ?? -1,
-    }));
+    .map((script): LongFrameScriptSummary => {
+      const timer = isTimerInvoker(script)
+        ? (resolveTimerFire(script.startTime) ?? undefined)
+        : undefined;
+      const summary: LongFrameScriptSummary = {
+        source: scriptSource(script, timer),
+        invokerType: script.invokerType ?? "",
+        invoker: script.invoker ?? "",
+        durationMs: round(script.duration),
+        forcedStyleAndLayoutMs: round(script.forcedStyleAndLayoutDuration ?? 0),
+        charPosition: script.sourceCharPosition ?? -1,
+      };
+      if (timer) {
+        summary.timer = timer;
+      }
+      return summary;
+    });
   return {
     at: Math.round(timeOrigin + entry.startTime),
     durationMs: round(entry.duration),

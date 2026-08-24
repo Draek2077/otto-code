@@ -754,6 +754,8 @@ export const zhCN: TranslationResources = {
       copyPath: "复制路径",
       copyBranchName: "复制分支名称",
       copied: "已复制",
+      branchHistory_one: "领先 {{baseRef}} {{count}} 个提交",
+      branchHistory_other: "领先 {{baseRef}} {{count}} 个提交",
     },
     // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
     // appear on screen at once. See docs/glossary.md.
@@ -2997,6 +2999,13 @@ export const zhCN: TranslationResources = {
     idleHint: "输入查询内容并按 Enter。",
     summary: "在 {{files}} 个文件中找到 {{matches}} 处匹配",
     truncated: "已达到结果上限。请细化搜索条件以查看全部。",
+    clear: "清除结果",
+    options: "搜索选项",
+    scrollLongLines: "滚动长行",
+    wrapLongLines: "自动换行长行",
+    collapseAll: "折叠所有文件",
+    expandAll: "展开所有文件",
+    refresh: "重新运行搜索",
     openReplace: "显示替换",
     replacePlaceholder: "替换为",
     replaceSelected: "替换所选项",

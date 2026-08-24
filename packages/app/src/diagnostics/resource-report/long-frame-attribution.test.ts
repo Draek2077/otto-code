@@ -94,6 +94,59 @@ describe("summarizeLongAnimationFrame", () => {
   });
 });
 
+describe("timer attribution", () => {
+  test("names a timer-invoked script from the matching timer fire and keys the source on it", () => {
+    const result = summarizeLongAnimationFrame(
+      loafEntry({
+        scripts: [
+          script({
+            duration: 180,
+            startTime: 1_002,
+            invoker: "TimerHandler:setTimeout",
+            invokerType: "user-callback",
+            sourceURL: "bundle",
+            sourceFunctionName: "",
+          }),
+        ],
+      }),
+      0,
+      (startedAtMs) =>
+        startedAtMs === 1_002
+          ? {
+              kind: "timeout",
+              delayMs: 0,
+              name: "(anonymous)",
+              source: "() => flush()",
+              registeredAt: "    at flushPendingTranscript (bundle:12:3)",
+            }
+          : null,
+    );
+    expect(result.scripts[0].source).toBe("bundle@timer:(anonymous from flushPendingTranscript)");
+    expect(result.scripts[0].timer).toMatchObject({ kind: "timeout", source: "() => flush()" });
+  });
+
+  test("leaves non-timer scripts and unmatched timers unnamed", () => {
+    const result = summarizeLongAnimationFrame(
+      loafEntry({
+        scripts: [
+          script({ duration: 80, sourceURL: "bundle", sourceFunctionName: "listener" }),
+          script({
+            duration: 60,
+            invoker: "TimerHandler:setInterval",
+            invokerType: "user-callback",
+            sourceURL: "bundle",
+            sourceFunctionName: "",
+          }),
+        ],
+      }),
+      0,
+      () => null,
+    );
+    expect(result.scripts.map((entry) => entry.source)).toEqual(["bundle@listener", "bundle"]);
+    expect(result.scripts.every((entry) => entry.timer === undefined)).toBe(true);
+  });
+});
+
 describe("LongFrameAggregator", () => {
   test("aggregates script cost across frames and ranks by total time", () => {
     const aggregator = new LongFrameAggregator();

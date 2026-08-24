@@ -23,7 +23,7 @@ import {
   Folder,
   Server,
 } from "@/components/icons/material-icons";
-import { GitBranch } from "@/components/icons/lucide";
+import { GitBranch, GitMerge } from "@/components/icons/lucide";
 import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import type { Theme } from "@/styles/theme";
 import { DiffStat } from "@/components/diff-stat";
@@ -361,6 +361,14 @@ function WorkspaceHoverCardContent({
   );
 }
 
+/**
+ * How far this workspace's branch has moved past its diff base - the same base the Changes
+ * toolbar names in its "vs <base>" chip. Written as a sentence rather than that chip's
+ * shorthand, because the card has no toolbar around it to say what the comparison is.
+ *
+ * Base refs run long (a remote-tracking dependabot branch is the worst case), so this row
+ * takes two lines where the rest take one instead of ellipsizing the base out of view.
+ */
 function BranchHistory({
   workspace,
   visible,
@@ -368,17 +376,26 @@ function BranchHistory({
   workspace: SidebarWorkspaceEntry;
   visible: boolean;
 }): ReactElement | null {
-  if (!visible || !workspace.branchBaseRef || (workspace.branchAheadCount ?? 0) === 0) {
+  const { t } = useTranslation();
+  const aheadCount = workspace.branchAheadCount ?? 0;
+  if (!visible || !workspace.branchBaseRef || aheadCount === 0) {
     return null;
   }
   return (
-    <Text style={styles.cardBranchHistory}>
-      vs {workspace.branchBaseRef} · {workspace.branchAheadCount} commits
-    </Text>
+    <InfoRow
+      icon={ThemedGitMerge}
+      value={t("workspace.hoverCard.branchHistory", {
+        count: aheadCount,
+        baseRef: workspace.branchBaseRef,
+      })}
+      numberOfLines={2}
+      testID="hover-card-workspace-branch-history"
+    />
   );
 }
 
 const ThemedGitBranch = withUnistyles(GitBranch);
+const ThemedGitMerge = withUnistyles(GitMerge);
 const ThemedFolder = withUnistyles(Folder);
 const ThemedServer = withUnistyles(Server);
 
@@ -411,16 +428,18 @@ const dangerColorMapping = (theme: Theme) => ({ color: theme.colors.statusDanger
 function InfoRow({
   icon: Icon,
   value,
+  numberOfLines = 1,
   testID,
 }: {
   icon: CardInfoIcon;
   value: string;
+  numberOfLines?: number;
   testID: string;
 }) {
   return (
     <View style={styles.cardInfoRow}>
       <Icon size="xs" uniProps={foregroundMutedColorMapping} />
-      <Text style={styles.cardInfoText} numberOfLines={1} testID={testID}>
+      <Text style={styles.cardInfoText} numberOfLines={numberOfLines} testID={testID}>
         {value}
       </Text>
     </View>
@@ -639,11 +658,6 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
     flex: 1,
     minWidth: 0,
-  },
-  cardBranchHistory: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    marginTop: theme.spacing[1],
   },
   cardInfoRow: {
     flexDirection: "row",

@@ -767,6 +767,8 @@ export const ko: TranslationResources = {
       copyPath: "경로 복사",
       copyBranchName: "브랜치 이름 복사",
       copied: "복사됨",
+      branchHistory_one: "{{baseRef}}보다 {{count}}개 커밋 앞섬",
+      branchHistory_other: "{{baseRef}}보다 {{count}}개 커밋 앞섬",
     },
     // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
     // appear on screen at once. See docs/glossary.md.
@@ -3062,6 +3064,13 @@ export const ko: TranslationResources = {
     idleHint: "Type a query and press Enter.",
     summary: "{{matches}} matches in {{files}} files",
     truncated: "Result limit reached. Refine the search to see everything.",
+    clear: "결과 지우기",
+    options: "검색 옵션",
+    scrollLongLines: "긴 줄 스크롤",
+    wrapLongLines: "긴 줄 줄바꿈",
+    collapseAll: "모든 파일 접기",
+    expandAll: "모든 파일 펼치기",
+    refresh: "검색 다시 실행",
     openReplace: "Show replace",
     replacePlaceholder: "Replace with",
     replaceSelected: "Replace selected",

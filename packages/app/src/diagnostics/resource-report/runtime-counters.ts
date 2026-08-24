@@ -57,6 +57,31 @@ export interface SlowTimerCallback {
   registeredAt: string;
 }
 
+/**
+ * Every timer callback the wrapper ran, by start time on the `performance.now()`
+ * clock. A Long Animation Frame reports each script's `startTime` on that same
+ * clock, so a frame blamed on "TimerHandler:setTimeout" can be matched back to
+ * the handler that fired - even when the handler itself returned quickly and
+ * the cost sat in the microtasks it resolved, which LoAF folds into the script
+ * and `runTimed` cannot see.
+ */
+interface TimerFire {
+  startedAt: number;
+  kind: SlowTimerCallback["kind"];
+  delayMs: number;
+  handler: (...values: unknown[]) => void;
+  registeredAt: string;
+}
+
+/** What `describeTimerFireAt` resolves a LoAF timer script to. */
+export interface TimerFireDescription {
+  kind: SlowTimerCallback["kind"];
+  delayMs: number;
+  name: string;
+  source: string;
+  registeredAt: string;
+}
+
 interface RuntimeCounterState {
   installed: boolean;
   liveIntervals: number;
@@ -64,11 +89,16 @@ interface RuntimeCounterState {
   intervalsCreated: number;
   timeoutsCreated: number;
   slowTimers: SlowTimerCallback[];
+  fires: TimerFire[];
 }
 
 /** A callback at or past this is a long frame by itself (LONG_FRAME_MS). */
 export const SLOW_TIMER_CALLBACK_MS = 50;
 export const SLOW_TIMER_RING_CAPACITY = 200;
+/** Recent timer fires kept for LoAF matching; the observer reads within a second or two. */
+export const TIMER_FIRE_RING_CAPACITY = 400;
+/** How far a LoAF script start may sit from the wrapper's own clock read. */
+const TIMER_FIRE_MATCH_TOLERANCE_MS = 5;
 const SOURCE_SNIPPET_CHARS = 240;
 const REGISTRATION_STACK_FRAMES = 6;
 
@@ -83,9 +113,11 @@ const state = getGlobalSingleton<RuntimeCounterState>("otto.diagnostics.runtimeC
   intervalsCreated: 0,
   timeoutsCreated: 0,
   slowTimers: [],
+  fires: [],
 }));
-// A state object that predates this field (reattached across a refresh).
+// A state object that predates these fields (reattached across a refresh).
 state.slowTimers ??= [];
+state.fires ??= [];
 
 function nowMs(): number {
   return typeof performance !== "undefined" && typeof performance.now === "function"
@@ -103,6 +135,21 @@ function captureRegistrationStack(): string {
       .join(String.fromCharCode(10));
   } catch {
     return "";
+  }
+}
+
+function recordTimerFire(fire: TimerFire): void {
+  state.fires.push(fire);
+  if (state.fires.length > TIMER_FIRE_RING_CAPACITY) {
+    state.fires.splice(0, state.fires.length - TIMER_FIRE_RING_CAPACITY);
+  }
+}
+
+function handlerSource(handler: (...values: unknown[]) => void): string {
+  try {
+    return Function.prototype.toString.call(handler).slice(0, SOURCE_SNIPPET_CHARS);
+  } catch {
+    return "(unavailable)";
   }
 }
 
@@ -125,24 +172,19 @@ function runTimed(
   registeredAt: string,
 ): void {
   const startedAt = nowMs();
+  recordTimerFire({ startedAt, kind, delayMs, handler, registeredAt });
   try {
     handler(...callbackArgs);
   } finally {
     const durationMs = nowMs() - startedAt;
     if (durationMs >= SLOW_TIMER_CALLBACK_MS) {
-      let source = "";
-      try {
-        source = Function.prototype.toString.call(handler).slice(0, SOURCE_SNIPPET_CHARS);
-      } catch {
-        source = "(unavailable)";
-      }
       recordSlowTimer({
         at: Date.now(),
         kind,
         delayMs,
         durationMs: Math.round(durationMs * 10) / 10,
         name: handler.name || "(anonymous)",
-        source,
+        source: handlerSource(handler),
         registeredAt,
       });
     }
@@ -293,6 +335,33 @@ export function getSlowTimerCallbacks(sinceMs?: number): SlowTimerCallback[] {
     }));
 }
 
+/**
+ * The timer callback that started nearest `startedAtMs` (performance.now clock),
+ * within a few ms, or null. Used to name the handler behind a Long Animation
+ * Frame script whose invoker is a timer.
+ */
+export function describeTimerFireAt(startedAtMs: number): TimerFireDescription | null {
+  let best: TimerFire | null = null;
+  let bestDistance = TIMER_FIRE_MATCH_TOLERANCE_MS;
+  for (const fire of state.fires) {
+    const distance = Math.abs(fire.startedAt - startedAtMs);
+    if (distance <= bestDistance) {
+      best = fire;
+      bestDistance = distance;
+    }
+  }
+  if (!best) {
+    return null;
+  }
+  return {
+    kind: best.kind,
+    delayMs: best.delayMs,
+    name: best.handler.name || "(anonymous)",
+    source: handlerSource(best.handler),
+    registeredAt: best.registeredAt,
+  };
+}
+
 /** Test-only: forget the patch so a fresh host can be installed. */
 export function resetRuntimeCountersForTest(): void {
   state.installed = false;
@@ -301,4 +370,5 @@ export function resetRuntimeCountersForTest(): void {
   state.intervalsCreated = 0;
   state.timeoutsCreated = 0;
   state.slowTimers = [];
+  state.fires = [];
 }

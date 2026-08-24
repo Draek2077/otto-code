@@ -1,0 +1,3 @@
+C:/Users/phili/Projects/otto-code/android/app/.cxx/Debug/1a6hc5y3/arm64-v8a/CMakeFiles/appmodules.dir
+C:/Users/phili/Projects/otto-code/android/app/.cxx/Debug/1a6hc5y3/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/phili/Projects/otto-code/android/app/.cxx/Debug/1a6hc5y3/arm64-v8a/CMakeFiles/rebuild_cache.dir

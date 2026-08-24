@@ -768,6 +768,8 @@ export const ru: TranslationResources = {
       copyPath: "Копировать путь",
       copyBranchName: "Копировать имя ветки",
       copied: "Скопировано",
+      branchHistory_one: "{{count}} коммит впереди {{baseRef}}",
+      branchHistory_other: "коммитов впереди {{baseRef}}: {{count}}",
     },
     // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
     // appear on screen at once. See docs/glossary.md.
@@ -3085,6 +3087,13 @@ export const ru: TranslationResources = {
     idleHint: "Введите запрос и нажмите Enter.",
     summary: "Совпадений: {{matches}} в файлах: {{files}}",
     truncated: "Достигнут предел результатов. Уточните запрос, чтобы увидеть всё.",
+    clear: "Очистить результаты",
+    options: "Параметры поиска",
+    scrollLongLines: "Прокручивать длинные строки",
+    wrapLongLines: "Перенос длинных строк",
+    collapseAll: "Свернуть все файлы",
+    expandAll: "Развернуть все файлы",
+    refresh: "Выполнить поиск снова",
     openReplace: "Показать замену",
     replacePlaceholder: "Заменить на",
     replaceSelected: "Заменить выбранное",

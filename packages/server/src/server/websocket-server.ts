@@ -3066,7 +3066,15 @@ export class VoiceAssistantWebSocketServer {
       collectedAt: new Date().toISOString(),
       ...loggedMetrics,
     };
-    this.logger.info(loggedMetrics, "ws_runtime_metrics");
+    // The periodic window is retained for `collectDiagnostics` (the app's
+    // Performance Diagnostics Capture carries it) rather than logged: at ~3KB
+    // every 30s it was most of daemon.log by volume. Only the shutdown flush is
+    // written at info so the last window survives when there is no capture.
+    if (options?.final) {
+      this.logger.info(loggedMetrics, "ws_runtime_metrics");
+    } else {
+      this.logger.debug(loggedMetrics, "ws_runtime_metrics");
+    }
   }
 
   private collectClientPresenceStates(): ClientPresenceState[] {

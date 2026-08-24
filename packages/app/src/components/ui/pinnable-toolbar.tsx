@@ -14,8 +14,26 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useToolbarIconButtonStyle } from "@/components/ui/toolbar-icon-button";
 import { isNative } from "@/constants/platform";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
-import { isChangesToolbarItemPinned, type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
 import type { IconSizeProp } from "@/components/icons/icon-size";
+
+/**
+ * The pane-toolbar option strip shared by Changes and project Search: every
+ * option lives in the ▾ menu and can be pinned into the strip beside it.
+ * Mirrors the workspace tab bar's pin model (see @/workspace-pins) - pins are
+ * global (device-local), not per-workspace, and each surface persists its own
+ * catalog of pinned ids.
+ */
+export function isToolbarItemPinned<Id extends string>(pinned: readonly Id[], id: Id): boolean {
+  return pinned.includes(id);
+}
+
+export function togglePinnedToolbarItem<Id extends string>(pinned: readonly Id[], id: Id): Id[] {
+  const next = pinned.filter((entry) => entry !== id);
+  if (next.length === pinned.length) {
+    next.push(id);
+  }
+  return next;
+}
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 // Pinned state uses the same gold as a favorited star, matching the tab bar's
@@ -28,14 +46,14 @@ const ThemedPinFilled = withUnistyles(PinFilled);
 const ThemedPinOff = withUnistyles(PinOff);
 
 /**
- * A single Changes-toolbar option. `renderIcon` returns the current-state glyph
- * (e.g. Columns2 vs AlignJustify for the split toggle) at the requested size,
- * and `label` is the current-state action ("Switch to side-by-side diff" etc.),
+ * A single toolbar option. `renderIcon` returns the current-state glyph
+ * (e.g. Columns2 vs AlignJustify for a split toggle) at the requested size,
+ * and `label` is the current-state action ("Wrap long lines" etc.),
  * used as both the tooltip and the menu row label so the menu and strip stay in
  * lockstep.
  */
-export interface ChangesToolbarItem {
-  id: ChangesToolbarItemId;
+export interface PinnableToolbarItem<Id extends string = string> {
+  id: Id;
   label: string;
   renderIcon: (size: IconSizeProp) => ReactElement;
   onPress: () => void;
@@ -45,12 +63,14 @@ export interface ChangesToolbarItem {
   testID?: string;
 }
 
-function ChangesToolbarButton({
+function PinnableToolbarButton({
   item,
   size,
+  testIDPrefix,
 }: {
-  item: ChangesToolbarItem;
+  item: PinnableToolbarItem;
   size: number;
+  testIDPrefix: string;
 }): ReactElement {
   const buttonStyle = useToolbarIconButtonStyle({ disabled: item.disabled, style: styles.button });
   return (
@@ -58,7 +78,7 @@ function ChangesToolbarButton({
       <TooltipTrigger
         accessibilityRole="button"
         accessibilityLabel={item.label}
-        testID={item.testID ? `${item.testID}-pinned` : `changes-toolbar-${item.id}`}
+        testID={item.testID ? `${item.testID}-pinned` : `${testIDPrefix}-${item.id}`}
         disabled={item.disabled}
         onPress={item.onPress}
         style={buttonStyle}
@@ -78,14 +98,16 @@ function ChangesToolbarButton({
  * DropdownMenuItem's <button>, which would be invalid HTML on web) that shows a
  * gold marker when pinned and a hover-only muted pin otherwise.
  */
-function ChangesPinnableMenuItem({
+function PinnableToolbarMenuItem({
   item,
   isPinned,
+  testIDPrefix,
   onTogglePin,
 }: {
-  item: ChangesToolbarItem;
+  item: PinnableToolbarItem;
   isPinned: boolean;
-  onTogglePin: (id: ChangesToolbarItemId) => void;
+  testIDPrefix: string;
+  onTogglePin: (id: string) => void;
 }): ReactElement {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
@@ -142,7 +164,7 @@ function ChangesPinnableMenuItem({
               ? t("workspace.tabs.actions.unpinTarget")
               : t("workspace.tabs.actions.pinTarget")
           }
-          testID={`changes-toolbar-pin-toggle-${item.id}`}
+          testID={`${testIDPrefix}-pin-toggle-${item.id}`}
         >
           {pinIcon}
         </Pressable>
@@ -151,10 +173,10 @@ function ChangesPinnableMenuItem({
   );
 }
 
-export interface ChangesToolbarProps {
-  items: ChangesToolbarItem[];
-  pinnedItems: readonly ChangesToolbarItemId[];
-  onTogglePin: (id: ChangesToolbarItemId) => void;
+export interface PinnableToolbarProps<Id extends string> {
+  items: PinnableToolbarItem<Id>[];
+  pinnedItems: readonly Id[];
+  onTogglePin: (id: Id) => void;
   /** True while the pointer is over the toolbar row (web). */
   hovered: boolean;
   isMobile: boolean;
@@ -165,15 +187,23 @@ export interface ChangesToolbarProps {
    */
   hideUntilHover: boolean;
   optionsLabel: string;
+  /**
+   * Prefixes every generated testID: `<prefix>-options-menu` for the ▾ trigger,
+   * `<prefix>-options-menu-content` for its list, `<prefix>-pin-toggle-<itemId>`
+   * for a pin, and `<prefix>-<itemId>` for a pinned button that brought no
+   * testID of its own. Keeps two surfaces carrying this toolbar addressable
+   * apart ("changes" and "project-search" today).
+   */
+  testIDPrefix: string;
 }
 
 /**
- * The Changes toolbar: pinned options render as an icon strip that is invisible
+ * The toolbar: pinned options render as an icon strip that is invisible
  * (opacity-gated, geometry preserved) until the row is hovered - matching the
  * tab bar (docs/hover.md) - followed by an always-visible ▾ menu listing every
  * option with a pin toggle. On native/compact everything is always visible.
  */
-export function ChangesToolbar({
+export function PinnableToolbar<Id extends string>({
   items,
   pinnedItems,
   onTogglePin,
@@ -181,7 +211,8 @@ export function ChangesToolbar({
   isMobile,
   hideUntilHover,
   optionsLabel,
-}: ChangesToolbarProps): ReactElement {
+  testIDPrefix,
+}: PinnableToolbarProps<Id>): ReactElement {
   const [menuOpen, setMenuOpen] = useState(false);
   const optionsButtonStyle = useToolbarIconButtonStyle({
     selected: menuOpen,
@@ -196,7 +227,7 @@ export function ChangesToolbar({
   const barIconSize = useIconSize().sm;
 
   const pinnedButtons = useMemo(
-    () => items.filter((item) => isChangesToolbarItemPinned(pinnedItems, item.id)),
+    () => items.filter((item) => isToolbarItemPinned(pinnedItems, item.id)),
     [items, pinnedItems],
   );
 
@@ -209,7 +240,12 @@ export function ChangesToolbar({
     <View style={styles.row}>
       <View style={pinnedRowStyle} pointerEvents={revealed ? "auto" : "none"}>
         {pinnedButtons.map((item) => (
-          <ChangesToolbarButton key={item.id} item={item} size={barIconSize} />
+          <PinnableToolbarButton
+            key={item.id}
+            item={item}
+            size={barIconSize}
+            testIDPrefix={testIDPrefix}
+          />
         ))}
       </View>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -218,7 +254,7 @@ export function ChangesToolbar({
             <DropdownMenuTrigger
               accessibilityRole="button"
               accessibilityLabel={optionsLabel}
-              testID="changes-options-menu"
+              testID={`${testIDPrefix}-options-menu`}
               style={optionsButtonStyle}
             >
               <ThemedChevronDown size={barIconSize} uniProps={mutedColorMapping} />
@@ -228,14 +264,19 @@ export function ChangesToolbar({
             <Text style={styles.tooltipText}>{optionsLabel}</Text>
           </TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="end" width={240} testID="changes-options-menu-content">
+        <DropdownMenuContent
+          align="end"
+          width={240}
+          testID={`${testIDPrefix}-options-menu-content`}
+        >
           {items.map((item) => (
             <Fragment key={item.id}>
               {item.separatorBefore ? <DropdownMenuSeparator /> : null}
-              <ChangesPinnableMenuItem
+              <PinnableToolbarMenuItem
                 item={item}
-                isPinned={isChangesToolbarItemPinned(pinnedItems, item.id)}
-                onTogglePin={onTogglePin}
+                isPinned={isToolbarItemPinned(pinnedItems, item.id)}
+                testIDPrefix={testIDPrefix}
+                onTogglePin={onTogglePin as (id: string) => void}
               />
             </Fragment>
           ))}

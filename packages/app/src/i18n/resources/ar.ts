@@ -759,6 +759,8 @@ export const ar: TranslationResources = {
       copyPath: "نسخ المسار",
       copyBranchName: "نسخ اسم الفرع",
       copied: "تم النسخ",
+      branchHistory_one: "{{count}} إيداع متقدم على {{baseRef}}",
+      branchHistory_other: "{{count}} إيداعات متقدمة على {{baseRef}}",
     },
     // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
     // appear on screen at once. See docs/glossary.md.
@@ -3034,6 +3036,13 @@ export const ar: TranslationResources = {
     idleHint: "اكتب استعلامًا ثم اضغط Enter.",
     summary: "{{matches}} نتيجة في {{files}} ملف",
     truncated: "تم بلوغ حد النتائج. ضيّق البحث لرؤية كل شيء.",
+    clear: "مسح النتائج",
+    options: "خيارات البحث",
+    scrollLongLines: "قم بتمرير الخطوط الطويلة",
+    wrapLongLines: "لف الخطوط الطويلة",
+    collapseAll: "طي كافة الملفات",
+    expandAll: "قم بتوسيع كافة الملفات",
+    refresh: "إعادة تشغيل البحث",
     openReplace: "إظهار الاستبدال",
     replacePlaceholder: "استبدال بـ",
     replaceSelected: "استبدال المحدد",

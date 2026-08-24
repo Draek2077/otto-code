@@ -1,6 +1,6 @@
 // The Changes toolbar catalog: every option lives in the ▾ menu and can be
-// pinned into the toolbar strip. Mirrors the workspace tab bar's pin model
-// (see @/workspace-pins) - pins are global (device-local), not per-workspace.
+// pinned into the toolbar strip. The strip itself is @/components/ui/pinnable-toolbar,
+// shared with the project Search pane; this file is only Changes' own option set.
 
 export type ChangesToolbarItemId =
   | "presentation"
@@ -34,21 +34,3 @@ export const DEFAULT_PINNED_CHANGES_TOOLBAR_ITEMS: ChangesToolbarItemId[] = [
   "tree",
   "expand",
 ];
-
-export function isChangesToolbarItemPinned(
-  pinned: readonly ChangesToolbarItemId[],
-  id: ChangesToolbarItemId,
-): boolean {
-  return pinned.includes(id);
-}
-
-export function toggleChangesToolbarItem(
-  pinned: readonly ChangesToolbarItemId[],
-  id: ChangesToolbarItemId,
-): ChangesToolbarItemId[] {
-  const next = pinned.filter((entry) => entry !== id);
-  if (next.length === pinned.length) {
-    next.push(id);
-  }
-  return next;
-}

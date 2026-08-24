@@ -772,6 +772,8 @@ export const ja: TranslationResources = {
       copyPath: "パスをコピー",
       copyBranchName: "ブランチ名をコピー",
       copied: "コピーしました",
+      branchHistory_one: "{{baseRef}} より {{count}} コミット先行",
+      branchHistory_other: "{{baseRef}} より {{count}} コミット先行",
     },
     // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
     // appear on screen at once. See docs/glossary.md.
@@ -3078,6 +3080,13 @@ export const ja: TranslationResources = {
     idleHint: "検索語を入力して Enter を押してください。",
     summary: "{{files}} 件のファイルで {{matches}} 件の一致",
     truncated: "結果の上限に達しました。すべて表示するには検索条件を絞り込んでください。",
+    clear: "結果をクリア",
+    options: "検索オプション",
+    scrollLongLines: "長い行をスクロール",
+    wrapLongLines: "長い行を折り返す",
+    collapseAll: "すべて折りたたむ",
+    expandAll: "すべて展開",
+    refresh: "検索を再実行",
     openReplace: "置換を表示",
     replacePlaceholder: "置換後の文字列",
     replaceSelected: "選択項目を置換",

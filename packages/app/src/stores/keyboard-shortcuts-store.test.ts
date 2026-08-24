@@ -51,7 +51,9 @@ describe("keyboard-shortcuts-store", () => {
     });
 
     expect(useKeyboardShortcutsStore.getState().showShortcutBadges).toBe(false);
-    vi.advanceTimersByTime(150);
+    vi.advanceTimersByTime(299);
+    expect(useKeyboardShortcutsStore.getState().showShortcutBadges).toBe(false);
+    vi.advanceTimersByTime(1);
     expect(useKeyboardShortcutsStore.getState().showShortcutBadges).toBe(true);
 
     useKeyboardShortcutsStore.getState().setShortcutDiscoveryModifiers({
@@ -77,7 +79,7 @@ describe("keyboard-shortcuts-store", () => {
       shift: true,
     });
 
-    vi.advanceTimersByTime(150);
+    vi.advanceTimersByTime(300);
     expect(useKeyboardShortcutsStore.getState().showShortcutBadges).toBe(true);
 
     useKeyboardShortcutsStore.getState().resetModifiers();

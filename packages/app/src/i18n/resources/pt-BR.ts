@@ -770,6 +770,8 @@ export const ptBR: TranslationResources = {
       copyPath: "Copiar caminho",
       copyBranchName: "Copiar nome da branch",
       copied: "Copiado",
+      branchHistory_one: "{{count}} commit à frente de {{baseRef}}",
+      branchHistory_other: "{{count}} commits à frente de {{baseRef}}",
     },
     // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
     // appear on screen at once. See docs/glossary.md.
@@ -3092,6 +3094,13 @@ export const ptBR: TranslationResources = {
     idleHint: "Digite uma busca e pressione Enter.",
     summary: "{{matches}} ocorrências em {{files}} arquivos",
     truncated: "Limite de resultados atingido. Refine a busca para ver tudo.",
+    clear: "Limpar resultados",
+    options: "Opções de busca",
+    scrollLongLines: "Rolar linhas longas",
+    wrapLongLines: "Quebrar linhas longas",
+    collapseAll: "Recolher todos os arquivos",
+    expandAll: "Expandir todos os arquivos",
+    refresh: "Executar a busca novamente",
     openReplace: "Mostrar substituição",
     replacePlaceholder: "Substituir por",
     replaceSelected: "Substituir selecionados",

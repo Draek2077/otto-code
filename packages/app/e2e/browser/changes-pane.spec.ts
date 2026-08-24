@@ -562,7 +562,7 @@ test("changes diff switches between flat and tree file lists", async ({ page }) 
   await expectFlatFileList(page);
   // "split" and "tree" are pinned by default, so their controls render as
   // toolbar strip buttons whose testIDs carry the "-pinned" suffix (the bare
-  // testID belongs to the ▾-menu row). See changes-toolbar/toolbar.tsx.
+  // testID belongs to the ▾-menu row). See components/ui/pinnable-toolbar.tsx.
   await expect(page.getByTestId("changes-toggle-layout-pinned")).toBeVisible();
   await expect(page.getByTestId("changes-layout-unified")).toHaveCount(0);
   await expect(page.getByTestId("changes-layout-split")).toHaveCount(0);

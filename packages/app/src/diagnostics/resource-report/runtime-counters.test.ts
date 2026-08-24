@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
+  describeTimerFireAt,
   getSlowTimerCallbacks,
   installRuntimeCounters,
   readRuntimeCounters,
@@ -137,6 +138,26 @@ describe("slow timer attribution", () => {
     expect(record.source).toContain("rebuiltTranscripts.push");
     expect(getSlowTimerCallbacks(record.at + 1)).toEqual([]);
     nowSpy.mockRestore();
+  });
+
+  test("matches a fired callback to a nearby start time for long-frame attribution", () => {
+    const { host, fire } = createHost();
+    installRuntimeCounters(host);
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValueOnce(5_000).mockReturnValueOnce(5_001);
+    function quickResolve(): void {
+      void Promise.resolve();
+    }
+    fire(host.setTimeout(quickResolve, 10) as unknown as number);
+    nowSpy.mockRestore();
+
+    expect(describeTimerFireAt(5_003)).toMatchObject({
+      kind: "timeout",
+      delayMs: 10,
+      name: "quickResolve",
+    });
+    expect(describeTimerFireAt(5_003)?.source).toContain("Promise.resolve");
+    expect(describeTimerFireAt(5_020)).toBeNull();
   });
 
   test("ignores fast callbacks", () => {

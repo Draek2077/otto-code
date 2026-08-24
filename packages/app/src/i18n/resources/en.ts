@@ -765,6 +765,8 @@ export const en = {
       copyPath: "Copy path",
       copyBranchName: "Copy branch name",
       copied: "Copied",
+      branchHistory_one: "{{count}} commit ahead of {{baseRef}}",
+      branchHistory_other: "{{count}} commits ahead of {{baseRef}}",
     },
     // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
     // appear on screen at once. See docs/glossary.md.
@@ -3064,6 +3066,13 @@ export const en = {
     idleHint: "Type a query and press Enter.",
     summary: "{{matches}} matches in {{files}} files",
     truncated: "Result limit reached. Refine the search to see everything.",
+    clear: "Clear results",
+    options: "Search options",
+    scrollLongLines: "Scroll long lines",
+    wrapLongLines: "Wrap long lines",
+    collapseAll: "Collapse all files",
+    expandAll: "Expand all files",
+    refresh: "Run the search again",
     openReplace: "Show replace",
     replacePlaceholder: "Replace with",
     replaceSelected: "Replace selected",

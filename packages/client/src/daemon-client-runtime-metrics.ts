@@ -2,6 +2,7 @@ import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
 
 interface RuntimeMetricsLogger {
   info(obj: object, msg?: string): void;
+  debug(obj: object, msg?: string): void;
 }
 
 interface RuntimeMetricsHandlerTiming {
@@ -218,7 +219,10 @@ export class DaemonClientRuntimeMetrics {
       return;
     }
 
-    this.logger.info(
+    // Debug, not info: the rolling totals are read on demand by the app's
+    // Performance Diagnostics Capture (getTrafficTotals), so the periodic line
+    // only floods the console for anyone not actively hunting a wire problem.
+    this.logger.debug(
       {
         windowMs: Math.min(this.windowMs, Math.max(0, now - this.startedAt)),
         rollingWindowMs: this.windowMs,

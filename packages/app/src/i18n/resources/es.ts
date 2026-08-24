@@ -770,6 +770,8 @@ export const es: TranslationResources = {
       copyPath: "Copiar ruta",
       copyBranchName: "Copiar nombre de rama",
       copied: "Copiado",
+      branchHistory_one: "{{count}} commit por delante de {{baseRef}}",
+      branchHistory_other: "{{count}} commits por delante de {{baseRef}}",
     },
     // The Solution view. "Solution", never "Project" - Project is already an Otto noun, and both
     // appear on screen at once. See docs/glossary.md.
@@ -3108,6 +3110,13 @@ export const es: TranslationResources = {
     idleHint: "Escribe una consulta y pulsa Intro.",
     summary: "{{matches}} coincidencias en {{files}} archivos",
     truncated: "Se alcanzó el límite de resultados. Afina la búsqueda para verlo todo.",
+    clear: "Borrar resultados",
+    options: "Opciones de búsqueda",
+    scrollLongLines: "Desplazarse por largas filas",
+    wrapLongLines: "Envolver largas filas",
+    collapseAll: "Contraer todos los archivos",
+    expandAll: "Expandir todos los archivos",
+    refresh: "Volver a ejecutar la búsqueda",
     openReplace: "Mostrar reemplazo",
     replacePlaceholder: "Reemplazar con",
     replaceSelected: "Reemplazar seleccionados",
