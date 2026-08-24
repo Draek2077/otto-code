@@ -10,6 +10,9 @@ import {
 import { buildReviewableDiffTargetKey } from "@/utils/diff-layout";
 import type { SearchDisplayLine } from "@/components/project-search-code-lines";
 
+/** Stable empty result, so a note-free search never changes this identity. */
+const NO_LINE_TEXT: ReadonlyMap<string, string> = new Map();
+
 export interface SearchNoteLineSource {
   filePath: string;
   lines: readonly SearchDisplayLine[];
@@ -43,10 +46,17 @@ export function useProjectSearchNotes(input: {
   );
   const reviewActions = useInlineReviewController({ reviewDraftKey: noteDraftKey });
 
-  // A note quotes the line it was written on, so the snapshot needs the text of
-  // every hit on screen. A note whose line has left the results is dropped from
-  // the attachment, not from the store.
+  // A note quotes the line it was written on, so the snapshot needs that line's
+  // text. Only the lines carrying a note are looked up: a wide search holds
+  // thousands of hits and this runs again on every streamed batch, so building
+  // a target key for all of them would cost the whole result set per flush.
+  // A note whose line has left the results is dropped from the attachment, not
+  // from the store.
+  const { commentsByTarget } = reviewActions;
   const lineTextByTarget = useMemo(() => {
+    if (commentsByTarget.size === 0) {
+      return NO_LINE_TEXT;
+    }
     const byTarget = new Map<string, string>();
     for (const source of sources) {
       for (const line of source.lines) {
@@ -55,11 +65,13 @@ export function useProjectSearchNotes(input: {
           side: "new",
           lineNumber: line.line,
         });
-        byTarget.set(key, line.text);
+        if (commentsByTarget.has(key)) {
+          byTarget.set(key, line.text);
+        }
       }
     }
     return byTarget;
-  }, [sources]);
+  }, [commentsByTarget, sources]);
 
   const noteAttachment = useSearchNoteAttachmentSnapshot({
     key: noteDraftKey,

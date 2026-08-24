@@ -1,6 +1,11 @@
-import type { HighlightToken } from "@otto-code/highlight";
+import { isLanguageSupported, type HighlightToken } from "@otto-code/highlight";
 import type { FileSearchMatch } from "@otto-code/protocol/messages";
-import type { PreviewLineMatchRange } from "@/components/file-preview-find";
+import {
+  splitTokensForMatches,
+  type MatchedTokenSegment,
+  type PreviewLineMatchRange,
+} from "@/components/file-preview-find";
+import { extensionFromPath, tokenizeToLines } from "@/utils/highlight-cache";
 
 /**
  * One rendered code row. Several matches on the same source line collapse into
@@ -76,4 +81,43 @@ export function resolveSearchLineTokens(
     return [...tokens];
   }
   return [{ text, style: null }];
+}
+
+/**
+ * The grammar extension to highlight a result file's hits with, or null when
+ * the highlighter has no grammar for it (those lines render as plain text).
+ */
+export function searchHighlightExtension(filePath: string): string | null {
+  const ext = extensionFromPath(filePath);
+  return ext !== null && isLanguageSupported(`x.${ext}`) ? ext : null;
+}
+
+/**
+ * A line's rendered segments, tokenized on first sight and then kept for as
+ * long as the line itself is (the session holds the result objects the display
+ * lines hang off, so a line is tokenized at most once per search).
+ *
+ * This has to be a cache of its own rather than a lean on `tokenizeToLines`:
+ * that cache holds 200 entries shared across the whole app, and a wide search
+ * carries thousands of lines, so it would thrash and re-parse every line on
+ * every scroll pass. Resolving lazily per line also means only the lines the
+ * reader has actually scrolled past are ever parsed.
+ */
+const segmentCache = new WeakMap<SearchDisplayLine, MatchedTokenSegment[]>();
+
+export function getSearchLineSegments(
+  line: SearchDisplayLine,
+  ext: string | null,
+): MatchedTokenSegment[] {
+  const cached = segmentCache.get(line);
+  if (cached) {
+    return cached;
+  }
+  // Each hit is tokenized on its own. They are disjoint lines lifted out of a
+  // file, so joining them would let an unterminated string or comment on one
+  // bleed into the next.
+  const tokens = ext === null ? null : tokenizeToLines(line.text, ext)?.[0];
+  const segments = splitTokensForMatches(resolveSearchLineTokens(line.text, tokens), line.ranges);
+  segmentCache.set(line, segments);
+  return segments;
 }

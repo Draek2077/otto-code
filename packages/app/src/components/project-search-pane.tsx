@@ -112,11 +112,66 @@ interface ResultRow {
   key: string;
   kind: "file" | "matches";
   file: SearchFileResult;
-  /** One entry per matched source line, for a "matches" row. */
+  /** The slice of matched source lines a "matches" row renders. */
   lines?: readonly SearchDisplayLine[];
+  /** The file's highest matched line, so every chunk shares one gutter width. */
+  maxLineNumber?: number;
+  isFirstChunk?: boolean;
+  isLastChunk?: boolean;
+  /** Index of the chunk's first line within the file, for stable row testIDs. */
+  chunkStart?: number;
 }
 
 const EMPTY_LINES: readonly SearchDisplayLine[] = [];
+
+/**
+ * How many hits one list row carries.
+ *
+ * A file's hits are split into rows of this size rather than one row per file,
+ * because the list virtualizes per row: a single row holding a 200-hit file
+ * mounts all 200 lines the moment any part of it comes near the viewport, and
+ * a wide search has several such files in flight at once. Chunking bounds what
+ * an approaching row can cost while keeping a file's hits in one well.
+ */
+const MATCH_ROWS_PER_CHUNK = 16;
+
+/**
+ * Display lines, cached against the file object a result event created.
+ *
+ * Module-level, not a component ref: the pane unmounts whenever the reader
+ * leaves the Search tab, and rebuilding (and re-tokenizing) every line on the
+ * way back in is exactly the cost the retained session exists to avoid.
+ */
+interface FileDisplayLines {
+  lines: readonly SearchDisplayLine[];
+  /** The same lines, pre-sliced into the rows the list renders. */
+  chunks: readonly (readonly SearchDisplayLine[])[];
+  maxLineNumber: number;
+}
+
+const displayLinesCache = new WeakMap<SearchFileResult, FileDisplayLines>();
+
+function getFileDisplayLines(file: SearchFileResult): FileDisplayLines {
+  const cached = displayLinesCache.get(file);
+  if (cached) {
+    return cached;
+  }
+  const lines = buildSearchDisplayLines(file.matches, (match) => buildMatchKey(file.path, match));
+  let maxLineNumber = 0;
+  for (const line of lines) {
+    maxLineNumber = Math.max(maxLineNumber, line.line);
+  }
+  // Sliced once and kept: a streaming search rebuilds the row list per batch,
+  // and slicing there would hand every chunk a new array, so no already-mounted
+  // row could hold its memo.
+  const chunks: (readonly SearchDisplayLine[])[] = [];
+  for (let start = 0; start < lines.length; start += MATCH_ROWS_PER_CHUNK) {
+    chunks.push(lines.slice(start, start + MATCH_ROWS_PER_CHUNK));
+  }
+  const entry = { lines, chunks, maxLineNumber };
+  displayLinesCache.set(file, entry);
+  return entry;
+}
 
 /** Right-click target for the pane-level "add to context" menu (web only). */
 type SearchContextMenuRequest =
@@ -414,9 +469,15 @@ export function ProjectSearchPane({
     [updateSession],
   );
 
+  // Only computed while the replace band is open: it walks every match in the
+  // result set, and a streaming search would otherwise re-walk all of them on
+  // every batch for a number nothing is rendering.
   const selection = useMemo(() => {
     let matches = 0;
     const files: Array<{ file: SearchFileResult; matches: FileSearchMatch[] }> = [];
+    if (!replaceOpen) {
+      return { files, matches };
+    }
     for (const file of results) {
       const picked = file.matches.filter(
         (match) => !uncheckedMatches.has(buildMatchKey(file.path, match)),
@@ -427,7 +488,7 @@ export function ProjectSearchPane({
       }
     }
     return { files, matches };
-  }, [results, uncheckedMatches]);
+  }, [replaceOpen, results, uncheckedMatches]);
 
   const runReplace = useCallback(async () => {
     if (!client || replacing || selection.files.length === 0) {
@@ -538,10 +599,6 @@ export function ProjectSearchPane({
   }, []);
   const togglesSpacerStyle = useMemo(() => ({ width: togglesWidth }), [togglesWidth]);
 
-  // Display lines are cached against the file object a result event created, so
-  // a streaming search rebuilding `rows` per event does not re-derive (and
-  // re-render) every earlier file's block.
-  const displayLinesCache = useRef(new WeakMap<SearchFileResult, readonly SearchDisplayLine[]>());
   const rows = useMemo<ResultRow[]>(() => {
     const next: ResultRow[] = [];
     for (const file of results) {
@@ -549,25 +606,33 @@ export function ProjectSearchPane({
       if (collapsedFiles.has(file.path) || file.matches.length === 0) {
         continue;
       }
-      let lines = displayLinesCache.current.get(file);
-      if (!lines) {
-        lines = buildSearchDisplayLines(file.matches, (match) => buildMatchKey(file.path, match));
-        displayLinesCache.current.set(file, lines);
-      }
-      next.push({ key: `matches:${file.path}`, kind: "matches", file, lines });
+      const { chunks, maxLineNumber } = getFileDisplayLines(file);
+      chunks.forEach((chunk, chunkIndex) => {
+        next.push({
+          key: `matches:${file.path}:${chunkIndex}`,
+          kind: "matches",
+          file,
+          lines: chunk,
+          maxLineNumber,
+          isFirstChunk: chunkIndex === 0,
+          isLastChunk: chunkIndex === chunks.length - 1,
+          chunkStart: chunkIndex * MATCH_ROWS_PER_CHUNK,
+        });
+      });
     }
     return next;
   }, [collapsedFiles, results]);
 
-  // Inline notes on hits, on the review surface Changes writes to.
+  // Inline notes on hits, on the review surface Changes writes to. Sourced from
+  // the results rather than from `rows`, which also churns when a file is
+  // collapsed - and re-deriving this is proportional to the whole result set.
   const noteSources = useMemo(
     () =>
-      rows.flatMap((row) =>
-        row.kind === "matches"
-          ? [{ filePath: row.file.path, lines: row.lines ?? EMPTY_LINES }]
-          : [],
-      ),
-    [rows],
+      results.map((file) => ({
+        filePath: file.path,
+        lines: getFileDisplayLines(file).lines,
+      })),
+    [results],
   );
   const reviewActions = useProjectSearchNotes({
     serverId,
@@ -704,6 +769,9 @@ export function ProjectSearchPane({
         <SearchCodeBlock
           filePath={row.file.path}
           lines={row.lines ?? EMPTY_LINES}
+          maxLineNumber={row.maxLineNumber ?? 0}
+          isFirstChunk={row.isFirstChunk ?? true}
+          isLastChunk={row.isLastChunk ?? true}
           showSelection={showReplaceControls && replaceOpen}
           wrapLines={wrapLines}
           isLineChecked={isLineChecked}
@@ -713,6 +781,7 @@ export function ProjectSearchPane({
           onLineContextMenu={handleLineContextMenu}
           reviewActions={reviewActions}
           testIDPrefix={`project-search-match-${row.file.path}`}
+          lineOffset={row.chunkStart ?? 0}
         />
       );
     },
@@ -884,6 +953,13 @@ export function ProjectSearchPane({
           style={styles.resultsList}
           contentContainerStyle={styles.resultsListContent}
           stickyHeaderIndices={stickyHeaderIndices}
+          // A wide search runs to thousands of hits, so the window is held
+          // close: the defaults keep ten viewports of rows either side mounted,
+          // which for code rows is tens of thousands of nodes.
+          initialNumToRender={12}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={50}
+          windowSize={5}
           onLayout={resultsScroll.onLayout}
           onScroll={resultsScroll.onScroll}
           onContentSizeChange={resultsScroll.onContentSizeChange}

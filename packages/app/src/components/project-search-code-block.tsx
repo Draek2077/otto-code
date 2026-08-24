@@ -1,14 +1,13 @@
 import { memo, useCallback, useMemo, useState, type ComponentProps } from "react";
 import { Pressable, Text, View, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { isLanguageSupported } from "@otto-code/highlight";
 import { Check } from "@/components/icons/material-icons";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import {
-  resolveSearchLineTokens,
+  getSearchLineSegments,
+  searchHighlightExtension,
   type SearchDisplayLine,
 } from "@/components/project-search-code-lines";
-import { splitTokensForMatches, type MatchedTokenSegment } from "@/components/file-preview-find";
 import { findHighlightStyles } from "@/components/find-highlight-styles";
 import { isNative, isWeb } from "@/constants/platform";
 import { useAppSettings, useAppSettingValue } from "@/hooks/use-settings";
@@ -23,7 +22,6 @@ import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { Theme } from "@/styles/theme";
 import { buildReviewableDiffTargetKey, type ReviewableDiffTarget } from "@/utils/diff-layout";
-import { extensionFromPath, tokenizeToLines } from "@/utils/highlight-cache";
 import type { ReviewDraftComment } from "@/review";
 
 const accentForegroundIconColorMapping = (theme: Theme) => ({
@@ -53,7 +51,6 @@ function getWrappedTextStyle(wrapLines: boolean): WrappedWebTextStyle | undefine
     : { whiteSpace: "pre", overflowWrap: "normal" };
 }
 
-const EMPTY_SEGMENTS: MatchedTokenSegment[] = [];
 const EMPTY_COMMENTS: readonly ReviewDraftComment[] = [];
 
 /**
@@ -122,6 +119,15 @@ function buildSearchReviewTarget(
 interface SearchCodeBlockProps {
   filePath: string;
   lines: readonly SearchDisplayLine[];
+  /**
+   * The file's highest matched line, which sizes the gutter. Taken from the
+   * file rather than from `lines`, so every chunk of one file's hits rules the
+   * same gutter and the code column does not step as the reader scrolls.
+   */
+  maxLineNumber: number;
+  /** A file's hits arrive in chunks; only the outer ones frame the well. */
+  isFirstChunk: boolean;
+  isLastChunk: boolean;
   /** Replace mode: each line carries the selection for its own matches. */
   showSelection: boolean;
   /** Wrap long hits across several rows instead of clipping them to one. */
@@ -137,6 +143,12 @@ interface SearchCodeBlockProps {
   /** Inline comments, on the review surface Changes writes to. */
   reviewActions?: InlineReviewActions;
   testIDPrefix: string;
+  /**
+   * Index of this chunk's first line within the file. A line's position has to
+   * be named against the file, not against the chunk it happened to land in,
+   * or two chunks would report the same line indices.
+   */
+  lineOffset: number;
 }
 
 /**
@@ -147,6 +159,9 @@ interface SearchCodeBlockProps {
 export const SearchCodeBlock = memo(function SearchCodeBlock({
   filePath,
   lines,
+  maxLineNumber,
+  isFirstChunk,
+  isLastChunk,
   showSelection,
   wrapLines,
   isLineChecked,
@@ -156,6 +171,7 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
   onLineContextMenu,
   reviewActions,
   testIDPrefix,
+  lineOffset,
 }: SearchCodeBlockProps) {
   const codeFontSize = useAppSettingValue(selectCodeFontSize);
   const { settings } = useAppSettings();
@@ -169,16 +185,12 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
     };
   }, [codeFontSize, codeLineHeight, settings.monoFontFamily]);
   const gutterWidth = useMemo(() => {
-    let maxLine = 0;
-    for (const line of lines) {
-      maxLine = Math.max(maxLine, line.line);
-    }
     // The right inset rides inside the number cell (not on the gutter View), so
     // the cell reaches the divider: the review gutter's "+" button anchors to
     // the cell's right edge, and that is what centers it on the divider line -
     // the same geometry the diff gutter uses.
-    return lineNumberGutterWidth(maxLine, codeFontSize, GUTTER_RIGHT_INSET, 1);
-  }, [codeFontSize, lines]);
+    return lineNumberGutterWidth(maxLineNumber, codeFontSize, GUTTER_RIGHT_INSET, 1);
+  }, [codeFontSize, maxLineNumber]);
   const gutterNumberStyle = useMemo(
     () => [styles.gutterNumber, typography, inlineUnistylesStyle({ width: gutterWidth })],
     [gutterWidth, typography],
@@ -189,35 +201,22 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
     [codeLineHeight],
   );
 
-  // Each preview line is tokenized on its own. They are disjoint lines lifted
-  // out of a file, so joining them would let an unterminated string or comment
-  // on one bleed into the next. The hits are then cut out of those tokens by
-  // the same splitter the read-only preview's find uses.
-  const { segmentsByLine, isHighlighted } = useMemo(() => {
-    const ext = extensionFromPath(filePath);
-    const supported = ext !== null && isLanguageSupported(`x.${ext}`);
-    return {
-      isHighlighted: supported,
-      segmentsByLine: lines.map((line) =>
-        splitTokensForMatches(
-          resolveSearchLineTokens(
-            line.text,
-            supported ? tokenizeToLines(line.text, ext)?.[0] : null,
-          ),
-          line.ranges,
-        ),
-      ),
-    };
-  }, [filePath, lines]);
+  // The grammar, resolved once for the file. Each line's tokens are cut out
+  // lazily by the line itself (see getSearchLineSegments): a wide search can
+  // carry thousands of hits, and tokenizing a whole file's worth up front costs
+  // the same whether the reader ever scrolls to them or not.
+  const highlightExt = useMemo(() => searchHighlightExtension(filePath), [filePath]);
 
   const codeTextStyle = useMemo(
     () => [
       styles.codeText,
-      !isHighlighted && styles.codeTextPlain,
+      // No grammar for this file, so there are no token colours to carry. The
+      // diff viewer mutes an unhighlighted context line the same way.
+      highlightExt === null && styles.codeTextPlain,
       typography,
       getWrappedTextStyle(wrapLines),
     ],
-    [isHighlighted, typography, wrapLines],
+    [highlightExt, typography, wrapLines],
   );
   const handleToggleLine = useCallback(
     (line: SearchDisplayLine) => onToggleLine(filePath, line),
@@ -235,15 +234,24 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
     [filePath, onLineContextMenu],
   );
 
+  const surfaceStyle = useMemo(
+    () => [
+      styles.surface,
+      isFirstChunk && styles.surfaceFirstChunk,
+      isLastChunk && styles.surfaceLastChunk,
+    ],
+    [isFirstChunk, isLastChunk],
+  );
+
   return (
-    <View style={styles.surface} dataSet={CODE_SURFACE_DATASET}>
+    <View style={surfaceStyle} dataSet={CODE_SURFACE_DATASET}>
       {lines.map((line, index) => (
         <SearchCodeLine
           key={line.key}
           filePath={filePath}
           line={line}
-          lineIndex={index}
-          segments={segmentsByLine[index] ?? EMPTY_SEGMENTS}
+          lineIndex={lineOffset + index}
+          highlightExt={highlightExt}
           showSelection={showSelection}
           wrapLines={wrapLines}
           checked={isLineChecked(filePath, line)}
@@ -257,7 +265,7 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
           onToggleLine={handleToggleLine}
           onPressLine={handlePressLine}
           onLineContextMenu={handleLineContextMenu}
-          testID={`${testIDPrefix}-${index}`}
+          testID={`${testIDPrefix}-${lineOffset + index}`}
         />
       ))}
     </View>
@@ -271,7 +279,7 @@ const SearchCodeLine = memo(function SearchCodeLine({
   filePath,
   line,
   lineIndex,
-  segments,
+  highlightExt,
   showSelection,
   wrapLines,
   checked,
@@ -290,7 +298,8 @@ const SearchCodeLine = memo(function SearchCodeLine({
   filePath: string;
   line: SearchDisplayLine;
   lineIndex: number;
-  segments: readonly MatchedTokenSegment[];
+  /** The file's grammar, or null when its lines render as plain text. */
+  highlightExt: string | null;
   showSelection: boolean;
   wrapLines: boolean;
   checked: boolean;
@@ -337,9 +346,15 @@ const SearchCodeLine = memo(function SearchCodeLine({
     ],
     [isHovered, rowMinHeightStyle, wrapLines],
   );
+  // Tokenized on first render and cached against the line, so scrolling back
+  // over a result never re-parses it.
   const keyedSegments = useMemo(
-    () => segments.map((segment, index) => ({ key: `${index}-${segment.text}`, segment })),
-    [segments],
+    () =>
+      getSearchLineSegments(line, highlightExt).map((segment, index) => ({
+        key: `${index}-${segment.text}`,
+        segment,
+      })),
+    [highlightExt, line],
   );
   const lineBodyStyle = useMemo(
     () => [styles.lineBody, wrapLines && styles.lineBodyWrapped],
@@ -427,13 +442,18 @@ const SearchCodeLine = memo(function SearchCodeLine({
 
 const styles = StyleSheet.create((theme) => ({
   // The Changes diff well: same surface, same framing, so a result block and a
-  // diff block read as the same kind of thing.
+  // diff block read as the same kind of thing. The frame is drawn by the outer
+  // chunks only - a well split across rows must not grow hairlines inside it.
   surface: {
+    backgroundColor: theme.colors.surface1,
+  },
+  surfaceFirstChunk: {
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
+  },
+  surfaceLastChunk: {
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
-    backgroundColor: theme.colors.surface1,
   },
   codeLine: {
     flexDirection: "row",

@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- Stop a wide search from bogging the app down: a file's hits render in bounded rows so the list can virtualize them, each hit is syntax-highlighted once instead of on every scroll pass, and the note and selection bookkeeping no longer walks every result on every streamed batch
 - Center the Search gutter's comment button on the gutter divider, where the Changes diff already puts it
 
 ## 0.8.15 - 2026-08-23
