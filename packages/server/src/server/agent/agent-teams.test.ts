@@ -98,7 +98,7 @@ describe("resolveTeamSchedulerSnapshot", () => {
       entries: readyEntries,
     });
     // Luna (member order first) is unavailable; Dash wins.
-    expect(snapshot.personalityId).toBe("p-dash");
+    expect(snapshot.profileId).toBe("p-dash");
   });
 
   test("hard-fails when no team is active", () => {

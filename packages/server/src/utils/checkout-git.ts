@@ -27,6 +27,7 @@ import {
 } from "./run-git-command.js";
 import { isOttoOwnedWorktreeCwd, resolveOttoWorktreesBaseRoot } from "./worktree.js";
 import {
+  branchNameFromRef,
   normalizeAndValidateBaseRefName,
   readOttoWorktreeMetadata,
   setOttoWorktreeBaseRefName,
@@ -1152,7 +1153,8 @@ async function getOttoWorktreeForCwd(
 }
 
 function readOttoWorktreeBaseRef(worktreeRoot: string): string | null {
-  return readOttoWorktreeMetadata(worktreeRoot)?.baseRefName ?? null;
+  const metadata = readOttoWorktreeMetadata(worktreeRoot);
+  return metadata?.baseRef ?? metadata?.baseRefName ?? null;
 }
 
 async function getResolvedBaseRefForCwd(
@@ -1449,7 +1451,39 @@ function isExplicitBaseRefMismatch(input: {
   if (baseSource !== "user" && baseSource !== "worktree") {
     return false;
   }
+  // A worktree stores its exact creation ref, while older callers send the
+  // branch display name. Treat only that unqualified alias as equivalent;
+  // another explicit remote (for example origin/main vs upstream/main) is a
+  // genuine mismatch.
+  if (
+    baseSource === "worktree" &&
+    !requestedBaseRef.startsWith("refs/") &&
+    !requestedBaseRef.startsWith("origin/") &&
+    branchNameFromRef(storedBaseRef) === requestedBaseRef
+  ) {
+    return false;
+  }
   return requestedBaseRef !== storedBaseRef;
+}
+
+function resolveRequestedBaseRef(input: {
+  storedBaseRef: string | null;
+  baseSource: CheckoutBaseSource | null;
+  requestedBaseRef: string | undefined;
+  resolvedBaseRef: string | null;
+}): string | null {
+  const { storedBaseRef, baseSource, requestedBaseRef, resolvedBaseRef } = input;
+  if (
+    storedBaseRef &&
+    baseSource === "worktree" &&
+    requestedBaseRef &&
+    !requestedBaseRef.startsWith("refs/") &&
+    !requestedBaseRef.startsWith("origin/") &&
+    branchNameFromRef(storedBaseRef) === requestedBaseRef
+  ) {
+    return storedBaseRef;
+  }
+  return requestedBaseRef ?? resolvedBaseRef;
 }
 
 async function isWorkingTreeDirty(cwd: string, context?: CheckoutContext): Promise<boolean> {
@@ -1756,6 +1790,16 @@ async function resolveBestComparisonBaseRef(
   baseRef: string,
   context?: CheckoutContext,
 ): Promise<string> {
+  // A worktree can be cut from a tracking ref on any remote, not only origin.
+  // That exact ref records the commit the child actually started from. Rewriting
+  // it to a same-named local/origin branch pulls base-side commits into the
+  // child's change count.
+  if (baseRef.startsWith("refs/remotes/") || baseRef.startsWith("refs/heads/")) {
+    if (await doesGitRefExist(cwd, baseRef, context)) {
+      return baseRef;
+    }
+    throw new Error(`Base ref not found: ${baseRef}`);
+  }
   const normalized = normalizeComparisonBaseRefName(baseRef);
   const [hasLocal, hasOrigin] = await Promise.all([
     doesGitRefExist(cwd, `refs/heads/${normalized.localName}`, context),
@@ -2517,12 +2561,15 @@ export async function getCheckoutStatus(
   const ottoWorktree = facts.ottoWorktree;
   const isDirty = await isWorkingTreeDirty(cwd, context);
   const hasRemote = remoteUrl !== null;
-  const baseRef = facts.resolvedBaseRef;
+  const comparisonBaseRef = facts.resolvedBaseRef;
+  const baseRef = ottoWorktree.isOttoOwnedWorktree
+    ? (readOttoWorktreeMetadata(ottoWorktree.worktreeRoot)?.baseRefName ?? comparisonBaseRef)
+    : comparisonBaseRef;
   const mainRepoRoot = facts.mainRepoRoot;
   const factsContext = { ...context, facts };
   const [aheadBehind, upstreamRef, aheadOfOrigin, behindOfOrigin] = await Promise.all([
-    baseRef && currentBranch
-      ? getAheadBehind(cwd, baseRef, currentBranch, factsContext)
+    comparisonBaseRef && currentBranch
+      ? getAheadBehind(cwd, comparisonBaseRef, currentBranch, factsContext)
       : Promise.resolve(null),
     hasRemote && currentBranch
       ? getConfiguredUpstreamRef(cwd, currentBranch, factsContext)
@@ -3245,7 +3292,12 @@ async function resolveCheckoutDiffRefs(
     return { baseRef: "HEAD", includeUntracked: true };
   }
   const { storedBaseRef, resolvedBaseRef, baseSource } = await resolveBaseRefForCwd(cwd, context);
-  const baseRef = compare.baseRef ?? resolvedBaseRef;
+  const baseRef = resolveRequestedBaseRef({
+    storedBaseRef,
+    baseSource,
+    requestedBaseRef: compare.baseRef,
+    resolvedBaseRef,
+  });
   if (!baseRef) {
     return null;
   }
@@ -3804,7 +3856,12 @@ export async function mergeToBase(
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
   const { storedBaseRef, resolvedBaseRef, baseSource } = await resolveBaseRefForCwd(cwd, context);
-  const baseRef = options.baseRef ?? resolvedBaseRef;
+  const baseRef = resolveRequestedBaseRef({
+    storedBaseRef,
+    baseSource,
+    requestedBaseRef: options.baseRef,
+    resolvedBaseRef,
+  });
   if (!baseRef) {
     throw new Error("Unable to determine base branch for merge");
   }
@@ -3813,6 +3870,9 @@ export async function mergeToBase(
   }
   if (!currentBranch) {
     throw new Error("Unable to determine current branch for merge");
+  }
+  if (baseRef.startsWith("refs/remotes/")) {
+    throw new Error(`No local merge target is recorded for base ref ${baseRef}`);
   }
   let normalizedBaseRef = baseRef;
   normalizedBaseRef = normalizeLocalBranchRefName(normalizedBaseRef);
@@ -3880,7 +3940,12 @@ export async function mergeFromBase(
   }
 
   const { storedBaseRef, resolvedBaseRef, baseSource } = await resolveBaseRefForCwd(cwd, context);
-  const baseRef = options.baseRef ?? resolvedBaseRef;
+  const baseRef = resolveRequestedBaseRef({
+    storedBaseRef,
+    baseSource,
+    requestedBaseRef: options.baseRef,
+    resolvedBaseRef,
+  });
   if (!baseRef) {
     throw new Error("Unable to determine base branch for merge");
   }
@@ -3899,8 +3964,9 @@ export async function mergeFromBase(
     }
   }
 
-  const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
-  const bestBaseRef = await resolveMostAheadBaseRef(cwd, normalizedBaseRef);
+  const bestBaseRef = baseRef.startsWith("refs/remotes/")
+    ? await resolveBestComparisonBaseRef(cwd, baseRef, context)
+    : await resolveMostAheadBaseRef(cwd, normalizeLocalBranchRefName(baseRef));
   if (bestBaseRef === currentBranch) {
     return;
   }

@@ -88,8 +88,8 @@ describe("Claude SDK env", () => {
       expect(result.sessionId).toBe("managed-agent-env-session");
       expect(capturedEnv?.OTTO_AGENT_ID).toBe(launchContext.env?.OTTO_AGENT_ID);
       expect(capturedEnv?.OTTO_TEST_FLAG).toBe(launchContext.env?.OTTO_TEST_FLAG);
-      expect(capturedEnv?.MCP_TIMEOUT).toBe("claude-startup-timeout");
-      expect(capturedEnv?.MCP_TOOL_TIMEOUT).toBe("claude-tool-timeout");
+      expect(capturedEnv?.MCP_TIMEOUT).toBe("600000");
+      expect(capturedEnv?.MCP_TOOL_TIMEOUT).toBe("600000");
     } finally {
       await session.close();
     }

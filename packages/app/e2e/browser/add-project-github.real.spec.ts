@@ -75,7 +75,6 @@ test.describe("Add Project GitHub flow", () => {
       projectId = await expectOpenedProject(page, repository.name);
       await expectNewWorkspaceForAddedProject(page, {
         serverId: getServerId(),
-        projectId,
         projectName: repository.name,
         projectPath: checkoutPath,
       });

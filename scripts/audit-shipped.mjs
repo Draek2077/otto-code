@@ -155,13 +155,18 @@ const audit = runAudit();
 const failures = [];
 for (const [name, vuln] of Object.entries(audit.vulnerabilities ?? {})) {
   if (vuln.severity !== "high" && vuln.severity !== "critical") continue;
+  // npm also reports parents that are only affected through another package.
+  // The underlying package is listed separately with its advisory object, so
+  // only it can establish that a vulnerable node reaches the shipped closure.
+  // Without this distinction, a shipped parent such as expo is reported even
+  // when every affected CLI/Metro dependency is pruned as build tooling.
+  const directAdvisories = vuln.via.filter((via) => typeof via === "object");
+  if (directAdvisories.length === 0) continue;
   const shippedNodes = (vuln.nodes ?? []).filter(
     (node) => closure.has(node) && !ALLOWLISTED_PATHS.has(node),
   );
   if (shippedNodes.length === 0) continue;
-  const advisories = vuln.via
-    .filter((via) => typeof via === "object")
-    .map((via) => `${via.title} (${via.url})`);
+  const advisories = directAdvisories.map((via) => `${via.title} (${via.url})`);
   failures.push({ name, severity: vuln.severity, shippedNodes, advisories });
 }
 

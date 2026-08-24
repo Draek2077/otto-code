@@ -5,10 +5,12 @@
 // sides call it and this module must not value-import the shell; the shell
 // imports it back. Type-only imports from service.ts are erased at runtime,
 // so there is no module cycle.
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs, type Stats } from "fs";
 import type { FileHandle } from "fs/promises";
 import path from "path";
+import { promisify } from "util";
 import { writeFileAtomic } from "../atomic-file.js";
 import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../path-utils.js";
 import type { ExplorerEntryKind, ReadFileParams, WriteExplorerFileResult } from "./service.js";
@@ -37,6 +39,7 @@ export interface ExplorerFileIdentity {
 export const ACCESS_OUTSIDE_WORKSPACE_MESSAGE = "Access outside of workspace is not allowed";
 
 const WORKSPACE_ROOT_TARGET_MESSAGE = "The workspace root cannot be created, renamed, or deleted";
+const execFileAsync = promisify(execFile);
 
 interface ScopedPathParams {
   root: string;
@@ -302,22 +305,47 @@ export async function renameExplorerEntry({
     throw new Error("Cannot move a folder into itself");
   }
 
+  let isCaseOnlyRename = false;
   try {
-    await fs.lstat(destination.resolvedPath);
-    return { status: "exists" };
+    const destinationStats = await fs.lstat(destination.resolvedPath);
+    isCaseOnlyRename =
+      (process.platform === "win32" || process.platform === "darwin") &&
+      source.resolvedPath.toLocaleLowerCase() === destination.resolvedPath.toLocaleLowerCase() &&
+      stats.dev === destinationStats.dev &&
+      stats.ino === destinationStats.ino;
+    if (!isCaseOnlyRename) {
+      return { status: "exists" };
+    }
   } catch (error) {
     if (!isMissingEntryError(error)) {
       throw error;
     }
   }
 
-  await fs.rename(source.resolvedPath, destination.resolvedPath);
+  const gitRoot = expandUserPath(root);
+  if (await isGitTracked(gitRoot, source.relativePath)) {
+    await execFileAsync("git", ["mv", "--", source.relativePath, destination.relativePath], {
+      cwd: gitRoot,
+    });
+  } else {
+    await fs.rename(source.resolvedPath, destination.resolvedPath);
+  }
   return {
     status: "ok",
     from: source.relativePath,
     to: destination.relativePath,
     kind: stats.isDirectory() ? "directory" : "file",
   };
+}
+
+async function isGitTracked(root: string, relativePath: string): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["ls-files", "--error-unmatch", "--", relativePath], { cwd: root });
+    return true;
+  } catch {
+    // Non-Git workspaces and untracked entries both use the filesystem path.
+    return false;
+  }
 }
 
 /**

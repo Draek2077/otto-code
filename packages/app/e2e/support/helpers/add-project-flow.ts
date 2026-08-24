@@ -74,7 +74,6 @@ export async function expectNewWorkspaceForAddedProject(
   page: Page,
   input: {
     serverId: string;
-    projectId: string;
     projectName: string;
     projectPath: string;
   },
@@ -83,7 +82,11 @@ export async function expectNewWorkspaceForAddedProject(
   const url = new URL(page.url());
   expect(url.pathname).toBe("/new");
   expect(url.searchParams.get("serverId")).toBe(input.serverId);
-  expect(url.searchParams.get("projectId")).toBe(input.projectId);
+  // Sidebar project rows are keyed by their aggregate view key, while the
+  // New workspace route carries the daemon's opaque project id. They are
+  // intentionally different identities, so assert that routing selected an
+  // id and that the corresponding named project is presented to the user.
+  expect(url.searchParams.get("projectId")).toMatch(/^prj_/u);
   expect(url.searchParams.get("dir")).toBe(input.projectPath);
   await expect(page.getByRole("button", { name: "Workspace project" })).toContainText(
     input.projectName,

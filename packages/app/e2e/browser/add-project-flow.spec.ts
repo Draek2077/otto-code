@@ -161,10 +161,9 @@ test.describe("New project page", () => {
 
         await page.getByTestId("new-project-submit").click();
 
-        const projectId = await expectOpenedProject(page, directoryName);
+        await expectOpenedProject(page, directoryName);
         await expectNewWorkspaceForAddedProject(page, {
           serverId: SECONDARY_HOST_ID,
-          projectId,
           projectName: directoryName,
           projectPath: directoryPath,
         });
@@ -201,7 +200,6 @@ test.describe("New project page", () => {
       projectId = await expectOpenedProject(page, directoryName);
       await expectNewWorkspaceForAddedProject(page, {
         serverId: getServerId(),
-        projectId,
         projectName: directoryName,
         projectPath: directoryPath,
       });
