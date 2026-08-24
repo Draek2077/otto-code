@@ -51,7 +51,7 @@ export interface AgentScreenMachineInput {
   isArchivingCurrentAgent: boolean;
   isHistorySyncing: boolean;
   needsAuthoritativeSync: boolean;
-  visibilityCatchUpStatus: "ready" | "pending" | "error";
+  visibilityCatchUpStatus: "ready" | "pending" | "error" | "missing";
   continuity: AgentScreenContinuity;
   hasHydratedHistoryBefore: boolean;
 }
@@ -86,7 +86,8 @@ export type AgentScreenReadySyncState =
       status: "catching_up";
       ui: "overlay" | "silent";
     }
-  | { status: "sync_error" };
+  | { status: "sync_error" }
+  | { status: "sync_missing" };
 
 export type AgentScreenViewState =
   | {
@@ -178,6 +179,11 @@ function resolveAgentScreenSync(args: {
   }
   if (input.missingAgentState.kind === "error") {
     return { status: "sync_error" };
+  }
+  // The host answered, and the answer was that the chat is gone. That is a
+  // settled fact, not a failed attempt, so it never presents as a retry.
+  if (input.visibilityCatchUpStatus === "missing") {
+    return { status: "sync_missing" };
   }
   if (input.visibilityCatchUpStatus === "error") {
     return { status: "sync_error" };

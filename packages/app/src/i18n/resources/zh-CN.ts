@@ -470,6 +470,7 @@ export const zhCN: TranslationResources = {
       archivingTitle: "正在归档 Agent...",
       archivingSubtitle: "请稍候，我们正在归档这个 Agent。",
       timelineSyncFailed: "无法刷新代理历史记录。正在重试…",
+      timelineAgentMissing: "该聊天在主机上已不存在。",
     },
     unavailable: {
       selectedHost: "选中的 Host",

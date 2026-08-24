@@ -21,7 +21,7 @@ interface ViewedTimelineSyncPorts {
 }
 
 export type TimelineDeliveryMode = "legacy" | "selective";
-export type ViewedTimelineStatus = "ready" | "pending" | "error";
+export type ViewedTimelineStatus = "ready" | "pending" | "error" | "missing";
 
 export interface ViewedTimelineUiBridge {
   replaceVisibleAgentIds(sourceId: string, agentIds: string[]): void;
@@ -38,9 +38,26 @@ export interface ViewedTimelineSync extends ViewedTimelineUiBridge {
 }
 
 const RETRY_DELAY_MS = 1_000;
+// A refused catch-up used to retry at a flat 1Hz for as long as the chat stayed
+// open, which on a host that will never answer is a request per second forever.
+// Back off instead: transient trouble still clears within a second or two, and a
+// standing failure settles into a cheap heartbeat.
+const MAX_RETRY_DELAY_MS = 30_000;
 const VIEWED_TIMELINE_HOT_AGENT_LIMIT = 5;
 
-type CatchUpStatus = "running" | "complete" | "error";
+// The daemon answers a timeline fetch for an agent it no longer has with this
+// error. It is a fact about the host, not a hiccup on the way to it, so retrying
+// can only ever produce the same answer.
+function isMissingAgentError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /agent not found/i.test(message);
+}
+
+function nextRetryDelayMs(failureCount: number): number {
+  return Math.min(RETRY_DELAY_MS * 2 ** Math.max(0, failureCount - 1), MAX_RETRY_DELAY_MS);
+}
+
+type CatchUpStatus = "running" | "complete" | "error" | "missing";
 
 interface CatchUpState {
   generation: number;
@@ -78,7 +95,10 @@ function decideCatchUp(input: {
     }
     return "replace";
   }
-  return input.current.status === "running" || input.current.status === "complete"
+  return input.current.status === "running" ||
+    input.current.status === "complete" ||
+    // A gone chat stays gone until the membership or the connection is rebuilt.
+    input.current.status === "missing"
     ? "keep"
     : "replace";
 }
@@ -100,6 +120,8 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
   const pendingCatchUps = new Map<string, ProjectedTimelineForwardFetchPlan>();
   const visibilityCatchUpPending = new Set<string>();
   const visibilityCatchUpErrors = new Set<string>();
+  const visibilityCatchUpMissing = new Set<string>();
+  const catchUpFailureCounts = new Map<string, number>();
   const listeners = new Set<() => void>();
   let active = true;
   let connected = false;
@@ -144,7 +166,20 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
   const setVisibilityCatchUpReady = (agentId: string) => {
     const wasPending = visibilityCatchUpPending.delete(agentId);
     const hadError = visibilityCatchUpErrors.delete(agentId);
-    if (wasPending || hadError) notifyListeners();
+    const wasMissing = visibilityCatchUpMissing.delete(agentId);
+    catchUpFailureCounts.delete(agentId);
+    if (wasPending || hadError || wasMissing) notifyListeners();
+  };
+
+  // Terminal, and said plainly: the chat is not on the host any more, so the UI
+  // stops promising a retry that cannot succeed.
+  const setVisibilityCatchUpMissing = (agentId: string) => {
+    visibilityCatchUpPending.delete(agentId);
+    visibilityCatchUpErrors.delete(agentId);
+    catchUpFailureCounts.delete(agentId);
+    if (visibilityCatchUpMissing.has(agentId)) return;
+    visibilityCatchUpMissing.add(agentId);
+    notifyListeners();
   };
 
   const setVisibilityCatchUpError = (agentIds: string[]) => {
@@ -165,6 +200,8 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
         changed = true;
       }
       if (visibilityCatchUpErrors.delete(agentId)) changed = true;
+      if (visibilityCatchUpMissing.delete(agentId)) changed = true;
+      catchUpFailureCounts.delete(agentId);
     }
     if (changed) notifyListeners();
   };
@@ -174,6 +211,30 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
     catchUps.get(agentId)?.cancelRetry?.();
     catchUps.delete(agentId);
     pendingCatchUps.delete(agentId);
+    catchUpFailureCounts.delete(agentId);
+  };
+
+  // Split out of the fetch loop so the loop stays readable: this is the whole
+  // policy for a refused catch-up - terminal answers settle, everything else
+  // retries on a widening delay.
+  const handleCatchUpFailure = (agentId: string, generation: number, error: unknown) => {
+    if (catchUps.get(agentId)?.generation !== generation) return;
+    if (isMissingAgentError(error)) {
+      catchUps.set(agentId, { generation, status: "missing" });
+      setVisibilityCatchUpMissing(agentId);
+      ports.reportError(error);
+      return;
+    }
+    const failureCount = (catchUpFailureCounts.get(agentId) ?? 0) + 1;
+    catchUpFailureCounts.set(agentId, failureCount);
+    const cancelRetry = ports.schedule(() => {
+      const current = catchUps.get(agentId);
+      if (current?.generation !== generation || current.status !== "error") return;
+      startCatchUp(agentId);
+    }, nextRetryDelayMs(failureCount));
+    catchUps.set(agentId, { generation, status: "error", cancelRetry });
+    setVisibilityCatchUpError([agentId]);
+    ports.reportError(error);
   };
 
   const fetchUntilCurrent = async (
@@ -210,6 +271,7 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
         throw new Error(`Timeline page for ${agentId} hasNewer without an end cursor`);
       }
       catchUps.set(agentId, { generation, status: "complete" });
+      catchUpFailureCounts.delete(agentId);
       const pendingCatchUp = pendingCatchUps.get(agentId);
       if (pendingCatchUp) {
         startCatchUp(agentId, { request: pendingCatchUp, supersede: true });
@@ -217,16 +279,7 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       }
       setVisibilityCatchUpReady(agentId);
     } catch (error) {
-      if (catchUps.get(agentId)?.generation === generation) {
-        const cancelRetry = ports.schedule(() => {
-          const current = catchUps.get(agentId);
-          if (current?.generation !== generation || current.status !== "error") return;
-          startCatchUp(agentId);
-        }, RETRY_DELAY_MS);
-        catchUps.set(agentId, { generation, status: "error", cancelRetry });
-        setVisibilityCatchUpError([agentId]);
-        ports.reportError(error);
-      }
+      handleCatchUpFailure(agentId, generation, error);
     }
   };
 
@@ -356,6 +409,8 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
           statusChanged = true;
         }
         if (visibilityCatchUpErrors.delete(agentId)) statusChanged = true;
+        if (visibilityCatchUpMissing.delete(agentId)) statusChanged = true;
+        catchUpFailureCounts.delete(agentId);
       }
     }
     if (sameAgentIds(nextDesired, desired)) {
@@ -370,12 +425,14 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
         cancelCatchUp(agentId);
         visibilityCatchUpPending.delete(agentId);
         visibilityCatchUpErrors.delete(agentId);
+        visibilityCatchUpMissing.delete(agentId);
       }
     }
     for (const agentId of nextDesired) {
       if (!desired.includes(agentId)) {
         visibilityCatchUpPending.add(agentId);
         visibilityCatchUpErrors.delete(agentId);
+        visibilityCatchUpMissing.delete(agentId);
       }
     }
     cancelMembershipRetry?.();
@@ -409,6 +466,7 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       return () => listeners.delete(listener);
     },
     getAgentTimelineStatus(agentId) {
+      if (visibilityCatchUpMissing.has(agentId)) return "missing";
       if (visibilityCatchUpErrors.has(agentId)) return "error";
       if (!isDesired(agentId) || visibilityCatchUpPending.has(agentId)) return "pending";
       return "ready";
@@ -459,6 +517,8 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       desired = visible;
       visibilityCatchUpPending.clear();
       visibilityCatchUpErrors.clear();
+      visibilityCatchUpMissing.clear();
+      catchUpFailureCounts.clear();
       for (const agentId of desired) visibilityCatchUpPending.add(agentId);
       acknowledged = deliveryMode === "legacy" && connected ? desired : [];
       notifyListeners();
@@ -484,6 +544,8 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       recentlyViewedAgentIds = [];
       visibilityCatchUpPending.clear();
       visibilityCatchUpErrors.clear();
+      visibilityCatchUpMissing.clear();
+      catchUpFailureCounts.clear();
       notifyListeners();
       listeners.clear();
     },
