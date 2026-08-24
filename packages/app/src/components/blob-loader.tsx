@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo } from "react";
 import { Platform, View } from "react-native";
 import Animated, {
+  cancelAnimation,
   Easing,
   makeMutable,
   ReduceMotion,
@@ -42,6 +43,26 @@ export const GLOW_DEFAULT_B = GLOW_MAGENTA;
 // lockstep instead of drifting out of phase (same pattern as SyncedLoader).
 const sharedBlobProgress = makeMutable(0);
 let sharedBlobLoopStarted = false;
+// The loop is `withRepeat(..., -1)`, which never ends on its own. Without a
+// reference count it kept evaluating its worklet every frame for the rest of
+// the process once the first instance mounted, even with nothing on screen.
+let sharedBlobMountCount = 0;
+
+/** Starts the shared clock for the first mounted instance; stops it after the last unmounts. */
+function retainSharedBlobLoop(): () => void {
+  sharedBlobMountCount += 1;
+  ensureSharedBlobLoopStarted();
+  return () => {
+    sharedBlobMountCount = Math.max(0, sharedBlobMountCount - 1);
+    if (sharedBlobMountCount > 0) {
+      return;
+    }
+    cancelAnimation(sharedBlobProgress);
+    // Cleared so the next mount re-syncs phase from the epoch rather than
+    // resuming wherever the cancel left the value.
+    sharedBlobLoopStarted = false;
+  };
+}
 
 function ensureSharedBlobLoopStarted(): void {
   if (sharedBlobLoopStarted) {
@@ -236,9 +257,7 @@ function BlobLoaderBase({
   // false. The orbiting glow still spins; only the scaleX/scaleY pulse stops.
   wobble?: boolean;
 }) {
-  useEffect(() => {
-    ensureSharedBlobLoopStarted();
-  }, []);
+  useEffect(() => retainSharedBlobLoop(), []);
 
   // Gradient/filter ids are rendered into the DOM on web, so they must be unique
   // per instance; useId output is sanitized for use inside url(#...).
