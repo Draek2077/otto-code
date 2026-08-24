@@ -1,32 +1,20 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-  type MouseEvent,
-  type ReactNode,
-} from "react";
-import * as Clipboard from "expo-clipboard";
+import { useMemo, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Platform, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { useTranslation } from "react-i18next";
 import { isNative, isWeb } from "@/constants/platform";
 import { MarkdownTextSpan } from "@/components/markdown-text";
 import { MarkdownLinkText } from "@/components/markdown/link-text";
 import { AssistantLinkPressProvider, type AssistantLinkPress } from "./link-press-context";
 import { Shortcut } from "@/components/ui/shortcut";
-import { ContextMenuItem } from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { useChatContextMenuTarget } from "@/chat/context-menu";
 import { markdownCopyDataSet } from "@/assistant-selection-copy/markup";
+import { AssistantLinkContextMenuTarget } from "./link-context-menu";
 import { useAssistantFileLinkResolverContext } from "./provider";
-import type { InlinePathTarget } from "./parse";
-import { getAssistantFileLinkToken, type AssistantFileLinkSource } from "./resolver";
+import type { AssistantFileLinkSource } from "./resolver";
 import { useFileLink } from "./use-file-link";
-import { resolveWorkspaceFilePaths } from "@/workspace/file-open";
 
 interface AssistantMarkdownLinkProps {
   source: AssistantFileLinkSource;
@@ -126,6 +114,7 @@ export function AssistantMarkdownLink({
   return (
     <AssistantLinkContextMenuTarget
       chatContextMenu={chatContextMenu}
+      configRef={configRef}
       source={source}
       target={target}
       resolve={resolve}
@@ -134,121 +123,6 @@ export function AssistantMarkdownLink({
     >
       <FileLinkHoverTooltip filePath={tooltipPath}>{anchor}</FileLinkHoverTooltip>
     </AssistantLinkContextMenuTarget>
-  );
-}
-
-function AssistantLinkContextMenuTarget({
-  chatContextMenu,
-  source,
-  target,
-  resolve,
-  open,
-  workspaceRoot,
-  children,
-}: {
-  chatContextMenu: ReturnType<typeof useChatContextMenuTarget>;
-  source: AssistantFileLinkSource;
-  target: InlinePathTarget | null;
-  resolve: () => Promise<InlinePathTarget | null>;
-  open: (source: AssistantFileLinkSource, disposition: "main" | "side") => void;
-  workspaceRoot: string | undefined;
-  children: ReactNode;
-}) {
-  const handleContextMenu = useCallback(
-    (event: MouseEvent<HTMLAnchorElement>) => {
-      chatContextMenu?.openTarget(
-        event,
-        <AssistantLinkContextMenuContent
-          source={source}
-          target={target}
-          resolve={resolve}
-          open={open}
-          workspaceRoot={workspaceRoot}
-        />,
-      );
-    },
-    [chatContextMenu, open, resolve, source, target, workspaceRoot],
-  );
-
-  return (
-    <span onContextMenu={handleContextMenu} style={LINK_CONTEXT_MENU_TRIGGER_STYLE}>
-      {children}
-    </span>
-  );
-}
-
-function AssistantLinkContextMenuContent({
-  source,
-  target,
-  resolve,
-  open,
-  workspaceRoot,
-}: {
-  source: AssistantFileLinkSource;
-  target: InlinePathTarget | null;
-  resolve: () => Promise<InlinePathTarget | null>;
-  open: (source: AssistantFileLinkSource, disposition: "main" | "side") => void;
-  workspaceRoot: string | undefined;
-}) {
-  const { t } = useTranslation();
-  const [menuTarget, setMenuTarget] = useState(target);
-  const { configRef } = useAssistantFileLinkResolverContext();
-  const resolvedTarget = menuTarget ?? target;
-  const workspacePath = useMemo(
-    () =>
-      resolvedTarget && workspaceRoot
-        ? resolveWorkspaceFilePaths({ path: resolvedTarget.path, workspaceRoot })
-        : null,
-    [resolvedTarget, workspaceRoot],
-  );
-  const isProjectFile = Boolean(workspacePath?.relativePath);
-
-  useEffect(() => {
-    void resolve().then(setMenuTarget);
-  }, [resolve]);
-
-  const handleCopyLink = useCallback(() => {
-    void Clipboard.setStringAsync(getAssistantFileLinkToken(source));
-  }, [source]);
-  const handleOpenFile = useCallback(() => open(source, "main"), [open, source]);
-  const handleNavigateToFile = useCallback(() => {
-    if (resolvedTarget) {
-      configRef.current.onNavigateToWorkspaceFile?.(resolvedTarget);
-    }
-  }, [configRef, resolvedTarget]);
-  const handleNavigateToFolder = useCallback(() => {
-    if (resolvedTarget) {
-      configRef.current.onNavigateToWorkspaceFolder?.(resolvedTarget);
-    }
-  }, [configRef, resolvedTarget]);
-
-  return (
-    <>
-      <ContextMenuItem onSelect={handleCopyLink} testID="assistant-file-link-copy">
-        {t("message.actions.copyLink")}
-      </ContextMenuItem>
-      {resolvedTarget ? (
-        <ContextMenuItem onSelect={handleOpenFile} testID="assistant-file-link-open-file">
-          {t("message.actions.openFile")}
-        </ContextMenuItem>
-      ) : null}
-      {isProjectFile ? (
-        <ContextMenuItem
-          onSelect={handleNavigateToFile}
-          testID="assistant-file-link-navigate-to-file"
-        >
-          {t("message.actions.navigateToFile")}
-        </ContextMenuItem>
-      ) : null}
-      {isProjectFile ? (
-        <ContextMenuItem
-          onSelect={handleNavigateToFolder}
-          testID="assistant-file-link-navigate-to-folder"
-        >
-          {t("message.actions.navigateToFolder")}
-        </ContextMenuItem>
-      ) : null}
-    </>
   );
 }
 
@@ -390,10 +264,6 @@ const LINK_ANCHOR_STYLE: CSSProperties = {
   display: "contents",
   color: "inherit",
   textDecoration: "none",
-};
-
-const LINK_CONTEXT_MENU_TRIGGER_STYLE: CSSProperties = {
-  display: "contents",
 };
 
 function preventAnchorNavigation(event: MouseEvent<HTMLAnchorElement>): void {

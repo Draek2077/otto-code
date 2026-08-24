@@ -161,6 +161,12 @@ its own.
   both menu contexts through the sheet's `contextBridge`. Providing them around the modal puts
   them on the wrong side of the portal and every item inside throws. Gotcha 7 in
   [floating-panels.md](floating-panels.md).
+- **Contributed chat menu content renders outside the transcript.** A transcript element hands
+  actions to the chat menu through `useChatContextMenuTarget().openTarget(...)`, but that content
+  is rendered in the menu surface, which is a _sibling_ of the transcript. Every provider mounted
+  inside the transcript is therefore absent: a hook that throws on a missing context (the file
+  link resolver did) turns one right click into a full app crash. Pass what the content needs as
+  props. `ChatContextMenuContentBoundary` catches the rest and closes the menu instead.
 - **One overlay per menu.** Submenus render inside their parent's layer and paint no second
   backdrop, so there is exactly one `Modal` on native no matter how deep the menu goes.
 - Anchoring, flipping, and edge clamping live in `menu-anchor.ts` and are unit-tested. Fix

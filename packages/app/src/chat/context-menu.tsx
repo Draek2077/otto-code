@@ -18,6 +18,7 @@ import {
   contextMenuAnchorFromEvent,
   hasWebTextSelection,
 } from "@/components/ui/context-menu";
+import { ChatContextMenuContentBoundary } from "./context-menu-content-boundary";
 import { resolveChatContextMenuOwner } from "./context-menu-state";
 
 interface ChatContextMenuTargetContextValue {
@@ -57,6 +58,9 @@ export const ChatContextMenu = forwardRef<
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
   const [targetContent, setTargetContent] = useState<ReactNode | null>(null);
+  // Identifies one opening of the menu, so the content boundary forgets a
+  // caught error as soon as a different menu is opened.
+  const [contentRevision, setContentRevision] = useState(0);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -78,6 +82,7 @@ export const ChatContextMenu = forwardRef<
     }
     setTargetContent(content);
     setAnchor(nextAnchor);
+    setContentRevision((revision) => revision + 1);
     setOpen(true);
     return true;
   }, []);
@@ -114,7 +119,11 @@ export const ChatContextMenu = forwardRef<
           {children}
         </View>
         <ContextMenuContent side="bottom" align="start" testID="agent-chat-context-menu">
-          {targetContent ?? fallbackContent}
+          {/* Content that cannot render has no actions to offer, so a caught
+              failure closes the menu rather than pinning an empty surface open. */}
+          <ChatContextMenuContentBoundary onError={close} resetKey={contentRevision}>
+            {targetContent ?? fallbackContent}
+          </ChatContextMenuContentBoundary>
         </ContextMenuContent>
       </ContextMenu>
     </ChatContextMenuTargetContext.Provider>

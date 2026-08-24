@@ -31,8 +31,10 @@ export interface AssistantFileLinkResolverProviderProps extends AssistantFileLin
   children: ReactNode;
 }
 
+export type AssistantFileLinkResolverConfigRef = MutableRefObject<AssistantFileLinkResolverConfig>;
+
 export interface AssistantFileLinkResolverContextValue {
-  configRef: MutableRefObject<AssistantFileLinkResolverConfig>;
+  configRef: AssistantFileLinkResolverConfigRef;
   getDirectorySuggestions: GetDirectorySuggestions;
 }
 
