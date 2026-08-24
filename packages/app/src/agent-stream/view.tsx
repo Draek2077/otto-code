@@ -1,5 +1,6 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ChatSeamFade } from "@/components/chat-seam-fade";
+import { ChatThemeScope } from "@/components/chat-theme-scope";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import React, {
   forwardRef,
@@ -1188,67 +1189,69 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               accessibilityLabel={t("agentStream.scrollToBottom")}
               testID="scroll-to-bottom-button"
             >
-              <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
+              <ThemedChevronDown size={24} uniProps={primaryColorMapping} />
             </Pressable>
           </Animated.View>
         </View>
       ) : null;
 
     return (
-      <ToolCallSheetProvider>
-        <AssistantFileLinkResolverProvider
-          client={client}
-          serverId={resolvedServerId}
-          workspaceRoot={workspaceRoot}
-          onOpenWorkspaceFile={handleInlinePathPress}
-          onNavigateToWorkspaceFile={handleNavigateToInlineFile}
-          onNavigateToWorkspaceFolder={handleNavigateToInlineFolder}
-          toast={toast}
-        >
-          <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>
-            <AssistantSelectionCopySurface style={stylesheet.container}>
-              <View
-                ref={streamContainerHostRef}
-                style={[stylesheet.container, resolveBlackChatCanvasStyle(isBlackChat)]}
-              >
-                <MessageOuterSpacingProvider disableOuterSpacing>
-                  {streamRenderStrategy.render({
-                    agentId,
-                    segments: renderModel.segments,
-                    historyRowRevision,
-                    liveHeadRowRevision: expandedToolCallGroupIds,
-                    boundary,
-                    renderers,
-                    listEmptyComponent,
-                    viewportRef,
-                    routeBottomAnchorRequest,
-                    isAuthoritativeHistoryReady,
-                    onNearBottomChange: setIsNearBottom,
-                    onReadingPositionChange: chatOutline.reportReadingPosition,
-                    onNearHistoryStart: loadOlder,
-                    isLoadingOlderHistory: isLoadingOlder,
-                    hasOlderHistory: hasOlder,
-                    olderHistoryProgressKey: progressKey,
-                    scrollEnabled: streamScrollEnabled,
-                    listStyle: stylesheet.list,
-                    baseListContentContainerStyle: stylesheet.listContentContainer,
-                    forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
-                  })}
-                </MessageOuterSpacingProvider>
-                <ChatSeamFade edge="top" />
-                <ChatSeamFade edge="bottom" />
-                {webScrollbar}
-                <ChatOutlineRail
-                  prompts={chatOutline.prompts}
-                  activePrompt={chatOutline.activePrompt}
-                  onJumpToPrompt={chatOutline.jumpToPrompt}
-                />
-                {scrollToBottomOverlay}
-              </View>
-            </AssistantSelectionCopySurface>
-          </WidgetChatProvider>
-        </AssistantFileLinkResolverProvider>
-      </ToolCallSheetProvider>
+      <ChatThemeScope>
+        <ToolCallSheetProvider>
+          <AssistantFileLinkResolverProvider
+            client={client}
+            serverId={resolvedServerId}
+            workspaceRoot={workspaceRoot}
+            onOpenWorkspaceFile={handleInlinePathPress}
+            onNavigateToWorkspaceFile={handleNavigateToInlineFile}
+            onNavigateToWorkspaceFolder={handleNavigateToInlineFolder}
+            toast={toast}
+          >
+            <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>
+              <AssistantSelectionCopySurface style={stylesheet.container}>
+                <View
+                  ref={streamContainerHostRef}
+                  style={[stylesheet.container, resolveBlackChatCanvasStyle(isBlackChat)]}
+                >
+                  <MessageOuterSpacingProvider disableOuterSpacing>
+                    {streamRenderStrategy.render({
+                      agentId,
+                      segments: renderModel.segments,
+                      historyRowRevision,
+                      liveHeadRowRevision: expandedToolCallGroupIds,
+                      boundary,
+                      renderers,
+                      listEmptyComponent,
+                      viewportRef,
+                      routeBottomAnchorRequest,
+                      isAuthoritativeHistoryReady,
+                      onNearBottomChange: setIsNearBottom,
+                      onReadingPositionChange: chatOutline.reportReadingPosition,
+                      onNearHistoryStart: loadOlder,
+                      isLoadingOlderHistory: isLoadingOlder,
+                      hasOlderHistory: hasOlder,
+                      olderHistoryProgressKey: progressKey,
+                      scrollEnabled: streamScrollEnabled,
+                      listStyle: stylesheet.list,
+                      baseListContentContainerStyle: stylesheet.listContentContainer,
+                      forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
+                    })}
+                  </MessageOuterSpacingProvider>
+                  <ChatSeamFade edge="top" />
+                  <ChatSeamFade edge="bottom" />
+                  {webScrollbar}
+                  <ChatOutlineRail
+                    prompts={chatOutline.prompts}
+                    activePrompt={chatOutline.activePrompt}
+                    onJumpToPrompt={chatOutline.jumpToPrompt}
+                  />
+                  {scrollToBottomOverlay}
+                </View>
+              </AssistantSelectionCopySurface>
+            </WidgetChatProvider>
+          </AssistantFileLinkResolverProvider>
+        </ToolCallSheetProvider>
+      </ChatThemeScope>
     );
   },
 );
@@ -1419,6 +1422,11 @@ function ActionGroupSlot({
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedCheckIcon = withUnistyles(Check);
 const ThemedXIcon = withUnistyles(X);
+// Reading the icon color off a stylesheet in the render body resolved the
+// value before the black chat markers below could run, so the chevron kept the
+// app palette on a scoped pane. The mapping runs during the icon's own render,
+// which is inside the markers.
+const ThemedChevronDown = withUnistyles(ChevronDown);
 
 const primaryColorMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
@@ -1775,9 +1783,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     ...theme.shadow.sm,
-  },
-  scrollToBottomIcon: {
-    color: theme.colors.foreground,
   },
 }));
 
