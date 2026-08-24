@@ -102,6 +102,19 @@ auth flow. The browser half is the OAuth broker below.
 saying where to get one has handed the user homework, which is the original sin
 this subsystem was rebuilt to remove.
 
+### Two surfaces, not one list
+
+The Connectors settings section is the ledger of what this host has: one card per
+installed connector, its enable switch, its tools, and a tally in the section
+header. The catalog is not in it. Browsing and installing happen in the add sheet
+(`AddConnectorSheet`), which is a centred dialog on desktop and a bottom sheet on
+mobile, with search in the sheet header and the audience filter pinned under it.
+
+The split is the point. Inline browsing put a few dozen catalog rows above the
+two or three connectors the user actually runs, so the thing they came to check -
+what is on - was the hardest thing on the page to find. Keep it: the section
+answers "what do I have and is it on", the sheet answers "what could I add".
+
 ## Otto-native connectors
 
 When a service we need has no official MCP server, we write one. "No official
@@ -265,11 +278,13 @@ paste-a-token entries. Tagged `COMPAT(connectorOauth)`, added in v0.7.7.
 
 ## Files
 
-| Path                                                            | What it holds                                |
-| --------------------------------------------------------------- | -------------------------------------------- |
-| `packages/app/src/screens/settings/connectors-catalog.ts`       | The catalog. Citations required              |
-| `packages/app/src/screens/settings/connectors-section.tsx`      | Browse, install, verify, per-tool toggles    |
-| `packages/server/src/server/connectors/connector-oauth.ts`      | The broker and the SDK's storage callbacks   |
-| `packages/server/src/server/connectors/connector-auth-store.ts` | The daemon-scoped credential store           |
-| `packages/server/src/server/connectors/connector-tools.ts`      | Live connect and enumerate                   |
-| `packages/server/src/server/daemon-config-store.ts`             | Redaction and the one write path into `auth` |
+| Path                                                            | What it holds                                     |
+| --------------------------------------------------------------- | ------------------------------------------------- |
+| `packages/app/src/screens/settings/connectors-catalog.ts`       | The catalog. Citations required                   |
+| `packages/app/src/screens/settings/connectors-section.tsx`      | Installed connectors, enable and per-tool toggles |
+| `packages/app/src/screens/settings/connectors-add-sheet.tsx`    | Browse, install, verify; the by-hand form         |
+| `packages/app/src/screens/settings/connectors-shared.ts`        | Capability gates, the OAuth wait, form chrome     |
+| `packages/server/src/server/connectors/connector-oauth.ts`      | The broker and the SDK's storage callbacks        |
+| `packages/server/src/server/connectors/connector-auth-store.ts` | The daemon-scoped credential store                |
+| `packages/server/src/server/connectors/connector-tools.ts`      | Live connect and enumerate                        |
+| `packages/server/src/server/daemon-config-store.ts`             | Redaction and the one write path into `auth`      |
