@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.15 - 2026-08-23
+
+### Changed
+
+- Update the bundled Cline, fast-agent, and Qwen Code versions
+
+### Fixed
+
+- Stop a single dropped connection pinning "Couldn't refresh agent history" to a chat for the rest of the session while that chat streams normally behind it
+- Say plainly when a chat no longer exists on the host, instead of showing an error that promises a retry which cannot succeed
+- Back off a failing history refresh instead of re-asking the host once a second for as long as the chat stays open
+- Paint the whole chat transcript on the black canvas when Black tab background is on, instead of leaving the messages in the light palette
+- Keep the message box, its status warnings, and the metrics bar clear of Android's gesture bar
+- Stop the composer toolbar clipping its last control on a narrow phone
+- Stop the scaled composer toolbar settling off the left edge of its row
+- Give the mobile sidebar toggle the same panel glyph and slot as the explorer toggle opposite it
+- Draw the small chat glyphs at their intended size on a phone instead of doubling them
+
 ## 0.8.14 - 2026-08-23
 
 ### Added
