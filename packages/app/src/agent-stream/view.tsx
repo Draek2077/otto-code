@@ -28,7 +28,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "@/components/icons/material-icons";
@@ -124,6 +124,7 @@ import {
   resolveBlackChatCanvasStyle,
   useBlackChatScope,
 } from "@/components/black-chat-scope-context";
+import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { revealDirectoryInFiles, revealFileInFiles } from "@/git/changes-reveal";
 
 function renderLiveAuxiliaryNode(input: {
@@ -137,9 +138,9 @@ function renderLiveAuxiliaryNode(input: {
     <>
       {input.turnFooter}
       {input.pendingPermissions ? (
-        <View style={stylesheet.contentWrapper}>
+        <ChatWidthBounds style={stylesheet.contentWrapper}>
           <View style={stylesheet.listHeaderContent}>{input.pendingPermissions}</View>
-        </View>
+        </ChatWidthBounds>
       ) : null}
     </>
   );
@@ -222,9 +223,9 @@ function renderListEmptyComponent(input: {
   }
 
   return (
-    <View style={input.emptyStateStyle}>
+    <ChatWidthBounds style={input.emptyStateStyle}>
       <Text style={stylesheet.emptyStateText}>{input.emptyText}</Text>
-    </View>
+    </ChatWidthBounds>
   );
 }
 
@@ -1709,9 +1710,10 @@ const stylesheet = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.surface0,
   },
+  // No maxWidth here: the chat column's cap is the user's chat-width setting
+  // and is applied by ChatWidthBounds, which owns theme.layout.chatMaxWidth.
   contentWrapper: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
     alignSelf: "center",
     paddingHorizontal: theme.spacing[2],
   },
@@ -1730,9 +1732,9 @@ const stylesheet = StyleSheet.create((theme) => ({
   list: {
     flex: 1,
   },
+  // See contentWrapper: ChatWidthBounds supplies the cap.
   streamItemWrapper: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
     alignSelf: "center",
     paddingHorizontal: theme.spacing[2],
   },
@@ -1869,5 +1871,5 @@ function StreamItemWrapper({ gapBelow, children }: StreamItemWrapperProps) {
     () => [stylesheet.streamItemWrapper, { marginBottom: gapBelow }],
     [gapBelow],
   );
-  return <View style={wrapperStyle}>{children}</View>;
+  return <ChatWidthBounds style={wrapperStyle}>{children}</ChatWidthBounds>;
 }

@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 import { TaskListRow } from "@/components/task-list-row";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
+import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { useSessionStore } from "@/stores/session-store";
 import { resolveTodoEntryStatus, resolveTodoEntryText, type TodoEntry } from "@/types/stream";
 
@@ -47,7 +47,7 @@ const TaskListCard = memo(function TaskListCard({ tasks }: { tasks: TodoEntry[] 
 
   return (
     <View style={styles.container} accessibilityLabel={t("message.todo.title")}>
-      <View style={styles.track}>
+      <ChatWidthBounds style={styles.track}>
         <View style={styles.card}>
           <Button
             variant="ghost"
@@ -69,7 +69,7 @@ const TaskListCard = memo(function TaskListCard({ tasks }: { tasks: TodoEntry[] 
             </View>
           ) : null}
         </View>
-      </View>
+      </ChatWidthBounds>
     </View>
   );
 });
@@ -79,9 +79,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[4],
   },
+  // The cap is the user's chat-width setting, applied by ChatWidthBounds.
   track: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
     marginBottom: -theme.spacing[4],
   },
   card: {
