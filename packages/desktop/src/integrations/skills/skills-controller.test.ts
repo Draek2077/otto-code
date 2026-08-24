@@ -178,7 +178,9 @@ async function backupArtifacts(targets: SkillTargets): Promise<string[][]> {
 }
 
 async function waitForTransactionDirectory(parent: string): Promise<void> {
-  const pollIntervalMs = 25;
+  // A transaction can complete in less than the old 25 ms interval on CI, so
+  // observe the short-lived staging directory at event-loop granularity.
+  const pollIntervalMs = 1;
   const timeoutMs = 5000;
   const deadline = Date.now() + timeoutMs;
   for (;;) {
