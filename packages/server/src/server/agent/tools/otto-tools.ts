@@ -19,6 +19,7 @@ import {
   type AgentTeamsConfigView,
 } from "@otto-code/protocol/agent-teams";
 import {
+  findProfileByRef,
   isPersonalityRole,
   normalizePersonalityRoles,
   personalityHasRole,
@@ -1457,14 +1458,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
 
   const getPersonalityRoster = (): AgentProfile[] => readAgentProfiles?.() ?? [];
 
-  const findPersonalityByName = (name: string): AgentProfile | undefined => {
-    const trimmed = name.trim();
-    const roster = getPersonalityRoster();
-    return (
-      roster.find((p) => p.name === trimmed) ??
-      roster.find((p) => p.name.toLowerCase() === trimmed.toLowerCase())
-    );
-  };
+  // Accepts either identifier: the display name a model read from
+  // list_personalities, or the stable id a daemon-internal caller already holds.
+  const findPersonality = (ref: string): AgentProfile | undefined =>
+    findProfileByRef(getPersonalityRoster(), ref);
 
   interface ResolvedCreateAgentBrain {
     providerModel: string;
@@ -1539,20 +1536,20 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   // fields override it per-field (no heuristic substitution). Without a
   // personality this is the plain provider/model path.
   const resolveCreateAgentBrain = async (input: {
-    personalityName: string | undefined;
+    personalityRef: string | undefined;
     providerOverride: string | undefined;
     modeOverride: string | undefined;
     thinkingOverride: string | undefined;
     cwd: string | undefined;
   }): Promise<ResolvedCreateAgentBrain> => {
-    if (input.personalityName) {
-      const personality = findPersonalityByName(input.personalityName);
+    if (input.personalityRef) {
+      const personality = findPersonality(input.personalityRef);
       if (!personality) {
         const names = getPersonalityRoster()
           .map((candidate) => candidate.name)
           .join(", ");
         throw new Error(
-          `Personality "${input.personalityName}" not found.${names ? ` Available: ${names}.` : " No personalities are configured on this host."}`,
+          `Personality "${input.personalityRef}" not found.${names ? ` Available: ${names}.` : " No Personalities are configured on this host."}`,
         );
       }
       return resolvePersonalityBrain(personality, input);
@@ -1791,7 +1788,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         "Short descriptive title (<= 60 chars) summarizing the agent's focus. Optional - omit to let Otto derive one from the prompt (or name a bare new chat).",
       ),
     provider: ProviderModelInputSchema.optional().describe(
-      "Provider/model pair, for example codex/gpt-5.4. Required unless `personality` names a profile; when both are given, this overrides the profile's provider/model.",
+      "Provider/model pair, for example codex/gpt-5.4. Required unless `personality` is given; when both are given, this overrides the Personality's provider/model.",
     ),
     personality: z
       .string()
@@ -1799,7 +1796,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .min(1)
       .optional()
       .describe(
-        "Spawn from a named agent profile on this host. The compatibility field name remains `personality`; explicit provider/settings override profile values per field. See list_personalities before choosing one. Fails loudly if unavailable here.",
+        "Spawn as a Personality configured on this host: its provider, model, mode, effort, prompt, and identity in one pick. Pass the name from list_personalities (a Personality id also works). `provider` and `settings` override it field by field. Fails loudly if that Personality cannot run here.",
       ),
     labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
     settings: CreateAgentSettingsInputSchema.optional().describe(
@@ -2033,7 +2030,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create chat",
       description:
-        "Start an Otto chat session immediately. A chat can be independent or a child chat. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a profile name. Title and initialPrompt are optional. Prefer a named profile when available; call list_personalities before choosing one.",
+        "Start an Otto chat session immediately. A chat can be independent or a child chat. Requires relationship, workspace, and either a Personality or a provider/model pair (e.g. codex/gpt-5.4). Title and initialPrompt are optional. Prefer a Personality when one fits: call list_personalities first, and fall back to provider/model when none does.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -2066,7 +2063,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         detached = resolvedArgs.parsedArgs.relationship.kind === "detached";
       }
       const brain = await resolveCreateAgentBrain({
-        personalityName: parsedArgs.personality,
+        personalityRef: parsedArgs.personality,
         providerOverride: parsedArgs.provider,
         modeOverride: parsedArgs.settings?.modeId,
         thinkingOverride: parsedArgs.settings?.thinkingOptionId,
@@ -2184,7 +2181,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "List personalities",
         description:
-          "List the personality profiles on this host - named templates binding a provider/model, effort, mode, prompt, and roles. Pass a name to create_chat's `personality` to start it (availability is resolved per workspace; unavailable profiles can't be started there). Any chat may call this to choose a collaborator. Each entry's `guidance`, `tier`, and `canLaunch` fields explain when to choose it, and `notes` carries the author's own note about what this particular one is for.",
+          "List the Personalities on this host - named templates binding a provider/model, effort, mode, prompt, and roles. Pass a name to create_chat's `personality` to start one (availability is resolved per workspace; an unavailable Personality cannot be started there). Any chat may call this to choose a collaborator. Each entry's `guidance`, `tier`, and `canLaunch` fields explain when to choose it, and `notes` carries the author's own note about what this particular one is for.",
         inputSchema: {
           cwd: z
             .string()
@@ -2196,7 +2193,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             .array(z.string())
             .optional()
             .describe(
-              "Only return personalities carrying at least one of these roles (for example writer, coder, judger, advisor).",
+              "Only return Personalities carrying at least one of these roles (for example writer, coder, judger, advisor).",
             ),
         },
         outputSchema: {
@@ -2214,11 +2211,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               canLaunch: z
                 .boolean()
                 .describe(
-                  "Whether this personality is meant to spawn other agents and orchestrate.",
+                  "Whether this Personality is meant to spawn other agents and orchestrate.",
                 ),
               guidance: z
                 .string()
-                .describe("Why you'd choose this personality - its roles' intent."),
+                .describe("Why you'd choose this Personality - its roles' intent."),
               unavailableReason: z.string().optional(),
               modeId: z.string().optional(),
               thinkingOptionId: z.string().optional(),
@@ -4623,10 +4620,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     },
   );
 
-  // Build a new-agent schedule config from either a personality binding or a
-  // raw provider. A personality is validated + resolved now (to fill the
-  // required provider field and fail fast), and its name is stored so each run
-  // re-resolves it authoritatively.
+  // Build a new-agent schedule config from either a Personality binding or a
+  // raw provider. A Personality is validated and resolved now (to fill the
+  // required provider field and fail fast), and its stable id is stored so each
+  // run re-resolves it authoritatively and a later rename cannot break it.
   const buildScheduleNewAgentConfig = async (input: {
     provider?: string;
     personality?: string;
@@ -4638,10 +4635,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     // "local"`, and materializing the default here would make every stored
     // schedule claim an explicit choice its author never made.
     const isolation = input.isolation ? { isolation: input.isolation } : {};
-    const personalityName = input.personality?.trim();
-    if (personalityName) {
+    const personalityRef = input.personality?.trim();
+    if (personalityRef) {
       const brain = await resolveCreateAgentBrain({
-        personalityName,
+        personalityRef,
         providerOverride: input.provider,
         modeOverride: undefined,
         thinkingOverride: input.thinkingOptionId,
@@ -4653,7 +4650,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       });
       return {
         ...baseTarget.config,
-        personality: personalityName,
+        personality: brain.profileSnapshot?.profileId ?? personalityRef,
         ...(brain.modeId !== undefined ? { modeId: brain.modeId } : {}),
         ...(brain.thinkingOptionId !== undefined
           ? { thinkingOptionId: brain.thinkingOptionId }
@@ -4705,7 +4702,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .describe("IANA time zone for the cron cadence. For example: America/New_York."),
         name: z.string().optional(),
         provider: AgentProviderEnum.optional().describe(
-          "Provider, or provider/model (for example: codex or codex/gpt-5.4). Required unless `personality` is given.",
+          "Provider, or provider/model (for example: codex or codex/gpt-5.4). Required unless `personality` is given; when both are given, this overrides the Personality's provider/model.",
         ),
         personality: z
           .string()
@@ -4713,7 +4710,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .min(1)
           .optional()
           .describe(
-            "Bind this schedule to an Agent Personality by name. Each run re-resolves it against the run workspace and hard-fails if it's unavailable. Requires the Orchestrator role when called by an agent.",
+            "Bind this schedule to a Personality by name (a Personality id also works). Each run re-resolves the binding against the run workspace and hard-fails if it is unavailable there.",
           ),
         cwd: z.string().optional(),
         thinkingOptionId: z
@@ -5029,7 +5026,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .nullable()
           .optional()
           .describe(
-            "Bind (or, with null, unbind) an Agent Personality by name for the new-agent target. Re-resolved at each run.",
+            "Bind (or, with null, unbind) a Personality by name for the new-agent target - a Personality id also works. Re-resolved at each run.",
           ),
         model: z
           .string()
@@ -5822,17 +5819,21 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       return member;
     };
 
-    // Spawn one candidate child agent from a personality, parented to the
+    // Spawn one candidate child agent from a Personality, parented to the
     // conductor, in the conductor's workspace. Mirrors the create_chat flow.
+    //
+    // Takes the resolved roster entry, not its name: the role resolution above
+    // already holds the entry, and names carry no uniqueness constraint, so
+    // re-finding it by name could bind a different Personality than the one
+    // recorded as this node's personalityId.
     const spawnRunChild = async (input: {
-      personalityName: string;
+      personality: AgentProfile;
       task: string;
       title: string;
       cwd: string;
       workspaceId?: string;
     }): Promise<string> => {
-      const brain = await resolveCreateAgentBrain({
-        personalityName: input.personalityName,
+      const brain = await resolvePersonalityBrain(input.personality, {
         providerOverride: undefined,
         modeOverride: undefined,
         thinkingOverride: undefined,
@@ -5879,7 +5880,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "Start orchestration",
         description:
-          "Use when active work needs a declared multi-chat plan with daemon-managed fan-out, gathering, judging, loops, or approval gates. The daemon executes typed phases (research/plan/implement/design/verify/gate/deliver), fans out candidates, judges them, loops until enough pass, and pauses at gates for approval. Each phase dispatches to the active team's personality profile for its role and fails clearly if the team lacks one. Waits until the orchestration completes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Do not use for a discrete task that can be completed directly or by one dedicated chat.",
+          "Use when active work needs a declared multi-chat plan with daemon-managed fan-out, gathering, judging, loops, or approval gates. The daemon executes typed phases (research/plan/implement/design/verify/gate/deliver), fans out candidates, judges them, loops until enough pass, and pauses at gates for approval. Each phase dispatches to the active team's Personality for its role and fails clearly if the team lacks one. Waits until the orchestration completes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Do not use for a discrete task that can be completed directly or by one dedicated chat.",
         inputSchema: RunPlanSchema,
         outputSchema: {
           runId: z.string(),
@@ -5909,7 +5910,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               throw new Error(`No active-team member fills role "${spawnInput.role ?? "?"}"`);
             }
             const agentId = await spawnRunChild({
-              personalityName: member.name,
+              personality: member,
               task: spawnInput.task,
               title: `${spawnInput.role ?? spawnInput.phaseType}: ${spawnInput.phaseId}`,
               cwd,

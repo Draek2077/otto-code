@@ -41,6 +41,7 @@ import {
   type ScheduleServiceOptions,
 } from "./service.js";
 import { ScheduleStore } from "./store.js";
+import { findProfileByRef } from "@otto-code/protocol/agent-profiles";
 import type {
   ScheduleExecutionResult,
   ScheduleRun,
@@ -4067,5 +4068,166 @@ describe("pruneScheduleRuns", () => {
     expect(pruned.runs).toHaveLength(50);
     expect(pruned.runs.some((entry) => entry.id === "run-99")).toBe(true);
     expect(pruned.runs.filter((entry) => entry.status !== "running")).toHaveLength(49);
+  });
+});
+
+// COMPAT(scheduleProfileBinding): added in v0.8.13, remove after 2027-02-22.
+// A schedule's Personality binding persists as the stable id so a rename cannot
+// break it (docs/agent-personalities.md, "Identity is the id, never the name").
+// Both entry points still accept a display name, so every case here is about
+// what actually lands on disk.
+describe("schedule Personality bindings", () => {
+  let tempDir: string;
+  let agentStorage: AgentStorage;
+
+  const ROSTER = [
+    { id: "p-sage-01", name: "Sage", provider: "claude", roles: ["scheduler"] },
+    { id: "p-atlas-02", name: "Atlas", provider: "claude", roles: ["scheduler"] },
+  ] as never;
+
+  function build(readAgentProfiles?: () => never) {
+    return createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      ...(readAgentProfiles ? { readAgentProfiles } : {}),
+      runner: async () => ({ agentId: "00000000-0000-0000-0000-000000000001", output: "ok" }),
+    });
+  }
+
+  function newAgentTarget(personality?: string) {
+    return {
+      type: "new-agent" as const,
+      config: {
+        provider: "claude",
+        cwd: tempDir,
+        ...(personality ? { personality } : {}),
+      },
+    };
+  }
+
+  function boundPersonality(schedule: StoredSchedule): string | undefined {
+    return schedule.target.type === "new-agent" ? schedule.target.config.personality : undefined;
+  }
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "otto-schedule-binding-"));
+    await mkdir(join(tempDir, "agents"), { recursive: true });
+    agentStorage = new AgentStorage(tempDir, createTestLogger());
+  });
+
+  afterEach(async () => {
+    await agentStorage.flush();
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  test("stores the id when created with a display name", async () => {
+    const service = build(() => ROSTER);
+    const created = await service.create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: newAgentTarget("Sage"),
+    });
+    expect(boundPersonality(created)).toBe("p-sage-01");
+  });
+
+  test("matches a display name case-insensitively", async () => {
+    const service = build(() => ROSTER);
+    const created = await service.create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: newAgentTarget("sAgE"),
+    });
+    expect(boundPersonality(created)).toBe("p-sage-01");
+  });
+
+  test("leaves an id alone", async () => {
+    const service = build(() => ROSTER);
+    const created = await service.create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: newAgentTarget("p-atlas-02"),
+    });
+    expect(boundPersonality(created)).toBe("p-atlas-02");
+  });
+
+  test("keeps a binding that names nothing on this host", async () => {
+    // Still the user's data, and still the run-time failure it already was.
+    // Rewriting or dropping it would destroy the only record of what they meant.
+    const service = build(() => ROSTER);
+    const created = await service.create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: newAgentTarget("Ghost"),
+    });
+    expect(boundPersonality(created)).toBe("Ghost");
+  });
+
+  test("rewrites a name-bound schedule onto its id at startup", async () => {
+    const nameBound = await build().create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: newAgentTarget("Sage"),
+    });
+    // No roster wired on that first service, so the name survived to disk.
+    expect(boundPersonality(nameBound)).toBe("Sage");
+
+    const migrated = build(() => ROSTER);
+    await migrated.start();
+    await migrated.stop();
+
+    expect(boundPersonality(await migrated.inspect(nameBound.id))).toBe("p-sage-01");
+  });
+
+  test("startup migration is a no-op the second time", async () => {
+    const seeded = await build().create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: newAgentTarget("Sage"),
+    });
+    const service = build(() => ROSTER);
+    await service.start();
+    await service.stop();
+    const once = await service.inspect(seeded.id);
+    await service.start();
+    await service.stop();
+    const twice = await service.inspect(seeded.id);
+
+    expect(boundPersonality(twice)).toBe("p-sage-01");
+    expect(twice.updatedAt).toBe(once.updatedAt);
+  });
+
+  test("an update by name lands as the id", async () => {
+    const service = build(() => ROSTER);
+    const created = await service.create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: newAgentTarget("Sage"),
+    });
+    const updated = await service.update({
+      id: created.id,
+      newAgentConfig: { personality: "Atlas" },
+    });
+    expect(boundPersonality(updated)).toBe("p-atlas-02");
+  });
+
+  test("a rename no longer breaks the binding", async () => {
+    // The whole point: the roster entry keeps its id and changes its name.
+    const service = build(() => ROSTER);
+    const created = await service.create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: newAgentTarget("Sage"),
+    });
+    const renamed = [
+      { id: "p-sage-01", name: "Sage the Second", provider: "claude", roles: ["scheduler"] },
+    ] as never;
+    const afterRename = build(() => renamed);
+
+    expect(
+      findProfileByRef(renamed, boundPersonality(await afterRename.inspect(created.id)) ?? ""),
+    ).toMatchObject({ id: "p-sage-01" });
   });
 });

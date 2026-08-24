@@ -1,7 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 import {
   composeRoleFocusDirective,
+  findProfileByRef,
   personalityCanLaunch,
   summarizePersonalityForSelection,
 } from "./agent-profiles.js";
@@ -89,5 +90,49 @@ describe("composeRoleFocusDirective", () => {
   test("roleless spawns get no directive", () => {
     expect(composeRoleFocusDirective(undefined)).toBeUndefined();
     expect(composeRoleFocusDirective([])).toBeUndefined();
+  });
+});
+
+describe("findProfileByRef", () => {
+  const roster = [
+    { id: "p-sage-01", name: "Sage" },
+    { id: "p-atlas-02", name: "Atlas" },
+    { id: "p-echo-03", name: "sage" },
+  ];
+
+  it("finds by stable id", () => {
+    expect(findProfileByRef(roster, "p-atlas-02")?.name).toBe("Atlas");
+  });
+
+  it("finds by exact display name", () => {
+    expect(findProfileByRef(roster, "Sage")?.id).toBe("p-sage-01");
+  });
+
+  it("prefers an exact name over a differently-cased one", () => {
+    // Two entries differ only by case. An exact match must never be beaten by
+    // the case-insensitive fallback, or the pick becomes roster-order-dependent.
+    expect(findProfileByRef(roster, "sage")?.id).toBe("p-echo-03");
+  });
+
+  it("falls back to a case-insensitive name match", () => {
+    expect(findProfileByRef(roster, "ATLAS")?.id).toBe("p-atlas-02");
+  });
+
+  it("prefers an id over a name that collides with it", () => {
+    // Ids are opaque and unique, so an id match is never the ambiguous one.
+    const colliding = [
+      { id: "p-one", name: "p-two" },
+      { id: "p-two", name: "Two" },
+    ];
+    expect(findProfileByRef(colliding, "p-two")?.id).toBe("p-two");
+  });
+
+  it("trims the reference", () => {
+    expect(findProfileByRef(roster, "  Atlas  ")?.id).toBe("p-atlas-02");
+  });
+
+  it("returns undefined for an empty or unknown reference", () => {
+    expect(findProfileByRef(roster, "   ")).toBeUndefined();
+    expect(findProfileByRef(roster, "Ghost")).toBeUndefined();
   });
 });

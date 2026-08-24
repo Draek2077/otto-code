@@ -1,3 +1,4 @@
+import { findProfileByRef } from "@otto-code/protocol/agent-profiles";
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -407,6 +408,7 @@ export class ScheduleService {
   }
 
   async start(): Promise<void> {
+    await this.migrateProfileBindingsToIds();
     await this.recoverInterruptedRuns();
     await this.sweepOrphanedSchedules();
     if (this.tickTimer) {
@@ -445,6 +447,56 @@ export class ScheduleService {
     return this.store.create(this.buildScheduleRecord(input, fields));
   }
 
+  /**
+   * Rewrite a target's Personality binding onto the stable id.
+   *
+   * Renaming a Personality must not break a schedule (see
+   * docs/agent-personalities.md), so the binding persists as the id even though
+   * both the MCP tool and the app's schedule form accept a display name. The
+   * dynamic team sentinel is not a roster entry and passes through untouched, as
+   * does a binding naming nothing on this host: that stays the run-time failure
+   * it already was, rather than becoming a silent create-time one.
+   */
+  private normalizeTargetProfileBinding(target: ScheduleTarget): ScheduleTarget {
+    if (target.type !== "new-agent") {
+      return target;
+    }
+    const binding = target.config.personality?.trim();
+    if (!binding || binding === TEAM_SCHEDULER_PERSONALITY_SENTINEL) {
+      return target;
+    }
+    const match = findProfileByRef(this.readAgentProfiles?.() ?? [], binding);
+    if (!match || match.id === binding) {
+      return target;
+    }
+    return { ...target, config: { ...target.config, personality: match.id } };
+  }
+
+  /**
+   * COMPAT(scheduleProfileBinding): added in v0.8.13, remove after 2027-02-22.
+   * One pass at startup moving name-bound schedules onto ids, so a rename stops
+   * breaking schedules authored before the binding changed. A binding that no
+   * longer resolves is left alone: it is the user's data, and rewriting it would
+   * destroy the only record of what they meant.
+   */
+  private async migrateProfileBindingsToIds(): Promise<void> {
+    if (!this.readAgentProfiles) {
+      return;
+    }
+    let migrated = 0;
+    for (const schedule of await this.store.list()) {
+      const normalized = this.normalizeTargetProfileBinding(schedule.target);
+      if (normalized === schedule.target) {
+        continue;
+      }
+      await this.store.update(schedule.id, (current) => ({ ...current, target: normalized }));
+      migrated += 1;
+    }
+    if (migrated > 0) {
+      this.logger.info({ migrated }, "Migrated schedule Personality bindings onto stable ids");
+    }
+  }
+
   private buildScheduleRecord(
     input: CreateScheduleInput,
     fields: { name: string | null; prompt: string; target: ScheduleTarget },
@@ -456,7 +508,7 @@ export class ScheduleService {
       name: fields.name,
       prompt: fields.prompt,
       cadence: input.cadence,
-      target: fields.target,
+      target: this.normalizeTargetProfileBinding(fields.target),
       status: "active",
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
@@ -482,7 +534,9 @@ export class ScheduleService {
       return this.createScheduleRecord(input, { name, prompt, target: input.target });
     }
 
-    const inputTarget = input.target;
+    // Normalized once so the identity match and both write branches agree on
+    // the binding they are comparing and storing.
+    const inputTarget = this.normalizeTargetProfileBinding(input.target);
     return this.store.upsertByNameAndTarget(name, inputTarget, {
       create: async () => {
         return this.buildScheduleRecord(input, { name, prompt, target: inputTarget });
@@ -591,7 +645,9 @@ export class ScheduleService {
         if (updated.target.type !== "new-agent") {
           throw new Error("new-agent config updates are only valid for new-agent target schedules");
         }
-        const patchedTarget = applyNewAgentConfig(updated.target, input.newAgentConfig);
+        const patchedTarget = this.normalizeTargetProfileBinding(
+          applyNewAgentConfig(updated.target, input.newAgentConfig),
+        );
         updated = {
           ...updated,
           target: patchedTarget,
@@ -1371,9 +1427,12 @@ export class ScheduleService {
       );
     }
 
-    const personality =
-      roster.find((entry) => entry.name === name) ??
-      roster.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+    // COMPAT(scheduleProfileBinding): added in v0.8.13, remove after 2027-02-22.
+    // Bindings are stored as the stable id; schedules written before that stored
+    // the display name, and findProfileByRef accepts either. The startup
+    // migration rewrites the legacy ones, so this only covers a host that has
+    // not restarted since upgrading.
+    const personality = findProfileByRef(roster, name);
     if (!personality) {
       throw new Error(`Personality "${name}" not found; the scheduled run cannot proceed.`);
     }

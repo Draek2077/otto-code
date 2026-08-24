@@ -47,6 +47,35 @@ export function personalityHasRole(
   return normalizePersonalityRoles(personality.roles).includes(role);
 }
 
+/**
+ * Resolve one roster entry from either identifier a caller might hold.
+ *
+ * Two kinds of caller reach the roster and they hold different things. A model
+ * reads `list_personalities` and passes the display name it saw. Daemon-internal
+ * callers (orchestration role resolution, a stored schedule binding) already
+ * hold the stable id and must not round-trip through a name: names carry no
+ * uniqueness constraint, so a name lookup can land on a different entry than the
+ * one the caller meant.
+ *
+ * Id is checked first because ids are opaque and unique, so an id match is never
+ * ambiguous. The exact-name pass comes before the case-insensitive one so an
+ * exact match always wins over a differently-cased near-miss.
+ */
+export function findProfileByRef<T extends { id: string; name: string }>(
+  roster: readonly T[],
+  ref: string,
+): T | undefined {
+  const trimmed = ref.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return (
+    roster.find((entry) => entry.id === trimmed) ??
+    roster.find((entry) => entry.name === trimmed) ??
+    roster.find((entry) => entry.name.toLowerCase() === trimmed.toLowerCase())
+  );
+}
+
 // Two behavioral tiers, not a hard gate. Coordinators delegate - they converse,
 // plan, and launch other chats/personality profiles. Focused personalities lift a single
 // thing someone is waiting on and should stay on task. A personality that
@@ -167,7 +196,7 @@ export function summarizePersonalityForSelection(
 // treating orchestration as the default. Kept here as one exported constant so
 // the wording is testable and shared. See projects/agent-orchestration/agent-orchestration.md.
 export const OTTO_WORK_VOCABULARY_DIRECTIVE =
-  "Otto work vocabulary: a suggested task is deferred work for the user and does not start work; a chat is an active Otto chat session; a child chat is created by another chat; a personality profile is a reusable provider, model, mode, effort, and behavior template; an orchestration coordinates multiple chats; a schedule starts a background chat when due; a heartbeat sends a reminder or prompt and does not start a chat. Use suggest_task for concrete work to preserve for later, create_chat to start one chat now, and start_orchestration only for managed multi-chat coordination. Use list_personalities, optionally filtered by roles, before choosing a personality profile. Never substitute a harness-native agent-spawn tool for suggest_task, and when a user names an Otto tool exactly, use that exact Otto tool.";
+  "Otto work vocabulary: a suggested task is deferred work for the user and does not start work; a chat is an active Otto chat session; a child chat is created by another chat; a Personality is a reusable provider, model, mode, effort, and behavior template; an orchestration coordinates multiple chats; a schedule starts a background chat when due; a heartbeat sends a reminder or prompt and does not start a chat. Use suggest_task for concrete work to preserve for later, create_chat to start one chat now, and start_orchestration only for managed multi-chat coordination. Use list_personalities, optionally filtered by roles, before choosing a Personality. Never substitute a harness-native agent-spawn tool for suggest_task, and when a user names an Otto tool exactly, use that exact Otto tool.";
 
 export const ORCHESTRATOR_METHOD_DIRECTIVE =
   "You are the orchestrator - the team's sole conductor. Choose tools because the task needs their specific capability, never because a tool is available or named. " +
