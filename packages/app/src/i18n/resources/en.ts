@@ -475,6 +475,7 @@ export const en = {
       archivingTitle: "Archiving chat...",
       archivingSubtitle: "Please wait while we archive this chat.",
       timelineSyncFailed: "Couldn't refresh agent history. Retrying…",
+      timelineAgentMissing: "This chat no longer exists on the host.",
     },
     unavailable: {
       selectedHost: "Selected host",

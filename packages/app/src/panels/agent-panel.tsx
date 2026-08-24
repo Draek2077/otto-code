@@ -1082,6 +1082,20 @@ function ChatAgentContent({
     return agentHistorySyncGeneration < historySyncGeneration;
   }, [agentHistorySyncGeneration, agentId, historySyncGeneration]);
 
+  // A sync failure is a moment, not a mode. The focus refetch below is the only
+  // thing that used to clear one, and it deliberately never runs again once the
+  // client holds the transcript - so a single blip (a socket drop while the phone
+  // slept, one timed-out request) pinned "Couldn't refresh agent history" to a
+  // perfectly healthy chat for the rest of the session, while the timeline kept
+  // streaming behind it. Catch-up landing on a synced transcript is the proof
+  // that the warning has nothing left to describe.
+  useEffect(() => {
+    if (timelineStatus !== "ready" || !hasAppliedAuthoritativeHistory) {
+      return;
+    }
+    setMissingAgentState(clearHistorySyncErrorAfterSuccessfulSync);
+  }, [hasAppliedAuthoritativeHistory, timelineStatus]);
+
   // Focusing a pane only fetches when the client does not already hold the
   // transcript - see `shouldSyncAgentTimelineOnFocus` for why an unconditional
   // fetch here was the navigation path's most expensive redundant round-trip.
@@ -1294,6 +1308,8 @@ function ChatAgentContent({
     viewState.sync.status === "catching_up" &&
     viewState.sync.ui === "overlay";
   const showHistorySyncError = viewState.tag === "ready" && viewState.sync.status === "sync_error";
+  const showHistorySyncMissing =
+    viewState.tag === "ready" && viewState.sync.status === "sync_missing";
 
   return (
     <ChatAgentReadyContent
@@ -1314,6 +1330,7 @@ function ChatAgentContent({
       handleMessageSent={handleMessageSent}
       showHistorySyncOverlay={showHistorySyncOverlay}
       showHistorySyncError={showHistorySyncError}
+      showHistorySyncMissing={showHistorySyncMissing}
       cwd={agentCwd}
       onAttentionInputFocus={attentionController.clearOnInputFocus}
       onAttentionPromptSend={attentionController.clearOnPromptSend}
@@ -1340,6 +1357,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   handleMessageSent,
   showHistorySyncOverlay,
   showHistorySyncError,
+  showHistorySyncMissing,
   cwd,
   onAttentionInputFocus,
   onAttentionPromptSend,
@@ -1362,6 +1380,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   handleMessageSent: () => void;
   showHistorySyncOverlay: boolean;
   showHistorySyncError: boolean;
+  showHistorySyncMissing: boolean;
   cwd: string;
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
@@ -1383,6 +1402,19 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   // on `root`, whose height its own parent owns, so a growing composer can never
   // feed back into it.
   const { onLayout: onPaneLayout, height: paneHeight } = useContainerHeight();
+  // The composer, the sync warning and the metrics bar are one bottom stack, and
+  // the stack - not the composer alone - owns the safe-area inset. Padding the
+  // composer left everything rendered under it sitting inside Android's gesture
+  // strip, where the swipe-up bar covers it.
+  const insets = useSafeAreaInsets();
+  const bottomChromeStyle = useMemo(
+    () => [
+      styles.bottomChrome,
+      resolveBlackChatCanvasStyle(isBlackChat),
+      { paddingBottom: insets.bottom },
+    ],
+    [insets.bottom, isBlackChat],
+  );
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
       <AgentStreamSection
@@ -1449,25 +1481,37 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       >
         {contentContainer}
 
-        {composerSection}
+        <View style={bottomChromeStyle}>
+          {composerSection}
 
-        {/* Under the message box, not over it: the sync warning is ambient
-            status, so it must never push the composer down or cover the last
-            message while the user is typing. It sits above the metrics bar so
-            the run's own totals stay the bottom-most row. */}
-        {showHistorySyncError ? (
-          <SidebarCallout
-            title={t("agentPanel.states.timelineSyncFailed")}
-            variant="error"
-            testID="agent-timeline-sync-error"
-          />
-        ) : null}
+          {/* Under the message box, not over it: the sync warning is ambient
+              status, so it must never push the composer down or cover the last
+              message while the user is typing. It sits above the metrics bar so
+              the run's own totals stay the bottom-most row. */}
+          {showHistorySyncError ? (
+            <SidebarCallout
+              title={t("agentPanel.states.timelineSyncFailed")}
+              variant="error"
+              testID="agent-timeline-sync-error"
+            />
+          ) : null}
 
-        {/* Below the composer, at toolbar weight: this chat's total spend and
-            everything spawned under it. Its top border separates it from the
-            message box. Off unless switched on in Settings. See
-            subagents/chat-metrics-bar.tsx. */}
-        <ChatMetricsBar serverId={serverId} agentId={agentId} />
+          {/* The host has answered and the chat is not there. Nothing is being
+              retried, so the copy does not pretend otherwise. */}
+          {showHistorySyncMissing ? (
+            <SidebarCallout
+              title={t("agentPanel.states.timelineAgentMissing")}
+              variant="error"
+              testID="agent-timeline-sync-missing"
+            />
+          ) : null}
+
+          {/* Below the composer, at toolbar weight: this chat's total spend and
+              everything spawned under it. Its top border separates it from the
+              message box. Off unless switched on in Settings. See
+              subagents/chat-metrics-bar.tsx. */}
+          <ChatMetricsBar serverId={serverId} agentId={agentId} />
+        </View>
 
         {showHistorySyncOverlay ? (
           <View style={styles.historySyncOverlay} testID="agent-history-overlay">
@@ -1809,7 +1853,6 @@ function ActiveAgentComposer({
   viewportHeight: number;
 }) {
   const isBlackChat = useBlackChatScope();
-  const insets = useSafeAreaInsets();
   const isCompactFormFactor = useIsCompactFormFactor();
   // The composer row degrades one control at a time from its own measurements
   // (see composer/input/toolbar-stage.ts), so pane width must not flip the whole
@@ -2035,10 +2078,9 @@ function ActiveAgentComposer({
     () => [
       styles.inputAreaWrapper,
       resolveBlackChatCanvasStyle(isBlackChat),
-      { paddingBottom: insets.bottom },
       composerKeyboardStyle,
     ],
-    [insets.bottom, composerKeyboardStyle, isBlackChat],
+    [composerKeyboardStyle, isBlackChat],
   );
 
   return (
@@ -2208,6 +2250,10 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   inputAreaWrapper: {
+    width: "100%",
+    backgroundColor: theme.colors.surface0,
+  },
+  bottomChrome: {
     width: "100%",
     backgroundColor: theme.colors.surface0,
   },

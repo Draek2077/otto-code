@@ -476,6 +476,7 @@ export const ru: TranslationResources = {
       archivingTitle: "Архивный агент...",
       archivingSubtitle: "Пожалуйста, подождите, пока мы архивируем этого агента.",
       timelineSyncFailed: "Не удалось обновить историю агента. Повторная попытка…",
+      timelineAgentMissing: "Этот чат больше не существует на хосте.",
     },
     unavailable: {
       selectedHost: "Выбранный хост",

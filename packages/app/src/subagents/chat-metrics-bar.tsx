@@ -193,7 +193,7 @@ function Metric({
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild>
         <View style={[styles.metric, tight ? styles.metricTight : null]} testID={testID}>
-          {Icon ? <Icon size="xs" style={styles.icon} /> : null}
+          {Icon ? <Icon size="chromeXs" style={styles.icon} /> : null}
           <Text style={emphasis ? styles.valueEmphasis : styles.value} numberOfLines={1}>
             {value}
           </Text>

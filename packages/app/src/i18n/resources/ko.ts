@@ -477,6 +477,7 @@ export const ko: TranslationResources = {
       archivingTitle: "에이전트 보관 중...",
       archivingSubtitle: "이 에이전트를 보관하는 동안 잠시 기다려 주세요.",
       timelineSyncFailed: "에이전트 기록을 새로고침할 수 없습니다. 재시도 중…",
+      timelineAgentMissing: "이 채팅은 호스트에 더 이상 존재하지 않습니다.",
     },
     unavailable: {
       selectedHost: "선택된 호스트",

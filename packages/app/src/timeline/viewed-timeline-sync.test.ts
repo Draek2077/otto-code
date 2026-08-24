@@ -126,6 +126,10 @@ class TimelineWorld {
     return new Promise((resolve) => this.retryWaiters.push(resolve));
   }
 
+  scheduledDelays(): number[] {
+    return this.scheduled.map((entry) => entry.delayMs);
+  }
+
   elapse(elapsedMs: number): void {
     const due = this.scheduled.filter((entry) => entry.delayMs <= elapsedMs);
     this.scheduled.splice(
@@ -692,4 +696,78 @@ test("switching from legacy to selective delivery publishes membership and catch
   expect(membership.agentIds).toEqual(["agent-a"]);
   world.expectNoPendingMembership();
   world.expectNoPendingFetch();
+});
+
+test("a chat the host no longer has settles as missing and stops retrying", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  const membership = await world.nextMembership();
+  membership.succeed();
+
+  const fetch = await world.nextFetch("agent-a");
+  fetch.fail("Agent not found: agent-a");
+
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("missing"));
+  expect(world.scheduledDelays()).toEqual([]);
+
+  // Republishing the same visible set is the app's most common tick, and it must
+  // not turn a settled answer back into a request loop.
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  world.expectNoPendingFetch();
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("missing");
+});
+
+test("a reconnect gives a chat that went missing a fresh attempt", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  const membership = await world.nextMembership();
+  membership.succeed();
+  const fetch = await world.nextFetch("agent-a");
+  fetch.fail("Agent not found: agent-a");
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("missing"));
+
+  world.sync.setConnected(false);
+  world.sync.setConnected(true);
+  const reconnected = await world.nextMembership();
+  reconnected.succeed();
+
+  const retried = await world.nextFetch("agent-a");
+  retried.respond({ hasNewer: false });
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("ready"));
+});
+
+test("repeated catch-up failures back off instead of retrying every second", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  const membership = await world.nextMembership();
+  membership.succeed();
+
+  const first = await world.nextFetch("agent-a");
+  first.fail("host is unhappy");
+  await vi.waitFor(() => expect(world.scheduledDelays()).toEqual([1_000]));
+
+  world.elapse(1_000);
+  const second = await world.nextFetch("agent-a");
+  second.fail("host is unhappy");
+  await vi.waitFor(() => expect(world.scheduledDelays()).toEqual([2_000]));
+
+  world.elapse(2_000);
+  const third = await world.nextFetch("agent-a");
+  third.fail("host is unhappy");
+  await vi.waitFor(() => expect(world.scheduledDelays()).toEqual([4_000]));
+
+  world.elapse(4_000);
+  const recovered = await world.nextFetch("agent-a");
+  recovered.respond({ hasNewer: false });
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("ready"));
+
+  // The streak resets with the recovery, so the next blip is a one-second retry
+  // again rather than a half-minute wait.
+  world.sync.recoverGap("agent-a", { epoch: "epoch-agent-a", endSeq: 4 });
+  const afterRecovery = await world.nextFetch("agent-a");
+  afterRecovery.fail("host is unhappy again");
+  await vi.waitFor(() => expect(world.scheduledDelays()).toEqual([1_000]));
 });

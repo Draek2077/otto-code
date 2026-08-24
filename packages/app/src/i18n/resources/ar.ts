@@ -473,6 +473,7 @@ export const ar: TranslationResources = {
       archivingTitle: "وكيل الارشيف...",
       archivingSubtitle: "الرجاء الانتظار بينما نقوم بأرشفة هذا الوكيل.",
       timelineSyncFailed: "تعذر تحديث سجل الوكيل. جارٍ إعادة المحاولة…",
+      timelineAgentMissing: "لم تعد هذه المحادثة موجودة على المضيف.",
     },
     unavailable: {
       selectedHost: "المضيف المختار",

@@ -47,7 +47,7 @@ import {
   FileSymlink,
 } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { SPACING, type Theme } from "@/styles/theme";
+import { compactUp, SPACING, type Theme } from "@/styles/theme";
 import { useIsCompactFormFactor, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import Animated, {
   Easing,
@@ -69,6 +69,7 @@ import { useTextEffectThemeId } from "@/hooks/use-text-effect-theme";
 import { textEffectActivityForToolName } from "@/agent-stream/action-grouping";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { BubbleCornerSheen } from "@/components/bubble-corner-sheen";
+import { ChatThemeScope } from "@/components/chat-theme-scope";
 import {
   createSharedMarkdownRules,
   MarkdownRenderer,
@@ -643,74 +644,76 @@ export const UserMessage = memo(function UserMessage({
   );
 
   return (
-    <View style={containerStyle} testID="user-message" aria-busy={isPending}>
-      <View
-        style={userMessageStylesheet.content}
-        onPointerEnter={handlePointerEnter}
-        onPointerLeave={handlePointerLeave}
-      >
-        <ChatMessageBubble side="outgoing">
-          {hasImages ? (
-            <View style={imagePreviewContainerStyle}>
-              {images.map((image) => (
-                <UserMessageImagePill
-                  key={image.id}
-                  image={image}
-                  onOpen={setLightboxMetadata}
-                  accessibilityLabel={t("composer.attachments.openImage")}
-                />
-              ))}
-            </View>
-          ) : null}
-          {hasAttachments ? (
-            <View style={attachmentPreviewContainerStyle}>
-              {attachments.map((attachment, index) => {
-                const content = getAgentAttachmentPillContent(attachment, t);
-                return (
-                  <AttachmentFrame
-                    key={`${attachment.type}:${"number" in attachment ? attachment.number : index}`}
-                  >
-                    <AttachmentLabel
-                      icon={content.icon}
-                      title={content.title}
-                      subtitle={content.subtitle}
-                    />
-                  </AttachmentFrame>
-                );
-              })}
-            </View>
-          ) : null}
-          {hasText ? (
-            <MarkdownRenderer
-              text={message}
-              markdownit={userMessageMarkdownParser}
-              rules={userMessageMarkdownRules}
-              enableHtmlish={false}
-              remoteImages="altText"
-            />
-          ) : null}
-        </ChatMessageBubble>
-        {hasText ? (
-          <View style={trailingRowStyle} pointerEvents={showTrailingRow ? "auto" : "none"}>
-            <Text style={userMessageStylesheet.timestampText}>{formattedTimestamp}</Text>
-            {capabilities ? (
-              <RewindMenu
-                capabilities={capabilities}
-                isPending={rewindMutation.isPending}
-                rewoundText={message}
-                onRewind={handleRewind}
+    <ChatThemeScope>
+      <View style={containerStyle} testID="user-message" aria-busy={isPending}>
+        <View
+          style={userMessageStylesheet.content}
+          onPointerEnter={handlePointerEnter}
+          onPointerLeave={handlePointerLeave}
+        >
+          <ChatMessageBubble side="outgoing">
+            {hasImages ? (
+              <View style={imagePreviewContainerStyle}>
+                {images.map((image) => (
+                  <UserMessageImagePill
+                    key={image.id}
+                    image={image}
+                    onOpen={setLightboxMetadata}
+                    accessibilityLabel={t("composer.attachments.openImage")}
+                  />
+                ))}
+              </View>
+            ) : null}
+            {hasAttachments ? (
+              <View style={attachmentPreviewContainerStyle}>
+                {attachments.map((attachment, index) => {
+                  const content = getAgentAttachmentPillContent(attachment, t);
+                  return (
+                    <AttachmentFrame
+                      key={`${attachment.type}:${"number" in attachment ? attachment.number : index}`}
+                    >
+                      <AttachmentLabel
+                        icon={content.icon}
+                        title={content.title}
+                        subtitle={content.subtitle}
+                      />
+                    </AttachmentFrame>
+                  );
+                })}
+              </View>
+            ) : null}
+            {hasText ? (
+              <MarkdownRenderer
+                text={message}
+                markdownit={userMessageMarkdownParser}
+                rules={userMessageMarkdownRules}
+                enableHtmlish={false}
+                remoteImages="altText"
               />
             ) : null}
-            <TurnCopyButton
-              getContent={getMessageContent}
-              containerStyle={userMessageStylesheet.copyButton}
-              accessibilityLabel={t("message.actions.copyMessage")}
-            />
-          </View>
-        ) : null}
+          </ChatMessageBubble>
+          {hasText ? (
+            <View style={trailingRowStyle} pointerEvents={showTrailingRow ? "auto" : "none"}>
+              <Text style={userMessageStylesheet.timestampText}>{formattedTimestamp}</Text>
+              {capabilities ? (
+                <RewindMenu
+                  capabilities={capabilities}
+                  isPending={rewindMutation.isPending}
+                  rewoundText={message}
+                  onRewind={handleRewind}
+                />
+              ) : null}
+              <TurnCopyButton
+                getContent={getMessageContent}
+                containerStyle={userMessageStylesheet.copyButton}
+                accessibilityLabel={t("message.actions.copyMessage")}
+              />
+            </View>
+          ) : null}
+        </View>
+        <AttachmentLightbox metadata={lightboxMetadata} onClose={handleLightboxClose} />
       </View>
-      <AttachmentLightbox metadata={lightboxMetadata} onClose={handleLightboxClose} />
-    </View>
+    </ChatThemeScope>
   );
 });
 
@@ -2562,49 +2565,51 @@ export const AssistantMessage = memo(function AssistantMessage({
     sheen = <BubbleCornerSheen corner="left" offsetTop={groupOffsetTop} />;
   }
 
+  // Plain View owns hover per docs/hover.md; the playback button is a separate
+  // inner Pressable.
   return (
-    // Plain View owns hover per docs/hover.md; the playback button is a
-    // separate inner Pressable.
-    <View
-      testID="assistant-message"
-      style={assistantContainerStyle}
-      onLayout={handleContentLayout}
-      onPointerEnter={isWeb ? handlePointerEnter : undefined}
-      onPointerLeave={isWeb ? handlePointerLeave : undefined}
-    >
-      {keyedBlocks.length > 0 ? (
-        <View
-          ref={bubbleRef}
-          style={bubbleStyle}
-          onLayout={blockGroupId !== undefined ? handleBubbleLayout : undefined}
-        >
-          {sheen}
-          <AssistantImageWidthContext.Provider value={contentWidth}>
-            <View style={ASSISTANT_IMAGE_MEASURE_STYLE}>
-              {keyedBlocks.map(({ key, block }) => (
-                <AssistantMessageBlockContainer key={key} block={block}>
-                  <MemoizedMarkdownBlock
-                    text={block}
-                    rules={markdownRules}
-                    parser={markdownParser}
-                    onLinkPress={handleMarkdownLinkPress}
-                  />
-                </AssistantMessageBlockContainer>
-              ))}
-            </View>
-          </AssistantImageWidthContext.Provider>
-          {showPlayback && serverId !== undefined && bubbleGroupId !== undefined ? (
-            <AssistantBubblePlayback
-              serverId={serverId}
-              agentId={agentId}
-              groupId={bubbleGroupId}
-              visible={playbackVisible}
-              dimmed={playbackDimmed}
-            />
-          ) : null}
-        </View>
-      ) : null}
-    </View>
+    <ChatThemeScope>
+      <View
+        testID="assistant-message"
+        style={assistantContainerStyle}
+        onLayout={handleContentLayout}
+        onPointerEnter={isWeb ? handlePointerEnter : undefined}
+        onPointerLeave={isWeb ? handlePointerLeave : undefined}
+      >
+        {keyedBlocks.length > 0 ? (
+          <View
+            ref={bubbleRef}
+            style={bubbleStyle}
+            onLayout={blockGroupId !== undefined ? handleBubbleLayout : undefined}
+          >
+            {sheen}
+            <AssistantImageWidthContext.Provider value={contentWidth}>
+              <View style={ASSISTANT_IMAGE_MEASURE_STYLE}>
+                {keyedBlocks.map(({ key, block }) => (
+                  <AssistantMessageBlockContainer key={key} block={block}>
+                    <MemoizedMarkdownBlock
+                      text={block}
+                      rules={markdownRules}
+                      parser={markdownParser}
+                      onLinkPress={handleMarkdownLinkPress}
+                    />
+                  </AssistantMessageBlockContainer>
+                ))}
+              </View>
+            </AssistantImageWidthContext.Provider>
+            {showPlayback && serverId !== undefined && bubbleGroupId !== undefined ? (
+              <AssistantBubblePlayback
+                serverId={serverId}
+                agentId={agentId}
+                groupId={bubbleGroupId}
+                visible={playbackVisible}
+                dimmed={playbackDimmed}
+              />
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    </ChatThemeScope>
   );
 });
 
@@ -2847,7 +2852,7 @@ export const SpeakMessage = memo(function SpeakMessage({
   return (
     <View testID="speak-message" style={containerStyle}>
       <View style={speakMessageStylesheet.header}>
-        <ThemedMicVocal size="xs" uniProps={foregroundMutedColorMapping} />
+        <ThemedMicVocal size="chromeXs" uniProps={foregroundMutedColorMapping} />
         <Text style={speakMessageStylesheet.headerLabel}>{t("message.speak.header")}</Text>
       </View>
       <Text style={speakMessageStylesheet.text}>{message}</Text>
@@ -2902,7 +2907,9 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
   },
   iconContainer: {
     flexShrink: 0,
-    height: 20,
+    // Matches the chrome ladder the glyph inside it rides (x1.5 on compact); a fixed
+    // 20 clipped the scaled icon.
+    height: compactUp(20, 1.5),
     justifyContent: "center",
   },
   textContainer: {
@@ -3011,7 +3018,7 @@ export const ActivityLog = memo(function ActivityLog({
       <View style={activityLogStylesheet.content}>
         <View style={activityLogStylesheet.row}>
           <View style={activityLogStylesheet.iconContainer}>
-            <IconComponent size="md" color={config.color} />
+            <IconComponent size="chromeMd" color={config.color} />
           </View>
           <View style={activityLogStylesheet.textContainer}>
             <Text style={messageTextStyle} selectable>
@@ -3023,9 +3030,9 @@ export const ActivityLog = memo(function ActivityLog({
                   {t("message.activity.details")}
                 </Text>
                 {isExpanded ? (
-                  <ChevronDown size="xs" color="#71717a" />
+                  <ChevronDown size="chromeXs" color="#71717a" />
                 ) : (
-                  <ChevronRight size="xs" color="#71717a" />
+                  <ChevronRight size="chromeXs" color="#71717a" />
                 )}
               </View>
             )}
@@ -3085,7 +3092,7 @@ export const CompactionMarker = memo(function CompactionMarker({
     <View testID="compaction-marker" style={compactionStylesheet.container}>
       <View style={compactionStylesheet.line} />
       <View style={compactionStylesheet.label}>
-        {status === "completed" && <Summarize size="xs" color="#a1a1aa" />}
+        {status === "completed" && <Summarize size="chromeXs" color="#a1a1aa" />}
         <Text style={compactionStylesheet.text}>{label}</Text>
       </View>
       <View style={compactionStylesheet.line} />
@@ -3135,7 +3142,7 @@ export const TodoListCard = memo(function TodoListCard({
   return (
     <View style={cardStyle}>
       <View style={todoListCardStylesheet.header}>
-        <ThemedTodoHeaderIcon size="sm" uniProps={foregroundColorMapping} />
+        <ThemedTodoHeaderIcon size="chromeSm" uniProps={foregroundColorMapping} />
         <Text style={todoListCardStylesheet.headerTitle} numberOfLines={1}>
           {t("message.todo.title")}
         </Text>
@@ -3462,7 +3469,7 @@ function ExpandableBadgeLabelRow({
           hitSlop={6}
         >
           <ThemedFileSymlinkIcon
-            size="sm"
+            size="chromeSm"
             uniProps={isOpenFileHovered ? foregroundColorMapping : foregroundMutedColorMapping}
           />
         </Pressable>
@@ -3560,7 +3567,7 @@ function renderExpandableBadgeIcon({
     return (
       <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
         <ThemedTriangleAlertIcon
-          size="xs"
+          size="chromeXs"
           style={TRIANGLE_ALERT_ICON_OPACITY}
           uniProps={errorLevel === "warning" ? warningColorMapping : destructiveColorMapping}
         />
@@ -3580,7 +3587,7 @@ function renderExpandableBadgeIcon({
     return (
       <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
         <ThemedIcon
-          size="xs"
+          size="chromeXs"
           uniProps={isActive ? foregroundColorMapping : mutedForegroundColorMapping}
         />
       </View>
@@ -3600,7 +3607,11 @@ function renderExpandableBadgeIconSlot({
 }): ReactNode {
   if (showChevron) {
     return (
-      <ThemedChevronRightIcon size="xs" style={chevronStyle} uniProps={foregroundColorMapping} />
+      <ThemedChevronRightIcon
+        size="chromeXs"
+        style={chevronStyle}
+        uniProps={foregroundColorMapping}
+      />
     );
   }
   return iconNode;
@@ -4050,69 +4061,71 @@ export const ExpandableBadge = memo(function ExpandableBadge({
     : {};
 
   return (
-    <View
-      style={containerStyle}
-      testID={testID}
-      onPointerEnter={isWeb ? handleHoverIn : undefined}
-      onPointerLeave={isWeb ? handleHoverOut : undefined}
-    >
-      <Pressable
-        {...pressHandlers}
-        disabled={!isInteractive}
-        accessibilityState={accessibilityState}
-        style={pressableStyle}
+    <ChatThemeScope>
+      <View
+        style={containerStyle}
+        testID={testID}
+        onPointerEnter={isWeb ? handleHoverIn : undefined}
+        onPointerLeave={isWeb ? handleHoverOut : undefined}
       >
-        <View style={getExpandableBadgeHeaderStyle(topAlignHeader)}>
-          <View style={getToolCallIconBadgeStyle(topAlignHeader)}>{iconSlotNode}</View>
-          <ExpandableBadgeLabelRow
-            label={label}
-            labelStyle={labelStyle}
-            secondaryLabel={secondaryLabel}
-            secondaryLabelStyle={secondaryLabelStyle}
-            shouldMeasureTextSpan={shouldMeasureTextSpan}
-            shouldMeasureNativeShimmer={shouldMeasureNativeShimmer}
-            isWebShimmer={isWebShimmer}
-            isNativeShimmer={isNativeShimmer}
-            shimmerLabelTextStyle={shimmerLabelTextStyle}
-            shimmerSecondaryTextStyle={shimmerSecondaryTextStyle}
-            labelRowWidth={labelRowWidth}
-            labelRowHeight={labelRowHeight}
-            nativeShimmerPeakWidth={nativeShimmerPeakWidth}
-            shimmerDuration={shimmerDuration}
-            nativeGradientId={nativeGradientIdRef.current}
-            sweepEffect={sweepEffect}
-            glyphEffect={glyphEffect}
-            textSpanStartX={textSpanStartX}
-            textSpanWidth={textSpanWidth}
-            onLabelRowLayout={handleLabelRowLayout}
-            onLabelLayout={handleLabelLayout}
-            onSecondaryLayout={handleSecondaryLayout}
-            showOpenFileButton={Boolean(onOpenFile && isHovered)}
-            isOpenFileHovered={isOpenFileHovered}
-            onOpenFilePress={handleOpenFilePress}
-            onOpenFileHoverIn={handleOpenFileHoverIn}
-            onOpenFileHoverOut={handleOpenFileHoverOut}
-            textLayout={textLayout}
-            onWrappedSummaryMultiLineChange={handleWrappedSummaryMultiLineChange}
-          />
-          {renderExpandCollapseControls(
-            onExpandAll,
-            onCollapseAll,
-            shouldShowExpandCollapseControls(isHovered, isCompact),
-          )}
-        </View>
-      </Pressable>
-      {detailContent ? (
         <Pressable
-          ref={detailWrapperRef}
-          style={expandableBadgeStylesheet.detailWrapper}
-          onHoverIn={handleDetailHoverIn}
-          onHoverOut={handleDetailHoverOut}
+          {...pressHandlers}
+          disabled={!isInteractive}
+          accessibilityState={accessibilityState}
+          style={pressableStyle}
         >
-          {detailContent}
+          <View style={getExpandableBadgeHeaderStyle(topAlignHeader)}>
+            <View style={getToolCallIconBadgeStyle(topAlignHeader)}>{iconSlotNode}</View>
+            <ExpandableBadgeLabelRow
+              label={label}
+              labelStyle={labelStyle}
+              secondaryLabel={secondaryLabel}
+              secondaryLabelStyle={secondaryLabelStyle}
+              shouldMeasureTextSpan={shouldMeasureTextSpan}
+              shouldMeasureNativeShimmer={shouldMeasureNativeShimmer}
+              isWebShimmer={isWebShimmer}
+              isNativeShimmer={isNativeShimmer}
+              shimmerLabelTextStyle={shimmerLabelTextStyle}
+              shimmerSecondaryTextStyle={shimmerSecondaryTextStyle}
+              labelRowWidth={labelRowWidth}
+              labelRowHeight={labelRowHeight}
+              nativeShimmerPeakWidth={nativeShimmerPeakWidth}
+              shimmerDuration={shimmerDuration}
+              nativeGradientId={nativeGradientIdRef.current}
+              sweepEffect={sweepEffect}
+              glyphEffect={glyphEffect}
+              textSpanStartX={textSpanStartX}
+              textSpanWidth={textSpanWidth}
+              onLabelRowLayout={handleLabelRowLayout}
+              onLabelLayout={handleLabelLayout}
+              onSecondaryLayout={handleSecondaryLayout}
+              showOpenFileButton={Boolean(onOpenFile && isHovered)}
+              isOpenFileHovered={isOpenFileHovered}
+              onOpenFilePress={handleOpenFilePress}
+              onOpenFileHoverIn={handleOpenFileHoverIn}
+              onOpenFileHoverOut={handleOpenFileHoverOut}
+              textLayout={textLayout}
+              onWrappedSummaryMultiLineChange={handleWrappedSummaryMultiLineChange}
+            />
+            {renderExpandCollapseControls(
+              onExpandAll,
+              onCollapseAll,
+              shouldShowExpandCollapseControls(isHovered, isCompact),
+            )}
+          </View>
         </Pressable>
-      ) : null}
-    </View>
+        {detailContent ? (
+          <Pressable
+            ref={detailWrapperRef}
+            style={expandableBadgeStylesheet.detailWrapper}
+            onHoverIn={handleDetailHoverIn}
+            onHoverOut={handleDetailHoverOut}
+          >
+            {detailContent}
+          </Pressable>
+        ) : null}
+      </View>
+    </ChatThemeScope>
   );
 }, areExpandableBadgePropsEqual);
 

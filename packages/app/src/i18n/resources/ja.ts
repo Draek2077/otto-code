@@ -479,6 +479,7 @@ export const ja: TranslationResources = {
       archivingTitle: "エージェントをアーカイブ中...",
       archivingSubtitle: "このエージェントをアーカイブするまでお待ちください。",
       timelineSyncFailed: "エージェントの履歴を更新できませんでした。再試行しています…",
+      timelineAgentMissing: "このチャットはホスト上に存在しません。",
     },
     unavailable: {
       selectedHost: "選択中のホスト",

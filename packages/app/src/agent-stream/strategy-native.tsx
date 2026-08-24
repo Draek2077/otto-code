@@ -27,6 +27,7 @@ import type { StreamItem } from "@/types/stream";
 import type { Theme } from "@/styles/theme";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { ChatThemeScope } from "@/components/chat-theme-scope";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useBottomAnchorController } from "./bottom-anchor-controller";
 import { useScrollKeyboardDismiss } from "./scroll-keyboard-dismiss/use-scroll-keyboard-dismiss";
@@ -142,9 +143,14 @@ function useLiveHeaderStore(content: ReactElement | null): LiveHeaderStore {
   );
 }
 
+// The live turn is delivered through a store so the list does not re-render on
+// every chunk - which also means these renders never pass through the pane's
+// `BlackChatScope` markers. `ChatThemeScope` re-asserts the scope inside this
+// component's own output, so the streaming turn keeps the black ramp.
 const LiveStreamHeader = memo(function LiveStreamHeader() {
   const store = useContext(LiveHeaderContext);
-  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const content = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  return <ChatThemeScope>{content}</ChatThemeScope>;
 });
 
 function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrategy }) {
@@ -689,10 +695,16 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     olderHistoryProgressKey,
     scheduleHistoryStartSettle,
   ]);
+  // A virtualized cell mounts from FlatList's own render pass, never from the
+  // one that runs between the pane-level `BlackChatScope` markers, so every row
+  // has to carry the scope itself (see docs/unistyles.md).
   const renderItem = useStableEvent(
     ({ item, index }: ListRenderItemInfo<StreamItem>): ReactElement | null => {
       const rendered = renderHistoryMountedRow(item, index, historyRows);
-      return (rendered ?? null) as ReactElement | null;
+      if (!rendered) {
+        return null;
+      }
+      return <ChatThemeScope>{rendered as ReactElement}</ChatThemeScope>;
     },
   );
 

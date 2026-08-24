@@ -92,6 +92,11 @@ export const LINE_HEIGHT = {
  * type glyphs. A step that many places reach for independently is a real step, and
  * hardcoding it froze every one of them at 18 on a phone.
  *
+ * `chromeXs` is 12 - the chrome twin of `xs`, added because the chrome ladder started
+ * at 14 and the smallest affordances in a dense transcript (tool-call badge glyphs,
+ * disclosure chevrons, metric icons) are authored at 12. Without it those call sites
+ * had to choose between doubling to 24 on a phone or gaining 2pt on the desktop.
+ *
  * The scaling itself happens in exactly one place, `applyAppearance`. Never scale an
  * icon at a call site.
  */
@@ -101,6 +106,7 @@ export const ICON_SIZE = {
   md: 16,
   mdPlus: 18,
   lg: 20,
+  chromeXs: 12,
   chromeSm: 14,
   chromeMd: 16,
   chromeLg: 20,
@@ -121,6 +127,7 @@ export const ICON_SIZE_COMPACT: Record<keyof typeof ICON_SIZE, number> = {
   md: ICON_SIZE.md * 2,
   mdPlus: ICON_SIZE.mdPlus * 2,
   lg: ICON_SIZE.lg * 2,
+  chromeXs: ICON_SIZE.chromeXs * 1.5,
   chromeSm: ICON_SIZE.chromeSm * 1.5,
   chromeMd: ICON_SIZE.chromeMd * 1.5,
   chromeLg: ICON_SIZE.chromeLg * 1.5,

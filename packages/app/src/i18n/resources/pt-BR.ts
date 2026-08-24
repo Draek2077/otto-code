@@ -477,6 +477,7 @@ export const ptBR: TranslationResources = {
       archivingTitle: "Arquivando agente...",
       archivingSubtitle: "Aguarde enquanto arquivamos este agente.",
       timelineSyncFailed: "Não foi possível atualizar o histórico do agente. Tentando novamente…",
+      timelineAgentMissing: "Este chat não existe mais no host.",
     },
     unavailable: {
       selectedHost: "Host selecionado",

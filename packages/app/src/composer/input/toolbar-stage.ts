@@ -7,7 +7,6 @@ import {
   resolveNextComposerControlStage,
   type ComposerControlStage,
 } from "@/composer/agent-controls/layout";
-import { isWeb } from "@/constants/platform";
 import { canFitCompactFeatures } from "./toolbar-width-context";
 import { computeToolbarScale } from "./toolbar-scale";
 
@@ -285,24 +284,29 @@ export function useComposerToolbarLayout({
     if (contentWidth.value <= 0) return { width: "100%" as const };
     const s = scale.value;
     const width = contentWidth.value / s;
-    if (!isWeb) {
-      // Native honors `transformOrigin` on the view (static style on the row
-      // content), so the scale already pivots at the left edge: the widened
-      // row lands exactly on the row's real edges with nothing to compensate.
-      return { width, transform: [{ scale: s }] };
-    }
-    // On web `transform-origin` cannot reach the DOM by any path: unistyles
-    // mangles the array value into junk CSS, and reanimated's web update path
-    // drops it (verified live: the computed origin stayed at the box center,
-    // shifting the row right by width * (1 - s) / 2 and clipping the tail).
-    // Baking the left-edge pivot into the transform instead: a center-pivot
-    // scale leaves the box width * (1 - s) / 2 too far right, so a translateX
-    // of that amount re-anchors the row exactly at the row's left edge - the
-    // left-edge pivot, expressed as a pure reposition of the same uniform
-    // scale. Order matters: the array serializes to CSS in order and CSS
-    // applies right-to-left, so the translate must come first to act in
-    // screen space, after the scale - listed second it would itself be
-    // scaled by s and undercompensate by width * (1 - s)^2 / 2.
+    // One pivot, and it lives here. The row is widened by exactly what the
+    // scale takes back, so the scale has to pivot at the row's left edge or
+    // the groups stop landing on the row's real edges. `transformOrigin` is
+    // not that pivot on any platform: web never receives it (unistyles mangles
+    // the array into junk CSS, and reanimated's web update path drops it -
+    // verified live, the computed origin stayed at the box center), and on
+    // Android Fabric the origin is resolved against the view's measured width
+    // when the transform prop lands, which for this row is a width that is
+    // itself animated, so it resolves against a stale size and the row settles
+    // off-center. The row style therefore declares no origin at all.
+    //
+    // Baking it in instead: a center-pivot scale leaves the box
+    // width * (1 - s) / 2 too far right, so a translateX of that amount
+    // re-anchors it at the row's left edge - the left-edge pivot, expressed as
+    // a pure reposition of the same uniform scale, and applied in the same
+    // worklet as the width it compensates for, so the two can never disagree.
+    //
+    // Order matters: on web the array serializes to CSS in order and CSS
+    // applies right-to-left; on native RN folds the array in listed order, so
+    // the same list means the same thing. Either way the translate must come
+    // first so it acts in screen space, after the scale. Listed second it
+    // would itself be scaled by s and undercompensate by
+    // width * (1 - s)^2 / 2.
     return {
       width,
       transform: [{ translateX: (-width * (1 - s)) / 2 }, { scale: s }],

@@ -247,6 +247,24 @@ describe("deriveAgentScreenViewState", () => {
     expectSyncErrorSync(ready);
   });
 
+  it("reports a chat the host no longer has as missing, not as a retry", () => {
+    const memory = createBaseMemory({
+      hasRenderedReady: true,
+      lastReadyAgent: createAgent("agent-1"),
+    });
+    const input: AgentScreenMachineInput = {
+      ...createBaseInput(),
+      agent: createAgent("agent-1"),
+      hasHydratedHistoryBefore: true,
+      visibilityCatchUpStatus: "missing",
+    };
+
+    const result = deriveAgentScreenViewState({ input, memory });
+    const ready = expectReadyState(result.state);
+
+    expect(ready.sync.status).toBe("sync_missing");
+  });
+
   it("keeps sync errors non-blocking once the screen was ready", () => {
     const memory = createBaseMemory({
       hasRenderedReady: true,
