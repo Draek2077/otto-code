@@ -7,7 +7,6 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { LegacyDiffFileBody } from "@/git/diff-pane";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import { useAppSettings } from "@/hooks/use-settings";
-import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { settingsStyles } from "@/styles/settings";
 import { buildLineDiff, type DiffLine } from "@/utils/tool-call-parsers";
 import { selectDiffRenderer } from "@/utils/diff-renderer-selection";
@@ -66,7 +65,6 @@ export function DiffPresentationPreview({
   const [renderer, setRenderer] = useState<PreviewRenderer>("new");
   const [scenario, setScenario] = useState("small-edit");
   const { settings } = useAppSettings();
-  const { preferences } = useChangesPreferences();
   const selectedScenario = getStructuralDiffDemoScenario(scenario);
   const diffLines = useMemo(
     () => buildLineDiff(selectedScenario.before, selectedScenario.after),
@@ -142,7 +140,10 @@ export function DiffPresentationPreview({
             source="before-after"
             beforeSource={selectedScenario.before}
             afterSource={selectedScenario.after}
-            presentation={preferences.presentation}
+            // The preview compares the old review body with the new Structural
+            // renderer. It intentionally does not inherit the user's default,
+            // which only governs live review surfaces.
+            presentation="structural"
             wrap
           />
         ) : (
@@ -157,10 +158,7 @@ export function DiffPresentationPreview({
           />
         )}
       </AppearanceStyleBoundary>
-      {useNewDiff &&
-      preferences.presentation === "structural" &&
-      !showFormattingChanges &&
-      scenario === "formatting" ? (
+      {useNewDiff && !showFormattingChanges && scenario === "formatting" ? (
         <Text style={styles.formattingHidden}>Formatting-only changes are hidden.</Text>
       ) : null}
     </View>
