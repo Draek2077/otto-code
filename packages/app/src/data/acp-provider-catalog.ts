@@ -83,10 +83,10 @@ const CATALOG_DATA = [
     title: "Cline",
     description:
       "Autonomous coding agent CLI - capable of creating/editing files, running commands, using the browser, and more",
-    version: "3.0.56",
+    version: "3.0.57",
     iconId: "cline",
     installLink: "https://cline.bot/cli",
-    command: ["npx", "-y", "cline@3.0.56", "--acp"],
+    command: ["npx", "-y", "cline@3.0.57", "--acp"],
   },
   {
     id: "codebuddy-code",
@@ -197,10 +197,10 @@ const CATALOG_DATA = [
     id: "fast-agent",
     title: "fast-agent",
     description: "Code and build agents with comprehensive multi-provider support",
-    version: "0.10.9",
+    version: "0.10.10",
     iconId: "fast-agent",
     installLink: "https://fast-agent.ai/acp/",
-    command: ["uvx", "--from", "fast-agent-acp==0.10.9", "fast-agent-acp", "-x"],
+    command: ["uvx", "--from", "fast-agent-acp==0.10.10", "fast-agent-acp", "-x"],
   },
   {
     id: "gemini",
@@ -352,10 +352,10 @@ const CATALOG_DATA = [
     id: "qwen-code",
     title: "Qwen Code",
     description: "Alibaba's Qwen coding assistant",
-    version: "0.21.15",
+    version: "0.22.0",
     iconId: "qwen-code",
     installLink: "https://qwenlm.github.io/qwen-code-docs/en/users/overview",
-    command: ["npx", "-y", "@qwen-code/qwen-code@0.21.15", "--acp", "--experimental-skills"],
+    command: ["npx", "-y", "@qwen-code/qwen-code@0.22.0", "--acp", "--experimental-skills"],
   },
   {
     id: "sigit",
