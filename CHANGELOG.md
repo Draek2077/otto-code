@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.17 - 2026-08-25
+
+### Fixed
+
+- Stop Android from crashing when the setup screen unmounts while the loading animation is being cancelled
+- Keep sidebar navigation labels visible instead of collapsing or overlapping at supported widths
+
 ## Unreleased
 
 ### Changed
