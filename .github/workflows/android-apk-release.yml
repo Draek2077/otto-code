@@ -198,26 +198,36 @@ jobs:
 
       # `-Pandroid.injected.version.code` is a NO-OP for assembleRelease under
       # AGP 8 - it silently yields versionCode 1, which Android refuses to
-      # install over an existing Otto. Write it into the generated build.gradle
-      # instead. The file is gitignored (prebuild regenerates it), so nothing
+      # install over an existing Otto. So the value has to come from the
+      # generated build.gradle, and this step verifies it rather than trusting
+      # it. That file is gitignored (prebuild regenerates it), so nothing
       # tracked changes here.
       #
-      # versionCode is derived from the version rather than a remote counter:
-      # major*10000 + minor*100 + patch, so 0.7.2 -> 702. Monotonic across
-      # releases and reproducible from the tag alone, unlike EAS's counter which
-      # drifted to 50+ because refused builds still incremented it.
-      - name: Set versionCode from the release version
+      # This step used to OVERWRITE the value using a second formula
+      # (major*10000 + minor*100 + patch, so 0.8.15 -> 815) that disagreed with
+      # `packages/app/native-release-version.js` and with docs/android.md
+      # (major*1_000_000 + minor*1_000 + patch, so 0.8.15 -> 8015). The released
+      # APK therefore never carried the version code visible in the repo, which
+      # defeats the reason for keeping it there: a source-based build (F-Droid)
+      # produced 8015 and would sit permanently above every official release, so
+      # official updates could never install over it. app.config.js is now the
+      # single source of truth and CI only asserts it.
+      - name: Verify versionCode matches the source of truth
         shell: bash
         run: |
           set -euo pipefail
-          version="${RELEASE_VERSION%%-*}"
-          IFS='.' read -r major minor patch <<< "$version"
-          version_code=$(( major * 10000 + minor * 100 + patch ))
-          echo "Using versionCode $version_code for $RELEASE_VERSION"
-
+          expected=$(node -p "require('./packages/app/native-release-version').getNativeReleaseVersion('${RELEASE_VERSION}').androidVersionCode")
           gradle_file=packages/app/android/app/build.gradle
-          perl -pi -e "s/versionCode\s+\d+/versionCode $version_code/" "$gradle_file"
-          grep -n "versionCode" "$gradle_file"
+          actual=$(perl -ne 'print $1 if /versionCode\s+(\d+)/' "$gradle_file")
+          echo "versionCode expected=$expected actual=$actual for $RELEASE_VERSION"
+          if [ "$actual" = "1" ]; then
+            echo "::error::versionCode is 1; prebuild did not carry app.config.js through"
+            exit 1
+          fi
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::versionCode mismatch: build.gradle has $actual, native-release-version.js says $expected"
+            exit 1
+          fi
 
       - name: Decode signing keystore
         env:
