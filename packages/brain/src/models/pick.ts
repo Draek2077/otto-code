@@ -44,9 +44,8 @@ export function pickModel(catalog: Model[], needle: string | undefined): Model {
 /**
  * Choose a model when nothing named one: the best-ranked model from bench
  * history that is still installed, or the first catalog entry when nothing
- * has been benched yet. This is what "Automatic" (a null default model) means
- * in the UI - it must always start something for a non-empty catalog. The
- * VRAM fit check downstream in startService is what can still refuse the pick.
+ * has been benched yet. This is for callers that explicitly request automatic
+ * selection; a null startup default intentionally leaves Brain unloaded.
  */
 export function pickAutoModel(catalog: Model[], ranked: RankedModel[] = rankModels()): Model {
   if (catalog.length === 0) {

@@ -27,7 +27,7 @@ import {
 import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig, Profile } from "../config/schema.js";
 import { query as queryGpu } from "../gpu.js";
-import { managedModelsDir, pickAutoModel, pickModel, scanModels } from "../models/index.js";
+import { managedModelsDir, pickModel, scanModels } from "../models/index.js";
 import { CommandError } from "../output/types.js";
 import { resolveRuntime } from "../runtime/index.js";
 import type { Model } from "../types.js";
@@ -575,14 +575,17 @@ export async function startService({
     catalog = scanModels(config, env);
     return catalog;
   };
-  const needle = modelNeedle ?? config.defaultModel ?? store.lastModelId ?? undefined;
+  // A configured default is the only implicit startup load. Keeping this null
+  // deliberately starts the host unloaded; an incoming request selects and
+  // loads its model on demand. `lastModelId` is history, never a hidden default.
+  const needle = modelNeedle ?? config.defaultModel ?? undefined;
   let model: Model | null = null;
-  if (catalog.length > 0) {
+  if (catalog.length > 0 && needle) {
     try {
-      model = needle ? pickModel(catalog, needle) : pickAutoModel(catalog);
+      model = pickModel(catalog, needle);
     } catch (error) {
-      // A removed default or last-used model must not take the management
-      // service down. An explicit CLI selection remains an actionable error.
+      // A removed configured default must not take the management service down.
+      // An explicit CLI selection remains an actionable error.
       if (modelNeedle) throw error;
       log(
         "server",

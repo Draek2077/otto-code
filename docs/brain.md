@@ -296,6 +296,11 @@ per process and never assumes weights are shared across processes.
 Each model carries a **Model profile**: its saved launch and VRAM settings. It is distinct from a
 **Prompt & template profile**, which supplies message formatting and a system-prompt addendum.
 
+**Settings → Host → Brain → Default model** controls startup preloading. Choose a model to have
+Brain load it at service start, or choose **None (load on request)** to start with no model in VRAM.
+In the latter mode, the first request selects and loads a model when needed; the last previously used
+model is never silently treated as the default.
+
 | Field              | Effect                                                                   |
 | ------------------ | ------------------------------------------------------------------------ |
 | Context multiplier | YaRN extension factor: 1, 2, or 4 times the native context window        |

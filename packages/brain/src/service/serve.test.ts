@@ -13,6 +13,8 @@ import {
   startService,
 } from "./serve.js";
 
+const mocks = vi.hoisted(() => ({ scanModels: vi.fn(() => []) }));
+
 // The bind guard must throw before any process is spawned; a truthy stub runtime
 // is all resolveRuntime needs to provide for that path.
 vi.mock("../runtime/index.js", () => ({
@@ -21,7 +23,7 @@ vi.mock("../runtime/index.js", () => ({
 
 vi.mock("../models/index.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../models/index.js")>()),
-  scanModels: () => [],
+  scanModels: mocks.scanModels,
 }));
 
 const tmpDirs: string[] = [];
@@ -33,6 +35,8 @@ function makeTmp(): string {
 
 afterEach(() => {
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  mocks.scanModels.mockReset();
+  mocks.scanModels.mockReturnValue([]);
 });
 
 describe("remote Brain model downloads", () => {
@@ -277,6 +281,35 @@ describe("startService bind guard", () => {
         modelId: null,
       });
       await expect(getJson(address.port, "/__host/models")).resolves.toMatchObject({ models: [] });
+    } finally {
+      await handle.stop();
+    }
+  });
+
+  it("does not preload an installed model when the default is None", async () => {
+    mocks.scanModels.mockReturnValue([
+      {
+        id: "installed-model",
+        displayName: "Installed model",
+        modelPath: "C:/models/installed-model.gguf",
+        mmprojPath: null,
+        mmprojBytes: 0,
+        quant: "Q4_K_M",
+        sizeBytes: 1,
+        features: { mtp: false, imatrix: false, distilled: false },
+        metadata: null,
+      },
+    ]);
+    const handle = await startService({
+      config: configWith({ listen: { host: "127.0.0.1", port: 0 } }),
+      env: env(),
+    });
+    try {
+      await expect(getJson(listenPort(handle), "/__host/status")).resolves.toMatchObject({
+        state: "stopped",
+        model: null,
+        modelId: null,
+      });
     } finally {
       await handle.stop();
     }

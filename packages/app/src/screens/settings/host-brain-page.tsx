@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,13 +9,14 @@ import type {
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
 } from "@otto-code/protocol/messages";
-import { Copy, RefreshCw, Waypoints } from "@/components/icons/material-icons";
+import { Copy, Info, RefreshCw, Waypoints } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
 import { NumberStepperField } from "@/components/ui/number-stepper-field";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
@@ -79,6 +80,7 @@ function generateAccessKey(): string {
 
 const ThemedWaypoints = withUnistyles(Waypoints);
 const ThemedCopy = withUnistyles(Copy);
+const ThemedInfo = withUnistyles(Info);
 const ThemedRefreshCw = withUnistyles(RefreshCw);
 const ThemedTextInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
@@ -266,8 +268,8 @@ function useBrainModels(serverId: string): string[] {
   return query.data ?? [];
 }
 
-// null models sort under one stable key so the "Automatic" option round-trips.
-const modelValueKey = (value: string | null): string => value ?? "__automatic__";
+// Null models sort under one stable key so the explicit unloaded choice round-trips.
+const modelValueKey = (value: string | null): string => value ?? "__none__";
 
 function parseMaxLoadedModels(raw: string): number | null {
   const value = Number.parseInt(raw, 10);
@@ -275,44 +277,46 @@ function parseMaxLoadedModels(raw: string): number | null {
 }
 
 // A model chooser, never a text box: options are the detected models, disabled
-// (with a "start the brain" prompt) when none are detected. `includeAutomatic`
-// adds a null "Automatic" choice for fields that may be left unset.
+// (with a "start the brain" prompt) when none are detected. `includeNone` adds
+// a null choice that means Brain starts without preloading a model.
 function ModelPickerRow({
   serverId,
   title,
   hint,
+  tooltip,
   value,
   onChange,
-  includeAutomatic,
+  includeNone,
   showBorder,
   triggerTestID,
 }: {
   serverId: string;
   title: string;
-  hint: string;
+  hint?: string;
+  tooltip?: string;
   value: string | null;
   onChange: (next: string | null) => void;
-  includeAutomatic: boolean;
+  includeNone: boolean;
   showBorder: boolean;
   triggerTestID?: string;
 }) {
   const models = useBrainModels(serverId);
   const options = useMemo<SelectFieldOption<string | null>[]>(() => {
-    const opts: SelectFieldOption<string | null>[] = includeAutomatic
-      ? [{ id: "__automatic__", value: null, label: "Automatic" }]
+    const opts: SelectFieldOption<string | null>[] = includeNone
+      ? [{ id: "__none__", value: null, label: "None (load on request)" }]
       : [];
     for (const name of models) {
       opts.push({ id: name, value: name, label: name });
     }
     return opts;
-  }, [models, includeAutomatic]);
+  }, [models, includeNone]);
 
-  const disabled = models.length === 0;
+  const disabled = models.length === 0 && !includeNone;
   const selectedDisplay = useMemo<{ label: string } | null>(() => {
     if (value) return { label: value };
-    if (includeAutomatic) return { label: "Automatic" };
+    if (includeNone) return { label: "None (load on request)" };
     return null;
-  }, [value, includeAutomatic]);
+  }, [value, includeNone]);
   const rowStyle = useMemo(
     () => [settingsStyles.rowResponsive, showBorder && settingsStyles.rowBorder],
     [showBorder],
@@ -321,8 +325,27 @@ function ModelPickerRow({
   return (
     <View style={[rowStyle, styles.modelPickerRow]}>
       <View style={[settingsStyles.rowContent, styles.modelPickerCopy]}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
-        <Text style={settingsStyles.rowHint}>{hint}</Text>
+        <View style={styles.modelPickerTitleRow}>
+          <Text style={settingsStyles.rowTitle}>{title}</Text>
+          {tooltip ? (
+            <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile>
+              <TooltipTrigger asChild>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${title} help`}
+                  hitSlop={8}
+                  style={styles.modelPickerInfoButton}
+                >
+                  <ThemedInfo uniProps={foregroundIconMapping} />
+                </Pressable>
+              </TooltipTrigger>
+              <TooltipContent side="top" align="start" offset={8}>
+                <Text style={styles.tooltipText}>{tooltip}</Text>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+        </View>
+        {hint ? <Text style={settingsStyles.rowHint}>{hint}</Text> : null}
       </View>
       <View style={styles.modelPickerControl}>
         <SelectField<string | null>
@@ -370,7 +393,7 @@ function LockedModelPickerRow({
       hint="This process stays resident while model locking is enabled."
       value={value}
       onChange={handleChange}
-      includeAutomatic={false}
+      includeNone={false}
       showBorder
       triggerTestID={triggerTestID}
     />
@@ -813,10 +836,10 @@ function BrainServerSection({ serverId }: { serverId: string }) {
             <ModelPickerRow
               serverId={serverId}
               title="Default model"
-              hint="Loaded on start. Automatic serves the best-ranked model that fits."
+              tooltip="Choose a model to preload when Brain starts. Choose None to start with no model loaded; Brain loads a model when a request needs one."
               value={brain.defaultModel}
               onChange={handleDefaultModel}
-              includeAutomatic
+              includeNone
               showBorder
               triggerTestID="host-brain-default-model-picker"
             />
@@ -1465,10 +1488,10 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
         <ModelPickerRow
           serverId={serverId}
           title="Default model"
-          hint="The model the remote brain loads. Changing it switches the model now."
+          tooltip="Choose a model to preload when the remote Brain starts. Choose None to leave it unloaded until a request needs a model."
           value={defaultModel}
           onChange={handleDefaultModel}
-          includeAutomatic
+          includeNone
           showBorder={false}
           triggerTestID="host-brain-remote-default-model-picker"
         />
@@ -1650,6 +1673,21 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     flexBasis: { xs: "auto", sm: 280 },
     minWidth: 200,
+  },
+  modelPickerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  modelPickerInfoButton: {
+    padding: theme.spacing[1],
+    marginLeft: -theme.spacing[1],
+  },
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    maxWidth: 280,
+    lineHeight: theme.fontSize.sm * 1.4,
   },
   modelPickerTrigger: {
     width: "100%",
