@@ -2835,6 +2835,13 @@ function WorkspaceScreenContent({
 
   const setFocusedAgentId = useSessionStore((state) => state.setFocusedAgentId);
   const setFocusedTerminalId = useSessionStore((state) => state.setFocusedTerminalId);
+  // A selected terminal is not automatically acknowledged merely because the
+  // workspace restored it. This ref records a terminal the user explicitly
+  // chose during the current workspace visit.
+  const acknowledgedTerminalFocusRef = useRef<{
+    workspaceId: string;
+    terminalId: string;
+  } | null>(null);
   const focusedPaneAgentId = useMemo(() => {
     const target = focusedPaneTabState.activeTab?.descriptor.target;
     if (target?.kind !== "agent") {
@@ -2842,14 +2849,6 @@ function WorkspaceScreenContent({
     }
     return target.agentId;
   }, [focusedPaneTabState.activeTab]);
-  const focusedPaneTerminalId = useMemo(() => {
-    const target = focusedPaneTabState.activeTab?.descriptor.target;
-    if (target?.kind !== "terminal") {
-      return null;
-    }
-    return target.terminalId;
-  }, [focusedPaneTabState.activeTab]);
-
   // Both setters drop the write when the server has no session entry yet, and on
   // a cold boot straight into a workspace the pane resolves its agent tab from
   // the route before the daemon connection has created that entry. Without the
@@ -2865,13 +2864,23 @@ function WorkspaceScreenContent({
       return;
     }
     setFocusedAgentId(normalizedServerId, focusedPaneAgentId);
-    setFocusedTerminalId(normalizedServerId, focusedPaneTerminalId);
+    // Restoring a workspace may make a terminal its active tab, but restoration
+    // is not acknowledgement. Terminal attention is cleared by a focused-terminal
+    // heartbeat, so keep that field null until the user explicitly selects a
+    // terminal tab (or interacts with the terminal itself).
+    const acknowledgedTerminal = acknowledgedTerminalFocusRef.current;
+    setFocusedTerminalId(
+      normalizedServerId,
+      acknowledgedTerminal?.workspaceId === normalizedWorkspaceId
+        ? acknowledgedTerminal.terminalId
+        : null,
+    );
   }, [
     focusedPaneAgentId,
-    focusedPaneTerminalId,
     hasSessionEntry,
     isRouteFocused,
     normalizedServerId,
+    normalizedWorkspaceId,
     setFocusedAgentId,
     setFocusedTerminalId,
   ]);
@@ -2881,10 +2890,19 @@ function WorkspaceScreenContent({
       return;
     }
     return () => {
+      if (acknowledgedTerminalFocusRef.current?.workspaceId === normalizedWorkspaceId) {
+        acknowledgedTerminalFocusRef.current = null;
+      }
       setFocusedAgentId(normalizedServerId, null);
       setFocusedTerminalId(normalizedServerId, null);
     };
-  }, [isRouteFocused, normalizedServerId, setFocusedAgentId, setFocusedTerminalId]);
+  }, [
+    isRouteFocused,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    setFocusedAgentId,
+    setFocusedTerminalId,
+  ]);
 
   const openWorkspaceDraftTab = useCallback(
     function openWorkspaceDraftTab(input?: { draftId?: string; focus?: boolean }) {
@@ -2976,9 +2994,26 @@ function WorkspaceScreenContent({
       if (!tabId || !persistenceKey) {
         return;
       }
+      if (isRouteFocused && hasSessionEntry) {
+        const target = visibleUiTabs.find((tab) => tab.tabId === tabId)?.target;
+        const terminalId = target?.kind === "terminal" ? target.terminalId : null;
+        acknowledgedTerminalFocusRef.current = terminalId
+          ? { workspaceId: normalizedWorkspaceId, terminalId }
+          : null;
+        setFocusedTerminalId(normalizedServerId, terminalId);
+      }
       focusWorkspaceTab(persistenceKey, tabId);
     },
-    [focusWorkspaceTab, persistenceKey],
+    [
+      focusWorkspaceTab,
+      hasSessionEntry,
+      isRouteFocused,
+      normalizedServerId,
+      normalizedWorkspaceId,
+      persistenceKey,
+      setFocusedTerminalId,
+      visibleUiTabs,
+    ],
   );
   const handleImportedAgent = useCallback(
     (agentId: string) => {

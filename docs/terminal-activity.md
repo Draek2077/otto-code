@@ -1,6 +1,9 @@
 # Terminal Activity Indicators
 
-Otto surfaces terminal activity as a tab indicator (the same "running" dot used by chats).
+Otto surfaces terminal activity on its source tab as a blue siren with a pulsing blue halo. It
+appears for both live terminal work and uncleared terminal attention, so a workspace-level status
+dot is always attributable to a specific terminal. The ordinary terminal glyph returns when the
+daemon clears that terminal's activity.
 
 ## Current state
 
@@ -74,7 +77,7 @@ The daemon maps hook states onto terminal activity like an agent lifecycle plus 
 
 ## Focus clearing
 
-Client heartbeats include the focused terminal id. When a visible client focuses a terminal with an `attentionReason`, the daemon clears the attention and leaves the terminal idle. Plain idle terminal activity does not contribute to workspace status, so a workspace whose only attention source was that terminal rolls up from `needs_input` or `attention` back to `done`.
+Client heartbeats include the focused terminal id only after the user explicitly activates that terminal tab or interacts with the terminal. Restoring or entering a workspace does not acknowledge its saved active terminal. When a visible client focuses a terminal with an `attentionReason`, the daemon clears the attention and leaves the terminal idle. Plain idle terminal activity does not contribute to workspace status, so a workspace whose only attention source was that terminal rolls up from `needs_input` or `attention` back to `done`.
 
 ### Agent hook installation
 
