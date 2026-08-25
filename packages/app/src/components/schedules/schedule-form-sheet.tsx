@@ -798,9 +798,9 @@ function ScheduleTargetFields({
   );
   const selectedPersonality = useMemo(
     () =>
-      personality.personalities?.find((entry) => entry.id === personality.selectedPersonalityId) ??
+      personality.personalities?.find((entry) => entry.id === personality.selectedProfileId) ??
       null,
-    [personality.personalities, personality.selectedPersonalityId],
+    [personality.personalities, personality.selectedProfileId],
   );
   const selectedPersonalityName = selectedPersonality?.name ?? null;
   const handleModelOpen = useCallback(() => {
@@ -928,7 +928,7 @@ function ScheduleTargetFields({
       ) : null}
 
       {state.disclosure.showModelField ? (
-        <Field label="Agent Personality or Model">
+        <Field label="Agent Profile or Model">
           <RoleModelSelector
             providers={state.modelSelectorProviders}
             selectedProvider={state.selectedProvider ?? ""}
@@ -949,7 +949,7 @@ function ScheduleTargetFields({
 
       {/* A personality already fixes its own effort, so hide the picker while
           one is selected - the whole point is not having to choose it. */}
-      {!personality.selectedPersonalityId && state.disclosure.showThinkingField ? (
+      {!personality.selectedProfileId && state.disclosure.showThinkingField ? (
         <SelectField
           label="Effort"
           value={state.selectedThinkingOptionId || null}

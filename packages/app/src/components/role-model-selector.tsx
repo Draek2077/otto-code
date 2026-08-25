@@ -7,11 +7,11 @@ import type { RolePersonality } from "@/provider-selection/role-model-personalit
 type ModelHalfProps = Omit<
   ComponentProps<typeof CombinedModelSelector>,
   | "personalities"
-  | "personalityGroups"
-  | "selectedPersonalityId"
-  | "onSelectPersonality"
-  | "onClearPersonality"
-  | "onSelectModelOverPersonality"
+  | "profileGroups"
+  | "selectedProfileId"
+  | "onSelectProfile"
+  | "onClearProfile"
+  | "onSelectModelOverProfile"
 >;
 
 export interface RoleModelSelectorProps extends ModelHalfProps {
@@ -39,11 +39,11 @@ export function RoleModelSelector({
     <CombinedModelSelector
       {...modelProps}
       personalities={personality?.personalities}
-      personalityGroups={personality?.personalityGroups}
-      selectedPersonalityId={personality?.selectedPersonalityId ?? null}
-      onSelectPersonality={personality?.onSelectPersonality}
-      onClearPersonality={personality?.onClearPersonality}
-      onSelectModelOverPersonality={personality?.onSelectModelOverPersonality}
+      profileGroups={personality?.profileGroups}
+      selectedProfileId={personality?.selectedProfileId ?? null}
+      onSelectProfile={personality?.onSelectProfile}
+      onClearProfile={personality?.onClearProfile}
+      onSelectModelOverProfile={personality?.onSelectModelOverProfile}
     />
   );
 }

@@ -4,7 +4,7 @@
  *
  * Pure and component-free on purpose: the round-trip is where a template can
  * silently lose data, so it has to be testable without standing up the editor.
- * The UI label is "Personality"; the stored type is Paseo's `AgentProfile`.
+ * The UI label is "Agent profile"; the stored type is Paseo's `AgentProfile`.
  */
 
 import { CUE_MOMENTS, type CueMoment } from "@otto-code/protocol/messages";

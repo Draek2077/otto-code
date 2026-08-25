@@ -538,7 +538,7 @@ function parseMockAssistantMarkdownPrompt(prompt: AgentPromptInput): { markdown:
 
 // Synthetic tool call with a caller-chosen raw name and an `unknown` detail, so
 // the UI's tool display-name humanizer is what renders the label:
-// `emit a synthetic tool call named "mcp__otto__spawn_task"`.
+// `emit a synthetic tool call named "mcp__otto__suggest_task"`.
 function parseMockNamedToolCallPrompt(prompt: AgentPromptInput): { name: string } | null {
   const match = /emit\s+(?:a\s+)?synthetic\s+tool\s+call\s+named\s+"([^"]+)"/i.exec(
     promptToText(prompt),

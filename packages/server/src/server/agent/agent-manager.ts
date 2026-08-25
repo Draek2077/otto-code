@@ -3174,7 +3174,7 @@ export class AgentManager {
     }
 
     // Prompt half. The personality prompt only owns config.systemPrompt when
-    // the caller set none at spawn (mirrors applyPersonalityIdentityToConfig);
+    // the caller set none at spawn (mirrors applyProfileIdentityToConfig);
     // a caller-authored prompt survives the switch. The born team is frozen:
     // the prompt recomposes against the agent's teamSnapshot, never the
     // currently-active team - switching to an off-team personality keeps the

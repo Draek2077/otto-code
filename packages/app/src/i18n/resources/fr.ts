@@ -249,7 +249,7 @@ export const fr: TranslationResources = {
     personalitySelector: {
       label: "Affiché pour",
       everyone: "Tout le monde",
-      searchPlaceholder: "Rechercher une personnalité",
+      searchPlaceholder: "Rechercher un profil",
       lessons_one: "{{count}} leçon",
       lessons_other: "{{count}} leçons",
     },
@@ -257,20 +257,20 @@ export const fr: TranslationResources = {
     // it. See docs/agent-personalities.md § Memory.
     memory: {
       noPersonality:
-        "Choisissez une personnalité ci-dessus pour voir ce qu'elle a appris, et ce que cela ajoute à chacune de ses requêtes.",
-      loading: "Lecture de ce que cette personnalité retient…",
-      failed: "Impossible de lire la mémoire de cette personnalité : {{error}}",
+        "Choisissez un profil ci-dessus pour voir ce qu'il a appris, et ce que cela ajoute à chacune de ses requêtes.",
+      loading: "Lecture de ce que ce profil retient…",
+      failed: "Impossible de lire la mémoire de ce profil : {{error}}",
       emptyNamed:
         "{{name}} n'a encore rien enregistré. Elle enregistre ses leçons elle-même au fil du travail ; vous pouvez aussi en ajouter une à la main.",
-      emptyFallbackName: "Cette personnalité",
+      emptyFallbackName: "Ce profil",
       add: "Ajouter une leçon",
       brief: {
         title: "Injecté pour {{name}}",
         nothing: "rien",
         everyRequest: "{{tokens}} à chaque requête",
         disabled:
-          "La mémoire est désactivée pour cette personnalité, donc rien de tout cela n'est envoyé. Les leçons sont conservées.",
-        empty: "Rien n'est ajouté au contexte de cette personnalité dans ce projet.",
+          "La mémoire est désactivée pour ce profil, donc rien de tout cela n'est envoyé. Les leçons sont conservées.",
+        empty: "Rien n'est ajouté au contexte de ce profil dans ce projet.",
         emptyButStored_one:
           "La leçon ci-dessous ne s'applique pas à ce projet, donc rien n'est ajouté ici - l'étiquette sur la ligne indique pourquoi.",
         emptyButStored_other:
@@ -297,11 +297,11 @@ export const fr: TranslationResources = {
       },
       forgetDialog: {
         title: "Oublier cette leçon ?",
-        message: "« {{lesson}} » sera retirée de la mémoire de cette personnalité.",
+        message: "« {{lesson}} » sera retirée de la mémoire de ce profil.",
         confirm: "Oublier",
       },
       composer: {
-        placeholder: "Que doit retenir cette personnalité ?",
+        placeholder: "Que doit retenir ce profil ?",
         save: "Enregistrer cette leçon",
       },
       transfer: {
@@ -312,7 +312,7 @@ export const fr: TranslationResources = {
         confirm: "Transférer",
         giveThemTo: "Les confier à :",
         noCandidates:
-          "Il n'y a aucune autre personnalité à qui confier ces leçons. Supprimer {{name}} les abandonnera.",
+          "Il n'y a aucun autre profil à qui confier ces leçons. Supprimer {{name}} les abandonnera.",
         sameRole: "même rôle",
       },
     },
@@ -1502,12 +1502,11 @@ export const fr: TranslationResources = {
         confirmTitle: "Valider avec l'IA",
         confirmCta: "Valider",
         providerModel: "{{provider}} · {{model}}",
-        messagePersonality:
-          "La personnalité {{name}} ({{detail}}) rédigera votre message de commit.",
+        messagePersonality: "Le profil {{name}} ({{detail}}) rédigera votre message de commit.",
         messageProvider: "{{detail}} rédigera votre message de commit.",
         noneTitle: "Aucun agent IA disponible",
         noneMessage:
-          "Aucun agent IA ni modèle n'est configuré pour rédiger un message de commit. Configurez un fournisseur ou une Personnalité d'agent, puis réessayez.",
+          "Aucun agent IA ni modèle n'est configuré pour rédiger un message de commit. Configurez un fournisseur ou un Profil d'agent, puis réessayez.",
         noneConfirm: "OK",
       },
       rollback: {
@@ -2006,6 +2005,10 @@ export const fr: TranslationResources = {
     },
     window: {
       title: "Fenêtre",
+      trayIcon: {
+        title: "Afficher l'icône dans la barre d'état",
+        hint: "Conserve une icône Otto dans la barre d'état système lorsque l'application est ouverte",
+      },
       minimizeToTray: {
         title: "Réduire dans la barre d'état à la fermeture",
         hint: "Fermer la fenêtre masque Otto dans la barre d'état système au lieu de quitter",
@@ -3313,6 +3316,7 @@ export const fr: TranslationResources = {
     groupInfo: "À propos de{{title}}",
     sections: {
       general: "Général",
+      chat: "Discussion",
       appearance: "Apparence",
       shortcuts: "Raccourcis",
       integrations: "Intégrations",
@@ -3437,13 +3441,13 @@ export const fr: TranslationResources = {
       mountedWorkspaceLimit: {
         label: "Workspaces gardés chargés",
         description:
-          "Combien de Workspaces restent chargés pour qu'y revenir soit instantané. Au-delà, celui utilisé le moins récemment est déchargé et se recharge à la prochaine ouverture. Réglez-le au moins sur le nombre entre lesquels vous basculez vraiment - en dessous, chaque bascule décharge le Workspace où vous êtes sur le point de revenir. Plus la valeur est élevée, plus la mémoire utilisée augmente.",
+          "Combien de workspaces restent chargés pour un basculement instantané. Réglez-le au moins sur le nombre entre lesquels vous basculez. Plus consomme plus de mémoire.",
         accessibilityLabel: "Workspaces gardés chargés",
       },
       mountedTabLimit: {
         label: "Onglets gardés chargés",
         description:
-          "Combien d'onglets d'un volet restent chargés pour qu'y revenir soit instantané. Au-delà, celui utilisé le moins récemment est déchargé et reconstruit toute sa conversation à la prochaine ouverture. Laissez vide pour s'adapter à cet appareil ({{auto}}). Plus la valeur est élevée, plus la mémoire utilisée augmente.",
+          "Combien d'onglets par volet restent chargés pour un basculement instantané. Laissez vide pour suivre cet appareil ({{auto}}). Plus consomme plus de mémoire.",
         accessibilityLabel: "Onglets gardés chargés",
       },
       terminalScrollback: {
@@ -3763,6 +3767,7 @@ export const fr: TranslationResources = {
       sections: {
         general: "Général",
         workspaces: "Projets et espaces de travail",
+        navigation: "Navigation",
         tabsPanes: "Onglets et volets",
         projects: "Projets",
         panels: "Panneaux",
@@ -4036,7 +4041,7 @@ export const fr: TranslationResources = {
         optionsError: "Impossible de charger les options vocales depuis l'hôte.",
         saveError: "Impossible d'enregistrer les réglages vocaux.",
         engines: {
-          local: "Local (sur cet appareil)",
+          local: "Local",
           openai: "OpenAI",
         },
         dictation: {

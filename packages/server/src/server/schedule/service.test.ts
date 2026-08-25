@@ -4231,3 +4231,90 @@ describe("schedule Personality bindings", () => {
     ).toMatchObject({ id: "p-sage-01" });
   });
 });
+
+// COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22.
+// The binding key was renamed, and schedules live on disk, so both spellings are
+// written and either is accepted. These cases are about a downgrade still
+// finding the binding after a newer daemon has touched the file.
+describe("schedule Agent Profile binding key", () => {
+  let tempDir: string;
+  let agentStorage: AgentStorage;
+
+  const ROSTER = [
+    { id: "p-sage-01", name: "Sage", provider: "claude", roles: ["scheduler"] },
+  ] as never;
+
+  function build(readAgentProfiles?: () => never) {
+    return createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      ...(readAgentProfiles ? { readAgentProfiles } : {}),
+      runner: async () => ({ agentId: "00000000-0000-0000-0000-000000000001", output: "ok" }),
+    });
+  }
+
+  function config(schedule: StoredSchedule) {
+    if (schedule.target.type !== "new-agent") throw new Error("expected a new-agent target");
+    return schedule.target.config;
+  }
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "otto-schedule-binding-key-"));
+    await mkdir(join(tempDir, "agents"), { recursive: true });
+    agentStorage = new AgentStorage(tempDir, createTestLogger());
+  });
+
+  afterEach(async () => {
+    await agentStorage.flush();
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  test("writes both spellings so a downgrade still finds the binding", async () => {
+    const created = await build(() => ROSTER).create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", cwd: tempDir, agentProfile: "Sage" },
+      },
+    });
+
+    expect(config(created).agentProfile).toBe("p-sage-01");
+    expect(config(created).personality).toBe("p-sage-01");
+  });
+
+  test("accepts a schedule written before the rename", async () => {
+    const legacy = await build(() => ROSTER).create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", cwd: tempDir, personality: "Sage" },
+      },
+    });
+
+    expect(config(legacy).agentProfile).toBe("p-sage-01");
+    expect(config(legacy).personality).toBe("p-sage-01");
+  });
+
+  test("the current spelling wins when the two disagree", async () => {
+    const created = await build(() => ROSTER).create({
+      prompt: "Review new PRs",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: {
+          provider: "claude",
+          cwd: tempDir,
+          agentProfile: "Sage",
+          personality: "Ghost",
+        },
+      },
+    });
+
+    expect(config(created).personality).toBe("p-sage-01");
+  });
+});

@@ -112,7 +112,7 @@ export function ContextManagementPanel(): ReactElement {
   // memory: two personalities here send different things.
   const [sidebarTab, setSidebarTab] = useState<ContextSidebarTab>("context");
   const {
-    selectedPersonalityId,
+    selectedProfileId,
     slot: personalitySlot,
     lessonCount,
     memory,
@@ -129,7 +129,7 @@ export function ContextManagementPanel(): ReactElement {
     // Selecting a personality re-scopes the whole report: its injected memory
     // joins the fixed weight, so the percentages describe what THAT personality
     // carries rather than a shared average nobody actually pays.
-    ...(selectedPersonalityId ? { personalityId: selectedPersonalityId } : {}),
+    ...(selectedProfileId ? { personalityId: selectedProfileId } : {}),
   });
 
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(
@@ -154,7 +154,7 @@ export function ContextManagementPanel(): ReactElement {
   // request the numbers above it do.
   const promptPreview = usePromptPreview(serverId, selectedCategory ? workspaceId : null, {
     windowTokens,
-    ...(selectedPersonalityId ? { personalityId: selectedPersonalityId } : {}),
+    ...(selectedProfileId ? { personalityId: selectedProfileId } : {}),
     ...(selectedCategory ? { category: selectedCategory } : {}),
   });
 
@@ -345,7 +345,7 @@ export function ContextManagementPanel(): ReactElement {
       memoryView={memory.view}
       memoryIsLoading={memory.isLoading}
       memoryError={memory.error}
-      hasPersonalitySelected={selectedPersonalityId !== null}
+      hasPersonalitySelected={selectedProfileId !== null}
       onSaveEntry={memory.saveEntry}
       onDropEntry={memory.dropEntry}
       onAddEntry={memory.addEntry}

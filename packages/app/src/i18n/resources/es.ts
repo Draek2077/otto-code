@@ -247,7 +247,7 @@ export const es: TranslationResources = {
     personalitySelector: {
       label: "Viendo para",
       everyone: "Todos",
-      searchPlaceholder: "Buscar personalidades",
+      searchPlaceholder: "Buscar perfiles",
       lessons_one: "{{count}} lección",
       lessons_other: "{{count}} lecciones",
     },
@@ -255,20 +255,20 @@ export const es: TranslationResources = {
     // it. See docs/agent-personalities.md § Memory.
     memory: {
       noPersonality:
-        "Elige arriba una personalidad para ver lo que ha aprendido y lo que eso añade a cada petición que hace.",
-      loading: "Leyendo lo que recuerda esta personalidad…",
-      failed: "No se pudo leer la memoria de esta personalidad: {{error}}",
+        "Elige arriba un perfil para ver lo que ha aprendido y lo que eso añade a cada petición que hace.",
+      loading: "Leyendo lo que recuerda este perfil…",
+      failed: "No se pudo leer la memoria de este perfil: {{error}}",
       emptyNamed:
         "{{name}} todavía no ha registrado nada. Registra lecciones por sí misma mientras trabaja; también puedes añadir una a mano.",
-      emptyFallbackName: "Esta personalidad",
+      emptyFallbackName: "Este perfil",
       add: "Añadir una lección",
       brief: {
         title: "Inyectado para {{name}}",
         nothing: "nada",
         everyRequest: "{{tokens}} en cada petición",
         disabled:
-          "La memoria está desactivada para esta personalidad, así que no se envía nada de esto. Las lecciones se conservan.",
-        empty: "No se añade nada al contexto de esta personalidad en este proyecto.",
+          "La memoria está desactivada para este perfil, así que no se envía nada de esto. Las lecciones se conservan.",
+        empty: "No se añade nada al contexto de este perfil en este proyecto.",
         emptyButStored_one:
           "La lección de abajo no se aplica a este proyecto, así que aquí no se añade nada; la etiqueta de la fila dice por qué.",
         emptyButStored_other:
@@ -295,11 +295,11 @@ export const es: TranslationResources = {
       },
       forgetDialog: {
         title: "¿Olvidar esta lección?",
-        message: "«{{lesson}}» se eliminará de la memoria de esta personalidad.",
+        message: "«{{lesson}}» se eliminará de la memoria de este perfil.",
         confirm: "Olvidar",
       },
       composer: {
-        placeholder: "¿Qué debería recordar esta personalidad?",
+        placeholder: "¿Qué debería recordar este perfil?",
         save: "Guardar esta lección",
       },
       transfer: {
@@ -310,7 +310,7 @@ export const es: TranslationResources = {
         confirm: "Transferir",
         giveThemTo: "Dárselas a:",
         noCandidates:
-          "No hay otra personalidad a la que pasarle estas lecciones. Al eliminar {{name}} se descartarán.",
+          "No hay otro perfil al que pasarle estas lecciones. Al eliminar {{name}} se descartarán.",
         sameRole: "mismo rol",
       },
     },
@@ -1495,11 +1495,11 @@ export const es: TranslationResources = {
         confirmTitle: "Hacer commit con IA",
         confirmCta: "Confirmar cambios",
         providerModel: "{{provider}} · {{model}}",
-        messagePersonality: "La personalidad {{name}} ({{detail}}) escribirá tu mensaje de commit.",
+        messagePersonality: "El perfil {{name}} ({{detail}}) escribirá tu mensaje de commit.",
         messageProvider: "{{detail}} escribirá tu mensaje de commit.",
         noneTitle: "No hay ningún agente de IA disponible",
         noneMessage:
-          "No hay ningún agente de IA ni modelo configurado para escribir un mensaje de commit. Configura un proveedor o una Personalidad de agente y vuelve a intentarlo.",
+          "No hay ningún agente de IA ni modelo configurado para escribir un mensaje de commit. Configura un proveedor o un Perfil de agente y vuelve a intentarlo.",
         noneConfirm: "Aceptar",
       },
       rollback: {
@@ -1998,6 +1998,10 @@ export const es: TranslationResources = {
     },
     window: {
       title: "Ventana",
+      trayIcon: {
+        title: "Mostrar icono en la bandeja",
+        hint: "Mantiene un icono de Otto en la bandeja del sistema mientras se ejecuta la aplicación",
+      },
       minimizeToTray: {
         title: "Minimizar a la bandeja al cerrar",
         hint: "Cerrar la ventana oculta Otto en la bandeja del sistema en lugar de salir",
@@ -3298,6 +3302,7 @@ export const es: TranslationResources = {
     groupInfo: "Acerca de{{title}}",
     sections: {
       general: "General",
+      chat: "Chat",
       appearance: "Apariencia",
       shortcuts: "Atajos",
       integrations: "Integraciones",
@@ -3422,13 +3427,13 @@ export const es: TranslationResources = {
       mountedWorkspaceLimit: {
         label: "Workspaces que siguen cargados",
         description:
-          "Cuántos Workspaces se mantienen cargados para que volver a ellos sea instantáneo. A partir de ese número, se descarga el que usaste hace más tiempo y se vuelve a cargar la próxima vez que lo abras. Ponlo al menos en la cantidad entre la que realmente alternas: por debajo de eso, cada cambio descarga el Workspace al que estás a punto de volver. Cuanto más alto, más memoria usa.",
+          "Cuántos workspaces siguen cargados para cambiar al instante. Ponlo al menos en la cantidad entre la que alternas. Más consume más memoria.",
         accessibilityLabel: "Workspaces que siguen cargados",
       },
       mountedTabLimit: {
         label: "Pestañas que siguen cargadas",
         description:
-          "Cuántas pestañas de un panel se mantienen cargadas para que volver a ellas sea instantáneo. A partir de ese número, se descarga la que usaste hace más tiempo y vuelve a reconstruir toda su conversación la próxima vez que la abras. Déjalo vacío para ajustarse a este dispositivo ({{auto}}). Cuanto más alto, más memoria usa.",
+          "Cuántas pestañas por panel siguen cargadas para cambiar al instante. Déjalo vacío para seguir a este dispositivo ({{auto}}). Más consume más memoria.",
         accessibilityLabel: "Pestañas que siguen cargadas",
       },
       terminalScrollback: {
@@ -3749,6 +3754,7 @@ export const es: TranslationResources = {
       sections: {
         general: "General",
         workspaces: "Proyectos y espacios de trabajo",
+        navigation: "Navegación",
         tabsPanes: "Pestañas y paneles",
         projects: "Proyectos",
         panels: "Paneles",
@@ -4021,7 +4027,7 @@ export const es: TranslationResources = {
         optionsError: "No se pudieron cargar las opciones de voz del host.",
         saveError: "No se pudieron guardar los ajustes de voz.",
         engines: {
-          local: "Local (en este dispositivo)",
+          local: "Local",
           openai: "OpenAI",
         },
         dictation: {

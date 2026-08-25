@@ -615,13 +615,13 @@ describe("timelineItemToSimulationEvents", () => {
     const item: AgentTimelineItem = {
       type: "tool_call",
       callId: "call-mcp",
-      name: "mcp__otto__spawn_task",
+      name: "mcp__otto__suggest_task",
       status: "running",
       error: null,
       detail: { type: "unknown", input: null, output: null },
     };
     const events = timelineItemToSimulationEvents({ ctx: CTX, item, time: 10 });
-    expect(events[0]?.payload).toMatchObject({ tool: "Spawn Task" });
+    expect(events[0]?.payload).toMatchObject({ tool: "Suggest Task" });
   });
 
   test("relativizes a Windows file path and KEEPS its backslashes", () => {

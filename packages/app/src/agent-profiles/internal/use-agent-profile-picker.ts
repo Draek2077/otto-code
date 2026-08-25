@@ -168,7 +168,7 @@ export function useAgentProfilePicker(
           toast.error(
             t("composer.profiles.identitySwitchRejected", {
               defaultValue:
-                "Applied the model settings, but this agent could not switch personality mid-session.",
+                "Applied the model settings, but this agent could not switch profile mid-session.",
             }),
           );
         })

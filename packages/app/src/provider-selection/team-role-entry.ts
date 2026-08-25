@@ -2,7 +2,7 @@ import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { AgentProfile, AgentTeam, ProfileRole } from "@otto-code/protocol/messages";
 import { profileHasRole } from "@otto-code/protocol/agent-profiles";
 import { resolveTeamMembers } from "@otto-code/protocol/agent-teams";
-import type { SelectorPersonality } from "@/components/combined-model-selector";
+import type { SelectorProfile } from "@/components/combined-model-selector";
 import {
   resolvePersonalityForForm,
   type PersonalityFormValues,
@@ -17,7 +17,7 @@ import { ROLE_ICONS } from "@/provider-selection/role-icons";
 // just applies the resolved values now), but the entry itself is built here.
 export interface TeamRoleEntry {
   /** The picker row. Its `id` is the caller-provided local entry id. */
-  selector: SelectorPersonality;
+  selector: SelectorProfile;
   /** Resolved form values of the CURRENT holder; null when nothing resolves. */
   values: PersonalityFormValues | null;
   /** The member resolved right now (for spinner snapshot, etc.); null if none. */

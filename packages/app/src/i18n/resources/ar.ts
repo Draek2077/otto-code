@@ -247,26 +247,26 @@ export const ar: TranslationResources = {
     personalitySelector: {
       label: "العرض لـ",
       everyone: "الجميع",
-      searchPlaceholder: "ابحث في الشخصيات",
+      searchPlaceholder: "ابحث في ملفات الوكلاء",
       lessons_one: "{{count}} درس",
       lessons_other: "{{count}} درسًا",
     },
     // What one personality has learned, and the exact text injected because of
     // it. See docs/agent-personalities.md § Memory.
     memory: {
-      noPersonality: "اختر شخصية من الأعلى لترى ما تعلّمته، وما الذي يضيفه ذلك إلى كل طلب تقوم به.",
-      loading: "جارٍ قراءة ما تتذكّره هذه الشخصية…",
-      failed: "تعذّرت قراءة ذاكرة هذه الشخصية: {{error}}",
+      noPersonality: "اختر ملفًا من الأعلى لترى ما تعلّمته، وما الذي يضيفه ذلك إلى كل طلب تقوم به.",
+      loading: "جارٍ قراءة ما تتذكّره هذا الملف…",
+      failed: "تعذّرت قراءة ذاكرة هذا الملف: {{error}}",
       emptyNamed:
         "لم تسجّل {{name}} أي شيء بعد. فهي تسجّل الدروس بنفسها أثناء العمل، ويمكنك أيضًا إضافة درس يدويًا.",
-      emptyFallbackName: "هذه الشخصية",
+      emptyFallbackName: "هذا الملف",
       add: "إضافة درس",
       brief: {
         title: "ما يُحقن من أجل {{name}}",
         nothing: "لا شيء",
         everyRequest: "{{tokens}} في كل طلب",
-        disabled: "الذاكرة معطّلة لهذه الشخصية، لذا لا يُرسل أي من هذا. الدروس محفوظة على أي حال.",
-        empty: "لا يُضاف أي شيء إلى سياق هذه الشخصية في هذا المشروع.",
+        disabled: "الذاكرة معطّلة لهذا الملف، لذا لا يُرسل أي من هذا. الدروس محفوظة على أي حال.",
+        empty: "لا يُضاف أي شيء إلى سياق هذا الملف في هذا المشروع.",
         emptyButStored_one:
           "الدرس أدناه لا ينطبق على هذا المشروع، لذا لا يُضاف شيء هنا - والوسم على السطر يوضّح السبب.",
         emptyButStored_other:
@@ -292,11 +292,11 @@ export const ar: TranslationResources = {
       },
       forgetDialog: {
         title: "نسيان هذا الدرس؟",
-        message: "سيُزال «{{lesson}}» من ذاكرة هذه الشخصية.",
+        message: "سيُزال «{{lesson}}» من ذاكرة هذا الملف.",
         confirm: "نسيان",
       },
       composer: {
-        placeholder: "ما الذي يجب أن تتذكّره هذه الشخصية؟",
+        placeholder: "ما الذي يجب أن تتذكّره هذا الملف؟",
         save: "حفظ هذا الدرس",
       },
       transfer: {
@@ -306,8 +306,7 @@ export const ar: TranslationResources = {
         discard: "حذف الدروس",
         confirm: "نقل",
         giveThemTo: "نقلها إلى:",
-        noCandidates:
-          "لا توجد شخصية أخرى لتسليم هذه الدروس إليها. حذف {{name}} سيؤدي إلى التخلّص منها.",
+        noCandidates: "لا يوجد ملف آخر لتسليم هذه الدروس إليها. حذف {{name}} سيؤدي إلى التخلّص منها.",
         sameRole: "الدور نفسه",
       },
     },
@@ -1447,11 +1446,11 @@ export const ar: TranslationResources = {
         confirmTitle: "Commit بالذكاء الاصطناعي",
         confirmCta: "Commit",
         providerModel: "{{provider}} · {{model}}",
-        messagePersonality: "ستكتب شخصية {{name}} ({{detail}}) رسالة الـ commit الخاصة بك.",
+        messagePersonality: "سيكتب ملف {{name}} ({{detail}}) رسالة الـ commit الخاصة بك.",
         messageProvider: "سيكتب {{detail}} رسالة الـ commit الخاصة بك.",
         noneTitle: "لا يوجد وكيل ذكاء اصطناعي متاح",
         noneMessage:
-          "لا يوجد وكيل ذكاء اصطناعي أو نموذج مهيّأ لكتابة رسالة commit. اضبط مزوّدًا أو شخصية وكيل ثم حاول مجددًا.",
+          "لا يوجد وكيل ذكاء اصطناعي أو نموذج مهيّأ لكتابة رسالة commit. اضبط مزوّدًا أو ملف وكيل ثم حاول مجددًا.",
         noneConfirm: "حسنًا",
       },
       rollback: {
@@ -1950,6 +1949,10 @@ export const ar: TranslationResources = {
     },
     window: {
       title: "النافذة",
+      trayIcon: {
+        title: "إظهار أيقونة شريط النظام",
+        hint: "يبقي أيقونة Otto في شريط النظام أثناء تشغيل التطبيق",
+      },
       minimizeToTray: {
         title: "التصغير إلى شريط النظام عند الإغلاق",
         hint: "إغلاق النافذة يخفي Otto إلى شريط النظام بدلاً من الإنهاء",
@@ -3223,6 +3226,7 @@ export const ar: TranslationResources = {
     groupInfo: "حول{{title}}",
     sections: {
       general: "عام",
+      chat: "الدردشة",
       appearance: "مظهر",
       shortcuts: "الاختصارات",
       integrations: "التكامل",
@@ -3345,13 +3349,13 @@ export const ar: TranslationResources = {
       mountedWorkspaceLimit: {
         label: "عدد الـ Workspaces المُبقاة محمّلة",
         description:
-          "عدد الـ Workspaces التي تبقى محمّلة ليكون التبديل إليها فوريًا. بعد هذا العدد، يُفرَّغ الـ Workspace الأقل استخدامًا مؤخرًا ويُعاد تحميله عند فتحه مجددًا. اضبطه على الأقل بعدد ما تتنقل بينه فعلًا - فدون ذلك، كل تبديل يفرّغ الـ Workspace الذي أنت على وشك العودة إليه. القيم الأعلى تستهلك ذاكرة أكبر.",
+          "عدد مساحات العمل التي تبقى محمّلة للتبديل الفوري. اضبطه على الأقل بعدد ما تتنقل بينه. القيم الأعلى تستهلك ذاكرة أكثر.",
         accessibilityLabel: "عدد الـ Workspaces المُبقاة محمّلة",
       },
       mountedTabLimit: {
         label: "عدد علامات التبويب المُبقاة محمّلة",
         description:
-          "عدد علامات التبويب في الجزء التي تبقى محمّلة ليكون التبديل إليها فوريًا. بعد هذا العدد، تُفرَّغ علامة التبويب الأقل استخدامًا مؤخرًا وتُعيد بناء المحادثة بالكامل عند فتحها مجددًا. اتركه فارغًا ليُضبط تلقائيًا حسب هذا الجهاز ({{auto}}). القيم الأعلى تستهلك ذاكرة أكبر.",
+          "عدد علامات التبويب في كل جزء التي تبقى محمّلة للتبديل الفوري. اتركه فارغًا ليتبع هذا الجهاز ({{auto}}). القيم الأعلى تستهلك ذاكرة أكثر.",
         accessibilityLabel: "عدد علامات التبويب المُبقاة محمّلة",
       },
       terminalScrollback: {
@@ -3666,6 +3670,7 @@ export const ar: TranslationResources = {
       sections: {
         general: "عام",
         workspaces: "المشاريع ومساحات العمل",
+        navigation: "التنقل",
         tabsPanes: "علامات التبويب والأجزاء",
         projects: "المشاريع",
         panels: "لوحات",
@@ -3935,7 +3940,7 @@ export const ar: TranslationResources = {
         optionsError: "تعذَّر تحميل خيارات الصوت من المضيف.",
         saveError: "تعذَّر حفظ إعدادات الصوت.",
         engines: {
-          local: "محلي (على هذا الجهاز)",
+          local: "محلي",
           openai: "OpenAI",
         },
         dictation: {

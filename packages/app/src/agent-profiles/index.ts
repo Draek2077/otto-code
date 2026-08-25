@@ -7,7 +7,7 @@
  * the catalog and feature probes, the materialization rules, the icon registry)
  * is internal; import from `@/agent-profiles`, never a path inside it.
  *
- * The roster is EDITED by the host settings "Personalities" section, which is
+ * The roster is EDITED by the host settings "Agent profiles" section, which is
  * the one editor since the two stored-template systems converged. This module
  * deliberately exports no settings UI: it is imported by the composer, and a
  * settings screen in that module graph is dead weight on the hot path. The one

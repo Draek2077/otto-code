@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { TextAreaScrollFrame } from "@/components/ui/text-area";
 import { RoleModelSelector } from "@/components/role-model-selector";
-import { type SelectorPersonality } from "@/hooks/use-personality-selection";
+import { type SelectorProfile } from "@/hooks/use-personality-selection";
 import {
   useFormRolePersonality,
   type RolePersonality,
@@ -259,17 +259,17 @@ function resolveWorkspaceIdForCwd(
 }
 
 function buildSeatFields(input: {
-  selectedPersonalityId: string | null;
+  selectedProfileId: string | null;
   selectedProvider: string | null;
   selectedModel: string;
   selectedThinkingOptionId: string;
 }): Partial<StartOrchestrationInput> {
   // Team sentinel → no seat fields; the daemon resolves the team's Orchestrator.
-  if (input.selectedPersonalityId === TEAM_ORCHESTRATOR_ENTRY_ID) {
+  if (input.selectedProfileId === TEAM_ORCHESTRATOR_ENTRY_ID) {
     return {};
   }
-  if (input.selectedPersonalityId) {
-    return { orchestratorPersonalityId: input.selectedPersonalityId };
+  if (input.selectedProfileId) {
+    return { orchestratorPersonalityId: input.selectedProfileId };
   }
   if (input.selectedProvider) {
     return {
@@ -529,7 +529,7 @@ function OpenNewOrchestrationSheet({
     autoSelectDefault: "always",
   });
   const {
-    selectedPersonalityId,
+    selectedProfileId,
     selectedName: selectedPersonalityName,
     selectedSpinner: selectedPersonalitySpinner,
     selectedRoleIcon: selectedPersonalityRoleIcon,
@@ -693,7 +693,7 @@ function OpenNewOrchestrationSheet({
   const canSubmit = canSubmitOrchestrationForm({
     nameTrimmed,
     descriptionTrimmed,
-    hasSeat: Boolean(selectedPersonalityId ?? selectedProvider),
+    hasSeat: Boolean(selectedProfileId ?? selectedProvider),
     hasProject: Boolean(selectedTarget),
     isSubmitting,
     flavor,
@@ -725,7 +725,7 @@ function OpenNewOrchestrationSheet({
           selectedGraph,
           prefillRunId: prefill?.runId,
           seatFields: buildSeatFields({
-            selectedPersonalityId,
+            selectedProfileId,
             selectedProvider,
             selectedModel,
             selectedThinkingOptionId,
@@ -753,7 +753,7 @@ function OpenNewOrchestrationSheet({
       graphInputs,
       selectedGraph,
       prefill?.runId,
-      selectedPersonalityId,
+      selectedProfileId,
       selectedProvider,
       selectedModel,
       selectedThinkingOptionId,
@@ -889,7 +889,7 @@ function OpenNewOrchestrationSheet({
       </View>
 
       <EffortFieldSection
-        personalitySelected={Boolean(selectedPersonalityId)}
+        personalitySelected={Boolean(selectedProfileId)}
         model={selectedModel}
         options={availableThinkingOptions}
         value={selectedThinkingOptionId}
@@ -1859,7 +1859,7 @@ function ModelTrigger({
   provider: string | null;
   hasPersonality: boolean;
   personalitySpinner?: { glowA: string; glowB: string };
-  roleIcon?: SelectorPersonality["roleIcon"];
+  roleIcon?: SelectorProfile["roleIcon"];
   disabled: boolean;
   active: boolean;
   isPlaceholder: boolean;

@@ -188,7 +188,7 @@ function fillEmptyPersistedCues(
 type EditorTab = "identity" | "personality" | "model" | "voice";
 const EDITOR_TABS: SegmentedControlOption<EditorTab>[] = [
   { value: "identity", label: "Identity" },
-  { value: "personality", label: "Personality" },
+  { value: "personality", label: "Profile" },
   { value: "model", label: "Model" },
   { value: "voice", label: "Voice" },
 ];
@@ -609,7 +609,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
       }
       void (async () => {
         const confirmed = await confirmDialog({
-          title: "Delete personality",
+          title: "Delete profile",
           message: `Delete "${personality.name}"? Anything set to use it will stop working.`,
           confirmLabel: "Delete",
           cancelLabel: "Cancel",
@@ -692,7 +692,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
     () => (
       <IconButton
         Icon={ThemedPlus}
-        label="Add personality"
+        label="Add profile"
         onPress={handleAdd}
         disabled={!isConnected || !config}
         testID="agent-personalities-add-button"
@@ -708,7 +708,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
   return (
     <>
       <SettingsSection
-        title="Agent personalities"
+        title="Agent profiles"
         trailing={addButton}
         testID="agent-personalities-section"
       >
@@ -760,7 +760,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
 
       {editing ? (
         <PersonalityEditModal
-          title={editing.id ? "Edit personality" : "Add personality"}
+          title={editing.id ? "Edit profile" : "Add profile"}
           serverId={serverId}
           initialDraft={editing.draft}
           entries={providerEntries}
@@ -924,13 +924,13 @@ function PersonalityRow({
     <View style={styles.rowActions}>
       <IconButton
         Icon={ThemedPencil}
-        label="Edit personality"
+        label="Edit profile"
         onPress={handleEdit}
         testID={`agent-personality-edit-${personality.id}`}
       />
       <IconButton
         Icon={ThemedTrash}
-        label="Delete personality"
+        label="Delete profile"
         destructive
         onPress={handleRemove}
         testID={`agent-personality-remove-${personality.id}`}
@@ -1387,7 +1387,7 @@ function PersonalityEditModal({
     void (async () => {
       if (draft.personalityPrompt.trim().length > 0) {
         const confirmed = await confirmDialog({
-          title: "Replace this personality?",
+          title: "Replace this profile?",
           message: "The generated profile will overwrite what's written here.",
           confirmLabel: "Replace",
           cancelLabel: "Keep mine",
@@ -1411,13 +1411,11 @@ function PersonalityEditModal({
         if (profile) {
           setDraft((current) => ({ ...current, personalityPrompt: profile }));
         } else {
-          setProfileGenError(result.error ?? "Personality generation failed. Nothing was changed.");
+          setProfileGenError(result.error ?? "Profile generation failed. Nothing was changed.");
         }
       } catch (error) {
         if (isMountedRef.current) {
-          setProfileGenError(
-            error instanceof Error ? error.message : "Personality generation failed.",
-          );
+          setProfileGenError(error instanceof Error ? error.message : "Profile generation failed.");
         }
       } finally {
         if (isMountedRef.current) {
@@ -1491,7 +1489,7 @@ function PersonalityEditModal({
     void (async () => {
       const confirmed = await confirmDialog({
         title: "Discard changes?",
-        message: "This personality has unsaved changes.",
+        message: "This profile has unsaved changes.",
         confirmLabel: "Discard",
         cancelLabel: "Keep editing",
         destructive: true,
@@ -1579,11 +1577,11 @@ function PersonalityEditModal({
 
         {activeTab === "personality" ? (
           <>
-            <FieldLabel label="Personality prompt" />
+            <FieldLabel label="Profile prompt" />
             <TextArea
               value={draft.personalityPrompt}
               onChangeText={setPrompt}
-              placeholder="How this personality should behave (fun, optional)."
+              placeholder="How this profile should behave (fun, optional)."
               placeholderTextColor={styles.placeholder.color}
               style={styles.textArea}
               testID="agent-personality-prompt-input"
@@ -1630,7 +1628,7 @@ function PersonalityEditModal({
                     {lessonCount > 0
                       ? `${lessonCount === 1 ? "1 lesson" : `${lessonCount} lessons`} remembered so far. ` +
                         "Read and edit them in Context Management."
-                      : "This personality records what it learns and carries it into later sessions. " +
+                      : "This profile records what it learns and carries it into later sessions. " +
                         "Read and edit its lessons in Context Management."}
                   </Text>
                 </View>
@@ -1758,7 +1756,7 @@ function ProfileGeneratorField({
         disabled={isGenerating || !hasName}
         testID="agent-personality-generate-profile"
       >
-        {isGenerating ? "Writing personality…" : "Generate with AI"}
+        {isGenerating ? "Writing profile…" : "Generate with AI"}
       </Button>
       {error ? (
         <Text style={styles.fieldError} testID="agent-personality-profile-gen-error">

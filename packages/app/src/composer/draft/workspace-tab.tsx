@@ -24,7 +24,7 @@ import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/dra
 import { resolveTurnPresentation, TURN_LIVENESS_IDLE } from "@/timeline/turn-liveness";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
-import type { SelectorPersonality } from "@/components/combined-model-selector";
+import type { SelectorProfile } from "@/components/combined-model-selector";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
@@ -134,8 +134,8 @@ async function submitDraftCreateRequest(input: {
     featureValues: Record<string, unknown> | undefined;
     agentControls: {
       personality?: {
-        selectedPersonalityId?: string | null;
-        personalities?: SelectorPersonality[];
+        selectedProfileId?: string | null;
+        personalities?: SelectorProfile[];
       } | null;
     };
   };
@@ -217,8 +217,8 @@ function buildDraftAgentSnapshot(input: {
     agentControls: {
       features?: Agent["features"];
       personality?: {
-        selectedPersonalityId?: string | null;
-        personalities?: SelectorPersonality[];
+        selectedProfileId?: string | null;
+        personalities?: SelectorProfile[];
       } | null;
     };
   };

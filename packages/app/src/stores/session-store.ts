@@ -524,7 +524,7 @@ export interface SessionState {
   // id - not AI agents/subagents, plain shell processes for the Background
   // Tasks track. See packages/app/src/background-tasks/.
   backgroundShellTasks: Map<string, BackgroundShellTaskInfo>;
-  // Suggested tasks (spawn_task chips) keyed by taskId. Full per-parent pending
+  // Suggested tasks (suggest_task chips) keyed by taskId. Full per-parent pending
   // list, reconciled on suggested_tasks_changed. See packages/app/src/suggested-tasks/.
   suggestedTasks: Map<string, SuggestedTaskInfo>;
   workspaces: Map<string, WorkspaceDescriptor>;

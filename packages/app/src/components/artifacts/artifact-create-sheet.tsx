@@ -23,7 +23,7 @@ import { TextAreaScrollFrame } from "@/components/ui/text-area";
 import { RoleModelSelector } from "@/components/role-model-selector";
 import {
   type PersonalityCurrentSelection,
-  type SelectorPersonality,
+  type SelectorProfile,
 } from "@/hooks/use-personality-selection";
 import {
   useFormRolePersonality,
@@ -499,7 +499,7 @@ function OpenArtifactCreateSheet({
     autoSelectDefault: isEdit ? false : "always",
   });
   const {
-    selectedPersonalityId,
+    selectedProfileId,
     selectedName: selectedPersonalityName,
     selectedSpinner: selectedPersonalitySpinner,
     selectedRoleIcon: selectedPersonalityRoleIcon,
@@ -761,7 +761,7 @@ function OpenArtifactCreateSheet({
 
       {/* A personality already fixes its own effort, so hide the picker while
           one is selected - the whole point is not having to choose it. */}
-      {!selectedPersonalityId && selectedModel && availableThinkingOptions.length > 0 ? (
+      {!selectedProfileId && selectedModel && availableThinkingOptions.length > 0 ? (
         <View style={styles.field}>
           <Text style={styles.label}>Effort</Text>
           <ThinkingField
@@ -1060,7 +1060,7 @@ function ModelTrigger({
   provider: string | null;
   hasPersonality: boolean;
   personalitySpinner?: { glowA: string; glowB: string };
-  roleIcon?: SelectorPersonality["roleIcon"];
+  roleIcon?: SelectorProfile["roleIcon"];
   disabled: boolean;
   active: boolean;
   isPlaceholder: boolean;

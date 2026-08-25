@@ -250,7 +250,7 @@ export const ja: TranslationResources = {
     personalitySelector: {
       label: "表示対象",
       everyone: "全員",
-      searchPlaceholder: "パーソナリティを検索",
+      searchPlaceholder: "プロファイルを検索",
       lessons_one: "教訓 {{count}} 件",
       lessons_other: "教訓 {{count}} 件",
     },
@@ -258,20 +258,20 @@ export const ja: TranslationResources = {
     // it. See docs/agent-personalities.md § Memory.
     memory: {
       noPersonality:
-        "上でパーソナリティを選ぶと、そのパーソナリティが学んだ内容と、それが各リクエストに何を追加しているかを確認できます。",
-      loading: "このパーソナリティが覚えている内容を読み込み中…",
-      failed: "このパーソナリティのメモリを読み込めませんでした: {{error}}",
+        "上でプロファイルを選ぶと、そのプロファイルが学んだ内容と、それが各リクエストに何を追加しているかを確認できます。",
+      loading: "このプロファイルが覚えている内容を読み込み中…",
+      failed: "このプロファイルのメモリを読み込めませんでした: {{error}}",
       emptyNamed:
         "{{name}} はまだ何も記録していません。作業しながら自分で教訓を記録しますが、手動で追加することもできます。",
-      emptyFallbackName: "このパーソナリティ",
+      emptyFallbackName: "このプロファイル",
       add: "教訓を追加",
       brief: {
         title: "{{name}} に注入される内容",
         nothing: "なし",
         everyRequest: "リクエストごとに {{tokens}}",
         disabled:
-          "このパーソナリティのメモリはオフになっているため、これらは送信されません。教訓は保持されます。",
-        empty: "このプロジェクトでは、このパーソナリティのコンテキストに何も追加されていません。",
+          "このプロファイルのメモリはオフになっているため、これらは送信されません。教訓は保持されます。",
+        empty: "このプロジェクトでは、このプロファイルのコンテキストに何も追加されていません。",
         emptyButStored_one:
           "下の教訓はこのプロジェクトには当てはまらないため、ここには何も追加されません。理由は行のラベルに表示されています。",
         emptyButStored_other:
@@ -297,11 +297,11 @@ export const ja: TranslationResources = {
       },
       forgetDialog: {
         title: "この教訓を忘れますか？",
-        message: "「{{lesson}}」はこのパーソナリティのメモリから削除されます。",
+        message: "「{{lesson}}」はこのプロファイルのメモリから削除されます。",
         confirm: "忘れる",
       },
       composer: {
-        placeholder: "このパーソナリティに何を覚えさせますか？",
+        placeholder: "このプロファイルに何を覚えさせますか？",
         save: "この教訓を保存",
       },
       transfer: {
@@ -312,7 +312,7 @@ export const ja: TranslationResources = {
         confirm: "引き継ぐ",
         giveThemTo: "引き継ぎ先:",
         noCandidates:
-          "これらの教訓を引き継げる他のパーソナリティがありません。{{name}} を削除すると破棄されます。",
+          "これらの教訓を引き継げる他のプロファイルがありません。{{name}} を削除すると破棄されます。",
         sameRole: "同じロール",
       },
     },
@@ -1478,11 +1478,11 @@ export const ja: TranslationResources = {
         confirmTitle: "AI でコミット",
         confirmCta: "コミット",
         providerModel: "{{provider}} · {{model}}",
-        messagePersonality: "{{name}} パーソナリティ（{{detail}}）がコミットメッセージを書きます。",
+        messagePersonality: "{{name}} プロファイル（{{detail}}）がコミットメッセージを書きます。",
         messageProvider: "{{detail}} がコミットメッセージを書きます。",
         noneTitle: "利用できる AI エージェントがありません",
         noneMessage:
-          "コミットメッセージを書ける AI エージェントやモデルが設定されていません。プロバイダーまたはエージェントパーソナリティを設定してから、もう一度お試しください。",
+          "コミットメッセージを書ける AI エージェントやモデルが設定されていません。プロバイダーまたはエージェントプロファイルを設定してから、もう一度お試しください。",
         noneConfirm: "OK",
       },
       rollback: {
@@ -1981,6 +1981,10 @@ export const ja: TranslationResources = {
     },
     window: {
       title: "ウィンドウ",
+      trayIcon: {
+        title: "トレイアイコンを表示",
+        hint: "アプリの実行中はOttoのアイコンをシステムトレイに表示します",
+      },
       minimizeToTray: {
         title: "閉じるときにトレイに最小化",
         hint: "ウィンドウを閉じると終了せずにOttoをシステムトレイに隠します",
@@ -3267,6 +3271,7 @@ export const ja: TranslationResources = {
     groupInfo: "{{title}}について",
     sections: {
       general: "一般",
+      chat: "チャット",
       appearance: "外観",
       shortcuts: "ショートカット",
       integrations: "連携",
@@ -3388,13 +3393,13 @@ export const ja: TranslationResources = {
       mountedWorkspaceLimit: {
         label: "読み込んだままにするワークスペース数",
         description:
-          "切り替えを即座に行えるよう、読み込んだままにしておくワークスペースの数です。この数を超えると、最後に使ってから最も時間が経ったワークスペースが解放され、次に開いたときに再読み込みされます。実際に行き来する数以上に設定してください。それより小さいと、切り替えのたびにこれから戻ろうとしているワークスペースが解放されます。大きくするほどメモリを多く使います。",
+          "即座に切り替えられるよう読み込んだままにする Workspace の数。切り替える数以上に設定してください。大きいほどメモリを使います。",
         accessibilityLabel: "読み込んだままにするワークスペース数",
       },
       mountedTabLimit: {
         label: "読み込んだままにするタブ数",
         description:
-          "切り替えを即座に行えるよう、ペイン内で読み込んだままにしておくタブの数です。この数を超えると、最後に使ってから最も時間が経ったタブが解放され、次に開いたときに会話全体を再構築します。空欄にするとこのデバイスに合わせます（{{auto}}）。大きくするほどメモリを多く使います。",
+          "即座に切り替えられるよう読み込んだままにするペインあたりのタブ数。空欄にするとこのデバイスに合わせます（{{auto}}）。大きいほどメモリを使います。",
         accessibilityLabel: "読み込んだままにするタブ数",
       },
       terminalScrollback: {
@@ -3711,6 +3716,7 @@ export const ja: TranslationResources = {
       sections: {
         general: "一般",
         workspaces: "プロジェクト＆ワークスペース",
+        navigation: "ナビゲーション",
         tabsPanes: "タブ＆ペイン",
         projects: "プロジェクト",
         panels: "パネル",
@@ -3984,7 +3990,7 @@ export const ja: TranslationResources = {
         optionsError: "ホストから音声オプションを読み込めませんでした。",
         saveError: "音声設定を保存できませんでした。",
         engines: {
-          local: "ローカル（このデバイス上）",
+          local: "ローカル",
           openai: "OpenAI",
         },
         dictation: {

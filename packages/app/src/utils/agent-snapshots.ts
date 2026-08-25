@@ -34,6 +34,21 @@ export function derivePendingPermissionKey(
   return `${agentId}:${fallbackId}`;
 }
 
+/**
+ * COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22. The
+ * daemon emits the bound Agent Profile's identity under both spellings.
+ * Preferring the current one here, at the single ingestion point, is what lets
+ * every reader downstream keep one field name; a daemon older than the rename
+ * sends only the legacy trio, which is what the fallback covers.
+ */
+function resolveProfileIdentity(snapshot: AgentSnapshotPayload) {
+  return {
+    personalitySpinner: snapshot.agentProfileSpinner ?? snapshot.personalitySpinner ?? null,
+    personalityName: snapshot.agentProfileName ?? snapshot.personalityName ?? null,
+    personalityId: snapshot.agentProfileId ?? snapshot.personalityId ?? null,
+  };
+}
+
 export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId: string) {
   const createdAt = new Date(snapshot.createdAt);
   const updatedAt = new Date(snapshot.updatedAt);
@@ -82,8 +97,6 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     labels: snapshot.labels,
     attend: snapshot.attend ?? "attended",
     backgrounded: snapshot.backgrounded ?? false,
-    personalitySpinner: snapshot.personalitySpinner ?? null,
-    personalityName: snapshot.personalityName ?? null,
-    personalityId: snapshot.personalityId ?? null,
+    ...resolveProfileIdentity(snapshot),
   };
 }

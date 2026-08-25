@@ -144,21 +144,29 @@ function toQueuedMessagePayloads(
 }
 
 /**
- * Carry the spawning Agent Personality's identity onto the snapshot so the row
- * keeps its name and spinner colors. See docs/agent-personalities.md.
+ * Carry the spawning Agent Profile's identity onto the snapshot so the row keeps
+ * its name and spinner colors. See docs/agent-profiles.md.
+ *
+ * COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22. Both
+ * spellings go out together: a client older than the rename only knows the
+ * personality-named trio, and dropping it here would blank the identity on
+ * every row it draws. Delete the legacy half when the floor passes v0.8.13.
  */
-function applyPersonalityIdentity(
+function applyProfileIdentity(
   payload: AgentSnapshotPayload,
   snapshot: AgentSessionConfig["profileSnapshot"],
 ): void {
   if (snapshot?.spinner !== undefined) {
     payload.personalitySpinner = snapshot.spinner;
+    payload.agentProfileSpinner = snapshot.spinner;
   }
   if (snapshot?.name !== undefined) {
     payload.personalityName = snapshot.name;
+    payload.agentProfileName = snapshot.name;
   }
   if (snapshot?.profileId !== undefined) {
     payload.personalityId = snapshot.profileId;
+    payload.agentProfileId = snapshot.profileId;
   }
 }
 
@@ -249,7 +257,7 @@ export function toAgentPayload(
     payload.lastError = agent.lastError;
   }
 
-  applyPersonalityIdentity(payload, agent.config.profileSnapshot);
+  applyProfileIdentity(payload, agent.config.profileSnapshot);
 
   // Handle attention state
   payload.requiresAttention = agent.attention.requiresAttention;
@@ -362,17 +370,22 @@ function buildStoredAgentPayloadTail(
   providerAvailable: boolean,
 ): Partial<AgentSnapshotPayload> {
   const tail: Partial<AgentSnapshotPayload> = {};
+  // COMPAT(agentProfileFields): both spellings, same values - see
+  // applyProfileIdentity above for why the legacy trio still goes out.
   const spinner = record.config?.profileSnapshot?.spinner;
   if (spinner) {
     tail.personalitySpinner = spinner;
+    tail.agentProfileSpinner = spinner;
   }
-  const personalityName = record.config?.profileSnapshot?.name;
-  if (personalityName) {
-    tail.personalityName = personalityName;
+  const profileName = record.config?.profileSnapshot?.name;
+  if (profileName) {
+    tail.personalityName = profileName;
+    tail.agentProfileName = profileName;
   }
-  const personalityId = record.config?.profileSnapshot?.profileId;
-  if (personalityId) {
-    tail.personalityId = personalityId;
+  const profileId = record.config?.profileSnapshot?.profileId;
+  if (profileId) {
+    tail.personalityId = profileId;
+    tail.agentProfileId = profileId;
   }
   if (!providerAvailable) {
     tail.providerUnavailable = true;

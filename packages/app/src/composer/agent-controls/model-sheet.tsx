@@ -131,14 +131,14 @@ export function CompactModelSheet({
 
   const handleSelectPersonality = useCallback(
     (id: string) => {
-      personality?.onSelectPersonality?.(id);
+      personality?.onSelectProfile?.(id);
       close();
     },
     [close, personality],
   );
 
   const handleClearPersonality = useCallback(() => {
-    personality?.onClearPersonality?.();
+    personality?.onClearProfile?.();
     close();
   }, [close, personality]);
 
@@ -209,12 +209,8 @@ export function CompactModelSheet({
           <ModelBrowser
             state={browser}
             onSelect={handleSelect}
-            onSelectPersonality={
-              personality?.onSelectPersonality ? handleSelectPersonality : undefined
-            }
-            onClearPersonality={
-              personality?.onClearPersonality ? handleClearPersonality : undefined
-            }
+            onSelectProfile={personality?.onSelectProfile ? handleSelectPersonality : undefined}
+            onClearProfile={personality?.onClearProfile ? handleClearPersonality : undefined}
             onEditProfiles={onEditProfiles ? handleEditProfiles : undefined}
             onRetryProvider={onRetryProvider}
             isRetryingProvider={isRetryingProvider}

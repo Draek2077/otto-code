@@ -200,16 +200,24 @@ export function isMetadataGenerationEnabled(config: MutableDaemonConfig | null):
   return config?.metadataGeneration?.enabled !== false;
 }
 
-export function isPreferWriterPersonalities(config: MutableDaemonConfig | null): boolean {
-  return config?.metadataGeneration?.preferWriterPersonalities === true;
+export function isPreferWriterProfiles(config: MutableDaemonConfig | null): boolean {
+  // COMPAT(agentProfileFields): current spelling first, pre-rename fallback, so
+  // a host that has not been written since the rename still reads correctly.
+  const metadata = config?.metadataGeneration;
+  return (metadata?.preferWriterProfiles ?? metadata?.preferWriterPersonalities) === true;
 }
 
 export function createMetadataGenerationEnabledPatch(enabled: boolean): MutableDaemonConfigPatch {
   return { metadataGeneration: { enabled } };
 }
 
-export function createPreferWriterPersonalitiesPatch(
-  preferWriter: boolean,
-): MutableDaemonConfigPatch {
-  return { metadataGeneration: { preferWriterPersonalities: preferWriter } };
+export function createPreferWriterProfilesPatch(preferWriter: boolean): MutableDaemonConfigPatch {
+  // COMPAT(agentProfileFields): both keys, so a daemon that predates the rename
+  // still honours the toggle after a downgrade.
+  return {
+    metadataGeneration: {
+      preferWriterPersonalities: preferWriter,
+      preferWriterProfiles: preferWriter,
+    },
+  };
 }

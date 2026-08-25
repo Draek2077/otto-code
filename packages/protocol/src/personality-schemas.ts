@@ -278,7 +278,7 @@ export const CUE_MOMENTS = ["join", "thinking", "waiting", "done"] as const;
 export type CueMoment = (typeof CUE_MOMENTS)[number];
 
 // Two glow colors for the personality's thinking spinner (BlobLoader glowA/glowB).
-export const AgentPersonalitySpinnerSchema = z
+export const AgentProfileSpinnerSchema = z
   .object({
     glowA: z.string().min(1),
     glowB: z.string().min(1),
@@ -343,7 +343,7 @@ export const AgentPersonalitySchema = z
     // the personality prompt. False = the personality prompt stands alone.
     respectGlobalAppendPrompt: z.boolean().optional(),
     roles: z.array(z.string().min(1)).optional(),
-    spinner: AgentPersonalitySpinnerSchema.optional(),
+    spinner: AgentProfileSpinnerSchema.optional(),
     voice: AgentPersonalityVoiceSchema.optional(),
     voiceCues: AgentPersonalityVoiceCuesSchema.optional(),
     // Whether this personality accrues lessons across sessions (personality

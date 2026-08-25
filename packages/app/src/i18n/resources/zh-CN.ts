@@ -245,7 +245,7 @@ export const zhCN: TranslationResources = {
     personalitySelector: {
       label: "查看对象",
       everyone: "所有人",
-      searchPlaceholder: "搜索人格",
+      searchPlaceholder: "搜索配置",
       lessons_one: "已记住 {{count}} 条经验",
       lessons_other: "已记住 {{count}} 条经验",
     },
@@ -253,19 +253,19 @@ export const zhCN: TranslationResources = {
     // it. See docs/agent-personalities.md § Memory.
     memory: {
       noPersonality:
-        "在上方选择一个人格，即可看到它学到了什么，以及这些内容会为它的每次请求增加什么。",
-      loading: "正在读取该人格记住的内容…",
-      failed: "无法读取该人格的记忆：{{error}}",
+        "在上方选择一个配置，即可看到它学到了什么，以及这些内容会为它的每次请求增加什么。",
+      loading: "正在读取该配置记住的内容…",
+      failed: "无法读取该配置的记忆：{{error}}",
       emptyNamed:
         "{{name}} 还没有记录任何内容。它会在工作过程中自行记录经验，你也可以手动添加一条。",
-      emptyFallbackName: "该人格",
+      emptyFallbackName: "该配置",
       add: "添加一条经验",
       brief: {
         title: "为 {{name}} 注入的内容",
         nothing: "无",
         everyRequest: "每次请求 {{tokens}}",
-        disabled: "该人格的记忆已关闭，因此这些内容都不会发送。经验仍然保留。",
-        empty: "在此项目中，没有任何内容被加入该人格的上下文。",
+        disabled: "该配置的记忆已关闭，因此这些内容都不会发送。经验仍然保留。",
+        empty: "在此项目中，没有任何内容被加入该配置的上下文。",
         emptyButStored_one:
           "下面这条经验不适用于此项目，因此这里没有加入任何内容-行上的标签说明了原因。",
         emptyButStored_other:
@@ -291,11 +291,11 @@ export const zhCN: TranslationResources = {
       },
       forgetDialog: {
         title: "忘记这条经验？",
-        message: "“{{lesson}}”将从该人格的记忆中移除。",
+        message: "“{{lesson}}”将从该配置的记忆中移除。",
         confirm: "忘记",
       },
       composer: {
-        placeholder: "你希望该人格记住什么？",
+        placeholder: "你希望该配置记住什么？",
         save: "保存这条经验",
       },
       transfer: {
@@ -305,7 +305,7 @@ export const zhCN: TranslationResources = {
         discard: "删除这些经验",
         confirm: "转移",
         giveThemTo: "交给：",
-        noCandidates: "没有其他人格可以接收这些经验。删除 {{name}} 会一并丢弃它们。",
+        noCandidates: "没有其他配置可以接收这些经验。删除 {{name}} 会一并丢弃它们。",
         sameRole: "相同角色",
       },
     },
@@ -1432,11 +1432,11 @@ export const zhCN: TranslationResources = {
         confirmTitle: "使用 AI 提交",
         confirmCta: "提交",
         providerModel: "{{provider}} · {{model}}",
-        messagePersonality: "将由 {{name}} 人格（{{detail}}）撰写你的提交信息。",
+        messagePersonality: "将由 {{name}} 配置（{{detail}}）撰写你的提交信息。",
         messageProvider: "将由 {{detail}} 撰写你的提交信息。",
         noneTitle: "没有可用的 AI 智能体",
         noneMessage:
-          "尚未配置可撰写提交信息的 AI 智能体或模型。请先配置提供方或智能体人格，然后重试。",
+          "尚未配置可撰写提交信息的 AI 智能体或模型。请先配置提供方或智能体配置，然后重试。",
         noneConfirm: "确定",
       },
       rollback: {
@@ -1928,6 +1928,10 @@ export const zhCN: TranslationResources = {
     },
     window: {
       title: "窗口",
+      trayIcon: {
+        title: "显示托盘图标",
+        hint: "应用运行时始终将 Otto 图标保留在系统托盘中",
+      },
       minimizeToTray: {
         title: "关闭时最小化到托盘",
         hint: "关闭窗口会将 Otto 隐藏到系统托盘，而不是退出",
@@ -3186,6 +3190,7 @@ export const zhCN: TranslationResources = {
     groupInfo: "关于 {{title}}",
     sections: {
       general: "通用",
+      chat: "聊天",
       appearance: "外观",
       shortcuts: "快捷键",
       integrations: "集成",
@@ -3306,13 +3311,13 @@ export const zhCN: TranslationResources = {
       mountedWorkspaceLimit: {
         label: "保持加载的 Workspace 数量",
         description:
-          "有多少个 Workspace 保持加载状态，以便切回时立即可用。超过这个数量后，最久未使用的那个会被卸载，下次打开时重新加载。请至少设为你实际来回切换的数量-低于这个数，每次切换都会卸载你正要返回的那个 Workspace。设得越高，占用内存越多。",
+          "保持加载以便即时切换的 Workspace 数量。至少设为你实际切换的数量。设得越高，占用内存越多。",
         accessibilityLabel: "保持加载的 Workspace 数量",
       },
       mountedTabLimit: {
         label: "保持加载的标签页数量",
         description:
-          "窗格中有多少个标签页保持加载状态，以便切回时立即可用。超过这个数量后，最久未使用的那个会被卸载，下次打开时重新构建整个对话记录。留空则按本设备自动决定（{{auto}}）。设得越高，占用内存越多。",
+          "每个窗格保持加载以便即时切换的标签页数量。留空则跟随本设备（{{auto}}）。设得越高，占用内存越多。",
         accessibilityLabel: "保持加载的标签页数量",
       },
       terminalScrollback: {
@@ -3626,6 +3631,7 @@ export const zhCN: TranslationResources = {
       sections: {
         general: "通用",
         workspaces: "项目和工作区",
+        navigation: "导航",
         tabsPanes: "标签和窗格",
         projects: "项目",
         panels: "面板",
@@ -3895,7 +3901,7 @@ export const zhCN: TranslationResources = {
         optionsError: "无法从 Host 加载语音选项。",
         saveError: "无法保存语音设置。",
         engines: {
-          local: "本地（此设备上）",
+          local: "本地",
           openai: "OpenAI",
         },
         dictation: {

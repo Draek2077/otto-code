@@ -98,6 +98,30 @@ function normalizePrompt(prompt: string): string {
   return trimmed;
 }
 
+/**
+ * COMPAT(agentProfileFields): either spelling patches the binding, and both keys
+ * are written so a daemon that predates the rename still finds it after a
+ * downgrade. normalizeTargetProfileBinding resolves the value to a stable id
+ * afterwards.
+ */
+function applyProfileBindingPatch(
+  config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
+  patch: UpdateScheduleNewAgentConfig,
+): void {
+  if (patch.agentProfile === undefined && patch.personality === undefined) {
+    return;
+  }
+  const requested = patch.agentProfile !== undefined ? patch.agentProfile : patch.personality;
+  const trimmed = requested?.trim();
+  if (trimmed) {
+    config.personality = trimmed;
+    config.agentProfile = trimmed;
+    return;
+  }
+  delete config.personality;
+  delete config.agentProfile;
+}
+
 function applyNewAgentConfig(
   target: Extract<ScheduleTarget, { type: "new-agent" }>,
   patch: UpdateScheduleNewAgentConfig,
@@ -117,14 +141,7 @@ function applyNewAgentConfig(
     }
     config.cwd = trimmed;
   }
-  if (patch.personality !== undefined) {
-    const trimmed = patch.personality?.trim();
-    if (trimmed) {
-      config.personality = trimmed;
-    } else {
-      delete config.personality;
-    }
-  }
+  applyProfileBindingPatch(config, patch);
   if (patch.model !== undefined) {
     const trimmed = patch.model?.trim();
     if (trimmed) {
@@ -461,15 +478,21 @@ export class ScheduleService {
     if (target.type !== "new-agent") {
       return target;
     }
-    const binding = target.config.personality?.trim();
+    // COMPAT(agentProfileFields): read the current spelling first, fall back to
+    // the pre-rename one, and write both so a downgrade still finds the binding.
+    const binding = (target.config.agentProfile ?? target.config.personality)?.trim();
     if (!binding || binding === TEAM_SCHEDULER_PERSONALITY_SENTINEL) {
       return target;
     }
     const match = findProfileByRef(this.readAgentProfiles?.() ?? [], binding);
-    if (!match || match.id === binding) {
+    const resolved = match?.id ?? binding;
+    if (target.config.agentProfile === resolved && target.config.personality === resolved) {
       return target;
     }
-    return { ...target, config: { ...target.config, personality: match.id } };
+    return {
+      ...target,
+      config: { ...target.config, personality: resolved, agentProfile: resolved },
+    };
   }
 
   /**
@@ -1397,9 +1420,11 @@ export class ScheduleService {
   // named but missing/unavailable, or when personality resolution isn't wired.
   private async resolveSchedulePersonalityBrain(config: {
     personality?: string;
+    agentProfile?: string;
     cwd: string;
   }): Promise<ScheduleBrain | undefined> {
-    const name = config.personality?.trim();
+    // COMPAT(agentProfileFields): current spelling first, pre-rename fallback.
+    const name = (config.agentProfile ?? config.personality)?.trim();
     if (!name) {
       return undefined;
     }

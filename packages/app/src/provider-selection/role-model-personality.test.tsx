@@ -176,15 +176,15 @@ describe("useFormRolePersonality (load order)", () => {
     const { result, rerender, onApply } = renderComposerPicker({ entries: LOADING_ENTRIES });
 
     // Nothing resolves while the provider warms - and, critically, nothing settles.
-    expect(result.current.selectedPersonalityId).toBeNull();
+    expect(result.current.selectedProfileId).toBeNull();
     expect(onApply).not.toHaveBeenCalled();
 
     rerender({ entries: READY_ENTRIES });
 
     await waitFor(() => {
-      expect(result.current.selectedPersonalityId).toBe(TEAM_ENTRY_ID);
+      expect(result.current.selectedProfileId).toBe(TEAM_ENTRY_ID);
     });
-    expect(result.current.spawnPersonalityId).toBe(CHATTER.id);
+    expect(result.current.spawnProfileId).toBe(CHATTER.id);
     expect(onApply).toHaveBeenCalledWith(
       expect.objectContaining({ provider: "mock", model: "model-a" }),
     );
@@ -203,7 +203,7 @@ describe("useFormRolePersonality (load order)", () => {
     rerender({ entries: READY_ENTRIES });
 
     await waitFor(() => {
-      expect(result.current.selectedPersonalityId).toBe(CHATTER.id);
+      expect(result.current.selectedProfileId).toBe(CHATTER.id);
     });
     expect(onApply).toHaveBeenCalledWith(
       expect.objectContaining({ provider: "mock", model: "model-a" }),
@@ -221,7 +221,7 @@ describe("useFormRolePersonality (load order)", () => {
     const { result } = renderComposerPicker({ entries: READY_ENTRIES });
 
     await waitFor(() => {
-      expect(result.current.selectedPersonalityId).toBe(OTHER_CHATTER.id);
+      expect(result.current.selectedProfileId).toBe(OTHER_CHATTER.id);
     });
   });
 
@@ -234,7 +234,7 @@ describe("useFormRolePersonality (load order)", () => {
     const { result } = renderComposerPicker({ entries: READY_ENTRIES });
 
     await waitFor(() => {
-      expect(result.current.selectedPersonalityId).toBe(CHATTER.id);
+      expect(result.current.selectedProfileId).toBe(CHATTER.id);
     });
     expect(mocks.preferences.updatePreferences).not.toHaveBeenCalled();
   });
@@ -251,7 +251,7 @@ describe("useFormRolePersonality (load order)", () => {
     const { result, rerender, onApply } = renderComposerPicker({ entries: READY_ENTRIES });
 
     await waitFor(() => {
-      expect(result.current.selectedPersonalityId).toBe(CHATTER.id);
+      expect(result.current.selectedProfileId).toBe(CHATTER.id);
     });
 
     // The teams feature flag lands.
@@ -261,9 +261,9 @@ describe("useFormRolePersonality (load order)", () => {
     rerender({ entries: READY_ENTRIES });
 
     await waitFor(() => {
-      expect(result.current.selectedPersonalityId).toBe(TEAM_ENTRY_ID);
+      expect(result.current.selectedProfileId).toBe(TEAM_ENTRY_ID);
     });
-    expect(result.current.spawnPersonalityId).toBe(CHATTER.id);
+    expect(result.current.spawnProfileId).toBe(CHATTER.id);
     expect(onApply).toHaveBeenCalled();
   });
 
@@ -274,9 +274,9 @@ describe("useFormRolePersonality (load order)", () => {
     const { result, rerender } = renderComposerPicker({ entries: READY_ENTRIES });
 
     act(() => {
-      result.current.onSelectPersonality?.(OTHER_CHATTER.id);
+      result.current.onSelectProfile?.(OTHER_CHATTER.id);
     });
-    expect(result.current.selectedPersonalityId).toBe(OTHER_CHATTER.id);
+    expect(result.current.selectedProfileId).toBe(OTHER_CHATTER.id);
 
     act(() => {
       mocks.teamsFeature.enabled = true;
@@ -286,7 +286,7 @@ describe("useFormRolePersonality (load order)", () => {
     await waitFor(() => {
       expect(result.current.personalities?.[0]?.id).toBe(TEAM_ENTRY_ID);
     });
-    expect(result.current.selectedPersonalityId).toBe(OTHER_CHATTER.id);
+    expect(result.current.selectedProfileId).toBe(OTHER_CHATTER.id);
   });
 
   it("selects an off-role personality picked from the grouped browse section", async () => {
@@ -298,20 +298,20 @@ describe("useFormRolePersonality (load order)", () => {
     const { result } = renderComposerPicker({ entries: READY_ENTRIES });
 
     await waitFor(() => {
-      expect(result.current.selectedPersonalityId).toBe(CHATTER.id);
+      expect(result.current.selectedProfileId).toBe(CHATTER.id);
     });
 
-    const group = result.current.personalityGroups?.find((entry) => entry.key === "all");
+    const group = result.current.profileGroups?.find((entry) => entry.key === "all");
     expect(
       group?.roleGroups.flatMap((entry) => entry.personalities).map((entry) => entry.id),
     ).toContain(OFF_ROLE_CODER.id);
 
     act(() => {
-      result.current.onSelectPersonality?.(OFF_ROLE_CODER.id);
+      result.current.onSelectProfile?.(OFF_ROLE_CODER.id);
     });
 
-    expect(result.current.selectedPersonalityId).toBe(OFF_ROLE_CODER.id);
-    expect(result.current.spawnPersonalityId).toBe(OFF_ROLE_CODER.id);
+    expect(result.current.selectedProfileId).toBe(OFF_ROLE_CODER.id);
+    expect(result.current.spawnProfileId).toBe(OFF_ROLE_CODER.id);
     expect(result.current.selectedName).toBe(OFF_ROLE_CODER.name);
   });
 
@@ -328,7 +328,7 @@ describe("useFormRolePersonality (load order)", () => {
       initialPersonalityId: OTHER_CHATTER.id,
     });
 
-    expect(result.current.selectedPersonalityId).toBe(OTHER_CHATTER.id);
+    expect(result.current.selectedProfileId).toBe(OTHER_CHATTER.id);
 
     act(() => {
       mocks.teamsFeature.enabled = true;
@@ -338,8 +338,8 @@ describe("useFormRolePersonality (load order)", () => {
     await waitFor(() => {
       expect(result.current.personalities?.[0]?.id).toBe(TEAM_ENTRY_ID);
     });
-    expect(result.current.selectedPersonalityId).toBe(OTHER_CHATTER.id);
-    expect(result.current.spawnPersonalityId).toBe(OTHER_CHATTER.id);
+    expect(result.current.selectedProfileId).toBe(OTHER_CHATTER.id);
+    expect(result.current.spawnProfileId).toBe(OTHER_CHATTER.id);
     // Identity only - the fork's provider/model already arrive via initialValues.
     expect(onApply).not.toHaveBeenCalled();
   });

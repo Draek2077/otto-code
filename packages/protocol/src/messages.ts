@@ -17,7 +17,7 @@ import {
 import {
   VisualizerVoiceCuesGenerateRequestSchema,
   VisualizerVoiceCuesGenerateResponseSchema,
-  AgentPersonalitySpinnerSchema,
+  AgentProfileSpinnerSchema,
   AgentPersonalityVoiceSchema,
   AgentPersonalityVoiceCuesSchema,
   AgentPersonalitiesGetStatsRequestSchema,
@@ -564,10 +564,15 @@ const MutableMetadataGenerationConfigSchema = z
     // agent progress summaries, and other structured side-generations). Default
     // true preserves today's behavior. Read by the generation path (WP-B).
     enabled: z.boolean().default(true),
-    // When true, metadata generation prefers a role-matched Writer personality
-    // over the cheap default tier. Default false - cheap-tier routing is the
-    // default. Read by the generation routing (WP-B).
+    // When true, metadata generation prefers a role-matched Writer profile over
+    // the cheap default tier. Default false - cheap-tier routing is the default.
+    //
+    // COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22.
+    // `preferWriterPersonalities` is the pre-rename spelling. This is persisted
+    // daemon config, so both keys are written and either is read; drop the
+    // legacy one when the floor passes v0.8.13.
     preferWriterPersonalities: z.boolean().default(false),
+    preferWriterProfiles: z.boolean().optional(),
   })
   .passthrough();
 
@@ -613,7 +618,7 @@ export const AgentProfileSchema = z
     personalityPrompt: z.string().optional(),
     respectGlobalAppendPrompt: z.boolean().optional(),
     roles: z.array(z.string().min(1)).optional(),
-    spinner: AgentPersonalitySpinnerSchema.optional(),
+    spinner: AgentProfileSpinnerSchema.optional(),
     voice: AgentPersonalityVoiceSchema.optional(),
     voiceCues: AgentPersonalityVoiceCuesSchema.optional(),
     memoryEnabled: z.boolean().optional(),
@@ -1597,21 +1602,29 @@ export const AgentSnapshotPayloadSchema = z.object({
   // foreground, which is the pre-existing behavior. Drop the gate when daemon
   // floor >= v0.7.5. See docs/chat-lifecycle.md.
   backgrounded: z.boolean().optional(),
-  // Spinner colors from the Agent Personality this agent was spawned from, so
-  // its live thinking indicator renders in the personality's identity. Absent ⇒
-  // the client falls back to the theme's default spinner colors. Purely additive
-  // (no daemon floor needed). See docs/agent-personalities.md.
-  personalitySpinner: AgentPersonalitySpinnerSchema.optional(),
-  // Name of the Agent Personality this agent was spawned from, so the running
-  // agent's controls keep showing the personality identity (trigger label +
-  // effort hidden) instead of reverting to the raw model. Absent ⇒ no bound
-  // personality. Purely additive. See docs/agent-personalities.md.
+  // Spinner colors from the Agent Profile this agent was spawned from, so its
+  // live thinking indicator renders in the profile's identity. Absent ⇒ the
+  // client falls back to the theme's default spinner colors. Purely additive
+  // (no daemon floor needed). See docs/agent-profiles.md.
+  //
+  // COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22.
+  // The three personality-named fields below are the pre-rename spelling. The
+  // daemon emits both spellings and the client prefers the profile-named one,
+  // so an old client keeps reading what it knows and a new client keeps working
+  // against an old daemon. Drop the legacy trio when the floor passes v0.8.13.
+  personalitySpinner: AgentProfileSpinnerSchema.optional(),
+  // Name of the Agent Profile this agent was spawned from, so the running
+  // agent's controls keep showing the profile identity (trigger label + effort
+  // hidden) instead of reverting to the raw model. Absent ⇒ no bound profile.
   personalityName: z.string().optional(),
-  // Stable id of the bound Agent Personality. The client keys roster selection
-  // on this (names can be renamed/duplicated); personalityName remains for
-  // display and as the selection fallback against daemons that predate this
-  // field. Purely additive. See docs/agent-personalities.md.
+  // Stable id of the bound Agent Profile. The client keys roster selection on
+  // this (names can be renamed or duplicated); the name remains for display and
+  // as the selection fallback against daemons that predate this field.
   personalityId: z.string().optional(),
+  // The profile-named twins of the trio above. Same values, current spelling.
+  agentProfileSpinner: AgentProfileSpinnerSchema.optional(),
+  agentProfileName: z.string().optional(),
+  agentProfileId: z.string().optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
@@ -2306,12 +2319,17 @@ export type CreateAgentWorktreeTarget = z.infer<typeof CreateAgentWorktreeTarget
 export const CreateAgentRequestMessageSchema = z.object({
   type: z.literal("create_agent_request"),
   config: AgentSessionConfigSchema,
-  // Optional personality id. When present the daemon resolves the personality
-  // against this cwd's provider snapshot and snapshots its identity (spinner,
-  // voice, prompt) onto the agent - the brain (provider/model/mode/effort) still
-  // comes from `config`, so hand-deviations in the picker keep the identity.
+  // Optional Agent Profile id. When present the daemon resolves it against this
+  // cwd's provider snapshot and snapshots its identity (spinner, voice, prompt)
+  // onto the agent - the brain (provider/model/mode/effort) still comes from
+  // `config`, so hand-deviations in the picker keep the identity.
   // COMPAT(agentPersonalities): added in v0.5.0; gate lives in features.agentPersonalities.
   personality: z.string().optional(),
+  // COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22.
+  // Current spelling of the field above. The daemon reads whichever arrives,
+  // preferring this one; clients keep sending `personality` until the floor
+  // passes v0.8.13, so an old daemon still binds the identity.
+  agentProfile: z.string().optional(),
   env: z.record(z.string(), z.string()).optional(),
   workspaceId: z.string().optional(),
   // Optional caller context lets managed CLI invocations use the same daemon-owned

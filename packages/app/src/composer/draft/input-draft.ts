@@ -373,7 +373,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     ],
   );
 
-  const personalitySelection = useChatterPersonalitySelection({
+  const profileSelection = useChatterPersonalitySelection({
     formState,
     onApply: applyChatterPersonality,
     initialPersonalityId: composerOptions?.initialPersonalityId ?? null,
@@ -396,7 +396,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
           features: draftFeatures,
           onSetFeature: setDraftFeatureValue,
         }),
-        personality: personalitySelection,
+        personality: profileSelection,
       },
       commandDraftConfig,
     };
@@ -408,7 +408,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     draftFeatures,
     draftFeatureValues,
     formState,
-    personalitySelection,
+    profileSelection,
     setDraftFeatureValue,
     workingDir,
   ]);

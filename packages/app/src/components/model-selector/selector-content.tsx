@@ -103,7 +103,7 @@ export const foregroundMapping = (theme: Theme) => ({ color: theme.colors.foregr
  * pure presentation - callers (via usePersonalitySelection) build these,
  * including availability, so the component never touches daemon config.
  */
-export interface SelectorPersonality {
+export interface SelectorProfile {
   id: string;
   name: string;
   /** Provider id - picks the glyph filled with the personality's gradient. */
@@ -123,28 +123,28 @@ export interface SelectorPersonality {
 }
 
 /** One role's personalities inside a grouped browse section. */
-export interface SelectorPersonalityRoleGroup {
+export interface SelectorProfileRoleGroup {
   /** Role id (or "none" for roleless personalities) - stable list key. */
   key: string;
   /** Human role label, e.g. "Coder". */
   label: string;
   /** Neutral role glyph for the sub-heading. */
   icon?: IconComponent;
-  personalities: SelectorPersonality[];
+  personalities: SelectorProfile[];
 }
 
 /**
- * A collapsible top-level group in the "browse all personalities" section of
+ * A collapsible top-level group in the "browse all profiles" section of
  * the picker: the active team (label = team name) and/or the rest of the
  * roster, each broken down by role. Built by the caller (the picker stays pure
  * presentation); a multi-role personality appears under each role it carries.
  */
-export interface SelectorPersonalityGroupSection {
+export interface SelectorProfileGroupSection {
   /** Section key ("team" | "others" | "all") - stable list key. */
   key: string;
-  /** Section header label, e.g. the team name or "All personalities". */
+  /** Section header label, e.g. the team name or "All profiles". */
   label: string;
-  roleGroups: SelectorPersonalityRoleGroup[];
+  roleGroups: SelectorProfileRoleGroup[];
 }
 const headerSettingsMapping = (disabled: boolean) => (theme: Theme) => ({
   color: disabled ? theme.colors.border : theme.colors.foregroundMuted,
@@ -191,7 +191,7 @@ export function TriggerLeadingIcon({
   family,
   size,
 }: {
-  personality: SelectorPersonality | null;
+  personality: SelectorProfile | null;
   provider: string | null;
   family?: string | null;
   size: IconSizeProp;
@@ -248,12 +248,12 @@ interface SelectorContentProps {
   onDrillDownPersonalityGroup: (sectionKey: string, sectionLabel: string) => void;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
-  personalities?: SelectorPersonality[];
-  personalitySectionLabel?: string;
-  personalityGroups?: SelectorPersonalityGroupSection[];
-  selectedPersonalityId?: string | null;
-  onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
+  personalities?: SelectorProfile[];
+  profileSectionLabel?: string;
+  profileGroups?: SelectorProfileGroupSection[];
+  selectedProfileId?: string | null;
+  onSelectProfile?: (id: string) => void;
+  onClearProfile?: () => void;
 }
 function normalizeSearchQuery(value: string): string {
   return value.trim().toLowerCase();
@@ -593,7 +593,7 @@ function ProviderErrorEmptyState({
 
 // A role-slot entry (Team's <Role>) shows a neutral role glyph so it reads as
 // picking a role; a concrete personality keeps its colored provider glyph.
-function PersonalityRowIcon({ personality }: { personality: SelectorPersonality }) {
+function PersonalityRowIcon({ personality }: { personality: SelectorProfile }) {
   if (personality.roleIcon) {
     const RoleIcon = personality.roleIcon;
     return <RoleIcon size="md" color={styles.providerIconForeground.color} />;
@@ -614,7 +614,7 @@ function PersonalityRow({
   onSelect,
   onClear,
 }: {
-  personality: SelectorPersonality;
+  personality: SelectorProfile;
   isSelected: boolean;
   /** Nested under a role sub-heading in the grouped section. */
   indent?: boolean;
@@ -679,21 +679,21 @@ function PersonalityRow({
 }
 export function PersonalitiesSection({
   personalities,
-  label = "Personalities",
-  selectedPersonalityId,
-  onSelectPersonality,
-  onClearPersonality,
+  label = "Agent profiles",
+  selectedProfileId,
+  onSelectProfile,
+  onClearProfile,
 }: {
-  personalities?: SelectorPersonality[];
+  personalities?: SelectorProfile[];
   label?: string;
-  selectedPersonalityId?: string | null;
-  onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
+  selectedProfileId?: string | null;
+  onSelectProfile?: (id: string) => void;
+  onClearProfile?: () => void;
 }) {
-  if (!personalities || personalities.length === 0 || !onSelectPersonality) {
+  if (!personalities || personalities.length === 0 || !onSelectProfile) {
     return null;
   }
-  const handleClear = onClearPersonality ?? noop;
+  const handleClear = onClearProfile ?? noop;
   return (
     <View style={styles.personalitiesContainer}>
       <View style={styles.sectionHeading}>
@@ -704,8 +704,8 @@ export function PersonalitiesSection({
         <PersonalityRow
           key={personality.id}
           personality={personality}
-          isSelected={personality.id === selectedPersonalityId}
-          onSelect={onSelectPersonality}
+          isSelected={personality.id === selectedProfileId}
+          onSelect={onSelectProfile}
           onClear={handleClear}
         />
       ))}
@@ -718,7 +718,7 @@ function RoleGroupIcon({ icon: Icon }: { icon: IconComponent }) {
 
 /** Distinct personalities across a section's role groups (a multi-role
  * personality shows under each role it carries but counts once here). */
-function countDistinctPersonalities(section: SelectorPersonalityGroupSection): number {
+function countDistinctPersonalities(section: SelectorProfileGroupSection): number {
   const ids = new Set<string>();
   for (const group of section.roleGroups) {
     for (const personality of group.personalities) {
@@ -734,13 +734,13 @@ function countDistinctPersonalities(section: SelectorPersonalityGroupSection): n
  * it filters the group's personalities by name. Empty query keeps everything.
  */
 function filterPersonalityRoleGroups(
-  section: SelectorPersonalityGroupSection,
+  section: SelectorProfileGroupSection,
   normalizedQuery: string,
-): SelectorPersonalityRoleGroup[] {
+): SelectorProfileRoleGroup[] {
   if (!normalizedQuery) {
     return section.roleGroups;
   }
-  const result: SelectorPersonalityRoleGroup[] = [];
+  const result: SelectorProfileRoleGroup[] = [];
   for (const group of section.roleGroups) {
     const roleMatches = group.label.toLowerCase().includes(normalizedQuery);
     const personalities = roleMatches
@@ -763,7 +763,7 @@ function PersonalityGroupButton({
   section,
   onDrillDown,
 }: {
-  section: SelectorPersonalityGroupSection;
+  section: SelectorProfileGroupSection;
   onDrillDown: (sectionKey: string, sectionLabel: string) => void;
 }) {
   const handlePress = useCallback(
@@ -782,9 +782,7 @@ function PersonalityGroupButton({
       <Text style={styles.drillDownText}>{section.label}</Text>
       <View style={styles.drillDownTrailing}>
         {/* i18n: English-only pending the agent-personalities translation pass. */}
-        <Text style={styles.drillDownCount}>
-          {count === 1 ? "1 personality" : `${count} personalities`}
-        </Text>
+        <Text style={styles.drillDownCount}>{count === 1 ? "1 profile" : `${count} profiles`}</Text>
         <ThemedChevronRight size="sm" uniProps={foregroundMutedMapping} />
       </View>
     </Pressable>
@@ -801,13 +799,13 @@ function PersonalityGroupButton({
 function PersonalityGroupsSection({
   groups,
   onDrillDownPersonalityGroup,
-  onSelectPersonality,
+  onSelectProfile,
 }: {
-  groups?: SelectorPersonalityGroupSection[];
+  groups?: SelectorProfileGroupSection[];
   onDrillDownPersonalityGroup: (sectionKey: string, sectionLabel: string) => void;
-  onSelectPersonality?: (id: string) => void;
+  onSelectProfile?: (id: string) => void;
 }) {
-  if (!groups || groups.length === 0 || !onSelectPersonality) {
+  if (!groups || groups.length === 0 || !onSelectProfile) {
     return null;
   }
   return (
@@ -829,12 +827,12 @@ function PersonalityGroupsSection({
  */
 function PersonalityGroupRoleGroups({
   roleGroups,
-  selectedPersonalityId,
-  onSelectPersonality,
+  selectedProfileId,
+  onSelectProfile,
 }: {
-  roleGroups: SelectorPersonalityRoleGroup[];
-  selectedPersonalityId?: string | null;
-  onSelectPersonality: (id: string) => void;
+  roleGroups: SelectorProfileRoleGroup[];
+  selectedProfileId?: string | null;
+  onSelectProfile: (id: string) => void;
 }) {
   return (
     <View style={styles.personalitiesContainer}>
@@ -848,9 +846,9 @@ function PersonalityGroupRoleGroups({
             <PersonalityRow
               key={`${group.key}-${personality.id}`}
               personality={personality}
-              isSelected={personality.id === selectedPersonalityId}
+              isSelected={personality.id === selectedProfileId}
               indent
-              onSelect={onSelectPersonality}
+              onSelect={onSelectProfile}
             />
           ))}
         </View>
@@ -867,23 +865,23 @@ function PersonalityGroupRoleGroups({
 function PersonalityGroupContent({
   sectionKey,
   normalizedQuery,
-  personalityGroups,
-  selectedPersonalityId,
-  onSelectPersonality,
+  profileGroups,
+  selectedProfileId,
+  onSelectProfile,
 }: {
   sectionKey: string;
   normalizedQuery: string;
-  personalityGroups?: SelectorPersonalityGroupSection[];
-  selectedPersonalityId?: string | null;
-  onSelectPersonality?: (id: string) => void;
+  profileGroups?: SelectorProfileGroupSection[];
+  selectedProfileId?: string | null;
+  onSelectProfile?: (id: string) => void;
 }) {
   const { t } = useTranslation();
-  const section = personalityGroups?.find((entry) => entry.key === sectionKey);
+  const section = profileGroups?.find((entry) => entry.key === sectionKey);
   const roleGroups = useMemo(
     () => (section ? filterPersonalityRoleGroups(section, normalizedQuery) : []),
     [section, normalizedQuery],
   );
-  if (!section || !onSelectPersonality || roleGroups.length === 0) {
+  if (!section || !onSelectProfile || roleGroups.length === 0) {
     return (
       <View style={styles.emptyState}>
         <ThemedSearch size="md" uniProps={foregroundMutedMapping} />
@@ -894,8 +892,8 @@ function PersonalityGroupContent({
   return (
     <PersonalityGroupRoleGroups
       roleGroups={roleGroups}
-      selectedPersonalityId={selectedPersonalityId}
-      onSelectPersonality={onSelectPersonality}
+      selectedProfileId={selectedProfileId}
+      onSelectProfile={onSelectProfile}
     />
   );
 }
@@ -913,11 +911,11 @@ export function SelectorContent({
   onRetryProvider,
   isRetryingProvider,
   personalities,
-  personalitySectionLabel,
-  personalityGroups,
-  selectedPersonalityId,
-  onSelectPersonality,
-  onClearPersonality,
+  profileSectionLabel,
+  profileGroups,
+  selectedProfileId,
+  onSelectProfile,
+  onClearProfile,
 }: SelectorContentProps) {
   const { t } = useTranslation();
   // Only the mobile-native provider view virtualizes its model list, and only
@@ -952,9 +950,9 @@ export function SelectorContent({
       <PersonalityGroupContent
         sectionKey={view.sectionKey}
         normalizedQuery={normalizedQuery}
-        personalityGroups={personalityGroups}
-        selectedPersonalityId={selectedPersonalityId}
-        onSelectPersonality={onSelectPersonality}
+        profileGroups={profileGroups}
+        selectedProfileId={selectedProfileId}
+        onSelectProfile={onSelectProfile}
       />
     );
   }
@@ -967,7 +965,7 @@ export function SelectorContent({
     // family menu (including a locked running chat agent's) lets you pick one of
     // its personalities as readily as a raw model. The search box filters these by
     // name alongside the models. Renders nothing when the roster is read-only (no
-    // onSelectPersonality) or has none matching for this family.
+    // onSelectProfile) or has none matching for this family.
     const familyPersonalities = personalities?.filter(
       (entry) =>
         entry.provider === view.providerId &&
@@ -976,10 +974,10 @@ export function SelectorContent({
     const familyPersonalitiesNode = (
       <PersonalitiesSection
         personalities={familyPersonalities}
-        label={personalitySectionLabel}
-        selectedPersonalityId={selectedPersonalityId}
-        onSelectPersonality={onSelectPersonality}
-        onClearPersonality={onClearPersonality}
+        label={profileSectionLabel}
+        selectedProfileId={selectedProfileId}
+        onSelectProfile={onSelectProfile}
+        onClearProfile={onClearProfile}
       />
     );
     const drillSelection = selectedViewProvider.modelSelection;
@@ -1014,7 +1012,7 @@ export function SelectorContent({
     // Only fall back to "no matches" when nothing - models or personalities -
     // survived the filter, so a personality-only match doesn't read as empty.
     const hasFamilyPersonalityMatch =
-      Boolean(onSelectPersonality) && (familyPersonalities?.length ?? 0) > 0;
+      Boolean(onSelectProfile) && (familyPersonalities?.length ?? 0) > 0;
     let modelBody: React.ReactNode = null;
     if (visibleRows.length > 0) {
       modelBody = (
@@ -1050,11 +1048,11 @@ export function SelectorContent({
       onDrillDown={onDrillDown}
       onDrillDownPersonalityGroup={onDrillDownPersonalityGroup}
       personalities={personalities}
-      personalitySectionLabel={personalitySectionLabel}
-      personalityGroups={personalityGroups}
-      selectedPersonalityId={selectedPersonalityId}
-      onSelectPersonality={onSelectPersonality}
-      onClearPersonality={onClearPersonality}
+      profileSectionLabel={profileSectionLabel}
+      profileGroups={profileGroups}
+      selectedProfileId={selectedProfileId}
+      onSelectProfile={onSelectProfile}
+      onClearProfile={onClearProfile}
     />
   );
 }
@@ -1074,11 +1072,11 @@ function AllViewContent({
   onDrillDown,
   onDrillDownPersonalityGroup,
   personalities,
-  personalitySectionLabel,
-  personalityGroups,
-  selectedPersonalityId,
-  onSelectPersonality,
-  onClearPersonality,
+  profileSectionLabel,
+  profileGroups,
+  selectedProfileId,
+  onSelectProfile,
+  onClearProfile,
 }: {
   providers: ProviderSelectorProvider[];
   selectedProvider: string;
@@ -1088,12 +1086,12 @@ function AllViewContent({
   onToggleFavorite?: (provider: string, modelId: string) => void;
   onDrillDown: (providerId: string, providerLabel: string) => void;
   onDrillDownPersonalityGroup: (sectionKey: string, sectionLabel: string) => void;
-  personalities?: SelectorPersonality[];
-  personalitySectionLabel?: string;
-  personalityGroups?: SelectorPersonalityGroupSection[];
-  selectedPersonalityId?: string | null;
-  onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
+  personalities?: SelectorProfile[];
+  profileSectionLabel?: string;
+  profileGroups?: SelectorProfileGroupSection[];
+  selectedProfileId?: string | null;
+  onSelectProfile?: (id: string) => void;
+  onClearProfile?: () => void;
 }) {
   const { t } = useTranslation();
   const favoriteRows = useMemo(
@@ -1104,21 +1102,21 @@ function AllViewContent({
     favoriteRows.length > 0 ||
     providers.length > 0 ||
     (personalities?.length ?? 0) > 0 ||
-    (personalityGroups?.length ?? 0) > 0;
+    (profileGroups?.length ?? 0) > 0;
   return (
     <View>
       <PersonalitiesSection
         personalities={personalities}
-        label={personalitySectionLabel}
-        selectedPersonalityId={selectedPersonalityId}
-        onSelectPersonality={onSelectPersonality}
-        onClearPersonality={onClearPersonality}
+        label={profileSectionLabel}
+        selectedProfileId={selectedProfileId}
+        onSelectProfile={onSelectProfile}
+        onClearProfile={onClearProfile}
       />
 
       <PersonalityGroupsSection
-        groups={personalityGroups}
+        groups={profileGroups}
         onDrillDownPersonalityGroup={onDrillDownPersonalityGroup}
-        onSelectPersonality={onSelectPersonality}
+        onSelectProfile={onSelectProfile}
       />
 
       <FavoritesSection

@@ -1,5 +1,5 @@
 import { resolveSubmissionReadiness } from "@/provider-selection/provider-selection";
-import type { SelectorPersonality } from "@/components/combined-model-selector";
+import type { SelectorProfile } from "@/components/combined-model-selector";
 
 export interface WorkspaceDraftAutoSubmitConfig {
   provider: string;
@@ -37,19 +37,19 @@ export function resolveAutoSubmitConfig(
 }
 
 /**
- * The personality id to send to createAgent. Prefers `spawnPersonalityId`,
- * because `selectedPersonalityId` is the synthetic "Team's <Role>" sentinel
+ * The personality id to send to createAgent. Prefers `spawnProfileId`,
+ * because `selectedProfileId` is the synthetic "Team's <Role>" sentinel
  * whenever that slot is picked - an id no roster entry matches, which made the
  * daemon skip the personality entirely and spawn a bare agent on whatever model
  * the device last remembered.
  */
 export function resolveSpawnPersonalityId(
   personality?: {
-    selectedPersonalityId?: string | null;
-    spawnPersonalityId?: string | null;
+    selectedProfileId?: string | null;
+    spawnProfileId?: string | null;
   } | null,
 ): string | null {
-  return personality?.spawnPersonalityId ?? personality?.selectedPersonalityId ?? null;
+  return personality?.spawnProfileId ?? personality?.selectedProfileId ?? null;
 }
 
 /**
@@ -66,9 +66,9 @@ export function resolveDraftPersonality(input: {
   autoSubmitConfig: DraftAutoSubmitConfig | null;
   agentControls: {
     personality?: {
-      selectedPersonalityId?: string | null;
-      spawnPersonalityId?: string | null;
-      personalities?: SelectorPersonality[];
+      selectedProfileId?: string | null;
+      spawnProfileId?: string | null;
+      personalities?: SelectorProfile[];
     } | null;
   };
 }): { id: string; spinner: { glowA: string; glowB: string } | null } | null {

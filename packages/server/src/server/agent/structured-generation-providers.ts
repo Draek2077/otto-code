@@ -25,6 +25,7 @@ export interface StructuredGenerationDaemonConfig {
      * behavior). Default false = cheapest-capable first.
      */
     preferWriterPersonalities?: boolean;
+    preferWriterProfiles?: boolean;
     providers?: Array<{
       provider: string;
       model?: string;
@@ -88,7 +89,7 @@ export async function resolveStructuredGenerationProviders(
   const entriesByProvider = new Map(enabledEntries.map((entry) => [entry.provider, entry]));
   const providers: StructuredGenerationProvider[] = [];
 
-  const preferWriterPersonalities = readPreferWriterPersonalities(options.daemonConfig);
+  const preferWriterProfiles = readPreferWriterProfiles(options.daemonConfig);
   const personalityProviders = role
     ? resolvePersonalityProviders(
         role,
@@ -100,10 +101,10 @@ export async function resolveStructuredGenerationProviders(
   // Cheap-tier is the default (WP-B): the cheapness-ordered built-in ladder runs
   // AHEAD of role-matched Writer personalities, so a mini-task (title, branch,
   // commit) doesn't pay a standard/deep model's price. A host that opts in via
-  // metadataGeneration.preferWriterPersonalities restores the pre-cheap-default
+  // metadataGeneration.preferWriterProfiles restores the pre-cheap-default
   // order - Writers first - which is why the personality push is split around
   // the ladder rather than moved.
-  if (preferWriterPersonalities) {
+  if (preferWriterProfiles) {
     providers.push(...personalityProviders);
   }
 
@@ -136,7 +137,7 @@ export async function resolveStructuredGenerationProviders(
     providers.push(cheapestByTier);
   }
 
-  if (!preferWriterPersonalities) {
+  if (!preferWriterProfiles) {
     providers.push(...personalityProviders);
   }
 
@@ -447,10 +448,12 @@ function readConfiguredProviders(
   return Array.isArray(providers) ? providers : [];
 }
 
-function readPreferWriterPersonalities(
+function readPreferWriterProfiles(
   daemonConfig: ResolveStructuredGenerationProvidersOptions["daemonConfig"],
 ): boolean {
-  return daemonConfig?.metadataGeneration?.preferWriterPersonalities === true;
+  // COMPAT(agentProfileFields): current spelling first, pre-rename fallback.
+  const metadata = daemonConfig?.metadataGeneration;
+  return (metadata?.preferWriterProfiles ?? metadata?.preferWriterPersonalities) === true;
 }
 
 // Cheaper = smaller number, so the cheapest capable model wins a `<` compare.

@@ -41,7 +41,7 @@ describe("getOttoToolLeafName", () => {
 
   it("extracts leaf from Codex format", () => {
     expect(getOttoToolLeafName("otto.create_chat")).toBe("create_chat");
-    expect(getOttoToolLeafName("otto.list_agents")).toBe("list_agents");
+    expect(getOttoToolLeafName("otto.list_chats")).toBe("list_chats");
   });
 
   it("returns null for non-otto tools", () => {
@@ -51,7 +51,7 @@ describe("getOttoToolLeafName", () => {
 
 describe("getMcpToolLeafName", () => {
   it("strips the namespace from any MCP server, not just otto", () => {
-    expect(getMcpToolLeafName("mcp__otto__spawn_task")).toBe("spawn_task");
+    expect(getMcpToolLeafName("mcp__otto__suggest_task")).toBe("suggest_task");
     expect(getMcpToolLeafName("mcp__linear__create_issue")).toBe("create_issue");
     expect(getMcpToolLeafName("mcp__otto_voice__create_chat")).toBe("create_chat");
   });

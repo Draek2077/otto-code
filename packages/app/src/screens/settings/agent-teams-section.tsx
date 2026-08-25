@@ -325,7 +325,7 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
           title: "Delete team",
           message:
             orphaned.length > 0
-              ? `Delete "${team.name}"?${activeNote} ${orphaned.length === 1 ? "1 personality is" : `${orphaned.length} personalities are`} on no other team: ${orphanedNames}.`
+              ? `Delete "${team.name}"?${activeNote} ${orphaned.length === 1 ? "1 profile is" : `${orphaned.length} profiles are`} on no other team: ${orphanedNames}.`
               : `Delete "${team.name}"?${activeNote} Personalities are not deleted.`,
           checkboxLabel:
             orphaned.length > 0
@@ -423,8 +423,8 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
                 {personalities.length === 0
-                  ? "Teams group personalities into switchable operating templates. Add personalities first, then build a team from them."
-                  : "No teams yet. Group personalities into a team with a shared team prompt, then switch the active team from the main menu."}
+                  ? "Teams group agent profiles into switchable operating templates. Add profiles first, then build a team from them."
+                  : "No teams yet. Group agent profiles into a team with a shared team prompt, then switch the active team from the main menu."}
               </Text>
               {personalities.length > 0 ? (
                 <Button
@@ -725,7 +725,7 @@ function TeamEditModal({
   }, []);
 
   // Members filter - matches a personality's name or any of its role labels, so
-  // "rev" finds both a personality called "Reva" and every Reviewer.
+  // "rev" finds both a profile called "Reva" and every Reviewer.
   const filteredPersonalities = useMemo(() => {
     const query = memberQuery.trim().toLowerCase();
     if (!query) return personalities;
@@ -1008,8 +1008,8 @@ function MembersField({
         {personalities.length === 0 ? (
           <Text style={styles.membersEmptyText}>
             {filtered
-              ? "No personalities match this filter."
-              : "No personalities on this host yet."}
+              ? "No agent profiles match this filter."
+              : "No agent profiles on this host yet."}
           </Text>
         ) : null}
       </View>

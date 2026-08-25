@@ -10,7 +10,7 @@ import {
 
 export interface ContextPersonalityMemory {
   /** null = "Everyone": the personality-agnostic report this tab used to be. */
-  selectedPersonalityId: string | null;
+  selectedProfileId: string | null;
   /** The "viewing context for" selector, or null on a host with no memory. */
   slot: ReactNode;
   /** Lessons the selection holds. null hides the Memory segment entirely. */
@@ -35,11 +35,11 @@ export function useContextPersonalityMemory(params: {
   onTabChange: (tab: "context" | "memory") => void;
 }): ContextPersonalityMemory {
   const { serverId, workspaceId, onTabChange } = params;
-  const [selectedPersonalityId, setSelectedPersonalityId] = useState<string | null>(null);
+  const [selectedProfileId, setSelectedPersonalityId] = useState<string | null>(null);
   const enabled = usePersonalityMemoryEnabled(serverId);
   const roster = usePersonalityRoster(serverId);
   const counts = usePersonalityMemoryCounts(serverId, enabled);
-  const memory = usePersonalityMemory(serverId, selectedPersonalityId, workspaceId);
+  const memory = usePersonalityMemory(serverId, selectedProfileId, workspaceId);
 
   const handleSelect = useCallback(
     (personalityId: string | null) => {
@@ -54,12 +54,12 @@ export function useContextPersonalityMemory(params: {
       enabled ? (
         <ContextPersonalitySelector
           personalities={roster}
-          selectedId={selectedPersonalityId}
+          selectedId={selectedProfileId}
           memoryCounts={counts}
           onSelect={handleSelect}
         />
       ) : null,
-    [counts, enabled, handleSelect, roster, selectedPersonalityId],
+    [counts, enabled, handleSelect, roster, selectedProfileId],
   );
 
   // A host that can store lessons but has no personality picked keeps the
@@ -67,7 +67,7 @@ export function useContextPersonalityMemory(params: {
   const lessonCount = enabled ? (memory.view?.entries.length ?? 0) : null;
 
   return useMemo(
-    () => ({ selectedPersonalityId, slot, lessonCount, memory }),
-    [selectedPersonalityId, slot, lessonCount, memory],
+    () => ({ selectedProfileId, slot, lessonCount, memory }),
+    [selectedProfileId, slot, lessonCount, memory],
   );
 }

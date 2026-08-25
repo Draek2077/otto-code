@@ -245,28 +245,28 @@ export const en = {
     personalitySelector: {
       label: "Viewing for",
       everyone: "Everyone",
-      searchPlaceholder: "Search personalities",
+      searchPlaceholder: "Search agent profiles",
       lessons_one: "{{count}} lesson",
       lessons_other: "{{count}} lessons",
     },
-    // What one personality has learned, and the exact text injected because of
+    // What one agent profile has learned, and the exact text injected because of
     // it. See docs/agent-personalities.md § Memory.
     memory: {
       noPersonality:
-        "Pick a personality above to see what it has learned, and what that adds to every request it makes.",
-      loading: "Reading what this personality remembers…",
-      failed: "Could not read this personality's memory: {{error}}",
+        "Pick a profile above to see what it has learned, and what that adds to every request it makes.",
+      loading: "Reading what this profile remembers…",
+      failed: "Could not read this profile's memory: {{error}}",
       emptyNamed:
         "{{name}} has not recorded anything yet. It records lessons itself as it works; you can also add one by hand.",
-      emptyFallbackName: "This personality",
+      emptyFallbackName: "This profile",
       add: "Add a lesson",
       brief: {
         title: "Injected for {{name}}",
         nothing: "nothing",
         everyRequest: "{{tokens}} every request",
         disabled:
-          "Memory is switched off for this personality, so none of this is sent. The lessons are kept.",
-        empty: "Nothing is added to this personality's context in this project.",
+          "Memory is switched off for this profile, so none of this is sent. The lessons are kept.",
+        empty: "Nothing is added to this profile's context in this project.",
         emptyButStored_one:
           "The lesson below does not apply to this project, so nothing is added here - the label on the row says why.",
         emptyButStored_other:
@@ -293,11 +293,11 @@ export const en = {
       },
       forgetDialog: {
         title: "Forget this lesson?",
-        message: '"{{lesson}}" will be removed from this personality\'s memory.',
+        message: '"{{lesson}}" will be removed from this profile\'s memory.',
         confirm: "Forget",
       },
       composer: {
-        placeholder: "What should this personality remember?",
+        placeholder: "What should this profile remember?",
         save: "Save this lesson",
       },
       transfer: {
@@ -308,7 +308,7 @@ export const en = {
         confirm: "Transfer",
         giveThemTo: "Give them to:",
         noCandidates:
-          "There is no other personality to hand these lessons to. Deleting {{name}} will discard them.",
+          "There is no other profile to hand these lessons to. Deleting {{name}} will discard them.",
         sameRole: "same role",
       },
     },
@@ -1472,11 +1472,11 @@ export const en = {
         confirmTitle: "Commit with AI",
         confirmCta: "Commit",
         providerModel: "{{provider}} · {{model}}",
-        messagePersonality: "The {{name}} personality ({{detail}}) will write your commit message.",
+        messagePersonality: "The {{name}} profile ({{detail}}) will write your commit message.",
         messageProvider: "{{detail}} will write your commit message.",
         noneTitle: "No AI agent available",
         noneMessage:
-          "No AI agent or model is set up to write a commit message. Configure a provider or an Agent Personality, then try again.",
+          "No AI agent or model is set up to write a commit message. Configure a provider or an Agent Profile, then try again.",
         noneConfirm: "OK",
       },
       rollback: {
@@ -1975,6 +1975,10 @@ export const en = {
     },
     window: {
       title: "Window",
+      trayIcon: {
+        title: "Show tray icon",
+        hint: "Keeps an Otto icon in the system tray while the app is running",
+      },
       minimizeToTray: {
         title: "Minimize to tray on close",
         hint: "Closing the window hides Otto to the system tray instead of quitting",
@@ -3253,6 +3257,7 @@ export const en = {
     groupInfo: "About {{title}}",
     sections: {
       general: "General",
+      chat: "Chat",
       appearance: "Appearance",
       shortcuts: "Shortcuts",
       integrations: "Integrations",
@@ -3374,13 +3379,13 @@ export const en = {
       mountedWorkspaceLimit: {
         label: "Workspaces kept loaded",
         description:
-          "How many workspaces stay loaded so switching back to them is instant. Past this many, the one you used least recently is unloaded and reloads next time you open it. Set it to at least the number you actually switch between - below that, every switch unloads the workspace you are about to return to. Higher uses more memory.",
+          "How many workspaces stay loaded for instant switching. Set it to at least the number you switch between. Higher uses more memory.",
         accessibilityLabel: "Workspaces kept loaded",
       },
       mountedTabLimit: {
         label: "Tabs kept loaded",
         description:
-          "How many tabs in a pane stay loaded so switching back to them is instant. Past this many, the one you used least recently is unloaded and rebuilds its whole transcript next time you open it. Leave empty to match this device ({{auto}}). Higher uses more memory.",
+          "How many tabs per pane stay loaded for instant switching. Leave empty to match this device ({{auto}}). Higher uses more memory.",
         accessibilityLabel: "Tabs kept loaded",
       },
       terminalScrollback: {
@@ -3694,6 +3699,7 @@ export const en = {
       sections: {
         general: "General",
         workspaces: "Projects & Workspaces",
+        navigation: "Navigation",
         tabsPanes: "Tabs & Panes",
         projects: "Projects",
         panels: "Panels",
@@ -3964,7 +3970,7 @@ export const en = {
         optionsError: "Couldn't load speech options from the host.",
         saveError: "Couldn't save speech settings.",
         engines: {
-          local: "Local (on this device)",
+          local: "Local",
           openai: "OpenAI",
         },
         dictation: {

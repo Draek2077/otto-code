@@ -22,11 +22,11 @@ import {
   BROWSER_TOOL_GROUP_META,
   createAgentBehaviorPatch,
   createMetadataGenerationEnabledPatch,
-  createPreferWriterPersonalitiesPatch,
+  createPreferWriterProfilesPatch,
   createToolGroupsPatch,
   isAgentBehaviorEnabled,
   isMetadataGenerationEnabled,
-  isPreferWriterPersonalities,
+  isPreferWriterProfiles,
   isToolGroupEnabled,
   OTTO_CORE_TOOL_GROUP_META,
   TODO_REMINDER_META,
@@ -240,15 +240,15 @@ function PreferWriterPersonalitiesRow(props: {
   const mutation = useToggleMutation(serverId);
   const onValueChange = useCallback(
     (next: boolean) => {
-      mutation.mutate(createPreferWriterPersonalitiesPatch(next));
+      mutation.mutate(createPreferWriterProfilesPatch(next));
     },
     [mutation],
   );
   return (
     <ToggleRowView
-      title="Prefer Writer personalities"
-      description="Route metadata generation to a role-matched Writer personality instead of the cheap default tier."
-      value={isPreferWriterPersonalities(config)}
+      title="Prefer Writer profiles"
+      description="Route metadata generation to a role-matched Writer profile instead of the cheap default tier."
+      value={isPreferWriterProfiles(config)}
       onValueChange={onValueChange}
       disabled={mutation.isPending || !isMetadataGenerationEnabled(config)}
       errorText={toErrorMessage(mutation.error)}

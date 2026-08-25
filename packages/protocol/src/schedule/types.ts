@@ -27,10 +27,16 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
     config: z.object({
       provider: AgentProviderSchema,
       cwd: z.string().trim().min(1),
-      // Optional Agent Personality binding (by name). When set, each run
-      // re-resolves the personality against the run cwd and hard-fails if it is
-      // unavailable - so schedule runs pick up personality edits between runs.
+      // Optional Agent Profile binding, stored as the stable id. Each run
+      // re-resolves it against the run cwd and hard-fails if it is unavailable,
+      // so runs pick up profile edits between runs.
+      //
+      // COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22.
+      // `personality` is the pre-rename spelling and is both read and written
+      // for the compat window: schedules live on disk, so a daemon that predates
+      // the rename must still find the binding after a downgrade.
       personality: z.string().trim().min(1).optional(),
+      agentProfile: z.string().trim().min(1).optional(),
       modeId: z.string().trim().min(1).optional(),
       model: z.string().trim().min(1).optional(),
       thinkingOptionId: z.string().trim().min(1).optional(),
@@ -128,7 +134,9 @@ export interface CreateScheduleInput {
 
 export interface UpdateScheduleNewAgentConfig {
   provider?: string;
+  /** COMPAT(agentProfileFields): pre-rename spelling of `agentProfile`. */
   personality?: string | null;
+  agentProfile?: string | null;
   model?: string | null;
   modeId?: string | null;
   thinkingOptionId?: string | null;

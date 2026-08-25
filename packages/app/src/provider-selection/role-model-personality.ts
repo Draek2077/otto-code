@@ -3,8 +3,8 @@ import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { ProfileRole } from "@otto-code/protocol/messages";
 import { getActiveAgentTeam } from "@otto-code/protocol/agent-teams";
 import type {
-  SelectorPersonality,
-  SelectorPersonalityGroupSection,
+  SelectorProfile,
+  SelectorProfileGroupSection,
 } from "@/components/combined-model-selector";
 import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { buildTeamRoleEntry } from "@/provider-selection/team-role-entry";
@@ -24,35 +24,35 @@ import {
  * what stops the wiring from drifting again.
  */
 export interface RolePersonality {
-  personalities: SelectorPersonality[] | undefined;
+  personalities: SelectorProfile[] | undefined;
   /**
-   * The id to actually spawn with. Identical to `selectedPersonalityId` except
+   * The id to actually spawn with. Identical to `selectedProfileId` except
    * when the synthetic "Team's <Role>" slot is picked: that id is a UI-only
    * sentinel (`__team-chatter__`) no roster entry matches, so sending it made the
    * daemon's roster lookup miss and spawn a bare agent - no personality prompt,
    * no team prompt, and whatever model the device happened to remember. Read this
-   * for anything that crosses the wire; read `selectedPersonalityId` for the picker.
+   * for anything that crosses the wire; read `selectedProfileId` for the picker.
    */
-  spawnPersonalityId?: string | null;
+  spawnProfileId?: string | null;
   /**
    * The whole roster grouped by team + role for the picker's collapsible
    * browse section. Form surfaces supply it; the running-agent strategy leaves
    * it undefined (its picker is locked to the agent's provider family).
    */
-  personalityGroups?: SelectorPersonalityGroupSection[];
-  selectedPersonalityId: string | null;
-  onSelectPersonality: ((id: string) => void) | undefined;
-  onClearPersonality: (() => void) | undefined;
-  onSelectModelOverPersonality?: (provider: string, modelId: string) => void;
+  profileGroups?: SelectorProfileGroupSection[];
+  selectedProfileId: string | null;
+  onSelectProfile: ((id: string) => void) | undefined;
+  onClearProfile: (() => void) | undefined;
+  onSelectModelOverProfile?: (provider: string, modelId: string) => void;
   /** A personality (or "Team's <Role>" slot) is currently selected. */
-  hasBoundPersonality: boolean;
+  hasBoundProfile: boolean;
   /** Agent strategy only: an agent.personality.set RPC is in flight. Always false for form. */
   isSwitching: boolean;
   /** Display name of the current selection; null when none. */
   selectedName: string | null;
   selectedSpinner?: { glowA: string; glowB: string };
   /** Neutral role glyph when the selection is a "Team's <Role>" slot. */
-  selectedRoleIcon?: SelectorPersonality["roleIcon"];
+  selectedRoleIcon?: SelectorProfile["roleIcon"];
   /**
    * Schedule binding only: the personality name (or team sentinel) to submit as
    * the schedule's stored binding - exactly what the trigger shows, so display
@@ -185,8 +185,8 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
 
   const {
     personalities,
-    personalityGroups,
-    selectedPersonalityId,
+    profileGroups,
+    selectedProfileId,
     selectPersonality,
     clearPersonality,
     rememberedPersonalityId,
@@ -235,7 +235,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
   // take over from it. Remembering our own pick is what tells the two apart.
   const autoPickedIdRef = useRef<string | null>(null);
 
-  const displayPersonalities = useMemo<SelectorPersonality[]>(
+  const displayPersonalities = useMemo<SelectorProfile[]>(
     () => (teamEntry ? [teamEntry.selector, ...personalities] : personalities),
     [teamEntry, personalities],
   );
@@ -244,7 +244,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
   if (teamEntrySelected) {
     effectiveSelectedId = teamEntry ? teamEntryId : null;
   } else {
-    effectiveSelectedId = selectedPersonalityId ?? (!bindingTouched ? boundRosterId : null);
+    effectiveSelectedId = selectedProfileId ?? (!bindingTouched ? boundRosterId : null);
   }
 
   const handleSelect = useCallback(
@@ -314,7 +314,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     if (
       bindingTouched ||
       teamEntrySelected ||
-      (selectedPersonalityId !== null && selectedPersonalityId !== autoPickedIdRef.current) ||
+      (selectedProfileId !== null && selectedProfileId !== autoPickedIdRef.current) ||
       binding?.originalBinding
     ) {
       defaultAppliedRef.current = true;
@@ -361,7 +361,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     autoSelectDefault,
     bindingTouched,
     teamEntrySelected,
-    selectedPersonalityId,
+    selectedProfileId,
     binding,
     config,
     entries,
@@ -378,8 +378,8 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
   // from the browse groups may not be in the up-front (surface-role) list, and
   // the trigger/binding must still resolve its name and spinner.
   const groupedById = useMemo(() => {
-    const byId = new Map<string, SelectorPersonality>();
-    for (const section of personalityGroups) {
+    const byId = new Map<string, SelectorProfile>();
+    for (const section of profileGroups) {
       for (const group of section.roleGroups) {
         for (const entry of group.personalities) {
           if (!byId.has(entry.id)) {
@@ -389,7 +389,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
       }
     }
     return byId;
-  }, [personalityGroups]);
+  }, [profileGroups]);
 
   const selectedEntry = useMemo(
     () =>
@@ -407,7 +407,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
 
   // The team slot's id is display-only, so resolve it to the member the team
   // actually picked before it can reach createAgent.
-  const spawnPersonalityId = useMemo(
+  const spawnProfileId = useMemo(
     () => (teamEntrySelected && teamEntry ? (teamEntry.member?.id ?? null) : effectiveSelectedId),
     [teamEntrySelected, teamEntry, effectiveSelectedId],
   );
@@ -448,12 +448,12 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
 
   return {
     personalities: displayPersonalities,
-    personalityGroups,
-    selectedPersonalityId: effectiveSelectedId,
-    spawnPersonalityId,
-    onSelectPersonality: handleSelect,
-    onClearPersonality: handleClear,
-    hasBoundPersonality: effectiveSelectedId != null,
+    profileGroups,
+    selectedProfileId: effectiveSelectedId,
+    spawnProfileId,
+    onSelectProfile: handleSelect,
+    onClearProfile: handleClear,
+    hasBoundProfile: effectiveSelectedId != null,
     isSwitching: false,
     selectedName: selectedEntry?.name ?? null,
     selectedSpinner,
@@ -474,12 +474,12 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
  * RoleModelSelector as every other surface.
  */
 export interface AgentPersonalityResult {
-  personalities: SelectorPersonality[] | undefined;
-  selectedPersonalityId: string | null;
-  onSelectPersonality: ((id: string) => void) | undefined;
-  onClearPersonality: (() => void) | undefined;
-  onSelectModelOverPersonality: ((provider: string, modelId: string) => void) | undefined;
-  hasBoundPersonality: boolean;
+  personalities: SelectorProfile[] | undefined;
+  selectedProfileId: string | null;
+  onSelectProfile: ((id: string) => void) | undefined;
+  onClearProfile: (() => void) | undefined;
+  onSelectModelOverProfile: ((provider: string, modelId: string) => void) | undefined;
+  hasBoundProfile: boolean;
   /** True while an agent.personality.set RPC is in flight. */
   isSwitching: boolean;
 }
@@ -487,18 +487,18 @@ export interface AgentPersonalityResult {
 /** Lift a running-agent personality result onto the shared RolePersonality contract. */
 export function toRolePersonality(result: AgentPersonalityResult): RolePersonality {
   const selected =
-    result.personalities?.find((entry) => entry.id === result.selectedPersonalityId) ?? null;
+    result.personalities?.find((entry) => entry.id === result.selectedProfileId) ?? null;
   const selectedSpinner =
     selected?.glowA && selected.glowB
       ? { glowA: selected.glowA, glowB: selected.glowB }
       : undefined;
   return {
     personalities: result.personalities,
-    selectedPersonalityId: result.selectedPersonalityId,
-    onSelectPersonality: result.onSelectPersonality,
-    onClearPersonality: result.onClearPersonality,
-    onSelectModelOverPersonality: result.onSelectModelOverPersonality,
-    hasBoundPersonality: result.hasBoundPersonality,
+    selectedProfileId: result.selectedProfileId,
+    onSelectProfile: result.onSelectProfile,
+    onClearProfile: result.onClearProfile,
+    onSelectModelOverProfile: result.onSelectModelOverProfile,
+    hasBoundProfile: result.hasBoundProfile,
     isSwitching: result.isSwitching,
     selectedName: selected?.name ?? null,
     selectedSpinner,

@@ -2295,7 +2295,7 @@ export class Session {
         }
 
         if (event.type === "suggested_task_state") {
-          // Suggested-task chips (spawn_task) - push the full current pending
+          // Suggested-task chips (suggest_task) - push the full current pending
           // list for this parent, same direct path as background shell tasks.
           this.emit({
             type: "suggested_tasks_changed",
@@ -6687,7 +6687,7 @@ export class Session {
    * without personality identity. The brain fields are never overridden; only
    * `profileSnapshot` and (when the caller set none) `systemPrompt` are added.
    */
-  private async applyPersonalityIdentityToConfig(
+  private async applyProfileIdentityToConfig(
     config: AgentSessionConfig,
     personalityId: string | undefined,
   ): Promise<AgentSessionConfig> {
@@ -6775,7 +6775,12 @@ export class Session {
   private async handleCreateAgentRequest(msg: CreateAgentRequestMessage): Promise<void> {
     const {
       config,
-      personality,
+      // COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22.
+      // `agentProfile` is the current spelling; `personality` is what clients
+      // older than the rename send, and what current clients still send until
+      // the daemon floor passes v0.8.13. Prefer the new name when both arrive.
+      personality: legacyProfileRef,
+      agentProfile,
       worktreeName,
       requestId,
       initialPrompt,
@@ -6831,14 +6836,14 @@ export class Session {
       if (!(await this.filesystem.isDirectory(resolvedCwd))) {
         throw new Error(`Working directory does not exist or is not a directory: ${resolvedCwd}`);
       }
-      // Otto: a composer-selected personality arrives by id. Fold its identity onto
-      // the resolved config so the live spinner, voice and prompt read as that
-      // personality. The brain in `config` (provider/model/mode/effort) stays
-      // authoritative: hand-deviations in the picker keep the identity but override
-      // the settings.
-      resolvedIntent.config = await this.applyPersonalityIdentityToConfig(
+      // Otto: a composer-selected Agent Profile arrives by id. Fold its identity
+      // onto the resolved config so the live spinner, voice and prompt read as
+      // that profile. The brain in `config` (provider/model/mode/effort) stays
+      // authoritative: hand-deviations in the picker keep the identity but
+      // override the settings.
+      resolvedIntent.config = await this.applyProfileIdentityToConfig(
         resolvedIntent.config,
-        personality,
+        agentProfile ?? legacyProfileRef,
       );
 
       const { snapshot, liveSnapshot } = await createAgentCommand(

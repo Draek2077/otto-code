@@ -32,8 +32,8 @@ import {
   iconButtonStyle,
 } from "./model-selector/selector-content";
 import type {
-  SelectorPersonality,
-  SelectorPersonalityGroupSection,
+  SelectorProfile,
+  SelectorProfileGroupSection,
   SelectorView,
 } from "./model-selector/selector-content";
 const EMPTY_COMBOBOX_OPTIONS: ComboboxOption[] = [];
@@ -80,30 +80,30 @@ interface CombinedModelSelectorProps {
   /**
    * Optional personality roster, rendered as a section above the model list.
    * Selecting one auto-fills provider/model/effort/mode via the caller's
-   * onSelectPersonality; the caller keeps the selected id (deviation keeps
+   * onSelectProfile; the caller keeps the selected id (deviation keeps
    * identity). Empty/undefined hides the section entirely.
    */
-  personalities?: SelectorPersonality[];
+  personalities?: SelectorProfile[];
   /**
    * Optional grouped roster - every personality organized by team and role,
    * rendered as collapsible groups below the up-front section so any
    * personality (not just this surface's role) is reachable in a couple of
-   * taps. Selection flows through the same onSelectPersonality handler.
+   * taps. Selection flows through the same onSelectProfile handler.
    * Empty/undefined hides the grouped section entirely.
    */
-  personalityGroups?: SelectorPersonalityGroupSection[];
-  selectedPersonalityId?: string | null;
-  onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
+  profileGroups?: SelectorProfileGroupSection[];
+  selectedProfileId?: string | null;
+  onSelectProfile?: (id: string) => void;
+  onClearProfile?: () => void;
   /**
    * Picking a raw model while a personality is selected. When provided, the
-   * picker routes the model pick here INSTEAD of onSelect+onClearPersonality -
+   * picker routes the model pick here INSTEAD of onSelect+onClearProfile -
    * the owner confirms once and applies "clear personality + set model" as a
    * single flow (running agents, RPC-backed). Absent ⇒ legacy behavior:
-   * onSelect fires and onClearPersonality (if any) clears client-side (draft
+   * onSelect fires and onClearProfile (if any) clears client-side (draft
    * surfaces).
    */
-  onSelectModelOverPersonality?: (provider: string, modelId: string) => void;
+  onSelectModelOverProfile?: (provider: string, modelId: string) => void;
   /**
    * Render the custom trigger as a full-width form field: the outer Pressable
    * becomes a transparent passthrough that stretches its child edge-to-edge and
@@ -141,11 +141,11 @@ export function CombinedModelSelector({
   desktopPlacement,
   desktopMinWidth,
   personalities,
-  personalityGroups,
-  selectedPersonalityId = null,
-  onSelectPersonality,
-  onClearPersonality,
-  onSelectModelOverPersonality,
+  profileGroups,
+  selectedProfileId = null,
+  onSelectProfile,
+  onClearProfile,
+  onSelectModelOverProfile,
   triggerFill = false,
   triggerLoading = false,
 }: CombinedModelSelectorProps) {
@@ -162,11 +162,11 @@ export function CombinedModelSelector({
 
   // Only a *selectable* roster (one that renders the identities section)
   // changes the view layout. A read-only identity roster - passed with a
-  // selected id but no onSelectPersonality, as the running-agent controls do to
+  // selected id but no onSelectProfile, as the running-agent controls do to
   // label the trigger - must not suppress the single-provider bypass.
   const hasPersonalities =
-    ((personalities?.length ?? 0) > 0 || (personalityGroups?.length ?? 0) > 0) &&
-    Boolean(onSelectPersonality);
+    ((personalities?.length ?? 0) > 0 || (profileGroups?.length ?? 0) > 0) &&
+    Boolean(onSelectProfile);
 
   // Providers in an error/unavailable state (auth failed, not installed,
   // unreachable) are hidden from the picker entirely. The one exception is the
@@ -241,52 +241,52 @@ export function CombinedModelSelector({
       // Explicitly picking a model switches away from a bound personality - the
       // raw model becomes the identity. (Deviating effort/mode elsewhere keeps
       // the personality; only a direct model pick here clears it.) Running
-      // agents pass onSelectModelOverPersonality so both halves ride one
+      // agents pass onSelectModelOverProfile so both halves ride one
       // confirmed RPC flow; draft surfaces fall back to onSelect + client-side
       // clear. A read-only identity roster (old daemons) passes neither
       // handler, so the pick is a plain model change.
-      if (selectedPersonalityId && onSelectModelOverPersonality) {
-        onSelectModelOverPersonality(provider, modelId);
+      if (selectedProfileId && onSelectModelOverProfile) {
+        onSelectModelOverProfile(provider, modelId);
       } else {
         onSelect(provider, modelId);
-        if (selectedPersonalityId) {
-          onClearPersonality?.();
+        if (selectedProfileId) {
+          onClearProfile?.();
         }
       }
       setIsOpen(false);
       setSearchQuery("");
       bumpSearchResetKey();
     },
-    [onSelect, onClearPersonality, onSelectModelOverPersonality, selectedPersonalityId],
+    [onSelect, onClearProfile, onSelectModelOverProfile, selectedProfileId],
   );
 
   // Undefined when the caller passed no handler (read-only identity roster) so
-  // PersonalitiesSection's !onSelectPersonality guard actually fires and the
+  // PersonalitiesSection's !onSelectProfile guard actually fires and the
   // roster rows stay hidden - the entries then only label the trigger.
   const handlePersonalitySelect = useMemo(
     () =>
-      onSelectPersonality
+      onSelectProfile
         ? (id: string) => {
-            onSelectPersonality(id);
+            onSelectProfile(id);
             setIsOpen(false);
             setSearchQuery("");
             bumpSearchResetKey();
           }
         : undefined,
-    [onSelectPersonality],
+    [onSelectProfile],
   );
 
   const handlePersonalityClear = useMemo(
     () =>
-      onClearPersonality
+      onClearProfile
         ? () => {
-            onClearPersonality();
+            onClearProfile();
             setIsOpen(false);
             setSearchQuery("");
             bumpSearchResetKey();
           }
         : undefined,
-    [onClearPersonality],
+    [onClearProfile],
   );
 
   const hasSelectedProvider = selectedProvider.trim().length > 0;
@@ -307,17 +307,17 @@ export function CombinedModelSelector({
   // The lookup falls through to the grouped roster - a personality picked from
   // a role group may not be in the up-front (surface-role) section.
   const selectedPersonality = useMemo(() => {
-    if (!selectedPersonalityId) return null;
-    const upFront = personalities?.find((entry) => entry.id === selectedPersonalityId);
+    if (!selectedProfileId) return null;
+    const upFront = personalities?.find((entry) => entry.id === selectedProfileId);
     if (upFront) return upFront;
-    for (const section of personalityGroups ?? []) {
+    for (const section of profileGroups ?? []) {
       for (const group of section.roleGroups) {
-        const match = group.personalities.find((entry) => entry.id === selectedPersonalityId);
+        const match = group.personalities.find((entry) => entry.id === selectedProfileId);
         if (match) return match;
       }
     }
     return null;
-  }, [personalities, personalityGroups, selectedPersonalityId]);
+  }, [personalities, profileGroups, selectedProfileId]);
 
   const selectedModelLabel = useMemo(() => {
     return resolveSelectedModelLabel({
@@ -330,7 +330,7 @@ export function CombinedModelSelector({
 
   const desktopFixedHeight = useMemo(() => {
     if (view.kind === "personalityGroup") {
-      const section = personalityGroups?.find((entry) => entry.key === view.sectionKey);
+      const section = profileGroups?.find((entry) => entry.key === view.sectionKey);
       if (!section) {
         return DESKTOP_PROVIDER_VIEW_MIN_HEIGHT;
       }
@@ -355,7 +355,7 @@ export function CombinedModelSelector({
     if (view.kind !== "provider") {
       return undefined;
     }
-    const familyPersonalityCount = onSelectPersonality
+    const familyPersonalityCount = onSelectProfile
       ? (personalities?.filter((entry) => entry.provider === view.providerId).length ?? 0)
       : 0;
     const personalityHeight =
@@ -377,7 +377,7 @@ export function CombinedModelSelector({
       ),
       DESKTOP_PROVIDER_VIEW_MAX_HEIGHT,
     );
-  }, [displayProviders, view, personalities, personalityGroups, onSelectPersonality]);
+  }, [displayProviders, view, personalities, profileGroups, onSelectProfile]);
 
   const triggerLabel = useMemo(() => {
     if (selectedPersonality) {
@@ -516,7 +516,7 @@ export function CombinedModelSelector({
           onChange: handleSearchQueryChange,
           resetKey: `${view.sectionKey}:${searchResetKey}`,
           // i18n: English-only pending the agent-personalities translation pass.
-          placeholder: "Search personalities and roles",
+          placeholder: "Search profiles and roles",
           autoFocus: platformIsWeb,
           testID: "personality-search-input",
         },
@@ -642,10 +642,10 @@ export function CombinedModelSelector({
             onRetryProvider={onRetryProvider}
             isRetryingProvider={isRetryingProvider}
             personalities={personalities}
-            personalityGroups={personalityGroups}
-            selectedPersonalityId={selectedPersonalityId}
-            onSelectPersonality={handlePersonalitySelect}
-            onClearPersonality={handlePersonalityClear}
+            profileGroups={profileGroups}
+            selectedProfileId={selectedProfileId}
+            onSelectProfile={handlePersonalitySelect}
+            onClearProfile={handlePersonalityClear}
           />
         ) : (
           <View style={styles.sheetLoadingState}>
@@ -739,7 +739,7 @@ const styles = StyleSheet.create((theme) => ({
 // The selector implementation is Otto-owned and lives in model-selector/; this file
 // stays the import surface its consumers use.
 export type {
-  SelectorPersonality,
-  SelectorPersonalityRoleGroup,
-  SelectorPersonalityGroupSection,
+  SelectorProfile,
+  SelectorProfileRoleGroup,
+  SelectorProfileGroupSection,
 } from "./model-selector/selector-content";

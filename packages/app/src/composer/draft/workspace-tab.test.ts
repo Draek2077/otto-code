@@ -81,7 +81,7 @@ describe("draft personality resolution", () => {
       autoSubmitConfig: null,
       agentControls: {
         personality: {
-          selectedPersonalityId: "sage",
+          selectedProfileId: "sage",
           personalities: [
             {
               id: "sage",
@@ -113,7 +113,7 @@ describe("draft personality resolution", () => {
         // The tab's own composer never selected anything - the personality
         // came from the originating new-workspace composer instead.
         personality: {
-          selectedPersonalityId: null,
+          selectedProfileId: null,
           personalities: [
             {
               id: "sage",
@@ -140,7 +140,7 @@ describe("draft personality resolution", () => {
       // selection, an auto-submit with no personality must not pick it up.
       agentControls: {
         personality: {
-          selectedPersonalityId: "sage",
+          selectedProfileId: "sage",
           personalities: [
             {
               id: "sage",

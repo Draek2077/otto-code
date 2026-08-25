@@ -1214,7 +1214,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
   // The picker's selected id is a UI-only sentinel when the "Team's <Role>"
   // slot is active; only the resolved member id may be frozen onto the pending
   // submission, since the destination tab spawns from it verbatim.
-  const spawnPersonalityId = resolveSpawnPersonalityId(composerState.agentControls.personality);
+  const spawnProfileId = resolveSpawnPersonalityId(composerState.agentControls.personality);
   const submission = resolveWorkspaceDraftSubmissionConfig({
     draftId,
     workspaceDirectory,
@@ -1247,7 +1247,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     ...(submission.model ? { model: submission.model } : {}),
     ...(submission.thinkingOptionId ? { thinkingOptionId: submission.thinkingOptionId } : {}),
     ...(submission.featureValues ? { featureValues: submission.featureValues } : {}),
-    ...(spawnPersonalityId ? { personality: spawnPersonalityId } : {}),
+    ...(spawnProfileId ? { personality: spawnProfileId } : {}),
     allowEmptyText: true,
   });
   navigateToPreparedWorkspaceTab({

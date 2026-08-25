@@ -129,8 +129,8 @@ function buildCreateAgentOptions({
     effectiveThinkingOptionId: string | null;
     agentControls: {
       personality?: {
-        selectedPersonalityId?: string | null;
-        spawnPersonalityId?: string | null;
+        selectedProfileId?: string | null;
+        spawnProfileId?: string | null;
       } | null;
     };
   };
@@ -141,7 +141,7 @@ function buildCreateAgentOptions({
   workspaceId: string;
   provider: CreateAgentRequestOptions["provider"];
 }): CreateAgentRequestOptions {
-  const spawnPersonalityId = resolveSpawnPersonalityId(composerState.agentControls.personality);
+  const spawnProfileId = resolveSpawnPersonalityId(composerState.agentControls.personality);
   // Reconcile the selected mode against the discovered modes. The mode picker
   // shows modeOptions[0] when the stored mode isn't in the list (e.g. a stale
   // globally-remembered mode this workspace's provider config no longer
@@ -160,7 +160,7 @@ function buildCreateAgentOptions({
     ...(composerState.effectiveThinkingOptionId
       ? { thinkingOptionId: composerState.effectiveThinkingOptionId }
       : {}),
-    ...(spawnPersonalityId ? { personality: spawnPersonalityId } : {}),
+    ...(spawnProfileId ? { personality: spawnProfileId } : {}),
     ...(text.trim() ? { initialPrompt: text.trim() } : {}),
     ...(encodedImages && encodedImages.length > 0 ? { images: encodedImages } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),

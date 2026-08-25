@@ -28,7 +28,7 @@ import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { RolePersonality } from "@/provider-selection/role-model-personality";
 import {
   PersonalitiesSection,
-  type SelectorPersonality,
+  type SelectorProfile,
 } from "@/components/model-selector/selector-content";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
@@ -147,8 +147,8 @@ interface ModelBrowserProps {
   state: ModelBrowserState;
   onSelect: (provider: string, modelId: string) => void;
   /** Picking a Personality resolves the pick and dismisses, exactly like a model row. */
-  onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
+  onSelectProfile?: (id: string) => void;
+  onClearProfile?: () => void;
   onEditProfiles?: () => void;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider?: boolean;
@@ -623,15 +623,15 @@ function SelectableModelRow({
  */
 function PersonalityPickerContent({
   rows,
-  selectedPersonalityId,
-  onSelectPersonality,
-  onClearPersonality,
+  selectedProfileId,
+  onSelectProfile,
+  onClearProfile,
   onEditProfiles,
 }: {
-  rows: SelectorPersonality[] | undefined;
-  selectedPersonalityId: string | null;
-  onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
+  rows: SelectorProfile[] | undefined;
+  selectedProfileId: string | null;
+  onSelectProfile?: (id: string) => void;
+  onClearProfile?: () => void;
   onEditProfiles?: () => void;
 }) {
   if (!rows || rows.length === 0) {
@@ -640,9 +640,9 @@ function PersonalityPickerContent({
   return (
     <PersonalitiesSection
       personalities={rows}
-      selectedPersonalityId={selectedPersonalityId}
-      onSelectPersonality={onSelectPersonality}
-      onClearPersonality={onClearPersonality}
+      selectedProfileId={selectedProfileId}
+      onSelectProfile={onSelectProfile}
+      onClearProfile={onClearProfile}
     />
   );
 }
@@ -941,8 +941,8 @@ function ProviderModelBrowserContent({
   selectedModel,
   normalizedQuery,
   onSelect,
-  onSelectPersonality,
-  onClearPersonality,
+  onSelectProfile,
+  onClearProfile,
   onEditProfiles,
   onRetryProvider,
   isRetryingProvider,
@@ -955,8 +955,8 @@ function ProviderModelBrowserContent({
   selectedModel: string;
   normalizedQuery: string;
   onSelect: (provider: string, modelId: string) => void;
-  onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
+  onSelectProfile?: (id: string) => void;
+  onClearProfile?: () => void;
   onEditProfiles?: () => void;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
@@ -978,17 +978,17 @@ function ProviderModelBrowserContent({
       normalizedQuery.length === 0 && personality ? (
         <PersonalityPickerContent
           rows={providerPersonalityRows}
-          selectedPersonalityId={personality.selectedPersonalityId}
-          onSelectPersonality={onSelectPersonality}
-          onClearPersonality={onClearPersonality}
+          selectedProfileId={personality.selectedProfileId}
+          onSelectProfile={onSelectProfile}
+          onClearProfile={onClearProfile}
           onEditProfiles={onEditProfiles}
         />
       ) : undefined,
     [
       normalizedQuery,
-      onClearPersonality,
+      onClearProfile,
       onEditProfiles,
-      onSelectPersonality,
+      onSelectProfile,
       personality,
       providerPersonalityRows,
     ],
@@ -1040,8 +1040,8 @@ function ModelBrowserContent({
   searchQuery,
   personality,
   onSelect,
-  onSelectPersonality,
-  onClearPersonality,
+  onSelectProfile,
+  onClearProfile,
   onEditProfiles,
   onDrillDown,
   onRetryProvider,
@@ -1073,8 +1073,8 @@ function ModelBrowserContent({
         selectedModel={selectedModel}
         normalizedQuery={normalizedQuery}
         onSelect={onSelect}
-        onSelectPersonality={onSelectPersonality}
-        onClearPersonality={onClearPersonality}
+        onSelectProfile={onSelectProfile}
+        onClearProfile={onClearProfile}
         onEditProfiles={onEditProfiles}
         onRetryProvider={onRetryProvider}
         isRetryingProvider={isRetryingProvider}
@@ -1112,9 +1112,9 @@ function ModelBrowserContent({
       {personality ? (
         <PersonalityPickerContent
           rows={personality.personalities}
-          selectedPersonalityId={personality.selectedPersonalityId}
-          onSelectPersonality={onSelectPersonality}
-          onClearPersonality={onClearPersonality}
+          selectedProfileId={personality.selectedProfileId}
+          onSelectProfile={onSelectProfile}
+          onClearProfile={onClearProfile}
           onEditProfiles={onEditProfiles}
         />
       ) : null}
@@ -1142,8 +1142,8 @@ function ModelBrowserContent({
 export function ModelBrowser({
   state,
   onSelect,
-  onSelectPersonality,
-  onClearPersonality,
+  onSelectProfile,
+  onClearProfile,
   onEditProfiles,
   onRetryProvider,
   isRetryingProvider = false,
@@ -1158,8 +1158,8 @@ export function ModelBrowser({
       searchQuery={state.searchQuery}
       personality={state.personality}
       onSelect={onSelect}
-      onSelectPersonality={onSelectPersonality}
-      onClearPersonality={onClearPersonality}
+      onSelectProfile={onSelectProfile}
+      onClearProfile={onClearProfile}
       onEditProfiles={onEditProfiles}
       onDrillDown={state.drillDown}
       onRetryProvider={onRetryProvider}

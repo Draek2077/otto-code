@@ -97,10 +97,10 @@ type AgentControlSelector = "provider" | "mode" | "model" | "thinking" | `featur
 // is selected (mirrors the draft/artifact surfaces); otherwise show it when
 // there is a real choice.
 function resolvePersonalityAwareThinkingOptions(
-  hasBoundPersonality: boolean,
+  hasBoundProfile: boolean,
   thinkingOptions: AgentControlOption[],
 ): AgentControlOption[] | undefined {
-  if (hasBoundPersonality || thinkingOptions.length <= 1) {
+  if (hasBoundProfile || thinkingOptions.length <= 1) {
     return undefined;
   }
   return thinkingOptions;
@@ -900,11 +900,11 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 selectedModel={selectedModelId ?? ""}
                 onSelect={handleDesktopModelSelect}
                 personalities={personality?.personalities}
-                personalityGroups={personality?.personalityGroups}
-                selectedPersonalityId={personality?.selectedPersonalityId ?? null}
-                onSelectPersonality={personality?.onSelectPersonality}
-                onClearPersonality={personality?.onClearPersonality}
-                onSelectModelOverPersonality={personality?.onSelectModelOverPersonality}
+                profileGroups={personality?.profileGroups}
+                selectedProfileId={personality?.selectedProfileId ?? null}
+                onSelectProfile={personality?.onSelectProfile}
+                onClearProfile={personality?.onClearProfile}
+                onSelectModelOverProfile={personality?.onSelectModelOverProfile}
                 triggerLoading={isPersonalitySwitching}
                 onEditProfiles={onEditAgentProfiles}
                 isLoading={isModelLoading}
@@ -1566,7 +1566,7 @@ export const AgentControls = memo(function AgentControls({
   );
   const isSwitchingPersonality = chatPersonality.isSwitching;
   const thinkingOptionsForControls = resolvePersonalityAwareThinkingOptions(
-    chatPersonality.hasBoundPersonality,
+    chatPersonality.hasBoundProfile,
     thinkingOptions,
   );
 

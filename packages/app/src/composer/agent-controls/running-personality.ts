@@ -3,7 +3,7 @@ import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { AgentProfile } from "@otto-code/protocol/messages";
 import { getActiveAgentTeam, isTeamMember } from "@otto-code/protocol/agent-teams";
 import { profileHasRole } from "@otto-code/protocol/agent-profiles";
-import type { SelectorPersonality } from "@/components/model-selector/selector-content";
+import type { SelectorProfile } from "@/components/model-selector/selector-content";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import {
@@ -28,12 +28,12 @@ export interface RunningPersonalityAgent {
 }
 
 export interface RunningChatPersonalityResult {
-  personalities: SelectorPersonality[] | undefined;
-  selectedPersonalityId: string | null;
-  onSelectPersonality: ((id: string) => void) | undefined;
-  onClearPersonality: (() => void) | undefined;
-  onSelectModelOverPersonality: ((provider: string, modelId: string) => void) | undefined;
-  hasBoundPersonality: boolean;
+  personalities: SelectorProfile[] | undefined;
+  selectedProfileId: string | null;
+  onSelectProfile: ((id: string) => void) | undefined;
+  onClearProfile: (() => void) | undefined;
+  onSelectModelOverProfile: ((provider: string, modelId: string) => void) | undefined;
+  hasBoundProfile: boolean;
   /** True while an agent.personality.set RPC is in flight (capped at 30s). */
   isSwitching: boolean;
 }
@@ -61,7 +61,7 @@ const BOUND_PERSONALITY_FALLBACK_ID = "__bound-personality__";
 function buildRunningChatPersonalities(input: {
   roster: readonly AgentProfile[];
   entries: readonly ProviderSnapshotEntry[];
-}): SelectorPersonality[] {
+}): SelectorProfile[] {
   const { roster, entries } = input;
   return roster.map((personality) => {
     const resolution = resolvePersonalityForForm(personality, entries);
@@ -94,9 +94,9 @@ function buildRunningChatPersonalities(input: {
 function buildPersonalitySwitchDialog(target: { name: string } | null): ConfirmDialogInput {
   if (target === null) {
     return {
-      title: "Clear personality?",
+      title: "Clear profile?",
       message:
-        "Clearing the personality removes its system prompt from this agent. " +
+        "Clearing the profile removes its system prompt from this agent. " +
         "The provider session restarts to apply the change: the conversation " +
         "continues, and the model, effort, and mode stay as they are.",
       confirmLabel: "Clear",
@@ -140,15 +140,15 @@ function buildModelOverPersonalityDialog(input: {
 // Read-only shape for daemons without the live switch: the bound identity still
 // displays, but no handler exists that could emit the unsupported RPC.
 function buildReadOnlyChatPersonalityResult(
-  fallbackEntry: SelectorPersonality | null,
+  fallbackEntry: SelectorProfile | null,
 ): RunningChatPersonalityResult {
   return {
     personalities: fallbackEntry ? [fallbackEntry] : undefined,
-    selectedPersonalityId: fallbackEntry?.id ?? null,
-    onSelectPersonality: undefined,
-    onClearPersonality: undefined,
-    onSelectModelOverPersonality: undefined,
-    hasBoundPersonality: fallbackEntry != null,
+    selectedProfileId: fallbackEntry?.id ?? null,
+    onSelectProfile: undefined,
+    onClearProfile: undefined,
+    onSelectModelOverProfile: undefined,
+    hasBoundProfile: fallbackEntry != null,
     isSwitching: false,
   };
 }
@@ -186,7 +186,7 @@ function buildBoundFallbackPersonality(input: {
   provider: string | undefined;
   model: string | null;
   spinner: { glowA: string; glowB: string } | null | undefined;
-}): SelectorPersonality | null {
+}): SelectorProfile | null {
   const { boundPersonalityId, personalityName, provider, model, spinner } = input;
   if (!personalityName) {
     return null;
@@ -293,7 +293,7 @@ export function useRunningChatPersonality(input: {
       agent?.personalitySpinner,
     ],
   );
-  const selectedPersonalityId = rosterSelectedId ?? fallbackEntry?.id ?? null;
+  const selectedProfileId = rosterSelectedId ?? fallbackEntry?.id ?? null;
 
   const suppressWarning = preferences.suppressPersonalitySwitchWarning === true;
   const confirmWithSuppression = useCallback(
@@ -327,7 +327,7 @@ export function useRunningChatPersonality(input: {
         setIsSwitching(false);
         // i18n: English-only pending the agent-personalities translation pass.
         toast.error(
-          "Personality switch timed out - controls re-enabled. It may still apply in the background.",
+          "Profile switch timed out - controls re-enabled. It may still apply in the background.",
         );
       }, PERSONALITY_SWITCH_TIMEOUT_MS);
       try {
@@ -360,7 +360,7 @@ export function useRunningChatPersonality(input: {
     },
     [agentId, client, confirmWithSuppression, runLockedSwitch, toast],
   );
-  const onSelectPersonality = useCallback(
+  const onSelectProfile = useCallback(
     (id: string) => {
       const personality = familyRoster.find((entry) => entry.id === id);
       if (!personality) return;
@@ -368,7 +368,7 @@ export function useRunningChatPersonality(input: {
     },
     [applyPersonality, familyRoster],
   );
-  const onClearPersonality = useCallback(() => {
+  const onClearProfile = useCallback(() => {
     applyPersonality(null, null);
   }, [applyPersonality]);
 
@@ -376,8 +376,8 @@ export function useRunningChatPersonality(input: {
   // Personality and apply the model as a single locked flow. Nothing persists -
   // a started agent's picker is no-save.
   const boundPersonalityLabel =
-    familyRoster.find((entry) => entry.id === selectedPersonalityId)?.name ?? personalityName;
-  const onSelectModelOverPersonality = useCallback(
+    familyRoster.find((entry) => entry.id === selectedProfileId)?.name ?? personalityName;
+  const onSelectModelOverProfile = useCallback(
     (providerId: string, modelId: string) => {
       if (!client) return;
       const modelLabel = resolveSnapshotModelLabel(entries, providerId, modelId);
@@ -417,11 +417,11 @@ export function useRunningChatPersonality(input: {
     : rosterPersonalities;
   return {
     personalities: personalities.length > 0 ? personalities : undefined,
-    selectedPersonalityId,
-    onSelectPersonality,
-    onClearPersonality,
-    onSelectModelOverPersonality,
-    hasBoundPersonality: selectedPersonalityId != null,
+    selectedProfileId,
+    onSelectProfile,
+    onClearProfile,
+    onSelectModelOverProfile,
+    hasBoundProfile: selectedProfileId != null,
     isSwitching,
   };
 }

@@ -9,7 +9,7 @@ export type ArtifactStatus = z.infer<typeof ArtifactStatusSchema>;
 // Two glow colors for the generating spinner, snapshotted from the Agent
 // Personality the artifact was generated under (BlobLoader glowA/glowB), so its
 // card spinner renders in the personality's identity. Passthrough for
-// forward-compat, mirroring AgentPersonalitySpinnerSchema in messages.ts.
+// forward-compat, mirroring AgentProfileSpinnerSchema in messages.ts.
 export const ArtifactSpinnerSchema = z
   .object({
     glowA: z.string().min(1),

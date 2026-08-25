@@ -8,9 +8,9 @@ import {
   resolveTeamMembers,
 } from "@otto-code/protocol/agent-teams";
 import type {
-  SelectorPersonality,
-  SelectorPersonalityGroupSection,
-  SelectorPersonalityRoleGroup,
+  SelectorProfile,
+  SelectorProfileGroupSection,
+  SelectorProfileRoleGroup,
 } from "@/components/combined-model-selector";
 import {
   resolvePersonalityForForm,
@@ -22,7 +22,7 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import { mergeLastPersonality } from "@/create-agent-preferences/preferences";
 
-export type { SelectorPersonality, SelectorPersonalityGroupSection };
+export type { SelectorProfile, SelectorProfileGroupSection };
 
 /**
  * A provider that is broken right now - absent from the snapshot, disabled, or
@@ -112,15 +112,15 @@ export interface UsePersonalitySelectionInput {
 type RememberedPreselectState = "pending" | "applies" | "none";
 
 export interface UsePersonalitySelectionResult {
-  personalities: SelectorPersonality[];
+  personalities: SelectorProfile[];
   /**
    * The full roster organized for browsing: active team first (roles →
    * members), then the remaining personalities by role - or a single
-   * "All personalities" section when no team is active. Every entry here is
+   * "All profiles" section when no team is active. Every entry here is
    * selectable through selectPersonality, regardless of the surface role.
    */
-  personalityGroups: SelectorPersonalityGroupSection[];
-  selectedPersonalityId: string | null;
+  profileGroups: SelectorProfileGroupSection[];
+  selectedProfileId: string | null;
   /**
    * Apply a personality. `persist: false` marks the pick as machine-made (a
    * surface's tier-2 default resolving) so it does NOT overwrite device memory -
@@ -183,7 +183,7 @@ export function usePersonalitySelection(
   const { config } = useDaemonConfig(serverId);
   const { preferences, isLoading: preferencesLoading, updatePreferences } = useFormPreferences();
   const initialSelectedPersonalityId = input.initialSelectedPersonalityId ?? null;
-  const [selectedPersonalityId, setSelectedPersonalityId] = useState<string | null>(
+  const [selectedProfileId, setSelectedPersonalityId] = useState<string | null>(
     initialSelectedPersonalityId,
   );
   // Set once the user explicitly picks or clears - freezes auto-preselection so
@@ -205,7 +205,7 @@ export function usePersonalitySelection(
   // interactedRef covers explicit picks AND an inherited seed; those are the
   // user's, not memory's, and survive.
   const latchedPersonalityId =
-    !preselectRemembered && !interactedRef.current ? null : selectedPersonalityId;
+    !preselectRemembered && !interactedRef.current ? null : selectedProfileId;
 
   // Depend on the roster slice, not the whole config - unrelated daemon-config
   // changes must not rebuild the roster → resolutions → personalities chain.
@@ -270,7 +270,7 @@ export function usePersonalitySelection(
   );
 
   const buildSelectorPersonality = useCallback(
-    (personality: AgentProfile): SelectorPersonality => {
+    (personality: AgentProfile): SelectorProfile => {
       const resolution = resolutions.get(personality.id);
       // Show the human-readable provider/model names from the live snapshot
       // rather than the raw ids; fall back to the id when the snapshot has no
@@ -294,7 +294,7 @@ export function usePersonalitySelection(
     [resolutions, entries],
   );
 
-  const personalities = useMemo<SelectorPersonality[]>(
+  const personalities = useMemo<SelectorProfile[]>(
     () =>
       roster
         .filter((personality) => !isHiddenPersonality(personality))
@@ -304,17 +304,17 @@ export function usePersonalitySelection(
 
   // The grouped browse structure: with a team active, ONE group - the active
   // team's members by role (strict active-team scoping, same as the up-front
-  // section); with no team, one "All personalities" group over the full
+  // section); with no team, one "All profiles" group over the full
   // roster. A multi-role personality appears under each role it carries;
   // roleless ones land in a trailing "No role" group so everything on deck
   // stays reachable.
-  const personalityGroups = useMemo<SelectorPersonalityGroupSection[]>(() => {
+  const profileGroups = useMemo<SelectorProfileGroupSection[]>(() => {
     const visible = fullRoster.filter((personality) => !isHiddenPersonality(personality));
     if (visible.length === 0) {
       return [];
     }
-    const buildRoleGroups = (list: readonly AgentProfile[]): SelectorPersonalityRoleGroup[] => {
-      const groups: SelectorPersonalityRoleGroup[] = [];
+    const buildRoleGroups = (list: readonly AgentProfile[]): SelectorProfileRoleGroup[] => {
+      const groups: SelectorProfileRoleGroup[] = [];
       for (const groupRole of PROFILE_ROLES) {
         const members = list.filter((personality) => profileHasRole(personality, groupRole));
         if (members.length > 0) {
@@ -347,7 +347,7 @@ export function usePersonalitySelection(
     }
     const roleGroups = buildRoleGroups(visible);
     // i18n: English-only pending the agent-personalities translation pass.
-    return roleGroups.length > 0 ? [{ key: "all", label: "All personalities", roleGroups }] : [];
+    return roleGroups.length > 0 ? [{ key: "all", label: "All profiles", roleGroups }] : [];
   }, [fullRoster, isHiddenPersonality, activeTeam, buildSelectorPersonality]);
 
   const persistLastPersonality = useCallback(
@@ -428,14 +428,14 @@ export function usePersonalitySelection(
   ]);
 
   useEffect(() => {
-    if (interactedRef.current || selectedPersonalityId !== null) {
+    if (interactedRef.current || selectedProfileId !== null) {
       return;
     }
     if (rememberedPreselect !== "applies" || !rememberedId) {
       return;
     }
     setSelectedPersonalityId(rememberedId);
-  }, [rememberedPreselect, rememberedId, selectedPersonalityId]);
+  }, [rememberedPreselect, rememberedId, selectedProfileId]);
 
   // A selection whose personality has since left the roster (deleted remotely)
   // reads as no selection - the draft must not spawn with a stale id the
@@ -449,8 +449,8 @@ export function usePersonalitySelection(
 
   return {
     personalities,
-    personalityGroups,
-    selectedPersonalityId: effectiveSelectedPersonalityId,
+    profileGroups,
+    selectedProfileId: effectiveSelectedPersonalityId,
     selectPersonality,
     clearPersonality,
     rememberedPersonalityId: rememberedId ?? null,

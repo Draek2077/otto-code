@@ -492,7 +492,7 @@ function buildScheduleUpdateInput(input: ScheduleUpdateToolInput): UpdateSchedul
     ...(providerModelPatch.provider !== undefined ? { provider: providerModelPatch.provider } : {}),
     // Renamed on the tool surface only. `personality` is the persisted config
     // field name and a wire field, so it keeps its name on the way out.
-    ...(input.agentProfile !== undefined ? { personality: input.agentProfile } : {}),
+    ...(input.agentProfile !== undefined ? { agentProfile: input.agentProfile } : {}),
     ...(providerModelPatch.model !== undefined ? { model: providerModelPatch.model } : {}),
     ...(input.mode !== undefined ? { modeId: input.mode } : {}),
     ...(input.thinkingOptionId !== undefined ? { thinkingOptionId: input.thinkingOptionId } : {}),
@@ -4650,7 +4650,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       });
       return {
         ...baseTarget.config,
+        // COMPAT(agentProfileFields): both spellings, same id.
         personality: brain.profileSnapshot?.profileId ?? personalityRef,
+        agentProfile: brain.profileSnapshot?.profileId ?? personalityRef,
         ...(brain.modeId !== undefined ? { modeId: brain.modeId } : {}),
         ...(brain.thinkingOptionId !== undefined
           ? { thinkingOptionId: brain.thinkingOptionId }
