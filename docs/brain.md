@@ -24,16 +24,19 @@ The rule is that **operations are work, not settings**. Downloading a model, cal
 running a benchmark are long-running, progress-bearing and result-producing. They do not belong next
 to a TLS certificate path, and burying them there is what made them hard to find.
 
-## One resident-model queue
+## One model-process scheduler
 
-Brain currently has one resident `llama-server`, so it has one scheduler for all model-targeted
-work. API completions, calibration, sweep, and benchmark jobs enter the same queue with their
-resolved target model. A job waits for the current turn to drain, the scheduler unloads the old model
-when necessary, loads its target, runs the full operation, and then selects the next queued turn.
+Brain has one host-level scheduler for all model-targeted work. API completions, calibration, sweep,
+and benchmark jobs enter the same queue with their resolved target model. The scheduler routes a
+resident target to its process, admits another process up to the host's `maxLoadedModels` setting, or
+unloads the least-recently-used idle model before loading the target when the limit is full. Busy
+models are never evicted.
 
 Calibration, sweep, and benchmark jobs are exclusive turns. Completion requests for the resident
 model still use its configured parallel slots, but no completion can run beside a tuning or benchmark
-operation. A calibration or sweep deliberately does not restore the model that was resident before it
+operation in that process. Every temporary model reload needed by calibration or sweep stays behind
+the same pool-owned lifecycle boundary, so process limits, VRAM reservations, eviction, and live
+status remain authoritative. An operation deliberately does not restore a model it evicted before it
 started: doing so would jump ahead of the next queued request.
 
 The Models table mirrors that queue. A dot means a model is loaded and idle; a spinner identifies
@@ -286,10 +289,9 @@ controls and retain the ordinary model-profile flow.
 
 Each enabled component is part of the launch argv, VRAM budget, and calibration
 identity. A main-model-only calibration is historical data, not an exact
-measurement of a projector- or drafter-enabled load. The current Supervisor
-still owns one llama.cpp process, so this delivery does not claim concurrent
-independent main models. A future process pool must reserve VRAM per process
-and may not assume weights are shared across processes.
+measurement of a projector- or drafter-enabled load. Each resident model owns
+an independent Supervisor and llama.cpp process. The process pool reserves VRAM
+per process and never assumes weights are shared across processes.
 
 Each model carries a **Model profile**: its saved launch and VRAM settings. It is distinct from a
 **Prompt & template profile**, which supplies message formatting and a system-prompt addendum.

@@ -92,6 +92,15 @@ export interface CalibrateOptions {
   /** Reuse the host's resident supervisor instead of creating a sidecar server. */
   supervisor?: Supervisor;
   /**
+   * Pool-owned lifecycle for a hosted operation. Both callbacks must be
+   * supplied together; standalone CLI/TUI runs keep using their local
+   * supervisor.
+   */
+  lifecycle?: {
+    start: (profile: Profile) => Promise<void>;
+    stop: () => Promise<void>;
+  };
+  /**
    * Pause after stopping each sample so the driver releases its allocation
    * before the next load. Tests run with zero.
    */
@@ -120,6 +129,7 @@ export async function calibrate({
   priorCalibration = null,
   internalPort = DEFAULT_INTERNAL_PORT + 1,
   supervisor: optionsSupervisor,
+  lifecycle,
   releaseDelayMs = 3000,
   onProgress = () => {},
 }: CalibrateOptions): Promise<CalibrationMeasurement> {
@@ -161,6 +171,10 @@ export async function calibrate({
   const native = nativeCeiling ?? Math.max(...effectiveSamples);
   const points: CalibrationSample[] = [];
 
+  if (lifecycle && !optionsSupervisor) {
+    throw new Error("a managed calibration lifecycle requires its resident supervisor");
+  }
+
   for (const contextSize of effectiveSamples) {
     if (contextSize > native) {
       onProgress({ phase: "skip", contextSize, reason: `exceeds configured context ${native}` });
@@ -172,7 +186,9 @@ export async function calibrate({
 
     const baseline = await usedBytes();
     try {
-      await supervisor.start(model, { ...profile, contextSize });
+      const sampleProfile = { ...profile, contextSize };
+      if (lifecycle) await lifecycle.start(sampleProfile);
+      else await supervisor.start(model, sampleProfile);
       if (kvSpilledToCpu(supervisor.logLines)) {
         const reason = `KV cache split to CPU at ${contextSize.toLocaleString()} context`;
         onProgress({ phase: "failed", contextSize, reason });
@@ -192,7 +208,8 @@ export async function calibrate({
       });
       throw error;
     } finally {
-      await supervisor.stop();
+      if (lifecycle) await lifecycle.stop();
+      else await supervisor.stop();
       // Let the driver actually release the allocation before the next sample.
       if (releaseDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, releaseDelayMs));
     }

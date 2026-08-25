@@ -1,3 +1,4 @@
+import type { Profile } from "../config/schema.js";
 import type { Model } from "../types.js";
 import type { ModelScheduler, SchedulerStats, SchedulerSubmitOptions } from "./scheduler.js";
 import { Scheduler } from "./scheduler.js";
@@ -35,9 +36,24 @@ export interface ModelProcessPoolOptions {
     supervisor: Supervisor,
     model: Model,
     reservedElsewhereBytes: number,
+    profile?: Profile,
   ) => Promise<number>;
   onChange?: (() => void) | null;
   logger?: ((message: string) => void) | null;
+}
+
+/**
+ * The only lifecycle surface exposed to a resident host operation.
+ *
+ * Calibration and sweep need to relaunch their target with temporary profiles.
+ * Keeping those launches on the pool-owned lease means process limits, VRAM
+ * reservations, eviction state, scheduler slot ownership, and status updates
+ * all observe the same lifecycle.
+ */
+export interface ManagedModelProcess {
+  supervisor: Supervisor;
+  start: (profile: Profile) => Promise<void>;
+  stop: () => Promise<void>;
 }
 
 /**
@@ -87,6 +103,35 @@ export class ModelProcessPool implements ModelScheduler<Supervisor> {
       this.#announce();
       queueMicrotask(() => void this.#dispatch());
     });
+  }
+
+  /** Run an exclusive operation with pool-owned model lifecycle controls. */
+  submitOperation(
+    model: Model,
+    run: (process: ManagedModelProcess) => Promise<unknown>,
+    options: SchedulerSubmitOptions,
+  ): Promise<unknown> {
+    return this.submit(
+      model,
+      async (supervisor) => {
+        const slot = this.#slots.find((candidate) => candidate.supervisor === supervisor);
+        if (!slot) throw new Error("The scheduled model process is no longer in the pool.");
+        return run({
+          supervisor,
+          start: async (profile) => {
+            await this.#loadSlot(slot, model, profile);
+          },
+          stop: async () => {
+            await supervisor.stop();
+            slot.scheduler.forgetSlots();
+            slot.reservationBytes = 0;
+            slot.lastUsedAt = ++this.#clock;
+            this.#announce();
+          },
+        });
+      },
+      options,
+    );
   }
 
   /** Load a model and leave it resident without consuming an inference slot. */
@@ -194,22 +239,29 @@ export class ModelProcessPool implements ModelScheduler<Supervisor> {
     };
     slot.scheduler = this.#createScheduler(
       supervisor,
-      async (model) => {
-        const reservedElsewhereBytes = this.#slots.reduce(
-          (total, candidate) => (candidate === slot ? total : total + candidate.reservationBytes),
-          0,
-        );
-        slot.reservationBytes = await this.#loadModel(supervisor, model, reservedElsewhereBytes);
-        slot.assignedModelId = model.id;
-        slot.lastUsedAt = ++this.#clock;
-        this.#announce();
-      },
+      async (model) => this.#loadSlot(slot, model),
       () => {
         this.#announce();
         void this.#dispatch();
       },
     );
     return slot;
+  }
+
+  async #loadSlot(slot: PoolSlot, model: Model, profile?: Profile): Promise<void> {
+    const reservedElsewhereBytes = this.#slots.reduce(
+      (total, candidate) => (candidate === slot ? total : total + candidate.reservationBytes),
+      0,
+    );
+    slot.reservationBytes = await this.#loadModel(
+      slot.supervisor,
+      model,
+      reservedElsewhereBytes,
+      profile,
+    );
+    slot.assignedModelId = model.id;
+    slot.lastUsedAt = ++this.#clock;
+    this.#announce();
   }
 
   #announce(): void {

@@ -204,6 +204,11 @@ export interface SweepOptions {
   internalPort?: number;
   /** Reuse the host's resident supervisor instead of creating a sidecar server. */
   supervisor?: Supervisor;
+  /** Pool-owned lifecycle for hosted runs; standalone runs use their local supervisor. */
+  lifecycle?: {
+    start: (profile: Profile) => Promise<void>;
+    stop: () => Promise<void>;
+  };
   onProgress?: (event: SweepProgress) => void;
 }
 
@@ -216,15 +221,22 @@ export async function sweep({
   temperature = 0.7,
   internalPort = DEFAULT_INTERNAL_PORT + 2,
   supervisor: optionsSupervisor,
+  lifecycle,
   onProgress = () => {},
 }: SweepOptions): Promise<SweepReport> {
   const results: SweepResult[] = [];
+
+  if (lifecycle && !optionsSupervisor) {
+    throw new Error("a managed sweep lifecycle requires its resident supervisor");
+  }
 
   for (const budget of budgets) {
     const supervisor = optionsSupervisor ?? new Supervisor({ runtime, internalPort });
     onProgress({ phase: "loading", budget });
     try {
-      await supervisor.start(model, { ...profile, reasoningBudget: budget });
+      const trialProfile = { ...profile, reasoningBudget: budget };
+      if (lifecycle) await lifecycle.start(trialProfile);
+      else await supervisor.start(model, trialProfile);
       onProgress({ phase: "generating", budget });
       const trial = await runTrial({ supervisor, maxTokens, temperature });
       results.push({ budget, ...trial, error: null });
@@ -240,7 +252,8 @@ export async function sweep({
       });
       onProgress({ phase: "failed", budget, error: message });
     } finally {
-      await supervisor.stop();
+      if (lifecycle) await lifecycle.stop();
+      else await supervisor.stop();
       await new Promise((resolve) => setTimeout(resolve, 2500));
     }
   }

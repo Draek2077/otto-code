@@ -5,7 +5,7 @@ title: "Brain queues every model-targeted operation through one scheduler"
 status: "confirmed"
 tags: ["brain","scheduler","model-swap","operations","ui"]
 created_at: "2026-08-15T04:09:26.640Z"
-updated_at: "2026-08-22T02:25:25.876Z"
+updated_at: "2026-08-25T13:52:12.113Z"
 ---
 # Brain queues every model-targeted operation through one scheduler
 
@@ -34,3 +34,12 @@ API completions, calibration, sweep, and benchmark are model-targeted requests t
   summary: "The user replaced the single-resident model contract with a configurable multi-process resident pool while retaining one scheduler as the host-level admission boundary."
   source: "User direction and verified implementation, 2026-08-21"
   affects: ["brain-managed-process-pool","brain-operations-use-resident-hosted-server"]
+- time: "2026-08-25T13:51:52.188Z"
+  kind: "evidence"
+  summary: "Closed the hosted-operation lifecycle gap. Calibration and sweep were admitted by ModelProcessPool but then relaunched and stopped the assigned Supervisor directly for each trial, bypassing pool reservation and lifecycle accounting; the Models table also overlaid only the legacy primary supervisor status, hiding swaps in other resident slots. Hosted calibration/sweep now receive a pool-owned managed process lease, and every temporary profile load/stop updates the owning slot's VRAM reservation, slot ownership, LRU state, and status. Benchmark remains on the same pool and uses its admitted resident process. The Models table now treats the complete status.residents array as authoritative, so one-slot eviction and two-slot coexistence are visible live. Focused pool, calibration, sweep, scheduler, host API, service, and model-lifecycle tests passed (165 assertions/tests reported across the selected files), Brain typecheck passed, and targeted lint/format passed. App typecheck reached unrelated in-progress modelVisibilityOverrides fixture errors after rebuilding client declarations; the new model-lifecycle test passed."
+  source: "Implementation and focused regression coverage, 2026-08-25"
+  affects: ["brain-managed-process-pool"]
+- time: "2026-08-25T13:52:12.113Z"
+  kind: "evidence"
+  summary: "Correction to the preceding evidence count: the selected source files contain 98 focused tests. Several initial Vitest invocations also discovered duplicated copies under `.tmp/android-tablet-build`, which inflated the reported totals; the canonical `packages/brain` service test was rerun with `.tmp/**` excluded and passed 19/19. The pass/fail conclusions are unchanged."
+  source: "Verification count correction, 2026-08-25"

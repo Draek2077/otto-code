@@ -25,7 +25,7 @@ import {
   saveProfilesStore,
 } from "../config/index.js";
 import { resolveBrainPaths } from "../config/paths.js";
-import type { BrainConfig } from "../config/schema.js";
+import type { BrainConfig, Profile } from "../config/schema.js";
 import { query as queryGpu } from "../gpu.js";
 import { managedModelsDir, pickAutoModel, pickModel, scanModels } from "../models/index.js";
 import { CommandError } from "../output/types.js";
@@ -42,8 +42,8 @@ import { createCpuSampler, sample as sampleSystem, slots as sampleSlots } from "
 import { createHostApi, type HostJob, type HostJobRunner } from "./host-api.js";
 import { errorMessage } from "./http-util.js";
 import { createRouter, createSlotEraser, Telemetry } from "./router.js";
-import { Scheduler, type ModelScheduler } from "./scheduler.js";
-import { ModelProcessPool } from "./process-pool.js";
+import { Scheduler } from "./scheduler.js";
+import { ModelProcessPool, type ManagedModelProcess } from "./process-pool.js";
 import { BrainLogPublisher, BrainStatusPublisher } from "./status-events.js";
 import { Supervisor } from "./supervisor.js";
 import * as tailscale from "./tailscale.js";
@@ -91,7 +91,7 @@ interface ResidentJobUpdate {
 }
 
 type ResidentJobRunner = (
-  supervisor: Supervisor,
+  process: ManagedModelProcess,
   kind: "calibrate" | "sweep" | "bench",
   target: string | null,
   update: ResidentJobUpdate,
@@ -141,7 +141,7 @@ class ServiceJobRunner implements HostJobRunner {
   constructor(
     private readonly onPullCompleted: () => void,
     private readonly runResidentJob: ResidentJobRunner,
-    private readonly scheduler: ModelScheduler<Supervisor>,
+    private readonly scheduler: ModelProcessPool,
     private readonly resolveTarget: (target: string | null) => Model | null,
     private readonly log: (area: BrainLogArea, line: string) => void,
   ) {}
@@ -235,13 +235,13 @@ class ServiceJobRunner implements HostJobRunner {
       job.queuePosition = this.scheduler.stats().queued + 1;
       job.message = `Queued for ${model.displayName}`;
       void this.scheduler
-        .submit(
+        .submitOperation(
           model,
-          (supervisor) =>
+          (process) =>
             controller.signal.aborted
               ? Promise.reject(new Error("Operation canceled."))
               : this.runResidentJob(
-                  supervisor,
+                  process,
                   kind,
                   model.id,
                   {
@@ -630,6 +630,7 @@ export async function startService({
     resident: Supervisor,
     target: Model,
     reservedElsewhereBytes: number,
+    exactProfile?: Profile,
   ): Promise<number> => {
     // A runtime can be installed from the Library tab after this service starts.
     // Resolve it at load time so the user does not have to restart the brain.
@@ -638,25 +639,45 @@ export async function startService({
       throw new Error("no llama.cpp runtime available; install one from the Library tab");
     }
     const gpuInfo = await queryGpu();
-    let fitProfile = forModel(store, target, config.defaults);
+    let fitProfile = exactProfile ?? forModel(store, target, config.defaults);
     let reservationBytes = 0;
     if (gpuInfo) {
-      const fit = vram.fitToBudget({
-        model: target,
-        profile: fitProfile,
-        calibration: getCalibrationForBudget(store, target, fitProfile),
-        // Every resident process keeps its complete budget reserved. Fit this
-        // process against the capacity left after those independent allocations.
-        totalVramBytes: Math.max(0, gpuInfo.totalBytes - reservedElsewhereBytes),
-      });
-      if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? "does not fit");
-      fitProfile = fit.profile;
-      reservationBytes = fit.budget.totalBytes;
+      const totalVramBytes = Math.max(0, gpuInfo.totalBytes - reservedElsewhereBytes);
+      const calibration = getCalibrationForBudget(store, target, fitProfile);
+      if (exactProfile) {
+        const exactBudget = vram.budget({
+          model: target,
+          profile: fitProfile,
+          calibration,
+          totalVramBytes,
+        });
+        if (!exactBudget.fits) {
+          throw new Error("the operation profile does not fit beside the other resident models");
+        }
+        reservationBytes = exactBudget.totalBytes;
+      } else {
+        const fit = vram.fitToBudget({
+          model: target,
+          profile: fitProfile,
+          calibration,
+          // Every resident process keeps its complete budget reserved. Fit this
+          // process against the capacity left after those independent allocations.
+          totalVramBytes,
+        });
+        if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? "does not fit");
+        fitProfile = fit.profile;
+        reservationBytes = fit.budget.totalBytes;
+      }
     }
     await resident.start(target, fitProfile);
-    delete store.pendingReloadModelIds[target.id];
-    store.lastModelId = target.id;
-    saveProfilesStore(store, paths);
+    // Temporary calibration/sweep profiles are not a user-requested reload of
+    // the saved hosting profile. Only an ordinary pool load clears that badge
+    // and advances the durable last-model selection.
+    if (!exactProfile) {
+      delete store.pendingReloadModelIds[target.id];
+      store.lastModelId = target.id;
+      saveProfilesStore(store, paths);
+    }
     return reservationBytes;
   };
   let processPool: ModelProcessPool | null = null;
@@ -738,7 +759,8 @@ export async function startService({
   // /__host/events. One instance, so `capabilities.events` and the stream can
   // never disagree about whether this brain publishes.
   const statusEvents = new BrainStatusPublisher();
-  const runResidentJob: ResidentJobRunner = async (supervisor, kind, target, update, signal) => {
+  const runResidentJob: ResidentJobRunner = async (process, kind, target, update, signal) => {
+    const { supervisor } = process;
     const ensureActive = (): void => {
       if (signal.aborted) throw new Error("Operation canceled.");
     };
@@ -760,6 +782,7 @@ export async function startService({
         model: targetModel,
         profile,
         supervisor,
+        lifecycle: process,
         onProgress: (event) => {
           ensureActive();
           const message =
@@ -794,6 +817,7 @@ export async function startService({
         model: targetModel,
         profile,
         supervisor,
+        lifecycle: process,
         onProgress: (event) => {
           ensureActive();
           const message =

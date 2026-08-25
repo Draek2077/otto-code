@@ -42,6 +42,7 @@ class FakeSupervisor {
 
 function createPool(maxModels: number, parallelSlots = 1) {
   const supervisors: FakeSupervisor[] = [];
+  const loads: { supervisor: FakeSupervisor; model: Model; profile: Profile | undefined }[] = [];
   const makeSupervisor = (index: number): Supervisor => {
     const supervisor = new FakeSupervisor(index);
     supervisors.push(supervisor);
@@ -53,16 +54,17 @@ function createPool(maxModels: number, parallelSlots = 1) {
     createSupervisor: makeSupervisor,
     createScheduler: (supervisor, loadModel, onChange) =>
       new Scheduler<Supervisor>({ supervisor, loadModel, onChange }),
-    loadModel: async (supervisor, target) => {
+    loadModel: async (supervisor, target, _reservedElsewhereBytes, profile) => {
       const fake = supervisor as unknown as FakeSupervisor;
+      loads.push({ supervisor: fake, model: target, profile });
       fake.state = "starting";
       fake.model = target;
-      fake.profile = { parallelSlots } as Profile;
+      fake.profile = profile ?? ({ parallelSlots } as Profile);
       fake.state = "ready";
       return 1;
     },
   });
-  return { pool, supervisors };
+  return { pool, supervisors, loads };
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -169,5 +171,47 @@ describe("ModelProcessPool", () => {
     releaseA.resolve();
     await a;
     await residentRequest;
+  });
+
+  it("swaps before a managed operation when only one model is allowed", async () => {
+    const { pool, loads } = createPool(1);
+    await pool.preload(model("a"));
+    const operationProfile = { contextSize: 8192, parallelSlots: 1 } as Profile;
+
+    await pool.submitOperation(
+      model("b"),
+      async (process) => {
+        expect(pool.supervisorFor("a")).toBeNull();
+        await process.start(operationProfile);
+        expect(process.supervisor.model?.id).toBe("b");
+        expect(process.supervisor.state).toBe("ready");
+        await process.stop();
+      },
+      { kind: "calibrate" },
+    );
+
+    expect(loads.some((load) => load.model.id === "b" && load.profile === operationProfile)).toBe(
+      true,
+    );
+    expect(pool.residentSupervisors()).toHaveLength(0);
+  });
+
+  it("keeps the first resident while a managed operation uses a second allowed process", async () => {
+    const { pool } = createPool(2);
+    await pool.preload(model("a"));
+
+    await pool.submitOperation(
+      model("b"),
+      async (process) => {
+        await process.start({ contextSize: 8192, parallelSlots: 1 } as Profile);
+        expect(pool.supervisorFor("a")?.state).toBe("ready");
+        expect(pool.supervisorFor("b")?.state).toBe("ready");
+        expect(pool.residentSupervisors()).toHaveLength(2);
+        await process.stop();
+      },
+      { kind: "sweep" },
+    );
+
+    expect(pool.supervisorFor("a")?.state).toBe("ready");
   });
 });

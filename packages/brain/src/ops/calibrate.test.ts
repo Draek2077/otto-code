@@ -226,3 +226,42 @@ test("every load uses the profile's own settings, not calibration's own", async 
     assert.equal(p.contextMultiplier, 2);
   }
 });
+
+test("hosted calibration uses the pool-owned lifecycle for every sample", async () => {
+  mockedQuery.mockResolvedValue(null);
+  const directStart = vi.fn();
+  const directStop = vi.fn();
+  const resident = {
+    logLines: [],
+    start: directStart,
+    stop: directStop,
+    vramAtReadyBytes: 0,
+    vramBaselineBytes: 0,
+    loadSeconds: 3,
+  };
+  const starts: number[] = [];
+  const stops = vi.fn();
+
+  await calibrate({
+    runtime: {} as never,
+    model: MODEL,
+    profile: makeProfile({ contextSize: 8192 }),
+    samples: [4096, 8192],
+    releaseDelayMs: 0,
+    supervisor: resident as never,
+    lifecycle: {
+      start: async (profile) => {
+        starts.push(profile.contextSize);
+        Object.assign(resident, loadAtPriorRate(profile));
+      },
+      stop: async () => {
+        stops();
+      },
+    },
+  });
+
+  assert.deepEqual(starts, [4096, 8192]);
+  assert.equal(stops.mock.calls.length, 2);
+  assert.equal(directStart.mock.calls.length, 0);
+  assert.equal(directStop.mock.calls.length, 0);
+});

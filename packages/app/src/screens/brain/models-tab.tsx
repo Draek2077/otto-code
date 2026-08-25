@@ -60,6 +60,7 @@ import { BrainSplitter } from "./brain-splitter";
 import { BrainProfileEditor } from "./profile-editor";
 import { formatQuantLabel } from "./quant-label";
 import { uniqueBrainInventoryModels } from "./library-model-filter";
+import { brainModelLifecycleState } from "./model-lifecycle";
 import {
   brainInventoryQueryKey,
   brainStatusQueryKey,
@@ -187,20 +188,6 @@ function sortModels(models: BrainInventoryModel[]): BrainInventoryModel[] {
   });
 }
 
-function lifecycleStateForModel(
-  model: BrainInventoryModel,
-  status: BrainHostStatus | undefined,
-): BrainInventoryModel["state"] | null {
-  if (status?.modelId !== model.id) return null;
-  if (status.state === "starting") return "loading";
-  if (status.state === "stopping") return "unloading";
-  if (status.state === "ready") return "loaded";
-  // A model id can outlive its child briefly while Supervisor reports stopped
-  // between the old model's unload and the next model's load. Do not revive a
-  // cached inventory dot in that gap: the live lifecycle is authoritative.
-  return "not-loaded";
-}
-
 function queuedModelIds(status: BrainHostStatus | undefined): Record<string, unknown> {
   const waiting = status?.scheduler?.waitingModelIds;
   return typeof waiting === "object" && waiting !== null
@@ -225,7 +212,7 @@ function displayModelState(
   job: BrainJob | undefined,
   waitingModelIds: Record<string, unknown>,
 ): BrainInventoryModel["state"] {
-  const lifecycle = lifecycleStateForModel(model, status);
+  const lifecycle = brainModelLifecycleState(model, status);
   if (job?.queuePosition) return "queued";
   if (job?.status === "running") {
     return lifecycle === "loading" || lifecycle === "unloading" ? lifecycle : "active";
