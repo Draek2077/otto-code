@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/brain",
-  "version": "0.8.16",
+  "version": "0.8.17",
   "description": "Otto Brain - self-contained host for local GGUF models, with measured VRAM budgeting and reasoning-budget control",
   "license": "AGPL-3.0-or-later",
   "bin": {
