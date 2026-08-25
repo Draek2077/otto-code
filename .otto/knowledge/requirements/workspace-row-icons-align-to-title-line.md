@@ -5,7 +5,7 @@ title: "Workspace row icons align to the title line"
 status: "confirmed"
 tags: ["ui","responsive-layout","sidebar","workspaces"]
 created_at: "2026-08-11T04:09:13.750Z"
-updated_at: "2026-08-22T19:13:38.072Z"
+updated_at: "2026-08-25T03:28:21.748Z"
 ---
 # Workspace row icons align to the title line
 
@@ -53,3 +53,13 @@ In compact workspace rows, leading status/loading indicators and trailing contro
 - time: "2026-08-22T19:13:38.072Z"
   kind: "evidence"
   summary: "The row-level 2px lift (`translateY: -theme.spacing[0.5]` on `rowRight` in `sidebar-workspace-row-content.tsx`) was re-scoped to the kebab overlay only after the user reported the trailing diff stat riding above the title line: the lift was meant for the 24px kebab touch target, but it also carried the 20px DiffStat/timestamp. Verified in the running dev app that the diff glyphs now center exactly on the title line box (both centers at the same y) while the kebab keeps its optical lift via `trailingActionOverlay`. Targeted oxlint, app typecheck, and oxfmt passed."
+- time: "2026-08-25T03:25:43.059Z"
+  kind: "evidence"
+  summary: "Reduced the project row's inter-item margin and the expanded project-block separator to 2px via `theme.spacing[0.5]` in `packages/app/src/components/sidebar-workspace-list.tsx`, matching the existing workspace-row spacing. Targeted app lint, app typecheck, formatting, and `git diff --check` passed."
+  source: "Implementation verified on 2026-08-24"
+  affects: ["workspace-row-icons-align-to-title-line"]
+- time: "2026-08-25T03:28:21.748Z"
+  kind: "evidence"
+  summary: "Follow-up spacing correction: the expanded project block's padding is now 0 because the final workspace row already supplies the 2px bottom margin. This keeps the visible gap from the bottom of a workspace list to the next project at 2px rather than doubling to 4px. Targeted app lint, app typecheck, formatting, and `git diff --check` passed."
+  source: "Implementation verified on 2026-08-25"
+  affects: ["workspace-row-icons-align-to-title-line"]

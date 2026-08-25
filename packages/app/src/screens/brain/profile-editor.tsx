@@ -18,8 +18,15 @@
  * the saved profile, so the fit verdict answers "what happens if I keep this"
  * while a control is still being scrubbed.
  */
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Pressable,
+  Text,
+  View,
+  type PressableStateCallbackType,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type {
   BrainBudget,
@@ -35,7 +42,9 @@ import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { createControlGeometry } from "@/components/ui/control-geometry";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { stepCapForRange, useStepperHold } from "@/components/ui/stepper-hold";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -50,9 +59,14 @@ const ThemedSpinner = withUnistyles(LoadingSpinner, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 
-const smallIcon = (theme: Theme) => ({ color: theme.colors.foreground, size: theme.iconSize.xs });
-const minusIcon = <ThemedMinus uniProps={smallIcon} />;
-const plusIcon = <ThemedPlus uniProps={smallIcon} />;
+// Muted at rest, like every other stepper glyph in the app: the button's own
+// hover fill is the affordance, not a full-strength icon in a dense grid.
+const stepperIcon = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.xs,
+});
+const minusIcon = <ThemedMinus uniProps={stepperIcon} />;
+const plusIcon = <ThemedPlus uniProps={stepperIcon} />;
 
 /** How long to wait after the last keystroke before re-pricing the budget. */
 const BUDGET_DEBOUNCE_MS = 250;
@@ -199,45 +213,111 @@ function NumberField({
   const min = field.min ?? 0;
   const max = field.max ?? Number.MAX_SAFE_INTEGER;
   const precision = field.precision ?? 0;
-  const clamp = useCallback(
-    (next: number) => roundToPrecision(Math.max(min, Math.min(max, next)), precision),
-    [max, min, precision],
-  );
-  const handleDecrease = useCallback(
-    () => onChange(clamp(value - step)),
-    [clamp, onChange, step, value],
-  );
-  const handleIncrease = useCallback(
-    () => onChange(clamp(value + step)),
-    [clamp, onChange, step, value],
+
+  // The repeating hold closure needs the latest value without re-subscribing;
+  // keep a ref mirror updated every render and optimistically on each step.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
+  // Apply one step of `magnitude` increments. Returns whether the value moved,
+  // which is false at a bound and stops the hold loop there.
+  const applyStep = useCallback(
+    (direction: 1 | -1, magnitude: number): boolean => {
+      const now = valueRef.current;
+      const raw = Math.max(min, Math.min(max, now + direction * step * magnitude));
+      const next = roundToPrecision(raw, precision);
+      if (next === now) {
+        return false;
+      }
+      valueRef.current = next;
+      onChange(next);
+      return true;
+    },
+    [max, min, onChange, precision, step],
   );
 
-  const display = formatFieldValue(field, value);
+  const stepCap = useMemo(() => stepCapForRange(min, max, step), [max, min, step]);
+  const { startHold, stopHold } = useStepperHold(applyStep, stepCap);
+  const handleDecreasePressIn = useCallback(() => startHold(-1), [startHold]);
+  const handleIncreasePressIn = useCallback(() => startHold(1), [startHold]);
+
+  const containerStyle = useMemo(
+    () => [styles.stepper, disabled ? styles.controlDisabled : null],
+    [disabled],
+  );
 
   return (
-    <View style={styles.stepper}>
-      <Button
-        variant="secondary"
-        size="sm"
-        leftIcon={minusIcon}
-        onPress={handleDecrease}
+    <View style={containerStyle}>
+      <StepperButton
+        icon={minusIcon}
+        label={`Decrease ${field.label}`}
+        edgeStyle={styles.stepperButtonLeft}
         disabled={disabled || value <= min}
-        accessibilityLabel={`Decrease ${field.label}`}
+        dimmed={!disabled && value <= min}
+        onPressIn={handleDecreasePressIn}
+        onPressOut={stopHold}
         testID={`brain-field-${field.key}-down`}
       />
       <Text style={styles.stepperValue} numberOfLines={1}>
-        {display}
+        {formatFieldValue(field, value)}
       </Text>
-      <Button
-        variant="secondary"
-        size="sm"
-        leftIcon={plusIcon}
-        onPress={handleIncrease}
+      <StepperButton
+        icon={plusIcon}
+        label={`Increase ${field.label}`}
+        edgeStyle={styles.stepperButtonRight}
         disabled={disabled || value >= max}
-        accessibilityLabel={`Increase ${field.label}`}
+        dimmed={!disabled && value >= max}
+        onPressIn={handleIncreasePressIn}
+        onPressOut={stopHold}
         testID={`brain-field-${field.key}-up`}
       />
     </View>
+  );
+}
+
+/** One end cap of the framed stepper: a flush, divider-separated icon button. */
+function StepperButton({
+  icon,
+  label,
+  edgeStyle,
+  disabled,
+  dimmed,
+  onPressIn,
+  onPressOut,
+  testID,
+}: {
+  icon: ReactNode;
+  label: string;
+  edgeStyle: StyleProp<ViewStyle>;
+  disabled: boolean;
+  /** Dim this cap on its own. False when the whole control is already dimmed. */
+  dimmed: boolean;
+  onPressIn: () => void;
+  onPressOut: () => void;
+  testID: string;
+}) {
+  const renderStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.stepperButton,
+      edgeStyle,
+      !disabled && (hovered || pressed) ? styles.stepperButtonActive : null,
+      dimmed ? styles.stepperButtonDisabled : null,
+    ],
+    [dimmed, disabled, edgeStyle],
+  );
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      style={renderStyle}
+      testID={testID}
+    >
+      {icon}
+    </Pressable>
   );
 }
 

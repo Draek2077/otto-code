@@ -9,10 +9,11 @@ import { Composer } from "@/composer";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
-import { resolveSpawnPersonalityId } from "@/composer/draft/workspace-tab-core";
+import { handoffCreatedAgentMessageSubmission } from "@/composer/submission/writer";
 import { useProjectIcon } from "@/projects/icons";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
+import { createUserMessage, generateMessageId } from "@/types/stream";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
@@ -22,10 +23,8 @@ import {
   resolveComposerAttachmentSubmitFormat,
   splitComposerAttachmentsForSubmit,
 } from "@/composer/attachments/submit";
-import type {
-  CreateAgentRequestOptions,
-  DaemonClient,
-} from "@otto-code/client/internal/daemon-client";
+import { buildWorkspaceSetupCreateAgentOptions } from "@/components/workspace-setup-agent-options";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { requireWorkspaceDirectory } from "@/utils/workspace-directory";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
@@ -111,60 +110,6 @@ function failureMessageForCreationMethod(
   return method === "create_worktree"
     ? t("workspaceSetup.errors.failedCreateWorktree")
     : t("workspaceSetup.errors.failedOpenProject");
-}
-
-function buildCreateAgentOptions({
-  composerState,
-  text,
-  attachments,
-  encodedImages,
-  workspaceDirectory,
-  workspaceId,
-  provider,
-}: {
-  composerState: {
-    modeOptions: { id: string }[];
-    selectedMode: string;
-    effectiveModelId: string | null;
-    effectiveThinkingOptionId: string | null;
-    agentControls: {
-      personality?: {
-        selectedProfileId?: string | null;
-        spawnProfileId?: string | null;
-      } | null;
-    };
-  };
-  text: string;
-  attachments: NonNullable<CreateAgentRequestOptions["attachments"]>;
-  encodedImages: NonNullable<CreateAgentRequestOptions["images"]> | null;
-  workspaceDirectory: string;
-  workspaceId: string;
-  provider: CreateAgentRequestOptions["provider"];
-}): CreateAgentRequestOptions {
-  const spawnProfileId = resolveSpawnPersonalityId(composerState.agentControls.personality);
-  // Reconcile the selected mode against the discovered modes. The mode picker
-  // shows modeOptions[0] when the stored mode isn't in the list (e.g. a stale
-  // globally-remembered mode this workspace's provider config no longer
-  // defines), so the submitted mode must match that display rather than send a
-  // stale mode the provider would reject.
-  const modeOptionIds = composerState.modeOptions.map((mode) => mode.id);
-  const reconciledMode = modeOptionIds.includes(composerState.selectedMode)
-    ? composerState.selectedMode
-    : (modeOptionIds[0] ?? "");
-  return {
-    provider,
-    cwd: workspaceDirectory,
-    workspaceId,
-    ...(reconciledMode !== "" ? { modeId: reconciledMode } : {}),
-    ...(composerState.effectiveModelId ? { model: composerState.effectiveModelId } : {}),
-    ...(composerState.effectiveThinkingOptionId
-      ? { thinkingOptionId: composerState.effectiveThinkingOptionId }
-      : {}),
-    ...(spawnProfileId ? { personality: spawnProfileId } : {}),
-    ...(text.trim() ? { initialPrompt: text.trim() } : {}),
-    ...(encodedImages && encodedImages.length > 0 ? { images: encodedImages } : {}),
-    ...(attachments.length > 0 ? { attachments } : {}),
-  };
 }
 
 export function WorkspaceSetupDialog() {
@@ -328,13 +273,20 @@ export function WorkspaceSetupDialog() {
             supportsForgeAttachments: supportsForgeSearch,
           }),
         });
+        const initialMessageText = text.trim();
+        const hasInitialMessage =
+          initialMessageText.length > 0 ||
+          wirePayload.images.length > 0 ||
+          wirePayload.attachments.length > 0;
+        const clientMessageId = hasInitialMessage ? generateMessageId() : undefined;
+        const submittedAt = new Date();
         const encodedImages = await encodeImages(wirePayload.images);
         const workspaceDirectory = requireWorkspaceDirectory({
           workspaceId: ensuredWorkspace.id,
           workspaceDirectory: ensuredWorkspace.workspaceDirectory,
         });
         const agent = await connectedClient.createAgent(
-          buildCreateAgentOptions({
+          buildWorkspaceSetupCreateAgentOptions({
             composerState,
             text,
             attachments: wirePayload.attachments,
@@ -342,6 +294,7 @@ export function WorkspaceSetupDialog() {
             workspaceDirectory,
             workspaceId: ensuredWorkspace.id,
             provider: composerState.selectedProvider,
+            clientMessageId,
           }),
         );
 
@@ -360,6 +313,19 @@ export function WorkspaceSetupDialog() {
           );
           return next;
         });
+        if (clientMessageId) {
+          handoffCreatedAgentMessageSubmission(
+            serverId,
+            agent.id,
+            createUserMessage({
+              clientMessageId,
+              text: initialMessageText,
+              timestamp: submittedAt,
+              images: wirePayload.images,
+              attachments: wirePayload.attachments,
+            }),
+          );
+        }
         navigateAfterCreation(ensuredWorkspace.id, { kind: "agent", agentId: agent.id });
       } catch (error) {
         const message = toErrorMessage(error);

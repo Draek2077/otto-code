@@ -11,6 +11,7 @@ import type {
 } from "@otto-code/protocol/messages";
 import { Copy, RefreshCw, Waypoints } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
+import { NumberStepperField } from "@/components/ui/number-stepper-field";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
@@ -391,16 +392,23 @@ function ModelProcessLimitRow({
 }) {
   if (!supported) return null;
   return (
-    <BrainTextRow
-      title="Model processes"
-      hint={hint}
-      value={String(value)}
-      placeholder="1"
-      showBorder
-      numeric
-      onCommit={onCommit}
-      testID={testID}
-    />
+    <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Model processes</Text>
+        <Text style={settingsStyles.rowHint}>{hint}</Text>
+      </View>
+      <NumberStepperField
+        size="sm"
+        value={String(value)}
+        onChangeText={onCommit}
+        min={1}
+        max={16}
+        accessibilityLabel="Model processes"
+        decrementLabel="Decrease model processes"
+        incrementLabel="Increase model processes"
+        testID={testID}
+      />
+    </View>
   );
 }
 

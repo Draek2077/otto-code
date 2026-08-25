@@ -2545,10 +2545,10 @@ const styles = StyleSheet.create((theme) => ({
   pinnedSection: {
     marginBottom: theme.spacing[1],
   },
-  // Keep a small separator after expanded project contents. Padding on the block rather than
-  // margin, and only while it has children, means a collapsed project gives the space back.
+  // The last workspace row already owns the 2px separator before the next project. Keep the
+  // block padding conditional so collapsed projects give the space back without doubling it.
   projectBlockExpanded: {
-    paddingBottom: theme.spacing[1],
+    paddingBottom: theme.spacing[0],
   },
   workspaceListContainer: {},
   // Kept in step with `workspaceRow` above. It stands in a project's list where a workspace row
@@ -2624,7 +2624,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1.5],
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
-    marginBottom: theme.spacing[1],
+    marginBottom: theme.spacing[0.5],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

@@ -80,7 +80,7 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
   return (
     <>
       {canSpeakCues && canPreviewVoice ? (
-        <View style={ROW_WITH_BORDER} testID="host-page-agent-voice-cues">
+        <View style={settingsStyles.row} testID="host-page-agent-voice-cues">
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>Voice cues</Text>
             <Text style={settingsStyles.rowHint}>

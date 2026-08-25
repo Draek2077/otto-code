@@ -5,6 +5,11 @@
 ### Changed
 
 - Stop writing the periodic runtime-metrics windows to `daemon.log` and the app console; the Performance Diagnostics Capture from the Metrics bar carries them instead, so the logs read as logs again
+- Reorganize Settings around clear App, desktop, and Host ownership, with a generated canonical search index that accepts multiple terms and groups each result by its owning area
+- Separate tray-icon visibility from close-to-tray behavior, so a window only starts minimized when the tray icon is available to restore it
+- Move connector browsing and installation into an Add connector dialog. The main Connectors page now focuses on installed connectors, their enabled state, and their tools
+- Give sidebar workspace tools a progressive responsive layout: Scripts, then Git, then Open reveal labels as room becomes available while the compact row stays useful at every width
+- Give Brain model profile and host process controls compact bounded steppers, including press-and-hold acceleration for large profile ranges
 - Give project Search the Changes toolbar: pinnable options for wrapping long lines, expanding or collapsing every file, and re-running the search, with the match summary moved under the results where it reads as a footer
 - Mark a Search file row's collapsed state with the same chevron the file tree and the Changes tree use
 - Keep Search results while you leave the Search tab to read a hit, including where the list was scrolled to, and add a Clear action to the toolbar for putting the pane back to empty
@@ -16,6 +21,11 @@
 - Center the Search gutter's comment button on the gutter divider, where the Changes diff already puts it
 - Stop the Android app closing itself when a menu, dropdown or picker opens. The menu surface handed Android a transform origin in a form it rejects, and on a release build that takes the whole app down rather than showing an error
 - Stop the working indicator's animation clock running for the rest of the session once the first spinner has been shown, even with no spinner anywhere on screen
+- Keep assistant file-link context menus from crashing the chat
+- Honor the configured chat width in the transcript and its supporting rows
+- Keep schedules and orchestration bound to an Agent profile's stable id, so renaming a Personality no longer breaks existing work
+- Keep the Settings structural-diff demo independent from the live Changes renderer preference
+- Keep the first message, image, or attachment visible immediately after creating a workspace and starting its agent
 
 ## 0.8.15 - 2026-08-23
 

@@ -23,15 +23,12 @@ import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { resolveWorkspaceDirectory } from "@/utils/workspace-directory";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  getWorkspaceToolsLabelVisibility,
+  shouldFillWorkspaceTool,
+} from "./sidebar-active-workspace-tools-layout";
 
 const EMPTY_TERMINAL_IDS: string[] = [];
-
-// Minimum comfortable width for a labeled split button, plus the row's fixed
-// chrome (container padding + inter-button gaps). The threshold is derived
-// from the buttons that can actually render, so a workspace without scripts
-// does not become icon-only prematurely.
-const LABELED_TOOL_MIN_WIDTH = 128;
-const TOOLS_ROW_CHROME_WIDTH = 48;
 
 /**
  * Shows the scripts / open-in-editor / Git actions controls for whichever
@@ -131,18 +128,15 @@ export function SidebarActiveWorkspaceTools() {
     ],
   );
 
-  // WorkspaceScriptsButton renders nothing without scripts, and
-  // WorkspaceOpenInEditorButton is web-only, so budget width for the buttons
-  // that will actually appear. WorkspaceActions is budgeted as always-present
-  // (it renders null only when a workspace has no git actions at all); over-
-  // counting just biases slightly toward compact, which is harmless. Width 0
-  // means "not measured yet" and stays compact, so a narrow sidebar never
-  // flashes ellipsized labels on the first frame.
-  const labeledToolCount =
-    1 + ((workspaceEntry?.scripts.length ?? 0) > 0 ? 1 : 0) + (isWeb ? 1 : 0);
-  const isCompact =
-    containerWidth < labeledToolCount * LABELED_TOOL_MIN_WIDTH + TOOLS_ROW_CHROME_WIDTH;
-
+  // The tools reveal their labels one at a time once the row can accommodate
+  // them. The Git action is still budgeted even when it later renders null;
+  // that keeps the first measured frame conservative without introducing a
+  // layout jump when its action policy resolves.
+  const labelVisibility = getWorkspaceToolsLabelVisibility({
+    width: containerWidth,
+    hasScripts: (workspaceEntry?.scripts.length ?? 0) > 0,
+    hasOpenInEditor: isWeb,
+  });
   const handleOpenUrlInBrowserTab = useCallback(
     (url: string) => {
       if (!persistenceKey || !getIsElectron()) {
@@ -166,7 +160,10 @@ export function SidebarActiveWorkspaceTools() {
   return (
     <View style={styles.container} onLayout={onContainerLayout}>
       <View style={styles.toolsRow}>
-        <WorkspaceToolTooltip enabled={isCompact} label={t("workspace.scripts.title")}>
+        <WorkspaceToolTooltip
+          enabled={!labelVisibility.scripts}
+          label={t("workspace.scripts.title")}
+        >
           <WorkspaceScriptsButton
             serverId={workspaceEntry.serverId}
             workspaceId={workspaceEntry.workspaceId}
@@ -175,22 +172,22 @@ export function SidebarActiveWorkspaceTools() {
             onScriptTerminalStarted={handleScriptTerminalStarted}
             onViewTerminal={handleViewScriptTerminal}
             onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
-            hideLabels={isCompact}
-            fill={!isCompact}
+            hideLabels={!labelVisibility.scripts}
+            fill={shouldFillWorkspaceTool(labelVisibility, "scripts")}
           />
         </WorkspaceToolTooltip>
         <WorkspaceOpenInEditorButton
           serverId={workspaceEntry.serverId}
           cwd={workspaceDirectory}
-          hideLabels={isCompact}
-          fill={!isCompact}
+          hideLabels={!labelVisibility.openInEditor}
+          fill={shouldFillWorkspaceTool(labelVisibility, "openInEditor")}
           tooltipSide="top"
         />
         <WorkspaceActions
           serverId={workspaceEntry.serverId}
           cwd={workspaceDirectory}
-          hideLabels={isCompact}
-          fill={!isCompact}
+          hideLabels={!labelVisibility.git}
+          fill={shouldFillWorkspaceTool(labelVisibility, "git")}
           tooltipSide="top"
         />
       </View>

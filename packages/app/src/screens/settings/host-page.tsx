@@ -467,9 +467,11 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
       {isConnected ? (
         <>
           <SettingsSection title={t("settings.hostSections.workspaces")}>
-            <AutoArchiveMergedWorkspacesCard serverId={serverId} />
-            <GitFetchCard serverId={serverId} />
-            <HideMergeIntoBaseActionCard serverId={serverId} />
+            <View style={settingsStyles.card} testID="host-page-workspaces-card">
+              <AutoArchiveMergedWorkspacesCard serverId={serverId} />
+              <GitFetchCard serverId={serverId} />
+              <HideMergeIntoBaseActionCard serverId={serverId} />
+            </View>
           </SettingsSection>
           {isDeveloperMode ? (
             <SettingsSection title={t("settings.hostSections.gitProviders")}>
@@ -1128,21 +1130,19 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
   if (!isConnected) return null;
 
   return (
-    <View style={settingsStyles.card} testID="host-page-auto-archive-merged-workspaces-card">
-      <View style={settingsStyles.row}>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Archive merged PR workspaces</Text>
-          <Text style={settingsStyles.rowHint}>
-            Automatically archive clean Otto workspaces after their pull request is merged
-          </Text>
-        </View>
-        <Switch
-          value={config?.autoArchiveAfterMerge === true}
-          onValueChange={handleValueChange}
-          accessibilityLabel="Archive merged PR workspaces"
-          testID="host-page-auto-archive-merged-workspaces-switch"
-        />
+    <View style={settingsStyles.row} testID="host-page-auto-archive-merged-workspaces-card">
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Archive merged PR workspaces</Text>
+        <Text style={settingsStyles.rowHint}>
+          Automatically archive clean Otto workspaces after their pull request is merged
+        </Text>
       </View>
+      <Switch
+        value={config?.autoArchiveAfterMerge === true}
+        onValueChange={handleValueChange}
+        accessibilityLabel="Archive merged PR workspaces"
+        testID="host-page-auto-archive-merged-workspaces-switch"
+      />
     </View>
   );
 }
@@ -1201,8 +1201,11 @@ function GitFetchCard({ serverId }: { serverId: string }) {
   if (!isConnected || !isSupported) return null;
 
   return (
-    <View style={settingsStyles.card} testID="host-page-git-fetch-card">
-      <View style={settingsStyles.rowResponsive}>
+    <>
+      <View
+        style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}
+        testID="host-page-git-fetch-card"
+      >
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Fetch active workspaces automatically</Text>
           <Text style={settingsStyles.rowHint}>
@@ -1217,7 +1220,7 @@ function GitFetchCard({ serverId }: { serverId: string }) {
         />
       </View>
       {gitFetch.enabled ? (
-        <View style={settingsStyles.rowResponsive}>
+        <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>Fetch interval</Text>
             <Text style={settingsStyles.rowHint}>
@@ -1239,7 +1242,7 @@ function GitFetchCard({ serverId }: { serverId: string }) {
           />
         </View>
       ) : null}
-    </View>
+    </>
   );
 }
 
@@ -1267,22 +1270,23 @@ function HideMergeIntoBaseActionCard({ serverId }: { serverId: string }) {
   if (!isConnected || !isSupported) return null;
 
   return (
-    <View style={settingsStyles.card} testID="host-page-hide-merge-into-base-action-card">
-      <View style={settingsStyles.row}>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Hide merge into base branch</Text>
-          <Text style={settingsStyles.rowHint}>
-            Remove the &quot;Merge into base&quot; action from the source control menu, for a
-            pull-request-only workflow
-          </Text>
-        </View>
-        <Switch
-          value={config?.hideMergeIntoBaseAction === true}
-          onValueChange={handleValueChange}
-          accessibilityLabel="Hide merge into base branch"
-          testID="host-page-hide-merge-into-base-action-switch"
-        />
+    <View
+      style={[settingsStyles.row, settingsStyles.rowBorder]}
+      testID="host-page-hide-merge-into-base-action-card"
+    >
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Hide merge into base branch</Text>
+        <Text style={settingsStyles.rowHint}>
+          Remove the &quot;Merge into base&quot; action from the source control menu, for a
+          pull-request-only workflow
+        </Text>
       </View>
+      <Switch
+        value={config?.hideMergeIntoBaseAction === true}
+        onValueChange={handleValueChange}
+        accessibilityLabel="Hide merge into base branch"
+        testID="host-page-hide-merge-into-base-action-switch"
+      />
     </View>
   );
 }

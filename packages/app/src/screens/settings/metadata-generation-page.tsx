@@ -111,10 +111,8 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
   return (
     <SettingsSection
       title={t("settings.metadataGeneration.title")}
-      trailing={docsLink}
       testID="metadata-generation-settings"
     >
-      <Text style={styles.description}>{t("settings.metadataGeneration.description")}</Text>
       <View style={settingsStyles.card}>
         <MetadataGenerationRows serverId={serverId} />
         <View style={settingsStyles.row}>
@@ -161,16 +159,15 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
           </View>
         ) : null}
       </View>
+      <View style={styles.docsLink}>{docsLink}</View>
     </SettingsSection>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  description: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: theme.fontSize.xs * 1.45,
-    marginHorizontal: theme.spacing[1],
+  docsLink: {
+    alignSelf: "center",
+    marginTop: theme.spacing[3],
   },
   loading: {
     alignItems: "center",

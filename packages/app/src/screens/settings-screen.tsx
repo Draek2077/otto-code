@@ -883,7 +883,7 @@ function GeneralSection({
       {interfaceModeValue === "developer" ? (
         <SettingsSection title={t("settings.preview.title")}>
           <View style={settingsStyles.card}>
-            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowResponsive}>
               <View style={settingsStyles.rowContent}>
                 <Text style={settingsStyles.rowTitle}>
                   {t("settings.general.previewServerCloseBehavior.label")}
@@ -899,7 +899,7 @@ function GeneralSection({
                 options={previewServerCloseBehaviorOptions}
               />
             </View>
-            <View style={settingsStyles.row}>
+            <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
               <View style={settingsStyles.rowContent}>
                 <Text style={settingsStyles.rowTitle}>
                   {t("settings.preview.autoStartOnRestore.label")}

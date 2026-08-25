@@ -226,7 +226,7 @@ function MetadataGenerationEnabledRow(props: {
       onValueChange={onValueChange}
       disabled={mutation.isPending}
       errorText={toErrorMessage(mutation.error)}
-      withBorder
+      withBorder={false}
       testID="host-page-metadata-generation-enabled"
     />
   );
