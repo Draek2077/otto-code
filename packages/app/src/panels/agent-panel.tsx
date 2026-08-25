@@ -444,7 +444,7 @@ function useAgentPanelDescriptor(
 
 function AgentPanel() {
   const { serverId, target, openFileInWorkspace } = usePaneContext();
-  const { isInteractive } = usePaneFocus();
+  const { isInteractive, isWorkspaceFocused } = usePaneFocus();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
 
   return (
@@ -452,6 +452,7 @@ function AgentPanel() {
       serverId={serverId}
       agentId={target.agentId}
       isPaneFocused={isInteractive}
+      isWorkspaceFocused={isWorkspaceFocused}
       onOpenWorkspaceFile={openFileInWorkspace}
     />
   );
@@ -589,11 +590,13 @@ function AgentPanelContent({
   serverId,
   agentId,
   isPaneFocused,
+  isWorkspaceFocused,
   onOpenWorkspaceFile,
 }: {
   serverId: string;
   agentId: string;
   isPaneFocused: boolean;
+  isWorkspaceFocused: boolean;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
@@ -636,6 +639,7 @@ function AgentPanelContent({
       serverId={resolvedServerId}
       agentId={resolvedAgentId}
       isPaneFocused={isPaneFocused}
+      isWorkspaceFocused={isWorkspaceFocused}
       client={runtimeClient}
       isConnected={runtimeIsConnected}
       connectionStatus={connectionStatus}
@@ -648,6 +652,7 @@ function AgentPanelBody({
   serverId,
   agentId,
   isPaneFocused,
+  isWorkspaceFocused,
   client,
   isConnected,
   connectionStatus,
@@ -656,6 +661,7 @@ function AgentPanelBody({
   serverId: string;
   agentId?: string;
   isPaneFocused: boolean;
+  isWorkspaceFocused: boolean;
   client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
   isConnected: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
@@ -815,6 +821,7 @@ function AgentPanelBody({
       serverId={serverId}
       agentId={agentId}
       isPaneFocused={isPaneFocused}
+      isWorkspaceFocused={isWorkspaceFocused}
       client={client}
       isConnected={isConnected}
       connectionStatus={connectionStatus}
@@ -827,6 +834,7 @@ function ChatAgentContent({
   serverId,
   agentId,
   isPaneFocused,
+  isWorkspaceFocused,
   client,
   isConnected,
   connectionStatus,
@@ -835,6 +843,7 @@ function ChatAgentContent({
   serverId: string;
   agentId?: string;
   isPaneFocused: boolean;
+  isWorkspaceFocused: boolean;
   client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
   isConnected: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
@@ -937,6 +946,7 @@ function ChatAgentContent({
     requiresAttention: agentState.requiresAttention,
     attentionReason: agentState.attentionReason,
     isScreenFocused: isPaneFocused,
+    isWorkspaceFocused,
   });
   useEffect(() => {
     clearOnAgentBlurRef.current = attentionController.clearOnAgentBlur;

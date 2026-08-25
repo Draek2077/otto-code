@@ -17,6 +17,22 @@ export type AgentAttentionClearTrigger =
   | "active-view";
 
 /**
+ * A workspace route becoming visible is not an acknowledgement of the chat
+ * result inside it. Only a tab that was already mounted but then becomes the
+ * focused agent tab is an intentional visit to that chat.
+ */
+export function didActivateAgentTab(input: {
+  wasWorkspaceFocused: boolean;
+  isWorkspaceFocused: boolean;
+  wasFocused: boolean;
+  isFocused: boolean;
+}): boolean {
+  return (
+    input.wasWorkspaceFocused && input.isWorkspaceFocused && !input.wasFocused && input.isFocused
+  );
+}
+
+/**
  * True when attention was just raised on a chat the reader is already looking at.
  *
  * DIVERGENCE(activeViewAttentionClear): upstream Paseo only clears attention on a

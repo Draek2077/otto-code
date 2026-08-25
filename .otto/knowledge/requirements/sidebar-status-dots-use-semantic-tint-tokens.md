@@ -5,7 +5,7 @@ title: "Sidebar status dots use semantic tint tokens"
 status: "confirmed"
 tags: ["ui","sidebar","workspace","theme","status","tints"]
 created_at: "2026-08-21T23:33:21.535Z"
-updated_at: "2026-08-22T04:28:48.141Z"
+updated_at: "2026-08-25T16:31:10.882Z"
 ---
 # Sidebar status dots use semantic tint tokens
 
@@ -14,6 +14,8 @@ updated_at: "2026-08-22T04:28:48.141Z"
 Workspace sidebar and workspace-row status indicators use the shared semantic theme tokens for their status colors: success/green uses `theme.colors.statusSuccess`, failure/red uses `theme.colors.statusDanger`, needs-input/amber uses `theme.colors.statusWarning`, and running uses `theme.colors.statusInfo`. They must not read a separate dot-only palette.
 
 Workspace status is dual-state. The centered dot represents the workspace’s highest-priority status, while a spinner independently represents whether any root chat in that workspace is active. A needs-input or failed dot therefore remains visible inside the spinner when another chat is running; activity must not replace or downgrade the status signal.
+
+A green completed-result dot is unread attention, not workspace navigation state. Opening or returning to its workspace, including restoring app visibility, must never clear it. It remains until the user deliberately activates the agent tab that produced it, or otherwise explicitly engages that chat.
 
 ## Timeline
 
@@ -44,3 +46,7 @@ Workspace status is dual-state. The centered dot represents the workspace’s hi
   kind: "evidence"
   summary: "A root agent’s raw lifecycle can remain `running` while it has a pending permission/question. `hasActiveChat` now uses the normalized status bucket instead, so needs-input, failed, and attention states do not animate the spinner. A regression test also proves a genuinely running older chat still keeps the spinner when a newer question owns the amber dot."
   source: "Focused local verification on 2026-08-21"
+- time: "2026-08-25T16:31:10.882Z"
+  kind: "decision"
+  summary: "User clarified that a workspace result must remain visible until its producing chat tab is deliberately activated; verified implementation now distinguishes workspace-route focus from an actual agent-tab activation."
+  source: "User direction and focused app verification, 2026-08-25"

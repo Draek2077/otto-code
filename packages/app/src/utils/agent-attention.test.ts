@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Agent } from "@/stores/session-store";
 import {
+  didActivateAgentTab,
   isAttentionRaisedWhileActivelyViewed,
   pickAttentionAgent,
   shouldClearAgentAttention,
@@ -40,6 +41,30 @@ function createAgent(input: Partial<Agent> & Pick<Agent, "id">): Agent {
     ...rest,
   };
 }
+
+describe("didActivateAgentTab", () => {
+  it("does not treat opening a workspace with an already focused tab as reading its result", () => {
+    expect(
+      didActivateAgentTab({
+        wasWorkspaceFocused: false,
+        isWorkspaceFocused: true,
+        wasFocused: false,
+        isFocused: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("recognizes a deliberate tab activation after the workspace is already open", () => {
+    expect(
+      didActivateAgentTab({
+        wasWorkspaceFocused: true,
+        isWorkspaceFocused: true,
+        wasFocused: false,
+        isFocused: true,
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("shouldClearAgentAttention", () => {
   it("returns true only when the agent is connected and requires attention", () => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import {
+  didActivateAgentTab,
   isAttentionRaisedWhileActivelyViewed,
   shouldClearAgentAttention,
   type AgentAttentionClearTrigger,
@@ -18,6 +19,7 @@ interface UseAgentAttentionClearParams {
   requiresAttention: boolean | null | undefined;
   attentionReason: AttentionReason;
   isScreenFocused: boolean;
+  isWorkspaceFocused: boolean;
 }
 
 interface AgentAttentionClearController {
@@ -33,13 +35,17 @@ export function useAgentAttentionClear({
   requiresAttention,
   attentionReason,
   isScreenFocused,
+  isWorkspaceFocused,
 }: UseAgentAttentionClearParams): AgentAttentionClearController {
   const [isAppVisible, setIsAppVisible] = useState<boolean>(() => getIsAppActivelyVisible());
   const deferredFocusEntryClearRef = useRef(false);
   const prevRequiresAttentionRef = useRef(Boolean(requiresAttention));
   const prevActivelyViewedRef = useRef(isScreenFocused && getIsAppActivelyVisible());
-  const prevScreenFocusedRef = useRef(false);
-  const prevAppVisibleRef = useRef(getIsAppActivelyVisible());
+  // Start from the mounted tab's real focus state. Treating every mount as
+  // `false -> true` cleared a completed chat merely because its workspace was
+  // opened, before the reader ever chose that tab.
+  const prevScreenFocusedRef = useRef(isScreenFocused);
+  const prevWorkspaceFocusedRef = useRef(isWorkspaceFocused);
 
   const clearAttention = useCallback(
     (trigger: AgentAttentionClearTrigger) => {
@@ -117,16 +123,21 @@ export function useAgentAttentionClear({
   }, [clearAttention, isAppVisible, isScreenFocused, requiresAttention]);
 
   useEffect(() => {
-    const enteredScreenFocus = !prevScreenFocusedRef.current && isScreenFocused && isAppVisible;
-    const resumedIntoFocusedAgent = !prevAppVisibleRef.current && isAppVisible && isScreenFocused;
+    const enteredScreenFocus =
+      didActivateAgentTab({
+        wasWorkspaceFocused: prevWorkspaceFocusedRef.current,
+        isWorkspaceFocused,
+        wasFocused: prevScreenFocusedRef.current,
+        isFocused: isScreenFocused,
+      }) && isAppVisible;
 
-    if (enteredScreenFocus || resumedIntoFocusedAgent) {
+    if (enteredScreenFocus) {
       clearAttention("focus-entry");
     }
 
     prevScreenFocusedRef.current = isScreenFocused;
-    prevAppVisibleRef.current = isAppVisible;
-  }, [clearAttention, isAppVisible, isScreenFocused]);
+    prevWorkspaceFocusedRef.current = isWorkspaceFocused;
+  }, [clearAttention, isAppVisible, isScreenFocused, isWorkspaceFocused]);
 
   return {
     clearOnInputFocus: useCallback(() => {
