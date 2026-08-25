@@ -9,7 +9,7 @@ import { RetainedPanelActivity } from "@/components/retained-panel";
 import type { StreamItem } from "@/types/stream";
 import type { StreamRenderInput, StreamSegmentRenderers, StreamViewportHandle } from "./strategy";
 import { createWebStreamStrategy } from "./strategy-web";
-import { clearReaderPositions } from "./reader-position-memory";
+import { clearReaderPositions, rememberReaderPosition } from "./reader-position-memory";
 
 vi.hoisted(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -1320,5 +1320,123 @@ describe("createWebStreamStrategy", () => {
     });
     expect(container.querySelector('[data-testid="agent-chat-scroll"]')).toBe(scrollContainer);
     expect(scrollTo).toHaveBeenCalledWith({ top: 2200, behavior: "auto" });
+  });
+
+  it("restores a detached retained reader before a hidden panel's history load can move it", () => {
+    if (!globalThis.CSS) {
+      Object.defineProperty(globalThis, "CSS", { configurable: true, value: {} });
+    }
+    if (!globalThis.CSS.escape) {
+      Object.defineProperty(globalThis.CSS, "escape", {
+        configurable: true,
+        value: (value: string) => value,
+      });
+    }
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: true });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const onNearHistoryStart = vi.fn().mockReturnValue(true);
+    const renderInput: StreamRenderInput = {
+      agentId: "agent",
+      segments: {
+        historyVirtualized: [],
+        historyMounted: [userMessage(1), userMessage(2)],
+        liveHead: [],
+      },
+      boundary: {
+        hasVirtualizedHistory: false,
+        hasMountedHistory: true,
+        hasLiveHead: false,
+      },
+      renderers: createRenderers(vi.fn()),
+      listEmptyComponent: null,
+      viewportRef,
+      routeBottomAnchorRequest: null,
+      isAuthoritativeHistoryReady: true,
+      onNearBottomChange: vi.fn(),
+      onNearHistoryStart,
+      isLoadingOlderHistory: false,
+      hasOlderHistory: true,
+      olderHistoryProgressKey: "epoch-1:20",
+      scrollEnabled: true,
+      listStyle: null,
+      baseListContentContainerStyle: null,
+      forwardListContentContainerStyle: null,
+    };
+    const renderWithActivity = (active: boolean, input: StreamRenderInput = renderInput) => (
+      <RetainedPanelActivity active={active}>{strategy.render(input)}</RetainedPanelActivity>
+    );
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => root?.render(renderWithActivity(true)));
+    const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
+    if (!(scrollContainer instanceof HTMLElement)) {
+      throw new Error("Expected agent chat scroll container");
+    }
+    let scrollTop = 500;
+    Object.defineProperties(scrollContainer, {
+      clientHeight: { configurable: true, value: 500 },
+      scrollHeight: { configurable: true, value: 1500 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+    });
+    scrollContainer.getBoundingClientRect = () =>
+      ({
+        bottom: 500,
+        height: 500,
+        left: 0,
+        right: 500,
+        top: 0,
+        width: 500,
+        x: 0,
+        y: 0,
+      }) as DOMRect;
+    const anchoredRow = scrollContainer.querySelector<HTMLElement>(
+      '[data-history-row-id="message-2"]',
+    );
+    if (!anchoredRow) {
+      throw new Error("Expected anchored history row");
+    }
+    anchoredRow.getBoundingClientRect = () =>
+      ({
+        bottom: 550,
+        height: 100,
+        left: 0,
+        right: 500,
+        top: 450,
+        width: 500,
+        x: 0,
+        y: 0,
+      }) as DOMRect;
+
+    // This represents the row anchor captured while the reader was detached.
+    // Hiding a retained panel can then clamp the browser's numeric offset to 0.
+    scrollTop = 1_000;
+    act(() => scrollContainer.dispatchEvent(new Event("scroll")));
+    act(() => scrollContainer.dispatchEvent(new WheelEvent("wheel", { deltaY: -240 })));
+    scrollTop = 500;
+    act(() => scrollContainer.dispatchEvent(new Event("scroll")));
+    rememberReaderPosition("agent", { rowId: "message-2", viewportOffset: -50 });
+    act(() => root?.render(renderWithActivity(false)));
+    scrollTop = 0;
+    onNearHistoryStart.mockClear();
+
+    act(() => {
+      root?.render(
+        renderWithActivity(true, {
+          ...renderInput,
+          olderHistoryProgressKey: "epoch-1:10",
+        }),
+      );
+    });
+
+    expect(scrollTop).toBe(500);
+    expect(onNearHistoryStart).not.toHaveBeenCalled();
   });
 });

@@ -260,6 +260,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     readReaderPosition(props.agentId),
   );
   const pendingReaderPositionRestoreRef = useRef<ReaderPosition | null>(initialReaderPosition);
+  const wasActiveRef = useRef(isActive);
   const [followOutput, setFollowOutputr] = useState(initialReaderPosition === null);
   const followOutputRef = useRef(followOutput);
   const setFollowOutput = (value: boolean) => {
@@ -566,6 +567,16 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }
     cancelPendingStickToBottom();
     historyStartSettleSchedulerRef.current?.cancel();
+    // A hidden retained panel may be clamped to the top by `display: none`.
+    // Any pagination transaction that was in flight was anchored to its old
+    // geometry, so it cannot resume safely after the panel returns. The reader
+    // position memory is the sole owner of the return position; a new history
+    // request starts only after fresh reader intent.
+    const dormantHistoryStartState = createHistoryStartPaginationState();
+    historyStartPaginationStateRef.current = dormantHistoryStartState;
+    setHistoryStartPaginationState(dormantHistoryStartState);
+    historyStartPrependAnchorRef.current = null;
+    historyStartPrependAnchorActiveRef.current = false;
     for (const frame of pendingVirtualRowMeasureFramesRef.current.values()) {
       window.cancelAnimationFrame(frame);
     }
@@ -705,6 +716,29 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     setFollowOutput,
     onNearBottomChange,
   });
+
+  // A retained panel is not a fresh chat entry. Chromium can clamp an element
+  // hidden with `display: none` to scrollTop 0, so a detached reader must be
+  // returned through the same row-anchor path as an evicted tab, rather than
+  // trusting that raw offset. The initial mount already has a pending restore;
+  // this path is only for a panel that stayed mounted while hidden.
+  useLayoutEffect(() => {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = isActive;
+    if (
+      !isActive ||
+      wasActive ||
+      followOutputRef.current ||
+      pendingReaderPositionRestoreRef.current !== null
+    ) {
+      return;
+    }
+    const position = readReaderPosition(props.agentId);
+    if (!position) {
+      return;
+    }
+    scrollToMessage(position.rowId, { landingInsetPx: position.viewportOffset });
+  }, [isActive, props.agentId, scrollToMessage]);
 
   const stopFollowingOutputFromUserIntent = useStableEvent(() => {
     cancelPendingStickToBottom();
