@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { Annotation, Compartment, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getLanguageForFile } from "@otto-code/highlight";
@@ -45,7 +45,10 @@ export function FileEditorView({
   const onCursorChangeRef = useRef(onCursorChange);
   onCursorChangeRef.current = onCursorChange;
 
-  useEffect(() => {
+  // Source mode is an editing action, so the newly mounted CodeMirror surface
+  // owns keyboard focus before the browser paints. A passive effect leaves the
+  // mode button focused until the user clicks into the document.
+  useLayoutEffect(() => {
     if (!hostRef.current) return;
     const values = initial.current;
     const view = new EditorView({
@@ -76,6 +79,7 @@ export function FileEditorView({
       }),
     });
     viewRef.current = view;
+    view.focus();
     onCursorChangeRef.current({ line: 1, column: 1 });
     return () => {
       view.destroy();
