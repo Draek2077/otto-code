@@ -12,8 +12,8 @@ async function makeWorkspace(): Promise<string> {
 
 describe("queryToolName", () => {
   test("namespaces so a query tool can never shadow a built-in", () => {
-    expect(queryToolName({ name: "create_agent", description: "d", kind: "command" })).toBe(
-      "query_create_agent",
+    expect(queryToolName({ name: "create_chat", description: "d", kind: "command" })).toBe(
+      "query_create_chat",
     );
   });
 });

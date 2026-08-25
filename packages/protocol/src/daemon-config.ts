@@ -207,7 +207,7 @@ export const MutableAgentTeamsConfigSchema = z
     // The host's active team id; null/absent = no team active (exactly legacy
     // behavior). Host-scoped daemon config rather than device-local: the team
     // prompt is applied daemon-side at spawn, so headless spawns (MCP
-    // create_agent, schedule runs) must see it, and a patch from any client
+    // create_chat, schedule runs) must see it, and a patch from any client
     // hot-reloads the switch to every connected client.
     activeTeamId: z.string().nullable().optional(),
   })

@@ -110,7 +110,7 @@ function composeTeamPromptBase(
 
 /**
  * Compose the personality-owned system prompt, applied at EVERY spawn path
- * (create_agent, the app composer, schedule runs, live personality switch) so a
+ * (create_chat, the app composer, schedule runs, live personality switch) so a
  * personality operates with its full context brief no matter how the chat
  * started. The stack, top to bottom: team prompt (frames the collective) →
  * personality prompt (specializes within it) → role-focus directive (tells a

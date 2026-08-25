@@ -63,7 +63,7 @@ describe("deniedToolsForAccess", () => {
 
 describe("isOttoToolAllowedForAccess", () => {
   test("write allows the whole catalog", () => {
-    for (const tool of ["create_terminal", "browser_upload", "create_worktree", "create_agent"]) {
+    for (const tool of ["create_terminal", "browser_upload", "create_worktree", "create_chat"]) {
       expect(isOttoToolAllowedForAccess(tool, "write")).toBe(true);
     }
   });
@@ -107,9 +107,9 @@ describe("isOttoToolAllowedForAccess", () => {
     // A reviewer node declared "none" still reports, coordinates, and verifies
     // a rendered page against an already-running dev server.
     for (const tool of [
-      "create_agent",
-      "send_agent_prompt",
-      "wait_for_agents",
+      "create_chat",
+      "send_chat_prompt",
+      "wait_for_chats",
       "submit_output",
       "speak",
       "browser_snapshot",

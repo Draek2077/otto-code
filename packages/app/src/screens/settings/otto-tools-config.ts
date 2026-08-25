@@ -20,7 +20,7 @@ export const OTTO_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
   {
     group: "agents",
     label: "Agents",
-    description: "Spawn and coordinate agents (create_agent, wait_for_agents, run status).",
+    description: "Spawn and coordinate chats (create_chat, wait_for_chats, run status).",
   },
   {
     group: "terminals",

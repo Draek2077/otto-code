@@ -9313,7 +9313,7 @@ test("a turn the provider could not price leaves the cost absent rather than est
   expect(usage?.costUsd).toBeUndefined();
 });
 
-// A native (create_agent) sub-agent gets no provider task report, so its own
+// A native (create_chat) sub-agent gets no provider task report, so its own
 // timeline is the liveness source. See docs/chat-lifecycle.md (the subagents track).
 function toolCallItem(callId: string, name: string): AgentTimelineItem {
   return {

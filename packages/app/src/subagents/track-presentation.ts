@@ -64,7 +64,7 @@ export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowP
  * subagent (usage exhaustion) - stay in the active list so the failure signal
  * is never buried. `idle` counts as terminal only for observed rows: a Claude
  * Task ends its run as `idle` (completed → "idle" in the provider mapping), but
- * a native `create_agent` subagent idles *between turns* and may still be
+ * a native `create_chat` subagent idles *between turns* and may still be
  * mid-conversation with its orchestrator - tidying it (and exposing it to
  * "Clear all") would archive an agent still in use.
  * See docs/agent-lifecycle.md (Item 6).

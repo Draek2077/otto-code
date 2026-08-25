@@ -8,13 +8,13 @@ import {
 
 describe("isOttoToolName", () => {
   it("detects Claude Code format", () => {
-    expect(isOttoToolName("mcp__otto__create_agent")).toBe(true);
+    expect(isOttoToolName("mcp__otto__create_chat")).toBe(true);
     expect(isOttoToolName("mcp__otto__list_agents")).toBe(true);
   });
 
   it("detects otto_voice variant", () => {
-    expect(isOttoToolName("mcp__otto_voice__create_agent")).toBe(true);
-    expect(isOttoToolName("otto_voice.create_agent")).toBe(true);
+    expect(isOttoToolName("mcp__otto_voice__create_chat")).toBe(true);
+    expect(isOttoToolName("otto_voice.create_chat")).toBe(true);
   });
 
   it("excludes speak tools", () => {
@@ -24,7 +24,7 @@ describe("isOttoToolName", () => {
   });
 
   it("detects Codex dot format", () => {
-    expect(isOttoToolName("otto.create_agent")).toBe(true);
+    expect(isOttoToolName("otto.create_chat")).toBe(true);
   });
 
   it("rejects non-otto tools", () => {
@@ -36,11 +36,11 @@ describe("isOttoToolName", () => {
 
 describe("getOttoToolLeafName", () => {
   it("extracts leaf from Claude Code format", () => {
-    expect(getOttoToolLeafName("mcp__otto__create_agent")).toBe("create_agent");
+    expect(getOttoToolLeafName("mcp__otto__create_chat")).toBe("create_chat");
   });
 
   it("extracts leaf from Codex format", () => {
-    expect(getOttoToolLeafName("otto.create_agent")).toBe("create_agent");
+    expect(getOttoToolLeafName("otto.create_chat")).toBe("create_chat");
     expect(getOttoToolLeafName("otto.list_agents")).toBe("list_agents");
   });
 
@@ -53,7 +53,7 @@ describe("getMcpToolLeafName", () => {
   it("strips the namespace from any MCP server, not just otto", () => {
     expect(getMcpToolLeafName("mcp__otto__spawn_task")).toBe("spawn_task");
     expect(getMcpToolLeafName("mcp__linear__create_issue")).toBe("create_issue");
-    expect(getMcpToolLeafName("mcp__otto_voice__create_agent")).toBe("create_agent");
+    expect(getMcpToolLeafName("mcp__otto_voice__create_chat")).toBe("create_chat");
   });
 
   it("returns null for plain, non-namespaced tool names", () => {

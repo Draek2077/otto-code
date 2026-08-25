@@ -6699,7 +6699,7 @@ export class Session {
     if (!personality) {
       this.sessionLogger.warn(
         { personalityId },
-        "create_agent: personality id not found in roster; spawning without personality identity",
+        "create_agent_request: personality id not found in roster; spawning without personality identity",
       );
       return config;
     }
@@ -6711,7 +6711,7 @@ export class Session {
     if (resolution.status === "unavailable") {
       this.sessionLogger.warn(
         { personalityId, reason: resolution.reason },
-        "create_agent: personality unavailable for cwd; spawning without personality identity",
+        "create_agent_request: personality unavailable for cwd; spawning without personality identity",
       );
       return config;
     }

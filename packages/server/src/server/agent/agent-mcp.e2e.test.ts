@@ -153,21 +153,21 @@ async function assertAgentNotRunning(options: {
   agentId: string;
 }): Promise<void> {
   const statusResult = await options.client.callTool({
-    name: "get_agent_status",
+    name: "get_chat_status",
     args: { agentId: options.agentId },
   });
   const payload = getStructuredContent(statusResult);
   if (!payload) {
-    throw new Error("get_agent_status returned no structured payload");
+    throw new Error("get_chat_status returned no structured payload");
   }
   const status = payload.status;
   if (status === "running" || status === "initializing") {
-    throw new Error(`Agent still running after blocking create_agent (status=${status})`);
+    throw new Error(`Agent still running after blocking create_chat (status=${status})`);
   }
 }
 
 describe("agent MCP end-to-end (offline)", () => {
-  test("create_agent runs initial prompt and affects filesystem", async () => {
+  test("create_chat runs initial prompt and affects filesystem", async () => {
     const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
     const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
     const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
@@ -202,7 +202,7 @@ describe("agent MCP end-to-end (offline)", () => {
       ].join("\n");
 
       const result = await client.callTool({
-        name: "create_agent",
+        name: "create_chat",
         args: {
           cwd: agentCwd,
           title: "MCP e2e smoke",
@@ -227,7 +227,7 @@ describe("agent MCP end-to-end (offline)", () => {
       }
     } finally {
       if (agentId) {
-        await client.callTool({ name: "kill_agent", args: { agentId } });
+        await client.callTool({ name: "delete_chat", args: { agentId } });
       }
       await client.close();
       await daemon.stop();
@@ -282,7 +282,7 @@ describe("agent MCP end-to-end (offline)", () => {
       // runtime-mcp-config unit test.)
       client = await createMcpClient(mcpUrl, capabilityToken!);
       const result = await client.callTool({
-        name: "create_agent",
+        name: "create_chat",
         args: {
           cwd: agentCwd,
           title: "Password MCP",
@@ -297,7 +297,7 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(agentId).toBeTruthy();
     } finally {
       if (agentId) {
-        await client?.callTool({ name: "kill_agent", args: { agentId } });
+        await client?.callTool({ name: "delete_chat", args: { agentId } });
       }
       await client?.close();
       await daemon.stop();
@@ -307,7 +307,7 @@ describe("agent MCP end-to-end (offline)", () => {
     }
   }, 30_000);
 
-  test("create_agent auto-injects otto MCP by default and can be disabled", async () => {
+  test("create_chat auto-injects otto MCP by default and can be disabled", async () => {
     const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
     const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
     const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
@@ -357,7 +357,7 @@ describe("agent MCP end-to-end (offline)", () => {
     let disabledAgentId: string | null = null;
     try {
       const result = await client.callTool({
-        name: "create_agent",
+        name: "create_chat",
         args: {
           cwd: agentCwd,
           title: "Injected MCP",
@@ -381,7 +381,7 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(injectedAgent?.config.mcpServers?.otto).toBeUndefined();
 
       const disabledResult = await disabledClient.callTool({
-        name: "create_agent",
+        name: "create_chat",
         args: {
           cwd: disabledAgentCwd,
           title: "No injected MCP",
@@ -401,10 +401,10 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(disabledAgent?.config.mcpServers?.otto).toBeUndefined();
     } finally {
       if (agentId) {
-        await client.callTool({ name: "kill_agent", args: { agentId } });
+        await client.callTool({ name: "delete_chat", args: { agentId } });
       }
       if (disabledAgentId) {
-        await disabledClient.callTool({ name: "kill_agent", args: { agentId: disabledAgentId } });
+        await disabledClient.callTool({ name: "delete_chat", args: { agentId: disabledAgentId } });
       }
       await disabledClient.close();
       await disabledDaemon.stop();
@@ -419,7 +419,7 @@ describe("agent MCP end-to-end (offline)", () => {
     }
   }, 30_000);
 
-  test("create_agent injects a loopback MCP URL when the daemon listens on all interfaces", async () => {
+  test("create_chat injects a loopback MCP URL when the daemon listens on all interfaces", async () => {
     const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
     const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
     const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
@@ -446,7 +446,7 @@ describe("agent MCP end-to-end (offline)", () => {
     let agentId: string | null = null;
     try {
       const result = await client.callTool({
-        name: "create_agent",
+        name: "create_chat",
         args: {
           cwd: agentCwd,
           title: "Wildcard MCP",
@@ -470,7 +470,7 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(injectedAgent?.config.mcpServers?.otto).toBeUndefined();
     } finally {
       if (agentId) {
-        await client.callTool({ name: "kill_agent", args: { agentId } });
+        await client.callTool({ name: "delete_chat", args: { agentId } });
       }
       await client.close();
       await daemon.stop();
@@ -480,7 +480,7 @@ describe("agent MCP end-to-end (offline)", () => {
     }
   }, 30_000);
 
-  test("create_agent with background initialPrompt reflects running state once the first turn starts", async () => {
+  test("create_chat with background initialPrompt reflects running state once the first turn starts", async () => {
     const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
     const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
     const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
@@ -506,7 +506,7 @@ describe("agent MCP end-to-end (offline)", () => {
     let agentId: string | null = null;
     try {
       const result = await client.callTool({
-        name: "create_agent",
+        name: "create_chat",
         args: {
           cwd: agentCwd,
           title: "MCP background create",
@@ -523,14 +523,14 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(payload?.status).toBe("running");
 
       const statusResult = await client.callTool({
-        name: "get_agent_status",
+        name: "get_chat_status",
         args: { agentId },
       });
       const statusPayload = getStructuredContent(statusResult);
       expect(statusPayload?.status).toBe("running");
     } finally {
       if (agentId) {
-        await client.callTool({ name: "kill_agent", args: { agentId } });
+        await client.callTool({ name: "delete_chat", args: { agentId } });
       }
       await client.close();
       await daemon.stop();
@@ -540,7 +540,7 @@ describe("agent MCP end-to-end (offline)", () => {
     }
   }, 30_000);
 
-  test("create_agent propagates initial-turn start failure instead of returning success", async () => {
+  test("create_chat propagates initial-turn start failure instead of returning success", async () => {
     class StartTurnFailureSession implements AgentSession {
       readonly provider = "codex" as const;
       readonly id = "mcp-start-turn-failure-session";
@@ -687,7 +687,7 @@ describe("agent MCP end-to-end (offline)", () => {
     let agentId: string | null = null;
     try {
       const result = await client.callTool({
-        name: "create_agent",
+        name: "create_chat",
         args: {
           cwd: agentCwd,
           title: "MCP start failure",
@@ -704,7 +704,7 @@ describe("agent MCP end-to-end (offline)", () => {
 
       await assertAgentNotRunning({ client, agentId: agentId! });
       const statusResult = await client.callTool({
-        name: "get_agent_status",
+        name: "get_chat_status",
         args: { agentId },
       });
       const statusPayload = getStructuredContent(statusResult);
@@ -715,7 +715,7 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(lastError).toContain("Initial turn failed to start");
     } finally {
       if (agentId) {
-        await client.callTool({ name: "kill_agent", args: { agentId } });
+        await client.callTool({ name: "delete_chat", args: { agentId } });
       }
       await client.close();
       await daemon.stop();
@@ -729,7 +729,7 @@ describe("agent MCP end-to-end (offline)", () => {
   // `tail -f /dev/null`); the setup runner uses the platform shell, so cmd.exe
   // cannot execute it.
   test.skipIf(isPlatform("win32"))(
-    "create_agent with worktree is async and boots terminals only after setup success",
+    "create_chat with worktree is async and boots terminals only after setup success",
     async () => {
       const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
       const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
@@ -791,7 +791,7 @@ describe("agent MCP end-to-end (offline)", () => {
 
         const result = await withTimeout({
           promise: client.callTool({
-            name: "create_agent",
+            name: "create_chat",
             args: {
               cwd: repoRoot,
               title: "MCP worktree setup terminals",
@@ -804,7 +804,7 @@ describe("agent MCP end-to-end (offline)", () => {
             },
           }),
           timeoutMs: 2500,
-          label: "create_agent should not block on setup",
+          label: "create_chat should not block on setup",
         });
 
         const payload = getStructuredContent(result);
@@ -827,7 +827,7 @@ describe("agent MCP end-to-end (offline)", () => {
         });
       } finally {
         if (agentId) {
-          await client.callTool({ name: "kill_agent", args: { agentId } });
+          await client.callTool({ name: "delete_chat", args: { agentId } });
         }
         await client.close();
         await daemon.stop();

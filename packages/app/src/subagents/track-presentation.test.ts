@@ -201,7 +201,7 @@ describe("partitionSubagentRows", () => {
   });
 
   it("treats idle as completion only for observed rows", () => {
-    // A native create_agent subagent idles *between turns* - it may still be
+    // A native create_chat subagent idles *between turns* - it may still be
     // mid-conversation with its orchestrator, so it must not tidy (or become
     // eligible for "Clear all") just because a turn finished.
     expect(isSubagentRowTidyEligible(row({ id: "native", status: "idle" }))).toBe(false);

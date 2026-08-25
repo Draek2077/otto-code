@@ -514,7 +514,7 @@ function buildMcpSessionConfig(params: {
   resolvedFeatures?: Record<string, unknown>;
   // Effective unattended after OR-ing in an unattended parent (from the
   // resolver), so a child of an unattended parent arms the deny-responder even
-  // though the MCP create_agent input never sets `unattended` itself.
+  // though the MCP create_chat input never sets `unattended` itself.
   resolvedUnattended: boolean;
 }): AgentSessionConfig {
   const passthroughConfig = params.input.config;

@@ -396,7 +396,7 @@ test("mcp create exposes the created worktree before dispatching the initial pro
   }
 });
 
-// Regression (safe-unattended): an MCP create_agent input never sets
+// Regression (safe-unattended): an MCP create_chat input never sets
 // `unattended`, but the resolver OR's in an unattended parent and returns the
 // effective flag. The session config must stamp that resolved value - otherwise
 // a child of an unattended parent runs with `unattended:false` and its

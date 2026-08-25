@@ -231,7 +231,7 @@ export function toAgentPayload(
 
   applyCumulativeUsage(payload, agent.cumulativeUsage);
 
-  // Same liveness signals observed rows carry, so a native (create_agent) child
+  // Same liveness signals observed rows carry, so a native (create_chat) child
   // reads identically in the track. Sourced from its own timeline rather than a
   // provider task report - see AgentManager.recordNativeSubagentToolActivity.
   applySubagentLiveness(payload, {

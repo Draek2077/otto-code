@@ -1421,13 +1421,13 @@ export async function createOttoDaemon(
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
-    // Counted at the createAgent choke point so composer, MCP create_agent,
+    // Counted at the createAgent choke point so composer, MCP create_chat,
     // and schedule spawns all land in the per-personality usage stats.
     onPersonalitySpawn: (personalityId) => {
       void profileStatsStore.increment(personalityId);
     },
     // Injected at the same choke point, so every spawn path - composer, MCP
-    // create_agent, schedule runs, orchestration, resume - carries the
+    // create_chat, schedule runs, orchestration, resume - carries the
     // personality's accrued lessons without threading anything per-caller.
     resolvePersonalityMemoryBrief: (params) => personalityMemory.resolveBriefForSpawn(params),
     resolveProjectKnowledgeBrief: async ({ cwd }) => {
@@ -1527,7 +1527,7 @@ export async function createOttoDaemon(
     firstAgentContext?: FirstAgentContext,
   ): Promise<string> => {
     // One directory = one live workspace: reuse the visible workspace already
-    // backing the cwd (MCP create_agent, loops, and agent-spawned terminals
+    // backing the cwd (MCP create_chat, loops, and agent-spawned terminals
     // attach to it) instead of minting a duplicate - which
     // createLocalCheckoutWorkspace now rejects. Auto-naming only runs for a
     // freshly minted workspace; an existing one keeps its name.

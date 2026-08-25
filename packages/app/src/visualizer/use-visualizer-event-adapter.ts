@@ -1,6 +1,6 @@
 // Stateful Otto -> Visualizer wiring: one visualizer session per root agent
 // in the workspace (agents spawned by another tracked agent - observed Task
-// children and attended create_agent children alike - render as child nodes
+// children and attended create_chat children alike - render as child nodes
 // inside the parent's session, mirroring the subagents track), backfilled
 // from the daemon's timeline RPC and
 // kept live via `agent_stream`. All actual event construction is delegated
@@ -333,7 +333,7 @@ function ensureNode(
     return undefined;
   }
   // Any agent spawned by another tracked agent (observed Task children AND
-  // attended create_agent children) renders as a child node in its parent's
+  // attended create_chat children) renders as a child node in its parent's
   // session, mirroring the subagents track - not as a separate top-level chat.
   const isRoot = !parentPresent;
   const rootId = isRoot ? agentId : resolveRootAgentId(agentId, agentsById);

@@ -25,6 +25,8 @@ interface McpToolResult {
 
 interface McpClient {
   callTool: (input: { name: string; args?: StructuredContent }) => Promise<McpToolResult>;
+  /** Names in the advertised catalog - what a model actually sees. */
+  listToolNames: () => Promise<string[]>;
   close: () => Promise<void>;
 }
 
@@ -84,7 +86,11 @@ async function createMcpClient(url: string): Promise<McpClient> {
   const transport = new StreamableHTTPClientTransport(new URL(url));
   const rawClient = await experimental_createMCPClient({ transport });
   const boundCallTool: McpClient["callTool"] = Reflect.get(rawClient, "callTool").bind(rawClient);
-  return { callTool: boundCallTool, close: () => rawClient.close() };
+  return {
+    callTool: boundCallTool,
+    listToolNames: async () => Object.keys(await rawClient.tools()),
+    close: () => rawClient.close(),
+  };
 }
 
 async function callToolStructured(
@@ -838,10 +844,15 @@ describe("Suite D: Provider Tools", () => {
     expect(Array.isArray(payload.models)).toBe(true);
   });
 
-  test("the retired list_profiles tool is not exposed", async () => {
-    // Personalities are the one roster agents list; profile-named spawns still
-    // resolve through create_chat's `personality` field.
-    await expect(callToolStructured(topLevelClient, "list_profiles")).rejects.toThrow();
+  test("the retired profile listing tools are not exposed", async () => {
+    // One roster, one listing tool. Asserted against the advertised catalog
+    // rather than a failed call: an unknown tool comes back as an error
+    // *result*, not a rejection, so calling it and expecting a throw passed for
+    // the wrong reason and then stopped passing at all.
+    const names = await topLevelClient.listToolNames();
+    expect(names).not.toContain("list_profiles");
+    expect(names).not.toContain("list_personalities");
+    expect(names).toContain("list_agent_profiles");
   });
 });
 
