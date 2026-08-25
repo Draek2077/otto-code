@@ -37,6 +37,10 @@ import {
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import {
+  shouldUseSingleColumnNavigation,
+  sidebarNavigationLayoutStyles,
+} from "@/components/sidebar/sidebar-navigation-layout";
+import {
   FooterIconButton,
   resolveSidebarFooterActiveItem,
   SidebarFooterNavRow,
@@ -490,15 +494,13 @@ interface SidebarNavigationGridProps {
   isSingleColumn: boolean;
 }
 
-const SIDEBAR_NAVIGATION_TWO_COLUMN_MIN_WIDTH = 272;
-
 function SidebarNavigationHeader({
   onBeforeNavigate,
   ...navigationGridProps
 }: Omit<SidebarNavigationGridProps, "isSingleColumn"> & { onBeforeNavigate?: () => void }) {
   const [isSingleColumn, setIsSingleColumn] = useState(false);
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
-    setIsSingleColumn(event.nativeEvent.layout.width < SIDEBAR_NAVIGATION_TWO_COLUMN_MIN_WIDTH);
+    setIsSingleColumn(shouldUseSingleColumnNavigation(event.nativeEvent.layout.width));
   }, []);
 
   return (
@@ -538,8 +540,9 @@ function SidebarNavigationGrid({
           variant="compact"
           allowLabelWrap
           containerStyle={[
+            sidebarNavigationLayoutStyles.itemTwoColumn,
+            isSingleColumn && sidebarNavigationLayoutStyles.itemSingleColumn,
             styles.sidebarNavigationItem,
-            isSingleColumn && styles.sidebarNavigationItemSingleColumn,
           ]}
         />
         <SidebarHeaderRow
@@ -551,8 +554,9 @@ function SidebarNavigationGrid({
           variant="compact"
           allowLabelWrap
           containerStyle={[
+            sidebarNavigationLayoutStyles.itemTwoColumn,
+            isSingleColumn && sidebarNavigationLayoutStyles.itemSingleColumn,
             styles.sidebarNavigationItem,
-            isSingleColumn && styles.sidebarNavigationItemSingleColumn,
           ]}
         />
       </View>
@@ -571,8 +575,9 @@ function SidebarNavigationGrid({
           variant="compact"
           allowLabelWrap
           containerStyle={[
+            sidebarNavigationLayoutStyles.itemTwoColumn,
+            isSingleColumn && sidebarNavigationLayoutStyles.itemSingleColumn,
             styles.sidebarNavigationItem,
-            isSingleColumn && styles.sidebarNavigationItemSingleColumn,
           ]}
         />
         <SidebarHeaderRow
@@ -584,8 +589,9 @@ function SidebarNavigationGrid({
           variant="compact"
           allowLabelWrap
           containerStyle={[
+            sidebarNavigationLayoutStyles.itemTwoColumn,
+            isSingleColumn && sidebarNavigationLayoutStyles.itemSingleColumn,
             styles.sidebarNavigationItem,
-            isSingleColumn && styles.sidebarNavigationItemSingleColumn,
           ]}
         />
       </View>
@@ -1205,12 +1211,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "column",
   },
   sidebarNavigationItem: {
-    flex: 1,
     paddingHorizontal: 0,
-  },
-  sidebarNavigationItemSingleColumn: {
-    flex: 0,
-    alignSelf: "stretch",
   },
   workspacesSectionHeader: {
     flexDirection: "row",
