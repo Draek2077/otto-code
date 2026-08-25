@@ -2111,7 +2111,7 @@ function buildPullRequestLookupTargetFromBranchConfig(
       ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
     };
   }
-  if (trackedHeadRef === normalizedBaseRef) {
+  if (trackedHeadRef === normalizedBaseRef && isSameRepo) {
     return { headRef: input.currentBranch };
   }
 
@@ -2148,7 +2148,7 @@ function buildPullRequestLookupTargetFromPushConfig(
       ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
     };
   }
-  if (pushedHeadRef === normalizedBaseRef) {
+  if (pushedHeadRef === normalizedBaseRef && isSameRepo) {
     return null;
   }
 
@@ -4593,6 +4593,9 @@ async function tryResolveCheckoutCommitsBaseRef(
 ): Promise<string | null> {
   if (!baseRef) {
     return null;
+  }
+  if (baseRef.startsWith("refs/remotes/")) {
+    return (await doesGitRefExist(cwd, baseRef)) ? baseRef : null;
   }
   const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
   if (!normalizedBaseRef || normalizedBaseRef === currentBranch) {

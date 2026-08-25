@@ -2448,7 +2448,8 @@ const x = 1;
       cwd: repoDir,
     });
     expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
-      headRef: "local-upstream",
+      headRef: "old-change",
+      headRepositoryOwner: "contributor",
     });
   });
 

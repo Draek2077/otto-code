@@ -256,7 +256,7 @@ describe("supervisor durable logging", () => {
             );
             descendant.unref();
             process.on("SIGTERM", () => process.exit(0));
-            process.send?.({ type: "paseo:restart", reason: "stdio_descendant" });
+            process.send?.({ type: "otto:restart", reason: "stdio_descendant" });
             setInterval(() => {}, 1000);
           } else {
             process.send?.({ type: "otto:shutdown", reason: "stdio_restart_complete" });
