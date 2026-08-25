@@ -72,7 +72,6 @@ import {
   OPENAI_COMPAT_AUTO_COMPACT_VALUES,
   OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID,
   OPENAI_COMPAT_REASONING_EFFORTS,
-  OPENAI_COMPAT_TOGGLE_THINKING_OPTIONS,
   OPENAI_COMPAT_THINKING_OPTIONS,
   type OpenAICompatAutoCompact,
   type OpenAICompatReasoningEffort,
@@ -764,7 +763,7 @@ export interface OpenAICompatAgentClientOptions {
   mcpToolPermissions?: McpToolPermissionMode | null;
   /** Provider-level compaction defaults; per-agent feature values win. */
   compaction?: ProviderCompactionConfig | null;
-  /** Brain exposes a boolean reasoning toggle; other endpoints use levels. */
+  /** Brain translates its advertised template effort levels; other endpoints use direct levels. */
   reasoningEffortMode?: "levels" | "toggle";
   /** Max tool rounds per turn; undefined/null = the built-in default. */
   maxToolRounds?: number | null;
@@ -1131,21 +1130,6 @@ function parseModelFamilies(json: unknown): Map<string, string> {
   return families;
 }
 
-function parseModelReasoningCapabilities(json: unknown): Map<string, boolean> {
-  const capabilities = new Map<string, boolean>();
-  if (!json || typeof json !== "object") return capabilities;
-  const data = (json as Record<string, unknown>).data;
-  if (!Array.isArray(data)) return capabilities;
-  for (const entry of data) {
-    if (!entry || typeof entry !== "object") continue;
-    const record = entry as Record<string, unknown>;
-    if (typeof record.id !== "string") continue;
-    if (typeof record.reasoning === "boolean") capabilities.set(record.id, record.reasoning);
-    else if (typeof record.thinking === "boolean") capabilities.set(record.id, record.thinking);
-  }
-  return capabilities;
-}
-
 function parseModelReasoningEfforts(json: unknown): Map<string, OpenAICompatReasoningEffort[]> {
   const efforts = new Map<string, OpenAICompatReasoningEffort[]>();
   if (!json || typeof json !== "object") return efforts;
@@ -1197,9 +1181,9 @@ function buildReasoningRequestField(
   effort: OpenAICompatReasoningEffort,
 ): Record<string, string> {
   if (mode === "toggle") {
-    // Brain normally exposes a boolean toggle, but some models (notably
-    // GPT-OSS) advertise graduated levels through the same endpoint. Keep the
-    // toggle wire values unchanged while forwarding an advertised level.
+    // Brain accepts legacy toggle payloads and its models may advertise
+    // graduated template levels through the same endpoint. Keep those wire
+    // values unchanged; the Brain host owns validation and translation.
     return { reasoning_effort: effort === "on" ? "on" : effort };
   }
   return effort !== "off" ? { reasoning_effort: effort } : {};
@@ -1239,20 +1223,6 @@ function buildAdvertisedThinkingOptions(
     options.push(option);
   }
   return options;
-}
-
-function buildToggleThinkingOptions(reasoning: boolean): readonly AgentSelectOption[] {
-  return OPENAI_COMPAT_TOGGLE_THINKING_OPTIONS.map((option) => {
-    const next: AgentSelectOption = {
-      id: option.id,
-      label: option.label,
-    };
-    if (option.description) next.description = option.description;
-    if ((option.id === "on" && reasoning) || (option.id === "off" && !reasoning)) {
-      next.isDefault = true;
-    }
-    return next;
-  });
 }
 
 /**
@@ -1578,7 +1548,6 @@ export class OpenAICompatAgentClient implements AgentClient {
     const modelNames = parseModelNames(listing);
     const modelFamilies = parseModelFamilies(listing);
     const contextLengths = parseModelContextLengths(listing);
-    const reasoningCapabilities = parseModelReasoningCapabilities(listing);
     const advertisedReasoningEfforts = parseModelReasoningEfforts(listing);
     const advertisedReasoningDefaults = parseModelReasoningEffortDefaults(listing);
     const models: AgentModelDefinition[] = modelIds.map((id, index) => {
@@ -1592,11 +1561,6 @@ export class OpenAICompatAgentClient implements AgentClient {
             advertised,
             advertisedReasoningDefaults.get(id),
           );
-        } else {
-          thinkingOptions =
-            reasoningCapabilities.get(id) === false
-              ? undefined
-              : buildToggleThinkingOptions(reasoningCapabilities.get(id) === true);
         }
       } else {
         thinkingOptions = OPENAI_COMPAT_THINKING_OPTIONS;

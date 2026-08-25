@@ -415,6 +415,53 @@ test("maps a native model's effort choices onto its template arguments", () => {
   });
 });
 
+test("drops generic effort fields for a model without a declared control contract", () => {
+  const model = {
+    id: "custom-reasoner",
+    displayName: "Custom reasoner",
+    modelPath: "/models/custom.gguf",
+    mmprojPath: null,
+    mmprojBytes: 0,
+    quant: "Q4_K_M",
+    sizeBytes: 0,
+    features: { mtp: false, imatrix: false, distilled: false },
+    metadata: { reasoning: true },
+  } satisfies Model;
+
+  for (const reasoning_effort of ["off", "on", "xhigh"]) {
+    const output = applyModelReasoningTemplate(
+      Buffer.from(JSON.stringify({ model: model.id, reasoning_effort })),
+      model,
+    );
+    assert.deepEqual(JSON.parse(output.toString("utf8")), { model: model.id });
+  }
+});
+
+test("drops a stale effort level that a native template does not support", () => {
+  const model = {
+    id: "qwen3.8",
+    displayName: "Qwen3.8",
+    modelPath: "/models/qwen.gguf",
+    mmprojPath: null,
+    mmprojBytes: 0,
+    quant: "Q4_K_M",
+    sizeBytes: 0,
+    features: { mtp: false, imatrix: false, distilled: false },
+    metadata: null,
+    reasoningEfforts: ["low", "medium", "xhigh"],
+    reasoningTemplate: {
+      enableThinkingArgument: "enable_thinking",
+      effortArgument: "reasoning_effort",
+    },
+  } satisfies Model;
+
+  const output = applyModelReasoningTemplate(
+    Buffer.from(JSON.stringify({ model: model.id, reasoning_effort: "high" })),
+    model,
+  );
+  assert.deepEqual(JSON.parse(output.toString("utf8")), { model: model.id });
+});
+
 test("completion shape is read from the path, not the body", () => {
   assert.equal(completionShape("/v1/messages"), "anthropic");
   assert.equal(completionShape("/v1/chat/completions"), "openai");

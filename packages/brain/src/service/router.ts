@@ -432,13 +432,14 @@ interface ProxyBufferedOptions {
  * Map an OpenAI-compatible effort request onto a model's own chat-template
  * arguments. llama.cpp does not know every model's dialect: Qwen3.8 calls the
  * controls `enable_thinking` and `reasoning_effort`, for example. Only catalog
- * entries that declare these names are rewritten, so generic models and GPT-OSS
- * keep their existing server-native request handling.
+ * entries that declare these names receive a translated request. An arbitrary
+ * GGUF template must never see Otto's generic `reasoning_effort` field: its
+ * accepted values are template-specific, and an incompatible value makes
+ * llama.cpp fail the whole completion with a Jinja exception.
  */
 export function applyModelReasoningTemplate(body: Buffer, model: Model): Buffer {
   const template = model.reasoningTemplate;
   const advertised = model.reasoningEfforts;
-  if (!template || !Array.isArray(advertised)) return body;
 
   let parsed: unknown;
   try {
@@ -448,11 +449,23 @@ export function applyModelReasoningTemplate(body: Buffer, model: Model): Buffer 
   }
   if (!isRecord(parsed) || typeof parsed.reasoning_effort !== "string") return body;
 
+  const { reasoning_effort: _reasoningEffort, ...withoutReasoningEffort } = parsed;
+  // The Brain owns this generic field. An uncurated model can expose a
+  // reasoning channel without declaring how to control it, so preserve the
+  // template default rather than forwarding a value that can crash rendering.
+  if (!template || !Array.isArray(advertised)) {
+    return Buffer.from(JSON.stringify(withoutReasoningEffort), "utf8");
+  }
+
   const requested = parsed.reasoning_effort.toLowerCase();
   const knownEfforts = new Set(advertised.map((value) => value.toLowerCase()));
   const isDisabled = requested === "off" || requested === "none";
   const isEnabled = requested === "on" || knownEfforts.has(requested);
-  if (!isDisabled && !isEnabled) return body;
+  // Old chats can retain a formerly valid generic level that this model does
+  // not support. Do not let that stale state turn into a server error.
+  if (!isDisabled && !isEnabled) {
+    return Buffer.from(JSON.stringify(withoutReasoningEffort), "utf8");
+  }
 
   const suppliedKwargs = parsed.chat_template_kwargs;
   if (suppliedKwargs !== undefined && !isRecord(suppliedKwargs)) return body;
@@ -466,7 +479,6 @@ export function applyModelReasoningTemplate(body: Buffer, model: Model): Buffer 
     delete templateKwargs[template.effortArgument];
   }
 
-  const { reasoning_effort: _reasoningEffort, ...withoutReasoningEffort } = parsed;
   return Buffer.from(
     JSON.stringify({ ...withoutReasoningEffort, chat_template_kwargs: templateKwargs }),
     "utf8",

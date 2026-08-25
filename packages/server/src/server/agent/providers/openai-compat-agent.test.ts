@@ -412,6 +412,14 @@ describe("OpenAICompatAgentClient", () => {
     expect(endpoint.completionBodies[0]?.reasoning_effort).toBe("xhigh");
   });
 
+  test("Brain does not advertise generic effort controls without a model contract", async () => {
+    const endpoint = await startEndpoint({ modelFields: { reasoning: true } });
+    const client = createClient(endpoint.baseUrl, "toggle");
+    const catalog = await client.fetchCatalog({ scope: "global", force: true });
+
+    expect(catalog.models[0]?.thinkingOptions).toBeUndefined();
+  });
+
   test("discovers models from GET /v1/models with the first as default", async () => {
     const endpoint = await startEndpoint();
     const client = createClient(endpoint.baseUrl);
