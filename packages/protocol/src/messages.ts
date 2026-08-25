@@ -655,6 +655,18 @@ export const ModelTierOverrideSchema = z
 
 export type ModelTierOverride = z.infer<typeof ModelTierOverrideSchema>;
 
+// A host-owned model-picker visibility choice. Stored as an array so a patch
+// replaces it wholesale and removing the final hidden-model entry sticks.
+export const ModelVisibilityOverrideSchema = z
+  .object({
+    provider: z.string().min(1),
+    modelId: z.string().min(1),
+    visible: z.boolean(),
+  })
+  .passthrough();
+
+export type ModelVisibilityOverride = z.infer<typeof ModelVisibilityOverrideSchema>;
+
 // A remembered provider endpoint: a base URL together with the credential it
 // was saved with, so pointing a provider back at a previous endpoint is one
 // pick instead of re-typing the key. Entries are scoped by the connection
@@ -759,6 +771,9 @@ export const MutableDaemonConfigSchema = z
     // Gated by the modelTierOverrides feature; defaults empty so a new client
     // parsing an old daemon's config still sees a well-formed array.
     modelTierOverrides: z.array(ModelTierOverrideSchema).default([]),
+    // Per-host model-picker visibility. Gated by modelVisibilityOverrides;
+    // absent on an old host means every selectable model remains visible.
+    modelVisibilityOverrides: z.array(ModelVisibilityOverrideSchema).default([]),
     // Per-host remembered provider endpoints (base URL + credential), pooled by
     // env-var family. Gated by the savedProviderEndpoints feature; defaults
     // empty so a new client parsing an old daemon's config still sees a
@@ -845,6 +860,9 @@ export const MutableDaemonConfigPatchSchema = z
     // Gated by server_info features.modelTierOverrides. Replaces the full array
     // (read-modify-write), so removing an entry clears that model's tag.
     modelTierOverrides: z.array(ModelTierOverrideSchema).optional(),
+    // Gated by server_info features.modelVisibilityOverrides. Replaces the
+    // full array so checking the last hidden model clears the stored policy.
+    modelVisibilityOverrides: z.array(ModelVisibilityOverrideSchema).optional(),
     // Gated by server_info features.savedProviderEndpoints. Replaces the full
     // array (read-modify-write), so forgetting an endpoint drops it from disk.
     savedProviderEndpoints: z.array(SavedProviderEndpointSchema).optional(),
@@ -979,6 +997,9 @@ const AgentModelDefinitionSchema = z.object({
   // Daemon-stamped capability tier (deep/standard/fast). Optional: absent on old
   // daemons and on models neither classified nor user-tagged.
   tier: ModelTierSchema.optional(),
+  // Host-owned model-picker visibility. Optional for backward compatibility;
+  // absent means visible.
+  isVisible: z.boolean().optional(),
   // False when the model can't run the provider's "auto" permission mode.
   // Optional: absent on old daemons and when supported/unknown.
   supportsAutoMode: z.boolean().optional(),
@@ -4966,6 +4987,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentTeams: z.boolean().optional(),
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         modelTierOverrides: z.boolean().optional(),
+        // COMPAT(modelVisibilityOverrides): added in v0.8.18, drop the gate when daemon floor >= v0.8.18.
+        modelVisibilityOverrides: z.boolean().optional(),
         // COMPAT(savedProviderEndpoints): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
         savedProviderEndpoints: z.boolean().optional(),
         // COMPAT(agentOrchestration): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.

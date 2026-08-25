@@ -100,6 +100,13 @@ export interface AgentModelDefinition {
    */
   tier?: ModelTier;
   /**
+   * False when the host owner hid this model from model-picking surfaces.
+   * Absent means visible, including snapshots from older daemons. Visibility
+   * is presentation policy only: an existing profile or agent may continue to
+   * reference a hidden model by id.
+   */
+  isVisible?: boolean;
+  /**
    * False when this model cannot run the provider's "auto" permission mode
    * (e.g. Claude's classifier-based Auto mode is unsupported on Haiku). Absent
    * = supported or unknown (including old daemons); clients only hide the Auto

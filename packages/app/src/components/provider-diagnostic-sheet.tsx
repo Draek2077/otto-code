@@ -33,6 +33,7 @@ import type {
 } from "@otto-code/protocol/agent-types";
 import { compareMatchScores, scoreTextFields } from "@otto-code/protocol/search/text-match";
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
+import type { ModelVisibilityOverride } from "@otto-code/protocol/messages";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { TextFieldPicker } from "@/components/ui/text-field-picker";
 import {
@@ -46,6 +47,7 @@ import {
   EMPTY_SAVED_ENDPOINTS,
   ModelRowText,
   ModelTierSelect,
+  ModelVisibilityCheckbox,
   ModelsSearchField,
   ModelsTabActions,
   ProviderAgentsSection,
@@ -63,6 +65,7 @@ import {
   useProviderSheetFeature,
 } from "./provider-sheet/provider-sheet-content";
 import type { ProviderSettingsTab } from "./provider-sheet/provider-sheet-content";
+import { isModelVisible, updateModelVisibilityOverrides } from "./provider-model-visibility";
 // Themed leaf per docs/unistyles.md "Static Theme Imports" - only the icon
 // re-renders on theme changes, not the row that hosts it.
 
@@ -84,17 +87,85 @@ function rankModels<T>(items: T[], query: string, fields: (item: T) => string[])
   return scored.map((entry) => entry.item);
 }
 
+function resolveModelVisibilityOverrides(
+  config: { modelVisibilityOverrides?: readonly ModelVisibilityOverride[] } | null | undefined,
+): readonly ModelVisibilityOverride[] {
+  return config?.modelVisibilityOverrides ?? [];
+}
+
+function ModelVisibilityToolbar({
+  show,
+  visibleCount,
+  totalCount,
+  onShowAll,
+  onHideAll,
+}: {
+  show: boolean;
+  visibleCount: number;
+  totalCount: number;
+  onShowAll: () => void;
+  onHideAll: () => void;
+}) {
+  const { t } = useTranslation();
+  if (!show || totalCount === 0) return null;
+
+  return (
+    <View style={sheetStyles.modelVisibilityToolbar}>
+      <Text style={sheetStyles.mutedText}>
+        {t("settings.providers.models.visibleCount", {
+          visible: visibleCount,
+          total: totalCount,
+        })}
+      </Text>
+      <View style={sheetStyles.modelVisibilityActions}>
+        <Button
+          variant="outline"
+          size="xs"
+          onPress={onShowAll}
+          disabled={visibleCount === totalCount}
+          testID="provider-models-show-all"
+        >
+          {t("settings.providers.models.showAll")}
+        </Button>
+        <Button
+          variant="outline"
+          size="xs"
+          onPress={onHideAll}
+          disabled={visibleCount === 0}
+          testID="provider-models-hide-all"
+        >
+          {t("settings.providers.models.hideAll")}
+        </Button>
+      </View>
+    </View>
+  );
+}
+
 function DiscoveredModelRow({
   model,
   showTier,
+  showVisibility,
+  visible,
   onSetTier,
+  onSetVisibility,
 }: {
   model: AgentModelDefinition;
   showTier: boolean;
+  showVisibility: boolean;
+  visible: boolean;
   onSetTier: (modelId: string, tier: ModelTier | null) => void;
+  onSetVisibility: (modelId: string, visible: boolean) => void;
 }) {
   return (
     <View style={sheetStyles.modelRow}>
+      {showVisibility ? (
+        <ModelVisibilityCheckbox
+          modelId={model.id}
+          visible={visible}
+          disabled={false}
+          onChange={onSetVisibility}
+        />
+      ) : null}
       <ModelRowText label={model.label} id={model.id} description={model.description} />
       {showTier ? (
         <ModelTierSelect
@@ -110,11 +181,17 @@ function DiscoveredModelRow({
 
 function CustomModelRow({
   model,
+  showVisibility,
+  visible,
   deleting,
+  onSetVisibility,
   onDelete,
 }: {
   model: ProviderProfileModel;
+  showVisibility: boolean;
+  visible: boolean;
   deleting: boolean;
+  onSetVisibility: (modelId: string, visible: boolean) => void;
   onDelete: (modelId: string) => void;
 }) {
   const { t } = useTranslation();
@@ -130,6 +207,14 @@ function CustomModelRow({
 
   return (
     <View style={sheetStyles.modelRow}>
+      {showVisibility ? (
+        <ModelVisibilityCheckbox
+          modelId={model.id}
+          visible={visible}
+          disabled={deleting}
+          onChange={onSetVisibility}
+        />
+      ) : null}
       <ModelRowText label={model.label} id={model.id} />
       <Pressable
         onPress={handleDelete}
@@ -434,6 +519,7 @@ function DiagnosticSubSheet({
 }
 
 interface ProviderModalBodyProps {
+  provider: string;
   discoveredCount: number;
   additionalCount: number;
   providerSnapshotRefreshing: boolean;
@@ -444,7 +530,10 @@ interface ProviderModalBodyProps {
   filteredCustom: ProviderProfileModel[];
   deletingModelId: string | null;
   showTier: boolean;
+  showVisibility: boolean;
+  visibilityOverrides: readonly ModelVisibilityOverride[];
   onSetTier: (modelId: string, tier: ModelTier | null) => void;
+  onSetVisibility: (modelId: string, visible: boolean) => void;
   onRefresh: () => void;
   onDeleteCustom: (modelId: string) => void;
   theme: { iconSize: { md: number }; colors: { foregroundMuted: string } };
@@ -453,6 +542,7 @@ interface ProviderModalBodyProps {
 function ProviderModalBody(props: ProviderModalBodyProps) {
   const { t } = useTranslation();
   const {
+    provider,
     discoveredCount,
     additionalCount,
     providerSnapshotRefreshing,
@@ -463,7 +553,10 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
     filteredCustom,
     deletingModelId,
     showTier,
+    showVisibility,
+    visibilityOverrides,
     onSetTier,
+    onSetVisibility,
     onRefresh,
     onDeleteCustom,
     theme,
@@ -518,7 +611,10 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
                 key={model.id}
                 model={model}
                 showTier={showTier}
+                showVisibility={showVisibility}
+                visible={isModelVisible(visibilityOverrides, provider, model.id)}
                 onSetTier={onSetTier}
+                onSetVisibility={onSetVisibility}
               />
             ))}
           </View>
@@ -535,7 +631,10 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
               <CustomModelRow
                 key={model.id}
                 model={model}
+                showVisibility={showVisibility}
+                visible={isModelVisible(visibilityOverrides, provider, model.id)}
                 deleting={deletingModelId === model.id}
+                onSetVisibility={onSetVisibility}
                 onDelete={onDeleteCustom}
               />
             ))}
@@ -582,6 +681,11 @@ export function ProviderDiagnosticSheet({
   const supportsArtifactsToolGroup = useProviderSheetFeature(serverId, "artifactsToolGroup");
   // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
   const supportsModelTierOverrides = useProviderSheetFeature(serverId, "modelTierOverrides");
+  // COMPAT(modelVisibilityOverrides): added in v0.8.18, drop the gate when daemon floor >= v0.8.18.
+  const supportsModelVisibilityOverrides = useProviderSheetFeature(
+    serverId,
+    "modelVisibilityOverrides",
+  );
   // COMPAT(savedProviderEndpoints): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
   const supportsSavedEndpoints = useProviderSheetFeature(serverId, "savedProviderEndpoints");
   // COMPAT(openaiCompatMaxToolRounds): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
@@ -659,6 +763,18 @@ export function ProviderDiagnosticSheet({
     () => rankModels(additionalModels, q, (m) => [m.label, m.id]),
     [additionalModels, q],
   );
+  const visibilityOverrides = useMemo(() => resolveModelVisibilityOverrides(config), [config]);
+  const allModelIds = useMemo(
+    () => Array.from(new Set([...discoveredModels, ...additionalModels].map((model) => model.id))),
+    [additionalModels, discoveredModels],
+  );
+  const showVisibility = [supportsModelVisibilityOverrides, isOpenAiCompatFamily].every(Boolean);
+  const visibleModelCount = useMemo(
+    () =>
+      allModelIds.filter((modelId) => isModelVisible(visibilityOverrides, provider, modelId))
+        .length,
+    [allModelIds, provider, visibilityOverrides],
+  );
 
   const handleRefreshModels = useCallback(() => {
     void refresh([provider]);
@@ -704,6 +820,42 @@ export function ProviderDiagnosticSheet({
     },
     [config?.modelTierOverrides, patchConfig, provider],
   );
+
+  const handleSetModelVisibility = useCallback(
+    (modelId: string, modelVisible: boolean) => {
+      const next = updateModelVisibilityOverrides({
+        overrides: visibilityOverrides,
+        provider,
+        modelIds: [modelId],
+        visible: modelVisible,
+      });
+      void patchConfig({ modelVisibilityOverrides: next });
+    },
+    [patchConfig, provider, visibilityOverrides],
+  );
+
+  const handleShowAllModels = useCallback(() => {
+    const storedProviderModelIds = visibilityOverrides
+      .filter((entry) => entry.provider === provider)
+      .map((entry) => entry.modelId);
+    const next = updateModelVisibilityOverrides({
+      overrides: visibilityOverrides,
+      provider,
+      modelIds: [...allModelIds, ...storedProviderModelIds],
+      visible: true,
+    });
+    void patchConfig({ modelVisibilityOverrides: next });
+  }, [allModelIds, patchConfig, provider, visibilityOverrides]);
+
+  const handleHideAllModels = useCallback(() => {
+    const next = updateModelVisibilityOverrides({
+      overrides: visibilityOverrides,
+      provider,
+      modelIds: allModelIds,
+      visible: false,
+    });
+    void patchConfig({ modelVisibilityOverrides: next });
+  }, [allModelIds, patchConfig, provider, visibilityOverrides]);
 
   const sheetHeader = useMemo<SheetHeader>(() => ({ title: providerLabel }), [providerLabel]);
 
@@ -758,9 +910,17 @@ export function ProviderDiagnosticSheet({
           <View style={sheetStyles.tabPane}>
             <View style={sheetStyles.tabPaneFixedRow}>
               <ModelsSearchField initialValue={query} onChange={setQuery} />
+              <ModelVisibilityToolbar
+                show={showVisibility}
+                visibleCount={visibleModelCount}
+                totalCount={allModelIds.length}
+                onShowAll={handleShowAllModels}
+                onHideAll={handleHideAllModels}
+              />
             </View>
             <TabScrollView>
               <ProviderModalBody
+                provider={provider}
                 discoveredCount={discoveredModels.length}
                 additionalCount={additionalModels.length}
                 providerSnapshotRefreshing={providerSnapshotRefreshing}
@@ -771,7 +931,10 @@ export function ProviderDiagnosticSheet({
                 filteredCustom={filteredCustom}
                 deletingModelId={deletingModelId}
                 showTier={supportsModelTierOverrides}
+                showVisibility={showVisibility}
+                visibilityOverrides={visibilityOverrides}
                 onSetTier={handleSetModelTier}
+                onSetVisibility={handleSetModelVisibility}
                 onRefresh={handleRefreshModels}
                 onDeleteCustom={handleDeleteCustom}
                 theme={theme}
@@ -902,6 +1065,18 @@ const sheetStyles = StyleSheet.create((theme) => ({
   },
   tabPaneFixedRow: {
     paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
+    gap: theme.spacing[2],
+  },
+  modelVisibilityToolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
+  modelVisibilityActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   sectionHeader: {
     flexDirection: "row",

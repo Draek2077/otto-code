@@ -278,6 +278,7 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
     providers,
     metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
     savedProviderEndpoints: [],
+    modelVisibilityOverrides: [],
     agentBehaviors: {
       promptSuggestions: true,
       agentProgressSummaries: true,

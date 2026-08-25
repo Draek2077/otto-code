@@ -50,6 +50,20 @@ describe("provider snapshot message schemas", () => {
     expect(parsed.source).toBe("custom");
   });
 
+  test("preserves optional model-picker visibility and defaults old rows to visible", () => {
+    const parsed = ProviderSnapshotEntrySchema.parse({
+      provider: "otto-brain",
+      status: "ready",
+      models: [
+        { provider: "otto-brain", id: "visible", label: "Visible" },
+        { provider: "otto-brain", id: "hidden", label: "Hidden", isVisible: false },
+      ],
+    });
+
+    expect(parsed.models?.[0]?.isVisible).toBeUndefined();
+    expect(parsed.models?.[1]?.isVisible).toBe(false);
+  });
+
   test("defaults missing enabled state in providers snapshot response entries", () => {
     const parsed = GetProvidersSnapshotResponseMessageSchema.parse({
       type: "get_providers_snapshot_response",

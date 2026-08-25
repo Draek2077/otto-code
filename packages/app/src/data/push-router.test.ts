@@ -89,6 +89,7 @@ const daemonConfig: MutableDaemonConfig = {
   agentProfiles: [],
   agentTeams: { teams: [] },
   modelTierOverrides: [],
+  modelVisibilityOverrides: [],
   connectors: [],
   autoArchiveAfterMerge: false,
   hideMergeIntoBaseAction: false,

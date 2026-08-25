@@ -716,7 +716,7 @@ export function withAgentTeams(params: {
 }
 
 // The agents sections that are plain replace-the-whole-array lists: user
-// model-tier tags and the remembered provider endpoints. Each is written when
+// model-tier tags, model visibility, and remembered provider endpoints. Each is written when
 // there is anything to persist, or when a previously-written array must be
 // cleared to empty - so removing the last tag, or forgetting the last endpoint,
 // survives a restart instead of being re-read off stale disk state.
@@ -729,6 +729,7 @@ export function withAgentArraySections(params: {
   const { nextAgents, persistedAgents, persisted, mutable } = params;
   const sections = {
     modelTierOverrides: mutable.modelTierOverrides,
+    modelVisibilityOverrides: mutable.modelVisibilityOverrides,
     savedProviderEndpoints: mutable.savedProviderEndpoints,
   };
 

@@ -611,6 +611,14 @@ describe("agent personalities compatibility", () => {
     expect(parsed.agentPersonalities).toEqual({ personalities: [] });
   });
 
+  test("daemon config without model visibility policy defaults to all models visible", () => {
+    const parsed = MutableDaemonConfigSchema.parse({ mcp: { injectIntoAgents: true } });
+    expect(parsed.modelVisibilityOverrides).toEqual([]);
+
+    const patch = MutableDaemonConfigPatchSchema.parse({ appendSystemPrompt: "x" });
+    expect(patch).not.toHaveProperty("modelVisibilityOverrides");
+  });
+
   test("a config patch without agentPersonalities cannot inject the default (roster-wipe guard)", () => {
     const parsed = MutableDaemonConfigPatchSchema.parse({ appendSystemPrompt: "x" });
     expect(parsed).not.toHaveProperty("agentPersonalities");

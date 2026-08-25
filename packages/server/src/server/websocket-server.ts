@@ -876,6 +876,7 @@ export class VoiceAssistantWebSocketServer {
       );
       this.agentManager.updateProviderRegistry(nextAgentManagerState);
       this.providerSnapshotManager.setModelTierOverrides(config.modelTierOverrides);
+      this.providerSnapshotManager.setModelVisibilityOverrides(config.modelVisibilityOverrides);
       // Rebuild the registry so the openai-compat client picks up connector
       // enable/disable and per-tool edits on the next spawn, without a restart.
       this.agentManager.updateProviderRegistry(
@@ -2060,6 +2061,8 @@ export class VoiceAssistantWebSocketServer {
         agentTeams: true,
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         modelTierOverrides: true,
+        // COMPAT(modelVisibilityOverrides): added in v0.8.18, drop the gate when daemon floor >= v0.8.18.
+        modelVisibilityOverrides: true,
         // COMPAT(savedProviderEndpoints): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
         savedProviderEndpoints: true,
         // COMPAT(agentOrchestration): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.

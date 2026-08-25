@@ -59,6 +59,17 @@ describe("resolveProviderDiscoveredModels", () => {
     expect(result.cache?.models).toEqual([piModel]);
   });
 
+  it("keeps hidden models in Settings so they can be shown again", () => {
+    const hiddenModel: AgentModelDefinition = {
+      ...grokModel,
+      isVisible: false,
+    };
+
+    const result = resolveModels({ provider: "grok", currentModels: [hiddenModel] });
+
+    expect(result.models).toEqual([hiddenModel]);
+  });
+
   it("does not show one provider's cached models while another provider loads", () => {
     const ready = resolveModels({ provider: "pi", currentModels: [piModel] });
 

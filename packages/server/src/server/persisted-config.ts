@@ -279,6 +279,16 @@ const ModelTierOverrideConfigSchema = z
 
 export type PersistedModelTierOverride = z.infer<typeof ModelTierOverrideConfigSchema>;
 
+const ModelVisibilityOverrideConfigSchema = z
+  .object({
+    provider: z.string().min(1),
+    modelId: z.string().min(1),
+    visible: z.boolean(),
+  })
+  .passthrough();
+
+export type PersistedModelVisibilityOverride = z.infer<typeof ModelVisibilityOverrideConfigSchema>;
+
 // Persisted remembered provider endpoints. Mirrors SavedProviderEndpointSchema
 // on the wire. The credential is stored in the clear, exactly like the live
 // `agents.providers.<id>.env.OPENAI_API_KEY` it was copied from - this is a
@@ -548,6 +558,7 @@ export const PersistedConfigSchema = z
         agentPersonalities: AgentPersonalitiesSchema.optional(),
         agentTeams: AgentTeamsSchema.optional(),
         modelTierOverrides: z.array(ModelTierOverrideConfigSchema).optional(),
+        modelVisibilityOverrides: z.array(ModelVisibilityOverrideConfigSchema).optional(),
         savedProviderEndpoints: z.array(SavedProviderEndpointConfigSchema).optional(),
       })
       .strict()

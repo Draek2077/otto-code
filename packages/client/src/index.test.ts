@@ -974,6 +974,7 @@ const DAEMON_CONFIG_SCHEMA_DEFAULTS = {
   agentPersonalities: { personalities: [] },
   agentTeams: { teams: [] },
   modelTierOverrides: [],
+  modelVisibilityOverrides: [],
   savedProviderEndpoints: [],
   connectors: [],
   appendSystemPrompt: "",

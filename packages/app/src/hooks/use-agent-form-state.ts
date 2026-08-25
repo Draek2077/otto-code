@@ -9,6 +9,7 @@ import type {
 import { useHosts } from "@/runtime/host-runtime";
 import { buildProviderDefinitions } from "@/utils/provider-definitions";
 import { filterModesForModel, findModelDefinition } from "@/provider-selection/mode-support";
+import { filterSelectableModels } from "@/provider-selection/model-catalog";
 import { applyAgentProfilePreferences } from "@/create-agent-preferences/preferences";
 import type { MaterializedAgentProfile } from "@/agent-profiles";
 import {
@@ -207,7 +208,7 @@ function buildAllProviderModels(
 ): Map<string, AgentModelDefinition[]> {
   const map = new Map<string, AgentModelDefinition[]>();
   for (const entry of snapshotEntries ?? []) {
-    map.set(entry.provider, entry.models ?? []);
+    map.set(entry.provider, filterSelectableModels(entry.models ?? null) ?? []);
   }
   return map;
 }
@@ -217,7 +218,7 @@ function buildProviderModelsByProvider(
 ): ProviderModelsByProvider {
   const map: ProviderModelsByProvider = new Map();
   for (const entry of snapshotEntries ?? []) {
-    map.set(entry.provider, entry.models ?? null);
+    map.set(entry.provider, filterSelectableModels(entry.models ?? null));
   }
   return map;
 }
@@ -361,7 +362,9 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         : null,
     [formState.provider, snapshotEntries],
   );
-  const snapshotSelectedProviderModels = snapshotSelectedEntry?.models ?? null;
+  const snapshotSelectedProviderModels = filterSelectableModels(
+    snapshotSelectedEntry?.models ?? null,
+  );
   const selectedProviderIsLoading = snapshotSelectedEntry?.status === "loading";
   const snapshotSelectedProviderModes = resolveSelectedProviderModes({
     selectedEntry: snapshotSelectedEntry,

@@ -120,6 +120,8 @@ export interface AgentModelDefinition {
    * routing to prefer the cheapest capable model. See model-tiers.ts.
    */
   tier?: ModelTier;
+  /** False when hidden from client model pickers; absent means visible. */
+  isVisible?: boolean;
   /**
    * False when this model cannot run the provider's "auto" permission mode
    * (e.g. Claude's classifier-based Auto mode is unsupported on Haiku, and on

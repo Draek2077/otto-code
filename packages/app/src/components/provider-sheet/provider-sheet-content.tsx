@@ -1,8 +1,8 @@
-import { FileText, Plus, RotateCw, Search, Trash2 } from "@/components/icons/material-icons";
+import { Check, FileText, Plus, RotateCw, Search, Trash2 } from "@/components/icons/material-icons";
 import type { TFunction } from "i18next";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   AdaptiveModalSheet,
@@ -113,6 +113,51 @@ const ThemedSearchIcon = withUnistyles(Search, (theme) => ({
   size: theme.iconSize.sm,
   color: theme.colors.foregroundMuted,
 }));
+
+const ThemedModelVisibilityCheck = withUnistyles(Check, (theme) => ({
+  size: theme.iconSize.xs,
+  color: theme.colors.accentForeground,
+}));
+
+export function ModelVisibilityCheckbox({
+  modelId,
+  visible,
+  disabled,
+  onChange,
+}: {
+  modelId: string;
+  visible: boolean;
+  disabled: boolean;
+  onChange: (modelId: string, visible: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const accessibilityState = useMemo(() => ({ checked: visible, disabled }), [disabled, visible]);
+  const checkboxStyle = useMemo(
+    () => [
+      sheetStyles.modelVisibilityCheckbox,
+      visible ? sheetStyles.modelVisibilityCheckboxChecked : null,
+      disabled ? sheetStyles.modelVisibilityCheckboxDisabled : null,
+    ],
+    [disabled, visible],
+  );
+  const handlePress = useCallback(() => onChange(modelId, !visible), [modelId, onChange, visible]);
+
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityLabel={t("settings.providers.models.visibilityLabel", { id: modelId })}
+      accessibilityState={accessibilityState}
+      aria-checked={visible}
+      disabled={disabled}
+      hitSlop={6}
+      onPress={handlePress}
+      style={checkboxStyle}
+      testID={`model-visibility-${modelId}`}
+    >
+      {visible ? <ThemedModelVisibilityCheck /> : null}
+    </Pressable>
+  );
+}
 
 export function ModelsSearchField({
   initialValue,
@@ -362,6 +407,7 @@ type ProviderSheetFeature =
   | "providerRemove"
   | "artifactsToolGroup"
   | "modelTierOverrides"
+  | "modelVisibilityOverrides"
   | "savedProviderEndpoints"
   | "openaiCompatMaxToolRounds"
   | "openaiCompatActionBreaker"
@@ -1311,6 +1357,23 @@ const sheetStyles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     gap: theme.spacing[1],
+  },
+  modelVisibilityCheckbox: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.foregroundMuted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modelVisibilityCheckboxChecked: {
+    backgroundColor: theme.colors.accent,
+    borderColor: theme.colors.accent,
+  },
+  modelVisibilityCheckboxDisabled: {
+    opacity: 0.5,
   },
   modelFieldRow: {
     flexDirection: "row",

@@ -599,6 +599,7 @@ export function loadConfig(
     agentPersonalities: persisted.agents?.agentPersonalities,
     agentTeams: persisted.agents?.agentTeams,
     modelTierOverrides: persisted.agents?.modelTierOverrides,
+    modelVisibilityOverrides: persisted.agents?.modelVisibilityOverrides,
     savedProviderEndpoints: persisted.agents?.savedProviderEndpoints,
     providerOverrides,
     log: resolveLogConfigFromEnv(env, persisted),

@@ -367,6 +367,47 @@ describe("ProviderSnapshotManager public surface", () => {
     }
   });
 
+  test("stamps picker visibility without making hidden models unrunnable", async () => {
+    const models: AgentModelDefinition[] = [
+      { provider: "codex", id: "visible", label: "Visible" },
+      { provider: "codex", id: "hidden", label: "Hidden" },
+    ];
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      modelVisibilityOverrides: [{ provider: "codex", modelId: "hidden", visible: false }],
+      extraClients: {
+        codex: createExtraClient("codex", {
+          isAvailable: async () => true,
+          fetchCatalog: async () => ({ models, modes: [] }),
+        }),
+      },
+    });
+
+    try {
+      const entry = await manager.getProvider({
+        cwd: "/tmp/project",
+        provider: "codex",
+        wait: true,
+      });
+      expect(entry.models).toEqual([
+        { provider: "codex", id: "visible", label: "Visible" },
+        { provider: "codex", id: "hidden", label: "Hidden", isVisible: false },
+      ]);
+      expect(
+        (await manager.listModels({ cwd: "/tmp/project", provider: "codex" })).map(
+          (model) => model.id,
+        ),
+      ).toEqual(["visible", "hidden"]);
+
+      manager.setModelVisibilityOverrides([]);
+      expect(
+        manager.getSnapshot("/tmp/project").find((item) => item.provider === "codex")?.models,
+      ).toEqual(models);
+    } finally {
+      manager.destroy();
+    }
+  });
+
   test("explicit refresh re-probes only the requested warm provider", async () => {
     const cwd = "/tmp/project";
     const isAvailableCodex = vi.fn(async () => true);

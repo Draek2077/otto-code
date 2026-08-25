@@ -33,7 +33,7 @@ import type {
   ProviderCompactionConfig,
 } from "@otto-code/protocol/provider-config";
 import type { ModelTier } from "@otto-code/protocol/agent-types";
-import type { ModelTierOverride } from "@otto-code/protocol/messages";
+import type { ModelTierOverride, ModelVisibilityOverride } from "@otto-code/protocol/messages";
 import { resolveModelTier } from "@otto-code/protocol/model-tiers";
 import {
   buildProviderRegistry,
@@ -137,6 +137,8 @@ export interface ProviderSnapshotManagerOptions {
   diagnosticTimeoutMs?: number;
   /** User per-model tier tags, applied when stamping model tiers at ingest. */
   modelTierOverrides?: ModelTierOverride[];
+  /** Host-owned model-picker visibility, applied beside tier stamping. */
+  modelVisibilityOverrides?: ModelVisibilityOverride[];
   /** Daemon-wide connector registry, injected into the openai-compat provider. */
   connectors?: readonly ConnectorConfig[];
   /** Endpoint source for the built-in otto-brain provider; see BuildProviderRegistryOptions. */
@@ -145,6 +147,7 @@ export interface ProviderSnapshotManagerOptions {
 
 // provider → (modelId → tier), the lookup form of the stored override array.
 type ModelTierOverrideIndex = Map<string, Map<string, ModelTier>>;
+type ModelVisibilityOverrideIndex = Map<string, Map<string, boolean>>;
 
 function buildModelTierOverrideIndex(
   overrides?: readonly ModelTierOverride[],
@@ -157,6 +160,21 @@ function buildModelTierOverrideIndex(
       index.set(override.provider, byModel);
     }
     byModel.set(override.modelId, override.tier);
+  }
+  return index;
+}
+
+function buildModelVisibilityOverrideIndex(
+  overrides?: readonly ModelVisibilityOverride[],
+): ModelVisibilityOverrideIndex {
+  const index: ModelVisibilityOverrideIndex = new Map();
+  for (const override of overrides ?? []) {
+    let byModel = index.get(override.provider);
+    if (!byModel) {
+      byModel = new Map();
+      index.set(override.provider, byModel);
+    }
+    byModel.set(override.modelId, override.visible);
   }
   return index;
 }
@@ -290,12 +308,16 @@ export class ProviderSnapshotManager {
   private providerRegistry: Record<AgentProvider, ProviderDefinition>;
   private providerClients: Record<AgentProvider, AgentClient>;
   private modelTierOverrides: ModelTierOverrideIndex;
+  private modelVisibilityOverrides: ModelVisibilityOverrideIndex;
   private connectors: readonly ConnectorConfig[] | undefined;
   private readonly brainEndpoint: BrainProviderEndpointResolver | undefined;
 
   constructor(options: ProviderSnapshotManagerOptions) {
     this.logger = options.logger;
     this.modelTierOverrides = buildModelTierOverrideIndex(options.modelTierOverrides);
+    this.modelVisibilityOverrides = buildModelVisibilityOverrideIndex(
+      options.modelVisibilityOverrides,
+    );
     this.connectors = options.connectors;
     this.workspaceGitService = options.workspaceGitService;
     this.managedProcesses = options.managedProcesses;
@@ -678,6 +700,26 @@ export class ProviderSnapshotManager {
     }
   }
 
+  /**
+   * Re-stamp picker visibility on loaded models without probing providers. The
+   * full catalog stays in each snapshot so Settings can always re-show a model.
+   */
+  setModelVisibilityOverrides(overrides: readonly ModelVisibilityOverride[] | undefined): void {
+    this.modelVisibilityOverrides = buildModelVisibilityOverrideIndex(overrides);
+    for (const [cwd, snapshot] of this.snapshots.entries()) {
+      let changed = false;
+      for (const [provider, entry] of snapshot) {
+        if (!entry.models) continue;
+        snapshot.set(provider, {
+          ...entry,
+          models: this.stampModelMetadata(provider, entry.models),
+        });
+        changed = true;
+      }
+      if (changed) this.emitChange(cwd);
+    }
+  }
+
   // Stamp each model's `tier` at ingest: a user override wins, else inference
   // (catalog → name pattern). Undefined leaves the model tier-less for the
   // consumer's context-window heuristic.
@@ -690,6 +732,21 @@ export class ProviderSnapshotManager {
       ...model,
       tier: resolveModelTier(model, overrides?.get(model.id)),
     }));
+  }
+
+  private stampModelMetadata(
+    provider: AgentProvider,
+    models: readonly AgentModelDefinition[],
+  ): AgentModelDefinition[] {
+    const visibility = this.modelVisibilityOverrides.get(provider);
+    const stampedModels: AgentModelDefinition[] = [];
+    for (const model of this.stampModelTiers(provider, models)) {
+      const { isVisible: _previousVisibility, ...base } = model;
+      stampedModels.push(
+        visibility?.get(model.id) === false ? { ...base, isVisible: false } : base,
+      );
+    }
+    return stampedModels;
   }
 
   on(event: "change", listener: ProviderSnapshotChangeListener): this {
@@ -1166,7 +1223,7 @@ export class ProviderSnapshotManager {
           catalog.defaultModeId === undefined ? definition.defaultModeId : catalog.defaultModeId,
         status: "ready",
         enabled: true,
-        models: this.stampModelTiers(provider, catalog.models),
+        models: this.stampModelMetadata(provider, catalog.models),
         modes: catalog.modes,
         fetchedAt: new Date().toISOString(),
       });

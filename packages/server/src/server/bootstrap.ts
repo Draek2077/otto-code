@@ -243,6 +243,7 @@ import {
   type PersistedAgentPersonality,
   type PersistedAgentTeam,
   type PersistedModelTierOverride,
+  type PersistedModelVisibilityOverride,
   type PersistedSavedProviderEndpoint,
 } from "./persisted-config.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
@@ -549,6 +550,7 @@ export interface OttoDaemonConfig {
     activeTeamId?: string | null;
   };
   modelTierOverrides?: PersistedModelTierOverride[];
+  modelVisibilityOverrides?: PersistedModelVisibilityOverride[];
   savedProviderEndpoints?: PersistedSavedProviderEndpoint[];
   providerOverrides?: Record<string, ProviderOverride>;
   log?: PersistedConfig["log"];
@@ -954,6 +956,9 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     // User per-model tier tags round-trip config.json ⇄ mutable config; absent
     // on disk reads as an empty tag set (all tiers inferred at ingest).
     modelTierOverrides: config.modelTierOverrides ?? [],
+    // Model picker visibility is host-owned and defaults to showing every
+    // selectable model when no policy has been stored yet.
+    modelVisibilityOverrides: config.modelVisibilityOverrides ?? [],
     // Remembered provider endpoints round-trip config.json ⇄ mutable config;
     // absent on disk reads as "nothing remembered yet". A hand-edited entry may
     // omit apiKey (the wire shape requires the field), so it reads as "saved,
@@ -1402,6 +1407,7 @@ export async function createOttoDaemon(
     isDev: config.isDev === true,
     extraClients: config.agentClients,
     modelTierOverrides: daemonConfigStore.get().modelTierOverrides,
+    modelVisibilityOverrides: daemonConfigStore.get().modelVisibilityOverrides,
     connectors: daemonConfigStore.get().connectors,
     brainEndpoint: () => brainManager.getProviderEndpoint(),
   });

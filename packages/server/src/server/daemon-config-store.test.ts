@@ -590,6 +590,38 @@ describe("DaemonConfigStore", () => {
     expect(loadPersistedConfig(ottoHome).agents?.modelTierOverrides).toEqual([]);
   });
 
+  test("patch persists model visibility overrides into config.json and clears them", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+    );
+
+    store.patch({
+      modelVisibilityOverrides: [{ provider: "otto-brain", modelId: "local-70b", visible: false }],
+    });
+
+    expect(store.get().modelVisibilityOverrides).toEqual([
+      { provider: "otto-brain", modelId: "local-70b", visible: false },
+    ]);
+    expect(loadPersistedConfig(ottoHome).agents?.modelVisibilityOverrides).toEqual([
+      { provider: "otto-brain", modelId: "local-70b", visible: false },
+    ]);
+
+    store.patch({ modelVisibilityOverrides: [] });
+    expect(loadPersistedConfig(ottoHome).agents?.modelVisibilityOverrides).toEqual([]);
+  });
+
   const baseInitial = {
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: false },
