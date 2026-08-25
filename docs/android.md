@@ -210,6 +210,66 @@ mounts and daemon WebSocket traffic. The markers contain message types and sizes
 contents, and emit only while a system trace records the app
 (`perfetto -a me.ottocode.mobile ...`).
 
+### Profiling a native-heap leak on a physical device
+
+`npm run android:production` signs `release` with the **debug** keystore, so the APK will not
+install over a sideloaded Otto. To profile the app a user actually has installed, drive gradle
+directly with the repo keystore injected, exactly as `.github/workflows/android-apk-release.yml`
+does. A signature mismatch is refused by Android rather than destructive, so attempting the install
+is safe; only uninstalling first would lose data.
+
+```bash
+cd packages/app
+OTTO_PROFILE_BUILD=1 APP_VARIANT=production   npx expo prebuild --platform android --clean --non-interactive
+grep -q profileable android/app/src/main/AndroidManifest.xml || exit 1   # assert, do not assume
+
+cd android
+./gradlew :app:assembleRelease --no-parallel --max-workers=1   -PreactNativeArchitectures=arm64-v8a   -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease   -x generateReleaseLintModel -x generateReleaseLintVitalModel   "-Pandroid.injected.signing.store.file=$(cygpath -m ../credentials/android/keystore.jks)"   "-Pandroid.injected.signing.store.password=..."   "-Pandroid.injected.signing.key.alias=..."   "-Pandroid.injected.signing.key.password=..."
+```
+
+Credentials come from `packages/app/credentials.json`. Restricting to `arm64-v8a` roughly halves
+the build; it was 18 minutes cold, 10 to 12 warm.
+
+Then capture. `heapprofd` works on a **profileable** app on a user build, which is the whole reason
+for `OTTO_PROFILE_BUILD`:
+
+```bash
+adb push heapprofd.cfg /data/local/tmp/heapprofd.cfg
+adb shell 'cat /data/local/tmp/heapprofd.cfg | perfetto --txt -c - -o /data/misc/perfetto-traces/heap.pftrace'
+adb pull /data/misc/perfetto-traces/heap.pftrace
+```
+
+Analyse offline with `trace_processor_shell` from
+[perfetto releases](https://github.com/google/perfetto/releases) (`windows-amd64.zip`). Net growth
+by owning callstack, which is the query that attributes a leak:
+
+```sql
+create perfetto table cs_net as
+  select callsite_id as cs, sum(size) as net from heap_profile_allocation
+  where heap_name = 'libc.malloc' group by callsite_id having net > 0;
+-- then walk stack_profile_callsite.parent_id recursively and join
+-- stack_profile_frame / stack_profile_mapping to name each frame
+```
+
+#### Traps that cost real time here
+
+- **`dumpsys meminfo` forces a GC in the target process**, so it perturbs exactly what it measures.
+  A run of `Explicit` GCs in logcat can be your own sampling. Use `VmRSS` from
+  `/proc/<pid>/status` for slope measurements; it is non-perturbing.
+- **Hermes frames symbolicate as empty names** in heapprofd. A native profile can prove that JS
+  drives a per-frame commit but not which component does. Budget for elimination, or bring a
+  React-level profiler.
+- **Git Bash rewrites device paths.** `adb push x /data/local/tmp` becomes
+  `C:/Program Files/Git/data/local/tmp`. Set `MSYS_NO_PATHCONV=1`, and then convert the _local_
+  side yourself with `cygpath -w`, because that variable disables both directions.
+- **`cmd //c "gradlew.bat ..."` does not resolve** from Git Bash. Use the POSIX `./gradlew`, which
+  works fine on Windows.
+- **Foreground versus background matters.** A render-driven leak stops dead when the app is
+  backgrounded. Record `topResumedActivity` alongside RSS or a background sample will read as a
+  fixed leak.
+
+Past investigations using this workflow are recorded as Otto Knowledge findings.
+
 Or from `packages/app`:
 
 ```bash

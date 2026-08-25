@@ -14,6 +14,8 @@
 
 - Stop a wide search from bogging the app down: a file's hits render in bounded rows so the list can virtualize them, each hit is syntax-highlighted once instead of on every scroll pass, and the note and selection bookkeeping no longer walks every result on every streamed batch
 - Center the Search gutter's comment button on the gutter divider, where the Changes diff already puts it
+- Stop the Android app closing itself when a menu, dropdown or picker opens. The menu surface handed Android a transform origin in a form it rejects, and on a release build that takes the whole app down rather than showing an error
+- Stop the working indicator's animation clock running for the rest of the session once the first spinner has been shown, even with no spinner anywhere on screen
 
 ## 0.8.15 - 2026-08-23
 
