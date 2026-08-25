@@ -252,7 +252,7 @@ export const ru: TranslationResources = {
       lessons_other: "уроков: {{count}}",
     },
     // What one personality has learned, and the exact text injected because of
-    // it. See docs/agent-personalities.md § Memory.
+    // it. See docs/agent-profiles.md § Memory.
     memory: {
       noPersonality:
         "Выберите личность выше, чтобы увидеть, чему она научилась и что это добавляет к каждому её запросу.",

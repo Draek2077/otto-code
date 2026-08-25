@@ -8,7 +8,7 @@ Guiding principle: **configure the least amount needed for proper function; ever
 tweaked and discovered later.** When the wizard finishes, the user lands on the normal open-project
 screen with a working, themed agent roster and at least one team ready to go.
 
-Related: [agent-personalities.md](agent-personalities.md) · [agent-teams.md](agent-teams.md) ·
+Related: [agent-profiles.md](agent-profiles.md) · [agent-teams.md](agent-teams.md) ·
 [expo-router.md](expo-router.md) (route ownership and startup restore) ·
 [sidebar-reveal](../projects/README.md#active-charters) for the unbuilt tutorial workspace step.
 

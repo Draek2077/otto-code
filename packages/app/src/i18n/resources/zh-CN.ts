@@ -250,7 +250,7 @@ export const zhCN: TranslationResources = {
       lessons_other: "已记住 {{count}} 条经验",
     },
     // What one personality has learned, and the exact text injected because of
-    // it. See docs/agent-personalities.md § Memory.
+    // it. See docs/agent-profiles.md § Memory.
     memory: {
       noPersonality:
         "在上方选择一个配置，即可看到它学到了什么，以及这些内容会为它的每次请求增加什么。",

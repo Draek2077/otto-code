@@ -42,7 +42,7 @@ export const ArtifactMetadataSchema = z.object({
   // Spinner glow colors of the Agent Personality this artifact was generated
   // under, snapshotted at create time like the provider/model above. Absent ⇒
   // the card falls back to the theme's default spinner colors. Purely additive
-  // (no daemon floor needed). See docs/agent-personalities.md.
+  // (no daemon floor needed). See docs/agent-profiles.md.
   generationSpinner: ArtifactSpinnerSchema.nullable().optional(),
   // Human name of the Agent Personality that generated (last generated) this
   // artifact, snapshotted at create/regenerate time like the provider/model

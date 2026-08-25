@@ -44,7 +44,7 @@ export function addRunOptions(cmd: Command): Command {
       .option("--thinking <id>", "Thinking option ID to use for this run")
       .option("--mode <mode>", "Provider-specific mode (e.g., plan, default, bypass)")
       // Otto-only: personalities are a fork feature, so this option has no
-      // upstream counterpart. See docs/agent-personalities.md.
+      // upstream counterpart. See docs/agent-profiles.md.
       .option(
         "--personality <name>",
         "Spawn as a host personality (name or id): applies its provider/model/mode and identity/prompt. Explicit --provider/--model/--mode override.",

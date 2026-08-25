@@ -639,5 +639,5 @@ room, and the aggregate severity.
 - [refine.md](refine.md) - the propose-then-accept loop compaction runs on
 - [token-economy.md](token-economy.md) - the five structural multipliers this measures against
 - [glossary.md](glossary.md) - spend vs occupancy, and why they never share a readout
-- [agent-personalities.md § Memory](agent-personalities.md#memory-accrued-lessons) - the accrued
+- [agent-profiles.md § Memory](agent-profiles.md#memory-accrued-lessons) - the accrued
   lessons this tab is the one place to see and manage

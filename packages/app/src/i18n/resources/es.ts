@@ -252,7 +252,7 @@ export const es: TranslationResources = {
       lessons_other: "{{count}} lecciones",
     },
     // What one personality has learned, and the exact text injected because of
-    // it. See docs/agent-personalities.md § Memory.
+    // it. See docs/agent-profiles.md § Memory.
     memory: {
       noPersonality:
         "Elige arriba un perfil para ver lo que ha aprendido y lo que eso añade a cada petición que hace.",

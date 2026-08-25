@@ -74,7 +74,7 @@ Anyone who builds software:
 - One-click ACP provider catalog: CodeWhale, Cursor, Hermes, Qwen Coder, Kimi Code, and others - plus custom ACP providers
 - Preview: agents start project dev servers from `.claude/launch.json` and verify rendered changes in a real Otto browser tab (snapshots, DOM inspection, console/network, interaction) - see [preview.md](preview.md)
 - Artifacts: agents generate self-contained HTML artifacts stored with the project
-- Agent personalities: named, reusable per-host agent templates (provider→model, effort, mode, prompt, roles, and a name/spinner/voice identity) - the ergonomic "who does the work" pick shown atop every model picker, spawnable by orchestrating agents; see [agent-personalities.md](agent-personalities.md)
+- Agent personalities: named, reusable per-host agent templates (provider→model, effort, mode, prompt, roles, and a name/spinner/voice identity) - the ergonomic "who does the work" pick shown atop every model picker, spawnable by orchestrating agents; see [agent-profiles.md](agent-profiles.md)
 - Voice mode: dictate prompts or talk through problems hands-free
 - MCP server exposes the daemon to other agents (create_chat by agent profile, list_agent_profiles, send_chat_prompt, schedules, terminals, worktrees, workspace renaming)
 - Scheduled agents (cron-style triggers) via app, CLI, and MCP

@@ -250,7 +250,7 @@ export const en = {
       lessons_other: "{{count}} lessons",
     },
     // What one agent profile has learned, and the exact text injected because of
-    // it. See docs/agent-personalities.md § Memory.
+    // it. See docs/agent-profiles.md § Memory.
     memory: {
       noPersonality:
         "Pick a profile above to see what it has learned, and what that adds to every request it makes.",

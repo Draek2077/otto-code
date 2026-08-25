@@ -589,7 +589,7 @@ test("onPersonalitySpawn fires once per personality-bound createAgent", async ()
 });
 
 // ---------------------------------------------------------------------------
-// Personality memory injection (docs/agent-personalities.md § Memory)
+// Personality memory injection (docs/agent-profiles.md § Memory)
 // ---------------------------------------------------------------------------
 
 test("a personality's accrued lessons ride the launch prompt but never the stored one", async () => {

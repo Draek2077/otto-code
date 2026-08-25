@@ -13,7 +13,7 @@
 // off is a decision about a *renderer*, not about whether your agents may speak.
 // The cue lines come from the personality (authored in the personality editor),
 // the moments come from agent status, and the switch lives in Settings ->
-// <host> -> Agents. See docs/agent-personalities.md "Voice cues".
+// <host> -> Agents. See docs/agent-profiles.md "Voice cues".
 //
 // Mounted in `_layout.tsx`'s ProvidersWrapper, beside FaviconStatusSync - inside
 // VoiceProvider so the shared audio engine resolves, and above the router so it

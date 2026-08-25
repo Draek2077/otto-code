@@ -102,7 +102,7 @@ export interface OttoAppSettings {
   // surface is open, or whether the Visualizer is enabled at all. Only the main
   // (root) agent speaks, only for personality-backed agents, and only when the
   // host advertises the visualizerVoiceCues + ttsPreview capabilities. On by
-  // default. See docs/agent-personalities.md "Voice cues".
+  // default. See docs/agent-profiles.md "Voice cues".
   agentVoiceCues: boolean;
   // Loudness of those cues as a 0-100 percent - a SEPARATE audio channel from
   // the Visualizer's sound effects (visualizerSoundVolume / visualizerSoundMuted),

@@ -255,7 +255,7 @@ export const ja: TranslationResources = {
       lessons_other: "教訓 {{count}} 件",
     },
     // What one personality has learned, and the exact text injected because of
-    // it. See docs/agent-personalities.md § Memory.
+    // it. See docs/agent-profiles.md § Memory.
     memory: {
       noPersonality:
         "上でプロファイルを選ぶと、そのプロファイルが学んだ内容と、それが各リクエストに何を追加しているかを確認できます。",

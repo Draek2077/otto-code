@@ -143,7 +143,7 @@ and Discovery.
   published treatment of the same design space.
 - **Ch. 16 Resource-Aware Optimization** is the missing prose for [token-economy.md](token-economy.md): Otto has the measurements but no framework for reasoning about them.
 - **Ch. 8 Memory Management** and **Ch. 9 Learning and Adaptation** are the direct input to
-  personality memory, now shipped ([agent-personalities.md § Memory](agent-personalities.md#memory-accrued-lessons)).
+  personality memory, now shipped ([agent-profiles.md § Memory](agent-profiles.md#memory-accrued-lessons)).
   Read them against what shipped: the scoping question resolved to `global ∪ thisProject`, resolved
   rather than configured.
 - **Ch. 19 Evaluation and Monitoring** and **Ch. 20 Prioritization** bear on what an orchestration
@@ -176,7 +176,7 @@ embeddings and no graph database** - consolidation is done by AI passes over mar
 cross-references.
 
 **Relevant to Otto - high value.** This is the closest existing analogue to Otto's shipped
-[personality memory](agent-personalities.md#memory-accrued-lessons), and it validates the central bet
+[personality memory](agent-profiles.md#memory-accrued-lessons), and it validates the central bet
 (daemon-owned, file-based, no new storage engine) with a working example. Otto landed on **one file
 per personality** rather than one file per fact, because here the daemon maintains the store instead
 of an agent doing it by hand. The four mechanisms worth taking:
@@ -195,7 +195,7 @@ of an agent doing it by hand. The four mechanisms worth taking:
    makes it an operation. Directly applicable, and the single best idea in the repo for Otto.
 4. **Skill distillation / model routing** - exploration on a capable model, execution on cheaper
    workers. Otto already has the casting layer to express this
-   ([agent-personalities.md](agent-personalities.md)); COG shows the pattern applied to memory work
+   ([agent-profiles.md](agent-profiles.md)); COG shows the pattern applied to memory work
    specifically.
 
 **Not relevant to Otto:**
@@ -354,7 +354,7 @@ rate means it needs re-running periodically. Full detail: `orchestration-design.
 ## 3. Agent memory and knowledge accrual
 
 The other direction Otto is heading. Personality memory shipped 2026-07-25
-([agent-personalities.md § Memory](agent-personalities.md#memory-accrued-lessons)) on top of the
+([agent-profiles.md § Memory](agent-profiles.md#memory-accrued-lessons)) on top of the
 context surface ([context-management.md](context-management.md)); the sources below are what the next increment -
 smarter consolidation, retrieval at scale - should be built against.
 

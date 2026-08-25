@@ -278,7 +278,7 @@ So **PIP and the tab are mutually exclusive**. `VisualizerPipHost` renders nothi
 
 ## Voice cues (owned by Agents, not here)
 
-Voice cues shipped as a Visualizer sub-feature and **are not one any more** - see [docs/agent-personalities.md](agent-personalities.md) "Voice cues". They play app-wide whether or not a Visualizer surface is open, and whether or not the `visualizer` feature is enabled at all; the toggle lives in **Settings → \<host\> → Agents**. Nothing about them reads the graph.
+Voice cues shipped as a Visualizer sub-feature and **are not one any more** - see [docs/agent-profiles.md](agent-profiles.md) "Voice cues". They play app-wide whether or not a Visualizer surface is open, and whether or not the `visualizer` feature is enabled at all; the toggle lives in **Settings → \<host\> → Agents**. Nothing about them reads the graph.
 
 **Sound here means sound EFFECTS.** `visualizerSoundVolume` / `visualizerSoundMuted` - the Sound slider and the in-page speaker button - drive the vendor page's own effects and nothing else. Cues are a **separate audio channel** with their own `agentVoiceCuesVolume` in Agents settings: two unrelated things (ambience for a graph you are watching vs. a notification that fires while you are somewhere else), so a level that suits one rarely suits the other, and muting the graph must not mute your notifications.
 

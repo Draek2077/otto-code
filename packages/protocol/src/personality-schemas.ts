@@ -351,7 +351,7 @@ export const AgentPersonalitySchema = z
     // and costs nothing, so an off-by-default switch would only mean the feature
     // never starts working for anyone who did not go looking for it. The switch
     // exists to stop a personality accruing, not to start it.
-    // See docs/agent-personalities.md § Memory.
+    // See docs/agent-profiles.md § Memory.
     memoryEnabled: z.boolean().optional(),
   })
   .passthrough();

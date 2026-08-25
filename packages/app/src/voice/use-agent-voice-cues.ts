@@ -30,7 +30,7 @@
 // including ones a directory refresh backfills into the store moments later
 // (createdAt predates attach) - are SEEDED SILENTLY, so connecting to a host
 // never re-announces history. Only agents that spawn / think / finish while
-// you're watching speak. See docs/agent-personalities.md "Voice cues".
+// you're watching speak. See docs/agent-profiles.md "Voice cues".
 import { Buffer } from "buffer";
 import { useEffect, useRef } from "react";
 import type {

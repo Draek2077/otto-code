@@ -468,7 +468,7 @@ export class ScheduleService {
    * Rewrite a target's Personality binding onto the stable id.
    *
    * Renaming a Personality must not break a schedule (see
-   * docs/agent-personalities.md), so the binding persists as the id even though
+   * docs/agent-profiles.md), so the binding persists as the id even though
    * both the MCP tool and the app's schedule form accept a display name. The
    * dynamic team sentinel is not a roster entry and passes through untouched, as
    * does a binding naming nothing on this host: that stays the run-time failure

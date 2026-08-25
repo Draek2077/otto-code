@@ -4073,7 +4073,7 @@ describe("pruneScheduleRuns", () => {
 
 // COMPAT(scheduleProfileBinding): added in v0.8.13, remove after 2027-02-22.
 // A schedule's Personality binding persists as the stable id so a rename cannot
-// break it (docs/agent-personalities.md, "Identity is the id, never the name").
+// break it (docs/agent-profiles.md, "Identity is the id, never the name").
 // Both entry points still accept a display name, so every case here is about
 // what actually lands on disk.
 describe("schedule Personality bindings", () => {

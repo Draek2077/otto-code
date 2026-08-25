@@ -2696,7 +2696,7 @@ export const AgentBackgroundTaskClearResponseMessageSchema = z.object({
 
 // ---------------------------------------------------------------------------
 // Personality memory - the lessons a named personality accrues across sessions.
-// See docs/agent-personalities.md § Memory.
+// See docs/agent-profiles.md § Memory.
 // ---------------------------------------------------------------------------
 
 // Switch a running agent to an Agent Personality (or clear with null). The
