@@ -306,6 +306,40 @@ describe("workspace-layout-store tree transforms", () => {
 });
 
 describe("SplitPane.tabOrientation persistence", () => {
+  it("round-trips a per-pane tabOrientation through persisted storage", async () => {
+    const workspaceKey = createWorkspaceKey();
+    await AsyncStorage.removeItem("workspace-layout-state");
+
+    const writingStore = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+    writingStore.getState().openTabFocused(workspaceKey, {
+      kind: "file",
+      path: "/repo/worktree/a.ts",
+    });
+    writingStore.getState().setPaneTabOrientation(workspaceKey, "main", "vertical");
+
+    await vi.waitFor(async () => {
+      const persisted = await AsyncStorage.getItem("workspace-layout-state");
+      expect(persisted).not.toBeNull();
+      expect(JSON.parse(persisted!)).toMatchObject({
+        state: {
+          layoutByWorkspace: {
+            [workspaceKey]: {
+              root: { kind: "pane", pane: { id: "main", tabOrientation: "vertical" } },
+            },
+          },
+        },
+      });
+    });
+
+    const restoredStore = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+    await restoredStore.persist.rehydrate();
+
+    expect(
+      findPaneById(restoredStore.getState().layoutByWorkspace[workspaceKey].root, "main")
+        ?.tabOrientation,
+    ).toBe("vertical");
+  });
+
   it("round-trips a persisted per-pane tabOrientation through normalizeLayout", () => {
     const layout = normalizeLayout({
       root: createPane({ id: "main", tabIds: ["tab-a"] }),

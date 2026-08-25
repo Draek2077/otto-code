@@ -39,6 +39,12 @@ describe("collectAppSettingsUpdates", () => {
     });
   });
 
+  it("routes the default tab orientation to app settings", () => {
+    expect(collectAppSettingsUpdates({ defaultTabOrientation: "horizontal" })).toEqual({
+      defaultTabOrientation: "horizontal",
+    });
+  });
+
   it("keeps routing the neighbouring appearance fields", () => {
     expect(
       collectAppSettingsUpdates({

@@ -34,6 +34,7 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "interfaceMode",
   "suggestedTasksEnabled",
   "suggestedTasksDefaultMode",
+  "defaultTabOrientation",
   "verticalTabRailWidth",
   "resourceMonitorEnabled",
   "clientResourceBarAllPages",

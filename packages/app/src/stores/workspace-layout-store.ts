@@ -189,6 +189,9 @@ const SplitNodeStorageSchema: z.ZodType<SplitNode> = z.lazy(() =>
         tabIds: z.array(z.string()),
         focusedTabId: z.string().nullable(),
         tabs: z.array(WorkspaceTabStorageSchema).optional(),
+        // A pane-level override is part of the saved layout. Leaving it out of
+        // this strict schema rejects and clears the entire persisted layout.
+        tabOrientation: z.enum(["horizontal", "vertical"]).optional(),
       }),
     }),
     z.strictObject({
