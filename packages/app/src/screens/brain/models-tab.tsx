@@ -25,8 +25,8 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
 import type { BrainHostStatus, BrainInventoryModel, BrainJob } from "@otto-code/protocol/messages";
 import {
-  Brain,
   Eye,
+  Neurology,
   Pencil,
   Play,
   RotateCw,
@@ -78,7 +78,7 @@ const ThemedTrash = withUnistyles(Trash2);
 const ThemedX = withUnistyles(X);
 const ThemedEye = withUnistyles(Eye);
 const ThemedZap = withUnistyles(Zap);
-const ThemedBrainCap = withUnistyles(Brain);
+const ThemedNeurologyCap = withUnistyles(Neurology);
 const ThemedBrainModelFamilyIcon = withUnistyles(BrainModelFamilyIcon);
 const ThemedSpinner = withUnistyles(LoadingSpinner);
 
@@ -267,7 +267,7 @@ function CapabilityIcons({ model }: { model: BrainInventoryModel }) {
       ) : null}
       {model.reasoning ? (
         <CapabilityIcon label="Reasoning">
-          <ThemedBrainCap uniProps={reasoningIconMapping} />
+          <ThemedNeurologyCap uniProps={reasoningIconMapping} />
         </CapabilityIcon>
       ) : null}
     </View>
