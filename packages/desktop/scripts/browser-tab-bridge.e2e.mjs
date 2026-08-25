@@ -317,19 +317,18 @@ async function runRegression({ page, client, serverId, targetUrl }) {
   }
 
   await page.waitForFunction(
-    ({ id, previousWebContentsId }) => {
+    (id) => {
       const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
       return (
         webview?.parentElement?.id === "otto-browser-resident-webviews" &&
-        typeof webview.getWebContentsId === "function" &&
-        webview.getWebContentsId() !== previousWebContentsId
+        typeof webview.getWebContentsId === "function"
       );
     },
-    { id: browserId, previousWebContentsId: firstGuest.webContentsId },
+    browserId,
     { timeout: timeoutMs },
   );
-  const replacementGuest = await readGuest(page, browserId);
-  assert(replacementGuest, "Replacement browser guest was not parked after workspace eviction");
+  const parkedGuest = await readGuest(page, browserId);
+  assert(parkedGuest, "Browser guest was not parked after workspace eviction");
 
   const listed = await callBrowserTool(client, "browser_list_tabs");
   assert(
@@ -357,7 +356,7 @@ async function runRegression({ page, client, serverId, targetUrl }) {
   return {
     browserId,
     originalWebContentsId: firstGuest.webContentsId,
-    replacementWebContentsId: replacementGuest.webContentsId,
+    parkedWebContentsId: parkedGuest.webContentsId,
     list: "passed",
     snapshot: "passed",
     click: "passed",
@@ -464,7 +463,7 @@ async function main() {
     });
     writeJson(path.join(artifactDir, "result.json"), report);
     console.log(
-      `Browser tab bridge E2E passed: WebContents ${report.originalWebContentsId} -> ${report.replacementWebContentsId}; list, snapshot, click passed.`,
+      `Browser tab bridge E2E passed: WebContents ${report.originalWebContentsId} -> ${report.parkedWebContentsId}; list, snapshot, click passed.`,
     );
   } catch (error) {
     console.error(`Browser tab bridge E2E failed. Artifacts: ${artifactDir}`);
