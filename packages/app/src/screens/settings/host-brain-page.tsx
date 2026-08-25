@@ -1,45 +1,38 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, Text, TextInput, View } from "react-native";
-import type { StyleProp, TextStyle, ViewStyle } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
 import type {
-  BrainHostStatus,
   BrainTailscaleInfo,
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
 } from "@otto-code/protocol/messages";
-import {
-  Activity,
-  Copy,
-  Play,
-  RefreshCw,
-  RotateCw,
-  Square,
-  Waypoints,
-} from "@/components/icons/material-icons";
+import { Copy, RefreshCw, Waypoints } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
-import { useRouter } from "expo-router";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
-import { buildBrainRoute } from "@/utils/host-routes";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { useBrainStatus } from "@/screens/brain/use-brain-data";
+import {
+  buildBrainStatusDetails,
+  resolveBrainConnectionPhase,
+  type BrainConnectionPhase,
+} from "@/screens/settings/host-brain-status";
 
 type BrainConfig = MutableDaemonConfig["brain"];
 type BrainConfigPatch = NonNullable<MutableDaemonConfigPatch["brain"]>;
 type TlsMode = BrainConfig["tls"]["mode"];
 type BrainMode = BrainConfig["mode"];
 type RuntimeLogVerbosity = BrainConfig["runtime"]["logVerbosity"];
-type BrainAction = "start" | "stop" | "restart";
 type ShareAccess = "key" | "open";
 
 const MODE_OPTIONS: { value: BrainMode; label: string }[] = [
@@ -83,10 +76,6 @@ function generateAccessKey(): string {
 // Themed leaf helpers (no useUnistyles: banned - see docs/unistyles.md)
 // ---------------------------------------------------------------------------
 
-const ThemedPlay = withUnistyles(Play);
-const ThemedSquare = withUnistyles(Square);
-const ThemedRotateCw = withUnistyles(RotateCw);
-const ThemedActivity = withUnistyles(Activity);
 const ThemedWaypoints = withUnistyles(Waypoints);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedRefreshCw = withUnistyles(RefreshCw);
@@ -99,10 +88,6 @@ const foregroundIconMapping = (theme: Theme) => ({
   size: theme.iconSize.sm,
 });
 
-const startIcon = <ThemedPlay uniProps={foregroundIconMapping} />;
-const stopIcon = <ThemedSquare uniProps={foregroundIconMapping} />;
-const restartIcon = <ThemedRotateCw uniProps={foregroundIconMapping} />;
-const dashboardIcon = <ThemedActivity uniProps={foregroundIconMapping} />;
 const discoverIcon = <ThemedWaypoints uniProps={foregroundIconMapping} />;
 const copyIcon = <ThemedCopy uniProps={foregroundIconMapping} />;
 const generateIcon = <ThemedRefreshCw uniProps={foregroundIconMapping} />;
@@ -111,311 +96,83 @@ const generateIcon = <ThemedRefreshCw uniProps={foregroundIconMapping} />;
 // Formatting
 // ---------------------------------------------------------------------------
 
-function brainStatusQueryKey(serverId: string): readonly [string, string] {
-  return ["brain-host-status", serverId] as const;
-}
+const CONNECTION_PRESENTATION: Record<
+  BrainConnectionPhase,
+  { label: string; variant: "success" | "warning" | "error" | "muted" }
+> = {
+  connected: { label: "Connected", variant: "success" },
+  starting: { label: "Starting", variant: "warning" },
+  stopped: { label: "Stopped", variant: "muted" },
+  checking: { label: "Checking", variant: "warning" },
+  disabled: { label: "Disabled", variant: "muted" },
+  unsupported: { label: "Unavailable", variant: "muted" },
+  unreachable: { label: "Unreachable", variant: "error" },
+};
 
-function formatEndpoint(status: BrainHostStatus): string | null {
-  const host = status.displayHost ?? status.host;
-  if (!host || !status.port) {
-    return null;
-  }
-  const scheme = status.secure ? "https" : "http";
-  return `${scheme}://${host}:${status.port}`;
-}
-
-function formatVram(bytes: number | null | undefined): string | null {
-  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
-    return null;
-  }
-  return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
-}
-
-// ---------------------------------------------------------------------------
-// Status section
-// ---------------------------------------------------------------------------
-
-function useBrainHostStatusQuery(serverId: string, enabled: boolean) {
-  const client = useHostRuntimeClient(serverId);
-  return useFetchQuery({
-    queryKey: brainStatusQueryKey(serverId),
-    enabled: enabled && Boolean(client),
-    dataShape: "value",
-    staleTimeMs: 5000,
-    refetchInterval: 5000,
-    queryFn: async () => {
-      if (!client) {
-        throw new Error("Brain host is unavailable");
-      }
-      return client.brainHostStatus();
-    },
-  });
-}
-
-function StatusDetailRow({
-  title,
-  value,
-  showBorder,
-}: {
-  title: string;
-  value: string;
-  showBorder: boolean;
-}) {
-  const rowStyle = useMemo(
-    () => [settingsStyles.row, showBorder && settingsStyles.rowBorder],
-    [showBorder],
-  );
+function BrainStatusDetailRow({ title, value }: { title: string; value: string }) {
   return (
-    <View style={rowStyle}>
+    <View style={ROW_WITH_BORDER_STYLE}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
       </View>
-      <Text style={styles.detailValue} numberOfLines={1}>
+      <Text style={styles.detailValue} numberOfLines={1} selectable>
         {value}
       </Text>
     </View>
   );
 }
 
-function BrainStatusSection({ serverId, isConnected }: { serverId: string; isConnected: boolean }) {
+/** Read-only proof that the server settings above resolve to the intended Brain. */
+function BrainConnectionStatusSection({ serverId }: { serverId: string }) {
   const { config } = useDaemonConfig(serverId);
-  const isRemote = config?.brain.mode === "remote";
+  const brain = config?.brain ?? null;
+  const hostConnected = useHostRuntimeIsConnected(serverId);
   const statusSupported = useHostFeature(serverId, "brainStatus");
-  const query = useBrainHostStatusQuery(serverId, isConnected && statusSupported);
-
+  const query = useBrainStatus(serverId, {
+    enabled: statusSupported && hostConnected && brain?.enabled === true,
+  });
   const status = query.data ?? null;
-  const running = status?.running === true;
-  // Three states, not two. The daemon reports `state: "starting"` (running:
-  // false) while the child is up but the host API isn't answering yet - which is
-  // exactly what a big model load looks like for its first several seconds. A
-  // two-state running/stopped pill renders that window as "Stopped", so a brain
-  // that is loading correctly reads as one that keeps dying. Give "starting" its
-  // own pill so the load window is legible instead of alarming.
-  const statusPill = STATUS_PILL_PRESENTATION[resolveStatusPhase(status)];
 
-  const detailRows = useMemo(() => {
-    if (!status) return [];
-    const rows: { title: string; value: string }[] = [];
-    if (status.state) rows.push({ title: "State", value: status.state });
-    if (status.version) rows.push({ title: "Version", value: status.version });
-    if (status.model ?? status.modelId)
-      rows.push({ title: "Model", value: status.model ?? status.modelId ?? "" });
-    const endpoint = formatEndpoint(status);
-    if (endpoint) rows.push({ title: "Endpoint", value: endpoint });
-    const vram = formatVram(status.vramBytes);
-    if (vram) rows.push({ title: "VRAM", value: vram });
-    return rows;
-  }, [status]);
+  if (!brain) return null;
+
+  const phase = statusSupported
+    ? resolveBrainConnectionPhase({
+        brain,
+        status,
+        hostConnected,
+        loading: query.isLoading,
+        failed: query.isError,
+      })
+    : "unsupported";
+  const presentation = CONNECTION_PRESENTATION[phase];
+  const error = status?.lastError ?? (query.error instanceof Error ? query.error.message : null);
+  const details = buildBrainStatusDetails(brain, status);
 
   return (
-    <SettingsSection title="Status">
-      <View style={settingsStyles.card} testID="host-brain-status-card">
+    <SettingsSection title="Detected Brain">
+      <View style={settingsStyles.card} testID="host-brain-detected-status-card">
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Host</Text>
+            <Text style={settingsStyles.rowTitle}>Connection</Text>
             <Text style={settingsStyles.rowHint}>
-              {isRemote
-                ? "Whether the remote brain is reachable."
-                : "Whether the brain is currently running on this host."}
+              Confirms whether these settings reach the intended Brain server.
             </Text>
           </View>
-          <View style={statusPill.pill}>
-            <View style={statusPill.dot} />
-            <Text style={statusPill.text}>{statusPill.label}</Text>
-          </View>
+          <StatusBadge label={presentation.label} variant={presentation.variant} />
         </View>
-
-        {detailRows.map((row) => (
-          <StatusDetailRow key={row.title} title={row.title} value={row.value} showBorder />
+        {details.map((detail) => (
+          <BrainStatusDetailRow key={detail.title} title={detail.title} value={detail.value} />
         ))}
-
-        {status?.lastError ? (
+        {error ? (
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Last error</Text>
-              <Text style={styles.errorText}>{status.lastError}</Text>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
           </View>
         ) : null}
-
-        <BrainConsoleLink supported={statusSupported} />
-
-        {isRemote ? null : (
-          <BrainLifecycleControls serverId={serverId} isConnected={isConnected} running={running} />
-        )}
       </View>
     </SettingsSection>
-  );
-}
-
-// Model override + start/stop/restart for the local managed brain. Owns the
-// action state so BrainStatusSection stays a display; hidden entirely in remote
-// mode, where lifecycle is the remote host's to manage.
-function BrainLifecycleControls({
-  serverId,
-  isConnected,
-  running,
-}: {
-  serverId: string;
-  isConnected: boolean;
-  running: boolean;
-}) {
-  const client = useHostRuntimeClient(serverId);
-  const queryClient = useQueryClient();
-  const [pending, setPending] = useState<BrainAction | null>(null);
-  const [modelDraft, setModelDraft] = useState("");
-
-  const runAction = useCallback(
-    (action: BrainAction) => {
-      if (!client) {
-        return;
-      }
-      const activeClient = client;
-      setPending(action);
-      const model = modelDraft.trim().length > 0 ? modelDraft.trim() : null;
-      void (async () => {
-        try {
-          let next: BrainHostStatus;
-          if (action === "start") {
-            next = await activeClient.brainHostStart(model);
-          } else if (action === "restart") {
-            next = await activeClient.brainHostRestart(model);
-          } else {
-            next = await activeClient.brainHostStop();
-          }
-          queryClient.setQueryData(brainStatusQueryKey(serverId), next);
-        } catch (error) {
-          console.error(`[HostBrainPage] Failed to ${action} brain`, error);
-          Alert.alert(
-            "Unable to update the brain",
-            error instanceof Error ? error.message : String(error),
-          );
-        } finally {
-          setPending(null);
-        }
-      })();
-    },
-    [client, modelDraft, queryClient, serverId],
-  );
-
-  const handleStart = useCallback(() => runAction("start"), [runAction]);
-  const handleStop = useCallback(() => {
-    void confirmDialog({
-      title: "Stop the brain?",
-      message: "Any loaded model is unloaded and requests stop until you start it again.",
-      confirmLabel: "Stop",
-      cancelLabel: "Cancel",
-      destructive: true,
-    })
-      .then((confirmed) => {
-        if (confirmed) runAction("stop");
-        return;
-      })
-      .catch(() => undefined);
-  }, [runAction]);
-  const handleRestart = useCallback(() => {
-    void confirmDialog({
-      title: "Restart the brain?",
-      message: "The host stops and starts again, reloading the model.",
-      confirmLabel: "Restart",
-      cancelLabel: "Cancel",
-      destructive: true,
-    })
-      .then((confirmed) => {
-        if (confirmed) runAction("restart");
-        return;
-      })
-      .catch(() => undefined);
-  }, [runAction]);
-
-  const actionsDisabled = !client || !isConnected || pending !== null;
-  const handleModelOverride = useCallback((next: string | null) => setModelDraft(next ?? ""), []);
-
-  return (
-    <>
-      <ModelPickerRow
-        serverId={serverId}
-        title="Model override"
-        hint="Pick a model to load on start/restart, or Automatic to use the default."
-        value={modelDraft.length > 0 ? modelDraft : null}
-        onChange={handleModelOverride}
-        includeAutomatic
-        showBorder
-        triggerTestID="host-brain-model-override-picker"
-      />
-
-      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Lifecycle</Text>
-          <Text style={settingsStyles.rowHint}>Start, stop, or restart the brain host.</Text>
-        </View>
-        <View style={ACTIONS_GROUP_STYLE}>
-          <Button
-            variant="default"
-            size="sm"
-            leftIcon={startIcon}
-            onPress={handleStart}
-            disabled={actionsDisabled || running}
-            testID="host-brain-start-button"
-          >
-            {pending === "start" ? "Starting..." : "Start"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={stopIcon}
-            onPress={handleStop}
-            disabled={actionsDisabled || !running}
-            testID="host-brain-stop-button"
-          >
-            {pending === "stop" ? "Stopping..." : "Stop"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={restartIcon}
-            onPress={handleRestart}
-            disabled={actionsDisabled || !running}
-            testID="host-brain-restart-button"
-          >
-            {pending === "restart" ? "Restarting..." : "Restart"}
-          </Button>
-        </View>
-      </View>
-    </>
-  );
-}
-
-/**
- * The way out of Settings and into the Brain page, which is where the live
- * dashboard, the model library and the per-model profiles now live. This used to
- * open a modal dashboard sheet; the sheet is gone, because a modal is the wrong
- * container for a surface you work in rather than glance at.
- */
-function BrainConsoleLink({ supported }: { supported: boolean }) {
-  const router = useRouter();
-  const handleOpen = useCallback(() => router.push(buildBrainRoute()), [router]);
-  if (!supported) {
-    return null;
-  }
-  return (
-    <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Brain</Text>
-        <Text style={settingsStyles.rowHint}>
-          Models, downloads, benchmarks, logs and live status.
-        </Text>
-      </View>
-      <Button
-        variant="outline"
-        size="sm"
-        leftIcon={dashboardIcon}
-        onPress={handleOpen}
-        testID="host-brain-open-console-button"
-      >
-        Open Brain
-      </Button>
-    </View>
   );
 }
 
@@ -975,7 +732,7 @@ function BrainServerSection({ serverId }: { serverId: string }) {
             {brain.remote.secure ? (
               <BrainTextRow
                 title="Certificate fingerprint"
-                hint="SHA-256 fingerprint of the remote brain's certificate. Set it to pin a self-signed certificate; leave empty when the certificate is trusted normally."
+                hint="SHA-256 fingerprint that pins the remote brain's self-signed certificate. Leave empty when the certificate is already trusted."
                 value={brain.remote.certFingerprint ?? ""}
                 placeholder="AB:12:CD:34:..."
                 showBorder
@@ -1182,8 +939,8 @@ function HostBindPicker({
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Listen host</Text>
           <Text style={settingsStyles.rowHint}>
-            Which network the brain accepts connections on. Local only keeps it on this machine; a
-            specific address or All interfaces exposes it to your network.
+            Which network the brain accepts connections on: Local only keeps it on this machine,
+            anything else exposes it to your network.
           </Text>
         </View>
         <SegmentedControl
@@ -1299,8 +1056,8 @@ function BrainConfigSection({ serverId }: { serverId: string }) {
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>HTTPS</Text>
             <Text style={settingsStyles.rowHint}>
-              Off serves plain HTTP on the port above. Turn it on to serve HTTPS on that same port,
-              using certificate files, a self-signed certificate, or a Tailscale certificate.
+              Serve HTTPS on the port above instead of plain HTTP, using certificate files, a
+              self-signed certificate, or a Tailscale certificate.
             </Text>
           </View>
           <SegmentedControl
@@ -1757,7 +1514,6 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
 
 export function HostBrainPage({ serverId }: { serverId: string }) {
   const supported = useHostFeature(serverId, "brainControl");
-  const isConnected = useHostRuntimeIsConnected(serverId);
 
   if (!supported) {
     return (
@@ -1771,15 +1527,10 @@ export function HostBrainPage({ serverId }: { serverId: string }) {
 
   return (
     <View>
-      {/* This page is SETUP: how to reach the brain and how it is secured, plus
-          the lifecycle you often want while already in here. Everything
-          operational (models, downloads, per-model profiles, calibrate, sweep,
-          benchmarks, logs) lives on the Brain page, reachable from the Brain
-          icon in the bottom-left rail. Those are work, not settings: they are
-          long-running, progress-bearing and result-producing, and they do not
-          belong next to a TLS certificate path. */}
+      {/* Setup needs read-only connection proof in the same workflow. Mutating
+          lifecycle, model operations, downloads, benchmarks, and logs remain on Brain. */}
       <BrainServerSection serverId={serverId} />
-      <BrainStatusSection serverId={serverId} isConnected={isConnected} />
+      <BrainConnectionStatusSection serverId={serverId} />
       <BrainSharingSection serverId={serverId} />
       <BrainRemoteConfigSection serverId={serverId} />
       <BrainConfigSection serverId={serverId} />
@@ -1919,50 +1670,3 @@ const EMPTY_CARD_STYLE = [settingsStyles.card, styles.emptyCard];
 const LOADING_CARD_STYLE = [settingsStyles.card, styles.loadingCard];
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
-const STATUS_PILL_RUNNING_STYLE = [styles.statusPill, styles.statusPillRunning];
-const STATUS_PILL_STOPPED_STYLE = [styles.statusPill, styles.statusPillStopped];
-const STATUS_PILL_STARTING_STYLE = [styles.statusPill, styles.statusPillStarting];
-
-type StatusPhase = "running" | "starting" | "stopped";
-
-// running wins; a live-but-not-yet-answering child (the model-load window) reads
-// as "starting"; everything else is "stopped".
-function resolveStatusPhase(status: BrainHostStatus | null): StatusPhase {
-  if (status?.running === true) {
-    return "running";
-  }
-  if (status?.state === "starting") {
-    return "starting";
-  }
-  return "stopped";
-}
-
-const STATUS_PILL_PRESENTATION: Record<
-  StatusPhase,
-  {
-    pill: StyleProp<ViewStyle>;
-    dot: StyleProp<ViewStyle>;
-    text: StyleProp<TextStyle>;
-    label: string;
-  }
-> = {
-  running: {
-    pill: STATUS_PILL_RUNNING_STYLE,
-    dot: styles.statusDotRunning,
-    text: styles.statusTextRunning,
-    label: "Running",
-  },
-  starting: {
-    pill: STATUS_PILL_STARTING_STYLE,
-    dot: styles.statusDotStarting,
-    text: styles.statusTextStarting,
-    label: "Starting…",
-  },
-  stopped: {
-    pill: STATUS_PILL_STOPPED_STYLE,
-    dot: styles.statusDotStopped,
-    text: styles.statusTextStopped,
-    label: "Stopped",
-  },
-};
-const ACTIONS_GROUP_STYLE = [styles.actionsGroup, settingsStyles.rowControlGroup];

@@ -226,7 +226,7 @@ export function VisualizerSection() {
         <View style={settingsStyles.card}>
           <ToggleRow
             title="Enable Visualizer"
-            hint="The live agent-orchestration graph. Turn it off to remove the header button and Runs “Visualize” action - and to keep its render bundle from ever loading into memory. Open Visualizer tabs close when disabled."
+            hint="The live agent-orchestration graph. Turning it off removes the header button and Runs “Visualize” action, and closes open Visualizer tabs."
             accessibilityLabel="Enable Visualizer"
             value={visualizerEnabled}
             withBorder={false}
@@ -244,10 +244,8 @@ export function VisualizerSection() {
                   <View style={settingsStyles.rowContent}>
                     <Text style={settingsStyles.rowTitle}>GPU acceleration is off</Text>
                     <Text style={settingsStyles.rowHint}>
-                      Otto turned off hardware acceleration after the GPU crashed and fell back to
-                      software rendering, so bloom and other heavy effects are disabled to keep the
-                      frame rate usable. If your GPU is working again, turn acceleration back on -
-                      Otto will restart.
+                      Otto fell back to software rendering after the GPU crashed, so bloom and other
+                      heavy effects are disabled. Turning acceleration back on restarts Otto.
                     </Text>
                   </View>
                   <Button
@@ -264,7 +262,7 @@ export function VisualizerSection() {
               ) : null}
               <ToggleRow
                 title="FPS meter"
-                hint="Show a small frames-per-second readout in the top-left corner. A performance diagnostic; applies live to open Visualizer tabs."
+                hint="Show a small frames-per-second readout in the top-left corner of open Visualizer tabs."
                 accessibilityLabel="FPS meter"
                 value={settings.visualizerShowFps}
                 withBorder={false}
@@ -275,9 +273,8 @@ export function VisualizerSection() {
                 <View style={settingsStyles.rowContent}>
                   <Text style={settingsStyles.rowTitle}>Sharpness</Text>
                   <Text style={settingsStyles.rowHint}>
-                    Canvas resolution vs. frame rate. Fast renders at 1x, Native at the
-                    display&apos;s full pixel ratio - on a large 2x pane, Native can cost most of
-                    the frame rate. Applies the next time a Visualizer tab loads (open tabs reload).
+                    Canvas resolution against frame rate: Fast renders at 1x, Native at the
+                    display&apos;s full pixel ratio. Applies the next time a Visualizer tab loads.
                   </Text>
                 </View>
                 <SegmentedControl
@@ -308,10 +305,8 @@ export function VisualizerSection() {
                 <View style={settingsStyles.rowContent}>
                   <Text style={settingsStyles.rowTitle}>Context readout</Text>
                   <Text style={settingsStyles.rowHint}>
-                    How the main agent node reports context occupancy. The ring hugs the node; the
-                    bar sits under it. They show the same number, so you pick one - with the ring,
-                    the token count moves up into the bar&apos;s place. Sub-agent nodes always use
-                    the bar. Applies live to open Visualizer tabs.
+                    Whether the main agent node shows context occupancy as a ring around it or a bar
+                    under it. Sub-agent nodes always use the bar.
                   </Text>
                 </View>
                 <SegmentedControl

@@ -21,6 +21,7 @@ export interface DesktopSettings {
     keepRunningAfterQuit: boolean;
   };
   tray: {
+    showIcon: boolean;
     minimizeOnClose: boolean;
     startMinimized: boolean;
   };
@@ -48,6 +49,7 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
     keepRunningAfterQuit: false,
   },
   tray: {
+    showIcon: true,
     minimizeOnClose: true,
     startMinimized: false,
   },
@@ -193,6 +195,8 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
           : DEFAULT_DESKTOP_SETTINGS.daemon.keepRunningAfterQuit,
     },
     tray: {
+      showIcon:
+        typeof tray.showIcon === "boolean" ? tray.showIcon : DEFAULT_DESKTOP_SETTINGS.tray.showIcon,
       minimizeOnClose:
         typeof tray.minimizeOnClose === "boolean"
           ? tray.minimizeOnClose

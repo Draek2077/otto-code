@@ -87,6 +87,7 @@ describe("desktop-settings", () => {
         keepRunningAfterQuit: false,
       },
       tray: {
+        showIcon: true,
         minimizeOnClose: true,
         startMinimized: false,
       },
@@ -117,6 +118,7 @@ describe("desktop-settings", () => {
         keepRunningAfterQuit: false,
       },
       tray: {
+        showIcon: true,
         minimizeOnClose: true,
         startMinimized: false,
       },
@@ -126,6 +128,19 @@ describe("desktop-settings", () => {
       },
     });
     expect(files).toEqual(["desktop-settings.json"]);
+  });
+
+  it("persists an explicit tray-icon choice", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+
+    await createDesktopSettingsStore({ userDataPath }).patch({
+      tray: { showIcon: false },
+    });
+
+    const settings = await createDesktopSettingsStore({ userDataPath }).get();
+
+    expect(settings.tray.showIcon).toBe(false);
   });
 
   it("defaults notification sounds on for existing settings documents", async () => {
@@ -292,6 +307,7 @@ describe("desktop-settings", () => {
         keepRunningAfterQuit: false,
       },
       tray: {
+        showIcon: true,
         minimizeOnClose: true,
         startMinimized: false,
       },

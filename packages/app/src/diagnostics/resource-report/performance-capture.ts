@@ -10,6 +10,13 @@ import {
   getCensusStats,
 } from "./collect-resource-metrics";
 import {
+  getDomWriteReport,
+  startDomWriteAttribution,
+  stopDomWriteAttribution,
+  type DomWriteBatch,
+  type DomWriteReport,
+} from "./dom-write-attribution";
+import {
   getLongFrameReport,
   type LongFrameReport,
   type LongFrameSummary,
@@ -35,6 +42,13 @@ interface InboundDispatchLongFrameMatch {
   frameDurationMs: number;
   blockingMs: number;
   dispatches: CapturedInboundDispatch[];
+}
+
+interface DomWriteLongFrameMatch {
+  frameAt: number;
+  frameDurationMs: number;
+  styleAndLayoutMs: number;
+  batches: DomWriteBatch[];
 }
 
 interface PersistedPerformanceCapture {
@@ -63,6 +77,12 @@ interface PersistedPerformanceCapture {
    * a drifting dev bundle where LoAF char offsets do not.
    */
   slowTimers: SlowTimerCallback[];
+  /**
+   * What the app wrote to the DOM during the capture, one entry per mutation
+   * batch (a React commit is one batch), and the batches that landed inside
+   * each long frame. Observed only while the capture runs.
+   */
+  domWrites: DomWriteReport & { longFrameMatches: DomWriteLongFrameMatch[] };
   /**
    * The inbound daemon messages whose synchronous dispatch overlapped a long
    * frame. This turns a generic WebSocket callback attribution into a concrete
@@ -123,6 +143,7 @@ export function startPerformanceCapture(): void {
       : null;
   resourceMonitor.reset();
   resourceMonitor.takeSample();
+  startDomWriteAttribution();
   state.active = true;
   state.startedAt = Date.now();
   state.lastSavedPath = null;
@@ -136,10 +157,12 @@ export async function stopPerformanceCapture(): Promise<void> {
   notify();
   try {
     resourceMonitor.takeSample();
+    stopDomWriteAttribution();
     const samples = copySamples();
     const daemonDiagnostics = await collectDaemonDiagnostics();
     const longFrames = getLongFrameReport(state.startedAt);
     const inboundDispatchEntries = collectInboundDispatches(state.startedAt);
+    const domWrites = getDomWriteReport(state.startedAt);
     const capture: PersistedPerformanceCapture = {
       format: "otto-performance-capture-v1",
       startedAt: new Date(state.startedAt).toISOString(),
@@ -150,6 +173,10 @@ export async function stopPerformanceCapture(): Promise<void> {
       longFrames,
       censusStats: getCensusStats(),
       slowTimers: getSlowTimerCallbacks(state.startedAt),
+      domWrites: {
+        ...domWrites,
+        longFrameMatches: matchDomWritesToLongFrames(longFrames.entries, domWrites.batches),
+      },
       inboundDispatch: {
         entries: inboundDispatchEntries,
         longFrameMatches: matchInboundDispatchesToLongFrames(
@@ -199,6 +226,27 @@ function collectInboundDispatches(sinceMs: number): CapturedInboundDispatch[] {
         totalMs: entry.totalMs,
       }));
     });
+}
+
+// A mutation batch is delivered as a microtask right after the script that
+// wrote it, so its timestamp sits inside the frame that paid for the layout.
+function matchDomWritesToLongFrames(
+  frames: readonly LongFrameSummary[],
+  batches: readonly DomWriteBatch[],
+): DomWriteLongFrameMatch[] {
+  return frames.flatMap((frame) => {
+    const frameEnd = frame.at + frame.durationMs;
+    const matches = batches.filter((batch) => batch.at >= frame.at && batch.at <= frameEnd);
+    if (matches.length === 0) return [];
+    return [
+      {
+        frameAt: frame.at,
+        frameDurationMs: frame.durationMs,
+        styleAndLayoutMs: frame.styleAndLayoutMs,
+        batches: matches,
+      },
+    ];
+  });
 }
 
 function matchInboundDispatchesToLongFrames(

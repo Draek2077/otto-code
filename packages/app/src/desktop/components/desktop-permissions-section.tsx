@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { RotateCw } from "@/components/icons/material-icons";
 import { View } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { withUnistyles } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 import { DesktopPermissionRow } from "@/desktop/components/desktop-permission-row";
 import { useDesktopPermissions } from "@/desktop/permissions/use-desktop-permissions";
@@ -14,6 +14,11 @@ const ThemedRotateCw = withUnistyles(RotateCw, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 
+/**
+ * Every OS permission Otto asks for, in one card. The permission snapshot is
+ * read in a single call, so this section owns the only Refresh on the page -
+ * the Notifications section below holds preferences, not permissions.
+ */
 export function DesktopPermissionsSection() {
   const { t } = useTranslation();
   const {
@@ -33,26 +38,26 @@ export function DesktopPermissionsSection() {
     void requestPermission("microphone");
   }, [requestPermission]);
 
+  const handleRequestNotifications = useCallback(() => {
+    void requestPermission("notifications");
+  }, [requestPermission]);
+
   const isBusy = isRefreshing || requestingPermission !== null;
 
   const refreshIcon = useMemo(() => <ThemedRotateCw />, []);
 
-  // Refresh sits in a centered footer below the cards (not the section header)
-  // so it never crowds the title on narrow windows.
-  const refreshFooter = useMemo(
+  const refreshButton = useMemo(
     () => (
-      <View style={styles.refreshFooter}>
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={refreshIcon}
-          onPress={handleRefreshPress}
-          disabled={isBusy}
-          accessibilityLabel={t("settings.permissions.refreshAccessibility")}
-        >
-          {isRefreshing ? t("settings.permissions.refreshing") : t("settings.permissions.refresh")}
-        </Button>
-      </View>
+      <Button
+        variant="ghost"
+        size="sm"
+        leftIcon={refreshIcon}
+        onPress={handleRefreshPress}
+        disabled={isBusy}
+        accessibilityLabel={t("settings.permissions.refreshAccessibility")}
+      >
+        {isRefreshing ? t("settings.permissions.refreshing") : t("settings.permissions.refresh")}
+      </Button>
     ),
     [refreshIcon, handleRefreshPress, isBusy, isRefreshing, t],
   );
@@ -71,7 +76,7 @@ export function DesktopPermissionsSection() {
   }
 
   return (
-    <SettingsSection title={t("settings.permissions.title")}>
+    <SettingsSection title={t("settings.permissions.title")} trailing={refreshButton}>
       <View style={settingsStyles.card}>
         <DesktopPermissionRow
           title={t("settings.permissions.microphone")}
@@ -80,15 +85,15 @@ export function DesktopPermissionsSection() {
           onRequest={handleRequestMicrophone}
           labels={permissionLabels}
         />
+        <DesktopPermissionRow
+          title={t("settings.notifications.permission")}
+          status={snapshot?.notifications ?? null}
+          isRequesting={requestingPermission === "notifications"}
+          onRequest={handleRequestNotifications}
+          labels={permissionLabels}
+          showBorder
+        />
       </View>
-      {refreshFooter}
     </SettingsSection>
   );
 }
-const styles = StyleSheet.create((theme) => ({
-  refreshFooter: {
-    flexDirection: "row",
-    justifyContent: "center",
-    marginTop: theme.spacing[1],
-  },
-}));

@@ -134,7 +134,7 @@ function buildSeededDesktopSettingsDocument(): string {
       settings: {
         releaseChannel: "stable",
         daemon: { manageBuiltInDaemon: false, keepRunningAfterQuit: true },
-        tray: { minimizeOnClose: true, startMinimized: false },
+        tray: { showIcon: true, minimizeOnClose: true, startMinimized: false },
         quit: { warnBeforeQuit: false, onlyWarnForActiveAgents: false },
       },
       migrations: {

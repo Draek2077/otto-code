@@ -3611,7 +3611,7 @@ export const es: TranslationResources = {
         },
         chatMetricsBar: {
           title: "Mostrar métricas del chat",
-          hint: "Una fila estrecha encima de la transcripción con el total de tokens, el coste y la actividad de subagentes de este chat, incluido todo lo que generó. El coste solo aparece cuando el proveedor lo informa",
+          hint: "Una fila estrecha sobre la transcripción con el total de tokens, coste y actividad de sub-agentes de este chat.",
           accessibilityLabel: "Mostrar métricas del chat",
         },
         autoExpandReasoning: {
@@ -3621,12 +3621,12 @@ export const es: TranslationResources = {
         },
         promptSuggestions: {
           title: "Sugerencias de prompt con IA",
-          hint: "Tras cada turno, muestra el siguiente prompt previsto por el agente como texto fantasma en el cuadro de mensaje; pulsa Tab para aceptarlo. Disponible en agentes Claude",
+          hint: "Tras cada turno, muestra el siguiente prompt previsto por el agente como texto fantasma en el cuadro de mensaje; pulsa Tab para aceptarlo. Disponible en agentes Claude.",
           accessibilityLabel: "Sugerencias de prompt con IA",
         },
         rateLimitWarnings: {
           title: "Avisos de límite de uso del plan",
-          hint: "Muestra un aviso encima del cuadro de mensaje cuando el uso de tu plan se acerca o llega a un límite. Disponible en agentes Claude",
+          hint: "Muestra un aviso encima del cuadro de mensaje cuando el uso de tu plan se acerca o llega a un límite. Disponible en agentes Claude.",
           accessibilityLabel: "Avisos de límite de uso del plan",
         },
         hideMessageDetails: {
@@ -4059,13 +4059,13 @@ export const es: TranslationResources = {
         title: "Inteligencia de código",
         enabled: "Activar la inteligencia de código",
         enabledHint:
-          'Ejecuta un servidor de lenguaje por proyecto para que "Ir a la definición" resuelva el símbolo bajo el cursor. No se inicia nada hasta que lo usas; al desactivarlo se detienen todos los servidores y se vuelve al índice basado en nombres.',
+          "Ejecuta un servidor de lenguaje por proyecto para que Ir a definición resuelva el símbolo bajo el cursor. Si está desactivado, vuelve al índice basado en nombres.",
         solution: "Gestión de soluciones de Microsoft .NET",
         solutionHint:
-          "Añade una vista Solución a la pestaña de archivos, que muestra tu .sln o .slnx tal y como lo ve el sistema de compilación. Es independiente de la inteligencia de código de arriba. Desactivada por defecto: ejecuta un proceso auxiliar de .NET y evalúa MSBuild, y necesita el SDK de .NET en este host.",
+          "Añade una vista Solución a la pestaña Archivos, mostrando tu .sln o .slnx como lo ve el sistema de compilación. Necesita el SDK de .NET en este host.",
         csharpScope: "Carga de proyectos C#",
         csharpScopeHint:
-          "Cuánto de un espacio de trabajo .NET carga el servidor de lenguaje C#. Solución usa el único archivo de solución en la raíz del espacio de trabajo, que se carga como una sola unidad y es mucho más rápido. Todos los proyectos carga cada .csproj bajo la raíz, así que no se omite nada, pero se cargan de uno en uno y un repositorio grande puede tardar minutos hasta que el cursor flotante e Ir a la definición respondan.",
+          "Cuánto de un workspace .NET carga el servidor de C#. Solución lee el único archivo de solución de la raíz y es mucho más rápida; Todos los proyectos no omite nada pero puede tardar minutos en un repositorio grande.",
         csharpScopeSolution: "Solución",
         csharpScopeAllProjects: "Todos los proyectos",
         languages: "Lenguajes",
@@ -4107,12 +4107,12 @@ export const es: TranslationResources = {
         hostImagesSummary: "{{size}} en {{count}} imágenes",
         hostImagesEmpty: "Todavía no hay nada guardado",
         hostImagesHint:
-          "Capturas y otras imágenes que produjeron tus agentes, conservadas para que los mensajes anteriores puedan seguir mostrándolas. Borrarlas no se puede deshacer: esos mensajes pasarán a mostrar su descripción.",
+          "Capturas y otras imágenes que produjeron tus agentes, guardadas para que los mensajes antiguos sigan mostrándolas. Borrarlas no se puede deshacer.",
         previewCache: "Copias en caché en este dispositivo",
         previewCacheSummary: "{{size}} en {{count}} imágenes",
         previewCacheEmpty: "Nada en caché",
         previewCacheHint:
-          "Copias locales para que las imágenes carguen al instante. Se pueden borrar sin riesgo: se vuelven a descargar cuando hagan falta. Los archivos que adjuntaste a mensajes ({{size}}) se guardan aparte y nunca se borran desde aquí.",
+          "Copias locales para que las imágenes carguen al instante; se pueden borrar sin riesgo porque se descargan de nuevo. Los archivos que adjuntaste a mensajes ({{size}}) se guardan aparte.",
         clear: "Borrar",
         clearConfirm: "Borrar imágenes",
         clearImagesTitle: "¿Borrar las imágenes de este host?",
@@ -4123,10 +4123,10 @@ export const es: TranslationResources = {
         nothingToClear: "No hay nada que borrar",
         maxAge: "Conservar las imágenes durante",
         maxAgeHint:
-          "Días que se conserva una imagen sin usar antes de eliminarla automáticamente. Una imagen que aún se muestra en un chat que abres mantiene su sitio. 0 lo desactiva.",
+          "Días que se conserva una imagen sin usar antes de eliminarse automáticamente. 0 lo desactiva.",
         maxTotal: "Tamaño máximo",
         maxTotalHint:
-          "Megabytes de imágenes que conservar en este host. A partir de ahí se eliminan primero las más antiguas. 0 lo desactiva.",
+          "Megabytes de imágenes a conservar en este host; se eliminan primero las más antiguas. 0 lo desactiva.",
       },
       workspaces: {
         unavailable: "Conéctate a este host para gestionar los Workspaces",
@@ -4301,13 +4301,13 @@ export const es: TranslationResources = {
           "Si está desactivado, los chats ocultan el selector de autocompactación y siempre usan el valor predeterminado anterior.",
         maxToolRoundsLabel: "Máximo de rondas de llamadas a herramientas por turno",
         maxToolRoundsHint:
-          "Cuántas veces el modelo puede llamar a herramientas, ver los resultados y llamarlas de nuevo antes de que termine el turno. Cuenta rondas, no el número de llamadas dentro de una sola ronda.",
+          "Cuántas veces puede el modelo llamar a herramientas y leer los resultados antes de terminar el turno. Cuenta rondas, no llamadas individuales.",
         maxToolRoundsValue: "{{rounds}} rondas",
         maxToolRoundsRequiresUpdate:
           "Actualiza el host para configurar el máximo de rondas de llamadas a herramientas.",
         midSessionUpdatesLabel: "Actualizaciones de contexto durante la sesión",
         midSessionUpdatesHint:
-          "Permite que el agente cargue el AGENTS.md propio de una subcarpeta la primera vez que trabaja allí. Desactívalo para que la conversación contenga solo lo que tú y el modelo pusisteis en ella, algo que importa sobre todo con una ventana de contexto local pequeña.",
+          "Deja que el agente cargue el AGENTS.md propio de una subcarpeta la primera vez que trabaja ahí. Desactivado, la conversación se queda con lo que pongáis tú y el modelo.",
         midSessionUpdatesRequiresUpdate:
           "Actualiza el host para configurar las actualizaciones de contexto durante la sesión.",
         actionBreakerLabel: "Fusible de acciones",

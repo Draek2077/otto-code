@@ -31,11 +31,13 @@ import {
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor, useIsExtraCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient, useHostRuntimeConnectionStatus } from "@/runtime/host-runtime";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   prependJob,
   formatBrainRuntime,
@@ -46,7 +48,13 @@ import {
   useRefreshOnJobCompletion,
 } from "@/screens/settings/host-brain-models";
 import type { Theme } from "@/styles/theme";
-import { brainStatusQueryKey, formatGiB, formatPercent, useBrainStatus } from "./use-brain-data";
+import {
+  brainStatusQueryKey,
+  formatGiB,
+  formatPercent,
+  useBrainModelNames,
+  useBrainStatus,
+} from "./use-brain-data";
 import {
   formatBrainRuntimeShortLabel,
   isBrainRuntimeManagementAvailable,
@@ -71,6 +79,7 @@ const foregroundIcon = (theme: Theme) => ({
 const startIcon = <ThemedPlay uniProps={foregroundIcon} />;
 const stopIcon = <ThemedSquare uniProps={foregroundIcon} />;
 const restartIcon = <ThemedRotateCw uniProps={foregroundIcon} />;
+const brainModelValueKey = (value: string | null): string => value ?? "__automatic__";
 
 // Icon-topped tiles, matching the Metrics page's tile language so the two
 // resource pages read as one system instead of two different eras of the UI.
@@ -218,8 +227,25 @@ function LifecycleControls({
   const isCompact = useIsCompactFormFactor();
   const client = useHostRuntimeClient(serverId);
   const queryClient = useQueryClient();
+  const modelNamesQuery = useBrainModelNames(serverId, showStartStop);
+  const [modelOverride, setModelOverride] = useState<string | null>(null);
   const [pending, setPending] = useState<"start" | "stop" | "restart" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const modelOptions = useMemo<SelectFieldOption<string | null>[]>(
+    () => [
+      { id: "__automatic__", value: null, label: "Automatic" },
+      ...[...new Set(modelNamesQuery.data ?? [])].map((model) => ({
+        id: model,
+        value: model,
+        label: model,
+      })),
+    ],
+    [modelNamesQuery.data],
+  );
+  const selectedModelDisplay = useMemo(
+    () => ({ label: modelOverride ?? "Automatic" }),
+    [modelOverride],
+  );
 
   const runAction = useCallback(
     async (action: "start" | "stop" | "restart") => {
@@ -230,11 +256,11 @@ function LifecycleControls({
       setError(null);
       try {
         if (action === "start") {
-          await client.brainHostStart();
+          await client.brainHostStart(modelOverride);
         } else if (action === "stop") {
           await client.brainHostStop();
         } else {
-          await client.brainHostRestart();
+          await client.brainHostRestart(modelOverride);
         }
         await queryClient.invalidateQueries({ queryKey: brainStatusQueryKey(serverId, true) });
       } catch (err) {
@@ -243,15 +269,63 @@ function LifecycleControls({
         setPending(null);
       }
     },
-    [client, queryClient, serverId],
+    [client, modelOverride, queryClient, serverId],
   );
 
   const handleStart = useCallback(() => void runAction("start"), [runAction]);
-  const handleStop = useCallback(() => void runAction("stop"), [runAction]);
-  const handleRestart = useCallback(() => void runAction("restart"), [runAction]);
+  const handleStop = useCallback(() => {
+    void confirmDialog({
+      title: "Stop the brain?",
+      message: "Any loaded model is unloaded and requests stop until you start it again.",
+      confirmLabel: "Stop",
+      cancelLabel: "Cancel",
+      destructive: true,
+    })
+      .then((confirmed) => {
+        if (confirmed) void runAction("stop");
+        return undefined;
+      })
+      .catch(() => undefined);
+  }, [runAction]);
+  const handleRestart = useCallback(() => {
+    void confirmDialog({
+      title: "Restart the brain?",
+      message: "The host stops and starts again, reloading the selected model.",
+      confirmLabel: "Restart",
+      cancelLabel: "Cancel",
+      destructive: true,
+    })
+      .then((confirmed) => {
+        if (confirmed) void runAction("restart");
+        return undefined;
+      })
+      .catch(() => undefined);
+  }, [runAction]);
 
   return (
     <View style={styles.lifecycle}>
+      {showStartStop ? (
+        <View style={styles.modelOverride}>
+          <Text style={styles.modelOverrideLabel}>Start or restart with</Text>
+          <SelectField<string | null>
+            field={false}
+            size="sm"
+            label="Model override"
+            value={modelOverride}
+            selectedDisplay={selectedModelDisplay}
+            options={modelOptions}
+            onChange={setModelOverride}
+            placeholder="Automatic"
+            emptyText="No installed models found"
+            loading={modelNamesQuery.isLoading}
+            disabled={pending !== null || modelNamesQuery.isLoading}
+            searchable
+            getValueKey={brainModelValueKey}
+            triggerStyle={styles.modelOverrideTrigger}
+            triggerTestID="brain-overview-model-override"
+          />
+        </View>
+      ) : null}
       <View style={isCompact ? styles.actionsStacked : styles.actions}>
         {showStartStop ? (
           <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
@@ -1009,6 +1083,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   lifecycle: {
     gap: theme.spacing[2],
+  },
+  modelOverride: {
+    gap: theme.spacing[1],
+    minWidth: 200,
+  },
+  modelOverrideLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  modelOverrideTrigger: {
+    minWidth: 200,
   },
   panel: {
     gap: theme.spacing[2],

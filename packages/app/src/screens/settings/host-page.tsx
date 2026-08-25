@@ -57,8 +57,6 @@ import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { ProvidersSection } from "@/screens/settings/providers-section";
 import { AgentPersonalitiesSection } from "@/screens/settings/agent-personalities-section";
 import { AgentTeamsSection } from "@/screens/settings/agent-teams-section";
-import { AgentVoiceCuesRow } from "@/screens/settings/agent-voice-cues-row";
-import { VoicePlaybackVolumeRow } from "@/screens/settings/voice-playback-volume-row";
 import { SpeechSettingsCards } from "@/screens/settings/speech-settings-cards";
 import { GitProvidersSettingsCards } from "@/screens/settings/git-providers-settings-cards";
 import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section";
@@ -79,7 +77,6 @@ import { getProviderIcon } from "@/components/provider-icons";
 import {
   AgentBehaviorRows,
   BrowserToolsSection,
-  MetadataGenerationRows,
   OttoToolsSection,
   TodoReminderRows,
   useTodoRemindersFeature,
@@ -330,9 +327,6 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
             <View style={settingsStyles.card}>
               <AppendSystemPromptCard serverId={serverId} />
               <AgentBehaviorRows serverId={serverId} />
-              <MetadataGenerationRows serverId={serverId} />
-              <AgentVoiceCuesRow serverId={serverId} />
-              <VoicePlaybackVolumeRow serverId={serverId} />
             </View>
           </SettingsSection>
           <HostTaskListSection serverId={serverId} />
@@ -377,9 +371,10 @@ export function HostToolsPage({ serverId }: { serverId: string }) {
   );
 }
 
-// Teams host section: agent personalities and teams - split out of the Agents
-// page onto their own sidebar section (after Agents) so each stays a clean
-// grouped card.
+// Teams host section: agent teams and the profiles they draw from - split out
+// of the Agents page onto their own sidebar section (after Agents) so each
+// stays a clean grouped card. Teams lead: a team is what you pick day to day,
+// and the profile list under it is the roster it composes from.
 export function HostTeamsPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const host = useHostProfile(serverId);
@@ -393,8 +388,8 @@ export function HostTeamsPage({ serverId }: { serverId: string }) {
     <View>
       {isConnected ? (
         <>
-          <AgentPersonalitiesSection serverId={serverId} />
           <AgentTeamsSection serverId={serverId} />
+          <AgentPersonalitiesSection serverId={serverId} />
         </>
       ) : (
         <View style={EMPTY_CARD_STYLE}>

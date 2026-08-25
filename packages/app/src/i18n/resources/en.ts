@@ -3379,13 +3379,13 @@ export const en = {
       mountedWorkspaceLimit: {
         label: "Workspaces kept loaded",
         description:
-          "How many workspaces stay loaded for instant switching. Set it to at least the number you switch between. Higher uses more memory.",
+          "How many workspaces stay loaded for instant switching, at the cost of memory. Set it to at least the number you switch between.",
         accessibilityLabel: "Workspaces kept loaded",
       },
       mountedTabLimit: {
         label: "Tabs kept loaded",
         description:
-          "How many tabs per pane stay loaded for instant switching. Leave empty to match this device ({{auto}}). Higher uses more memory.",
+          "How many tabs per pane stay loaded for instant switching, at the cost of memory. Leave empty to match this device ({{auto}}).",
         accessibilityLabel: "Tabs kept loaded",
       },
       terminalScrollback: {
@@ -3558,7 +3558,7 @@ export const en = {
         },
         chatMetricsBar: {
           title: "Show chat metrics",
-          hint: "A slim row above the transcript with this chat's total tokens, cost and sub-agent activity - including everything it spawned. Cost appears only where the provider reports one",
+          hint: "A slim row above the transcript with this chat's total tokens, cost and sub-agent activity.",
           accessibilityLabel: "Show chat metrics",
         },
         autoExpandReasoning: {
@@ -3568,12 +3568,12 @@ export const en = {
         },
         promptSuggestions: {
           title: "AI prompt suggestions",
-          hint: "After a turn, show the agent's predicted next prompt as ghost text in the message box; press Tab to accept it. Available on Claude agents",
+          hint: "After a turn, show the agent's predicted next prompt as ghost text in the message box; press Tab to accept it. Available on Claude agents.",
           accessibilityLabel: "AI prompt suggestions",
         },
         rateLimitWarnings: {
           title: "Plan rate-limit warnings",
-          hint: "Show a warning above the message box when your plan usage nears or hits a rate limit. Available on Claude agents",
+          hint: "Show a warning above the message box when your plan usage nears or hits a rate limit. Available on Claude agents.",
           accessibilityLabel: "Plan rate-limit warnings",
         },
         hideMessageDetails: {
@@ -4001,13 +4001,13 @@ export const en = {
         title: "Code intelligence",
         enabled: "Enable code intelligence",
         enabledHint:
-          "Runs a language server per project so Go to definition resolves the symbol under the caret. Nothing starts until you use it; off stops every server and falls back to the name-based index.",
+          "Runs a language server per project so Go to definition resolves the symbol under the caret. Off falls back to the name-based index.",
         solution: "Microsoft .NET Solution Management",
         solutionHint:
-          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
+          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Needs the .NET SDK on this host.",
         csharpScope: "C# project loading",
         csharpScopeHint:
-          "How much of a .NET workspace the C# language server loads. Solution names the one solution file in your workspace root, which loads as a single unit and is much faster. All projects loads every .csproj under the root, so nothing is missed, but they load one at a time and a large repository can take minutes before hover and go-to-definition answer.",
+          "How much of a .NET workspace the C# language server loads. Solution reads the one solution file in your root and is much faster; All projects misses nothing but can take minutes on a large repository.",
         csharpScopeSolution: "Solution",
         csharpScopeAllProjects: "All projects",
         languages: "Languages",
@@ -4048,12 +4048,12 @@ export const en = {
         hostImagesSummary: "{{size}} across {{count}} images",
         hostImagesEmpty: "Nothing stored yet",
         hostImagesHint:
-          "Screenshots and other images your agents produced, kept so past messages can still show them. Clearing them cannot be undone - those messages fall back to their description.",
+          "Screenshots and other images your agents produced, kept so past messages can still show them. Clearing cannot be undone.",
         previewCache: "Cached copies on this device",
         previewCacheSummary: "{{size}} across {{count}} images",
         previewCacheEmpty: "Nothing cached",
         previewCacheHint:
-          "Local copies so images load instantly. Safe to clear - they download again when needed. Files you attached to messages ({{size}}) are kept separately and are never cleared here.",
+          "Local copies so images load instantly, safe to clear since they download again. Files you attached to messages ({{size}}) are kept separately.",
         clear: "Clear",
         clearConfirm: "Clear images",
         clearImagesTitle: "Clear images on this host?",
@@ -4064,10 +4064,10 @@ export const en = {
         nothingToClear: "There is nothing to clear",
         maxAge: "Keep images for",
         maxAgeHint:
-          "Days an unused image is kept before it is removed automatically. An image still shown in a chat you open keeps its place. 0 turns this off.",
+          "Days an unused image is kept before it is removed automatically. 0 turns this off.",
         maxTotal: "Maximum size",
         maxTotalHint:
-          "Megabytes of images to keep on this host. Past this, the oldest go first. 0 turns this off.",
+          "Megabytes of images to keep on this host, oldest removed first. 0 turns this off.",
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
@@ -4238,12 +4238,12 @@ export const en = {
           "When off, chats hide the Auto-compact selector and always use the default above.",
         maxToolRoundsLabel: "Max tool-call rounds per turn",
         maxToolRoundsHint:
-          "How many times the model may call tools, see the results, and call tools again before the turn ends. This counts rounds, not the number of tool calls within a single round.",
+          "How many times the model may call tools and read the results before the turn ends. This counts rounds, not individual tool calls.",
         maxToolRoundsValue: "{{rounds}} rounds",
         maxToolRoundsRequiresUpdate: "Update the host to configure max tool-call rounds.",
         midSessionUpdatesLabel: "Mid-session context updates",
         midSessionUpdatesHint:
-          "Let the agent load a subfolder's own AGENTS.md the first time it works there. Turn this off to keep the conversation to what you and the model put in it, which matters most on a small local context window.",
+          "Let the agent load a subfolder's own AGENTS.md the first time it works there. Off keeps the conversation to what you and the model put in it.",
         midSessionUpdatesRequiresUpdate:
           "Update the host to configure mid-session context updates.",
         actionBreakerLabel: "Action circuit breaker",

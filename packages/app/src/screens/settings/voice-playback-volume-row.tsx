@@ -40,7 +40,7 @@ export function VoicePlaybackVolumeRow({ serverId }: { serverId: string }) {
   return (
     <SettingsVolumeRow
       title="Voice volume"
-      hint="How loud the agent is when it reads a reply aloud - voice mode, auto-speech, and the play button on a message. Its own channel, separate from voice cues and the Visualizer. 0% is silence."
+      hint="How loud the agent is when it reads a reply aloud, on its own channel from voice cues and the Visualizer."
       value={settings.voicePlaybackVolume}
       onCommit={onCommit}
       accessibilityLabel="Voice volume"

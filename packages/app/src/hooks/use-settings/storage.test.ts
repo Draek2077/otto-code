@@ -752,7 +752,7 @@ describe("loadSettingsFromStorage", () => {
         releaseChannel: "beta",
         notifications: { playSound: true },
         daemon: { manageBuiltInDaemon: false, keepRunningAfterQuit: true },
-        tray: { minimizeOnClose: true, startMinimized: false },
+        tray: { showIcon: true, minimizeOnClose: true, startMinimized: false },
         quit: { warnBeforeQuit: false, onlyWarnForActiveAgents: false },
       },
     });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Text, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 import { FormTextInput } from "@/components/ui/form-field";
@@ -8,7 +8,12 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Switch } from "@/components/ui/switch";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { getIsElectron, isNative } from "@/constants/platform";
-import { useAppSettings } from "@/hooks/use-settings";
+import {
+  MAX_RULER_COLUMN,
+  MIN_RULER_COLUMN,
+  parseClampedFontSize,
+  useAppSettings,
+} from "@/hooks/use-settings";
 import { useHostFeature } from "@/runtime/host-features";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
@@ -98,6 +103,52 @@ function VimMappingRow({
   );
 }
 
+function RulerColumnRow({
+  value,
+  disabled,
+  onCommit,
+}: {
+  value: number;
+  disabled: boolean;
+  onCommit: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const handleChangeText = useCallback((text: string) => setDraft(text.replace(/[^0-9]/g, "")), []);
+  const commit = useCallback(() => {
+    const parsed = parseClampedFontSize(draft, { min: MIN_RULER_COLUMN, max: MAX_RULER_COLUMN });
+    if (parsed === null) {
+      setDraft(String(value));
+      return;
+    }
+    setDraft(String(parsed));
+    onCommit(parsed);
+  }, [draft, onCommit, value]);
+  return (
+    <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Ruler column</Text>
+        <Text
+          style={settingsStyles.rowHint}
+        >{`Which character column the marker sits on, between ${MIN_RULER_COLUMN} and ${MAX_RULER_COLUMN}.`}</Text>
+      </View>
+      <TextInput
+        value={draft}
+        onChangeText={handleChangeText}
+        onBlur={commit}
+        onSubmitEditing={commit}
+        editable={!disabled}
+        keyboardType="number-pad"
+        inputMode="numeric"
+        maxLength={3}
+        style={styles.rulerColumnInput}
+        accessibilityLabel="Ruler column"
+        testID="settings-ruler-column-input"
+      />
+    </View>
+  );
+}
+
 export function EditorSection({ serverId }: { serverId: string | null }) {
   const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
@@ -173,6 +224,14 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
   );
   const handleExternalEditorCommandChange = useCallback(
     (value: string) => void updateSettings({ fileEditorCustomCommand: value }),
+    [updateSettings],
+  );
+  const handleRulerEnabledChange = useCallback(
+    (rulerEnabled: boolean) => void updateSettings({ rulerEnabled }),
+    [updateSettings],
+  );
+  const handleRulerColumnCommit = useCallback(
+    (rulerColumn: number) => void updateSettings({ rulerColumn }),
     [updateSettings],
   );
   const handleAlwaysUseOttoEditorForMarkdownChange = useCallback(
@@ -310,8 +369,29 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
         </SettingsSection>
       ) : null}
 
-      {desktop ? (
-        <SettingsSection title="File editor">
+      <SettingsSection title="File editor">
+        <View style={settingsStyles.card} testID="file-editor-settings">
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Line-length ruler</Text>
+              <Text style={settingsStyles.rowHint}>
+                Draw a faint vertical line behind the code, marking a maximum line length.
+              </Text>
+            </View>
+            <Switch
+              value={settings.rulerEnabled}
+              onValueChange={handleRulerEnabledChange}
+              accessibilityLabel="Line-length ruler"
+              testID="settings-ruler-enabled-switch"
+            />
+          </View>
+          <RulerColumnRow
+            value={settings.rulerColumn}
+            disabled={!settings.rulerEnabled}
+            onCommit={handleRulerColumnCommit}
+          />
+        </View>
+        {desktop ? (
           <View style={settingsStyles.card} testID="external-file-editor-settings">
             <View style={settingsStyles.rowResponsive}>
               <View style={settingsStyles.rowContent}>
@@ -360,8 +440,8 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
               </View>
             ) : null}
           </View>
-        </SettingsSection>
-      ) : null}
+        ) : null}
+      </SettingsSection>
 
       <SyntaxSettingsSection />
     </>
@@ -392,6 +472,16 @@ const styles = StyleSheet.create((theme) => ({
   },
   externalEditorModeTrigger: {
     width: 180,
+  },
+  rulerColumnInput: {
+    width: 80,
+    color: theme.colors.foreground,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    textAlign: "right",
   },
   externalEditorInput: {
     width: 240,

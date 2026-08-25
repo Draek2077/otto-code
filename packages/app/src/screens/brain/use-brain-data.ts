@@ -80,6 +80,24 @@ export function useBrainInventory(serverId: string, enabled: boolean) {
   });
 }
 
+/** Exact model names accepted by the host lifecycle start/restart RPCs. */
+export function useBrainModelNames(serverId: string, enabled: boolean) {
+  const client = useHostRuntimeClient(serverId);
+  return useFetchQuery({
+    queryKey: ["brain-models", serverId] as const,
+    enabled: enabled && Boolean(client),
+    dataShape: "value",
+    staleTimeMs: 10_000,
+    refetchInterval: 15_000,
+    queryFn: async () => {
+      if (!client) {
+        throw new Error("This host is not connected.");
+      }
+      return client.brainModelsList();
+    },
+  });
+}
+
 export function useBrainLogs(serverId: string, enabled: boolean) {
   const client = useHostRuntimeClient(serverId);
   const pushed = useHostFeature(serverId, "brainLogPush");

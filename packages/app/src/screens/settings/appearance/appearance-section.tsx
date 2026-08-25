@@ -459,8 +459,8 @@ function TabOrientationRow({ value, onChange }: TabOrientationRowProps) {
         {/* i18n: English-only pending a translation pass (Vertical tabs). */}
         <Text style={settingsStyles.rowTitle}>Default tab orientation</Text>
         <Text style={settingsStyles.rowHint}>
-          Sets the tab-strip layout for new panes - a horizontal row at the top, or a vertical rail
-          on the left. Any pane can override this individually.
+          Tab-strip layout for new panes: a horizontal row at the top, or a vertical rail on the
+          left. Any pane can override it.
         </Text>
       </View>
       <SegmentedControl
@@ -748,6 +748,155 @@ function LayoutToggleRow({
 // Page
 // ---------------------------------------------------------------------------
 
+export function ChatAppearanceSection() {
+  const { t } = useTranslation();
+  const { settings, updateSettings } = useAppSettings();
+  const updateBoolean = useCallback(
+    (key: keyof AppSettings, value: boolean) => void updateSettings({ [key]: value }),
+    [updateSettings],
+  );
+  const handleBlackTabBackgroundChange = useCallback(
+    (value: boolean) => updateBoolean("blackTabBackground", value),
+    [updateBoolean],
+  );
+  const handleGroupConsecutiveActionsChange = useCallback(
+    (value: boolean) => updateBoolean("groupConsecutiveActions", value),
+    [updateBoolean],
+  );
+  const handleWrapToolCallTextChange = useCallback(
+    (value: boolean) => updateBoolean("wrapToolCallText", value),
+    [updateBoolean],
+  );
+  const handleChatMetricsBarChange = useCallback(
+    (value: boolean) => updateBoolean("chatMetricsBar", value),
+    [updateBoolean],
+  );
+  const handleAutoExpandReasoningChange = useCallback(
+    (value: boolean) => updateBoolean("autoExpandReasoning", value),
+    [updateBoolean],
+  );
+  const handleHideChatMessageDetailsChange = useCallback(
+    (value: boolean) => updateBoolean("hideChatMessageDetails", value),
+    [updateBoolean],
+  );
+  const handleChatBubbleGradientChange = useCallback(
+    (value: boolean) => updateBoolean("chatBubbleGradient", value),
+    [updateBoolean],
+  );
+  const handleWrapCodeLinesChange = useCallback(
+    (value: boolean) => updateBoolean("wrapCodeLines", value),
+    [updateBoolean],
+  );
+  const handleToolCallDetailLevelChange = useCallback(
+    (toolCallDetailLevel: AppSettings["toolCallDetailLevel"]) =>
+      void updateSettings({ toolCallDetailLevel }),
+    [updateSettings],
+  );
+  const handleChatTimestampDisplayChange = useCallback(
+    (chatTimestampDisplay: AppSettings["chatTimestampDisplay"]) =>
+      void updateSettings({ chatTimestampDisplay }),
+    [updateSettings],
+  );
+  const handleTextEffectThemeChange = useCallback(
+    (textEffectTheme: TextEffectThemeId) => void updateSettings({ textEffectTheme }),
+    [updateSettings],
+  );
+
+  return (
+    <SettingsSection title="Presentation">
+      <View style={settingsStyles.card}>
+        <LayoutToggleRow
+          title={t("settings.appearance.agents.blackChatBackground.title")}
+          hint={t("settings.appearance.agents.blackChatBackground.hint")}
+          accessibilityLabel={t(
+            "settings.appearance.agents.blackChatBackground.accessibilityLabel",
+          )}
+          value={settings.blackTabBackground}
+          withBorder={false}
+          onValueChange={handleBlackTabBackgroundChange}
+          testID="settings-black-tab-background-switch"
+        />
+        <LayoutToggleRow
+          title={t("settings.appearance.agents.groupConsecutiveActions.title")}
+          hint={t("settings.appearance.agents.groupConsecutiveActions.hint")}
+          accessibilityLabel={t(
+            "settings.appearance.agents.groupConsecutiveActions.accessibilityLabel",
+          )}
+          value={settings.groupConsecutiveActions}
+          withBorder
+          onValueChange={handleGroupConsecutiveActionsChange}
+          testID="settings-group-consecutive-actions-switch"
+        />
+        <ToolCallDetailRow
+          value={settings.toolCallDetailLevel}
+          onChange={handleToolCallDetailLevelChange}
+        />
+        <LayoutToggleRow
+          title={t("settings.appearance.agents.wrapToolCallText.title")}
+          hint={t("settings.appearance.agents.wrapToolCallText.hint")}
+          accessibilityLabel={t("settings.appearance.agents.wrapToolCallText.accessibilityLabel")}
+          value={settings.wrapToolCallText}
+          withBorder
+          onValueChange={handleWrapToolCallTextChange}
+          testID="settings-wrap-tool-call-text-switch"
+        />
+        <LayoutToggleRow
+          title={t("settings.appearance.agents.chatMetricsBar.title")}
+          hint={t("settings.appearance.agents.chatMetricsBar.hint")}
+          accessibilityLabel={t("settings.appearance.agents.chatMetricsBar.accessibilityLabel")}
+          value={settings.chatMetricsBar}
+          withBorder
+          onValueChange={handleChatMetricsBarChange}
+          testID="settings-chat-metrics-bar-switch"
+        />
+        <LayoutToggleRow
+          title={t("settings.appearance.agents.autoExpandReasoning.title")}
+          hint={t("settings.appearance.agents.autoExpandReasoning.hint")}
+          accessibilityLabel={t(
+            "settings.appearance.agents.autoExpandReasoning.accessibilityLabel",
+          )}
+          value={settings.autoExpandReasoning}
+          withBorder
+          onValueChange={handleAutoExpandReasoningChange}
+          testID="settings-auto-expand-reasoning-switch"
+        />
+        <LayoutToggleRow
+          title={t("settings.appearance.agents.hideMessageDetails.title")}
+          hint={t("settings.appearance.agents.hideMessageDetails.hint")}
+          accessibilityLabel={t("settings.appearance.agents.hideMessageDetails.accessibilityLabel")}
+          value={settings.hideChatMessageDetails}
+          withBorder
+          onValueChange={handleHideChatMessageDetailsChange}
+          testID="settings-hide-message-details-switch"
+        />
+        <MessageTimestampRow
+          value={settings.chatTimestampDisplay}
+          onChange={handleChatTimestampDisplayChange}
+        />
+        <LayoutToggleRow
+          title="Gradient"
+          hint="Paint a soft diagonal gradient into the top corner of each chat message bubble. Turn off for flat bubbles."
+          accessibilityLabel="Gradient"
+          value={settings.chatBubbleGradient}
+          withBorder
+          onValueChange={handleChatBubbleGradientChange}
+          testID="settings-chat-bubble-gradient-switch"
+        />
+        <LayoutToggleRow
+          title="Wrap long lines"
+          hint="Wrap long lines in tool output, commands, and diffs instead of scrolling horizontally."
+          accessibilityLabel="Wrap long lines"
+          value={settings.wrapCodeLines}
+          withBorder
+          onValueChange={handleWrapCodeLinesChange}
+          testID="settings-wrap-code-lines-switch"
+        />
+        <TextEffectsRow value={settings.textEffectTheme} onChange={handleTextEffectThemeChange} />
+      </View>
+    </SettingsSection>
+  );
+}
+
 export function AppearanceSection() {
   const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
@@ -816,83 +965,6 @@ export function AppearanceSection() {
       }
     },
     [effectiveSpectrum, updateSettings],
-  );
-
-  const handleBlackTabBackgroundChange = useCallback(
-    (blackTabBackground: boolean) => {
-      void updateSettings({ blackTabBackground });
-    },
-    [updateSettings],
-  );
-
-  const handleChatMetricsBarChange = useCallback(
-    (chatMetricsBar: boolean) => {
-      void updateSettings({ chatMetricsBar });
-    },
-    [updateSettings],
-  );
-
-  const handleAutoExpandReasoningChange = useCallback(
-    (autoExpandReasoning: boolean) => {
-      void updateSettings({ autoExpandReasoning });
-    },
-    [updateSettings],
-  );
-
-  const handleGroupConsecutiveActionsChange = useCallback(
-    (groupConsecutiveActions: boolean) => {
-      void updateSettings({ groupConsecutiveActions });
-    },
-    [updateSettings],
-  );
-
-  const handleToolCallDetailLevelChange = useCallback(
-    (toolCallDetailLevel: AppSettings["toolCallDetailLevel"]) => {
-      void updateSettings({ toolCallDetailLevel });
-    },
-    [updateSettings],
-  );
-
-  const handleWrapToolCallTextChange = useCallback(
-    (wrapToolCallText: boolean) => {
-      void updateSettings({ wrapToolCallText });
-    },
-    [updateSettings],
-  );
-
-  const handleHideChatMessageDetailsChange = useCallback(
-    (hideChatMessageDetails: boolean) => {
-      void updateSettings({ hideChatMessageDetails });
-    },
-    [updateSettings],
-  );
-
-  const handleChatTimestampDisplayChange = useCallback(
-    (chatTimestampDisplay: AppSettings["chatTimestampDisplay"]) => {
-      void updateSettings({ chatTimestampDisplay });
-    },
-    [updateSettings],
-  );
-
-  const handleTextEffectThemeChange = useCallback(
-    (textEffectTheme: TextEffectThemeId) => {
-      void updateSettings({ textEffectTheme });
-    },
-    [updateSettings],
-  );
-
-  const handleWrapCodeLinesChange = useCallback(
-    (wrapCodeLines: boolean) => {
-      void updateSettings({ wrapCodeLines });
-    },
-    [updateSettings],
-  );
-
-  const handleChatBubbleGradientChange = useCallback(
-    (chatBubbleGradient: boolean) => {
-      void updateSettings({ chatBubbleGradient });
-    },
-    [updateSettings],
   );
 
   const handleAnimationsEnabledChange = useCallback(
@@ -1074,7 +1146,7 @@ export function AppearanceSection() {
         <View style={settingsStyles.card}>
           <LayoutToggleRow
             title="Animate transitions"
-            hint="Cross-fade between pages and slide the sidebars open and closed instead of switching instantly. Turn off for immediate, no-animation transitions."
+            hint="Cross-fade between pages and slide the sidebars open instead of switching instantly."
             accessibilityLabel="Animate transitions"
             value={settings.animationsEnabled}
             withBorder={false}
@@ -1145,106 +1217,6 @@ export function AppearanceSection() {
           </View>
         </SettingsSection>
       ) : null}
-      <SettingsSection title="Chats">
-        <View style={settingsStyles.card}>
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.blackChatBackground.title")}
-            hint={t("settings.appearance.agents.blackChatBackground.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.blackChatBackground.accessibilityLabel",
-            )}
-            value={settings.blackTabBackground}
-            withBorder={false}
-            onValueChange={handleBlackTabBackgroundChange}
-            testID="settings-black-tab-background-switch"
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.groupConsecutiveActions.title")}
-            hint={t("settings.appearance.agents.groupConsecutiveActions.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.groupConsecutiveActions.accessibilityLabel",
-            )}
-            value={settings.groupConsecutiveActions}
-            withBorder
-            onValueChange={handleGroupConsecutiveActionsChange}
-            testID="settings-group-consecutive-actions-switch"
-          />
-          {/* Sits next to action grouping because the two overlap: in "overview"
-              the projection collapses each run before the render model runs, so
-              action grouping has almost nothing consecutive left to group. */}
-          <ToolCallDetailRow
-            value={settings.toolCallDetailLevel}
-            onChange={handleToolCallDetailLevelChange}
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.wrapToolCallText.title")}
-            hint={t("settings.appearance.agents.wrapToolCallText.hint")}
-            accessibilityLabel={t("settings.appearance.agents.wrapToolCallText.accessibilityLabel")}
-            value={settings.wrapToolCallText}
-            withBorder
-            onValueChange={handleWrapToolCallTextChange}
-            testID="settings-wrap-tool-call-text-switch"
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.chatMetricsBar.title")}
-            hint={t("settings.appearance.agents.chatMetricsBar.hint")}
-            accessibilityLabel={t("settings.appearance.agents.chatMetricsBar.accessibilityLabel")}
-            value={settings.chatMetricsBar}
-            withBorder
-            onValueChange={handleChatMetricsBarChange}
-            testID="settings-chat-metrics-bar-switch"
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.autoExpandReasoning.title")}
-            hint={t("settings.appearance.agents.autoExpandReasoning.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.autoExpandReasoning.accessibilityLabel",
-            )}
-            value={settings.autoExpandReasoning}
-            withBorder
-            onValueChange={handleAutoExpandReasoningChange}
-            testID="settings-auto-expand-reasoning-switch"
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.hideMessageDetails.title")}
-            hint={t("settings.appearance.agents.hideMessageDetails.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.hideMessageDetails.accessibilityLabel",
-            )}
-            value={settings.hideChatMessageDetails}
-            withBorder
-            onValueChange={handleHideChatMessageDetailsChange}
-            testID="settings-hide-message-details-switch"
-          />
-          <MessageTimestampRow
-            value={settings.chatTimestampDisplay}
-            onChange={handleChatTimestampDisplayChange}
-          />
-          {/* i18n: English-only pending a translation pass (bubble gradient). */}
-          <LayoutToggleRow
-            title="Gradient"
-            hint="Paint a soft diagonal gradient into the top corner of each chat message bubble. Turn off for flat bubbles."
-            accessibilityLabel="Gradient"
-            value={settings.chatBubbleGradient}
-            withBorder
-            onValueChange={handleChatBubbleGradientChange}
-            testID="settings-chat-bubble-gradient-switch"
-          />
-          {/* i18n: English-only pending a translation pass (wrap long lines). */}
-          <LayoutToggleRow
-            title="Wrap long lines"
-            hint="Wrap long lines in tool output, commands, and diffs instead of scrolling horizontally."
-            accessibilityLabel="Wrap long lines"
-            value={settings.wrapCodeLines}
-            withBorder
-            onValueChange={handleWrapCodeLinesChange}
-            testID="settings-wrap-code-lines-switch"
-          />
-          {/* The auto-clear toggles used to sit here. They govern track behavior,
-              not presentation, so they moved to General > Agents. */}
-          <TextEffectsRow value={settings.textEffectTheme} onChange={handleTextEffectThemeChange} />
-        </View>
-      </SettingsSection>
       {/* Visualizer settings moved to their own top-level section
           (visualizer-section.tsx) - the rows kept their i18n keys. */}
       <SettingsSection title={t("settings.appearance.fonts.title")}>

@@ -130,8 +130,7 @@ export function TerminalCompatibilitySection({ serverId }: { serverId: string })
               <Text style={settingsStyles.rowTitle}>Test compatibility</Text>
               <Text style={settingsStyles.rowHint}>
                 Run read-only checks for Vim, Neovim, tmux, Difftastic, terminfo, color, fonts, and
-                the existing terminal session behavior. This does not install software or change
-                configuration.
+                terminal session behavior.
               </Text>
               {error ? <Text style={settingsStyles.rowError}>{error}</Text> : null}
             </View>

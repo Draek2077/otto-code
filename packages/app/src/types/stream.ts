@@ -1414,61 +1414,95 @@ function appendTodoList(
     ...(item.status ? { status: item.status } : {}),
     ...(item.activeForm ? { activeForm: item.activeForm } : {}),
   }));
-  const previousIndex = state.findLastIndex(
-    (item) => item.kind === "todo_list" && item.provider === provider,
-  );
-  const previous = state[previousIndex];
+  // One evolving card per checklist, never a snapshot per update: the card the
+  // agent is working through updates in place, and the header carries the most
+  // recent thing that happened to it. A snapshot-per-activity timeline stacks
+  // full-size copies of the same live list in the transcript - and because the
+  // pinned overlay only suppresses the inline copy of the list it is showing,
+  // every earlier copy stays on screen next to it.
+  const previousIndex = findActiveChecklistIndex(state, provider);
+  const previous = previousIndex >= 0 ? state[previousIndex] : undefined;
   const previousItems = previous?.kind === "todo_list" ? previous.items : [];
   const activities = deriveTaskActivities(previousItems, normalizedItems);
-  if (activities.length === 0) {
-    if (!previous || previous.kind !== "todo_list") return state;
-    const next = [...state];
-    next[previousIndex] = {
-      ...previous,
-      ...(timelineCursor ? { timelineCursor } : {}),
-      items: normalizedItems,
-      timestamp,
-    };
-    return next;
+  if (!previous || previous.kind !== "todo_list") {
+    const activity = activities[0];
+    if (!activity) {
+      return state;
+    }
+    return [
+      ...state,
+      {
+        kind: "todo_list",
+        id: createUniqueTimelineId(
+          state,
+          "todo",
+          `${provider}:${JSON.stringify(activity)}:${JSON.stringify(normalizedItems)}`,
+          timestamp,
+        ),
+        ...(timelineCursor ? { timelineCursor } : {}),
+        timestamp,
+        provider,
+        items: normalizedItems,
+        activity,
+      },
+    ];
   }
-  const lastItem = state[state.length - 1];
-  if (
-    activities.length === 1 &&
-    activities[0]?.type === "added" &&
-    lastItem?.kind === "todo_list" &&
-    lastItem.provider === provider &&
-    lastItem.activity.type === "created" &&
-    normalizedItems.every((item) => resolveTodoEntryStatus(item) === "pending")
-  ) {
-    const next = [...state];
-    next[next.length - 1] = {
-      ...lastItem,
-      ...(timelineCursor ? { timelineCursor } : {}),
-      items: normalizedItems,
-      activity: { type: "created", count: normalizedItems.length },
-      timestamp,
-    };
-    return next;
+  // An empty snapshot is not a checklist the user can read - keep the rows that
+  // are already on screen rather than hollowing the card out to "No tasks".
+  if (normalizedItems.length === 0) {
+    return state;
   }
   const next = [...state];
-  for (const activity of activities) {
-    next.push({
-      kind: "todo_list",
-      id: createUniqueTimelineId(
-        next,
-        "todo",
-        `${provider}:${JSON.stringify(activity)}:${JSON.stringify(normalizedItems)}`,
-        timestamp,
-      ),
-      ...(timelineCursor ? { timelineCursor } : {}),
-      timestamp,
-      provider,
-      items: normalizedItems,
-      activity,
-    });
-  }
+  next[previousIndex] = {
+    ...previous,
+    ...(timelineCursor ? { timelineCursor } : {}),
+    items: normalizedItems,
+    activity: resolveChecklistActivity(previous.activity, activities, normalizedItems),
+    timestamp,
+  };
   return next;
 }
+
+/**
+ * The label the evolving card carries after an update. Tasks appended while the
+ * list is still untouched keep reading as one creation - agents commonly build
+ * the list in several calls. Otherwise the update's most consequential change
+ * wins: a completion over a start, because the started task already reads as
+ * in flight from its own row.
+ */
+function resolveChecklistActivity(
+  current: TaskActivity,
+  activities: readonly TaskActivity[],
+  items: readonly TodoEntry[],
+): TaskActivity {
+  if (activities.length === 0) {
+    return current;
+  }
+  if (
+    current.type === "created" &&
+    activities.every((activity) => activity.type === "added") &&
+    items.every((item) => resolveTodoEntryStatus(item) === "pending")
+  ) {
+    return { type: "created", count: items.length };
+  }
+  let best = activities[0] ?? current;
+  for (const activity of activities) {
+    // `>=` so the last change of equal weight wins: two completions in one
+    // update read best as the furthest one down the list.
+    if (CHECKLIST_ACTIVITY_RANK[activity.type] >= CHECKLIST_ACTIVITY_RANK[best.type]) {
+      best = activity;
+    }
+  }
+  return best;
+}
+
+const CHECKLIST_ACTIVITY_RANK: Record<TaskActivity["type"], number> = {
+  created: 4,
+  completed: 3,
+  reopened: 2,
+  added: 1,
+  started: 0,
+};
 
 export function resolveTodoEntryStatus(task: TodoEntry): TodoEntryStatus {
   if (task.completed || task.status === "completed") return "completed";

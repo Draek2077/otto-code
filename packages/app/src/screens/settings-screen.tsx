@@ -23,6 +23,7 @@ import type { TFunction } from "i18next";
 import { Buffer } from "buffer";
 import {
   ArrowLeft,
+  Chat,
   Settings,
   Palette,
   Server,
@@ -38,7 +39,6 @@ import {
   Keyboard,
   Stethoscope,
   Info,
-  CircleNotificationsFilled,
   Shield,
   Puzzle,
   Plus,
@@ -63,9 +63,15 @@ import { HostStatusDot } from "@/components/host-status-dot";
 import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
-import { AppearanceSection } from "@/screens/settings/appearance/appearance-section";
+import {
+  AppearanceSection,
+  ChatAppearanceSection,
+} from "@/screens/settings/appearance/appearance-section";
 import { EditorSection } from "@/screens/settings/editor-section";
-import { DiffPresentationSection } from "@/screens/settings/diff-presentation-section";
+import {
+  DiffPresentationSection,
+  DiffPreviewSection,
+} from "@/screens/settings/diff-presentation-section";
 import { VisualizerSection } from "@/screens/settings/visualizer-section";
 import {
   useAppSettings,
@@ -149,6 +155,9 @@ import {
 } from "@/screens/settings/host-page";
 import { HostBrainPage } from "@/screens/settings/host-brain-page";
 import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
+import { PreviewCacheSettingsSection } from "@/screens/settings/storage-section";
+import { AgentVoiceCuesRow } from "@/screens/settings/agent-voice-cues-row";
+import { VoicePlaybackVolumeRow } from "@/screens/settings/voice-playback-volume-row";
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen, {
   confirmDiscardProjectSettingsChanges,
@@ -221,12 +230,14 @@ interface SidebarSectionItem {
   labelKey: string;
   icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
   desktopOnly?: boolean;
+  hidden?: boolean;
   // Hidden from the sidebar (and content gated to null) in User mode.
   developerOnly?: boolean;
 }
 
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   { id: "general", labelKey: "settings.sections.general", icon: Settings },
+  { id: "chat", labelKey: "settings.sections.chat", icon: Chat },
   { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
   // Reuses the (pre-move) Appearance-subsection title key so every locale
   // already has it - the rows themselves moved to visualizer-section.tsx.
@@ -247,13 +258,13 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     id: "integrations",
     labelKey: "settings.sections.integrations",
     icon: Puzzle,
-    desktopOnly: true,
   },
   {
     id: "notifications",
-    labelKey: "settings.sections.notifications",
-    icon: CircleNotificationsFilled,
+    labelKey: "settings.sections.permissions",
+    icon: Shield,
     desktopOnly: true,
+    hidden: true,
   },
   {
     id: "permissions",
@@ -472,18 +483,6 @@ interface GeneralSectionProps {
   isDesktopApp: boolean;
   handleInterfaceModeChange: (mode: InterfaceMode) => void;
   handleAppStartScreenChange: (screen: AppStartScreen) => void;
-  handleSuggestedTasksEnabledChange: (enabled: boolean) => void;
-  handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
-  handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
-  handleFollowPromptSuggestionsChange: (enabled: boolean) => void;
-  handleRateLimitWarningsEnabledChange: (enabled: boolean) => void;
-  handleContextWarningsEnabledChange: (enabled: boolean) => void;
-  handleAutoClearCompletedSubagentsChange: (enabled: boolean) => void;
-  handleAutoClearCompletedBackgroundTasksChange: (enabled: boolean) => void;
-  handleAutoClearFailedBackgroundTasksChange: (enabled: boolean) => void;
-  handlePinnedTaskListEnabledChange: (enabled: boolean) => void;
-  handlePinnedTaskListAutoDismissChange: (enabled: boolean) => void;
-  handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLinkOpenBehaviorChange: (behavior: LinkOpenBehavior) => void;
   handleLanguageChange: (language: AppLanguage) => void;
@@ -570,18 +569,6 @@ function GeneralSection({
   isDesktopApp,
   handleInterfaceModeChange,
   handleAppStartScreenChange,
-  handleSuggestedTasksEnabledChange,
-  handleSuggestedTasksDefaultModeChange,
-  handlePromptSuggestionsEnabledChange,
-  handleFollowPromptSuggestionsChange,
-  handleRateLimitWarningsEnabledChange,
-  handleContextWarningsEnabledChange,
-  handleAutoClearCompletedSubagentsChange,
-  handleAutoClearCompletedBackgroundTasksChange,
-  handleAutoClearFailedBackgroundTasksChange,
-  handlePinnedTaskListEnabledChange,
-  handlePinnedTaskListAutoDismissChange,
-  handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
   handleLinkOpenBehaviorChange,
   handleLanguageChange,
@@ -593,7 +580,6 @@ function GeneralSection({
 }: GeneralSectionProps) {
   const { t, i18n } = useTranslation();
   const activeLocale = getActiveLocale(i18n.language);
-  const sendBehaviorOptions = useMemo(() => getSendBehaviorOptions(t), [t]);
   const interfaceModeOptions = useMemo(() => getInterfaceModeOptions(t), [t]);
   // `null` (unchosen / legacy device) resolves to Developer, matching useInterfaceMode.
   const interfaceModeValue: InterfaceMode = settings.interfaceMode ?? "developer";
@@ -603,16 +589,10 @@ function GeneralSection({
       : "settings.general.interfaceMode.descriptions.developer";
   const appStartScreenOptions = useMemo(() => getAppStartScreenOptions(t), [t]);
   const appStartScreenDescriptionKey = APP_START_SCREEN_DESCRIPTION_KEYS[settings.appStartScreen];
-  const suggestedTasksDefaultModeDescription =
-    SUGGESTED_TASKS_DEFAULT_MODE_DESCRIPTIONS[settings.suggestedTasksDefaultMode];
   const previewServerCloseBehaviorOptions = useMemo(
     () => getPreviewServerCloseBehaviorOptions(t),
     [t],
   );
-  const sendBehaviorDescriptionKey =
-    settings.sendBehavior === "interrupt"
-      ? "settings.general.defaultSend.descriptions.interrupt"
-      : "settings.general.defaultSend.descriptions.queue";
   const selectedLanguageOption = LANGUAGE_OPTIONS.find(
     (option) => option.value === settings.language,
   );
@@ -900,15 +880,98 @@ function GeneralSection({
           ) : null}
         </View>
       </SettingsSection>
-      <DiffPresentationSection />
-      <SettingsSection title="Agents">
+      {interfaceModeValue === "developer" ? (
+        <SettingsSection title={t("settings.preview.title")}>
+          <View style={settingsStyles.card}>
+            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>
+                  {t("settings.general.previewServerCloseBehavior.label")}
+                </Text>
+                <Text style={settingsStyles.rowHint}>
+                  {t("settings.general.previewServerCloseBehavior.description")}
+                </Text>
+              </View>
+              <SegmentedControl
+                size="sm"
+                value={settings.previewServerCloseBehavior}
+                onValueChange={handlePreviewServerCloseBehaviorChange}
+                options={previewServerCloseBehaviorOptions}
+              />
+            </View>
+            <View style={settingsStyles.row}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>
+                  {t("settings.preview.autoStartOnRestore.label")}
+                </Text>
+                <Text style={settingsStyles.rowHint}>
+                  {t("settings.preview.autoStartOnRestore.description")}
+                </Text>
+              </View>
+              <Switch
+                value={settings.previewAutoStartOnRestore}
+                onValueChange={handlePreviewAutoStartOnRestoreChange}
+                accessibilityLabel={t("settings.preview.autoStartOnRestore.label")}
+                testID="settings-preview-auto-start-on-restore-switch"
+              />
+            </View>
+          </View>
+        </SettingsSection>
+      ) : null}
+      <DesktopWindowBehaviorSection />
+    </Fragment>
+  );
+}
+
+interface ChatSectionProps {
+  settings: AppSettings;
+  handleSuggestedTasksEnabledChange: (enabled: boolean) => void;
+  handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
+  handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
+  handleFollowPromptSuggestionsChange: (enabled: boolean) => void;
+  handleRateLimitWarningsEnabledChange: (enabled: boolean) => void;
+  handleContextWarningsEnabledChange: (enabled: boolean) => void;
+  handleAutoClearCompletedSubagentsChange: (enabled: boolean) => void;
+  handleAutoClearCompletedBackgroundTasksChange: (enabled: boolean) => void;
+  handleAutoClearFailedBackgroundTasksChange: (enabled: boolean) => void;
+  handlePinnedTaskListEnabledChange: (enabled: boolean) => void;
+  handlePinnedTaskListAutoDismissChange: (enabled: boolean) => void;
+  handleSendBehaviorChange: (behavior: SendBehavior) => void;
+}
+
+function ChatSection({
+  settings,
+  handleSuggestedTasksEnabledChange,
+  handleSuggestedTasksDefaultModeChange,
+  handlePromptSuggestionsEnabledChange,
+  handleFollowPromptSuggestionsChange,
+  handleRateLimitWarningsEnabledChange,
+  handleContextWarningsEnabledChange,
+  handleAutoClearCompletedSubagentsChange,
+  handleAutoClearCompletedBackgroundTasksChange,
+  handleAutoClearFailedBackgroundTasksChange,
+  handlePinnedTaskListEnabledChange,
+  handlePinnedTaskListAutoDismissChange,
+  handleSendBehaviorChange,
+}: ChatSectionProps) {
+  const { t } = useTranslation();
+  const sendBehaviorOptions = useMemo(() => getSendBehaviorOptions(t), [t]);
+  const suggestedTasksDefaultModeDescription =
+    SUGGESTED_TASKS_DEFAULT_MODE_DESCRIPTIONS[settings.suggestedTasksDefaultMode];
+  const sendBehaviorDescriptionKey =
+    settings.sendBehavior === "interrupt"
+      ? "settings.general.defaultSend.descriptions.interrupt"
+      : "settings.general.defaultSend.descriptions.queue";
+
+  return (
+    <Fragment>
+      <SettingsSection title="Agent behavior">
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Suggested tasks</Text>
               <Text style={settingsStyles.rowHint}>
-                Show a card when an agent proposes follow-up work you can start later. Turn off to
-                suppress these entirely.
+                Show a card when an agent proposes follow-up work you can start later.
               </Text>
             </View>
             <Switch
@@ -960,19 +1023,15 @@ function GeneralSection({
               testID="settings-prompt-suggestions-switch"
             />
           </View>
-          {/* Only shown while suggestions are produced at all. A dependent
-              toggle that cannot do anything is worse than no toggle: it reads
-              as broken rather than as unavailable. */}
           {settings.promptSuggestionsEnabled ? (
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
                 <Text style={settingsStyles.rowTitle}>Follow prompt suggestions</Text>
                 <Text style={settingsStyles.rowHint}>
-                  Send the agent&apos;s predicted next prompt as soon as it appears, instead of
-                  waiting for you to press Tab. A band above the message box says when Otto is
-                  following, and it stops after {FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE} in a row
-                  until you send a message yourself. This is separate from Auto mode, which decides
-                  how an agent acts once a prompt has been sent.
+                  Send the predicted next prompt automatically instead of waiting for Tab, stopping
+                  after {FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE} in a row until you send one
+                  yourself. Separate from Auto mode, which decides how an agent acts after a prompt
+                  is sent.
                 </Text>
               </View>
               <Switch
@@ -1002,8 +1061,8 @@ function GeneralSection({
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Context weight warnings</Text>
               <Text style={settingsStyles.rowHint}>
-                Show a warning above the message box when the context for this project takes a large
-                share of the model window. The Context tab stays available either way.
+                Show a warning above the message box when this project&apos;s context takes a large
+                share of the model window.
               </Text>
             </View>
             <Switch
@@ -1013,16 +1072,12 @@ function GeneralSection({
               testID="settings-context-warnings-switch"
             />
           </View>
-          {/* The three auto-clear toggles govern the tracks above the message
-              box (sub-agents, background tasks). Behavior, not presentation, so
-              they live here rather than under Appearance where they started. */}
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Auto-clear completed sub-agents</Text>
               <Text style={settingsStyles.rowHint}>
-                Automatically remove finished sub-agents from a chat&apos;s track once they settle,
-                instead of leaving them for a manual clear. Their token totals stay counted in the
-                track header.
+                Remove finished sub-agents from a chat&apos;s track once they settle. Their token
+                totals stay counted in the track header.
               </Text>
             </View>
             <Switch
@@ -1036,10 +1091,8 @@ function GeneralSection({
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Auto-clear completed background tasks</Text>
               <Text style={settingsStyles.rowHint}>
-                Automatically remove finished background shell tasks from a chat&apos;s track once
-                they settle, instead of leaving them for a manual clear. Their output stays in the
-                chat. Clearing pauses while the track is open, so rows you are reading stay put
-                until you close it.
+                Remove finished background shell tasks from a chat&apos;s track once they settle.
+                Their output stays in the chat.
               </Text>
             </View>
             <Switch
@@ -1053,9 +1106,8 @@ function GeneralSection({
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Auto-clear failed background tasks</Text>
               <Text style={settingsStyles.rowHint}>
-                Do the same for background shell tasks that failed. Off by default and separate from
-                the setting above, so tidying away the ones that succeeded never sweeps a failure
-                you haven&apos;t read yet. It pauses on an open track too.
+                Do the same for background shell tasks that failed. Off by default, so tidying away
+                the ones that succeeded never sweeps a failure you have not read.
               </Text>
             </View>
             <Switch
@@ -1067,14 +1119,14 @@ function GeneralSection({
           </View>
         </View>
       </SettingsSection>
-      <SettingsSection title="Chats">
+      <SettingsSection title="Task list">
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Pin task list</Text>
               <Text style={settingsStyles.rowHint}>
-                Float the agent&apos;s task checklist at the top of the chat so it stays in view as
-                it fills in, instead of scrolling away inline. Turn off to keep it inline only.
+                Float the agent&apos;s task checklist at the top of the chat so it stays in view
+                instead of scrolling away inline.
               </Text>
             </View>
             <Switch
@@ -1103,45 +1155,7 @@ function GeneralSection({
           ) : null}
         </View>
       </SettingsSection>
-      {interfaceModeValue === "developer" ? (
-        <SettingsSection title={t("settings.preview.title")}>
-          <View style={settingsStyles.card}>
-            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-              <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>
-                  {t("settings.general.previewServerCloseBehavior.label")}
-                </Text>
-                <Text style={settingsStyles.rowHint}>
-                  {t("settings.general.previewServerCloseBehavior.description")}
-                </Text>
-              </View>
-              <SegmentedControl
-                size="sm"
-                value={settings.previewServerCloseBehavior}
-                onValueChange={handlePreviewServerCloseBehaviorChange}
-                options={previewServerCloseBehaviorOptions}
-              />
-            </View>
-            <View style={settingsStyles.row}>
-              <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>
-                  {t("settings.preview.autoStartOnRestore.label")}
-                </Text>
-                <Text style={settingsStyles.rowHint}>
-                  {t("settings.preview.autoStartOnRestore.description")}
-                </Text>
-              </View>
-              <Switch
-                value={settings.previewAutoStartOnRestore}
-                onValueChange={handlePreviewAutoStartOnRestoreChange}
-                accessibilityLabel={t("settings.preview.autoStartOnRestore.label")}
-                testID="settings-preview-auto-start-on-restore-switch"
-              />
-            </View>
-          </View>
-        </SettingsSection>
-      ) : null}
-      <DesktopWindowBehaviorSection />
+      <ChatAppearanceSection />
     </Fragment>
   );
 }
@@ -1224,8 +1238,7 @@ function DiagnosticsSection({
             <Text style={settingsStyles.rowTitle}>Performance monitoring</Text>
             <Text style={settingsStyles.rowHint}>
               Record frame timing, retained state and daemon traffic so the app diagnostic can show
-              what grows over a long session. Local only - nothing is sent anywhere. Turn it off to
-              stop the sampling.
+              what grows over a long session. Local only - nothing is sent anywhere.
             </Text>
           </View>
           <Switch
@@ -1802,7 +1815,10 @@ function SettingsSidebar({
   const { settings } = useAppSettings();
   const isDeveloperMode = (settings.interfaceMode ?? "developer") === "developer";
   const items = SIDEBAR_SECTION_ITEMS.filter(
-    (item) => (!item.desktopOnly || isDesktopApp) && (!item.developerOnly || isDeveloperMode),
+    (item) =>
+      !item.hidden &&
+      (!item.desktopOnly || isDesktopApp) &&
+      (!item.developerOnly || isDeveloperMode),
   );
   const hostItems = HOST_SECTION_ITEMS.filter((item) => !item.developerOnly || isDeveloperMode);
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
@@ -2036,14 +2052,23 @@ function DesktopIntegrationsContent(props: {
   localServerId: string | null;
 }) {
   const { isDesktopApp, serverId, localServerId } = props;
-  if (!isDesktopApp) {
-    return null;
-  }
   return (
-    <IntegrationsSection
-      serverId={serverId}
-      isLocalDaemon={serverId !== null && serverId === localServerId}
-    />
+    <Fragment>
+      {serverId ? (
+        <SettingsSection title="Voice & dictation">
+          <View style={settingsStyles.card}>
+            <AgentVoiceCuesRow serverId={serverId} />
+            <VoicePlaybackVolumeRow serverId={serverId} />
+          </View>
+        </SettingsSection>
+      ) : null}
+      {isDesktopApp ? (
+        <IntegrationsSection
+          serverId={serverId}
+          isLocalDaemon={serverId !== null && serverId === localServerId}
+        />
+      ) : null}
+    </Fragment>
   );
 }
 
@@ -2567,6 +2592,7 @@ export default function SettingsScreen({
     return null;
   })();
 
+  // oxlint-disable-next-line complexity -- one exhaustive switch owns the typed Settings route.
   const renderedContent = (() => {
     if (view.kind === "root") {
       return (
@@ -2600,6 +2626,20 @@ export default function SettingsScreen({
               isDesktopApp={isDesktopApp}
               handleInterfaceModeChange={handleInterfaceModeChange}
               handleAppStartScreenChange={handleAppStartScreenChange}
+              handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
+              handleLinkOpenBehaviorChange={handleLinkOpenBehaviorChange}
+              handleLanguageChange={handleLanguageChange}
+              handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
+              handleMountedWorkspaceLimitChange={handleMountedWorkspaceLimitChange}
+              handleMountedTabLimitChange={handleMountedTabLimitChange}
+              handlePreviewServerCloseBehaviorChange={handlePreviewServerCloseBehaviorChange}
+              handlePreviewAutoStartOnRestoreChange={handlePreviewAutoStartOnRestoreChange}
+            />
+          );
+        case "chat":
+          return (
+            <ChatSection
+              settings={settings}
               handleSuggestedTasksEnabledChange={handleSuggestedTasksEnabledChange}
               handleSuggestedTasksDefaultModeChange={handleSuggestedTasksDefaultModeChange}
               handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}
@@ -2616,14 +2656,6 @@ export default function SettingsScreen({
               handlePinnedTaskListEnabledChange={handlePinnedTaskListEnabledChange}
               handlePinnedTaskListAutoDismissChange={handlePinnedTaskListAutoDismissChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
-              handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
-              handleLinkOpenBehaviorChange={handleLinkOpenBehaviorChange}
-              handleLanguageChange={handleLanguageChange}
-              handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
-              handleMountedWorkspaceLimitChange={handleMountedWorkspaceLimitChange}
-              handleMountedTabLimitChange={handleMountedTabLimitChange}
-              handlePreviewServerCloseBehaviorChange={handlePreviewServerCloseBehaviorChange}
-              handlePreviewAutoStartOnRestoreChange={handlePreviewAutoStartOnRestoreChange}
             />
           );
         case "appearance":
@@ -2631,7 +2663,13 @@ export default function SettingsScreen({
         case "visualizer":
           return isDeveloperMode ? <VisualizerSection /> : null;
         case "editor":
-          return isDeveloperMode ? <EditorSection serverId={activeHostServerId} /> : null;
+          return isDeveloperMode ? (
+            <Fragment>
+              <EditorSection serverId={activeHostServerId} />
+              <DiffPresentationSection />
+              <DiffPreviewSection />
+            </Fragment>
+          ) : null;
         case "shortcuts":
           return isDesktopApp ? <KeyboardShortcutsSection /> : null;
         case "integrations":
@@ -2643,21 +2681,36 @@ export default function SettingsScreen({
             />
           );
         case "notifications":
-          return isDesktopApp ? <DesktopNotificationsSection /> : null;
+          // COMPAT(settingsNotificationsRoute): retained for remembered/direct routes from before
+          // Permissions and Notifications merged; remove after 2027-02-24.
+          return isDesktopApp ? (
+            <Fragment>
+              <DesktopPermissionsSection />
+              <DesktopNotificationsSection />
+            </Fragment>
+          ) : null;
         case "permissions":
-          return isDesktopApp ? <DesktopPermissionsSection /> : null;
+          return isDesktopApp ? (
+            <Fragment>
+              <DesktopPermissionsSection />
+              <DesktopNotificationsSection />
+            </Fragment>
+          ) : null;
         case "diagnostics":
           return (
-            <DiagnosticsSection
-              useLegacyTerminalRenderer={settings.useLegacyTerminalRenderer}
-              onUseLegacyTerminalRendererChange={handleUseLegacyTerminalRendererChange}
-              voiceAudioEngine={voiceAudioEngine}
-              isPlaybackTestRunning={isPlaybackTestRunning}
-              playbackTestResult={playbackTestResult}
-              handlePlaybackTest={handlePlaybackTest}
-              appVersion={appVersion}
-              isDesktopApp={isDesktopApp}
-            />
+            <Fragment>
+              <DiagnosticsSection
+                useLegacyTerminalRenderer={settings.useLegacyTerminalRenderer}
+                onUseLegacyTerminalRendererChange={handleUseLegacyTerminalRendererChange}
+                voiceAudioEngine={voiceAudioEngine}
+                isPlaybackTestRunning={isPlaybackTestRunning}
+                playbackTestResult={playbackTestResult}
+                handlePlaybackTest={handlePlaybackTest}
+                appVersion={appVersion}
+                isDesktopApp={isDesktopApp}
+              />
+              <PreviewCacheSettingsSection />
+            </Fragment>
           );
         case "about":
           return (

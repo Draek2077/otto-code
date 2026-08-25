@@ -54,8 +54,6 @@ export function StorageSection({ serverId }: { serverId: string }) {
     (state) => state.sessions[serverId]?.serverInfo?.features?.attachmentStorage === true,
   );
 
-  // The device-local half needs no daemon at all, so it renders even when the
-  // host half cannot - a user on an old daemon can still reclaim their own disk.
   if (!isConnected) {
     return null;
   }
@@ -64,9 +62,18 @@ export function StorageSection({ serverId }: { serverId: string }) {
     <SettingsSection title={t("settings.host.storage.title")}>
       <View style={settingsStyles.card}>
         {isSupported ? <HostImageStoreRow serverId={serverId} /> : null}
-        <PreviewCacheRow withBorder={isSupported} />
       </View>
       {isSupported ? <RetentionCard serverId={serverId} /> : null}
+    </SettingsSection>
+  );
+}
+
+export function PreviewCacheSettingsSection() {
+  return (
+    <SettingsSection title="Storage & cache">
+      <View style={settingsStyles.card}>
+        <PreviewCacheRow withBorder={false} />
+      </View>
     </SettingsSection>
   );
 }

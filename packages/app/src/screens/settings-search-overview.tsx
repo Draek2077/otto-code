@@ -10,237 +10,12 @@ import { Search } from "@/components/icons/material-icons";
 import { SearchClearButton } from "@/components/ui/search-clear-button";
 import { isWeb } from "@/constants/platform";
 import { type HostSectionSlug, type SettingsSectionSlug } from "@/utils/host-routes";
-import { SETTINGS_SEARCH_ITEMS as SETTINGS_SEARCH_CATALOG } from "@/screens/settings-search-catalog";
-
-interface SettingsSearchItem {
-  id: string;
-  title: string;
-  description: string;
-  keywords: string;
-  scope: "App" | "Desktop" | "Host";
-  section: SettingsSectionSlug | HostSectionSlug;
-  host: boolean;
-  developerOnly?: boolean;
-}
-
-export const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
-  {
-    id: "interface-mode",
-    title: "Interface mode",
-    description: "Choose User or Developer mode",
-    keywords: "user developer interface",
-    scope: "App",
-    section: "general",
-    host: false,
-  },
-  {
-    id: "app-start",
-    title: "App starts on",
-    description: "Choose the first screen Otto opens",
-    keywords: "startup home dashboard workspace",
-    scope: "App",
-    section: "general",
-    host: false,
-  },
-  {
-    id: "language",
-    title: "Language",
-    description: "Choose the app language",
-    keywords: "locale translation",
-    scope: "App",
-    section: "general",
-    host: false,
-  },
-  {
-    id: "send-behavior",
-    title: "Default send",
-    description: "Choose whether Enter interrupts or queues",
-    keywords: "enter interrupt queue message",
-    scope: "App",
-    section: "general",
-    host: false,
-  },
-  {
-    id: "tool-call-detail",
-    title: "Tool call display",
-    description: "Show summary or full tool-call detail",
-    keywords: "timeline tools detail",
-    scope: "App",
-    section: "general",
-    host: false,
-  },
-  {
-    id: "terminal-scrollback",
-    title: "Terminal scrollback",
-    description: "Lines kept in the terminal buffer",
-    keywords: "terminal lines buffer",
-    scope: "App",
-    section: "general",
-    host: false,
-    developerOnly: true,
-  },
-  {
-    id: "theme",
-    title: "Theme",
-    description: "Choose color mode and visual theme",
-    keywords: "dark light color appearance",
-    scope: "App",
-    section: "appearance",
-    host: false,
-  },
-  {
-    id: "fonts",
-    title: "Fonts",
-    description: "Adjust interface, code, and terminal typography",
-    keywords: "font size typeface accessibility",
-    scope: "App",
-    section: "appearance",
-    host: false,
-  },
-  {
-    id: "chat-layout",
-    title: "Chat layout",
-    description: "Adjust chat width, tabs, and message presentation",
-    keywords: "chat width tabs layout messages",
-    scope: "App",
-    section: "appearance",
-    host: false,
-  },
-  {
-    id: "diff-presentation",
-    title: "Diff presentation",
-    description: "Choose line or structural review diffs",
-    keywords: "difftastic semantic syntax aware changes review line structured",
-    scope: "App",
-    section: "appearance",
-    host: false,
-  },
-  {
-    id: "visualizer",
-    title: "Visualizer",
-    description: "Configure the agent visualizer",
-    keywords: "graph nodes panels sound fps",
-    scope: "App",
-    section: "visualizer",
-    host: false,
-    developerOnly: true,
-  },
-  {
-    id: "vim",
-    title: "Vim keybindings",
-    description: "Use Vim keybindings in the file editor",
-    keywords: "editor keyboard",
-    scope: "App",
-    section: "editor" as SettingsSectionSlug,
-    host: false,
-    developerOnly: true,
-  },
-  {
-    id: "desktop-window",
-    title: "Window behavior",
-    description: "Configure tray, startup, and quit behavior",
-    keywords: "desktop tray minimize quit",
-    scope: "Desktop",
-    section: "general",
-    host: false,
-  },
-  {
-    id: "providers",
-    title: "Providers",
-    description: "Configure agent providers, models, and connections",
-    keywords: "model api key server url agent inference llm",
-    scope: "Host",
-    section: "providers",
-    host: true,
-    developerOnly: true,
-  },
-  {
-    id: "personalities",
-    title: "Agent personalities",
-    description: "Create reusable agent templates",
-    keywords: "agents model prompt role voice",
-    scope: "Host",
-    section: "agents",
-    host: true,
-  },
-  {
-    id: "teams",
-    title: "Agent teams",
-    description: "Group personalities into reusable teams",
-    keywords: "team members roles prompt",
-    scope: "Host",
-    section: "teams",
-    host: true,
-  },
-  {
-    id: "otto-tools",
-    title: "Otto tools",
-    description: "Choose which tools agents can use",
-    keywords: "tools preview browser schedules artifacts",
-    scope: "Host",
-    section: "tools",
-    host: true,
-    developerOnly: true,
-  },
-  {
-    id: "code-intelligence",
-    title: "Code intelligence",
-    description: "Configure language servers and code navigation",
-    keywords: "lsp definition references diagnostics language",
-    scope: "Host",
-    section: "code",
-    host: true,
-    developerOnly: true,
-  },
-  {
-    id: "brain",
-    title: "Otto Brain",
-    description: "Configure the local or remote model host",
-    keywords: "local model host llama remote tls",
-    scope: "Host",
-    section: "brain",
-    host: true,
-    developerOnly: true,
-  },
-  {
-    id: "storage",
-    title: "Images from agents",
-    description: "Manage host image retention and storage",
-    keywords: "attachments screenshots disk cleanup",
-    scope: "Host",
-    section: "storage",
-    host: true,
-  },
-  {
-    id: "terminals",
-    title: "Terminal profiles",
-    description: "Configure host terminal commands and profiles",
-    keywords: "shell command powershell hooks",
-    scope: "Host",
-    section: "terminals",
-    host: true,
-    developerOnly: true,
-  },
-  {
-    id: "git-fetch",
-    title: "Git fetch",
-    description: "Control automatic fetches for active workspaces",
-    keywords: "git ssh credentials private key remote origin background automatic interval",
-    scope: "Host",
-    section: "workspaces",
-    host: true,
-    developerOnly: true,
-  },
-  {
-    id: "connections",
-    title: "Connections",
-    description: "Manage this device's connection to the host",
-    keywords: "pair device qr remote",
-    scope: "Host",
-    section: "connections",
-    host: true,
-  },
-];
+import {
+  SETTINGS_SEARCH_ITEMS as SETTINGS_SEARCH_CATALOG,
+  matchesSettingsSearchTerms,
+  parseSettingsSearchTerms,
+  type SettingsSearchItem,
+} from "@/screens/settings-search-catalog";
 
 const ThemedSearch = withUnistyles(Search);
 
@@ -274,18 +49,16 @@ export function SettingsSearchOverview({
   const [query, setQuery] = useState("");
   const clearQuery = useCallback(() => setQuery(""), []);
   const normalizedQuery = query.trim().toLowerCase();
+  const searchTerms = useMemo(() => parseSettingsSearchTerms(normalizedQuery), [normalizedQuery]);
   const results = useMemo(() => {
-    return SETTINGS_SEARCH_CATALOG.filter((item) => {
-      if (!normalizedQuery) return false;
-      return `${item.title} ${item.description} ${item.keywords} ${item.scope}`
-        .toLowerCase()
-        .includes(normalizedQuery);
-    });
-  }, [normalizedQuery]);
+    // Every whitespace-separated term has to match, so "brain https" narrows
+    // instead of looking for that literal string and finding nothing.
+    return SETTINGS_SEARCH_CATALOG.filter((item) => matchesSettingsSearchTerms(item, searchTerms));
+  }, [searchTerms]);
   const groupedResults = useMemo(() => {
     const groups = new Map<string, SettingsSearchItem[]>();
     for (const item of results) {
-      const key = `${item.scope} · ${item.section}`;
+      const key = `${item.scope} · ${item.category}`;
       groups.set(key, [...(groups.get(key) ?? []), item]);
     }
     return [...groups.entries()];
@@ -395,7 +168,9 @@ function SettingsSearchResultRow({
       </View>
       <View style={searchOverviewStyles.badges}>
         <Text style={searchOverviewStyles.badge}>{item.scope}</Text>
-        {item.developerOnly ? <Text style={searchOverviewStyles.badge}>Developer</Text> : null}
+        <Text style={searchOverviewStyles.badge}>{item.group}</Text>
+        <Text style={searchOverviewStyles.badge}>{item.audience}</Text>
+        {item.advanced ? <Text style={searchOverviewStyles.badge}>Advanced</Text> : null}
       </View>
     </Pressable>
   );

@@ -156,8 +156,10 @@ import {
 } from "./features/zoom-recorder.js";
 import {
   getCachedMinimizeOnCloseSetting,
+  getCachedTrayIconSetting,
   refreshTrayVisibility,
   setCachedMinimizeOnCloseSetting,
+  setCachedTrayIconSetting,
   shouldHideWindowOnClose,
   type TrayLifecycleOptions,
 } from "./features/tray.js";
@@ -892,9 +894,22 @@ function showMostRecentWindowOrCreateOne(): void {
 }
 
 const TRAY_LIFECYCLE_OPTIONS: TrayLifecycleOptions = {
+  isTrayIconEnabled: getCachedTrayIconSetting,
   onShowWindow: showMostRecentWindowOrCreateOne,
   onQuit: () => app.quit(),
 };
+
+// Only the first window of a session honors "start minimized to tray". A
+// window opened later (⌘N, second-instance, "Open in new window") is an
+// explicit ask to see it. macOS uses its dock for no-window recall, and a
+// disabled tray icon must never leave a hidden window with no recall path.
+async function shouldStartMinimizedToTrayForWindow(restoreWindowState: boolean): Promise<boolean> {
+  if (!restoreWindowState || process.platform === "darwin") {
+    return false;
+  }
+  const tray = (await getDesktopSettingsStore().get()).tray;
+  return tray.showIcon && tray.startMinimized;
+}
 
 function applyAppIcon(): void {
   if (process.platform !== "darwin") {
@@ -947,16 +962,7 @@ async function createWindow(
     ? clampWindowStateToWorkAreas(savedWindowState, getWorkAreasPrimaryFirst())
     : null;
 
-  // Only the first window of a session honors "start minimized to tray" - a
-  // window opened later (⌘N, second-instance, "Open in new window") is an
-  // explicit ask to see it. Mac has no tray-only mode to start into (see
-  // shouldHideWindowOnClose's darwin exemption): the dock already keeps Otto
-  // running with zero windows, so "minimized" there would just mean invisible
-  // with no way back short of the dock icon.
-  const shouldStartMinimizedToTray =
-    restoreWindowState &&
-    process.platform !== "darwin" &&
-    (await getDesktopSettingsStore().get()).tray.startMinimized;
+  const shouldStartMinimizedToTray = await shouldStartMinimizedToTrayForWindow(restoreWindowState);
 
   const title = devWorktreeName ? `${APP_NAME} (${devWorktreeName})` : APP_NAME;
   const mainWindow = new BrowserWindow({
@@ -1007,6 +1013,7 @@ async function createWindow(
     const otherVisibleWindowCount = otherWindows.filter((win) => win.isVisible()).length;
     const shouldHide = shouldHideWindowOnClose({
       platform: process.platform,
+      trayIconEnabled: getCachedTrayIconSetting(),
       minimizeOnCloseEnabled: getCachedMinimizeOnCloseSetting(),
       isQuitting: isAppQuitting(),
       otherVisibleWindowCount,
@@ -1527,10 +1534,14 @@ async function bootstrap(): Promise<void> {
   }
 
   const initialDesktopSettings = await getDesktopSettingsStore().get();
+  setCachedTrayIconSetting(initialDesktopSettings.tray.showIcon);
   setCachedMinimizeOnCloseSetting(initialDesktopSettings.tray.minimizeOnClose);
   registerDaemonManager({
-    onDesktopSettingsChanged: (settings) =>
-      setCachedMinimizeOnCloseSetting(settings.tray.minimizeOnClose),
+    onDesktopSettingsChanged: (settings) => {
+      setCachedTrayIconSetting(settings.tray.showIcon);
+      setCachedMinimizeOnCloseSetting(settings.tray.minimizeOnClose);
+      refreshTrayVisibility(TRAY_LIFECYCLE_OPTIONS);
+    },
     isTrustedSender: (sender) => isTrustedMainWindowSender(sender, trustedOttoOriginPolicy),
   });
   registerWindowManager({
@@ -1750,8 +1761,7 @@ app.on("window-all-closed", () => {
     app.quit();
     return;
   }
-  // mac's native close behavior already leaves the app running with no windows
-  // (the dock icon persists); that state is this feature's mac equivalent of
-  // "minimized to tray," so show the tray icon the same way the other platforms do.
+  // mac's native close behavior leaves the app running with no windows. Keep the
+  // user-controlled tray icon synchronized in that state too.
   refreshTrayVisibility(TRAY_LIFECYCLE_OPTIONS);
 });

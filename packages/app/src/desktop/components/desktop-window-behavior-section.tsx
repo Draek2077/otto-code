@@ -9,16 +9,28 @@ import { settingsStyles } from "@/styles/settings";
 
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 
-// Electron desktop wrapper only (irrelevant to the plain web client), and
-// Windows/Linux only: on mac, closing the window already leaves Otto running via
-// the dock (no interception needed), so the setting has nothing to opt out of there.
+// Electron desktop wrapper only. The tray icon is available on every desktop
+// platform; close-to-tray and start-minimized only apply on Windows/Linux because
+// macOS keeps the app recallable through its dock.
 export function DesktopWindowBehaviorSection() {
   const { t } = useTranslation();
   const { settings, updateSettings } = useDesktopSettings();
+  const [isUpdatingTrayIcon, setIsUpdatingTrayIcon] = useState(false);
   const [isUpdatingMinimizeOnClose, setIsUpdatingMinimizeOnClose] = useState(false);
   const [isUpdatingStartMinimized, setIsUpdatingStartMinimized] = useState(false);
   const [isUpdatingWarnBeforeQuit, setIsUpdatingWarnBeforeQuit] = useState(false);
   const [isUpdatingOnlyWarnForActiveAgents, setIsUpdatingOnlyWarnForActiveAgents] = useState(false);
+
+  const handleToggleTrayIcon = useCallback(() => {
+    setIsUpdatingTrayIcon(true);
+    void updateSettings({ tray: { showIcon: !settings.tray.showIcon } })
+      .catch(() => {
+        // useDesktopSettings owns the user-visible IPC error.
+      })
+      .finally(() => {
+        setIsUpdatingTrayIcon(false);
+      });
+  }, [settings.tray.showIcon, updateSettings]);
 
   const handleToggleMinimizeOnClose = useCallback(() => {
     setIsUpdatingMinimizeOnClose(true);
@@ -75,9 +87,21 @@ export function DesktopWindowBehaviorSection() {
   return (
     <SettingsSection title={t("desktop.window.title")} testID="host-page-window-behavior-card">
       <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("desktop.window.trayIcon.title")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("desktop.window.trayIcon.hint")}</Text>
+          </View>
+          <Switch
+            value={settings.tray.showIcon}
+            onValueChange={handleToggleTrayIcon}
+            disabled={isUpdatingTrayIcon}
+            accessibilityLabel={t("desktop.window.trayIcon.title")}
+          />
+        </View>
         {isMac ? null : (
           <>
-            <View style={settingsStyles.row}>
+            <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
                 <Text style={settingsStyles.rowTitle}>
                   {t("desktop.window.minimizeToTray.title")}
@@ -89,7 +113,7 @@ export function DesktopWindowBehaviorSection() {
               <Switch
                 value={settings.tray.minimizeOnClose}
                 onValueChange={handleToggleMinimizeOnClose}
-                disabled={isUpdatingMinimizeOnClose}
+                disabled={isUpdatingMinimizeOnClose || !settings.tray.showIcon}
                 accessibilityLabel={t("desktop.window.minimizeToTray.title")}
               />
             </View>
@@ -105,7 +129,7 @@ export function DesktopWindowBehaviorSection() {
               <Switch
                 value={settings.tray.startMinimized}
                 onValueChange={handleToggleStartMinimized}
-                disabled={isUpdatingStartMinimized}
+                disabled={isUpdatingStartMinimized || !settings.tray.showIcon}
                 accessibilityLabel={t("desktop.window.startMinimized.title")}
               />
             </View>

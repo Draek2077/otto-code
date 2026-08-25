@@ -105,9 +105,9 @@ export function DiffPresentationPreview({
   return (
     <View style={styles.preview} testID="diff-presentation-preview">
       <View style={styles.previewHeader}>
-        <Text style={settingsStyles.rowTitle}>Diff viewer</Text>
         <Text style={settingsStyles.rowHint}>
-          Exercise the actual legacy review body and the new shared renderer against the same diff.
+          Runs the legacy review body and the new shared renderer against the same sample diff.
+          Nothing here changes a setting.
         </Text>
       </View>
       <View style={styles.controls}>
@@ -167,8 +167,7 @@ export function DiffPresentationPreview({
 
 const styles = StyleSheet.create((theme) => ({
   preview: {
-    borderTopColor: theme.colors.border,
-    borderTopWidth: theme.borderWidth[1],
+    paddingBottom: theme.spacing[4],
   },
   previewHeader: {
     paddingHorizontal: theme.spacing[4],

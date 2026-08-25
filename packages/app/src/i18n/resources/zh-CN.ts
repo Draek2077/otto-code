@@ -3490,7 +3490,7 @@ export const zhCN: TranslationResources = {
         },
         chatMetricsBar: {
           title: "显示对话指标",
-          hint: "位于对话记录上方的一行窄条，显示此对话的总 token 数、费用和子智能体活动-包含它派生的一切。仅当提供方报告费用时才会显示费用",
+          hint: "位于对话记录上方的细长一行，显示该 Chat 的总 token 数、费用和子 Agent 活动。",
           accessibilityLabel: "显示对话指标",
         },
         autoExpandReasoning: {
@@ -3500,12 +3500,12 @@ export const zhCN: TranslationResources = {
         },
         promptSuggestions: {
           title: "AI 提示词建议",
-          hint: "在一轮结束后，将智能体预测的下一个提示词以浅色文字显示在消息框中；按 Tab 采用。仅在 Claude 智能体上可用",
+          hint: "在一轮结束后，将智能体预测的下一个提示词以浅色文字显示在消息框中；按 Tab 采用。仅在 Claude 智能体上可用。",
           accessibilityLabel: "AI 提示词建议",
         },
         rateLimitWarnings: {
           title: "套餐用量上限提醒",
-          hint: "当你的套餐用量接近或达到上限时，在消息框上方显示提醒。仅在 Claude 智能体上可用",
+          hint: "当你的套餐用量接近或达到上限时，在消息框上方显示提醒。仅在 Claude 智能体上可用。",
           accessibilityLabel: "套餐用量上限提醒",
         },
         hideMessageDetails: {
@@ -3932,13 +3932,13 @@ export const zhCN: TranslationResources = {
         title: "代码智能",
         enabled: "启用代码智能",
         enabledHint:
-          "为每个项目运行一个语言服务器，使“转到定义”能够解析光标处的符号。在你使用之前不会启动任何进程；关闭后会停止所有服务器并退回到基于名称的索引。",
+          "为每个项目运行语言服务器，让转到定义解析光标处的符号。关闭后回退到基于名称的索引。",
         solution: "Microsoft .NET 解决方案管理",
         solutionHint:
-          "在文件标签页中添加解决方案视图，按构建系统看到的方式展示你的 .sln 或 .slnx。与上面的代码智能相互独立。默认关闭：它会运行一个 .NET 辅助进程并计算 MSBuild，且需要此主机上安装 .NET SDK。",
+          "在文件标签页中加入解决方案视图，按构建系统看到的样子展示 .sln 或 .slnx。需要本主机安装 .NET SDK。",
         csharpScope: "C# 项目加载",
         csharpScopeHint:
-          "C# 语言服务器加载 .NET 工作区的范围。“解决方案”使用工作区根目录中唯一的解决方案文件，它作为一个整体加载，速度快得多。“所有项目”会加载根目录下的每个 .csproj，因此不会遗漏任何内容，但它们逐个加载，大型仓库可能需要几分钟，悬停和转到定义才会响应。",
+          "C# 语言服务器加载 .NET 工作区的范围。解决方案只读根目录下的单个解决方案文件，速度快得多；所有项目不会遗漏，但在大型仓库中可能要几分钟。",
         csharpScopeSolution: "解决方案",
         csharpScopeAllProjects: "所有项目",
         languages: "语言",
@@ -3979,12 +3979,12 @@ export const zhCN: TranslationResources = {
         hostImagesSummary: "{{count}} 张图片，共 {{size}}",
         hostImagesEmpty: "还没有存储任何内容",
         hostImagesHint:
-          "Agent 生成的截图和其他图片，保留下来是为了让过往消息仍能显示它们。清除无法撤销-那些消息会退回到只显示文字描述。",
+          "你的 Agent 生成的截图和其他图片，保留下来让过往消息仍能显示。清除无法撤销。",
         previewCache: "这台设备上的缓存副本",
         previewCacheSummary: "{{count}} 张图片，共 {{size}}",
         previewCacheEmpty: "没有缓存",
         previewCacheHint:
-          "本地副本，让图片立即加载。可以放心清除-需要时会重新下载。你附加到消息里的文件（{{size}}）单独保存，绝不会在这里被清除。",
+          "让图片即时加载的本地副本，可放心清除，需要时会重新下载。你附加到消息的文件（{{size}}）单独保存。",
         clear: "清除",
         clearConfirm: "清除图片",
         clearImagesTitle: "清除这台 Host 上的图片？",
@@ -3994,10 +3994,9 @@ export const zhCN: TranslationResources = {
         clearedPreviews: "已清除 {{count}} 张缓存图片，释放 {{size}}",
         nothingToClear: "没有可清除的内容",
         maxAge: "图片保留时长",
-        maxAgeHint:
-          "未使用的图片在被自动删除前保留的天数。仍在你打开的对话中显示的图片会保住位置。填 0 则关闭此项。",
+        maxAgeHint: "未使用的图片在自动删除前保留的天数。填 0 表示关闭。",
         maxTotal: "最大占用",
-        maxTotalHint: "在这台 Host 上保留的图片容量（MB）。超出后先删最旧的。填 0 则关闭此项。",
+        maxTotalHint: "本主机保留图片的兆字节上限，先删除最旧的。填 0 表示关闭。",
       },
       workspaces: {
         unavailable: "连接到这个 Host 以管理 Workspace",
@@ -4157,12 +4156,12 @@ export const zhCN: TranslationResources = {
         showSelectorDescription: "关闭后，聊天将隐藏自动压缩选择器并始终使用上面的默认值。",
         maxToolRoundsLabel: "每轮对话的最大工具调用回合数",
         maxToolRoundsHint:
-          "模型在回合结束前可以调用工具、查看结果并再次调用工具的次数。这里统计的是回合数，而不是单个回合内的工具调用次数。",
+          "模型在本轮结束前可以调用工具并读取结果的次数。计的是轮次，不是单次调用。",
         maxToolRoundsValue: "{{rounds}} 轮",
         maxToolRoundsRequiresUpdate: "更新主机后即可配置最大工具调用回合数。",
         midSessionUpdatesLabel: "会话中的上下文更新",
         midSessionUpdatesHint:
-          "允许代理在首次处理某个子文件夹时加载该文件夹自己的 AGENTS.md。关闭后，对话中只保留你和模型放入的内容；在本地上下文窗口较小时尤其有用。",
+          "让 Agent 首次在某个子目录工作时加载该目录自己的 AGENTS.md。关闭后，对话只保留你和模型放进去的内容。",
         midSessionUpdatesRequiresUpdate: "更新主机后即可配置会话中的上下文更新。",
         actionBreakerLabel: "动作熔断器",
         actionBreakerHint:

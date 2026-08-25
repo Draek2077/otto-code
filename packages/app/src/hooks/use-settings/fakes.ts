@@ -37,6 +37,7 @@ const DEFAULT_DESKTOP: DesktopSettings = {
     keepRunningAfterQuit: false,
   },
   tray: {
+    showIcon: true,
     minimizeOnClose: true,
     startMinimized: false,
   },

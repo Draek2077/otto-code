@@ -991,7 +991,7 @@ describe("stream reducer canonical tool calls", () => {
     assert.deepStrictEqual(todos.activity, { type: "created", count: 2 });
   });
 
-  it("turns task snapshots into semantic timeline activity", () => {
+  it("keeps one evolving card and labels it with the latest change", () => {
     const state = hydrateStreamState([
       {
         event: todoTimeline([
@@ -1023,12 +1023,73 @@ describe("stream reducer canonical tool calls", () => {
       },
     ]);
 
-    expect(state.flatMap((item) => (item.kind === "todo_list" ? [item.activity] : []))).toEqual([
-      { type: "created", count: 2 },
-      { type: "started", task: "Inspect provider" },
-      { type: "completed", task: "Inspect provider" },
-      { type: "started", task: "Ship fix" },
-      { type: "completed", task: "Ship fix" },
+    // One card, never a copy per update - the transcript must not stack
+    // full-size snapshots of the same live checklist beside the pinned overlay.
+    expect(state.filter((item) => item.kind === "todo_list")).toEqual([
+      expect.objectContaining({
+        activity: { type: "completed", task: "Ship fix" },
+        items: [
+          expect.objectContaining({ text: "Inspect provider", status: "completed" }),
+          expect.objectContaining({ text: "Ship fix", status: "completed" }),
+        ],
+      }),
+    ]);
+  });
+
+  it("reports the completion when one update finishes a task and starts the next", () => {
+    const state = hydrateStreamState([
+      {
+        event: todoTimeline([
+          { id: "a", text: "Inspect provider", completed: false, status: "in_progress" },
+          { id: "b", text: "Ship fix", completed: false, status: "pending" },
+        ]),
+        timestamp: new Date("2025-01-01T10:50:00Z"),
+      },
+      {
+        event: todoTimeline([
+          { id: "a", text: "Inspect provider", completed: true, status: "completed" },
+          { id: "b", text: "Ship fix", completed: false, status: "in_progress" },
+        ]),
+        timestamp: new Date("2025-01-01T10:50:01Z"),
+      },
+    ]);
+
+    const todos = state.filter((item) => item.kind === "todo_list");
+    assert.strictEqual(todos.length, 1);
+    expect(todos[0]).toMatchObject({
+      activity: { type: "completed", task: "Inspect provider" },
+    });
+  });
+
+  it("starts a new card for the checklist of a later turn", () => {
+    const state = hydrateStreamState([
+      {
+        event: todoTimeline([{ id: "a", text: "Inspect provider", completed: true }]),
+        timestamp: new Date("2025-01-01T10:50:00Z"),
+      },
+      {
+        event: {
+          type: "timeline",
+          provider: "codex",
+          item: { type: "user_message", text: "next thing please" },
+        },
+        timestamp: new Date("2025-01-01T10:51:00Z"),
+      },
+      {
+        event: todoTimeline([{ id: "c", text: "Write the doc", completed: false }]),
+        timestamp: new Date("2025-01-01T10:52:00Z"),
+      },
+    ]);
+
+    expect(state.filter((item) => item.kind === "todo_list")).toEqual([
+      expect.objectContaining({
+        activity: { type: "created", count: 1 },
+        items: [expect.objectContaining({ text: "Inspect provider" })],
+      }),
+      expect.objectContaining({
+        activity: { type: "created", count: 1 },
+        items: [expect.objectContaining({ text: "Write the doc" })],
+      }),
     ]);
   });
 

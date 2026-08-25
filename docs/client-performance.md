@@ -32,6 +32,7 @@ its heap, or what it does with what the daemon sends it. None of those were meas
 | `resource-monitor.ts`         | The singleton: rAF loop + census interval + bounded ring buffer                                                                            |
 | `long-frame-attribution.ts`   | Long Animation Frames observer → per-script breakdown of every >50ms frame, bounded ring + session aggregate                               |
 | `performance-capture.ts`      | The Metrics bar's Capture: samples + trend + hotspots + long frames + inbound-dispatch attribution + daemon diagnostics, saved as one JSON |
+| `dom-write-attribution.ts`    | Capture-scoped MutationObserver + CSSOM insert counter → one record per React commit, matched to long frames                               |
 | `runtime-counters.ts`         | Patches the timer globals to count live intervals and pending timeouts                                                                     |
 | `format-resource-report.ts`   | Renders it as the `label: value` text the rest of `diagnostics/` produces                                                                  |
 
@@ -146,6 +147,21 @@ fires the wrapped timer globals keep in `runtime-counters.ts`, and the aggregate
 not: a dev bundle whose char offsets drift under a running app, and a handler that returns in a few
 ms while the microtasks it resolved carry the cost - LoAF folds those into the script, so the
 handler-only `slowTimers` record stays empty and the frame still names its timer.
+
+### DOM-write attribution (what the app wrote to make the layout expensive)
+
+A frame can be 90% forced style/layout inside an input handler and still name nothing: LoAF says
+layout was forced, not what was written. `dom-write-attribution.ts` records it. While a capture runs
+(and only then - observing every mutation on a large streaming document is real cost, so it is not
+part of the always-on monitor), a `MutationObserver` on the document delivers one batch per React
+commit, recorded with counts by kind, nodes added/removed, the attribute names touched, and the
+nearest labelled ancestors (`data-testid`, then `id`, then `tag.firstClass`) of the mutated nodes.
+CSSOM `insertRule` calls are counted per batch as well: a stylesheet insert invalidates style for
+the whole document, and is the one write that makes a 25k-node layout pay on a single keystroke.
+
+The capture persists `domWrites.batches` for the window and `domWrites.longFrameMatches`, the
+batches that landed inside each long frame. Read a keystroke frame as: which targets were written,
+how many nodes moved, and whether `cssRulesInserted` is non-zero.
 
 The capture also persists `preCapture`: the growth trend over the monitor history that existed
 _before_ the capture reset the ring. A capture is usually taken seconds after the symptom, so the

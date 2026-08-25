@@ -6,6 +6,7 @@ describe("shouldHideWindowOnClose", () => {
     expect(
       shouldHideWindowOnClose({
         platform: "win32",
+        trayIconEnabled: true,
         minimizeOnCloseEnabled: true,
         isQuitting: false,
         otherVisibleWindowCount: 0,
@@ -17,6 +18,7 @@ describe("shouldHideWindowOnClose", () => {
     expect(
       shouldHideWindowOnClose({
         platform: "linux",
+        trayIconEnabled: true,
         minimizeOnCloseEnabled: true,
         isQuitting: false,
         otherVisibleWindowCount: 0,
@@ -28,6 +30,7 @@ describe("shouldHideWindowOnClose", () => {
     expect(
       shouldHideWindowOnClose({
         platform: "darwin",
+        trayIconEnabled: true,
         minimizeOnCloseEnabled: true,
         isQuitting: false,
         otherVisibleWindowCount: 0,
@@ -39,6 +42,7 @@ describe("shouldHideWindowOnClose", () => {
     expect(
       shouldHideWindowOnClose({
         platform: "win32",
+        trayIconEnabled: true,
         minimizeOnCloseEnabled: false,
         isQuitting: false,
         otherVisibleWindowCount: 0,
@@ -50,6 +54,7 @@ describe("shouldHideWindowOnClose", () => {
     expect(
       shouldHideWindowOnClose({
         platform: "win32",
+        trayIconEnabled: true,
         minimizeOnCloseEnabled: true,
         isQuitting: true,
         otherVisibleWindowCount: 0,
@@ -61,9 +66,22 @@ describe("shouldHideWindowOnClose", () => {
     expect(
       shouldHideWindowOnClose({
         platform: "win32",
+        trayIconEnabled: true,
         minimizeOnCloseEnabled: true,
         isQuitting: false,
         otherVisibleWindowCount: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not hide a window when the tray icon is disabled", () => {
+    expect(
+      shouldHideWindowOnClose({
+        platform: "win32",
+        trayIconEnabled: false,
+        minimizeOnCloseEnabled: true,
+        isQuitting: false,
+        otherVisibleWindowCount: 0,
       }),
     ).toBe(false);
   });

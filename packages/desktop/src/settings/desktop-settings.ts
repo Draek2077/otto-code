@@ -14,6 +14,7 @@ export interface DesktopSettings {
     keepRunningAfterQuit: boolean;
   };
   tray: {
+    showIcon: boolean;
     minimizeOnClose: boolean;
     startMinimized: boolean;
   };
@@ -69,6 +70,7 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
     keepRunningAfterQuit: false,
   },
   tray: {
+    showIcon: true,
     minimizeOnClose: true,
     startMinimized: false,
   },
@@ -159,6 +161,11 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
   }
 
   if (isRecord(input.tray)) {
+    const showIcon = coerceBoolean(input.tray.showIcon);
+    if (showIcon !== null) {
+      result.tray.showIcon = showIcon;
+    }
+
     const minimizeOnClose = coerceBoolean(input.tray.minimizeOnClose);
     if (minimizeOnClose !== null) {
       result.tray.minimizeOnClose = minimizeOnClose;
@@ -221,6 +228,10 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
 
   if (isRecord(input.tray)) {
     const trayPatch: Partial<DesktopSettings["tray"]> = {};
+    const showIcon = coerceBoolean(input.tray.showIcon);
+    if (showIcon !== null) {
+      trayPatch.showIcon = showIcon;
+    }
     const minimizeOnClose = coerceBoolean(input.tray.minimizeOnClose);
     if (minimizeOnClose !== null) {
       trayPatch.minimizeOnClose = minimizeOnClose;

@@ -11,6 +11,7 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { buildSelectableProviderSelectorProviders } from "@/provider-selection/provider-selection";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { MetadataGenerationRows } from "@/screens/settings/otto-tools-section";
 import { settingsStyles } from "@/styles/settings";
 
 const METADATA_GENERATION_DOCS_URL = "https://otto-code.me/docs/metadata-generation";
@@ -115,6 +116,7 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
     >
       <Text style={styles.description}>{t("settings.metadataGeneration.description")}</Text>
       <View style={settingsStyles.card}>
+        <MetadataGenerationRows serverId={serverId} />
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>

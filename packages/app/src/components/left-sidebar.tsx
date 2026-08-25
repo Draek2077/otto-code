@@ -537,7 +537,10 @@ function SidebarNavigationGrid({
           testID="sidebar-artifacts"
           variant="compact"
           allowLabelWrap
-          containerStyle={styles.sidebarNavigationItem}
+          containerStyle={[
+            styles.sidebarNavigationItem,
+            isSingleColumn && styles.sidebarNavigationItemSingleColumn,
+          ]}
         />
         <SidebarHeaderRow
           icon={Columns2}
@@ -547,7 +550,10 @@ function SidebarNavigationGrid({
           testID="sidebar-kanban"
           variant="compact"
           allowLabelWrap
-          containerStyle={styles.sidebarNavigationItem}
+          containerStyle={[
+            styles.sidebarNavigationItem,
+            isSingleColumn && styles.sidebarNavigationItemSingleColumn,
+          ]}
         />
       </View>
       <View
@@ -564,7 +570,10 @@ function SidebarNavigationGrid({
           testID="sidebar-schedules"
           variant="compact"
           allowLabelWrap
-          containerStyle={styles.sidebarNavigationItem}
+          containerStyle={[
+            styles.sidebarNavigationItem,
+            isSingleColumn && styles.sidebarNavigationItemSingleColumn,
+          ]}
         />
         <SidebarHeaderRow
           icon={Network}
@@ -574,7 +583,10 @@ function SidebarNavigationGrid({
           testID="sidebar-runs"
           variant="compact"
           allowLabelWrap
-          containerStyle={styles.sidebarNavigationItem}
+          containerStyle={[
+            styles.sidebarNavigationItem,
+            isSingleColumn && styles.sidebarNavigationItemSingleColumn,
+          ]}
         />
       </View>
     </View>
@@ -1195,6 +1207,10 @@ const styles = StyleSheet.create((theme) => ({
   sidebarNavigationItem: {
     flex: 1,
     paddingHorizontal: 0,
+  },
+  sidebarNavigationItemSingleColumn: {
+    flex: 0,
+    alignSelf: "stretch",
   },
   workspacesSectionHeader: {
     flexDirection: "row",

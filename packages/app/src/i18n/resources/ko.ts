@@ -3558,7 +3558,7 @@ export const ko: TranslationResources = {
         },
         chatMetricsBar: {
           title: "Show chat metrics",
-          hint: "A slim row above the transcript with this chat's total tokens, cost and sub-agent activity - including everything it spawned. Cost appears only where the provider reports one",
+          hint: "이 채팅의 총 토큰 수, 비용, 서브 에이전트 활동을 보여 주는 대화 기록 위의 얇은 줄입니다.",
           accessibilityLabel: "Show chat metrics",
         },
         autoExpandReasoning: {
@@ -3568,12 +3568,12 @@ export const ko: TranslationResources = {
         },
         promptSuggestions: {
           title: "AI prompt suggestions",
-          hint: "After a turn, show the agent's predicted next prompt as ghost text in the message box; press Tab to accept it. Available on Claude agents",
+          hint: "After a turn, show the agent's predicted next prompt as ghost text in the message box; press Tab to accept it. Available on Claude agents.",
           accessibilityLabel: "AI prompt suggestions",
         },
         rateLimitWarnings: {
           title: "Plan rate-limit warnings",
-          hint: "Show a warning above the message box when your plan usage nears or hits a rate limit. Available on Claude agents",
+          hint: "Show a warning above the message box when your plan usage nears or hits a rate limit. Available on Claude agents.",
           accessibilityLabel: "Plan rate-limit warnings",
         },
         hideMessageDetails: {
@@ -4002,13 +4002,13 @@ export const ko: TranslationResources = {
         title: "Code intelligence",
         enabled: "Enable code intelligence",
         enabledHint:
-          "Runs a language server per project so Go to definition resolves the symbol under the caret. Nothing starts until you use it; off stops every server and falls back to the name-based index.",
+          "프로젝트마다 언어 서버를 실행해 정의로 이동이 커서 위치의 심벌을 찾습니다. 끄면 이름 기반 인덱스로 돌아갑니다.",
         solution: "Microsoft .NET Solution Management",
         solutionHint:
-          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
+          "파일 탭에 솔루션 보기를 추가해 .sln 또는 .slnx를 빌드 시스템이 보는 대로 보여줍니다. 이 호스트에 .NET SDK가 필요합니다.",
         csharpScope: "C# project loading",
         csharpScopeHint:
-          "How much of a .NET workspace the C# language server loads. Solution names the one solution file in your workspace root, which loads as a single unit and is much faster. All projects loads every .csproj under the root, so nothing is missed, but they load one at a time and a large repository can take minutes before hover and go-to-definition answer.",
+          "C# 언어 서버가 .NET 워크스페이스를 어디까지 로드할지 정합니다. 솔루션은 루트의 단일 솔루션 파일만 읽어 훨씬 빠르고, 모든 프로젝트는 빠뜨리는 것이 없지만 큰 저장소에서는 몇 분이 걸릴 수 있습니다.",
         csharpScopeSolution: "Solution",
         csharpScopeAllProjects: "All projects",
         languages: "Languages",
@@ -4049,12 +4049,12 @@ export const ko: TranslationResources = {
         hostImagesSummary: "{{size}} across {{count}} images",
         hostImagesEmpty: "Nothing stored yet",
         hostImagesHint:
-          "Screenshots and other images your agents produced, kept so past messages can still show them. Clearing them cannot be undone - those messages fall back to their description.",
+          "에이전트가 만든 스크린샷과 이미지로, 지난 메시지가 계속 보여줄 수 있도록 보관합니다. 지우면 되돌릴 수 없습니다.",
         previewCache: "Cached copies on this device",
         previewCacheSummary: "{{size}} across {{count}} images",
         previewCacheEmpty: "Nothing cached",
         previewCacheHint:
-          "Local copies so images load instantly. Safe to clear - they download again when needed. Files you attached to messages ({{size}}) are kept separately and are never cleared here.",
+          "이미지를 즉시 불러오기 위한 로컬 복사본으로, 다시 내려받으므로 지워도 안전합니다. 메시지에 첨부한 파일({{size}})은 따로 보관됩니다.",
         clear: "Clear",
         clearConfirm: "Clear images",
         clearImagesTitle: "Clear images on this host?",
@@ -4065,10 +4065,10 @@ export const ko: TranslationResources = {
         nothingToClear: "There is nothing to clear",
         maxAge: "Keep images for",
         maxAgeHint:
-          "Days an unused image is kept before it is removed automatically. An image still shown in a chat you open keeps its place. 0 turns this off.",
+          "사용하지 않는 이미지를 자동 삭제하기까지 보관하는 일수입니다. 0이면 사용하지 않습니다.",
         maxTotal: "Maximum size",
         maxTotalHint:
-          "Megabytes of images to keep on this host. Past this, the oldest go first. 0 turns this off.",
+          "이 호스트에 보관할 이미지 용량(MB)으로, 오래된 것부터 삭제됩니다. 0이면 사용하지 않습니다.",
       },
       workspaces: {
         unavailable: "워크스페이스를 관리하려면 이 호스트에 연결하세요",
@@ -4241,12 +4241,12 @@ export const ko: TranslationResources = {
           "When off, chats hide the Auto-compact selector and always use the default above.",
         maxToolRoundsLabel: "Max tool-call rounds per turn",
         maxToolRoundsHint:
-          "How many times the model may call tools, see the results, and call tools again before the turn ends. This counts rounds, not the number of tool calls within a single round.",
+          "턴이 끝나기 전까지 모델이 도구를 호출하고 결과를 읽을 수 있는 횟수입니다. 개별 호출이 아니라 라운드를 셉니다.",
         maxToolRoundsValue: "{{rounds}} rounds",
         maxToolRoundsRequiresUpdate: "Update the host to configure max tool-call rounds.",
         midSessionUpdatesLabel: "Mid-session context updates",
         midSessionUpdatesHint:
-          "Let the agent load a subfolder's own AGENTS.md the first time it works there. Turn this off to keep the conversation to what you and the model put in it, which matters most on a small local context window.",
+          "에이전트가 하위 폴더에서 처음 작업할 때 그 폴더의 AGENTS.md를 읽도록 합니다. 끄면 대화는 당신과 모델이 넣은 내용만 유지합니다.",
         midSessionUpdatesRequiresUpdate:
           "Update the host to configure mid-session context updates.",
         actionBreakerLabel: "Action circuit breaker",

@@ -293,7 +293,7 @@ describe("tool call detail-level projection", () => {
 
   it("counts Otto calls separately from other tools", () => {
     const calls = [
-      toolCall("1", { type: "unknown", input: null, output: null }, { name: "otto.list_agents" }),
+      toolCall("1", { type: "unknown", input: null, output: null }, { name: "otto.list_chats" }),
       toolCall(
         "2",
         { type: "unknown", input: null, output: null },

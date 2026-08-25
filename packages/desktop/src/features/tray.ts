@@ -1,11 +1,10 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron";
+import { app, Menu, Tray, nativeImage } from "electron";
 import { resolveBrandedAssetPath } from "./dev-icon.js";
 
-// The tray icon only exists while the app has zero visible windows (mac: after the
-// last window closes natively; Windows/Linux: after minimize-to-tray hides the last
-// one). It disappears again the moment a window becomes visible. See branding/README.md
+// The user controls whether Otto has a tray icon. When enabled, it stays visible
+// while Otto runs, regardless of whether a window is open. See branding/README.md
 // for the icon geometry and packages/desktop/assets/tray-icon*.png for the generated art.
 
 const TRAY_ASSET_NAMES = {
@@ -16,6 +15,7 @@ const TRAY_ASSET_NAMES = {
 };
 
 export interface TrayLifecycleOptions {
+  isTrayIconEnabled: () => boolean;
   onShowWindow: () => void;
   onQuit: () => void;
 }
@@ -77,17 +77,13 @@ function createTray(options: TrayLifecycleOptions): Tray {
   return created;
 }
 
-/** True once any non-destroyed window is showing on screen. */
-export function anyWindowVisible(): boolean {
-  return BrowserWindow.getAllWindows().some((win) => !win.isDestroyed() && win.isVisible());
-}
-
 /**
- * Creates the tray icon when no window is visible, destroys it once one is.
- * Call this from every window visibility transition: hide/show/close/create.
+ * Keeps the tray icon in sync with the explicit setting. Call this after a
+ * setting change and from visibility transitions that might leave the app with
+ * no window to recall.
  */
 export function refreshTrayVisibility(options: TrayLifecycleOptions): void {
-  if (anyWindowVisible()) {
+  if (!options.isTrayIconEnabled()) {
     destroyTray();
     return;
   }
@@ -117,11 +113,12 @@ export function isTrayVisible(): boolean {
  * it close. Pure so the close-vs-hide decision is unit-testable without a real
  * Electron window: darwin keeps its native close behavior untouched (the dock
  * already keeps the app alive with zero windows), an in-flight app quit must never
- * be intercepted, the user's setting is an explicit opt-out, and closing a non-last
- * window (another window still visible) should behave like an ordinary close.
+ * be intercepted, a disabled tray icon cannot leave the user without a recall path,
+ * and closing a non-last window (another window still visible) behaves normally.
  */
 export function shouldHideWindowOnClose(input: {
   platform: NodeJS.Platform;
+  trayIconEnabled: boolean;
   minimizeOnCloseEnabled: boolean;
   isQuitting: boolean;
   otherVisibleWindowCount: number;
@@ -129,7 +126,7 @@ export function shouldHideWindowOnClose(input: {
   if (input.platform === "darwin") {
     return false;
   }
-  if (input.isQuitting || !input.minimizeOnCloseEnabled) {
+  if (input.isQuitting || !input.trayIconEnabled || !input.minimizeOnCloseEnabled) {
     return false;
   }
   return input.otherVisibleWindowCount === 0;
@@ -143,6 +140,15 @@ export function shouldHideWindowOnClose(input: {
 // instead of reading the async settings store on every close.
 
 let cachedMinimizeOnCloseSetting = true;
+let cachedTrayIconSetting = true;
+
+export function setCachedTrayIconSetting(value: boolean): void {
+  cachedTrayIconSetting = value;
+}
+
+export function getCachedTrayIconSetting(): boolean {
+  return cachedTrayIconSetting;
+}
 
 export function setCachedMinimizeOnCloseSetting(value: boolean): void {
   cachedMinimizeOnCloseSetting = value;
