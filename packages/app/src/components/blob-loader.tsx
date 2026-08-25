@@ -84,8 +84,11 @@ function ensureSharedBlobLoopStarted(): void {
       reduceMotion: ReduceMotion.Never,
     },
     (finished) => {
+      // Reanimated runs this callback as a UI worklet on native. Keep the
+      // module-scope loop bookkeeping on the JS thread in retainSharedBlobLoop;
+      // referencing sharedBlobLoopStarted here crashes Hermes when cancellation
+      // follows an unmount.
       if (!finished) {
-        sharedBlobLoopStarted = false;
         return;
       }
       sharedBlobProgress.value = 0;
