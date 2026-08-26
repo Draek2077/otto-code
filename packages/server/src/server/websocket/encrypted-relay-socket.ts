@@ -66,6 +66,13 @@ export function createEncryptedRelaySocket(params: {
         );
       }
       return channel.send(outbound).catch((error) => {
+        // A channel send can fail after the relay has started closing its
+        // physical WebSocket. Leaving this wrapper logically open lets the
+        // daemon keep a client session attached to a dead transport until the
+        // peer's request timeout elapses. Terminating here makes that close
+        // observable immediately, so a mobile client reconnects and retries
+        // its authoritative timeline request on a live socket.
+        terminate();
         emitter.emit("error", error);
         throw error;
       });

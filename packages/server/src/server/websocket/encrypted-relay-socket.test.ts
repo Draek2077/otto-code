@@ -10,6 +10,7 @@ class BlockingChannel implements EncryptedRelayChannel {
   readonly sent: Array<string | ArrayBuffer> = [];
   readonly closes: Array<{ code?: number; reason?: string }> = [];
   private resolveSend: (() => void) | null = null;
+  private nextSendError: Error | null = null;
 
   setState(state: "open"): void {
     expect(state).toBe("open");
@@ -17,6 +18,11 @@ class BlockingChannel implements EncryptedRelayChannel {
 
   send(data: string | ArrayBuffer): Promise<void> {
     this.sent.push(data);
+    if (this.nextSendError) {
+      const error = this.nextSendError;
+      this.nextSendError = null;
+      return Promise.reject(error);
+    }
     return new Promise((resolve) => {
       this.resolveSend = resolve;
     });
@@ -34,6 +40,10 @@ class BlockingChannel implements EncryptedRelayChannel {
 
   drain(): void {
     this.resolveSend?.();
+  }
+
+  failNextSend(error: Error): void {
+    this.nextSendError = error;
   }
 }
 
@@ -104,6 +114,32 @@ test("explicit encrypted-socket termination forcibly terminates the relay transp
   expect(terminations).toBe(1);
   expect(channel.closes).toEqual([]);
   expect(socket.readyState).toBe(3);
+});
+
+test("failed encrypted sends terminate the physical relay transport", async () => {
+  const channel = new BlockingChannel();
+  let terminations = 0;
+  const emitter = new EventEmitter();
+  const socket = createEncryptedRelaySocket({
+    channel,
+    emitter,
+    getTransportBufferedAmount: () => 0,
+    terminateTransport: () => {
+      terminations += 1;
+    },
+  });
+  const errors: Error[] = [];
+  socket.on("error", (error) => errors.push(error as Error));
+  const failure = new Error("relay transport is closing");
+  channel.failNextSend(failure);
+
+  await expect(Promise.resolve(socket.send(new Uint8Array([1])))).rejects.toThrow(
+    "relay transport is closing",
+  );
+
+  expect(terminations).toBe(1);
+  expect(socket.readyState).toBe(3);
+  expect(errors).toEqual([failure]);
 });
 
 test("encrypted sends report physical completion through the returned promise", async () => {
