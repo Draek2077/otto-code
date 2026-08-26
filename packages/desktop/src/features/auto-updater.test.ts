@@ -4,7 +4,7 @@ import path from "node:path";
 import { UUID } from "builder-util-runtime";
 import { describe, expect, it, vi } from "vitest";
 
-const { autoUpdaterMock } = vi.hoisted(() => {
+const { autoUpdaterMock, logMock } = vi.hoisted(() => {
   const handlers = new Map<string, (value: unknown) => void>();
   return {
     autoUpdaterMock: {
@@ -22,6 +22,12 @@ const { autoUpdaterMock } = vi.hoisted(() => {
       }),
       quitAndInstall: vi.fn(),
     },
+    logMock: {
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    },
   };
 });
 
@@ -35,6 +41,8 @@ vi.mock("electron", () => ({
 vi.mock("electron-updater", () => ({
   autoUpdater: autoUpdaterMock,
 }));
+
+vi.mock("electron-log/main", () => ({ default: logMock }));
 
 import {
   bucketFromStagingUserId,
@@ -51,7 +59,6 @@ describe("checkForAppUpdate", () => {
     const error = Object.assign(new Error("Cannot find latest-mac.yml"), {
       code: "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND",
     });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     autoUpdaterMock.checkForUpdates.mockImplementationOnce(async () => {
       autoUpdaterMock.logger.error(error);
       autoUpdaterMock.handlers.get("error")?.(error);
@@ -73,13 +80,14 @@ describe("checkForAppUpdate", () => {
       date: null,
       errorMessage: null,
     });
-    expect(consoleError).not.toHaveBeenCalled();
-    consoleError.mockRestore();
+    expect(logMock.warn).toHaveBeenCalledWith(
+      "[auto-updater] Update channel manifest is not published yet",
+      error,
+    );
   });
 
-  it("keeps genuine updater failures visible", async () => {
+  it("writes genuine updater failures to the Electron main-process log once", async () => {
     const error = new Error("network down");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     autoUpdaterMock.checkForUpdates.mockImplementationOnce(async () => {
       autoUpdaterMock.logger.error(error);
       autoUpdaterMock.handlers.get("error")?.(error);
@@ -93,8 +101,11 @@ describe("checkForAppUpdate", () => {
     });
 
     expect(result.errorMessage).toBe("network down");
-    expect(consoleError).toHaveBeenCalled();
-    consoleError.mockRestore();
+    expect(logMock.error).toHaveBeenCalledTimes(1);
+    expect(logMock.error).toHaveBeenCalledWith(
+      "[auto-updater] electron-updater reported an error",
+      error,
+    );
   });
 });
 

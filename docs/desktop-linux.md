@@ -280,6 +280,12 @@ until that handoff: cancelling a password prompt must leave Otto usable. AppImag
 keeps its explicit replacement path and Windows keeps its NSIS pre-installer
 daemon shutdown.
 
+The Electron main-process log records the updater's configuration, check and
+download state, installer handoff, and every package-manager/updater error. On
+Linux that means a failed elevation path includes the updater's selected command
+and its error in `~/.config/Otto/logs/main.log`; use that log before inferring a
+package or permission regression.
+
 Manual Electron/Linux verification:
 
 1. Install an older Otto `.deb` or `.rpm`, launch it, and confirm the managed daemon is running.

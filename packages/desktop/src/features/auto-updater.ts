@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { app, shell } from "electron";
+import log from "electron-log/main";
 import { UUID } from "builder-util-runtime";
 import { autoUpdater } from "electron-updater";
 import {
@@ -38,6 +39,7 @@ export {
 let cachedStagingUserIdPromise: Promise<string> | null = null;
 
 const UPDATE_CHANNEL_NOT_PUBLISHED_CODE = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
+const loggedUpdaterErrors = new WeakSet<object>();
 
 function isUpdateChannelNotPublished(error: unknown): boolean {
   return (
@@ -46,6 +48,30 @@ function isUpdateChannelNotPublished(error: unknown): boolean {
     "code" in error &&
     error.code === UPDATE_CHANNEL_NOT_PUBLISHED_CODE
   );
+}
+
+function claimUpdaterError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return true;
+  if (loggedUpdaterErrors.has(error)) return false;
+  loggedUpdaterErrors.add(error);
+  return true;
+}
+
+function logUpdaterError(context: string, error: unknown): void {
+  if (!claimUpdaterError(error)) return;
+  log.error(`[auto-updater] ${context}`, error);
+}
+
+function logElectronUpdaterError(error: unknown): void {
+  // A release can become visible just before its platform manifest. Keep that
+  // expected publishing race in the main log without presenting it as a failed
+  // user update.
+  if (isUpdateChannelNotPublished(error)) {
+    if (!claimUpdaterError(error)) return;
+    log.warn("[auto-updater] Update channel manifest is not published yet", error);
+    return;
+  }
+  logUpdaterError("electron-updater reported an error", error);
 }
 
 export function shouldAdmitToRollout(args: {
@@ -133,29 +159,42 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     if (this.configured) return;
     this.configured = true;
 
-    // electron-updater logs every emitted error before consumers can classify it.
-    // Paseo reports genuine check, runtime, and install failures through the
-    // callbacks below, so leave internal error logging disabled to avoid both
-    // duplicate logs and expected missing-channel noise.
-    const updaterLogger = autoUpdater.logger;
+    log.info("[auto-updater] configured", {
+      channel: autoUpdater.channel,
+      platform: process.platform,
+      isAppImage: Boolean(process.env.APPIMAGE),
+    });
+
+    // Electron-updater owns the package-manager invocation on Linux. Forward
+    // every one of its lifecycle messages to the Electron main-process log so
+    // a failed elevation prompt or package command remains diagnosable after
+    // the app has quit. logUpdaterError de-duplicates the same Error when it
+    // subsequently arrives through the updater event or promise path.
     autoUpdater.logger = {
-      debug: updaterLogger?.debug ? (message) => updaterLogger.debug?.(message) : undefined,
-      error: () => undefined,
-      info: (message) => updaterLogger?.info(message),
-      warn: (message) => updaterLogger?.warn(message),
+      debug: (message) => log.debug("[auto-updater] electron-updater", message),
+      error: logElectronUpdaterError,
+      info: (message) => log.info("[auto-updater] electron-updater", message),
+      warn: (message) => log.warn("[auto-updater] electron-updater", message),
     };
 
     autoUpdater.on("update-available", (info) => {
+      log.info("[auto-updater] update available", { version: info.version });
       input.onUpdateAvailable(info as RuntimeUpdateInfo);
     });
     autoUpdater.on("update-downloaded", (info) => {
+      log.info("[auto-updater] update downloaded", { version: info.version });
       input.onUpdateDownloaded(info as RuntimeUpdateInfo);
     });
     autoUpdater.on("update-not-available", () => {
+      log.info("[auto-updater] no update available");
       input.onUpdateNotAvailable();
     });
     autoUpdater.on("error", (error) => {
-      if (isUpdateChannelNotPublished(error)) return;
+      if (isUpdateChannelNotPublished(error)) {
+        logElectronUpdaterError(error);
+        return;
+      }
+      logUpdaterError("updater event failed", error);
       input.onError(error);
     });
   }
@@ -170,16 +209,24 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
       };
     } catch (error) {
       if (isUpdateChannelNotPublished(error)) return null;
+      logUpdaterError("failed to check for updates", error);
       throw error;
     }
   }
 
   downloadUpdate(): Promise<unknown> {
+    log.info("[auto-updater] downloading update");
     return autoUpdater.downloadUpdate();
   }
 
   quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void {
     autoUpdater.autoRunAppAfterInstall = isForceRunAfter;
+    log.info("[auto-updater] handing downloaded update to installer", {
+      isSilent,
+      isForceRunAfter,
+      platform: process.platform,
+      isAppImage: Boolean(process.env.APPIMAGE),
+    });
     autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
   }
 }
@@ -200,13 +247,13 @@ const appUpdateService = createAppUpdateService({
   now: () => Date.now(),
   bucket: async () => bucketFromStagingUserId(await getStagingUserId()),
   reportCheckError: (error) => {
-    console.error("[auto-updater] Failed to check for updates:", error);
+    logUpdaterError("failed to check for updates", error);
   },
   reportRuntimeError: (error) => {
-    console.error("[auto-updater] Updater event failed:", error);
+    logUpdaterError("updater event failed", error);
   },
   reportInstallError: (message) => {
-    console.error("[auto-updater] Failed to download/install update:", message);
+    logUpdaterError("failed to download or install update", message);
   },
 });
 
