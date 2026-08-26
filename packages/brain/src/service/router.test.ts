@@ -904,3 +904,47 @@ test("the standard prompt_cache_key reaches the scheduler as the session identit
     await closeOne(fakeLlama);
   }
 });
+
+test("answers /health 200 while the host sits unloaded", async () => {
+  // The regression: an "Automatic" (no configured default) start leaves the
+  // host deliberately unloaded, and /health used to fall through to the
+  // no-model-loaded 503. The daemon's startup probe only accepts 200, so a
+  // perfectly healthy service was killed after its 60s readiness timeout and
+  // reported as "otto-brain did not answer /health".
+  const supervisor = new EventEmitter() as unknown as Supervisor & EventEmitter;
+  supervisor.state = "stopped";
+  supervisor.model = null;
+  supervisor.host = "127.0.0.1";
+  supervisor.internalPort = 0;
+  const router = createRouter({
+    supervisor,
+    telemetry: new Telemetry(),
+    getCatalog: () => [],
+  });
+  const brain = http.createServer((req, res) => router(req, res));
+  const brainPort = await new Promise<number>((resolve) =>
+    brain.listen(0, "127.0.0.1", () => resolve((brain.address() as { port: number }).port)),
+  );
+  try {
+    const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const req = http.get({ host: "127.0.0.1", port: brainPort, path: "/health" }, (res) => {
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () => resolve({ status: res.statusCode!, body }));
+      });
+      req.on("error", reject);
+    });
+    assert.equal(result.status, 200);
+    const parsed = JSON.parse(result.body) as { status: string; state: string; model: unknown };
+    assert.equal(parsed.status, "ok");
+    // Liveness is the service's; model readiness stays visible, not fatal.
+    assert.equal(parsed.state, "stopped");
+    assert.equal(parsed.model, null);
+  } finally {
+    await new Promise<void>((r) => {
+      brain.close();
+      brain.closeAllConnections();
+      brain.on("close", () => r());
+    });
+  }
+});

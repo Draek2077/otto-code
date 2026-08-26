@@ -1340,6 +1340,23 @@ export function createRouter({
     // evals are point-in-time reads the daemon proxies to its settings UI.
     const path = (req.url || "").split("?")[0];
 
+    // `/health` is the SERVICE's liveness, not the model's, and it is answered
+    // here rather than proxied to llama-server. This host is multi-model and
+    // starts unloaded whenever no default is configured ("Automatic"), so the
+    // proxy path below would answer 503 for a perfectly healthy service with an
+    // empty slot - which is exactly what the daemon's startup probe and `otto
+    // brain status` read as "the service failed to start". Model readiness is
+    // reported by `/__host/status` (and its event stream), which is where a
+    // caller that actually needs it must look.
+    if (path === "/health") {
+      sendJson(res, {
+        status: "ok",
+        state: supervisor.state,
+        model: supervisor.model?.displayName ?? null,
+      });
+      return;
+    }
+
     if (path === "/__host/status") {
       // Resources cost an `nvidia-smi` spawn, so they are opt-in: the daemon
       // reads this route far more often than any UI does, and must not pay for

@@ -86,6 +86,20 @@ The brain serves its own management surface at `/__host/*`. Its header comment s
 | `DELETE /__host/model?id=`                  | Delete a model's files                                                      |
 | `GET /__host/logs?limit=N`                  | Tail the current Brain service log: every managed child and host operation  |
 
+### `/health` is the service's liveness, not the model's
+
+`GET /health` is answered by the router itself and returns `200` whenever the service is listening,
+carrying the resident supervisor's `state` and `model` in its body. It is deliberately **not**
+proxied to `llama-server`, and it deliberately does not fail when nothing is loaded.
+
+The brain is a multi-model host that starts unloaded whenever no startup model is configured, so
+"no model resident" is a normal steady state, not a fault. Both callers of this route read it as
+service liveness: the daemon's `startChild` polls it for 60s and kills the child if it never answers
+`200`, and `otto brain status` prints its result as `HEALTH`. When the route fell through to the
+proxy path, an unloaded brain answered `503` and a perfectly healthy service was killed and reported
+as "otto-brain did not answer /health within 60s". Model readiness belongs to `/__host/status` and
+its event stream; anything that needs it must look there.
+
 ### Model ids are query parameters, not path segments
 
 A model's id is its path relative to the models directory, so it contains slashes. Encoding those as
