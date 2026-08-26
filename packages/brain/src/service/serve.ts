@@ -1079,8 +1079,13 @@ export async function startService({
     await scheduler.preload(model);
   } else if (!runtime) {
     log("server", "ready: no llama.cpp runtime installed; use the Library tab to download one");
-  } else {
+  } else if (catalog.length === 0) {
     log("server", "ready: no model installed; use the Library tab to download one");
+  } else {
+    // The "Automatic" default: nothing is preloaded on purpose, and the first
+    // completion picks and loads its own model. Say so, or the empty slot reads
+    // as a failure to anyone tailing the log.
+    log("server", "ready: no startup model configured; a request will load one on demand");
   }
   writePidFile(
     {
