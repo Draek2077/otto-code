@@ -609,12 +609,11 @@ There is **no dismiss RPC**: dismissal is device-local, as above.
 `{ estTokens, sharePercent, severity }`, the fixed / conditional / referenced totals, the working
 room, and the aggregate severity.
 
-## Gating, safety and the estimates
+## Safety and the estimates
 
-- **Context files get a standing edit-gate exemption.** They live outside the workspace root
-  (`~/.claude/…`), which the gated-multi-root `resolveEditGate` free/other/outside logic would
-  otherwise block - and "outside the workspace" is the entire point of this feature. The exemption
-  is scoped to files the scanner actually resolved, never a blanket unlock.
+- **Context files use their resolved parent directory as the file-service root.** They commonly live
+  outside the workspace (`~/.claude/…`), and editing them is the point of this surface. Project
+  ownership does not add a separate warning or permission check.
 - **Editing a `global`-scope node confirms first**, naming the consequence: it changes every
   project on the machine.
 - **The provider comes from the workspace's newest agent, loaded _or_ persisted.** `listAgents()`

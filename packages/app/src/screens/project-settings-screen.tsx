@@ -36,12 +36,6 @@ import { isNative } from "@/constants/platform";
 import { useProjects } from "@/hooks/use-projects";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { useHostFeature } from "@/runtime/host-features";
-import { useSessionStore } from "@/stores/session-store";
-import {
-  canonicalLinkKey,
-  projectLinksQueryKey,
-  useProjectLinkSet,
-} from "@/projects/project-links";
 import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
@@ -225,11 +219,10 @@ function ProjectSettingsBody({
   const { t } = useTranslation();
   const navigation = useNavigation();
   const [configSaveState, setConfigSaveState] = useState<ProjectFormSaveState | null>(null);
-  const [linksSaveState, setLinksSaveState] = useState<ProjectFormSaveState | null>(null);
   const [kanbanSaveState, setKanbanSaveState] = useState<ProjectFormSaveState | null>(null);
   const saveState = useMemo(
-    () => combineProjectFormSaveStates([configSaveState, linksSaveState, kanbanSaveState]),
-    [configSaveState, linksSaveState, kanbanSaveState],
+    () => combineProjectFormSaveStates([configSaveState, kanbanSaveState]),
+    [configSaveState, kanbanSaveState],
   );
   const isFormDirty = saveState?.isDirty ?? false;
 
@@ -396,19 +389,6 @@ function ProjectSettingsBody({
         client={client}
         supportsCustomIcon={supportsCustomIcon}
         snapshot={editSnapshot}
-      />
-
-      {/*
-        The selected host's project id, not `project.projectKey`. Links are a
-        per-host relation between two registry ids: the key would never equal a
-        `descriptor.projectId`, so this project stayed in its own "link to"
-        list, and `linkProjects` sent an id the daemon cannot resolve.
-      */}
-      <ProjectLinksSection
-        serverId={selectedHost.serverId}
-        projectId={selectedHost.projectId}
-        client={client}
-        onSaveStateChange={setLinksSaveState}
       />
 
       <ProjectKanbanSection
@@ -991,226 +971,6 @@ function ProjectConfigForm({
 
 function ResolveSpinnerColor(): string {
   return styles.spinnerColor.color;
-}
-
-interface ProjectLinksSectionProps {
-  serverId: string;
-  projectId: string;
-  client: DaemonClient;
-  onSaveStateChange: (state: ProjectFormSaveState | null) => void;
-}
-
-interface LinkableProject {
-  projectId: string;
-  projectName: string;
-}
-
-// The gated-multi-root link manager: link this project to others on the same
-// host so their files can be opened/edited in place. Links are bidirectional -
-// linking here also links the other side.
-function ProjectLinksSection({
-  serverId,
-  projectId,
-  client,
-  onSaveStateChange,
-}: ProjectLinksSectionProps) {
-  const { t } = useTranslation();
-  const toast = useToast();
-  const queryClient = useQueryClient();
-  const supported = useHostFeature(serverId, "projectLinks");
-  const { linkSet } = useProjectLinkSet(serverId);
-  const workspacesMap = useSessionStore((state) => state.sessions[serverId]?.workspaces ?? null);
-
-  const others = useMemo<LinkableProject[]>(() => {
-    if (!workspacesMap) {
-      return [];
-    }
-    const byId = new Map<string, string>();
-    for (const descriptor of workspacesMap.values()) {
-      if (descriptor.projectId === projectId) {
-        continue;
-      }
-      byId.set(descriptor.projectId, descriptor.projectCustomName ?? descriptor.projectDisplayName);
-    }
-    return Array.from(byId, ([id, projectName]) => ({ projectId: id, projectName })).sort((a, b) =>
-      a.projectName.localeCompare(b.projectName),
-    );
-  }, [workspacesMap, projectId]);
-
-  const storedLinkKeys = useMemo(
-    () =>
-      new Set(
-        others
-          .filter((other) => linkSet.has(canonicalLinkKey(projectId, other.projectId)))
-          .map((other) => canonicalLinkKey(projectId, other.projectId)),
-      ),
-    [linkSet, others, projectId],
-  );
-  const storedLinkFingerprint = useMemo(
-    () => JSON.stringify(Array.from(storedLinkKeys).sort()),
-    [storedLinkKeys],
-  );
-  const [baselineLinkKeys, setBaselineLinkKeys] = useState<ReadonlySet<string>>(storedLinkKeys);
-  const [draftLinkKeys, setDraftLinkKeys] = useState<ReadonlySet<string>>(storedLinkKeys);
-
-  // A link change pushed by another client replaces this page's draft. Our own
-  // successful save also advances the baseline below, so it does not wait on a
-  // replica refetch before the header returns to its disabled state.
-  useEffect(() => {
-    setBaselineLinkKeys(storedLinkKeys);
-    setDraftLinkKeys(storedLinkKeys);
-  }, [storedLinkFingerprint, storedLinkKeys]);
-
-  const mutation = useMutation({
-    mutationFn: async (input: { otherProjectId: string; link: boolean }[]) => {
-      await Promise.all(
-        input.map((change) =>
-          change.link
-            ? client.linkProjects(projectId, change.otherProjectId)
-            : client.unlinkProjects(projectId, change.otherProjectId),
-        ),
-      );
-      return input;
-    },
-    onSuccess: () => {
-      setBaselineLinkKeys(draftLinkKeys);
-      queryClient.invalidateQueries({ queryKey: projectLinksQueryKey(serverId) });
-    },
-    onError: (error) => {
-      const message = error instanceof Error ? error.message : t("settings.project.links.error");
-      toast.error(message);
-    },
-  });
-
-  const isDirty = useMemo(
-    () => !setsEqual(draftLinkKeys, baselineLinkKeys),
-    [baselineLinkKeys, draftLinkKeys],
-  );
-  const saveLinks = useCallback(() => {
-    const changes = others.flatMap((other) => {
-      const key = canonicalLinkKey(projectId, other.projectId);
-      const wasLinked = baselineLinkKeys.has(key);
-      const shouldLink = draftLinkKeys.has(key);
-      return wasLinked === shouldLink
-        ? []
-        : [{ otherProjectId: other.projectId, link: shouldLink }];
-    });
-    if (changes.length > 0) {
-      mutation.mutate(changes);
-    }
-  }, [baselineLinkKeys, draftLinkKeys, mutation, others, projectId]);
-  const saveLinksRef = useRef(saveLinks);
-  useEffect(() => {
-    saveLinksRef.current = saveLinks;
-  }, [saveLinks]);
-  const stableSaveLinks = useCallback(() => saveLinksRef.current(), []);
-
-  useEffect(() => {
-    if (!supported) {
-      onSaveStateChange(null);
-      return;
-    }
-    onSaveStateChange({
-      isDirty,
-      isSaving: mutation.isPending,
-      canSave: isDirty && !mutation.isPending,
-      save: stableSaveLinks,
-    });
-  }, [isDirty, mutation.isPending, onSaveStateChange, stableSaveLinks, supported]);
-
-  useEffect(() => () => onSaveStateChange(null), [onSaveStateChange]);
-
-  const handleToggle = useCallback(
-    (otherProjectId: string, link: boolean) => {
-      const key = canonicalLinkKey(projectId, otherProjectId);
-      setDraftLinkKeys((current) => {
-        const next = new Set(current);
-        if (link) {
-          next.add(key);
-        } else {
-          next.delete(key);
-        }
-        return next;
-      });
-    },
-    [projectId],
-  );
-
-  if (!supported) {
-    return null;
-  }
-
-  return (
-    <SettingsGroup
-      title={t("settings.project.links.title")}
-      info={t("settings.project.links.info")}
-      testID="project-links-group"
-    >
-      <View style={settingsStyles.card} testID="project-links-list">
-        {others.length === 0 ? (
-          <View style={settingsStyles.row}>
-            <Text style={styles.emptyScripts}>{t("settings.project.links.empty")}</Text>
-          </View>
-        ) : (
-          others.map((other, index) => (
-            <ProjectLinkRow
-              key={other.projectId}
-              project={other}
-              isFirst={index === 0}
-              linked={draftLinkKeys.has(canonicalLinkKey(projectId, other.projectId))}
-              disabled={mutation.isPending}
-              onToggle={handleToggle}
-            />
-          ))
-        )}
-      </View>
-    </SettingsGroup>
-  );
-}
-
-function setsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
-  return left.size === right.size && Array.from(left).every((value) => right.has(value));
-}
-
-function ProjectLinkRow({
-  project,
-  isFirst,
-  linked,
-  disabled,
-  onToggle,
-}: {
-  project: LinkableProject;
-  isFirst: boolean;
-  linked: boolean;
-  disabled: boolean;
-  onToggle: (otherProjectId: string, link: boolean) => void;
-}) {
-  const { t } = useTranslation();
-  const handleValueChange = useCallback(
-    (link: boolean) => onToggle(project.projectId, link),
-    [onToggle, project.projectId],
-  );
-  return (
-    <View
-      style={isFirst ? styles.scriptRow : styles.scriptRowWithBorder}
-      testID={`project-link-row-${project.projectId}`}
-    >
-      <View style={styles.scriptRowMain}>
-        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-          {project.projectName}
-        </Text>
-      </View>
-      <Switch
-        value={linked}
-        onValueChange={handleValueChange}
-        disabled={disabled}
-        accessibilityLabel={t("settings.project.links.toggleAccessibility", {
-          project: project.projectName,
-        })}
-        testID={`project-link-toggle-${project.projectId}`}
-      />
-    </View>
-  );
 }
 
 function ProjectTitleIcon({

@@ -2771,12 +2771,6 @@ export const zhCN: TranslationResources = {
       file: "添加到聊天",
       selection: "将选区添加到聊天",
     },
-    outOfProject: {
-      badge:
-        "正在项目 ({{project}}) 之外编辑 - 不属于 Agent 的上下文，也不在此 Workspace 的 Git 变更中。",
-      badgeNoProject:
-        "正在项目之外编辑 - 不属于 Agent 的上下文，也不在此 Workspace 的 Git 变更中。",
-    },
     contextMenu: {
       cut: "剪切",
       copy: "复制",
@@ -4293,13 +4287,6 @@ export const zhCN: TranslationResources = {
         imageUrl: "图片或网站 URL",
         save: "保存更改",
         savedToast: "Project 已更新",
-      },
-      links: {
-        title: "关联的项目",
-        info: "关联的项目可以就地打开和编辑彼此的文件。你从关联项目打开的文件不会包含在此项目的提交中。关联是双向的。",
-        empty: "此主机上没有其他可关联的项目。",
-        error: "无法更新项目关联",
-        toggleAccessibility: "关联 {{project}}",
       },
       kanban: {
         sectionTitle: "Kanban",

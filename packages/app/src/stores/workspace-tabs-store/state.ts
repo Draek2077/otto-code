@@ -717,9 +717,9 @@ function coerceFileLikeTabTarget(raw: Record<string, unknown>): WorkspaceTabTarg
   });
 }
 
-// Rebuilds a persisted out-of-project origin (gated-multi-root) from stored
-// tab state. Only returns an origin when every required field is a non-empty
-// string; otherwise the file falls back to an ordinary in-project tab.
+// Rebuilds a persisted external file origin from stored tab state. Only returns
+// an origin when every required field is a non-empty string; otherwise the file
+// falls back to an ordinary workspace-local tab.
 function coerceWorkspaceFileOrigin(raw: unknown): WorkspaceFileOrigin | undefined {
   const record = toObjectRecord(raw);
   if (!record) {

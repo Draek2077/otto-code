@@ -201,7 +201,6 @@ import {
   type WorkspaceMutation,
   type WorkspaceRegistry,
 } from "./workspace-registry.js";
-import { createNoopProjectLinkStore, type ProjectLinkStore } from "./project-links.js";
 import { wrapSpokenInput } from "./voice-config.js";
 import { isVoicePermissionAllowed } from "./voice-permission-policy.js";
 import {
@@ -562,12 +561,6 @@ const nodeSessionFileSystem: SessionFileSystem = {
 // Stub types for features under development (modules not yet available)
 type AgentMcpTransportFactory = () => Promise<unknown>;
 
-// Kept out of the constructor so the noop fallback for test harnesses (which
-// omit the store) does not add a branch to the already max-complexity ctor.
-function resolveProjectLinkStore(store: ProjectLinkStore | undefined): ProjectLinkStore {
-  return store ?? createNoopProjectLinkStore();
-}
-
 /**
  * Same reason as above. A service with the feature off is the correct fallback for a harness that
  * constructs none: it reports no solutions, which is exactly what a daemon with the switch off
@@ -614,9 +607,6 @@ export interface SessionOptions {
   agentStorage: AgentStorage;
   projectRegistry: ProjectRegistry;
   workspaceRegistry: WorkspaceRegistry;
-  // Optional so the many test harnesses need not construct one; production
-  // (websocket-server) always supplies the real store. Falls back to a noop.
-  projectLinkStore?: ProjectLinkStore;
   filesystem?: SessionFileSystem;
   scheduleService: ScheduleService;
   runService?: RunService | null;
@@ -869,7 +859,6 @@ export class Session {
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly contextManagement: ContextManagementService;
-  private readonly projectLinkStore: ProjectLinkStore;
   private readonly filesystem: SessionFileSystem;
   private readonly github: ForgeService;
   private readonly gitHostingResolver: GitHostingResolver | null;
@@ -1017,7 +1006,6 @@ export class Session {
       agentStorage,
       projectRegistry,
       workspaceRegistry,
-      projectLinkStore,
       filesystem,
       scheduleService,
       runService,
@@ -1165,7 +1153,6 @@ export class Session {
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry;
     this.workspaceRegistry = workspaceRegistry;
-    this.projectLinkStore = resolveProjectLinkStore(projectLinkStore);
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.github = github ?? createGitHubService();
     this.gitHostingResolver = gitHostingResolver ?? null;
@@ -4079,12 +4066,6 @@ export class Session {
         return this.handleProjectRemoveRequest(msg);
       case "kanban.project.target.set.request":
         return this.handleKanbanProjectTargetSetRequest(msg);
-      case "project.links.list.request":
-        return this.handleProjectLinksListRequest(msg);
-      case "project.links.set.request":
-        return this.handleProjectLinksSetRequest(msg);
-      case "project.links.unset.request":
-        return this.handleProjectLinksUnsetRequest(msg);
       default:
         return this.dispatchProjectScaffoldMessage(msg);
     }
@@ -6030,8 +6011,6 @@ export class Session {
         }
 
         await this.projectRegistry.remove(resolvedProjectId);
-        // Cascade: a removed project's links disappear (gated-multi-root).
-        await this.projectLinkStore.removeAllForProject(projectId);
         // Same teardown archiveByScope does for a single workspace: the git
         // operation log buffers and the language servers rooted at these
         // directories have nothing left to serve.
@@ -6091,9 +6070,6 @@ export class Session {
           error: null,
         },
       });
-
-      // The dropped links may have been visible to this client; refresh.
-      await this.emitProjectLinksChanged();
     } catch (error) {
       this.sessionLogger.error(
         { err: error, projectId, requestId },
@@ -6116,131 +6092,6 @@ export class Session {
           accepted: false,
           removedWorkspaceIds: [],
           error: getErrorMessageOr(error, "Failed to remove project"),
-        },
-      });
-    }
-  }
-
-  /**
-   * The link set, filtered to pairs whose both endpoints are still live
-   * projects - so a link "disappears" the moment either project is removed or
-   * archived, without needing the cascade to have run yet (gated-multi-root).
-   */
-  private async buildLiveProjectLinks(): Promise<{ projectAId: string; projectBId: string }[]> {
-    const [links, projects] = await Promise.all([
-      this.projectLinkStore.list(),
-      this.projectRegistry.list(),
-    ]);
-    const liveIds = new Set(
-      projects.filter((project) => !project.archivedAt).map((project) => project.projectId),
-    );
-    return links
-      .filter((link) => liveIds.has(link.projectAId) && liveIds.has(link.projectBId))
-      .map((link) => ({ projectAId: link.projectAId, projectBId: link.projectBId }));
-  }
-
-  private async emitProjectLinksChanged(): Promise<void> {
-    this.emit({
-      type: "project.links.changed",
-      payload: { links: await this.buildLiveProjectLinks() },
-    });
-  }
-
-  private async handleProjectLinksListRequest(
-    request: Extract<SessionInboundMessage, { type: "project.links.list.request" }>,
-  ): Promise<void> {
-    try {
-      this.emit({
-        type: "project.links.list.response",
-        payload: {
-          requestId: request.requestId,
-          links: await this.buildLiveProjectLinks(),
-          error: null,
-        },
-      });
-    } catch (error) {
-      this.emit({
-        type: "project.links.list.response",
-        payload: {
-          requestId: request.requestId,
-          links: [],
-          error: getErrorMessageOr(error, "Failed to list project links"),
-        },
-      });
-    }
-  }
-
-  private async handleProjectLinksSetRequest(
-    request: Extract<SessionInboundMessage, { type: "project.links.set.request" }>,
-  ): Promise<void> {
-    const { projectId, otherProjectId, requestId } = request;
-    const respondError = (error: string): void => {
-      this.emit({
-        type: "project.links.set.response",
-        payload: { requestId, accepted: false, links: [], error },
-      });
-    };
-    try {
-      if (projectId === otherProjectId) {
-        respondError("A project cannot be linked to itself");
-        return;
-      }
-      const [a, b] = await Promise.all([
-        this.projectRegistry.get(projectId),
-        this.projectRegistry.get(otherProjectId),
-      ]);
-      if (!a || a.archivedAt || !b || b.archivedAt) {
-        respondError("One or both projects no longer exist");
-        return;
-      }
-      await this.projectLinkStore.link(projectId, otherProjectId, new Date().toISOString());
-      this.emit({
-        type: "project.links.set.response",
-        payload: {
-          requestId,
-          accepted: true,
-          links: await this.buildLiveProjectLinks(),
-          error: null,
-        },
-      });
-      await this.emitProjectLinksChanged();
-    } catch (error) {
-      this.sessionLogger.error(
-        { err: error, projectId, otherProjectId, requestId },
-        "session: project.links.set.request error",
-      );
-      respondError(getErrorMessageOr(error, "Failed to link projects"));
-    }
-  }
-
-  private async handleProjectLinksUnsetRequest(
-    request: Extract<SessionInboundMessage, { type: "project.links.unset.request" }>,
-  ): Promise<void> {
-    const { projectId, otherProjectId, requestId } = request;
-    try {
-      await this.projectLinkStore.unlink(projectId, otherProjectId);
-      this.emit({
-        type: "project.links.unset.response",
-        payload: {
-          requestId,
-          accepted: true,
-          links: await this.buildLiveProjectLinks(),
-          error: null,
-        },
-      });
-      await this.emitProjectLinksChanged();
-    } catch (error) {
-      this.sessionLogger.error(
-        { err: error, projectId, otherProjectId, requestId },
-        "session: project.links.unset.request error",
-      );
-      this.emit({
-        type: "project.links.unset.response",
-        payload: {
-          requestId,
-          accepted: false,
-          links: [],
-          error: getErrorMessageOr(error, "Failed to unlink projects"),
         },
       });
     }

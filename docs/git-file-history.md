@@ -197,7 +197,7 @@ Three, all opening the same tab:
 
 | From           | Gesture                        | Gate                                                |
 | -------------- | ------------------------------ | --------------------------------------------------- |
-| File tab       | Selection-aware toolbar button | `editGate.kind === "free"` (in-project files)       |
+| File tab       | Selection-aware toolbar button | File has a registered serving workspace             |
 | Changes view   | Right-click a file             | host capability only - every row is a tracked path  |
 | Files explorer | Right-click a file, or kebab   | host capability **and** the workspace is a git repo |
 
@@ -209,12 +209,11 @@ view needs no such test; if a file is listed there, it is tracked. In both, the
 menu item is simply absent rather than disabled - an item that only ever errors
 is noise.
 
-The file-tab button is limited to **in-project files**
-(`editGate.kind === "free"`). The queries run `git` in the workspace with a
-workspace-relative pathspec, so a linked-project or outside-project file
-([the edit gate](text-editor.md)) would be
-a question aimed at the wrong tree. Lifting that means resolving the file's own
-repo root first, not relaxing the gate.
+The file-tab button requires a **registered serving workspace**. The queries run
+`git` in that workspace with a workspace-relative pathspec, so a file opened from
+another registered workspace uses its own repository correctly. A file served
+directly from an arbitrary external directory has no registered Git owner and
+does not show the action.
 
 ### Why the entry point is a toolbar button, not a right-click menu
 

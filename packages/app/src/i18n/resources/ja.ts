@@ -2844,12 +2844,6 @@ export const ja: TranslationResources = {
       file: "チャットに追加",
       selection: "選択範囲をチャットに追加",
     },
-    outOfProject: {
-      badge:
-        "プロジェクト ({{project}}) の外側を編集しています - エージェントのコンテキストにも、このワークスペースの Git 変更にも含まれません。",
-      badgeNoProject:
-        "プロジェクトの外側を編集しています - エージェントのコンテキストにも、このワークスペースの Git 変更にも含まれません。",
-    },
     contextMenu: {
       cut: "切り取り",
       copy: "コピー",
@@ -4402,13 +4396,6 @@ export const ja: TranslationResources = {
         imageUrl: "画像またはサイトのURL",
         save: "変更を保存",
         savedToast: "プロジェクトを更新しました",
-      },
-      links: {
-        title: "リンクされたプロジェクト",
-        info: "リンクされたプロジェクトは互いのファイルをその場で開いて編集できます。リンクされたプロジェクトから開いたファイルは、このプロジェクトのコミットには含まれません。リンクは双方向です。",
-        empty: "このホストにリンクできる他のプロジェクトはありません。",
-        error: "プロジェクトのリンクを更新できませんでした",
-        toggleAccessibility: "{{project}} をリンク",
       },
       kanban: {
         sectionTitle: "Kanban",

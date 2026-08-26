@@ -447,8 +447,8 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (jobId !== null) {
     return jobId;
   }
-  // Out-of-project files are namespaced by their origin workspace so they never
-  // collide with an in-project file of the same relative path (gated-multi-root).
+  // External files are namespaced by their serving workspace so they never
+  // collide with a pane-local file that has the same relative path.
   if (target.kind === "file" && target.origin) {
     return `file_${target.origin.workspaceId}_${target.path}`;
   }
@@ -470,8 +470,8 @@ function normalizeFileTabTarget(
   if (!location) {
     return null;
   }
-  // Preserve the out-of-project origin (gated-multi-root) so the panel resolves
-  // the file against its owning workspace instead of the host pane's root.
+  // Preserve the external file origin so the panel resolves the file against
+  // its serving workspace instead of the host pane's root.
   return { kind: "file", ...location, ...(value.origin ? { origin: value.origin } : {}) };
 }
 

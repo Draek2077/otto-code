@@ -54,47 +54,47 @@ someone to run it by hand.
 
 ## 3. Projects, workspaces & worktrees
 
-| Behavior                                                                                        | Status | Specs / plan                                                           | Tier | Pri |
-| ----------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------- | ---- | --- |
-| New workspace creation (form, validation)                                                       | ✅     | `new-workspace.spec.ts`, `new-workspace-entry.spec.ts`                 | T1   | -   |
-| New workspace provider/model preselect (last-used)                                              | ✅     | `new-workspace-preselect.spec.ts`                                      | T1   | -   |
-| New workspace isolation memory                                                                  | ✅     | `new-workspace-isolation-memory.spec.ts`                               | T1   | -   |
-| Codex mode preferences on create                                                                | ✅     | `new-workspace-codex-mode-preferences.spec.ts`                         | T1   | -   |
-| Workspace lifecycle (create→work→archive)                                                       | ✅     | `workspace-lifecycle.spec.ts`                                          | T1   | -   |
-| Multiple workspaces simultaneously                                                              | ✅     | `workspace-multiplicity.spec.ts`                                       | T1   | -   |
-| Workspace cwd resolution                                                                        | ✅     | `workspace-cwd.spec.ts`                                                | T1   | -   |
-| Occupied-directory guard (second workspace refused, steered to Open it / Create a worktree)     | ❌     | replaces the retired "two workspaces on one directory" row             | T1   | P1  |
-| Worktree create + restore                                                                       | ✅     | `worktree-restore.spec.ts`                                             | T1   | -   |
-| Worktree restore after daemon restart                                                           | ✅     | `worktree-restore-after-restart.spec.ts`                               | T1   | -   |
-| Worktree archive (incl. dirty-tree risk warning)                                                | ✅     | `worktree-archive.spec.ts`, `worktree-archive-risk-warning.spec.ts`    | T1   | -   |
-| Archive keyboard shortcut                                                                       | ✅     | `workspace-archive-shortcut.spec.ts`                                   | T1   | -   |
-| Empty project persists across restart                                                           | ✅     | `empty-project-persists.spec.ts`                                       | T1   | -   |
-| Project settings screen                                                                         | ✅     | `projects-settings.spec.ts`                                            | T1   | -   |
-| Sidebar workspace rows (open, state)                                                            | ✅     | `sidebar-workspace.spec.ts`                                            | T1   | -   |
-| Sidebar workspace rename                                                                        | ✅     | `sidebar-workspace-rename.spec.ts`                                     | T1   | -   |
-| Sidebar context menus                                                                           | ✅     | `sidebar-context-menu.spec.ts`                                         | T1   | -   |
-| Workspace pins                                                                                  | ✅     | `workspace-pins.spec.ts`                                               | T1   | -   |
-| Pane remount stability                                                                          | ✅     | `workspace-pane-remount.spec.ts`                                       | T1   | -   |
-| Open in external editor                                                                         | ✅     | `packages/desktop/e2e/open-in-editor.spec.ts`                          | DT   | -   |
-| Workspace setup runtime + streaming                                                             | ✅     | `workspace-setup-runtime.spec.ts`, `workspace-setup-streaming.spec.ts` | T1   | -   |
-| Gated multi-root: preview any file, edit gates (unlinked / linked-lifts-live / outside-project) | ✅     | `multi-root-edit-gate.spec.ts`                                         | T1   | -   |
-| Per-worktree diff base configuration                                                            | ❌     | pending diff-base project ship                                         | T1   | P2  |
-| Add-project flow (form, validation, appears in sidebar)                                         | 🟡     | `add-project-flow.spec.ts`, `empty-project-persists.spec.ts`           | T1   | -   |
-| Every "New project" entry point reaches the New project page                                    | 🟡     | `open-project-home-regression.spec.ts`                                 | T1   | -   |
-| Add project from GitHub (clone + register)                                                      | ✅     | `add-project-github.real.spec.ts`                                      | T3   | -   |
-| Directory bootstrap on first project add                                                        | 🟡     | `directory-bootstrap.spec.ts`                                          | T1   | -   |
-| New-workspace composer draft survives the create flow                                           | 🟡     | `new-workspace-composer-draft.spec.ts`                                 | T1   | -   |
-| New-workspace mode cycling stays safe across providers                                          | 🟡     | `new-workspace-mode-cycle-safety.spec.ts`                              | T1   | -   |
-| Sidebar project grouping                                                                        | 🟡     | `sidebar-project-grouping.spec.ts`, `command-center-grouping.spec.ts`  | T1   | -   |
-| Sidebar reorder (drag projects/workspaces)                                                      | 🟡     | `sidebar-reorder.spec.ts`                                              | T1   | -   |
-| Workspace pin keyboard shortcut                                                                 | 🟡     | `sidebar-workspace-pin-shortcut.spec.ts`                               | T1   | -   |
-| New workspace dictation submit (spoken prompt survives pending state and failure)               | ✅     | `new-workspace-dictation-submit.spec.ts`                               | T1   | -   |
-| New workspace host/project preservation across host switches                                    | ✅     | `new-workspace-host-project-preservation.spec.ts`                      | T1   | -   |
-| New workspace composer is one control across chat and terminal launch modes                     | ✅     | `new-workspace-launch-composer.spec.ts`                                | T1   | -   |
-| New workspace launch target memory (remembers last target, falls back cleanly)                  | ✅     | `new-workspace-launch-memory.spec.ts`                                  | T1   | -   |
-| New workspace launching a terminal (profile prompt substitution, bare launch)                   | ✅     | `new-workspace-launch-terminal.spec.ts`                                | T1   | -   |
-| New workspace metadata row layout (long host/branch names stay inside the composer's rail)      | ✅     | `new-workspace-meta-row-layout.spec.ts`                                | T1   | -   |
-| Project status badge surfaces the most urgent hidden workspace status on a collapsed project    | ✅     | `project-status-badge.spec.ts`                                         | T1   | -   |
+| Behavior                                                                                     | Status | Specs / plan                                                           | Tier | Pri |
+| -------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------- | ---- | --- |
+| New workspace creation (form, validation)                                                    | ✅     | `new-workspace.spec.ts`, `new-workspace-entry.spec.ts`                 | T1   | -   |
+| New workspace provider/model preselect (last-used)                                           | ✅     | `new-workspace-preselect.spec.ts`                                      | T1   | -   |
+| New workspace isolation memory                                                               | ✅     | `new-workspace-isolation-memory.spec.ts`                               | T1   | -   |
+| Codex mode preferences on create                                                             | ✅     | `new-workspace-codex-mode-preferences.spec.ts`                         | T1   | -   |
+| Workspace lifecycle (create→work→archive)                                                    | ✅     | `workspace-lifecycle.spec.ts`                                          | T1   | -   |
+| Multiple workspaces simultaneously                                                           | ✅     | `workspace-multiplicity.spec.ts`                                       | T1   | -   |
+| Workspace cwd resolution                                                                     | ✅     | `workspace-cwd.spec.ts`                                                | T1   | -   |
+| Occupied-directory guard (second workspace refused, steered to Open it / Create a worktree)  | ❌     | replaces the retired "two workspaces on one directory" row             | T1   | P1  |
+| Worktree create + restore                                                                    | ✅     | `worktree-restore.spec.ts`                                             | T1   | -   |
+| Worktree restore after daemon restart                                                        | ✅     | `worktree-restore-after-restart.spec.ts`                               | T1   | -   |
+| Worktree archive (incl. dirty-tree risk warning)                                             | ✅     | `worktree-archive.spec.ts`, `worktree-archive-risk-warning.spec.ts`    | T1   | -   |
+| Archive keyboard shortcut                                                                    | ✅     | `workspace-archive-shortcut.spec.ts`                                   | T1   | -   |
+| Empty project persists across restart                                                        | ✅     | `empty-project-persists.spec.ts`                                       | T1   | -   |
+| Project settings screen                                                                      | ✅     | `projects-settings.spec.ts`                                            | T1   | -   |
+| Sidebar workspace rows (open, state)                                                         | ✅     | `sidebar-workspace.spec.ts`                                            | T1   | -   |
+| Sidebar workspace rename                                                                     | ✅     | `sidebar-workspace-rename.spec.ts`                                     | T1   | -   |
+| Sidebar context menus                                                                        | ✅     | `sidebar-context-menu.spec.ts`                                         | T1   | -   |
+| Workspace pins                                                                               | ✅     | `workspace-pins.spec.ts`                                               | T1   | -   |
+| Pane remount stability                                                                       | ✅     | `workspace-pane-remount.spec.ts`                                       | T1   | -   |
+| Open in external editor                                                                      | ✅     | `packages/desktop/e2e/open-in-editor.spec.ts`                          | DT   | -   |
+| Workspace setup runtime + streaming                                                          | ✅     | `workspace-setup-runtime.spec.ts`, `workspace-setup-streaming.spec.ts` | T1   | -   |
+| External files from another or no registered workspace open and edit directly                | ✅     | `external-file-editing.spec.ts`                                        | T1   | -   |
+| Per-worktree diff base configuration                                                         | ❌     | pending diff-base project ship                                         | T1   | P2  |
+| Add-project flow (form, validation, appears in sidebar)                                      | 🟡     | `add-project-flow.spec.ts`, `empty-project-persists.spec.ts`           | T1   | -   |
+| Every "New project" entry point reaches the New project page                                 | 🟡     | `open-project-home-regression.spec.ts`                                 | T1   | -   |
+| Add project from GitHub (clone + register)                                                   | ✅     | `add-project-github.real.spec.ts`                                      | T3   | -   |
+| Directory bootstrap on first project add                                                     | 🟡     | `directory-bootstrap.spec.ts`                                          | T1   | -   |
+| New-workspace composer draft survives the create flow                                        | 🟡     | `new-workspace-composer-draft.spec.ts`                                 | T1   | -   |
+| New-workspace mode cycling stays safe across providers                                       | 🟡     | `new-workspace-mode-cycle-safety.spec.ts`                              | T1   | -   |
+| Sidebar project grouping                                                                     | 🟡     | `sidebar-project-grouping.spec.ts`, `command-center-grouping.spec.ts`  | T1   | -   |
+| Sidebar reorder (drag projects/workspaces)                                                   | 🟡     | `sidebar-reorder.spec.ts`                                              | T1   | -   |
+| Workspace pin keyboard shortcut                                                              | 🟡     | `sidebar-workspace-pin-shortcut.spec.ts`                               | T1   | -   |
+| New workspace dictation submit (spoken prompt survives pending state and failure)            | ✅     | `new-workspace-dictation-submit.spec.ts`                               | T1   | -   |
+| New workspace host/project preservation across host switches                                 | ✅     | `new-workspace-host-project-preservation.spec.ts`                      | T1   | -   |
+| New workspace composer is one control across chat and terminal launch modes                  | ✅     | `new-workspace-launch-composer.spec.ts`                                | T1   | -   |
+| New workspace launch target memory (remembers last target, falls back cleanly)               | ✅     | `new-workspace-launch-memory.spec.ts`                                  | T1   | -   |
+| New workspace launching a terminal (profile prompt substitution, bare launch)                | ✅     | `new-workspace-launch-terminal.spec.ts`                                | T1   | -   |
+| New workspace metadata row layout (long host/branch names stay inside the composer's rail)   | ✅     | `new-workspace-meta-row-layout.spec.ts`                                | T1   | -   |
+| Project status badge surfaces the most urgent hidden workspace status on a collapsed project | ✅     | `project-status-badge.spec.ts`                                         | T1   | -   |
 
 ## 4. Chat: composer & timeline
 

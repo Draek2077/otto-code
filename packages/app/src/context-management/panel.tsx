@@ -73,11 +73,6 @@ const ThemedChevronLeft = withUnistyles(ChevronLeft);
 const ThemedAlertTriangle = withUnistyles(AlertTriangle);
 const ThemedX = withUnistyles(X);
 
-// The standing edit exemption for context files: being outside the workspace
-// root is the entire point of this feature, so the gated-multi-root warning
-// would fire on every global CLAUDE.md and mean nothing.
-const CONTEXT_EDIT_GATE = { kind: "free" } as const;
-
 /**
  * Context Management - one tab, three parts, no sub-tabs:
  * health summary and pickers, the load graph, and the file being worked on.
@@ -828,7 +823,6 @@ function ContextFilePane({
       workspaceId={workspaceId}
       workspaceRoot={dir}
       location={location}
-      editGate={CONTEXT_EDIT_GATE}
       toolbarLeadingSlot={toolbarLeadingSlot}
     />
   );

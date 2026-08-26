@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveWorkspaceForPath } from "./resolve-workspace-for-path";
-import { canonicalLinkKey } from "./project-links";
-import {
-  resolveCrossProjectFileOpen,
-  resolveEditGate,
-  type CrossProjectWorkspace,
-} from "./cross-project-open";
+import { resolveCrossProjectFileOpen, type CrossProjectWorkspace } from "./cross-project-open";
 
 const WORKSPACES: CrossProjectWorkspace[] = [
   {
@@ -123,53 +118,5 @@ describe("resolveCrossProjectFileOpen", () => {
       allowOutsideWorkspace: false,
     });
     expect(decision.kind).toBe("in-project");
-  });
-});
-
-describe("resolveEditGate", () => {
-  const linked = new Set([canonicalLinkKey("proj-a", "proj-b")]);
-  const empty = new Set<string>();
-
-  it("is free for an in-project file (no origin)", () => {
-    expect(
-      resolveEditGate({ origin: undefined, currentProjectId: "proj-a", linkSet: empty }),
-    ).toEqual({ kind: "free" });
-  });
-
-  it("is free for a linked project's file", () => {
-    const gate = resolveEditGate({
-      origin: { workspaceId: "ws-b", cwd: "/home/me/projects/beta", projectId: "proj-b" },
-      currentProjectId: "proj-a",
-      linkSet: linked,
-    });
-    expect(gate).toEqual({ kind: "free" });
-  });
-
-  it("warns (suppressibly) for an unlinked other project", () => {
-    const gate = resolveEditGate({
-      origin: {
-        workspaceId: "ws-b",
-        cwd: "/home/me/projects/beta",
-        projectId: "proj-b",
-        projectName: "Beta",
-      },
-      currentProjectId: "proj-a",
-      linkSet: empty,
-    });
-    expect(gate).toEqual({ kind: "other-project", projectName: "Beta" });
-  });
-
-  it("always warns for a file outside every project", () => {
-    const gate = resolveEditGate({
-      origin: {
-        workspaceId: "outside:/home/me/.claude/plans",
-        cwd: "/home/me/.claude/plans",
-        projectId: "outside:/home/me/.claude/plans",
-        outsideAnyProject: true,
-      },
-      currentProjectId: "proj-a",
-      linkSet: linked,
-    });
-    expect(gate).toEqual({ kind: "outside-project" });
   });
 });

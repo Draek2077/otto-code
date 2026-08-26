@@ -255,7 +255,6 @@ import type {
   CueMoment,
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
-  ProjectLink,
   SpeechSettingsOptions,
   SpeechTtsPreviewResult,
   SpeechTtsSpeakResult,
@@ -3600,51 +3599,6 @@ export class DaemonClient {
       throw new Error(payload.error ?? "Failed to move chat");
     }
     return { workspaceId: payload.workspaceId };
-  }
-
-  async listProjectLinks(requestId?: string): Promise<ProjectLink[]> {
-    const payload =
-      await this.sendNamespacedCorrelatedSessionRequest<"project.links.list.response">({
-        requestId,
-        message: { type: "project.links.list.request" },
-      });
-    if (payload.error) {
-      throw new Error(payload.error);
-    }
-    return payload.links;
-  }
-
-  async linkProjects(
-    projectId: string,
-    otherProjectId: string,
-    requestId?: string,
-  ): Promise<ProjectLink[]> {
-    const payload = await this.sendNamespacedCorrelatedSessionRequest<"project.links.set.response">(
-      {
-        requestId,
-        message: { type: "project.links.set.request", projectId, otherProjectId },
-      },
-    );
-    if (!payload.accepted) {
-      throw new Error(payload.error ?? "linkProjects rejected");
-    }
-    return payload.links;
-  }
-
-  async unlinkProjects(
-    projectId: string,
-    otherProjectId: string,
-    requestId?: string,
-  ): Promise<ProjectLink[]> {
-    const payload =
-      await this.sendNamespacedCorrelatedSessionRequest<"project.links.unset.response">({
-        requestId,
-        message: { type: "project.links.unset.request", projectId, otherProjectId },
-      });
-    if (!payload.accepted) {
-      throw new Error(payload.error ?? "unlinkProjects rejected");
-    }
-    return payload.links;
   }
 
   async resumeAgent(

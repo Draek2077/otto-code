@@ -2768,7 +2768,7 @@ function WorkspaceScreenContent({
         // panels/file-panel.tsx, so a dirty or conflicted buffer stays retained.
         releaseCleanEditorBuffer({
           serverId: normalizedServerId,
-          // Match the origin-aware buffer key the pane uses (gated-multi-root).
+          // Match the origin-aware buffer key the pane uses.
           workspaceId: input.target.origin?.workspaceId ?? normalizedWorkspaceId,
           path: input.target.path,
         });
@@ -3191,9 +3191,9 @@ function WorkspaceScreenContent({
       if (!persistenceKey) {
         return;
       }
-      // Resolve cross-project / project-less opens (gated-multi-root): a file in
-      // another project or outside every project opens in place with an origin
-      // discriminator; editing it is gated later at edit time. The open never blocks.
+      // Resolve files from another workspace or no registered workspace. They
+      // open in place with an origin discriminator; project ownership never
+      // blocks opening or editing.
       const resolved = crossProjectFileOpenGate(normalizedLocation);
       const target = createWorkspaceFileTabTarget(resolved.location, resolved.origin);
       const tabId = options?.parentTabId
@@ -3229,8 +3229,8 @@ function WorkspaceScreenContent({
         return;
       }
 
-      // Resolve cross-project / project-less origin so a side-pane open of an
-      // out-of-project file is scoped to its owning (or synthesized) workspace.
+      // Resolve the external origin so a side-pane open is scoped to its owning
+      // or synthesized workspace.
       const resolved = crossProjectFileOpenGate(location);
       const target: WorkspaceTabTarget = createWorkspaceFileTabTarget(
         resolved.location,

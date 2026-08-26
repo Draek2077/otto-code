@@ -252,11 +252,10 @@ kept - so one preset meaning both would either bloat the index or quietly drop a
   pins its base from disk, so running it over unsaved edits would diff against something the user
   is not looking at. A three-way "save / discard / cancel" prompt was **not** built -
   `confirmDialog` is binary, and the toast is honest.
-- **In-project only.** The editor entry is offered for `editGate.kind === "free"` files, for the
-  same reason as History and Changes: the job runs against this workspace's root with a
-  workspace-relative path, so a linked or outside-project file would be a question about the wrong
-  tree. (Context Management's own entry is the exemption - its files are resolved context, see
-  that page's edit-gate note.)
+- **Registered-workspace files only from a normal File tab.** Refine runs against the file's serving
+  workspace root with a workspace-relative path. A file resolved to another registered workspace
+  therefore works normally; a file served directly from an arbitrary directory has no workspace
+  context and does not offer Refine. Context Management supplies its resolved file root directly.
 - **Global-scope files still confirm.** A `~/.claude/CLAUDE.md` accepted through Refine changes
   every project on the machine.
 

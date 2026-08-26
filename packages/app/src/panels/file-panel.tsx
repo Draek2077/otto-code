@@ -13,9 +13,7 @@ import {
 import { i18n } from "@/i18n/i18next";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptorContext, PanelRegistration } from "@/panels/panel-registry";
-import { useWorkspaceDirectory, useWorkspaceProjectId } from "@/stores/session-store-hooks";
-import { useProjectLinkSet } from "@/projects/project-links";
-import { resolveEditGate } from "@/projects/cross-project-open";
+import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { hasActiveExternalFileEditor } from "@/editor/external-file-editor";
 
@@ -28,8 +26,8 @@ const CENTERED_PADDED_STYLE = {
 
 function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDescriptorContext) {
   const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
-  // Out-of-project tabs key their buffer by the OWNING workspace, not the host
-  // pane's, so the dirty indicator must read the same key (gated-multi-root).
+  // External tabs key their buffer by the workspace serving the file, not the
+  // host pane's, so the dirty indicator must read the same key.
   const bufferWorkspaceId = target.origin?.workspaceId ?? context.workspaceId;
   const dirty = useEditorBufferStore(
     (state) =>
@@ -95,18 +93,12 @@ function FilePanel() {
   const { t } = useTranslation();
   const { serverId, workspaceId, target } = usePaneContext();
   const paneWorkspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
-  const paneProjectId = useWorkspaceProjectId(serverId, workspaceId);
-  const { linkSet } = useProjectLinkSet(serverId);
   invariant(target.kind === "file", "FilePanel requires file target");
-  // An out-of-project file (gated-multi-root) is served from its OWNING
-  // workspace: cwd, workspaceId, and editor buffer all resolve against origin,
-  // so the same daemon file RPCs work unchanged for a linked project's files.
+  // An external file is served from its owning workspace, or from its own
+  // directory when it is outside every registered workspace.
   const origin = target.origin;
   const effectiveWorkspaceId = origin?.workspaceId ?? workspaceId;
   const effectiveRoot = origin?.cwd ?? paneWorkspaceDirectory;
-  // Computed against the LIVE link set so linking/unlinking projects while the
-  // tab is open updates whether editing warns.
-  const editGate = resolveEditGate({ origin, currentProjectId: paneProjectId, linkSet });
   if (!effectiveRoot) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
@@ -120,7 +112,7 @@ function FilePanel() {
       workspaceId={effectiveWorkspaceId}
       workspaceRoot={effectiveRoot}
       location={target}
-      editGate={editGate}
+      workspaceActionsEnabled={origin?.outsideAnyProject !== true}
     />
   );
 }
@@ -132,7 +124,7 @@ export const filePanelRegistration: PanelRegistration<"file"> = {
   confirmClose(target, context) {
     return confirmDiscardEditorBuffer({
       serverId: context.serverId,
-      // Match the origin-aware buffer key used by the pane (gated-multi-root).
+      // Match the origin-aware buffer key used by the pane.
       workspaceId: target.origin?.workspaceId ?? context.workspaceId,
       path: target.path,
     });

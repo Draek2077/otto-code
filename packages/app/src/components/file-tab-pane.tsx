@@ -144,7 +144,6 @@ import { useFileViewMode, useFileViewStore, type FileViewMode } from "@/stores/f
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import type { EditGate } from "@/projects/cross-project-open";
 import { isAbsolutePath } from "@/utils/path";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { Theme } from "@/styles/theme";
@@ -548,7 +547,7 @@ function PreviewOnlyView({
   onViewChanges: (() => void) | null;
   /** Opens the Refine job tab for this file; null when unavailable. */
   onRefine: (() => void) | null;
-  /** Attaches this file to the composer as a pill; null outside the project. */
+  /** Attaches this file to the composer as a pill; null without a registered workspace. */
   onAddToChat: (() => void) | null;
 }) {
   const { t } = useTranslation();
@@ -1000,7 +999,7 @@ function EditorContextMenu({
   onFindReferences: (() => void) | null;
   /** Null for the same reason: a rename with no server behind it is a find-and-replace. */
   onRenameSymbol: (() => void) | null;
-  /** Null when the file is outside the project, so there is no workspace path to reference. */
+  /** Null without a registered workspace, so there is no workspace path to reference. */
   onAddSelectionToChat: (() => void) | null;
   onCut: () => void;
   onCopy: () => void;
@@ -1404,9 +1403,9 @@ function EditorModeView({
   onViewChanges: (() => void) | null;
   /** Opens the Refine job tab for this file; null when unavailable. */
   onRefine: (() => void) | null;
-  /** Attaches this file to the composer as a pill; null outside the project. */
+  /** Attaches this file to the composer as a pill; null without a registered workspace. */
   onAddToChat: (() => void) | null;
-  /** Attaches the selected range as a pill; null outside the project. */
+  /** Attaches the selected range as a pill; null without a registered workspace. */
   onAddSelectionToChat: (() => void) | null;
   /** Starts the host-owned editor after the clean-buffer guard passes. */
   onOpenExternalEditor: (() => void) | null;
@@ -1715,9 +1714,9 @@ function EditorModeView({
   // The target arrives relative to THIS tab's workspace (or absolute when the
   // definition lives outside it), and `openFileInWorkspace` anchors a relative
   // path to the PANE's workspace. Those are the same root for an ordinary tab,
-  // and different ones for a linked project's file (gated-multi-root), where a
-  // relative path would resolve against the wrong tree. Send an absolute path in
-  // that case and let the cross-project open gate re-derive the owning workspace.
+  // and different ones for an externally opened file, where a relative path
+  // would resolve against the wrong tree. Send an absolute path in that case and
+  // let the external-file resolver re-derive the serving workspace.
   const handleOpenDefinitionTarget = useCallback(
     (target: GoToDefinitionTarget) => {
       const targetPath =
@@ -2402,15 +2401,15 @@ export function FileTabPane({
   workspaceId,
   workspaceRoot,
   location,
-  editGate,
+  workspaceActionsEnabled = true,
   toolbarLeadingSlot = null,
 }: {
   serverId: string;
   workspaceId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
-  /** How editing this file is gated (in-/linked-project = free; else warns). */
-  editGate: EditGate;
+  /** Whether actions that rely on a registered workspace may be offered. */
+  workspaceActionsEnabled?: boolean;
   /** Host-supplied toolbar controls, placed just after the file's own jobs. Lets
    *  a surface that opens files for a purpose (Context Management) put its own
    *  action in the existing bar instead of stacking a second one above it. */
@@ -2421,12 +2420,9 @@ export function FileTabPane({
   const { closeCurrentTab } = usePaneContext();
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
 
-  // Editing an out-of-project file is no longer gated behind a confirm dialog -
-  // it just works, with a persistent red banner making the trade-off plain (the
-  // file is outside this project, so its edits are not part of the agent's
-  // context and not part of this workspace's Git changes). Rendered formats
-  // (markdown, images, binaries) still open in preview; plain text and code
-  // open straight in the editor, in-project or not.
+  // Editing is independent from project ownership. Rendered formats (markdown,
+  // images, binaries) still open in preview; plain text and code open straight
+  // in the editor wherever the file lives.
   const { mode, setMode } = useFileViewMode({
     persistenceKey,
     path: location.path,
@@ -2535,8 +2531,6 @@ export function FileTabPane({
     setExternalEditorFailure(message);
   }, []);
 
-  const otherProjectName = editGate.kind === "other-project" ? editGate.projectName : null;
-
   const handleModeChange = useCallback(
     (next: FileViewMode) => {
       const controller = controllerRef.current;
@@ -2599,12 +2593,12 @@ export function FileTabPane({
 
   // Git file investigation - history, per-commit diffs, blame, origin commit.
   // No per-provider rollout to gate on (it is git, not an agent): the host
-  // either serves the RPCs or it doesn't. It is limited to in-project files
+  // either serves the RPCs or it doesn't. It requires a registered workspace
   // because the queries run `git` in this workspace with a workspace-relative
-  // pathspec - a linked or outside-project file belongs to a different repo, so
-  // asking here would be a question about the wrong tree.
+  // pathspec. An external file served by a registered workspace uses that
+  // workspace; a path outside every registered workspace has no such owner.
   const hostServesGitFileHistory = useGitFileHistoryFeature(serverId);
-  const gitFileHistorySupported = hostServesGitFileHistory && editGate.kind === "free";
+  const gitFileHistorySupported = hostServesGitFileHistory && workspaceActionsEnabled;
   // Opens a tab, not an overlay: reading history means walking commits with the
   // diff beside you, which wants the whole frame and wants to stay open while
   // you go back to the code.
@@ -2630,19 +2624,19 @@ export function FileTabPane({
     serverId,
     workspaceId,
     cwd: workspaceRoot,
-    enabled: editGate.kind === "free",
+    enabled: workspaceActionsEnabled,
   });
   const onViewChanges = useMemo(() => {
-    if (editGate.kind !== "free" || !changedPaths.has(location.path)) {
+    if (!workspaceActionsEnabled || !changedPaths.has(location.path)) {
       return null;
     }
     return () => {
       revealFileInChanges({ serverId, cwd: workspaceRoot, path: location.path });
     };
-  }, [changedPaths, editGate.kind, location.path, serverId, workspaceRoot]);
+  }, [changedPaths, location.path, serverId, workspaceActionsEnabled, workspaceRoot]);
 
   const onNavigateToFile = useMemo(() => {
-    if (editGate.kind !== "free") {
+    if (!workspaceActionsEnabled) {
       return null;
     }
     return () => {
@@ -2653,7 +2647,7 @@ export function FileTabPane({
         isGit: true,
       });
     };
-  }, [editGate.kind, location.path, serverId, workspaceRoot]);
+  }, [location.path, serverId, workspaceActionsEnabled, workspaceRoot]);
 
   // "Add to chat" - hand this file, or the selected range, to the composer as a
   // removable pill.
@@ -2664,15 +2658,15 @@ export function FileTabPane({
   // no focused chat to aim at, and requiring one would take the action away
   // exactly when the user is reading the code they want to ask about.
   //
-  // In-project only, for the same reason as history, changes and Refine: the
-  // attachment carries a workspace-relative path, so a linked or outside-project
-  // file would point the agent at the wrong tree.
+  // Registered-workspace only: the attachment carries a workspace-relative
+  // path, so a file served directly from an arbitrary directory would point the
+  // agent at the wrong tree.
   const attachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
     workspaceId,
     cwd: workspaceRoot,
   });
-  const canAddToChat = editGate.kind === "free";
+  const canAddToChat = workspaceActionsEnabled;
   const onAddToChat = useMemo(() => {
     if (!canAddToChat) {
       return null;
@@ -2723,9 +2717,9 @@ export function FileTabPane({
 
   // Refine - the AI rewrite, as a reviewable job in its own tab.
   //
-  // In-project only, for the same reason as history and changes: the job runs
-  // against this workspace's root with a workspace-relative path, so a linked
-  // or outside-project file would be a question about the wrong tree.
+  // Registered-workspace only: the job runs against this workspace's root with
+  // a workspace-relative path, so an arbitrary external file would be a
+  // question about the wrong tree.
   //
   // A dirty buffer blocks entry. Refine pins its base from DISK, so starting it
   // over unsaved edits would show a diff against something the user is not
@@ -2740,7 +2734,7 @@ export function FileTabPane({
     // is the objection that pulled the old "Refactor with AI" button, and a
     // review loop does not answer it - nobody spots a broken import in a
     // 400-line diff.
-    if (!hasRefine || !editorAllowed || editGate.kind !== "free") {
+    if (!hasRefine || !editorAllowed || !workspaceActionsEnabled) {
       return null;
     }
     if (!isRefinableDocument(location.path)) {
@@ -2761,11 +2755,11 @@ export function FileTabPane({
       });
     };
   }, [
-    editGate.kind,
     editorAllowed,
     hasRefine,
     location.path,
     serverId,
+    workspaceActionsEnabled,
     t,
     toast,
     workspaceId,
@@ -2939,33 +2933,7 @@ export function FileTabPane({
     </>
   );
 
-  if (editGate.kind === "free") {
-    return content;
-  }
-  return (
-    <View style={styles.outOfProjectWrap}>
-      <OutOfProjectBanner projectName={otherProjectName} />
-      {content}
-    </View>
-  );
-}
-
-// A file opened from another project - or from no project at all - shows a
-// persistent, red banner across the top of the pane: editing works, but this
-// is a constant reminder that the file is outside this workspace, so its edits
-// are not part of the agent's context and not part of this workspace's Git
-// changes. `projectName` is null for a file outside every project.
-function OutOfProjectBanner({ projectName }: { projectName: string | null }) {
-  const { t } = useTranslation();
-  return (
-    <View style={styles.outOfProjectBanner} testID="file-out-of-project-banner">
-      <Text style={styles.outOfProjectText} numberOfLines={2}>
-        {projectName
-          ? t("editor.outOfProject.badge", { project: projectName })
-          : t("editor.outOfProject.badgeNoProject")}
-      </Text>
-    </View>
-  );
+  return content;
 }
 
 const styles = StyleSheet.create((theme) => {
@@ -2974,25 +2942,6 @@ const styles = StyleSheet.create((theme) => {
       flex: 1,
       minHeight: 0,
       backgroundColor: theme.colors.surface0,
-    },
-    outOfProjectWrap: {
-      flex: 1,
-      minHeight: 0,
-    },
-    outOfProjectBanner: {
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: theme.spacing[3],
-      paddingVertical: theme.spacing[1],
-      backgroundColor: theme.colors.statusDangerSurface,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.statusDanger,
-    },
-    outOfProjectText: {
-      color: theme.colors.statusDanger,
-      fontSize: theme.fontSize.xs,
-      fontWeight: "600",
-      textAlign: "center",
     },
     centerState: {
       flex: 1,

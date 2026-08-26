@@ -9,7 +9,7 @@ import { type Theme } from "@/styles/theme";
 
 /**
  * The problems panel: a tinted strip between the document and the status bar, matching the
- * out-of-project banner's idiom - outside the scroll region, so it states something about
+ * other pane-level status surfaces - outside the scroll region, so it states something about
  * the file rather than about the part of it you happen to be looking at.
  *
  * **Errors and warnings only.** `tsserver` emits hint-severity suggestions by the dozen on

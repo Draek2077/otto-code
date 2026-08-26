@@ -2802,12 +2802,6 @@ export const ar: TranslationResources = {
       file: "إضافة إلى الدردشة",
       selection: "إضافة التحديد إلى الدردشة",
     },
-    outOfProject: {
-      badge:
-        "تحرير خارج المشروع ({{project}}) - ليس جزءًا من سياق الوكيل ولا من تغييرات Git في هذا الـ Workspace.",
-      badgeNoProject:
-        "تحرير خارج المشروع - ليس جزءًا من سياق الوكيل ولا من تغييرات Git في هذا الـ Workspace.",
-    },
     contextMenu: {
       cut: "قص",
       copy: "نسخ",
@@ -4342,13 +4336,6 @@ export const ar: TranslationResources = {
         imageUrl: "رابط صورة أو موقع",
         save: "حفظ التغييرات",
         savedToast: "تم تحديث المشروع",
-      },
-      links: {
-        title: "المشاريع المرتبطة",
-        info: "يمكن للمشاريع المرتبطة فتح وتحرير ملفات بعضها البعض في مكانها. لن تكون الملفات التي تفتحها من مشروع مرتبط جزءًا من التزام هذا المشروع. الروابط ثنائية الاتجاه.",
-        empty: "لا توجد مشاريع أخرى على هذا المضيف لربطها.",
-        error: "تعذّر تحديث رابط المشروع",
-        toggleAccessibility: "ربط {{project}}",
       },
       kanban: {
         sectionTitle: "Kanban",

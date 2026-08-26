@@ -3912,21 +3912,6 @@ const ROWS = [
   ],
 
   [
-    "host-projects-project-settings-project-links-linked-project",
-    "Linked project",
-    "Includes or excludes each other registered project as a related project.",
-    "Projects / Project settings Project links Dynamic preference On; Off One row per other project project.links.\\* Project Developer",
-    "Project",
-    "projects",
-    true,
-    "Projects / Project settings",
-    "Project links",
-    "Developer",
-    true,
-    true,
-  ],
-
-  [
     "host-projects-project-settings-script-editor-command",
     "Command",
     "Sets the command run by the script.",

@@ -677,12 +677,6 @@
 | Commit message prompt | Overrides the prompt used to generate project commit messages.       | Project | Preference | Multiline text; Reset | Built-in prompt | Developer |            | project.metadataPrompts.commitMessage | [project-settings-screen.tsx:81](../../packages/app/src/screens/project-settings-screen.tsx#L81) |
 | Pull request prompt   | Overrides the prompt used to generate project pull request metadata. | Project | Preference | Multiline text; Reset | Built-in prompt | Developer |            | project.metadataPrompts.pullRequest   | [project-settings-screen.tsx:81](../../packages/app/src/screens/project-settings-screen.tsx#L81) |
 
-#### Project links
-
-| Setting        | What it does                                                             | Scope   | Kind               | Choices / actions | Default | Audience  | Conditions                | Persistence      | Source                                                                                             |
-| -------------- | ------------------------------------------------------------------------ | ------- | ------------------ | ----------------- | ------- | --------- | ------------------------- | ---------------- | -------------------------------------------------------------------------------------------------- |
-| Linked project | Includes or excludes each other registered project as a related project. | Project | Dynamic preference | On; Off           | Off     | Developer | One row per other project | project.links.\* | [project-settings-screen.tsx:500](../../packages/app/src/screens/project-settings-screen.tsx#L500) |
-
 #### Script editor
 
 | Setting | What it does                                        | Scope   | Kind       | Choices / actions | Default | Audience  | Conditions | Persistence             | Source                                                                                               |

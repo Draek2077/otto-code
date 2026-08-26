@@ -11,7 +11,6 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { detectWindowsTerminalShells } from "../terminal/windows-terminal-shells.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
-import { createNoopProjectLinkStore, type ProjectLinkStore } from "./project-links.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
@@ -613,7 +612,6 @@ export class VoiceAssistantWebSocketServer {
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
-  private readonly projectLinkStore: ProjectLinkStore;
   private readonly scheduleService: ScheduleService;
   private readonly runService: RunService | null;
   private readonly graphStore: GraphStore | null;
@@ -750,7 +748,6 @@ export class VoiceAssistantWebSocketServer {
     runService?: RunService | null,
     onActivity?: ActivityIncrementFn,
     getActivityRollups?: () => Promise<ActivityRollups>,
-    projectLinkStore?: ProjectLinkStore,
     agentAutoTitle?: AgentAutoTitle | null,
     getUsageLogPage?: (query: UsageLogPageQuery) => Promise<UsageLogPage>,
     resetActivityStats?: () => Promise<void>,
@@ -778,7 +775,6 @@ export class VoiceAssistantWebSocketServer {
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
-    this.projectLinkStore = projectLinkStore ?? createNoopProjectLinkStore();
     const requiredServices = requireWebSocketServices({
       scheduleService,
       checkoutDiffManager,
@@ -1712,7 +1708,6 @@ export class VoiceAssistantWebSocketServer {
       agentStorage: this.agentStorage,
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
-      projectLinkStore: this.projectLinkStore,
       scheduleService: this.scheduleService,
       runService: this.runService,
       graphStore: this.graphStore,
@@ -2113,8 +2108,6 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate
         // when floor >= v0.8.18.
         projectKnowledgeStoreLocation: this.projectKnowledgeStoreResolver !== null,
-        // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
-        projectLinks: true,
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.
         fileOutsideWorkspace: true,
         // COMPAT(promptSuggestions): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.

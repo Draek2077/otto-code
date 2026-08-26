@@ -9,10 +9,9 @@ export interface WorkspaceFileLocation {
 }
 
 /**
- * When a file tab shows a file that belongs to a DIFFERENT project than the
- * workspace hosting the tab (gated-multi-root), `origin` records the owning
- * workspace so the panel resolves its cwd/buffer against that workspace instead
- * of the host pane's. Absent for ordinary in-project file tabs.
+ * When a file tab shows a file outside the workspace hosting the tab, `origin`
+ * records the workspace or directory serving that file so the panel resolves
+ * its cwd and buffer correctly. Absent for ordinary workspace-local tabs.
  */
 export interface WorkspaceFileOrigin {
   workspaceId: string;
@@ -20,10 +19,10 @@ export interface WorkspaceFileOrigin {
   projectId: string;
   projectName?: string;
   /**
-   * True for a file that belongs to NO known project - a scratch/plan file
-   * outside every workspace (e.g. an agent's plan under `~/.claude`). Its
-   * `cwd` is the file's own directory and `projectId`/`workspaceId` are
-   * synthetic (path-derived, stable). Editing one always warns (no suppress).
+   * True for a file outside every registered workspace, such as an agent plan
+   * under `~/.claude`. Its `cwd` is the file's own directory and its ids are
+   * synthetic, path-derived, and stable. Workspace-only actions are withheld,
+   * but reading and editing work normally.
    */
   outsideAnyProject?: boolean;
 }
@@ -81,9 +80,8 @@ export function createWorkspaceFileTabTarget(
 
 /**
  * Two file tab targets are the same tab when they point at the same location
- * AND the same origin workspace - so an out-of-project file never collides with
- * an in-project file that happens to share a relative path, nor with the same
- * path from a different linked project.
+ * and the same serving workspace, preventing equal relative paths from
+ * colliding across roots.
  */
 export function workspaceFileTabTargetsEqual(
   left: WorkspaceFileTabTarget,

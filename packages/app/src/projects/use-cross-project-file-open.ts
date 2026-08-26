@@ -16,12 +16,10 @@ export type CrossProjectFileOpenGate = (
 ) => CrossProjectResolvedOpen;
 
 /**
- * Resolves how a file reference should open under gated-multi-root. Any file
- * opens (any file can be previewed) - a cross-project or project-less file
- * comes back with an `origin` to pass into `createWorkspaceFileTabTarget`, so
- * the tab is scoped to the owning (or synthesized) workspace. Whether *editing*
- * it warns is decided later at edit time by `resolveEditGate`; the open never
- * blocks and never prompts.
+ * Resolves how a file reference should open. A cross-project or project-less
+ * file comes back with an `origin` to pass into `createWorkspaceFileTabTarget`,
+ * so the tab is scoped to the owning (or synthesized) workspace. Opening and
+ * editing never block or prompt based on project ownership.
  */
 export function useCrossProjectFileOpenGate(
   serverId: string,

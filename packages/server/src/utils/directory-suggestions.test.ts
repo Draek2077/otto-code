@@ -403,7 +403,7 @@ describe("searchDirectoryEntries", () => {
     const narrowRoot = path.join(searchRoot, "retargeted-link-root");
     const insideTarget = path.join(narrowRoot, "inside");
     const outsideTarget = path.join(searchRoot, "retargeted-link-outside");
-    const link = path.join(narrowRoot, "project-link");
+    const link = path.join(narrowRoot, "project-shortcut");
     mkdirSync(insideTarget, { recursive: true });
     mkdirSync(outsideTarget, { recursive: true });
     symlinkSync(insideTarget, link);
@@ -411,12 +411,12 @@ describe("searchDirectoryEntries", () => {
     await expect(
       searchDirectoryEntries({
         root: narrowRoot,
-        query: "project-link",
+        query: "project-shortcut",
         pathFormat: "relative",
         includeFiles: false,
         includeDirectories: true,
       }),
-    ).resolves.toEqual([{ path: "project-link", kind: "directory" }]);
+    ).resolves.toEqual([{ path: "project-shortcut", kind: "directory" }]);
 
     unlinkSync(link);
     symlinkSync(outsideTarget, link);
@@ -424,7 +424,7 @@ describe("searchDirectoryEntries", () => {
     await expect(
       searchDirectoryEntries({
         root: narrowRoot,
-        query: "project-link",
+        query: "project-shortcut",
         pathFormat: "relative",
         includeFiles: false,
         includeDirectories: true,

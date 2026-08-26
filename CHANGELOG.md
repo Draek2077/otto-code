@@ -900,7 +900,7 @@
 
 ### Added
 
-- Preview any file on your machine, including files outside your open projects, with out-of-project editing gated behind project links
+- Preview files anywhere on your machine, including outside your open projects
 - Code blocks without a language tag now get syntax highlighting through automatic language detection
 
 ### Fixed

@@ -1,6 +1,5 @@
 import { isAbsolutePath } from "@/utils/path";
 import type { WorkspaceFileLocation, WorkspaceFileOrigin } from "@/workspace/file-open";
-import { areProjectsLinkedInSet } from "@/projects/project-links";
 import {
   resolveWorkspaceForPath,
   type WorkspaceForPathCandidate,
@@ -29,21 +28,19 @@ export type CrossProjectOpenDecision =
   // open exactly as today, no origin discriminator.
   | { kind: "in-project" }
   // A file that belongs to another project OR to no project at all: open in
-  // place, scoped to the owning (or synthesized) workspace. Whether editing it
-  // warns is decided later by resolveEditGate against the live link set - the
-  // open itself never blocks (any file can be previewed).
+  // place, scoped to the owning (or synthesized) workspace.
   | { kind: "out-of-project"; origin: WorkspaceFileOrigin; location: WorkspaceFileLocation };
 
 /**
  * Decides how a file reference (typically an absolute path clicked in a
- * conversation) should open under gated-multi-root:
+ * conversation) should open:
  * - relative paths and paths inside the current project → open normally;
  * - a file inside *another* project → open in place, scoped to that project's
  *   workspace (origin), with the path rewritten relative to it;
  * - a file outside *every* known project → open in place under a synthesized
  *   origin rooted at the file's own directory (so any scratch/plan file can be
  *   previewed; the daemon serves single-file reads regardless of workspace).
- * Never blocks - the edit gate is applied separately at edit time.
+ * Never blocks or changes editability.
  * Pure so it can be unit-tested without the store/UI.
  */
 export function resolveCrossProjectFileOpen(
@@ -61,9 +58,8 @@ export function resolveCrossProjectFileOpen(
   const owner = resolveWorkspaceForPath(path, workspaces);
   if (!owner) {
     // Outside every known workspace - a scratch/plan file. Synthesize an origin
-    // rooted at the file's own directory so it opens in place; editing it is
-    // gated as "outside any project" (always warns). Requires the daemon to
-    // serve out-of-workspace files; without it, leave the path as in-project.
+    // rooted at the file's own directory so it opens in place. Requires the
+    // daemon to serve out-of-workspace files; without it, leave the path as in-project.
     const split = allowOutsideWorkspace ? splitAbsolutePath(path) : null;
     if (!split) {
       return { kind: "in-project" };
@@ -101,41 +97,6 @@ export function resolveCrossProjectFileOpen(
     // daemon RPCs resolve it correctly.
     location: { ...location, path: owner.relativePath },
   };
-}
-
-/**
- * How editing a file tab should be gated, given its origin and the live link
- * set. Kept separate from the open decision so linking/unlinking projects while
- * a tab is open updates the gate reactively.
- */
-export type EditGate =
-  // In the current project or a linked project: edit freely, no warning.
-  | { kind: "free" }
-  // Another, unlinked project: warn on edit; the warning is globally suppressible.
-  | { kind: "other-project"; projectName: string | null }
-  // Outside every project: warn on edit every time (no suppression).
-  | { kind: "outside-project" };
-
-export function resolveEditGate(input: {
-  origin: WorkspaceFileOrigin | undefined;
-  currentProjectId: string | null;
-  linkSet: ReadonlySet<string>;
-}): EditGate {
-  const { origin, currentProjectId, linkSet } = input;
-  if (!origin) {
-    return { kind: "free" };
-  }
-  if (origin.outsideAnyProject) {
-    return { kind: "outside-project" };
-  }
-  if (
-    currentProjectId &&
-    (currentProjectId === origin.projectId ||
-      areProjectsLinkedInSet(linkSet, currentProjectId, origin.projectId))
-  ) {
-    return { kind: "free" };
-  }
-  return { kind: "other-project", projectName: origin.projectName ?? null };
 }
 
 /**

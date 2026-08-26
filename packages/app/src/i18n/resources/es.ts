@@ -2871,12 +2871,6 @@ export const es: TranslationResources = {
       file: "Añadir al chat",
       selection: "Añadir selección al chat",
     },
-    outOfProject: {
-      badge:
-        "Editando fuera del proyecto ({{project}}): no forma parte del contexto del agente ni de los cambios de Git de este Workspace.",
-      badgeNoProject:
-        "Editando fuera del proyecto: no forma parte del contexto del agente ni de los cambios de Git de este Workspace.",
-    },
     contextMenu: {
       cut: "Cortar",
       copy: "Copiar",
@@ -4441,13 +4435,6 @@ export const es: TranslationResources = {
         imageUrl: "URL de imagen o sitio web",
         save: "Guardar cambios",
         savedToast: "Proyecto actualizado",
-      },
-      links: {
-        title: "Proyectos vinculados",
-        info: "Los proyectos vinculados pueden abrir y editar sus archivos entre sí en el lugar. Los archivos que abras de un proyecto vinculado no formarán parte del commit de este proyecto. Los vínculos son bidireccionales.",
-        empty: "No hay otros proyectos en este host para vincular.",
-        error: "No se pudo actualizar el vínculo del proyecto",
-        toggleAccessibility: "Vincular {{project}}",
       },
       kanban: {
         sectionTitle: "Kanban",

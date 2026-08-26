@@ -161,17 +161,17 @@ Three consequences, and they are the whole policy:
    containment rule, justified because the _solution file itself_ is the authority naming those
    paths - the client is not free-browsing the disk. The `cwd` guard still applies, so a client can
    only reach what a solution Otto already knows about points at.
-2. **Editing: allowed, but warned.** The existing `resolveEditGate`
-   (`free | other-project | outside-project`) already models exactly this and already has UI.
-3. **Git: not our problem.** Out-of-workspace files are excluded from Changes, diffs, commits and
-   every other git surface, with no special-casing anywhere.
+2. **Editing: direct.** Project ownership adds no warning or permission layer. The file is served
+   from a registered owning workspace when one exists, otherwise from its own parent directory.
+3. **Git: owner-dependent.** A file resolved to a registered workspace uses that workspace's Git
+   surfaces. A file with no registered workspace remains outside Changes, diffs, and commits.
 
 On the wire this is a `path` that is workspace-relative when inside and absolute when not, plus an
 explicit `outsideWorkspace` boolean - so nothing downstream infers the distinction by inspecting the
 string.
 
-This does **not** reverse the gated-multi-root rule that the explorer shows only this project's
-files. That rule governs _browsing_; this governs _following a solution's own declarations_.
+This does **not** make the explorer browse arbitrary paths. Explorer containment governs _browsing_;
+this section governs _following a solution's own declarations_.
 
 ## Cross-platform
 

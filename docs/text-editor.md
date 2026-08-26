@@ -10,8 +10,8 @@ The deployment reality drives the whole design: the daemon may run in WSL while 
 
 Consequences that must survive future changes:
 
-- **Path normalization is daemon-side and POSIX-first.** The client treats paths as opaque keys. Path containment under the workspace root is enforced on the daemon (reusing the explorer's normalization); files outside the workspace root and `~`-scoped paths are viewer-only by design.
-  - One deliberate, scoped relaxation: the **Solution view** renders and opens `.csproj` files a solution names outside the workspace root. That is not free browsing - the solution file itself is the authority naming those paths - and editing one still warns through `resolveEditGate`. The rule above governs _browsing_; that one governs _following a solution's own declarations_. See [solution-view.md](solution-view.md#out-of-workspace-projects---stay-out-of-the-way).
+- **Path normalization is daemon-side and POSIX-first.** The client treats paths as opaque keys. The file explorer and its create/delete/rename operations stay contained under the workspace root. A specific absolute file reached from a chat link, navigation result, or another trusted surface can be opened and edited directly: the client resolves a registered owning workspace when one exists, otherwise it scopes the daemon file RPCs to the file's own directory. Project ownership adds no edit permission layer.
+  - The **Solution view** also renders and opens `.csproj` files a solution names outside the workspace root. The solution file is the authority naming those paths; this is still not free disk browsing. See [solution-view.md](solution-view.md#out-of-workspace-projects---stay-out-of-the-way).
 - **Line endings are detected on read (`lf` | `crlf`) and preserved verbatim on save.** A Windows client must not silently rewrite LF files in a WSL checkout. Content travels LF-normalized on the wire; the daemon re-applies the file's detected EOL. Mixed-EOL files normalize to the dominant ending on save (documented majority rule).
 - **Encoding is UTF-8 only.** Non-UTF-8 and binary files stay viewer-only (binary is rejected on the write path with a clear error).
 - **File watching uses daemon `fs.watch` with a polling fallback** - the proven `artifact-watcher.ts` pattern. inotify-inside-WSL is the daemon's problem, invisible to the client.
@@ -93,7 +93,7 @@ ctags-style and name-based: no type resolution, so multiple hits are a picker, n
 
   One path-shape trap worth keeping - **three spellings of the same file meet here, and comparing them raw is how a same-file jump opens a duplicate tab.** `code.symbols` answers **relative to the workspace it indexed**; `code.definition` answers with an **absolute native path**, because the daemon converts the language server's `file://` URI through `fileURLToPath` (backslashes and a drive letter on Windows); and the open tab's own path may be either. `definition-jump.ts` is the one place that reconciles them: both sides are resolved to a canonical absolute form before deciding in-buffer vs. open (Windows-insensitive via `absolutePathsEqual`), and the path handed on for an open is re-expressed workspace-relative when it lives inside the workspace - the same shape the explorer and chat links use, so the open lands on the existing tab instead of minting a second one keyed on the absolute spelling.
 
-  Downstream of that, `openFileInWorkspace` anchors a relative path to the **pane's** workspace. That is the same root for an ordinary tab and a different root for a linked project's file (gated-multi-root), so `file-tab-pane.tsx` prefixes the tab's own workspace root when they diverge - and skips the prefix for an already-absolute target (a definition outside the workspace), letting the cross-project open gate re-derive the owner.
+  Downstream of that, `openFileInWorkspace` anchors a relative path to the **pane's** workspace. That is the same root for an ordinary tab and a different root for an externally opened file, so `file-tab-pane.tsx` prefixes the tab's serving workspace root when they diverge. It skips the prefix for an already-absolute target, letting the external-file resolver re-derive the owner.
 
 - **Hover explanations** - resting the pointer on an identifier asks `code.hover`. **The load order is the design here**, because the naive shape (`await provider(...)` inside CM6's `hoverTooltip` source) produces two bad states on a cold server: no tooltip at all, or a tooltip after a long pause. Both come from the same place - **CM6's `HoverPlugin.update` drops a pending source promise on ANY view update and restarts the hover 20 ms later**, so a slow answer was routinely thrown away and re-asked rather than shown late.
 
@@ -564,9 +564,9 @@ Three things this deliberately does **not** do:
   chat composer in the workspace reads. The focused pane is the file, so `focusedAgentId` is null by
   construction here - gating on it (as the file explorer does, where a chat can be focused beside the
   sidebar) would remove the action exactly when the user is reading the code they want to ask about.
-- **It does not offer itself outside the project.** Same restriction as history, Changes and Refine:
-  the attachment carries a workspace-relative path, so a linked or outside-project file would point
-  the agent at the wrong tree.
+- **It requires a registered serving workspace.** The attachment carries a workspace-relative path,
+  so a file served directly from an arbitrary external directory would point the agent at the wrong
+  tree. A file resolved to another registered workspace uses that workspace's attachment scope.
 
 Every producer builds its dedupe id through `buildFileContextAttachmentId`, so the toolbar, the file
 explorer and an `@` mention naming one file yield one pill and one X.

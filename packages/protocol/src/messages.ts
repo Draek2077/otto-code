@@ -167,15 +167,6 @@ import {
   SpeechTtsSpeakCancelResponseSchema,
 } from "./speech.js";
 import {
-  ProjectLinksListRequestSchema,
-  ProjectLinksSetRequestSchema,
-  ProjectLinksUnsetRequestSchema,
-  ProjectLinksListResponseSchema,
-  ProjectLinksSetResponseSchema,
-  ProjectLinksUnsetResponseSchema,
-  ProjectLinksChangedSchema,
-} from "./project-links.js";
-import {
   ProjectKnowledgeListRequestMessageSchema,
   ProjectKnowledgeListResponseMessageSchema,
   ProjectKnowledgeGetRequestMessageSchema,
@@ -4224,9 +4215,6 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   KanbanProjectTargetSetRequestSchema,
   ProjectIconSetRequestSchema,
   ProjectRemoveRequestSchema,
-  ProjectLinksListRequestSchema,
-  ProjectLinksSetRequestSchema,
-  ProjectLinksUnsetRequestSchema,
   WorkspaceTitleSetRequestSchema,
   WorkspacePinSetRequestSchema,
   WorkspaceRecoveryInspectRequestSchema,
@@ -5038,13 +5026,11 @@ export const ServerInfoStatusPayloadSchema = z
         runsDraftEdit: z.boolean().optional(),
         // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         orchestrationGraphs: z.boolean().optional(),
-        // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
-        projectLinks: z.boolean().optional(),
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.
         // Set when the daemon will serve single-file read/write/watch for paths
         // outside every known workspace (bounded only by OS filesystem
-        // permissions). The client gates this behind an "edit anyway" warning;
-        // an old daemon leaves the flag unset and out-of-project files are not offered.
+        // permissions). An old daemon leaves the flag unset, so the client does
+        // not route external files through this access path.
         fileOutsideWorkspace: z.boolean().optional(),
         // COMPAT(promptSuggestions): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
         // Set when the daemon emits agent_stream `prompt_suggestion` events (native
@@ -8338,10 +8324,6 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectUpdatedNotificationSchema,
   ProjectIconSetResponseSchema,
   ProjectRemoveResponseSchema,
-  ProjectLinksListResponseSchema,
-  ProjectLinksSetResponseSchema,
-  ProjectLinksUnsetResponseSchema,
-  ProjectLinksChangedSchema,
   WorkspaceTitleSetResponseSchema,
   WorkspacePinSetResponseSchema,
   WorkspaceRecoveryInspectResponseSchema,
@@ -9235,8 +9217,6 @@ export * from "./code-intelligence.js";
 export * from "./git-operations.js";
 
 export * from "./project-knowledge.js";
-
-export * from "./project-links.js";
 
 export * from "./speech.js";
 

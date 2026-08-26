@@ -2832,12 +2832,6 @@ export const en = {
       file: "Add to chat",
       selection: "Add selection to chat",
     },
-    outOfProject: {
-      badge:
-        "Editing outside the project ({{project}}) - not part of the agent's context or this workspace's Git changes.",
-      badgeNoProject:
-        "Editing outside the project - not part of the agent's context or this workspace's Git changes.",
-    },
     contextMenu: {
       cut: "Cut",
       copy: "Copy",
@@ -4376,13 +4370,6 @@ export const en = {
         imageUrl: "Image or website URL",
         save: "Save changes",
         savedToast: "Project updated",
-      },
-      links: {
-        title: "Linked projects",
-        info: "Linked projects can open and edit each other's files in place. Files you open from a linked project won't be part of this project's commit. Links are bidirectional.",
-        empty: "No other projects on this host to link.",
-        error: "Couldn't update project link",
-        toggleAccessibility: "Link {{project}}",
       },
       kanban: {
         sectionTitle: "Kanban",
