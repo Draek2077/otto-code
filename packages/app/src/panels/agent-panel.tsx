@@ -20,6 +20,8 @@ import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
+import { ChatMessageSearchBar, type ChatMessageSearchHandle } from "@/chat/message-search-bar";
+import type { ChatMessageSearchState } from "@/chat/message-search";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
@@ -62,6 +64,7 @@ import {
 } from "@/hooks/use-agent-screen-state-machine";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { useContainerHeight } from "@/hooks/use-container-height";
 import {
@@ -1431,6 +1434,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         streamViewRef={streamViewRef}
         serverId={serverId}
         agentId={agentId}
+        isPaneFocused={isPaneFocused}
         hiddenTodoListId={pinnedTaskListId}
         agent={effectiveAgent}
         routeBottomAnchorRequest={routeBottomAnchorRequest}
@@ -1547,6 +1551,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   streamViewRef,
   serverId,
   agentId,
+  isPaneFocused,
   agent,
   hiddenTodoListId,
   routeBottomAnchorRequest,
@@ -1557,6 +1562,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
   serverId: string;
   agentId?: string;
+  isPaneFocused: boolean;
   agent: AgentScreenAgent;
   // When the pinned overlay is showing a checklist, its id is passed here so the
   // inline copy is dropped from the transcript (no double render).
@@ -1567,6 +1573,8 @@ const AgentStreamSection = memo(function AgentStreamSection({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const searchRef = useRef<ChatMessageSearchHandle>(null);
+  const [searchState, setSearchState] = useState<ChatMessageSearchState | null>(null);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const exportMenuItemRef = useRef<View>(null);
@@ -1582,6 +1590,18 @@ const AgentStreamSection = memo(function AgentStreamSection({
   // to it), so it retains for as long as it is mounted - not only while active.
   useAgentStreamRetention(serverId, agentId ?? null);
   const isPanelActive = useRetainedPanelActive();
+  useKeyboardActionHandler({
+    handlerId: `chat-find:${serverId}:${agentId ?? ""}`,
+    actions: ["chat.find"],
+    enabled: Boolean(agentId),
+    priority: 120,
+    isActive: () => isPanelActive && isPaneFocused,
+    handle: (action) => {
+      if (action.id !== "chat.find") return false;
+      searchRef.current?.open();
+      return true;
+    },
+  });
   const frozenStreamItemsRef = useRef<StreamItem[] | undefined>(undefined);
   const streamItemsRaw = useSessionStore((state) => {
     if (!isPanelActive) {
@@ -1622,6 +1642,20 @@ const AgentStreamSection = memo(function AgentStreamSection({
     );
     return filtered.length === rawStreamItems.length ? rawStreamItems : filtered;
   }, [rawStreamItems, hiddenTodoListId]);
+  const searchItems = useMemo(
+    () => [...streamItems, ...(streamHead ?? EMPTY_STREAM_ITEMS)],
+    [streamHead, streamItems],
+  );
+  const navigateToSearchResult = useCallback(
+    ({ itemId }: { itemId: string }) => streamViewRef.current?.scrollToMessage(itemId),
+    [streamViewRef],
+  );
+  const handleSearchStateChange = useCallback((next: ChatMessageSearchState | null) => {
+    setSearchState(next);
+  }, []);
+  const handleSearchClose = useCallback(() => {
+    streamViewRef.current?.scrollToBottom("jump-to-bottom");
+  }, [streamViewRef]);
   const pendingPermissionList = useStoreWithEqualityFn(
     useSessionStore,
     (state) => {
@@ -1697,6 +1731,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       serverId={serverId}
       context={agent}
       streamItems={streamItems}
+      searchState={searchState}
       pendingPermissions={pendingPermissions}
       routeBottomAnchorRequest={routeBottomAnchorRequest}
       isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
@@ -1729,6 +1764,13 @@ const AgentStreamSection = memo(function AgentStreamSection({
 
   return (
     <>
+      <ChatMessageSearchBar
+        ref={searchRef}
+        items={searchItems}
+        onNavigateToResult={navigateToSearchResult}
+        onSearchStateChange={handleSearchStateChange}
+        onClose={handleSearchClose}
+      />
       <ChatContextMenu
         ref={chatContextMenuRef}
         fallbackContent={chatFallbackContextMenu}

@@ -196,6 +196,7 @@ export const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "dictation-toggle": "settings.shortcuts.help.startStopDictation",
   "agent-interrupt": "settings.shortcuts.help.interruptAgent",
   "voice-mute-toggle": "settings.shortcuts.help.muteUnmuteVoiceMode",
+  "chat-find": "Find in chat",
   "editor-save": "settings.shortcuts.help.editorSave",
   "editor-find": "settings.shortcuts.help.editorFind",
   "editor-go-to-line": "settings.shortcuts.help.editorGoToLine",
@@ -958,22 +959,6 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       keys: ["mod", ","],
     },
   },
-  // Mod+F stays as an alias, deliberately with no help row: one feature gets one
-  // row, and that row has to be the combo that always works. Same shape as
-  // Ctrl+` aliasing the right sidebar above.
-  {
-    id: "sidebar-open-files-cmd-f-mac",
-    action: "sidebar.open.files",
-    combo: "Cmd+F",
-    when: { mac: true, commandCenter: false, editable: false },
-  },
-  {
-    id: "sidebar-open-files-ctrl-f-non-mac",
-    action: "sidebar.open.files",
-    combo: "Ctrl+F",
-    when: { mac: false, commandCenter: false, terminal: false, editable: false },
-  },
-
   // --- Find in project ---
   // Mod+S is deliberately NOT bound here. It used to open this same sidebar,
   // which made it a duplicate of Mod+Shift+F while shadowing the one thing
@@ -1120,6 +1105,18 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
 
   // --- Message input ---
+  {
+    id: "chat-find-mod-f",
+    action: "chat.find",
+    combo: "Mod+F",
+    when: { commandCenter: false, terminal: false },
+    help: {
+      id: "chat-find",
+      section: "agent-input",
+      label: "Find in chat",
+      keys: ["mod", "F"],
+    },
+  },
   {
     id: "message-input-focus-cmd-l-mac",
     action: "message-input.action",

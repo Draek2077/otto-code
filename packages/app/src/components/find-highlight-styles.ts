@@ -20,5 +20,8 @@ export const findHighlightStyles = StyleSheet.create((theme) => ({
   },
   active: {
     backgroundColor: theme.colors.statusWarningSurfaceStrong,
+    borderWidth: 1,
+    borderColor: theme.colors.statusWarningStrong,
+    borderRadius: theme.borderRadius.sm,
   },
 }));

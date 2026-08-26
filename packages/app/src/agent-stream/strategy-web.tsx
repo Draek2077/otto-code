@@ -227,6 +227,7 @@ function isScrollContainerOverscrolledPastBottom(
 function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: boolean }) {
   const {
     segments,
+    historyRowRevision,
     liveHeadRowRevision,
     boundary,
     renderers,
@@ -1217,12 +1218,15 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     [],
   );
   const mountedHistoryRows = useMemo(() => {
+    // History-row revisions cover display-only changes such as Find markers.
+    // The row renderer stays stable while its closure reads the newest state.
+    void historyRowRevision;
     return segments.historyMounted.map((item, index) => (
       <div key={item.id} data-history-row-id={item.id} style={streamRowStyle}>
         {renderHistoryMountedRow(item, index, segments.historyMounted)}
       </div>
     ));
-  }, [renderHistoryMountedRow, segments.historyMounted]);
+  }, [historyRowRevision, renderHistoryMountedRow, segments.historyMounted]);
   const liveHeadRows = useMemo(() => {
     void liveHeadRowRevision;
     return segments.liveHead.map((item, index) => (

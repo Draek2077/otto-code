@@ -211,6 +211,78 @@ describe("createWebStreamStrategy", () => {
     expect(renderLiveHeadRow).toHaveBeenCalledTimes(2);
   });
 
+  it("rerenders a stable mounted-history row when its revision changes", () => {
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const historyMounted = [userMessage(1)];
+    let label = "initial";
+    const renderHistoryMountedRow = vi.fn(() => <div>{label}</div>);
+    const renderInput: StreamRenderInput = {
+      agentId: "agent",
+      segments: {
+        historyVirtualized: [],
+        historyMounted,
+        liveHead: [],
+      },
+      boundary: {
+        hasVirtualizedHistory: false,
+        hasMountedHistory: true,
+        hasLiveHead: false,
+      },
+      renderers: {
+        ...createRenderers(vi.fn()),
+        renderHistoryMountedRow,
+      },
+      listEmptyComponent: null,
+      viewportRef,
+      routeBottomAnchorRequest: null,
+      isAuthoritativeHistoryReady: true,
+      onNearBottomChange: vi.fn(),
+      onNearHistoryStart: vi.fn().mockReturnValue(true),
+      isLoadingOlderHistory: false,
+      hasOlderHistory: false,
+      olderHistoryProgressKey: null,
+      scrollEnabled: true,
+      listStyle: null,
+      baseListContentContainerStyle: null,
+      forwardListContentContainerStyle: null,
+    };
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          historyRowRevision: {
+            contentById: new Set(),
+            displayStateById: new Set(),
+            globalDisplayState: false,
+          },
+        }),
+      );
+    });
+    expect(container.textContent).toContain("initial");
+
+    label = "revised";
+    act(() => {
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          historyRowRevision: {
+            contentById: new Set(),
+            displayStateById: new Set(),
+            globalDisplayState: false,
+          },
+        }),
+      );
+    });
+
+    expect(container.textContent).toContain("revised");
+    expect(renderHistoryMountedRow).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps a row mounted when it moves from the live head into mounted history", () => {
     const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
     const viewportRef = React.createRef<StreamViewportHandle>();

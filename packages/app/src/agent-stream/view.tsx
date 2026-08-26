@@ -125,6 +125,7 @@ import {
   useBlackChatScope,
 } from "@/components/black-chat-scope-context";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
+import { findChatMessageMatches, type ChatMessageSearchState } from "@/chat/message-search";
 import { revealDirectoryInFiles, revealFileInFiles } from "@/git/changes-reveal";
 
 function renderLiveAuxiliaryNode(input: {
@@ -255,6 +256,7 @@ function renderLiveHeadStreamItem(input: {
 
 export interface AgentStreamViewHandle {
   scrollToBottom(reason?: BottomAnchorLocalRequest["reason"]): void;
+  scrollToMessage(itemId: string): void;
   prepareForViewportChange(): void;
   setAllExpandableContentExpanded(expanded: boolean): void;
 }
@@ -269,6 +271,8 @@ export interface AgentStreamViewProps {
   serverId?: string;
   context: AgentScreenAgent;
   streamItems: StreamItem[];
+  /** Query and current occurrence from the chat Find bar, if it is open. */
+  searchState?: ChatMessageSearchState | null;
   streamHead?: StreamItem[];
   pendingPermissions: Map<string, PendingPermission>;
   pendingMessageSubmissions?: readonly PendingMessageSubmission[];
@@ -299,6 +303,7 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 ];
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
+const EMPTY_SEARCH_ITEM_IDS = new Set<string>();
 
 /** Isolates each assistant row from the shared live-turn reveal ticker. */
 function RevealedAssistantMessage({
@@ -334,6 +339,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       serverId,
       context,
       streamItems,
+      searchState = null,
       streamHead: providedStreamHead,
       pendingPermissions,
       pendingMessageSubmissions = EMPTY_PENDING_MESSAGE_SUBMISSIONS,
@@ -353,6 +359,28 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const groupConsecutiveActions = useSettings((settings) => settings.groupConsecutiveActions);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
+    const messageFindQuery = useMemo(
+      () =>
+        searchState
+          ? {
+              search: searchState.query,
+              caseSensitive: searchState.options.caseSensitive,
+              wholeWord: searchState.options.wholeWord,
+              regexp: searchState.options.regexp,
+            }
+          : null,
+      [searchState],
+    );
+    const getActiveFindMatchIndex = useCallback(
+      (item: Extract<StreamItem, { kind: "user_message" | "assistant_message" }>) => {
+        const active = searchState?.activeResult;
+        if (!active || active.itemId !== item.id) return -1;
+        return findChatMessageMatches([item], searchState.query, searchState.options).findIndex(
+          (result) => result.start === active.start && result.end === active.end,
+        );
+      },
+      [searchState],
+    );
     const streamContainerHostRef = useRef<View | null>(null);
     const [webScrollElement, setWebScrollElement] = useState<HTMLElement | null>(null);
     const webScrollElementRef = useMemo(() => ({ current: webScrollElement }), [webScrollElement]);
@@ -672,6 +700,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         scrollToBottom(reason = "jump-to-bottom") {
           viewportRef.current?.scrollToBottom(reason);
         },
+        scrollToMessage(itemId) {
+          viewportRef.current?.scrollToMessage?.(itemId);
+        },
         prepareForViewportChange() {
           viewportRef.current?.prepareForViewportChange();
         },
@@ -739,6 +770,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             agentId={agentId}
             messageId={item.messageId}
             message={item.text}
+            findQuery={messageFindQuery}
+            findActiveMatchIndex={getActiveFindMatchIndex(item)}
             images={item.images}
             attachments={item.attachments}
             timestamp={item.timestamp.getTime()}
@@ -753,7 +786,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           />
         );
       },
-      [context.capabilities, agentId, client, pendingClientMessageIds, resolvedServerId],
+      [
+        context.capabilities,
+        agentId,
+        client,
+        getActiveFindMatchIndex,
+        messageFindQuery,
+        pendingClientMessageIds,
+        resolvedServerId,
+      ],
     );
 
     const settledTurnKeyRef = useRef<string | null>(null);
@@ -795,6 +836,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             ticker={revealTicker}
             span={revealSpan}
             message={item.text}
+            findQuery={messageFindQuery}
+            findActiveMatchIndex={getActiveFindMatchIndex(item)}
             timestamp={item.timestamp.getTime()}
             workspaceRoot={workspaceRoot}
             serverId={resolvedServerId}
@@ -812,8 +855,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [
         agentId,
         client,
+        getActiveFindMatchIndex,
         liveTurnReveal,
         liveTurnTailItemId,
+        messageFindQuery,
         resolvedServerId,
         revealTicker,
         workspaceRoot,
@@ -1172,13 +1217,35 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const streamScrollEnabled =
       !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion() ||
       expandedInlineToolCallIds.size === 0;
+    const historySearchItemIds = useMemo(() => {
+      if (!searchState) return EMPTY_SEARCH_ITEM_IDS;
+      return new Set(
+        findChatMessageMatches(
+          streamLayout.history.map((layoutItem) => layoutItem.item),
+          searchState.query,
+          searchState.options,
+        ).map((result) => result.itemId),
+      );
+    }, [searchState, streamLayout.history]);
+    const historyContentRevision = useMemo(
+      () => ({
+        has: (itemId: string) =>
+          projectedToolCalls.historyGroupUpdatesByHostId.has(itemId) ||
+          historySearchItemIds.has(itemId),
+      }),
+      [historySearchItemIds, projectedToolCalls.historyGroupUpdatesByHostId],
+    );
     const historyRowRevision = useMemo(
       () => ({
-        contentById: projectedToolCalls.historyGroupUpdatesByHostId,
+        contentById: historyContentRevision,
         displayStateById: expandedToolCallGroupIds,
         globalDisplayState: isMobile,
       }),
-      [expandedToolCallGroupIds, isMobile, projectedToolCalls.historyGroupUpdatesByHostId],
+      [expandedToolCallGroupIds, historyContentRevision, isMobile],
+    );
+    const liveHeadRowRevision = useMemo(
+      () => ({ expandedToolCallGroupIds, searchState }),
+      [expandedToolCallGroupIds, searchState],
     );
     const scrollToBottomOverlay =
       !isNearBottom || isTimelineDetached ? (
@@ -1220,7 +1287,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                       agentId,
                       segments: renderModel.segments,
                       historyRowRevision,
-                      liveHeadRowRevision: expandedToolCallGroupIds,
+                      liveHeadRowRevision,
                       boundary,
                       renderers,
                       listEmptyComponent,
@@ -1354,6 +1421,7 @@ function agentStreamViewPropsEqual(
   if (left.serverId !== right.serverId) reasons.push("serverId");
   reasons.push(...collectAgentScreenAgentDiffs(left.context, right.context));
   if (left.streamItems !== right.streamItems) reasons.push("streamItems");
+  if (left.searchState !== right.searchState) reasons.push("searchState");
   if (left.streamHead !== right.streamHead) reasons.push("streamHead");
   if (left.pendingPermissions !== right.pendingPermissions) reasons.push("pendingPermissions");
   if (left.pendingMessageSubmissions !== right.pendingMessageSubmissions) {

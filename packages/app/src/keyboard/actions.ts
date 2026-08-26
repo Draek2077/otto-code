@@ -65,6 +65,7 @@ export type KeyboardActionId =
   | "workspace.pin"
   | "view.toggle.focus"
   | "theme.cycle"
+  | "chat.find"
   | "message-input.action"
   // File Editor actions. Unlike every other id here these are NOT dispatched by
   // the app - the focused CodeMirror editor executes them, from a keymap built

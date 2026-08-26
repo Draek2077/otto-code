@@ -75,6 +75,9 @@ import {
   MarkdownRenderer,
   type MarkdownStyles,
 } from "@/components/markdown/renderer";
+import { createMarkdownFindRules } from "@/components/markdown/find-rules";
+import { collectRenderedTextRuns } from "@/components/markdown/find-text-runs";
+import { buildRenderedFindIndex, type PreviewFindQuery } from "@/components/file-preview-find";
 import { isLastMarkdownTableChild } from "@/components/markdown/table-layout";
 import { colorMarkdownLinkChildren } from "@/components/markdown/link-children";
 import { createAssistantMarkdownParser } from "@/components/markdown/assistant-parser";
@@ -196,6 +199,8 @@ interface UserMessageProps {
   isLastInGroup?: boolean;
   isPending?: boolean;
   disableOuterSpacing?: boolean;
+  findQuery?: PreviewFindQuery | null;
+  findActiveMatchIndex?: number;
 }
 
 const MessageOuterSpacingContext = createContext(false);
@@ -566,6 +571,27 @@ const userMessageMarkdownRules: RenderRules = {
   ),
 };
 
+function useMessageFindRules(
+  baseRules: RenderRules,
+  message: string,
+  findQuery: PreviewFindQuery | null | undefined,
+  activeMatchIndex: number | undefined,
+): RenderRules {
+  return useMemo(() => {
+    if (!findQuery?.search) return baseRules;
+    const { byContent } = buildRenderedFindIndex(
+      collectRenderedTextRuns({ text: message, enableHtmlish: false }),
+      findQuery,
+      activeMatchIndex ?? -1,
+    );
+    if (byContent.size === 0) return baseRules;
+    // The shared helper's inline-code rule is right for a generic document,
+    // but an assistant code span can be a file link. Keep that interaction and
+    // apply Find only to the ordinary message text runs.
+    return { ...createMarkdownFindRules(baseRules, byContent), code_inline: baseRules.code_inline };
+  }, [activeMatchIndex, baseRules, findQuery, message]);
+}
+
 export const UserMessage = memo(function UserMessage({
   serverId,
   agentId,
@@ -580,6 +606,8 @@ export const UserMessage = memo(function UserMessage({
   isLastInGroup = true,
   isPending = false,
   disableOuterSpacing,
+  findQuery,
+  findActiveMatchIndex,
 }: UserMessageProps) {
   const isCompact = useIsCompactFormFactor();
   const { t } = useTranslation();
@@ -606,6 +634,12 @@ export const UserMessage = memo(function UserMessage({
       return rewindMutation.rewindAgent(input);
     },
     [rewindMutation],
+  );
+  const markdownRules = useMessageFindRules(
+    userMessageMarkdownRules,
+    message,
+    findQuery,
+    findActiveMatchIndex,
   );
 
   const containerStyle = useMemo(
@@ -686,7 +720,7 @@ export const UserMessage = memo(function UserMessage({
               <MarkdownRenderer
                 text={message}
                 markdownit={userMessageMarkdownParser}
-                rules={userMessageMarkdownRules}
+                rules={markdownRules}
                 enableHtmlish={false}
                 remoteImages="altText"
               />
@@ -913,6 +947,8 @@ interface AssistantMessageProps {
    * button's visibility, the auto-speech queue) waits for this to go false.
    */
   isTurnTail?: boolean;
+  findQuery?: PreviewFindQuery | null;
+  findActiveMatchIndex?: number;
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
@@ -1965,6 +2001,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   blockIndex,
   agentId,
   isTurnTail,
+  findQuery,
+  findActiveMatchIndex,
 }: AssistantMessageProps) {
   const showBubbleGradient = useAppSettingValue(selectChatBubbleGradient);
   const displayMessage =
@@ -1981,7 +2019,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     return false;
   });
 
-  const markdownRules = useMemo<RenderRules>(() => {
+  const baseMarkdownRules = useMemo<RenderRules>(() => {
     return {
       heading1: (
         node: ASTNode,
@@ -2438,6 +2476,12 @@ export const AssistantMessage = memo(function AssistantMessage({
       },
     };
   }, [client, fileLinkActions, markdownParser, phase, serverId, workspaceRoot]);
+  const markdownRules = useMessageFindRules(
+    baseMarkdownRules,
+    displayMessage,
+    findQuery,
+    findActiveMatchIndex,
+  );
 
   const blocks = useMemo(() => splitMarkdownBlocks(displayMessage), [displayMessage]);
   // Index-only keys: block boundaries are append-only while a message streams

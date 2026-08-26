@@ -309,6 +309,18 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: false, focusScope: "editable" },
       action: "sidebar.toggle.left",
     },
+    {
+      name: "opens chat find with Ctrl+F from the composer",
+      event: { key: "f", code: "KeyF", ctrlKey: true },
+      context: { isMac: false, focusScope: "message-input" },
+      action: "chat.find",
+    },
+    {
+      name: "opens chat find with Ctrl+F from the active chat tab",
+      event: { key: "f", code: "KeyF", ctrlKey: true },
+      context: { isMac: false, focusScope: "other" },
+      action: "chat.find",
+    },
     // --- File Editor section: the same combo, two owners, focus decides ---
     {
       name: "runs the editor's go-to-definition on Cmd+B while the editor is focused",
