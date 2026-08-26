@@ -2863,6 +2863,7 @@ export const SpeakMessage = memo(function SpeakMessage({
 interface ActivityLogProps {
   type: "system" | "info" | "success" | "error" | "artifact";
   message: string;
+  details?: readonly string[];
   timestamp: number;
   metadata?: Record<string, unknown>;
   artifactId?: string;
@@ -2924,6 +2925,15 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
     alignItems: "center",
     marginTop: theme.spacing[1],
   },
+  diagnosticList: {
+    marginTop: theme.spacing[2],
+    gap: theme.spacing[1],
+  },
+  diagnosticText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    lineHeight: 16,
+  },
   detailsText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
@@ -2948,6 +2958,7 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
 export const ActivityLog = memo(function ActivityLog({
   type,
   message,
+  details,
   timestamp: _timestamp,
   metadata,
   artifactId,
@@ -2987,18 +2998,20 @@ export const ActivityLog = memo(function ActivityLog({
   const config = typeConfig[type];
   const IconComponent = config.Icon;
 
+  const hasDetails = (details?.length ?? 0) > 0;
+
   const handlePress = useCallback(() => {
     if (type === "artifact" && artifactId && onArtifactClick) {
       onArtifactClick(artifactId);
-    } else if (metadata) {
+    } else if (metadata || hasDetails) {
       setIsExpanded((prev) => !prev);
     }
-  }, [type, artifactId, onArtifactClick, metadata]);
+  }, [type, artifactId, onArtifactClick, metadata, hasDetails]);
 
   const displayMessage =
     type === "artifact" && artifactType && title ? `${artifactType}: ${title}` : message;
 
-  const isInteractive = type === "artifact" || metadata;
+  const isInteractive = type === "artifact" || metadata || hasDetails;
   const pressableStyle = useMemo(
     () => [
       activityLogStylesheet.pressable,
@@ -3024,7 +3037,7 @@ export const ActivityLog = memo(function ActivityLog({
             <Text style={messageTextStyle} selectable>
               {displayMessage}
             </Text>
-            {metadata && (
+            {(metadata || hasDetails) && (
               <View style={activityLogStylesheet.detailsRow}>
                 <Text style={activityLogStylesheet.detailsText}>
                   {t("message.activity.details")}
@@ -3043,6 +3056,15 @@ export const ActivityLog = memo(function ActivityLog({
             <Text style={activityLogStylesheet.metadataText}>
               {JSON.stringify(metadata, null, 2)}
             </Text>
+          </View>
+        )}
+        {isExpanded && hasDetails && (
+          <View style={activityLogStylesheet.diagnosticList}>
+            {details?.map((detail) => (
+              <Text key={detail} selectable style={activityLogStylesheet.diagnosticText}>
+                {detail}
+              </Text>
+            ))}
           </View>
         )}
       </View>

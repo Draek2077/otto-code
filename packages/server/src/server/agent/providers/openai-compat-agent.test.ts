@@ -2695,7 +2695,7 @@ describe("OpenAICompatAgentSession MCP tools", () => {
     await session.close();
   });
 
-  test("failed MCP servers surface one timeline warning and the session survives", async () => {
+  test("failed MCP servers surface one compact timeline warning and the session survives", async () => {
     const endpoint = await startEndpoint();
     const client = createMcpClient(endpoint.baseUrl, {
       mcpServers: { broken: { type: "http", url: "http://127.0.0.1:9/mcp" } },
@@ -2714,9 +2714,17 @@ describe("OpenAICompatAgentSession MCP tools", () => {
       (event) =>
         event.type === "timeline" &&
         event.item.type === "error" &&
-        event.item.message.includes("MCP server 'broken' unavailable"),
+        event.item.message === "1 MCP connection unavailable",
     );
     expect(warnings).toHaveLength(1);
+    const warning = warnings[0];
+    expect(warning).toMatchObject({
+      type: "timeline",
+      item: {
+        type: "error",
+        details: [expect.stringContaining("MCP server 'broken' unavailable")],
+      },
+    });
 
     // The warning is announced once, not per turn.
     await session.run("Say hello again");
@@ -2724,7 +2732,7 @@ describe("OpenAICompatAgentSession MCP tools", () => {
       (event) =>
         event.type === "timeline" &&
         event.item.type === "error" &&
-        event.item.message.includes("MCP server 'broken' unavailable"),
+        event.item.message === "1 MCP connection unavailable",
     );
     expect(repeated).toHaveLength(1);
 

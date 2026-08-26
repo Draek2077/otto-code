@@ -794,6 +794,7 @@ export interface ActivityLogItem {
   timestamp: Date;
   activityType: ActivityLogType;
   message: string;
+  details?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -1830,6 +1831,7 @@ function reduceTimelineEvent(
         timestamp,
         activityType: "error",
         message: item.message ?? "Unknown error",
+        details: item.details,
       };
       return finalizeActiveThoughts(appendActivityLog(state, activity));
     }

@@ -454,7 +454,7 @@ export type AgentTimelineItem =
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; details?: string[] }
   | CompactionTimelineItem;
 
 export type AgentStreamEvent =

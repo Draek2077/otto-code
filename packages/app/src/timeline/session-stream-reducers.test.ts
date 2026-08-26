@@ -3651,6 +3651,37 @@ describe("processTimelineResponse", () => {
 // ---------------------------------------------------------------------------
 
 describe("processAgentStreamEvent", () => {
+  it("keeps expandable error details from a timeline warning", () => {
+    const details = [
+      "MCP server 'semgrep' unavailable: Authentication required",
+      "MCP server 'atlassian' unavailable: Missing or invalid access token",
+    ];
+    const event: AgentStreamEventPayload = {
+      type: "timeline",
+      provider: "claude",
+      item: {
+        type: "error",
+        message: "2 MCP connections unavailable",
+        details,
+      },
+    };
+
+    const result = processAgentStreamEvent({
+      ...baseStreamInput,
+      event,
+      epoch: "timeline-1",
+      seq: 42,
+    });
+
+    expect([...result.tail, ...result.head]).toEqual([
+      expect.objectContaining({
+        kind: "activity_log",
+        message: "2 MCP connections unavailable",
+        details,
+      }),
+    ]);
+  });
+
   it("preserves the live timeline cursor on an assistant error", () => {
     const result = processAgentStreamEvent({
       ...baseStreamInput,

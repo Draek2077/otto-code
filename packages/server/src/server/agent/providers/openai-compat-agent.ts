@@ -2541,9 +2541,9 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   /**
-   * Connect the configured MCP servers before the first model round. A server
-   * that fails to connect is skipped - surfaced once as a timeline warning,
-   * never fatal to the session.
+   * Connect the configured MCP servers before the first model round. Servers
+   * that fail to connect are skipped and surfaced once in one expandable
+   * timeline warning, never fatal to the session.
    */
   private async ensureMcpReady(turn: ActiveTurn): Promise<void> {
     if (!this.mcpManager) {
@@ -2554,17 +2554,22 @@ export class OpenAICompatAgentSession implements AgentSession {
       return;
     }
     this.mcpFailuresAnnounced = true;
-    for (const failure of this.mcpManager.failures) {
-      this.emit({
-        type: "timeline",
-        provider: this.provider,
-        turnId: turn.turnId,
-        item: {
-          type: "error",
-          message: `MCP server '${failure.name}' unavailable: ${failure.error}`,
-        },
-      });
+    const failures = this.mcpManager.failures;
+    if (failures.length === 0) {
+      return;
     }
+    this.emit({
+      type: "timeline",
+      provider: this.provider,
+      turnId: turn.turnId,
+      item: {
+        type: "error",
+        message: `${failures.length} MCP ${failures.length === 1 ? "connection" : "connections"} unavailable`,
+        details: failures.map(
+          (failure) => `MCP server '${failure.name}' unavailable: ${failure.error}`,
+        ),
+      },
+    });
   }
 
   /** Built-in slash commands plus MCP prompts from connected servers. */

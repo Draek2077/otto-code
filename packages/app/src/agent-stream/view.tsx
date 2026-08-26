@@ -980,6 +980,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               <ActivityLog
                 type={item.activityType}
                 message={item.message}
+                details={item.details}
                 timestamp={item.timestamp.getTime()}
                 metadata={item.metadata}
               />

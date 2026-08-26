@@ -117,6 +117,26 @@ describe("wire schema compatibility", () => {
     });
   });
 
+  test("error timeline details are optional on the wire", () => {
+    expect(
+      AgentTimelineItemPayloadSchema.parse({
+        type: "error",
+        message: "MCP connections unavailable",
+      }),
+    ).toEqual({ type: "error", message: "MCP connections unavailable" });
+    expect(
+      AgentTimelineItemPayloadSchema.parse({
+        type: "error",
+        message: "MCP connections unavailable",
+        details: ["MCP server 'example' unavailable: Authentication required"],
+      }),
+    ).toEqual({
+      type: "error",
+      message: "MCP connections unavailable",
+      details: ["MCP server 'example' unavailable: Authentication required"],
+    });
+  });
+
   test("task progress fields are optional on the wire", () => {
     expect(
       AgentTimelineItemPayloadSchema.parse({

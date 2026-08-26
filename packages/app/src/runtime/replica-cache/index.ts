@@ -84,6 +84,7 @@ const StoredTimelineItemSchema = z.discriminatedUnion("kind", [
     kind: z.literal("activity_log"),
     activityType: z.enum(["system", "info", "success", "error"]),
     message: z.string(),
+    details: z.array(z.string()).optional(),
   }),
   z.strictObject({
     ...TimelineItemBaseShape,
@@ -303,6 +304,7 @@ function serializeTimelineItem(item: StreamItem): StoredTimelineItem | null {
         kind: item.kind,
         activityType: item.activityType,
         message: item.message,
+        details: item.details,
       };
     case "compaction":
       return {
@@ -358,6 +360,7 @@ function deserializeTimelineItem(item: StoredTimelineItem): StreamItem {
         kind: item.kind,
         activityType: item.activityType,
         message: item.message,
+        details: item.details,
       };
     case "compaction":
       return {
