@@ -305,26 +305,23 @@ function LifecycleControls({
   return (
     <View style={styles.lifecycle}>
       {showStartStop ? (
-        <View style={styles.modelOverride}>
-          <Text style={styles.modelOverrideLabel}>Start or restart with</Text>
-          <SelectField<string | null>
-            field={false}
-            size="sm"
-            label="Model override"
-            value={modelOverride}
-            selectedDisplay={selectedModelDisplay}
-            options={modelOptions}
-            onChange={setModelOverride}
-            placeholder="Automatic"
-            emptyText="No installed models found"
-            loading={modelNamesQuery.isLoading}
-            disabled={pending !== null || modelNamesQuery.isLoading}
-            searchable
-            getValueKey={brainModelValueKey}
-            triggerStyle={styles.modelOverrideTrigger}
-            triggerTestID="brain-overview-model-override"
-          />
-        </View>
+        <SelectField<string | null>
+          field={false}
+          size="sm"
+          label="Model override"
+          value={modelOverride}
+          selectedDisplay={selectedModelDisplay}
+          options={modelOptions}
+          onChange={setModelOverride}
+          placeholder="Automatic"
+          emptyText="No installed models found"
+          loading={modelNamesQuery.isLoading}
+          disabled={pending !== null || modelNamesQuery.isLoading}
+          searchable
+          getValueKey={brainModelValueKey}
+          triggerStyle={styles.modelOverrideTrigger}
+          triggerTestID="brain-overview-model-override"
+        />
       ) : null}
       <View style={isCompact ? styles.actionsStacked : styles.actions}>
         {showStartStop ? (
@@ -1083,14 +1080,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   lifecycle: {
     gap: theme.spacing[2],
-  },
-  modelOverride: {
-    gap: theme.spacing[1],
-    minWidth: 200,
-  },
-  modelOverrideLabel: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
   },
   modelOverrideTrigger: {
     minWidth: 200,
