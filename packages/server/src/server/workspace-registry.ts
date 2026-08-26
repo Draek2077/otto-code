@@ -49,6 +49,25 @@ const PersistedProjectRecordSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? null),
+  // Where this project keeps its Otto Knowledge store. Null means "inherit the
+  // host default"; an explicit value always wins over it. Like `kanban` this is
+  // a pointer and never a credential, and reconciliation never touches it.
+  // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18; remove optional after 2027-02-28.
+  knowledgeLocation: z
+    .enum(["repository", "host"])
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  // The host store's directory under `$OTTO_HOME/project-knowledge`, allocated
+  // the first time this project resolves to a host store. Persisted rather than
+  // re-derived: the derivation reads the display name, so a rename would
+  // otherwise silently point the project at a different, empty store.
+  // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18; remove optional after 2027-02-28.
+  knowledgeDirectoryName: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
   // Identifies the project's stored custom icon; null means automatic.
   customIconRevision: z
     .string()

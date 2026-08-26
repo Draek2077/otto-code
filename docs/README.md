@@ -6,12 +6,12 @@ system design, subsystem behaviour, conventions and the gotchas you cannot deriv
 It is the **specification we build against**. When the code and a page here disagree, that is a
 defect in one of them, not a matter of taste.
 
-| Tree                                    | Holds                                                                                                                                                                 | Tense                                 |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| **`docs/`** (here)                      | How Otto works                                                                                                                                                        | Present - _this is how it behaves_    |
-| [`projects/`](../projects/README.md)    | Charters for work not yet done, and the single open-work ledger                                                                                                       | Future - _this is what we will build_ |
-| [`CLAUDE.md`](../CLAUDE.md)             | Working rules for AI agents in this repo                                                                                                                              | Imperative - _do this, never that_    |
-| **Otto Knowledge** (`.otto/knowledge/`) | Durable records: architecture, decisions, findings, projects, references. Manages the system-level architecture record that used to live in `archdocs/` (now retired) | Present, durable, wide-angle          |
+| Tree                                                               | Holds                                                                                                                                                                 | Tense                                 |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| **`docs/`** (here)                                                 | How Otto works                                                                                                                                                        | Present - _this is how it behaves_    |
+| [`projects/`](../projects/README.md)                               | Charters for work not yet done, and the single open-work ledger                                                                                                       | Future - _this is what we will build_ |
+| [`CLAUDE.md`](../CLAUDE.md)                                        | Working rules for AI agents in this repo                                                                                                                              | Imperative - _do this, never that_    |
+| **Otto Knowledge** (`.otto/knowledge/`, or host-local per project) | Durable records: architecture, decisions, findings, projects, references. Manages the system-level architecture record that used to live in `archdocs/` (now retired) | Present, durable, wide-angle          |
 
 `CLAUDE.md` is deliberately **not** a documentation index. It is agent context - rules, gates and
 constraints. This file is the index.
@@ -185,6 +185,6 @@ An unlisted page is an invisible page.
 - [`../SECURITY.md`](../SECURITY.md) - relay threat model, E2E encryption, DNS rebinding, agent auth
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) - contribution workflow
 - [`../CHANGELOG.md`](../CHANGELOG.md) - release history
-- **Otto Knowledge** (`.otto/knowledge/`) - the durable architecture, decision, finding, project and reference records (the home of the system-level architecture record that used to live in `archdocs/`, now retired). See `docs/project-knowledge.md`.
+- **Otto Knowledge** (`.otto/knowledge/`, or host-local per project) - the durable architecture, decision, finding, project and reference records (the home of the system-level architecture record that used to live in `archdocs/`, now retired). See `docs/project-knowledge.md`.
 - `../public-docs/` - the **user-facing manual** published to otto-code.me/docs. A different audience
   and a different contract from this tree; it documents what Otto does, not how it is built

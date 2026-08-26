@@ -210,7 +210,8 @@ export function ProjectKnowledgePanel(): ReactElement {
       ) ?? [],
     );
   }
-  const markdownPath = selectedRoot?.path ?? knowledgePathForRecord(selected);
+  const markdownPath =
+    selectedRoot?.absolutePath ?? selectedRoot?.path ?? knowledgePathForRecord(selected);
   let documentIdentity = "";
   if (selectedRoot) documentIdentity = `Knowledge root · ${selectedRoot.slug}`;
   else if (selected)
@@ -1092,9 +1093,15 @@ const searchInputProps = (theme: { colors: { foregroundMuted: string } }) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
 });
 
+/**
+ * The path to hand the editor. `absolutePath` wins because it is the only one
+ * that resolves for a host-local store, where `path` is relative to a store
+ * directory the client knows nothing about. Older daemons send neither, so the
+ * repository layout stays as the last resort.
+ */
 function knowledgePathForRecord(record: KnowledgeRecord | null): string | null {
   if (!record) return null;
-  return record.path ?? `.otto/knowledge/${record.kind}s/${record.id}.md`;
+  return record.absolutePath ?? record.path ?? `.otto/knowledge/${record.kind}s/${record.id}.md`;
 }
 function recordMarkdown(
   record: KnowledgeRecord,

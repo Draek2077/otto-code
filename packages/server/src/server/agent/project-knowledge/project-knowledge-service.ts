@@ -16,6 +16,12 @@ import type {
   ProjectProgress,
   ProjectReferenceDisposition,
 } from "./types.js";
+import {
+  REPOSITORY_STORE_DIRECTORY,
+  knowledgeStoreKey,
+  repositoryKnowledgeStore,
+  type ProjectKnowledgeStore,
+} from "./project-knowledge-store.js";
 
 const KNOWLEDGE_DIR = "knowledge";
 const ENTRY_POINT = "KNOWLEDGE.md";
@@ -86,21 +92,31 @@ export interface ProjectKnowledgeView {
 
 export class ProjectKnowledgeService {
   private readonly writes = new Map<string, Promise<void>>();
-  private readonly upgradedRoots = new Set<string>();
+  private readonly upgradedStores = new Set<string>();
   constructor(
-    private readonly deps: { resolveProjectRoot: (cwd: string) => Promise<string>; logger: Logger },
+    private readonly deps: {
+      /**
+       * Where a cwd's project keeps its Knowledge. The service never decides
+       * this itself: precedence between a project override, an existing
+       * repository store and the host default belongs to the resolver.
+       */
+      resolveStore: (cwd: string) => Promise<ProjectKnowledgeStore>;
+      logger: Logger;
+    },
   ) {}
 
   async briefForCwd(cwd: string): Promise<ProjectKnowledgeBrief> {
-    const root = await this.projectRoot(cwd);
-    return this.briefForRoot(root);
+    const store = await this.store(cwd);
+    return this.briefForRoot(store);
   }
 
-  private async briefForRoot(root: string): Promise<ProjectKnowledgeBrief> {
-    if (!(await this.isInitialized(root)))
+  private async briefForRoot(store: ProjectKnowledgeStore): Promise<ProjectKnowledgeBrief> {
+    if (!(await this.isInitialized(store)))
       return { text: "", estTokens: 0, includedIds: [], omittedCount: 0 };
-    const records = (await this.listAtRoot(root)).filter((record) => record.status === "confirmed");
-    const hasProjectPolicy = await this.hasCustomKnowledgePolicy(root);
+    const records = (await this.listAtRoot(store)).filter(
+      (record) => record.status === "confirmed",
+    );
+    const hasProjectPolicy = await this.hasCustomKnowledgePolicy(store);
     const lines = [
       "## Project knowledge catalog",
       "",
@@ -110,7 +126,10 @@ export class ProjectKnowledgeService {
       "Default Knowledge policy: write only after an effort is verified, reconcile durable outcomes with existing pages, prefer updates over new pages, and write nothing when durable truth did not change. Never confirm without explicit user agreement.",
       ...(hasProjectPolicy
         ? [
-            "Project-specific Knowledge guidance exists in `.otto/KNOWLEDGE.md`; read it on demand before writing or managing Knowledge.",
+            // The path is resolved, not hardcoded: a host-local store keeps its
+            // entry point under OTTO_HOME, and an agent told to read a
+            // repository path that does not exist just wastes a tool call.
+            `Project-specific Knowledge guidance exists in \`${this.briefEntryPointLabel(store)}\`; read it on demand before writing or managing Knowledge.`,
           ]
         : []),
       "",
@@ -131,41 +150,41 @@ export class ProjectKnowledgeService {
   }
 
   async list(cwd: string): Promise<ProjectKnowledgeRecord[]> {
-    const root = await this.projectRoot(cwd);
-    return this.listAtRoot(root);
+    const store = await this.store(cwd);
+    return this.listAtRoot(store);
   }
 
-  private async listAtRoot(root: string): Promise<ProjectKnowledgeRecord[]> {
-    await this.migrateLegacyIfNeeded(root);
-    if (await this.isInitialized(root)) await this.ensureCurrentLayout(root);
-    return this.readPages(root);
+  private async listAtRoot(store: ProjectKnowledgeStore): Promise<ProjectKnowledgeRecord[]> {
+    await this.migrateLegacyIfNeeded(store);
+    if (await this.isInitialized(store)) await this.ensureCurrentLayout(store);
+    return this.readPages(store);
   }
 
   async view(cwd: string): Promise<ProjectKnowledgeView> {
-    const root = await this.projectRoot(cwd);
-    return this.viewAtRoot(root);
+    const store = await this.store(cwd);
+    return this.viewAtRoot(store);
   }
 
-  private async viewAtRoot(root: string): Promise<ProjectKnowledgeView> {
-    const records = await this.listAtRoot(root);
+  private async viewAtRoot(store: ProjectKnowledgeStore): Promise<ProjectKnowledgeView> {
+    const records = await this.listAtRoot(store);
     return {
       records,
-      rootPages: await this.readRootPages(root),
+      rootPages: await this.readRootPages(store),
       findings: findKnowledgeHealth(records),
-      brief: await this.briefForRoot(root),
+      brief: await this.briefForRoot(store),
     };
   }
 
   async catalogView(cwd: string): Promise<ProjectKnowledgeView> {
-    return this.catalogViewAtRoot(await this.projectRoot(cwd));
+    return this.catalogViewAtStore(await this.store(cwd));
   }
 
   /**
-   * The session already knows a workspace's registered project root. Accepting
-   * it here keeps a local Markdown catalog read out of the Git snapshot path.
+   * The session already resolved this workspace's store. Accepting it here
+   * keeps a local Markdown catalog read out of the Git snapshot path.
    */
-  async catalogViewAtRoot(root: string): Promise<ProjectKnowledgeView> {
-    const view = await this.viewAtRoot(root);
+  async catalogViewAtStore(store: ProjectKnowledgeStore): Promise<ProjectKnowledgeView> {
+    const view = await this.viewAtRoot(store);
     return {
       ...view,
       records: view.records.map((record) => {
@@ -189,14 +208,17 @@ export class ProjectKnowledgeService {
     options: { includeInactive?: boolean } = {},
   ): Promise<ProjectKnowledgeRecord | null> {
     if (!isHumanSlug(id)) return null;
-    const root = await this.projectRoot(cwd);
-    await this.migrateLegacyIfNeeded(root);
-    if (!(await this.isInitialized(root))) return null;
-    await this.ensureCurrentLayout(root);
+    const store = await this.store(cwd);
+    await this.migrateLegacyIfNeeded(store);
+    if (!(await this.isInitialized(store))) return null;
+    await this.ensureCurrentLayout(store);
     for (const kind of KINDS) {
-      const target = path.join(this.knowledgeDirectory(root), `${kind}s`, `${id}.md`);
+      const target = path.join(this.knowledgeDirectory(store), `${kind}s`, `${id}.md`);
       try {
-        const record = parsePage(await readFile(target, "utf8"), path.relative(root, target));
+        const record = parsePage(await readFile(target, "utf8"), {
+          relativePath: path.relative(store.pathBase, target),
+          absolutePath: target,
+        });
         if (!record) return null;
         return options.includeInactive || record.status === "confirmed" ? record : null;
       } catch (error) {
@@ -219,15 +241,15 @@ export class ProjectKnowledgeService {
   }
 
   async bootstrap(cwd: string): Promise<void> {
-    const root = await this.projectRoot(cwd);
-    await this.queued(root, async () => {
-      await this.bootstrapFiles(root);
-      await this.sweepStaleTempFiles(root);
-      await this.upgradeStoredPages(root);
-      await this.upgradeRootPages(root);
-      await this.reindex(root);
+    const store = await this.store(cwd);
+    await this.queued(store, async () => {
+      await this.bootstrapFiles(store);
+      await this.sweepStaleTempFiles(store);
+      await this.upgradeStoredPages(store);
+      await this.upgradeRootPages(store);
+      await this.reindex(store);
     });
-    this.upgradedRoots.add(root);
+    this.upgradedStores.add(knowledgeStoreKey(store));
   }
 
   async record(input: {
@@ -245,11 +267,11 @@ export class ProjectKnowledgeService {
     referenceDisposition?: ProjectReferenceDisposition;
     sourceUrl?: string;
   }): Promise<ProjectKnowledgeRecord> {
-    const root = await this.projectRoot(input.cwd);
+    const store = await this.store(input.cwd);
     let record!: ProjectKnowledgeRecord;
-    await this.queued(root, async () => {
-      await this.bootstrapFiles(root);
-      const existingIds = new Set((await this.readPages(root)).map((item) => item.id));
+    await this.queued(store, async () => {
+      await this.bootstrapFiles(store);
+      const existingIds = new Set((await this.readPages(store)).map((item) => item.id));
       const requestedId = input.id ? normalizePageId(input.id) : slugify(input.title);
       if (!requestedId) throw new Error("Project knowledge pages require a human-readable slug.");
       if (input.id && existingIds.has(requestedId))
@@ -290,8 +312,8 @@ export class ProjectKnowledgeService {
           ...(evidence ? [{ kind: "evidence" as const, text: evidence, recordedAt: now }] : []),
         ],
       };
-      await this.writePage(root, record);
-      await this.reindex(root);
+      await this.writePage(store, record);
+      await this.reindex(store);
     });
     return record;
   }
@@ -303,33 +325,46 @@ export class ProjectKnowledgeService {
    * reviewer verifies the imported records.
    */
   async importLegacyFindings(cwd: string): Promise<{ imported: number; skipped: number }> {
-    const root = await this.projectRoot(cwd);
+    const store = await this.store(cwd);
     let imported = 0;
     let skipped = 0;
-    await this.queued(root, async () => {
-      await this.bootstrapFiles(root);
-      const sourceRoot = path.join(root, "findings");
+    await this.queued(store, async () => {
+      await this.bootstrapFiles(store);
+      const sourceRoot = path.join(store.projectRoot, "findings");
       const reports = await this.legacyFindingPaths(sourceRoot);
-      const existing = await this.readPages(root);
+      const existing = await this.readPages(store);
       const existingIds = new Set(existing.map((record) => record.id));
       for (const reportPath of reports) {
-        const sourcePath = path.relative(root, reportPath).split(path.sep).join("/");
+        // Always repository-relative, whatever the store's own path base is:
+        // the legacy tree lives in the working copy, and both the derived
+        // record id and the relative-link rewrite below read this as a
+        // repository path. A host store's base would make it `../../..`.
+        const sourcePath = path.relative(store.projectRoot, reportPath).split(path.sep).join("/");
         if (existingIds.has(legacyFindingId(sourcePath))) {
           skipped += 1;
           continue;
         }
         const raw = await readFile(reportPath, "utf8");
-        const report = legacyFindingRecord(raw, sourcePath, existingIds);
+        const report = legacyFindingRecord(
+          raw,
+          sourcePath,
+          existingIds,
+          // Only a repository store has a position the report's relative links
+          // can be repointed at.
+          store.location === "repository"
+            ? path.posix.join(REPOSITORY_STORE_DIRECTORY, KNOWLEDGE_DIR, "findings")
+            : null,
+        );
         if (!report) {
           this.deps.logger.warn({ sourcePath }, "Skipping legacy findings report without a title");
           skipped += 1;
           continue;
         }
         existingIds.add(report.id);
-        await this.writePage(root, report);
+        await this.writePage(store, report);
         imported += 1;
       }
-      await this.reindex(root);
+      await this.reindex(store);
     });
     return { imported, skipped };
   }
@@ -487,17 +522,17 @@ export class ProjectKnowledgeService {
   }): Promise<{ deleted: boolean; error?: string }> {
     if (!singleLine(input.reason, 800))
       return { deleted: false, error: "Deleting project knowledge requires a reason." };
-    const root = await this.projectRoot(input.cwd);
+    const store = await this.store(input.cwd);
     let deleted = false;
     let error: string | undefined;
-    await this.queued(root, async () => {
-      const record = (await this.readPages(root)).find((item) => item.id === input.id) ?? null;
+    await this.queued(store, async () => {
+      const record = (await this.readPages(store)).find((item) => item.id === input.id) ?? null;
       if (!record) return;
       if (input.expectedUpdatedAt && input.expectedUpdatedAt !== record.updatedAt) {
         error = "This record changed while it was under review.";
         return;
       }
-      const target = this.validatedRecordPath(root, record);
+      const target = this.validatedRecordPath(store, record);
       if (!target) {
         error = "The project knowledge page path is not safe to delete.";
         return;
@@ -506,8 +541,8 @@ export class ProjectKnowledgeService {
       // links, which lintLinks reports, rather than a surviving record whose
       // incoming links were already stripped.
       await unlink(target);
-      await this.removeCurrentLinksTo(root, record.id);
-      await this.reindex(root);
+      await this.removeCurrentLinksTo(store, record.id);
+      await this.reindex(store);
       deleted = true;
     });
     return { deleted, ...(error ? { error } : {}) };
@@ -555,11 +590,11 @@ export class ProjectKnowledgeService {
     change: (record: ProjectKnowledgeRecord, now: string) => ProjectKnowledgeRecord,
     requiredKind?: ProjectKnowledgeKind,
   ): Promise<{ record: ProjectKnowledgeRecord | null; error?: string }> {
-    const root = await this.projectRoot(cwd);
+    const store = await this.store(cwd);
     let result: ProjectKnowledgeRecord | null = null;
     let error: string | undefined;
-    await this.queued(root, async () => {
-      const record = (await this.readPages(root)).find((item) => item.id === id) ?? null;
+    await this.queued(store, async () => {
+      const record = (await this.readPages(store)).find((item) => item.id === id) ?? null;
       if (!record) return;
       if (expectedUpdatedAt && expectedUpdatedAt !== record.updatedAt) {
         error = "This record changed while it was under review.";
@@ -570,15 +605,15 @@ export class ProjectKnowledgeService {
         return;
       }
       result = change(record, new Date().toISOString());
-      await this.writePage(root, result);
-      await this.reindex(root);
+      await this.writePage(store, result);
+      await this.reindex(store);
     });
     return { record: result, ...(error ? { error } : {}) };
   }
 
-  private async migrateLegacyIfNeeded(root: string): Promise<void> {
-    const legacyPath = path.join(root, ".otto", LEGACY_FILE);
-    const markerPath = path.join(this.knowledgeDirectory(root), LEGACY_MIGRATION_MARKER);
+  private async migrateLegacyIfNeeded(store: ProjectKnowledgeStore): Promise<void> {
+    const legacyPath = path.join(store.projectRoot, REPOSITORY_STORE_DIRECTORY, LEGACY_FILE);
+    const markerPath = path.join(this.knowledgeDirectory(store), LEGACY_MIGRATION_MARKER);
     try {
       try {
         await readFile(markerPath, "utf8");
@@ -587,17 +622,17 @@ export class ProjectKnowledgeService {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
       const raw = JSON.parse(await readFile(legacyPath, "utf8")) as LegacyProjectKnowledgeFile;
-      const existingRecords = await this.readPages(root);
+      const existingRecords = await this.readPages(store);
       if (existingRecords.length) {
-        await this.queued(root, async () => {
-          await mkdir(this.knowledgeDirectory(root), { recursive: true });
+        await this.queued(store, async () => {
+          await mkdir(this.knowledgeDirectory(store), { recursive: true });
           await writeAtomic(markerPath, "Legacy JSON migration completed. Do not re-import.\n");
         });
         return;
       }
       if (!Array.isArray(raw.records)) return;
-      await this.queued(root, async () => {
-        await this.bootstrapFiles(root);
+      await this.queued(store, async () => {
+        await this.bootstrapFiles(store);
         const ids = new Set<string>();
         for (const item of raw.records) {
           const preferredId = isHumanSlug(item.id) ? item.id : slugify(item.title);
@@ -613,24 +648,30 @@ export class ProjectKnowledgeService {
               recordedAt: new Date().toISOString(),
             }),
           };
-          await this.writePage(root, record);
+          await this.writePage(store, record);
         }
-        await this.reindex(root);
+        await this.reindex(store);
         await writeAtomic(markerPath, "Legacy JSON migration completed. Do not re-import.\n");
       });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
-        this.deps.logger.warn({ err: error, root }, "Failed to migrate legacy project knowledge");
+        this.deps.logger.warn(
+          { err: error, store: store.base },
+          "Failed to migrate legacy project knowledge",
+        );
     }
   }
 
-  private async readPages(root: string): Promise<ProjectKnowledgeRecord[]> {
+  private async readPages(store: ProjectKnowledgeStore): Promise<ProjectKnowledgeRecord[]> {
     try {
-      const pages = await this.pagePaths(this.knowledgeDirectory(root));
+      const pages = await this.pagePaths(this.knowledgeDirectory(store));
       return (
         await Promise.all(
           pages.map(async (pagePath) => {
-            return parsePage(await readFile(pagePath, "utf8"), path.relative(root, pagePath));
+            return parsePage(await readFile(pagePath, "utf8"), {
+              relativePath: path.relative(store.pathBase, pagePath),
+              absolutePath: pagePath,
+            });
           }),
         )
       )
@@ -638,21 +679,25 @@ export class ProjectKnowledgeService {
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
-        this.deps.logger.warn({ err: error, root }, "Failed to read project knowledge");
+        this.deps.logger.warn(
+          { err: error, store: store.base },
+          "Failed to read project knowledge",
+        );
       return [];
     }
   }
-  private async readRootPages(root: string): Promise<ProjectKnowledgeRootPage[]> {
+  private async readRootPages(store: ProjectKnowledgeStore): Promise<ProjectKnowledgeRootPage[]> {
     return (
       await Promise.all(
         ROOT_PAGES.map(async (slug): Promise<ProjectKnowledgeRootPage | null> => {
-          const relative = path.join(".otto", KNOWLEDGE_DIR, `${slug}.md`);
+          const target = path.join(this.knowledgeDirectory(store), `${slug}.md`);
           try {
-            const raw = await readFile(path.join(root, relative), "utf8");
+            const raw = await readFile(target, "utf8");
             return {
               slug,
               title: raw.match(/^# (.+)$/m)?.[1] ?? titleCase(slug),
-              path: relative.split(path.sep).join("/"),
+              path: path.relative(store.pathBase, target).split(path.sep).join("/"),
+              absolutePath: target,
               body: raw,
             };
           } catch (error) {
@@ -666,8 +711,8 @@ export class ProjectKnowledgeService {
 
   async getRoot(cwd: string, slug: string): Promise<ProjectKnowledgeRootPage | null> {
     if (!isRootSlug(slug)) return null;
-    const root = await this.projectRoot(cwd);
-    return (await this.readRootPages(root)).find((page) => page.slug === slug) ?? null;
+    const store = await this.store(cwd);
+    return (await this.readRootPages(store)).find((page) => page.slug === slug) ?? null;
   }
 
   async updateRoot(input: {
@@ -677,11 +722,11 @@ export class ProjectKnowledgeService {
   }): Promise<ProjectKnowledgeRootPage | null> {
     if (!isRootSlug(input.slug)) return null;
     const slug = input.slug;
-    const root = await this.projectRoot(input.cwd);
-    await this.queued(root, async () => {
-      await this.bootstrapFiles(root);
+    const store = await this.store(input.cwd);
+    await this.queued(store, async () => {
+      await this.bootstrapFiles(store);
       await writeAtomic(
-        path.join(this.knowledgeDirectory(root), `${slug}.md`),
+        path.join(this.knowledgeDirectory(store), `${slug}.md`),
         renderRootPage(slug, input.body, new Date().toISOString()),
       );
     });
@@ -691,7 +736,7 @@ export class ProjectKnowledgeService {
   /** Validate wiki links in current truth and root pages. Timeline history is immutable evidence. */
   async lintLinks(cwd: string): Promise<ProjectKnowledgeBrokenLink[]> {
     const records = (await this.list(cwd)).filter((record) => record.status === "confirmed");
-    const roots = await this.readRootPages(await this.projectRoot(cwd));
+    const roots = await this.readRootPages(await this.store(cwd));
     const known = new Set(records.map((record) => record.id));
     const broken: ProjectKnowledgeBrokenLink[] = [];
     for (const page of roots)
@@ -706,8 +751,15 @@ export class ProjectKnowledgeService {
     );
   }
 
-  private async writePage(root: string, record: ProjectKnowledgeRecord): Promise<void> {
-    const pagePath = path.join(this.knowledgeDirectory(root), `${record.kind}s`, `${record.id}.md`);
+  private async writePage(
+    store: ProjectKnowledgeStore,
+    record: ProjectKnowledgeRecord,
+  ): Promise<void> {
+    const pagePath = path.join(
+      this.knowledgeDirectory(store),
+      `${record.kind}s`,
+      `${record.id}.md`,
+    );
     await mkdir(path.dirname(pagePath), { recursive: true });
     await writeAtomic(pagePath, renderPage(record));
   }
@@ -718,16 +770,16 @@ export class ProjectKnowledgeService {
    * bootstrapped store never created cannot abandon the scrub half applied; a
    * missing root page is simply skipped.
    */
-  private async removeCurrentLinksTo(root: string, id: string): Promise<void> {
+  private async removeCurrentLinksTo(store: ProjectKnowledgeStore, id: string): Promise<void> {
     const staged: Array<() => Promise<void>> = [];
-    for (const record of await this.readPages(root)) {
+    for (const record of await this.readPages(store)) {
       if (record.id === id) continue;
       const statement = removeWikiLinksTo(record.statement, id);
       if (statement !== record.statement)
-        staged.push(() => this.writePage(root, { ...record, statement }));
+        staged.push(() => this.writePage(store, { ...record, statement }));
     }
     for (const slug of ROOT_PAGES) {
-      const target = path.join(this.knowledgeDirectory(root), `${slug}.md`);
+      const target = path.join(this.knowledgeDirectory(store), `${slug}.md`);
       const body = await readOptionalFile(target);
       if (body === null) continue;
       const rewritten = removeWikiLinksTo(body, id);
@@ -758,16 +810,19 @@ export class ProjectKnowledgeService {
     return paths;
   }
   /** Clear temp files a killed process or a failed rename left in the store. */
-  private async sweepStaleTempFiles(root: string): Promise<void> {
+  private async sweepStaleTempFiles(store: ProjectKnowledgeStore): Promise<void> {
     try {
       const cutoff = Date.now() - STALE_TEMP_AFTER_MS;
-      for (const target of await this.tempPaths(this.knowledgeDirectory(root))) {
+      for (const target of await this.tempPaths(this.knowledgeDirectory(store))) {
         if ((await stat(target)).mtimeMs > cutoff) continue;
         await rm(target, { force: true });
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
-        this.deps.logger.warn({ err: error, root }, "Failed to sweep knowledge temp files");
+        this.deps.logger.warn(
+          { err: error, store: store.base },
+          "Failed to sweep knowledge temp files",
+        );
     }
   }
   private async legacyFindingPaths(directory: string): Promise<string[]> {
@@ -785,27 +840,24 @@ export class ProjectKnowledgeService {
       throw error;
     }
   }
-  private async bootstrapFiles(root: string): Promise<void> {
-    const alreadyInitialized = await this.isInitializedFromIndex(root);
-    await mkdir(this.knowledgeDirectory(root), { recursive: true });
+  private async bootstrapFiles(store: ProjectKnowledgeStore): Promise<void> {
+    const alreadyInitialized = await this.isInitializedFromIndex(store);
+    await mkdir(this.knowledgeDirectory(store), { recursive: true });
     // COMPAT(optionalKnowledgePolicy): added in v0.8.13, remove after 2027-02-21
     // once supported hosts no longer use KNOWLEDGE.md as the initialization marker.
     if (!alreadyInitialized)
-      await this.writeIfMissing(
-        path.join(root, ".otto", ENTRY_POINT),
-        compatibilityKnowledgeEntry(),
-      );
-    await this.upgradeGeneratedKnowledgeEntryIfPresent(path.join(root, ".otto", ENTRY_POINT));
+      await this.writeIfMissing(this.entryPointPath(store), compatibilityKnowledgeEntry());
+    await this.upgradeGeneratedKnowledgeEntryIfPresent(this.entryPointPath(store));
     for (const rootPage of ROOT_PAGES)
       await this.writeIfMissing(
-        path.join(this.knowledgeDirectory(root), `${rootPage}.md`),
+        path.join(this.knowledgeDirectory(store), `${rootPage}.md`),
         renderRootPage(
           rootPage,
           "_Draft this page from verified code, docs, and Git history. Do not invent facts._",
           new Date().toISOString(),
         ),
       );
-    await this.reindex(root);
+    await this.reindex(store);
   }
   private async upgradeGeneratedKnowledgeEntryIfPresent(target: string): Promise<void> {
     try {
@@ -817,17 +869,17 @@ export class ProjectKnowledgeService {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
-  private async hasCustomKnowledgePolicy(root: string): Promise<boolean> {
+  private async hasCustomKnowledgePolicy(store: ProjectKnowledgeStore): Promise<boolean> {
     try {
-      const contents = await readFile(path.join(root, ".otto", ENTRY_POINT), "utf8");
+      const contents = await readFile(this.entryPointPath(store), "utf8");
       return contents.trim().length > 0 && !isGeneratedKnowledgeEntry(contents);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
       throw error;
     }
   }
-  private async reindex(root: string): Promise<void> {
-    const records = await this.readPages(root);
+  private async reindex(store: ProjectKnowledgeStore): Promise<void> {
+    const records = await this.readPages(store);
     const lines = [
       "# Project knowledge index",
       "",
@@ -847,9 +899,9 @@ export class ProjectKnowledgeService {
         "",
       );
     }
-    await mkdir(this.knowledgeDirectory(root), { recursive: true });
+    await mkdir(this.knowledgeDirectory(store), { recursive: true });
     await writeAtomic(
-      path.join(this.knowledgeDirectory(root), "index.md"),
+      path.join(this.knowledgeDirectory(store), "index.md"),
       `${lines.join("\n")}\n`,
     );
   }
@@ -862,42 +914,42 @@ export class ProjectKnowledgeService {
       await writeAtomic(target, contents);
     }
   }
-  private async isInitialized(root: string): Promise<boolean> {
-    if (await this.isInitializedFromIndex(root)) return true;
+  private async isInitialized(store: ProjectKnowledgeStore): Promise<boolean> {
+    if (await this.isInitializedFromIndex(store)) return true;
     // COMPAT(optionalKnowledgePolicy): added in v0.8.13, remove after 2027-02-21.
     // Older stores used KNOWLEDGE.md as their only initialization marker.
     try {
-      await readFile(path.join(root, ".otto", ENTRY_POINT), "utf8");
+      await readFile(this.entryPointPath(store), "utf8");
       return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
       throw error;
     }
   }
-  private async isInitializedFromIndex(root: string): Promise<boolean> {
+  private async isInitializedFromIndex(store: ProjectKnowledgeStore): Promise<boolean> {
     try {
-      await readFile(path.join(this.knowledgeDirectory(root), "index.md"), "utf8");
+      await readFile(path.join(this.knowledgeDirectory(store), "index.md"), "utf8");
       return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
       throw error;
     }
   }
-  private async ensureCurrentLayout(root: string): Promise<void> {
-    if (this.upgradedRoots.has(root)) return;
-    await this.queued(root, async () => {
-      await this.bootstrapFiles(root);
-      await this.sweepStaleTempFiles(root);
-      await this.upgradeStoredPages(root);
-      await this.upgradeRootPages(root);
-      await this.reindex(root);
+  private async ensureCurrentLayout(store: ProjectKnowledgeStore): Promise<void> {
+    if (this.upgradedStores.has(knowledgeStoreKey(store))) return;
+    await this.queued(store, async () => {
+      await this.bootstrapFiles(store);
+      await this.sweepStaleTempFiles(store);
+      await this.upgradeStoredPages(store);
+      await this.upgradeRootPages(store);
+      await this.reindex(store);
     });
-    this.upgradedRoots.add(root);
+    this.upgradedStores.add(knowledgeStoreKey(store));
   }
 
   /** Upgrade pre-release Markdown pages without mutating append-only historical entries. */
-  private async upgradeStoredPages(root: string): Promise<void> {
-    const records = (await this.readPages(root)).sort((left, right) =>
+  private async upgradeStoredPages(store: ProjectKnowledgeStore): Promise<void> {
+    const records = (await this.readPages(store)).sort((left, right) =>
       left.id.localeCompare(right.id),
     );
     if (!records.length) return;
@@ -918,8 +970,8 @@ export class ProjectKnowledgeService {
     const sources = await Promise.all(
       records.map(async (record) => ({
         record,
-        source: this.validatedRecordPath(root, record),
-        raw: record.path ? await readFile(path.join(root, record.path), "utf8") : "",
+        source: this.validatedRecordPath(store, record),
+        raw: record.path ? await readFile(path.join(store.pathBase, record.path), "utf8") : "",
       })),
     );
     const requiresUpgrade = sources.some(
@@ -956,30 +1008,33 @@ export class ProjectKnowledgeService {
       };
     });
 
-    for (const record of upgraded) await this.writePage(root, record);
+    for (const record of upgraded) await this.writePage(store, record);
     for (const { record, source } of sources) {
       if (!source) continue;
       const upgradedRecord = upgraded.find(
         (item) => item.id === (idMap.get(record.id) ?? record.id),
       );
-      const destination = upgradedRecord ? this.canonicalRecordPath(root, upgradedRecord) : null;
+      const destination = upgradedRecord ? this.canonicalRecordPath(store, upgradedRecord) : null;
       if (destination && path.resolve(source) !== path.resolve(destination)) await unlink(source);
     }
     for (const slug of ROOT_PAGES) {
-      const target = path.join(this.knowledgeDirectory(root), `${slug}.md`);
+      const target = path.join(this.knowledgeDirectory(store), `${slug}.md`);
       const body = await readFile(target, "utf8");
       const rewritten = rewriteWikiLinks(body, idMap);
       if (rewritten !== body) await writeAtomic(target, rewritten);
     }
   }
 
-  private canonicalRecordPath(root: string, record: ProjectKnowledgeRecord): string {
-    return path.join(this.knowledgeDirectory(root), `${record.kind}s`, `${record.id}.md`);
+  private canonicalRecordPath(
+    store: ProjectKnowledgeStore,
+    record: ProjectKnowledgeRecord,
+  ): string {
+    return path.join(this.knowledgeDirectory(store), `${record.kind}s`, `${record.id}.md`);
   }
 
-  private async upgradeRootPages(root: string): Promise<void> {
+  private async upgradeRootPages(store: ProjectKnowledgeStore): Promise<void> {
     for (const slug of ROOT_PAGES) {
-      const target = path.join(this.knowledgeDirectory(root), `${slug}.md`);
+      const target = path.join(this.knowledgeDirectory(store), `${slug}.md`);
       const raw = await readFile(target, "utf8");
       const fields = rootFrontmatter(raw);
       const canonical =
@@ -992,47 +1047,77 @@ export class ProjectKnowledgeService {
     }
   }
 
-  private validatedRecordPath(root: string, record: ProjectKnowledgeRecord): string | null {
+  private validatedRecordPath(
+    store: ProjectKnowledgeStore,
+    record: ProjectKnowledgeRecord,
+  ): string | null {
     if (!record.path) return null;
-    const knowledgeRoot = path.resolve(this.knowledgeDirectory(root));
-    const target = path.resolve(root, record.path);
+    const knowledgeRoot = path.resolve(this.knowledgeDirectory(store));
+    const target = path.resolve(store.pathBase, record.path);
     const relative = path.relative(knowledgeRoot, target);
     if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
     if (path.extname(target).toLowerCase() !== ".md") return null;
     return target;
   }
-  private async queued(root: string, task: () => Promise<void>): Promise<void> {
-    const previous = this.writes.get(root) ?? Promise.resolve();
+  private async queued(store: ProjectKnowledgeStore, task: () => Promise<void>): Promise<void> {
+    // Keyed by store, not by project root: two workspaces of one project share
+    // a store and must share its queue, and a project that switches location
+    // must not inherit the old store's in-flight writes.
+    const key = knowledgeStoreKey(store);
+    const previous = this.writes.get(key) ?? Promise.resolve();
     let release!: () => void;
     const next = new Promise<void>((resolve) => {
       release = resolve;
     });
     const queued = previous.then(() => next);
-    this.writes.set(root, queued);
+    this.writes.set(key, queued);
     await previous;
     try {
       await task();
     } finally {
       release();
-      if (this.writes.get(root) === queued) this.writes.delete(root);
+      if (this.writes.get(key) === queued) this.writes.delete(key);
     }
   }
-  private async projectRoot(cwd: string): Promise<string> {
+  /**
+   * The store a cwd's project reads and writes. Falls back to a repository
+   * store at the bare cwd when resolution fails, which keeps a non-git or
+   * unregistered directory working exactly as it did before stores existed.
+   */
+  private async store(cwd: string): Promise<ProjectKnowledgeStore> {
     try {
-      return await this.deps.resolveProjectRoot(cwd);
+      return await this.deps.resolveStore(cwd);
     } catch {
-      return cwd;
+      return repositoryKnowledgeStore(cwd);
     }
   }
-  private knowledgeDirectory(root: string): string {
-    return path.join(root, ".otto", KNOWLEDGE_DIR);
+  private knowledgeDirectory(store: ProjectKnowledgeStore): string {
+    return path.join(store.base, KNOWLEDGE_DIR);
+  }
+  /** The `KNOWLEDGE.md` entry point, which sits beside the `knowledge/` tree. */
+  private entryPointPath(store: ProjectKnowledgeStore): string {
+    return path.join(store.base, ENTRY_POINT);
+  }
+  /**
+   * How the injected catalog names the entry point. Repository stores keep the
+   * short workspace-relative form an agent can open directly; a host store has
+   * no workspace-relative form, so it gets the absolute path.
+   */
+  private briefEntryPointLabel(store: ProjectKnowledgeStore): string {
+    const target = this.entryPointPath(store);
+    return store.location === "repository"
+      ? path.relative(store.pathBase, target).split(path.sep).join("/")
+      : target;
   }
   private searchText(record: ProjectKnowledgeRecord): string {
     return `${record.title} ${record.statement} ${record.evidence ?? ""} ${record.tags.join(" ")} ${record.deliveryStatus ?? ""} ${record.referenceDisposition ?? ""} ${record.sourceUrl ?? ""} ${(record.provenance ?? []).map((entry) => entry.text).join(" ")}`.toLowerCase();
   }
 }
 
-function parsePage(raw: string, relativePath: string): ProjectKnowledgeRecord | null {
+function parsePage(
+  raw: string,
+  location: { relativePath: string; absolutePath: string },
+): ProjectKnowledgeRecord | null {
   const normalized = raw.replace(/\r\n/g, "\n");
   const frontmatter = normalized.match(/^---\n([\s\S]*?)\n---\n/);
   if (!frontmatter) return null;
@@ -1078,7 +1163,8 @@ function parsePage(raw: string, relativePath: string): ProjectKnowledgeRecord | 
     createdAt: fields.created_at ?? new Date(0).toISOString(),
     updatedAt: fields.updated_at ?? new Date(0).toISOString(),
     provenance: body.timeline,
-    path: relativePath.split(path.sep).join("/"),
+    path: location.relativePath.split(path.sep).join("/"),
+    absolutePath: location.absolutePath,
   };
 }
 function parsePageBody(
@@ -1203,6 +1289,7 @@ function legacyFindingRecord(
   raw: string,
   sourcePath: string,
   existingIds: ReadonlySet<string>,
+  pageDirectory: string | null,
 ): ProjectKnowledgeRecord | null {
   const normalized = cleanText(raw);
   const heading = normalized.match(/^#\s+(.+?)\s*$/m);
@@ -1212,6 +1299,7 @@ function legacyFindingRecord(
   const content = rewriteLegacyFindingLinks(
     normalized.replace(/^#\s+.+?\s*(?:\n|$)/, "").trim(),
     sourceDirectory,
+    pageDirectory,
   );
   const id = availableSlug(legacyFindingId(sourcePath), existingIds);
   const timestamp = new Date().toISOString();
@@ -1234,14 +1322,28 @@ function legacyFindingRecord(
     ],
   };
 }
-function rewriteLegacyFindingLinks(content: string, sourceDirectory: string): string {
+/**
+ * Repoints a legacy report's relative links at the finding page's new home.
+ *
+ * `pageDirectory` is where the page lands *relative to the repository root*.
+ * A host-local store has no such position: the page sits under `$OTTO_HOME`
+ * and no relative path from it reaches the repository at all. Passing null
+ * leaves each target repository-root-relative, which is the most useful thing
+ * a reader can be given.
+ */
+function rewriteLegacyFindingLinks(
+  content: string,
+  sourceDirectory: string,
+  pageDirectory: string | null,
+): string {
   return content.replace(
     /(!?\[[^\]]*\])\(([^)\s]+)(\s+[^)]*)?\)/g,
     (match, label, target, suffix = "") => {
       if (/^(?:[a-z]+:|\/|#)/i.test(target)) return match;
       const resolved = path.posix.normalize(path.posix.join(sourceDirectory, target));
-      const fromFindingPage = ".otto/knowledge/findings";
-      const rewritten = path.posix.relative(fromFindingPage, resolved) || ".";
+      const rewritten = pageDirectory
+        ? path.posix.relative(pageDirectory, resolved) || "."
+        : resolved;
       return `${label}(${rewritten}${suffix})`;
     },
   );

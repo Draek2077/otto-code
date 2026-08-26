@@ -1,3 +1,4 @@
+import { repositoryKnowledgeStore } from "../../agent/project-knowledge/project-knowledge-store.js";
 import { describe, expect, it, vi } from "vitest";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import {
@@ -109,7 +110,7 @@ function buildSession(overrides: Partial<ProjectKnowledgeSessionOptions> = {}) {
   const pushContextReport = vi.fn(async () => undefined);
   const invalidate = vi.fn();
   const projectKnowledge = {
-    catalogViewAtRoot: vi.fn(async () => ({
+    catalogViewAtStore: vi.fn(async () => ({
       records: [],
       rootPages: [],
       findings: [],
@@ -138,6 +139,13 @@ function buildSession(overrides: Partial<ProjectKnowledgeSessionOptions> = {}) {
     projectRegistry: {
       get: vi.fn(async () => ({ id: "p", rootPath: "/repo" })),
     } as unknown as ProjectKnowledgeSessionOptions["projectRegistry"],
+    projectKnowledgeStores: {
+      resolveForRoot: vi.fn(async () => repositoryKnowledgeStore("/repo")),
+      storeAtLocation: vi.fn(async () => repositoryKnowledgeStore("/repo")),
+      hostDefaultLocation: vi.fn(() => "repository"),
+      ensureHostStoreMarker: vi.fn(async () => undefined),
+      movePages: vi.fn(async () => 0),
+    } as unknown as ProjectKnowledgeSessionOptions["projectKnowledgeStores"],
     workspaceGitService: {
       resolveRepoRoot: vi.fn(async () => "/repo"),
     } as unknown as ProjectKnowledgeSessionOptions["workspaceGitService"],

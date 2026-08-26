@@ -185,6 +185,25 @@ export const MutableKanbanConfigSchema = z
 
 export type MutableKanbanConfig = z.infer<typeof MutableKanbanConfigSchema>;
 
+// Host-wide default for where a project's Knowledge store lives. Only a
+// default: a project's own `knowledgeLocation`, and any repository store that
+// already exists on disk, both outrank it. Changing this therefore never moves
+// an existing store, it only decides where projects that have none start.
+// Gated by server_info features.projectKnowledgeStoreLocation.
+export const ProjectKnowledgeStoreLocationSchema = z.enum(["repository", "host"]);
+
+export const MutableProjectKnowledgeConfigSchema = z
+  .object({
+    defaultStoreLocation: ProjectKnowledgeStoreLocationSchema.default("repository"),
+  })
+  .passthrough();
+
+export type MutableProjectKnowledgeConfig = z.infer<typeof MutableProjectKnowledgeConfigSchema>;
+
+export const DEFAULT_MUTABLE_PROJECT_KNOWLEDGE_CONFIG: MutableProjectKnowledgeConfig = {
+  defaultStoreLocation: "repository",
+};
+
 export const MutableAgentPersonalitiesConfigSchema = z
   .object({
     personalities: z.array(AgentPersonalitySchema).default([]),

@@ -1,13 +1,15 @@
 ---
 name: otto-project-knowledge
-description: "Operate Otto's repository-owned project knowledge safely: query pages, manage project charters and delivery, evaluate references, update current truth with reasons, append evidence, and review status. Use when an agent needs to read or change durable project knowledge."
+description: "Operate Otto's project knowledge safely: query pages, manage project charters and delivery, evaluate references, update current truth with reasons, append evidence, and review status. Use when an agent needs to read or change durable project knowledge."
 ---
 
 # Otto project knowledge operations
 
-Use the daemon-owned project-knowledge tools as the only write path. The canonical store is
-Markdown under `.otto/knowledge`, but current truth and its provenance must be changed atomically by
-Otto rather than by editing files directly.
+Use the daemon-owned project-knowledge tools as the only write path. The canonical store is Markdown,
+kept either in the repository under `.otto/knowledge` or host-local under the daemon's `$OTTO_HOME`,
+depending on how the project is configured. The tools are identical in both cases, and either way
+current truth and its provenance must be changed atomically by Otto rather than by editing files
+directly.
 
 ## Read
 
@@ -18,10 +20,11 @@ Otto rather than by editing files directly.
   confirmed active pages. Include inactive pages only for an explicit knowledge review.
 - Read compiled truth, evidence, tags, and the complete timeline. Treat `superseded` pages as
   history, not current guidance.
-- `.otto/KNOWLEDGE.md` is optional, on-demand project guidance. If it exists with project-specific
-  content, read it before writing or managing Knowledge. Do not load it merely because a task reads
-  existing Knowledge. Unlike record pages and the generated index, the project may edit or remove
-  this file directly; baked-in behavior applies when it is absent.
+- The optional `KNOWLEDGE.md` beside the store is on-demand project guidance. When it holds
+  project-specific content the injected catalog names its actual path; read it before writing or
+  managing Knowledge. Do not load it merely because a task reads existing Knowledge. Unlike record
+  pages and the generated index, the project may edit or remove this file directly; baked-in
+  behavior applies when it is absent.
 
 ## Write
 

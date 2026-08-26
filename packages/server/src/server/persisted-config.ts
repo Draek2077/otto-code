@@ -10,7 +10,11 @@ import {
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
 import { ConnectorConfigSchema, OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
-import { AgentProfileSchema, TerminalProfileSchema } from "@otto-code/protocol/messages";
+import {
+  AgentProfileSchema,
+  MutableProjectKnowledgeConfigSchema,
+  TerminalProfileSchema,
+} from "@otto-code/protocol/messages";
 import { OttoServicePortAllocationSchema } from "@otto-code/protocol/otto-config-schema";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
@@ -533,6 +537,11 @@ export const PersistedConfigSchema = z
         // (transport headers/env), so it persists here in $OTTO_HOME/config.json,
         // never in a repo's otto.json.
         connectors: z.array(ConnectorConfigSchema).optional(),
+        // Host default for where a project's Knowledge store lives. Not
+        // secret-bearing, but host-scoped rather than repo-scoped by nature:
+        // the whole point of the host location is to keep a working tree clean,
+        // so the preference cannot itself live in the repo.
+        projectKnowledge: MutableProjectKnowledgeConfigSchema.optional(),
       })
       .strict()
       .transform(({ allowedHosts, ...daemon }) => {

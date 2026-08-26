@@ -5,6 +5,7 @@ import {
   MutableDotnetSolutionConfigSchema,
   MutableGitHostingConfigSchema,
   MutableKanbanConfigSchema,
+  MutableProjectKnowledgeConfigSchema,
   MutableAgentPersonalitiesConfigSchema,
   MutableAgentPersonalitiesConfigPatchSchema,
   MutableAgentTeamsConfigSchema,
@@ -192,6 +193,11 @@ import {
   ProjectKnowledgeRootApplyRequestMessageSchema,
   ProjectKnowledgeRootApplyResponseMessageSchema,
   ProjectKnowledgeDeleteRequestMessageSchema,
+  ProjectKnowledgeStoreLocationValueSchema,
+  ProjectKnowledgeStoreGetRequestMessageSchema,
+  ProjectKnowledgeStoreGetResponseMessageSchema,
+  ProjectKnowledgeStoreSetRequestMessageSchema,
+  ProjectKnowledgeStoreSetResponseMessageSchema,
   ProjectKnowledgeDeleteResponseMessageSchema,
 } from "./project-knowledge.js";
 import {
@@ -809,6 +815,11 @@ export const MutableDaemonConfigSchema = z
     // Kanban board surface credentials (provider tokens). Gated by
     // server_info features.kanbanBoard; absent on older daemons.
     kanban: MutableKanbanConfigSchema.optional(),
+    // Host-wide default for where a project's Knowledge store lives. Gated by
+    // server_info features.projectKnowledgeStoreLocation. Optional rather than
+    // defaulted, matching `kanban`: absent reads as the historical repository
+    // location, which is exactly what an old daemon does.
+    projectKnowledge: MutableProjectKnowledgeConfigSchema.optional(),
     agentProfiles: z.array(AgentProfileSchema).optional(),
   })
   .passthrough();
@@ -849,6 +860,9 @@ export const MutableDaemonConfigPatchSchema = z
     speech: MutableSpeechConfigSchema.optional(),
     // Gated by server_info features.gitHostingProviders; patches deep-merge.
     gitHosting: MutableGitHostingConfigSchema.optional(),
+    // Gated by server_info features.projectKnowledgeStoreLocation; patches
+    // deep-merge.
+    projectKnowledge: MutableProjectKnowledgeConfigSchema.partial().optional(),
     // Gated by server_info features.agentPersonalities. A patch replaces the
     // full roster (read-modify-write the array), matching how terminalProfiles
     // and metadataGeneration.providers patch.
@@ -1386,6 +1400,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   z.object({
     type: z.literal("error"),
     message: z.string(),
+    details: z.array(z.string()).optional(),
   }),
   z.object({
     type: z.literal("compaction"),
@@ -4280,6 +4295,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectKnowledgeReferenceApplyRequestMessageSchema,
   ProjectKnowledgeRootApplyRequestMessageSchema,
   ProjectKnowledgeDeleteRequestMessageSchema,
+  ProjectKnowledgeStoreGetRequestMessageSchema,
+  ProjectKnowledgeStoreSetRequestMessageSchema,
   ContextEdgeConvertRequestMessageSchema,
   ContextFindingsFixRequestMessageSchema,
   PersonalityMemoryListRequestMessageSchema,
@@ -4879,6 +4896,11 @@ export const ServerInfoStatusPayloadSchema = z
         personalityMemory: z.boolean().optional(),
         // COMPAT(projectKnowledge): added in v0.8.5, drop the gate when daemon floor >= v0.8.5.
         projectKnowledge: z.boolean().optional(),
+        // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate
+        // when daemon floor >= v0.8.18. A project's Knowledge store can live
+        // host-local instead of in the repository: the project.knowledge.store.*
+        // RPCs, the per-project override, and the host default setting.
+        projectKnowledgeStoreLocation: z.boolean().optional(),
         // Script discovery - the daemon scans a workspace for the Scripts its
         // project files already declare (package.json scripts, and later
         // Makefile targets, .NET launch profiles) and serves them from
@@ -5745,6 +5767,13 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   // COMPAT(projectKanbanTarget): added in v0.8.11, drop the optional gate when
   // floor >= v0.8.11.
   projectKanban: ProjectKanbanTargetSchema.nullable().optional(),
+  // The project's Knowledge store override. Rides the project channel for the
+  // same reason the Kanban target does: Project Settings must show it for a
+  // project with no active workspaces, where no session-scoped RPC applies.
+  // Null means "inherit the host default".
+  // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the optional
+  // gate when floor >= v0.8.18.
+  projectKnowledgeLocation: ProjectKnowledgeStoreLocationValueSchema.nullable().optional(),
   // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
   projectCustomIconRevision: z.string().nullable().optional(),
   projectRootPath: z.string(),
@@ -8486,6 +8515,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectKnowledgeReferenceApplyResponseMessageSchema,
   ProjectKnowledgeRootApplyResponseMessageSchema,
   ProjectKnowledgeDeleteResponseMessageSchema,
+  ProjectKnowledgeStoreGetResponseMessageSchema,
+  ProjectKnowledgeStoreSetResponseMessageSchema,
   ContextEdgeConvertResponseMessageSchema,
   ContextFindingsFixResponseMessageSchema,
   PersonalityMemoryListResponseMessageSchema,
@@ -9223,6 +9254,8 @@ export {
   MutableGitHostingProvidersConfigSchema,
   MutableGitHostingConfigSchema,
   MutableKanbanConfigSchema,
+  ProjectKnowledgeStoreLocationSchema,
+  MutableProjectKnowledgeConfigSchema,
   MutableAgentPersonalitiesConfigSchema,
   MutableAgentPersonalitiesConfigPatchSchema,
   MutableAgentTeamsConfigSchema,
@@ -9244,5 +9277,6 @@ export type {
   MutableDotnetSolutionConfig,
   MutableGitHostingConfig,
   MutableKanbanConfig,
+  MutableProjectKnowledgeConfig,
   MutableBrainConfig,
 } from "./daemon-config.js";

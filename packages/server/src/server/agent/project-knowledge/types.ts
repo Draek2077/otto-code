@@ -74,8 +74,16 @@ export interface ProjectKnowledgeRecord {
   updatedAt: string;
   /** Append-only evidence and reasons behind each change. */
   provenance?: ProjectKnowledgeTimelineEntry[];
-  /** Repository-relative canonical Markdown page. */
+  /**
+   * Canonical Markdown page, relative to the store's path base: the project
+   * root for a repository store, the store directory for a host store.
+   */
   path?: string;
+  /**
+   * Absolute on-disk page. The only path a client can act on for a host store,
+   * where `path` resolves against nothing the client knows about.
+   */
+  absolutePath?: string;
 }
 
 export type ProjectKnowledgeHealthKind = "stale" | "overlapping_tags" | "overlapping_statement";
@@ -95,6 +103,8 @@ export interface ProjectKnowledgeRootPage {
   slug: string;
   title: string;
   path: string;
+  /** Absolute on-disk page; see `ProjectKnowledgeRecord.absolutePath`. */
+  absolutePath?: string;
   body: string;
 }
 

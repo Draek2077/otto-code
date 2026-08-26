@@ -4438,6 +4438,29 @@ export const ptBR: TranslationResources = {
         saveError: "Não foi possível salvar o destino do quadro Kanban.",
         jiraBoardRequired: "Digite um id de quadro Jira.",
       },
+      knowledge: {
+        sectionTitle: "Knowledge",
+        description: "Where this project's Otto Knowledge pages are stored.",
+        locationTitle: "Store location",
+        locationHint:
+          "Host default follows the setting on this host. Repository keeps pages in .otto/ inside the project. Host keeps them with the daemon instead.",
+        locationDefault: "Host default",
+        locationRepository: "Repository",
+        locationHost: "Host",
+        gitignoreHint:
+          "Stored on the host, a project's Knowledge never appears in its working tree, so nothing needs to be gitignored. It is also no longer shared with the team or reviewable in a pull request.",
+        moveTitle: "Move existing pages?",
+        moveToHostMessage:
+          "This project already has Knowledge pages in its repository. Move them to the host? Moving deletes the .otto folder from the working tree. Leave them and the host store starts empty.",
+        moveToRepositoryMessage:
+          "This project already has Knowledge pages on the host. Move them into the repository? Moving writes an .otto folder into the working tree. Leave them and the repository store starts empty.",
+        moveConfirm: "Move pages",
+        moveLeave: "Leave them",
+        savedToast: "Knowledge location updated.",
+        movedToast_one: "Knowledge location updated. Moved {{count}} page.",
+        movedToast_other: "Knowledge location updated. Moved {{count}} pages.",
+        saveError: "Couldn't change the Knowledge location.",
+      },
       readFailures: {
         invalidTitle: "Não foi possível analisar otto.json",
         invalidDescription: "Corrija o arquivo no disco e recarregue.",

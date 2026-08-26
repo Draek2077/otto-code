@@ -16,8 +16,10 @@ researches the project and records proposals that a human can review in Manage k
 1. Read `docs/project-knowledge.md` when it exists. Treat it as the contract for Otto's knowledge
    store. Do not create a parallel `BRAIN.md`, `brain/`, database, or ad-hoc Markdown system.
 2. Check whether the repository is already onboarded. Query/list project knowledge if available and
-   inspect `.otto/KNOWLEDGE.md` and `.otto/knowledge/` through normal file-reading tools. Preserve
-   existing pages and never duplicate a fact that already has a current page.
+   inspect the store's `KNOWLEDGE.md` and `knowledge/` through normal file-reading tools. The store
+   is in the repository under `.otto/` or host-local under `$OTTO_HOME`, so read the paths Otto
+   reports rather than assuming either. Preserve existing pages and never duplicate a fact that
+   already has a current page.
 3. Call `bootstrap_project_knowledge` for the current repository. This operation is idempotent and
    creates the root-page skeleton and generated index. It preserves optional project-specific
    `KNOWLEDGE.md` guidance and does not discover facts.
@@ -48,8 +50,8 @@ researches the project and records proposals that a human can review in Manage k
 8. Run `lint_project_knowledge_links`, then check for obvious overlap and stale signals using the returned knowledge view. Merge or skip
    duplicate proposals rather than creating competing pages.
 9. Report what was created, what evidence supports it, what remains uncertain, and how the user can
-   review or confirm the proposals in Manage knowledge. Mention `.otto/KNOWLEDGE.md` and the page
-   paths so the Markdown remains discoverable in Git.
+   review or confirm the proposals in Manage knowledge. Give the store's `KNOWLEDGE.md` and page
+   paths as Otto reports them, so the Markdown stays discoverable wherever it lives.
 
 ## Greenfield projects
 

@@ -257,6 +257,7 @@ import { BrainSession } from "./session/brain/brain-session.js";
 import { CommunicationsSession } from "./session/communications/communications-session.js";
 import { RunsSession } from "./session/runs/runs-session.js";
 import { ProjectKnowledgeSession } from "./session/project-knowledge/project-knowledge-session.js";
+import type { ProjectKnowledgeStoreResolver } from "./agent/project-knowledge/project-knowledge-store-resolver.js";
 import { CodeIntelligenceSession } from "./session/code-intelligence/code-intelligence-session.js";
 import type { BrainManager } from "./brain/brain-manager.js";
 import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
@@ -717,6 +718,8 @@ export interface SessionOptions {
   personalityMemory?: ProfileMemoryService | null;
   /** Repo-owned knowledge, used to make its recurring prompt cost inspectable. */
   projectKnowledge?: ProjectKnowledgeService | null;
+  /** Resolves which store a project's knowledge lives in. */
+  projectKnowledgeStores?: ProjectKnowledgeStoreResolver | null;
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
@@ -906,6 +909,7 @@ export class Session {
   // constructor already at the complexity ceiling.
   private readonly personalityMemory: ProfileMemoryService | null | undefined;
   private readonly projectKnowledge: ProjectKnowledgeService | null | undefined;
+  private readonly projectKnowledgeStores: ProjectKnowledgeStoreResolver | null | undefined;
   // Generates the Visualizer's short spoken cue lines for a personality (join /
   // thinking / done), via the Writer mini-task chain. Cached per personality.
   private readonly voiceCueGenerator: VoiceCueGenerator;
@@ -1062,6 +1066,7 @@ export class Session {
       previewTts,
       personalityMemory,
       projectKnowledge,
+      projectKnowledgeStores,
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
@@ -1073,6 +1078,7 @@ export class Session {
     this.getPersonalityStats = defaults.getPersonalityStats;
     this.personalityMemory = personalityMemory;
     this.projectKnowledge = projectKnowledge;
+    this.projectKnowledgeStores = projectKnowledgeStores;
     this.communicationsService = communicationsService ?? new CommunicationsService();
     this.communicationsSession = new CommunicationsSession({
       host: { emit: (msg) => this.emit(msg) },
@@ -1636,8 +1642,10 @@ export class Session {
       host: {
         emit: (msg) => this.emit(msg),
         pushContextReport: (workspaceId) => this.pushContextReport(workspaceId),
+        announceProjectUpdate: (projectId) => this.announceProjectUpdate(projectId),
       },
       projectKnowledge: this.projectKnowledge,
+      projectKnowledgeStores: this.projectKnowledgeStores,
       contextManagement: this.contextManagement,
       workspaceRegistry: this.workspaceRegistry,
       projectRegistry: this.projectRegistry,
@@ -8568,6 +8576,26 @@ export class Session {
     }
   }
 
+  /**
+   * Replay a project's current metadata on the host-global project channel.
+   * Project metadata is not session-scoped, so a change made in one window has
+   * to reach every other one without waiting for a workspace re-fetch.
+   */
+  private async announceProjectUpdate(projectId: string): Promise<void> {
+    const project = await this.projectRegistry.get(projectId);
+    if (!project) return;
+    this.emitProjectUpdate({ kind: "upsert", project });
+    const workspaces = await this.workspaceRegistry.list();
+    const hasActiveWorkspaces = workspaces.some(
+      (workspace) =>
+        workspace.projectId === projectId && !workspace.archivedAt && !workspace.hidden,
+    );
+    this.broadcastToAllSessions({
+      type: "project.updated.notification",
+      payload: { project: this.buildProjectDescriptor(project), hasActiveWorkspaces },
+    });
+  }
+
   private buildProjectDescriptor(
     project: PersistedProjectRecord,
   ): WorkspaceProjectDescriptorPayload {
@@ -8577,6 +8605,7 @@ export class Session {
       projectDisplayName: resolveProjectDisplayName(project),
       projectCustomName: project.customName ?? null,
       projectKanban: project.kanban ?? null,
+      projectKnowledgeLocation: project.knowledgeLocation ?? null,
       projectCustomIconRevision: project.customIconRevision ?? null,
       projectRootPath: project.rootPath,
       projectKind: project.kind,

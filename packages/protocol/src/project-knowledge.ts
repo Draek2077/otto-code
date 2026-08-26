@@ -19,6 +19,20 @@ export const ProjectKnowledgeKindSchema = z.enum([
 
 export const ProjectKnowledgeStatusSchema = z.enum(["proposed", "confirmed", "superseded"]);
 
+/**
+ * Where a project keeps its Knowledge store. `repository` is the historical
+ * `.otto/` directory in the working tree; `host` is a directory under the
+ * daemon's `$OTTO_HOME`, so the working tree stays clean. `null` on a project
+ * means "inherit the host default".
+ *
+ * Declared up here rather than beside the store RPCs at the bottom of the file:
+ * `messages.ts` composes it into the project descriptor, and the AOT validator
+ * generator evaluates these modules for real, so a schema referenced by another
+ * must already exist when that reference runs.
+ * COMPAT(projectKnowledgeStoreLocation): added in v0.8.18.
+ */
+export const ProjectKnowledgeStoreLocationValueSchema = z.enum(["repository", "host"]);
+
 export const ProjectDeliveryStatusSchema = z.enum([
   "charter",
   "in_build",
@@ -70,7 +84,13 @@ export const ProjectKnowledgeRecordSchema = z.object({
       }),
     )
     .optional(),
+  // Relative to the store's path base: the project root for a repository
+  // store, the store directory for a host store. Prefer `absolutePath` when
+  // the client needs a path it can actually open.
   path: z.string().optional(),
+  // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18; the only path a
+  // client can open for a host-local store. Absent from older daemons.
+  absolutePath: z.string().optional(),
 });
 
 /** Review health, not a persisted project-knowledge finding record. */
@@ -87,6 +107,9 @@ export const ProjectKnowledgeRootPageSchema = z.object({
   slug: z.string(),
   title: z.string(),
   path: z.string(),
+  // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18. See the same field
+  // on ProjectKnowledgeRecordSchema.
+  absolutePath: z.string().optional(),
   body: z.string(),
 });
 
@@ -290,4 +313,91 @@ export type ProjectKnowledgeRootApplyResponseMessage = z.infer<
 
 export type ProjectKnowledgeDeleteResponseMessage = z.infer<
   typeof ProjectKnowledgeDeleteResponseMessageSchema
+>;
+
+// COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate when
+// floor >= v0.8.18. Gated by server_info features.projectKnowledgeStoreLocation.
+
+/** What the daemon resolved for a workspace, and why the client may act on it. */
+export const ProjectKnowledgeStoreDescriptorSchema = z.object({
+  location: ProjectKnowledgeStoreLocationValueSchema,
+  /** The project's own override; null means it is following the host default. */
+  override: ProjectKnowledgeStoreLocationValueSchema.nullable(),
+  /** The host default in force, so the UI can label the inherited choice. */
+  hostDefault: ProjectKnowledgeStoreLocationValueSchema,
+  /** Absolute directory holding `KNOWLEDGE.md` and the `knowledge/` tree. */
+  basePath: z.string(),
+  /** The project this store belongs to, when the workspace has a registered one. */
+  projectId: z.string().nullable(),
+  /** Whether the resolved store holds pages a switch would offer to carry over. */
+  hasPages: z.boolean(),
+  /** Whether the other location already holds pages a switch would land beside. */
+  otherLocationHasPages: z.boolean(),
+});
+
+/**
+ * Addressed by project or by workspace. Project Settings has a project and no
+ * open workspace; the Knowledge panel has a workspace and reaches its project
+ * through it. Both are optional on the wire and the daemon rejects neither
+ * being set, rather than forcing a caller to invent an id it does not have.
+ */
+export const ProjectKnowledgeStoreGetRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.store.get.request"),
+  requestId: z.string(),
+  workspaceId: z.string().optional(),
+  projectId: z.string().optional(),
+});
+
+export const ProjectKnowledgeStoreGetResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.store.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    store: ProjectKnowledgeStoreDescriptorSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const ProjectKnowledgeStoreSetRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.store.set.request"),
+  requestId: z.string(),
+  projectId: z.string().min(1),
+  /**
+   * The workspace whose context report should be refreshed. Optional because
+   * the setting is reachable from Project Settings, where no workspace is open.
+   */
+  workspaceId: z.string().optional(),
+  /** Null returns the project to inheriting the host default. */
+  location: ProjectKnowledgeStoreLocationValueSchema.nullable(),
+  /**
+   * Whether to carry the existing pages to the new location. The daemon never
+   * decides this: a silent move stages a deletion in the user's working tree.
+   */
+  movePages: z.boolean().default(false),
+});
+
+export const ProjectKnowledgeStoreSetResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.store.set.response"),
+  payload: z.object({
+    requestId: z.string(),
+    projectId: z.string(),
+    accepted: z.boolean(),
+    store: ProjectKnowledgeStoreDescriptorSchema.nullable(),
+    /** Pages actually carried across. Zero when `movePages` was false. */
+    movedPageCount: z.number().int().nonnegative(),
+    error: z.string().nullable(),
+  }),
+});
+
+export type ProjectKnowledgeStoreDescriptor = z.infer<typeof ProjectKnowledgeStoreDescriptorSchema>;
+
+export type ProjectKnowledgeStoreGetResponseMessage = z.infer<
+  typeof ProjectKnowledgeStoreGetResponseMessageSchema
+>;
+
+export type ProjectKnowledgeStoreSetResponseMessage = z.infer<
+  typeof ProjectKnowledgeStoreSetResponseMessageSchema
+>;
+
+export type ProjectKnowledgeStoreLocationValue = z.infer<
+  typeof ProjectKnowledgeStoreLocationValueSchema
 >;

@@ -97,6 +97,8 @@ import type {
   StashListResponse,
   KanbanBoardsListResponse,
   ProjectKanbanTarget,
+  ProjectKnowledgeStoreDescriptor,
+  ProjectKnowledgeStoreLocationValue,
   KanbanBoardGetResponse,
   KanbanCardMoveResponse,
   KanbanCardCreateResponse,
@@ -3471,6 +3473,59 @@ export class DaemonClient {
       throw new Error(payload.error ?? "setKanbanProjectTarget rejected");
     }
     return { target: payload.target };
+  }
+
+  /**
+   * Sets (or with a null location, clears) where a project keeps its Knowledge
+   * store. `movePages` decides whether the existing pages are carried across;
+   * the daemon never moves them on its own, because a repository-to-host move
+   * stages a deletion in the user's working tree.
+   */
+  async setProjectKnowledgeStoreLocation(
+    input: {
+      projectId: string;
+      location: ProjectKnowledgeStoreLocationValue | null;
+      movePages: boolean;
+      workspaceId?: string;
+    },
+    requestId?: string,
+  ): Promise<{ store: ProjectKnowledgeStoreDescriptor | null; movedPageCount: number }> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "project.knowledge.store.set.request",
+        projectId: input.projectId,
+        location: input.location,
+        movePages: input.movePages,
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      },
+      responseType: "project.knowledge.store.set.response",
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "setProjectKnowledgeStoreLocation rejected");
+    }
+    return { store: payload.store, movedPageCount: payload.movedPageCount };
+  }
+
+  /**
+   * The store a project currently resolves to, and why. Addressed by project id
+   * or by workspace id: Project Settings has the former and no open workspace,
+   * the Knowledge panel has the latter.
+   */
+  async getProjectKnowledgeStore(
+    input: { projectId?: string; workspaceId?: string },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeStoreDescriptor | null> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "project.knowledge.store.get.request",
+        ...(input.projectId ? { projectId: input.projectId } : {}),
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      },
+      responseType: "project.knowledge.store.get.response",
+    });
+    return payload.store;
   }
 
   async setProjectIcon(

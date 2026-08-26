@@ -19,6 +19,7 @@ import type { GraphStore } from "./orchestration/graph-store.js";
 import type { NodeOutputStore } from "./orchestration/node-output.js";
 import type { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
 import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
+import type { ProjectKnowledgeStoreResolver } from "./agent/project-knowledge/project-knowledge-store-resolver.js";
 import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
@@ -350,6 +351,8 @@ function createNoopProjectRegistry(): ProjectRegistry {
       projectKey: input.projectKey ?? null,
       customName: null,
       kanban: null,
+      knowledgeLocation: null,
+      knowledgeDirectoryName: null,
       customIconRevision: null,
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
@@ -655,6 +658,7 @@ export class VoiceAssistantWebSocketServer {
     | null = null;
   private personalityMemoryService: ProfileMemoryService | null = null;
   private projectKnowledgeService: ProjectKnowledgeService | null = null;
+  private projectKnowledgeStoreResolver: ProjectKnowledgeStoreResolver | null = null;
   private terminalManager!: TerminalManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
   private scriptRuntimeStore!: WorkspaceScriptRuntimeStore | null;
@@ -963,6 +967,15 @@ export class VoiceAssistantWebSocketServer {
 
   public setProjectKnowledgeService(service: ProjectKnowledgeService | null): void {
     this.projectKnowledgeService = service;
+  }
+
+  /**
+   * Provide the store resolver. Its presence is what advertises
+   * `features.projectKnowledgeStoreLocation`: without it a client cannot be
+   * offered a choice it has no way to act on.
+   */
+  public setProjectKnowledgeStoreResolver(resolver: ProjectKnowledgeStoreResolver | null): void {
+    this.projectKnowledgeStoreResolver = resolver;
   }
 
   public setNodeOutputStore(store: NodeOutputStore | null): void {
@@ -1776,6 +1789,7 @@ export class VoiceAssistantWebSocketServer {
       getPersonalityStats: this.getPersonalityStatsFn ?? undefined,
       personalityMemory: this.personalityMemoryService,
       projectKnowledge: this.projectKnowledgeService,
+      projectKnowledgeStores: this.projectKnowledgeStoreResolver,
       serverId: this.serverId,
       daemonVersion: this.daemonVersion,
       daemonRuntimeConfig: this.daemonRuntimeConfig,
@@ -2096,6 +2110,9 @@ export class VoiceAssistantWebSocketServer {
         personalityMemory: this.personalityMemoryService !== null,
         // COMPAT(projectKnowledge): added in v0.8.5, drop the gate when daemon floor >= v0.8.5.
         projectKnowledge: this.projectKnowledgeService !== null,
+        // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate
+        // when floor >= v0.8.18.
+        projectKnowledgeStoreLocation: this.projectKnowledgeStoreResolver !== null,
         // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         projectLinks: true,
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.

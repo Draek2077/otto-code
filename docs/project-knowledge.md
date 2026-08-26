@@ -1,13 +1,13 @@
 # Project knowledge
 
-Project knowledge is repository-owned memory of durable decisions, constraints, requirements, architecture claims, measured findings, project charters, and evaluated references. It is separate from personality memory: a personality remembers how it works; a repository remembers what the team established, what it measured, what it is building, and which outside sources shaped that work. People and team relationships do not belong here.
+Project knowledge is a project's memory of durable decisions, constraints, requirements, architecture claims, measured findings, project charters, and evaluated references. It is separate from personality memory: a personality remembers how it works; a project remembers what the team established, what it measured, what it is building, and which outside sources shaped that work. People and team relationships do not belong here.
 
 ## Storage and invariant
 
-All Otto project state lives under `.otto/`:
+A project's knowledge store holds the same tree wherever it lives:
 
 ```text
-.otto/
+<store>/
   KNOWLEDGE.md
   knowledge/
     index.md
@@ -26,11 +26,32 @@ All Otto project state lives under `.otto/`:
     references/
 ```
 
-`.otto/KNOWLEDGE.md` is optional project-specific guidance, not the store's operating contract or initialization marker. Otto's default behavior is baked into the compact catalog instructions. When the optional file contains project-owned guidance, the catalog points to it and an agent reads it on demand before writing or managing Knowledge; its body is never fixed prompt weight. The generated index and record pages are canonical Markdown, portable and reviewable in Git. Those remain daemon-owned so worktree resolution, validation, provenance, and reindexing stay atomic.
+### Where the store lives
+
+Two locations, one layout.
+
+- **Repository**, at `.otto/` in the working tree. The store is versioned, shared with the team, and reviewable in a pull request. This is the default and the historical behavior.
+- **Host**, at `$OTTO_HOME/project-knowledge/<project>/` on the daemon's machine, with a `project.json` marker naming the project it belongs to. Nothing appears in the working tree, so a repository never has to gitignore anything to use Knowledge. The trade is real: a host store is not versioned, not shared, and not reviewable.
+
+The effective location resolves in a fixed order:
+
+1. The project's own setting, in Project Settings under **Knowledge**.
+2. A repository store that already exists on disk.
+3. The host default, in host Settings under **Workspaces**.
+
+Rule 2 is why changing the host default is safe. A repository whose `.otto/knowledge` is checked in keeps using it, so flipping the default never appears to erase a teammate's knowledge; it only decides where projects that have no store yet will start. Switching a project's own setting asks whether to carry the existing pages across, and never moves them silently, because a repository-to-host move stages a deletion in the user's working tree.
+
+Otto worktrees share their main checkout's store in both locations, because root resolution collapses a worktree to its main repository root before the store is resolved.
+
+Requires host capability `projectKnowledgeStoreLocation` (v0.8.18). A client on an older host sees no location control and every project stays in its repository.
+
+### The entry point
+
+The optional `KNOWLEDGE.md` beside the `knowledge/` tree is project-specific guidance, not the store's operating contract or initialization marker. Otto's default behavior is baked into the compact catalog instructions. When the optional file contains project-owned guidance, the catalog points to it and an agent reads it on demand before writing or managing Knowledge; its body is never fixed prompt weight. The generated index and record pages are canonical Markdown, portable in either location and reviewable in Git when the store is in the repository. Those remain daemon-owned so store and worktree resolution, validation, provenance, and reindexing stay atomic.
 
 Each atomic page has frontmatter, rich Markdown compiled truth, and an uncapped append-only timeline. Pages use readable kebab-case slugs and `[[wiki links]]` to other atomic pages; root pages use their fixed slugs rather than pretending to be atomic wiki targets. Compiled truth can carry headings, lists, tables, code fences, diagrams, and links. A truth update requires a reason. Otto writes the truth and its timeline reason in one operation. Status transitions and evidence also enter the timeline. This makes a truth change without rationale impossible through Otto.
 
-The earlier unshipped `.otto/project-knowledge.json` foundation migrates on first read into Markdown pages. A daemon-written marker prevents that source from being imported again after canonical pages are deliberately deleted. Pre-release Markdown pages also migrate on first read: UUID ids become deterministic human slugs, current wiki links are rewritten, legacy evidence enters the timeline, and historical timeline text remains untouched. The JSON is retained as a non-authoritative migration source and is never rewritten.
+The earlier unshipped `.otto/project-knowledge.json` foundation, always a repository file, migrates on first read into Markdown pages. A daemon-written marker prevents that source from being imported again after canonical pages are deliberately deleted. Pre-release Markdown pages also migrate on first read: UUID ids become deterministic human slugs, current wiki links are rewritten, legacy evidence enters the timeline, and historical timeline text remains untouched. The JSON is retained as a non-authoritative migration source and is never rewritten.
 
 ## Review, delivery, and reference lifecycles
 
@@ -50,7 +71,7 @@ This separation prevents two dangerous ambiguities: confirming that a charter is
 
 ## Discovery and retrieval
 
-At every new, resumed, or refreshed chat session, Otto reads the repository store and injects a compact catalog containing the baked-in capture policy, the six root pages, and active atomic pages. The catalog carries titles and links, not full page bodies. It adds a short pointer to `.otto/KNOWLEDGE.md` only when that file contains project-specific guidance rather than a known generated compatibility entry. Optional guidance and rich page bodies stay pull-on-demand. Only the injected catalog weight is reported as `projectKnowledgeTokens` in Context Management. Agents read relevant rich pages on demand before broad repository searches, then verify implementation facts against current code.
+At every new, resumed, or refreshed chat session, Otto reads the project's store and injects a compact catalog containing the baked-in capture policy, the six root pages, and active atomic pages. The catalog carries titles and links, not full page bodies. It adds a short pointer to the store's `KNOWLEDGE.md` only when that file contains project-specific guidance rather than a known generated compatibility entry, and names the path the store actually resolves to so the pointer is openable in either location. Optional guidance and rich page bodies stay pull-on-demand. Only the injected catalog weight is reported as `projectKnowledgeTokens` in Context Management. Agents read relevant rich pages on demand before broad repository searches, then verify implementation facts against current code.
 
 The baked-in policy carries the standing capture rule: capture is deliberately deferred while work is in motion. Agents do not write Project Knowledge after each query, hypothesis, experiment, attempted fix, or intermediate implementation. Those are working state, and most should disappear when the solution converges.
 
@@ -62,7 +83,7 @@ This is the practical distinction between discovery and context injection: disco
 
 ## Bootstrap and management
 
-`bootstrap_project_knowledge` creates all six writable root-page skeletons and the generated index. The index is the current initialization marker, so Project Knowledge continues to work when `.otto/KNOWLEDGE.md` is absent. During the compatibility window, a new store also receives a tiny entry file for older daemons that still use it as their marker; current Otto ignores that generated content and does not recreate the file if a project removes it later. Project-specific contents are always preserved. Bootstrap does not invent facts. Project onboarding inspects code, official documentation, tests, and Git history, then fills background, architecture, flow, mindmap, stack, and roadmap with evidence-backed Markdown before proposing atomic pages.
+`bootstrap_project_knowledge` creates all six writable root-page skeletons and the generated index. The index is the current initialization marker, so Project Knowledge continues to work when `KNOWLEDGE.md` is absent. During the compatibility window, a new store also receives a tiny entry file for older daemons that still use it as their marker; current Otto ignores that generated content and does not recreate the file if a project removes it later. Project-specific contents are always preserved. Bootstrap does not invent facts. Project onboarding inspects code, official documentation, tests, and Git history, then fills background, architecture, flow, mindmap, stack, and roadmap with evidence-backed Markdown before proposing atomic pages.
 
 **Manage knowledge** is a capability-gated workspace tab with Knowledge, Projects, and References modes. Knowledge shows the six project-map roots and factual pages, including findings. Projects creates and reviews charters, displays status and completion metrics, and updates delivery with a reason. References records source URLs and adoption or rejection. All modes render the canonical Markdown page and its complete timeline, support explicit review status, and require a reason to change current truth. The panel never writes raw Markdown directly.
 

@@ -64,6 +64,7 @@ import {
   type ProjectSummary,
 } from "@/utils/projects";
 import { ProjectKanbanSection } from "./project-settings-kanban-section";
+import { ProjectKnowledgeSection } from "./project-settings-knowledge-section";
 import {
   combineProjectFormSaveStates,
   type ProjectFormSaveState,
@@ -415,6 +416,12 @@ function ProjectSettingsBody({
         projectId={selectedHost.projectId}
         client={client}
         onSaveStateChange={setKanbanSaveState}
+      />
+
+      <ProjectKnowledgeSection
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+        client={client}
       />
 
       {renderContent({

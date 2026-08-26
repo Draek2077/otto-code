@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { AgentManager } from "./agent-manager.js";
 import { ProjectKnowledgeService } from "./project-knowledge/project-knowledge-service.js";
+import { repositoryKnowledgeStore } from "./project-knowledge/project-knowledge-store.js";
 import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
 import type {
   AgentClient,
@@ -676,7 +677,7 @@ test("a new chat can discover active truth, read it, and record a proposal", asy
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-project-knowledge-test-"));
   const client = new PersonalityTestClient();
   const knowledge = new ProjectKnowledgeService({
-    resolveProjectRoot: async () => workdir,
+    resolveStore: async () => repositoryKnowledgeStore(workdir),
     logger,
   });
   try {

@@ -46,6 +46,7 @@ import type {
   SuggestedTaskInfo,
   AgentRateLimitInfo,
   ProjectKanbanTarget,
+  ProjectKnowledgeStoreLocationValue,
 } from "@otto-code/protocol/messages";
 import {
   normalizeWorkspaceOpaqueId,
@@ -299,6 +300,13 @@ export interface ProjectDescriptor {
   projectCustomIconRevision?: string | null;
   /** The project's Kanban board target; null means no board is configured. */
   projectKanban: ProjectKanbanTarget | null;
+  /**
+   * The project's Knowledge store override. Null means it follows the host
+   * default, which is a distinct state from either explicit choice. Optional
+   * because a daemon that predates the feature never sends it, and that reads
+   * the same as "no override" rather than as an error.
+   */
+  projectKnowledgeLocation?: ProjectKnowledgeStoreLocationValue | null;
   projectRootPath: string;
   projectKind: WorkspaceDescriptorPayload["projectKind"];
 }
@@ -315,6 +323,7 @@ export function normalizeProjectDescriptor(
     // A pointer, never a credential; null keeps the descriptor readable for
     // daemons that predate the field.
     projectKanban: payload.projectKanban ?? null,
+    projectKnowledgeLocation: payload.projectKnowledgeLocation ?? null,
     projectRootPath: payload.projectRootPath,
     projectKind: payload.projectKind,
   };

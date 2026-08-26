@@ -3,6 +3,13 @@ import {
   resolveProjectRootForCwd,
 } from "../../agent/context-management/context-management-service.js";
 import type { ProjectKnowledgeService } from "../../agent/project-knowledge/project-knowledge-service.js";
+import type { ProjectKnowledgeStoreResolver } from "../../agent/project-knowledge/project-knowledge-store-resolver.js";
+import type {
+  ProjectKnowledgeStore,
+  ProjectKnowledgeStoreLocation,
+} from "../../agent/project-knowledge/project-knowledge-store.js";
+import { storeHasPages } from "../../agent/project-knowledge/project-knowledge-store-migration.js";
+import type { ProjectKnowledgeStoreDescriptor } from "@otto-code/protocol/messages";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
@@ -16,11 +23,19 @@ import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registr
 export interface ProjectKnowledgeSessionHost {
   emit(msg: SessionOutboundMessage): void;
   pushContextReport(workspaceId: string): Promise<void>;
+  /**
+   * Announce a project's changed metadata on the host-global project channel.
+   * The store location is project metadata like the name and the Kanban target,
+   * so every connected session must see it flip without a re-fetch.
+   */
+  announceProjectUpdate?(projectId: string): Promise<void>;
 }
 
 export interface ProjectKnowledgeSessionOptions {
   host: ProjectKnowledgeSessionHost;
   projectKnowledge: ProjectKnowledgeService | null | undefined;
+  /** Resolves a project root to its store. Absent on hosts without the feature. */
+  projectKnowledgeStores: ProjectKnowledgeStoreResolver | null | undefined;
   contextManagement: ContextManagementService;
   workspaceRegistry: WorkspaceRegistry;
   projectRegistry: ProjectRegistry;
@@ -39,6 +54,7 @@ export interface ProjectKnowledgeSessionOptions {
 export class ProjectKnowledgeSession {
   private readonly host: ProjectKnowledgeSessionHost;
   private readonly projectKnowledge: ProjectKnowledgeService | null | undefined;
+  private readonly projectKnowledgeStores: ProjectKnowledgeStoreResolver | null | undefined;
   private readonly contextManagement: ContextManagementService;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly projectRegistry: ProjectRegistry;
@@ -47,6 +63,7 @@ export class ProjectKnowledgeSession {
   constructor(options: ProjectKnowledgeSessionOptions) {
     this.host = options.host;
     this.projectKnowledge = options.projectKnowledge;
+    this.projectKnowledgeStores = options.projectKnowledgeStores;
     this.contextManagement = options.contextManagement;
     this.workspaceRegistry = options.workspaceRegistry;
     this.projectRegistry = options.projectRegistry;
@@ -73,6 +90,10 @@ export class ProjectKnowledgeSession {
         return this.handleProjectKnowledgeRootApplyRequest(msg);
       case "project.knowledge.delete.request":
         return this.handleProjectKnowledgeDeleteRequest(msg);
+      case "project.knowledge.store.get.request":
+        return this.handleProjectKnowledgeStoreGetRequest(msg);
+      case "project.knowledge.store.set.request":
+        return this.handleProjectKnowledgeStoreSetRequest(msg);
       default:
         return undefined;
     }
@@ -92,11 +113,20 @@ export class ProjectKnowledgeSession {
       ))
     );
   }
+  /**
+   * The store behind a workspace. Resolved from the registered project root
+   * rather than the cwd, which keeps the catalog read off the Git snapshot path.
+   */
+  private async projectKnowledgeStore(workspaceId: string): Promise<ProjectKnowledgeStore | null> {
+    if (!this.projectKnowledgeStores) return null;
+    const root = await this.projectKnowledgeRoot(workspaceId);
+    return root ? this.projectKnowledgeStores.resolveForRoot(root) : null;
+  }
   private async handleProjectKnowledgeListRequest(
     msg: Extract<SessionInboundMessage, { type: "project.knowledge.list.request" }>,
   ): Promise<void> {
-    const root = await this.projectKnowledgeRoot(msg.workspaceId);
-    if (!this.projectKnowledge || !root) {
+    const store = await this.projectKnowledgeStore(msg.workspaceId);
+    if (!this.projectKnowledge || !store) {
       this.host.emit({
         type: "project.knowledge.list.response",
         payload: {
@@ -112,7 +142,7 @@ export class ProjectKnowledgeSession {
       });
       return;
     }
-    const view = await this.projectKnowledge.catalogViewAtRoot(root);
+    const view = await this.projectKnowledge.catalogViewAtStore(store);
     this.host.emit({
       type: "project.knowledge.list.response",
       payload: {
@@ -313,5 +343,133 @@ export class ProjectKnowledgeSession {
       type: "project.knowledge.delete.response",
       payload: { requestId: msg.requestId, ...result },
     });
+  }
+
+  private async handleProjectKnowledgeStoreGetRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.store.get.request" }>,
+  ): Promise<void> {
+    const emit = (store: ProjectKnowledgeStoreDescriptor | null, error: string | null): void => {
+      this.host.emit({
+        type: "project.knowledge.store.get.response",
+        payload: { requestId: msg.requestId, store, error },
+      });
+    };
+    const resolver = this.projectKnowledgeStores;
+    if (!resolver) return emit(null, "This host does not support choosing a knowledge location.");
+    try {
+      const target = await this.resolveStoreSubject(msg);
+      if (!target) return emit(null, "No project or workspace to resolve a knowledge store for.");
+      emit(await this.describeStore(target.root, target.projectId), null);
+    } catch (error) {
+      emit(null, error instanceof Error ? error.message : "Failed to resolve knowledge location.");
+    }
+  }
+
+  /**
+   * The project root and id behind a store request. A `projectId` is answered
+   * straight from the registry; a `workspaceId` goes through the workspace to
+   * its project, falling back to Git root resolution for an unregistered one.
+   */
+  private async resolveStoreSubject(msg: {
+    projectId?: string;
+    workspaceId?: string;
+  }): Promise<{ root: string; projectId: string | null } | null> {
+    if (msg.projectId) {
+      const project = await this.projectRegistry.get(msg.projectId);
+      return project ? { root: project.rootPath, projectId: project.projectId } : null;
+    }
+    if (!msg.workspaceId) return null;
+    const workspace = await this.workspaceRegistry.get(msg.workspaceId);
+    if (!workspace) return null;
+    const root = await this.projectKnowledgeRoot(msg.workspaceId);
+    return root ? { root, projectId: workspace.projectId } : null;
+  }
+
+  private async handleProjectKnowledgeStoreSetRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.store.set.request" }>,
+  ): Promise<void> {
+    const emit = (input: {
+      accepted: boolean;
+      store: ProjectKnowledgeStoreDescriptor | null;
+      movedPageCount: number;
+      error: string | null;
+    }): void => {
+      this.host.emit({
+        type: "project.knowledge.store.set.response",
+        payload: { requestId: msg.requestId, projectId: msg.projectId, ...input },
+      });
+    };
+    const reject = (error: string): void =>
+      emit({ accepted: false, store: null, movedPageCount: 0, error });
+
+    const resolver = this.projectKnowledgeStores;
+    if (!resolver) return reject("This host does not support choosing a knowledge location.");
+    const project = await this.projectRegistry.get(msg.projectId);
+    if (!project) return reject("Project not found.");
+
+    try {
+      // Resolve the current store before the override lands: once the record
+      // says "host", the old repository store is no longer reachable through
+      // normal resolution and there is nothing left to move from.
+      const before = await resolver.resolveForRoot(project.rootPath);
+      await this.projectRegistry.update(msg.projectId, (record) => ({
+        ...record,
+        knowledgeLocation: msg.location,
+        updatedAt: new Date().toISOString(),
+      }));
+      const after = await resolver.resolveForRoot(project.rootPath);
+
+      const movedPageCount = msg.movePages
+        ? await resolver.movePages({ from: before, to: after })
+        : await this.prepareWithoutMoving(after);
+
+      // The catalog's fixed context weight is measured from the store, so a
+      // switch changes it even though no page's content did.
+      if (msg.workspaceId) {
+        this.contextManagement.invalidate(msg.workspaceId);
+        await this.host.pushContextReport(msg.workspaceId);
+      }
+      await this.host.announceProjectUpdate?.(msg.projectId);
+      emit({
+        accepted: true,
+        store: await this.describeStore(project.rootPath, msg.projectId),
+        movedPageCount,
+        error: null,
+      });
+    } catch (error) {
+      reject(error instanceof Error ? error.message : "Failed to set the knowledge location.");
+    }
+  }
+
+  /**
+   * The user declined to carry the pages across. The new store still needs to
+   * exist and be identifiable, or a later switch back cannot tell whose it was.
+   */
+  private async prepareWithoutMoving(store: ProjectKnowledgeStore): Promise<number> {
+    if (store.location === "host") await this.projectKnowledgeStores?.ensureHostStoreMarker(store);
+    return 0;
+  }
+
+  private async describeStore(
+    root: string,
+    projectId: string | null,
+  ): Promise<ProjectKnowledgeStoreDescriptor | null> {
+    const resolver = this.projectKnowledgeStores;
+    if (!resolver) return null;
+    const project = projectId ? await this.projectRegistry.get(projectId) : null;
+    const store = await resolver.resolveForRoot(root);
+    const other = await resolver.storeAtLocation(
+      root,
+      store.location === "repository" ? "host" : "repository",
+    );
+    return {
+      location: store.location,
+      override: (project?.knowledgeLocation ?? null) as ProjectKnowledgeStoreLocation | null,
+      hostDefault: resolver.hostDefaultLocation(),
+      basePath: store.base,
+      projectId: project?.projectId ?? null,
+      hasPages: await storeHasPages(store),
+      otherLocationHasPages: await storeHasPages(other),
+    };
   }
 }

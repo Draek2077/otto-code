@@ -4,10 +4,11 @@ import os from "node:os";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { ProjectKnowledgeService } from "./project-knowledge-service.js";
+import { repositoryKnowledgeStore } from "./project-knowledge-store.js";
 
 function service(root: string): ProjectKnowledgeService {
   return new ProjectKnowledgeService({
-    resolveProjectRoot: async () => root,
+    resolveStore: async () => repositoryKnowledgeStore(root),
     logger: { warn: () => undefined } as never,
   });
 }
@@ -134,9 +135,9 @@ describe("ProjectKnowledgeService", () => {
     try {
       let resolves = 0;
       const knowledge = new ProjectKnowledgeService({
-        resolveProjectRoot: async () => {
+        resolveStore: async () => {
           resolves += 1;
-          return root;
+          return repositoryKnowledgeStore(root);
         },
         logger: { warn: () => undefined } as never,
       });
@@ -148,7 +149,7 @@ describe("ProjectKnowledgeService", () => {
       });
       resolves = 0;
 
-      const view = await knowledge.catalogViewAtRoot(root);
+      const view = await knowledge.catalogViewAtStore(repositoryKnowledgeStore(root));
 
       expect(view.records).toHaveLength(1);
       expect(resolves).toBe(0);

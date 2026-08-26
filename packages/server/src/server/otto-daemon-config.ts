@@ -427,6 +427,14 @@ export function buildPersistedDaemonSection(
     ...(mutable.connectors.length > 0 || persisted.daemon?.connectors !== undefined
       ? { connectors: mutable.connectors }
       : {}),
+    // Knowledge store default. Same restraint as connectors: written only once
+    // it differs from the built-in default or already existed on disk, so an
+    // install that never touches the setting keeps a clean config.json.
+    ...(mutable.projectKnowledge &&
+    (mutable.projectKnowledge.defaultStoreLocation !== "repository" ||
+      persisted.daemon?.projectKnowledge !== undefined)
+      ? { projectKnowledge: mutable.projectKnowledge }
+      : {}),
   } as PersistedConfig["daemon"];
 }
 

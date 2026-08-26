@@ -157,6 +157,8 @@ import { ProfileStatsStore } from "./agent/profile-stats-store.js";
 import { ProfileMemoryStore } from "./agent/profile-memory/profile-memory-store.js";
 import { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
 import { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
+import { ProjectKnowledgeStoreResolver } from "./agent/project-knowledge/project-knowledge-store-resolver.js";
+import { areEquivalentPaths } from "../utils/path.js";
 import { loadInstructionFiles } from "./agent/context-management/instruction-files.js";
 import { resolveProjectRootForCwd } from "./agent/context-management/context-management-service.js";
 import {
@@ -967,6 +969,12 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     // Connector registry round-trips config.json ⇄ mutable config; absent on
     // disk reads as "no connectors configured yet".
     connectors: persistedConfig.daemon?.connectors ?? [],
+    // Host default for where a project's Knowledge store lives. Absent on disk
+    // reads as the repository location, which is what every existing install
+    // already does.
+    projectKnowledge: persistedConfig.daemon?.projectKnowledge ?? {
+      defaultStoreLocation: "repository",
+    },
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -1391,8 +1399,29 @@ export async function createOttoDaemon(
     resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
     logger,
   });
-  const projectKnowledge = new ProjectKnowledgeService({
+  // Where each project's Knowledge lives. Split from the service on purpose:
+  // the service owns Markdown, the resolver owns the precedence between a
+  // project override, an existing repository store, and the host default.
+  const projectKnowledgeStores = new ProjectKnowledgeStoreResolver({
+    ottoHome: config.ottoHome,
     resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
+    findProjectByRoot: async (rootPath) =>
+      (await projectRegistry.list()).find(
+        (project) => !project.archivedAt && areEquivalentPaths(project.rootPath, rootPath),
+      ) ?? null,
+    persistDirectoryName: async ({ projectId, directoryName }) => {
+      await projectRegistry.update(projectId, (record) => ({
+        ...record,
+        knowledgeDirectoryName: directoryName,
+        updatedAt: new Date().toISOString(),
+      }));
+    },
+    defaultLocation: () =>
+      daemonConfigStore.get().projectKnowledge?.defaultStoreLocation ?? "repository",
+    logger,
+  });
+  const projectKnowledge = new ProjectKnowledgeService({
+    resolveStore: (cwd) => projectKnowledgeStores.resolveForCwd(cwd),
     logger,
   });
 
@@ -2477,6 +2506,7 @@ export async function createOttoDaemon(
             wsServer.setPersonalityStatsProvider(() => profileStatsStore.get());
             wsServer.setPersonalityMemoryService(personalityMemory);
             wsServer.setProjectKnowledgeService(projectKnowledge);
+            wsServer.setProjectKnowledgeStoreResolver(projectKnowledgeStores);
             wsServer.setNodeOutputStore(nodeOutputStore);
             wsServer.setPromptTemplateStore(promptTemplateStore);
             // Late-wired like the stores above: hands the brain manager to the

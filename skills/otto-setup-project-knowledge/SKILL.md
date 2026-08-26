@@ -1,6 +1,6 @@
 ---
 name: otto-setup-project-knowledge
-description: Initialize and verify Otto's repository-owned project knowledge store for a project. Use when a user asks to set up, enable, initialize, or prepare project knowledge before seeding it.
+description: Initialize and verify Otto's project knowledge store for a project. Use when a user asks to set up, enable, initialize, or prepare project knowledge before seeding it.
 ---
 
 # Set up Otto project knowledge
@@ -11,16 +11,21 @@ infer or record their contents.
 
 ## Workflow
 
-1. Read `docs/project-knowledge.md` if present. Keep the store under `.otto/` and never create a
-   parallel `BRAIN.md`, `brain/`, database, or hand-maintained knowledge system.
+1. Read `docs/project-knowledge.md` if present. Let Otto place the store and never create a parallel
+   `BRAIN.md`, `brain/`, database, or hand-maintained knowledge system. The store lives either in
+   the repository under `.otto/` or host-local under the daemon's `$OTTO_HOME`, decided by the
+   project's Knowledge location setting and the host default behind it. Do not assume, move, or
+   hand-create either one.
 2. Check the host capability `server_info.features.projectKnowledge`. If it is absent or false,
    tell the user to update the host and stop. Do not create a fallback store.
 3. Call `bootstrap_project_knowledge` for the current repository. It is safe to run repeatedly and
-   creates `.otto/knowledge/index.md`, the root-page skeleton, and canonical locations for factual
-   pages, projects, and references as records are introduced. `.otto/KNOWLEDGE.md` is optional
-   project-specific guidance, not the initialization marker; bootstrap preserves it when present.
-4. Verify the result by listing or reading the generated files through normal repository tools and
-   by querying project knowledge if the tool is available.
+   creates `knowledge/index.md`, the root-page skeleton, and canonical locations for factual pages,
+   projects, and references as records are introduced, all inside whichever store the project
+   resolves to. The sibling `KNOWLEDGE.md` is optional project-specific guidance, not the
+   initialization marker; bootstrap preserves it when present.
+4. Verify the result by listing or reading the generated files, and by querying project knowledge if
+   the tool is available. For a host-local store the files are outside the working tree, so read
+   them at the absolute path Otto reports rather than expecting them in the repository.
 5. Report exactly what was initialized and recommend `$otto-onboard-project` for evidence-backed
    seeding. Do not claim that setup discovered architecture or decisions.
 

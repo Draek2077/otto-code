@@ -471,6 +471,7 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
               <AutoArchiveMergedWorkspacesCard serverId={serverId} />
               <GitFetchCard serverId={serverId} />
               <HideMergeIntoBaseActionCard serverId={serverId} />
+              <ProjectKnowledgeStoreLocationCard serverId={serverId} />
             </View>
           </SettingsSection>
           {isDeveloperMode ? (
@@ -1243,6 +1244,63 @@ function GitFetchCard({ serverId }: { serverId: string }) {
         </View>
       ) : null}
     </>
+  );
+}
+
+/**
+ * The host default for where a project's Knowledge store lives.
+ *
+ * Deliberately a default and nothing more. A project's own override wins over
+ * it, and so does a repository store that already exists on disk, so flipping
+ * this never moves anyone's pages. It decides where projects that have no store
+ * yet will start.
+ */
+function ProjectKnowledgeStoreLocationCard({ serverId }: { serverId: string }) {
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate when daemon floor >= v0.8.18.
+  const isSupported = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeStoreLocation === true,
+  );
+
+  const handleValueChange = useCallback(
+    (next: boolean) => {
+      void patchConfig({
+        projectKnowledge: { defaultStoreLocation: next ? "host" : "repository" },
+      }).catch((error) => {
+        console.error("[HostPage] Failed to update the knowledge store default", error);
+        Alert.alert(
+          "Unable to update Knowledge storage",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    },
+    [patchConfig],
+  );
+
+  if (!isConnected || !isSupported) return null;
+
+  return (
+    <View
+      style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}
+      testID="host-page-project-knowledge-store-card"
+    >
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Store project Knowledge on this host</Text>
+        <Text style={settingsStyles.rowHint}>
+          Keep new projects&apos; Knowledge pages with the daemon instead of in an .otto folder in
+          the repository, so nothing has to be gitignored. Projects that already have Knowledge in
+          their repository are left alone, and any project can override this in Project Settings.
+        </Text>
+      </View>
+      <Switch
+        value={config?.projectKnowledge?.defaultStoreLocation === "host"}
+        onValueChange={handleValueChange}
+        accessibilityLabel="Store project Knowledge on this host"
+        testID="host-page-project-knowledge-store-switch"
+      />
+    </View>
   );
 }
 
