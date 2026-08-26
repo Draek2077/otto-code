@@ -20,11 +20,9 @@ import { CheckoutPrStatusResponseSchema } from "@otto-code/protocol/messages";
 const EXPECTED_GITHUB_FAST_POLL_MS = 20_000;
 const EXPECTED_GITHUB_SLOW_POLL_MS = 120_000;
 const EXPECTED_GITHUB_ERROR_BACKOFF_CAP_MS = 300_000;
-// Mirrors GITHUB_CURRENT_PR_STATUS_BASE_FIELDS in github-service.ts. Otto also
-// asks for headRefOid so a fork PR's head commit is known without a second
-// call, which is what the fork-resolution paths below rely on.
+// Mirrors GITHUB_CURRENT_PR_STATUS_BASE_FIELDS in github-service.ts.
 const CURRENT_PR_STATUS_BASE_FIELDS =
-  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
+  "number,url,title,state,isDraft,baseRefName,headRefName,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
 const CURRENT_PR_STATUS_FIELDS = `${CURRENT_PR_STATUS_BASE_FIELDS},statusCheckRollup`;
 
 interface RunnerCall {
@@ -155,6 +153,16 @@ function currentPullRequestGithubFactsJson(overrides: Record<string, unknown> = 
           isInMergeQueue: false,
         },
         ...overrides,
+      },
+    },
+  });
+}
+
+function currentPullRequestHeadShaJson(headRefOid: string): string {
+  return JSON.stringify({
+    data: {
+      repository: {
+        pullRequest: { headRefOid },
       },
     },
   });
@@ -2163,6 +2171,46 @@ describe("GitHubService", () => {
     });
 
     expect(status?.mergeable).toBe("UNKNOWN");
+  });
+
+  it("uses only GitHub CLI fields available to older gh releases for current PR status", async () => {
+    const runner = createRunner([currentPullRequestJson()]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+    });
+
+    await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "feature/fork",
+    });
+
+    expect(runner.calls[0]?.args).toEqual(["pr", "view", "--json", CURRENT_PR_STATUS_FIELDS]);
+    expect(CURRENT_PR_STATUS_FIELDS).not.toContain("headRefOid");
+  });
+
+  it("resolves a merged PR against the checkout SHA through GraphQL", async () => {
+    const headSha = "2222222222222222222222222222222222222222";
+    const runner = createRunner([
+      currentPullRequestJson({ state: "MERGED", mergedAt: "2026-08-01T12:00:00Z" }),
+      currentPullRequestHeadShaJson(headSha),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "feature/fork",
+      headSha,
+    });
+
+    expect(status?.number).toBe(42);
+    expect(runner.calls.slice(0, 2).map((call) => call.args.slice(0, 2))).toEqual([
+      ["pr", "view"],
+      ["api", "graphql"],
+    ]);
   });
 
   it("loads GitHub merge, auto-merge, permission, policy, and queue facts for PR 993 shape", async () => {

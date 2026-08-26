@@ -319,6 +319,22 @@ const GitHubPullRequestFactsGraphqlSchema = z.object({
   }),
 });
 
+const GitHubPullRequestHeadShaGraphqlSchema = z.object({
+  data: z.object({
+    repository: z
+      .object({
+        pullRequest: z
+          .object({
+            headRefOid: z.string().optional(),
+          })
+          .nullable()
+          .optional(),
+      })
+      .nullable()
+      .optional(),
+  }),
+});
+
 const CurrentPullRequestStatusSchema = z.object({
   number: z.number().optional(),
   url: z.string().catch(""),
@@ -327,7 +343,6 @@ const CurrentPullRequestStatusSchema = z.object({
   isDraft: z.boolean().optional().catch(false),
   baseRefName: z.string().catch(""),
   headRefName: z.string().catch(""),
-  headRefOid: z.string().optional(),
   mergedAt: z.string().nullable().optional(),
   statusCheckRollup: z.unknown().optional(),
   reviewDecision: z.unknown().optional(),
@@ -495,8 +510,10 @@ query PullRequestCheckoutTarget($owner: String!, $name: String!, $number: Int!) 
   }
 }`;
 
+// `headRefOid` is not supported by every gh release. Commit-aware matching
+// fetches it through GraphQL only when a checkout SHA makes it necessary.
 const CURRENT_PR_STATUS_BASE_FIELDS =
-  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
+  "number,url,title,state,isDraft,baseRefName,headRefName,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
 const CURRENT_PR_STATUS_FIELDS = `${CURRENT_PR_STATUS_BASE_FIELDS},statusCheckRollup`;
 
 const PULL_REQUEST_STATUS_FACTS_QUERY = `
@@ -522,6 +539,15 @@ query PullRequestStatusFacts($owner: String!, $name: String!, $number: Int!) {
       viewerCanUpdateBranch
       isMergeQueueEnabled
       isInMergeQueue
+    }
+  }
+}`;
+
+const PULL_REQUEST_HEAD_SHA_QUERY = `
+query PullRequestHeadSha($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      headRefOid
     }
   }
 }`;
@@ -2084,9 +2110,15 @@ async function resolveCurrentPullRequestView(options: {
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
 }): Promise<CurrentPullRequestStatus | null> {
   const viewCandidate = await tryCurrentPullRequestView(options);
+  const hydratedViewCandidates = await hydratePullRequestCandidateHeadShas({
+    candidates: viewCandidate ? [viewCandidate] : [],
+    cwd: options.cwd,
+    headSha: options.headSha,
+    run: options.run,
+  });
   const viewMatch = viewCandidate
     ? pickPullRequestCandidate({
-        candidates: [viewCandidate],
+        candidates: hydratedViewCandidates,
         headRef: options.headRef,
         headSha: options.headSha,
         headRepositoryOwner: options.headRepositoryOwner,
@@ -2121,13 +2153,50 @@ async function resolveCurrentPullRequestView(options: {
     run: options.run,
     repo: listRepo,
   });
-  const match = pickPullRequestCandidate({
+  const hydratedCandidates = await hydratePullRequestCandidateHeadShas({
     candidates,
+    cwd: options.cwd,
+    headSha: options.headSha,
+    run: options.run,
+  });
+  const match = pickPullRequestCandidate({
+    candidates: hydratedCandidates,
     headRef: options.headRef,
     headSha: options.headSha,
     headRepositoryOwner,
   });
   return match?.status ?? null;
+}
+
+async function hydratePullRequestCandidateHeadShas(options: {
+  candidates: ResolvedPullRequestCandidate[];
+  cwd: string;
+  headSha?: string;
+  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+}): Promise<ResolvedPullRequestCandidate[]> {
+  if (!options.headSha) {
+    return options.candidates;
+  }
+
+  return Promise.all(
+    options.candidates.map(async (candidate) => {
+      if (candidate.status.state === "open") {
+        return candidate;
+      }
+      const { repoOwner, repoName, number } = candidate.status;
+      if (!repoOwner || !repoName || typeof number !== "number") {
+        return candidate;
+      }
+      const headSha = await loadPullRequestHeadSha({
+        cwd: options.cwd,
+        owner: repoOwner,
+        name: repoName,
+        number,
+        run: options.run,
+      });
+      return headSha ? { ...candidate, headSha } : candidate;
+    }),
+  );
 }
 
 async function addCurrentPullRequestGithubFacts(options: {
@@ -2181,6 +2250,41 @@ async function loadPullRequestGithubFacts(options: {
   } catch (error) {
     if (error instanceof GitHubCommandError) {
       return null;
+    }
+    throw error;
+  }
+}
+
+async function loadPullRequestHeadSha(options: {
+  cwd: string;
+  owner: string;
+  name: string;
+  number: number;
+  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+}): Promise<string | undefined> {
+  const args = [
+    "api",
+    "graphql",
+    "-f",
+    `query=${PULL_REQUEST_HEAD_SHA_QUERY}`,
+    "-F",
+    `owner=${options.owner}`,
+    "-F",
+    `name=${options.name}`,
+    "-F",
+    `number=${options.number}`,
+  ];
+  try {
+    const stdout = await options.run(args, { cwd: options.cwd });
+    const parsed = parseGitHubJsonOutput(stdout, GitHubPullRequestHeadShaGraphqlSchema, {
+      args,
+      cwd: options.cwd,
+      emptyFallback: "{}",
+    });
+    return parsed.data.repository?.pullRequest?.headRefOid;
+  } catch (error) {
+    if (error instanceof GitHubCommandError) {
+      return undefined;
     }
     throw error;
   }
@@ -2387,10 +2491,8 @@ function toCurrentPullRequestCandidate(
     return null;
   }
   const headRepositoryOwner = item.headRepositoryOwner?.login;
-  const headSha = item.headRefOid;
   return {
     status,
-    ...(headSha ? { headSha } : {}),
     ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
   };
 }
