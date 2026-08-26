@@ -141,6 +141,8 @@ describe("composer input labels", () => {
       resolveSendButtonIcon({
         canPressLoadingButton: false,
         defaultActionQueues: true,
+        alternateModifierHeld: false,
+        canUseAlternateAction: true,
         isAgentRunning: true,
         submitIcon: "arrow",
       }),
@@ -149,8 +151,33 @@ describe("composer input labels", () => {
       resolveSendButtonIcon({
         canPressLoadingButton: false,
         defaultActionQueues: false,
+        alternateModifierHeld: false,
+        canUseAlternateAction: true,
         isAgentRunning: true,
         submitIcon: "return",
+      }),
+    ).toBe("arrow");
+  });
+
+  it("previews the alternate Enter action while Ctrl or Cmd is held", () => {
+    expect(
+      resolveSendButtonIcon({
+        canPressLoadingButton: false,
+        defaultActionQueues: false,
+        alternateModifierHeld: true,
+        canUseAlternateAction: true,
+        isAgentRunning: true,
+        submitIcon: "arrow",
+      }),
+    ).toBe("return");
+    expect(
+      resolveSendButtonIcon({
+        canPressLoadingButton: false,
+        defaultActionQueues: true,
+        alternateModifierHeld: true,
+        canUseAlternateAction: true,
+        isAgentRunning: true,
+        submitIcon: "arrow",
       }),
     ).toBe("arrow");
   });

@@ -53,6 +53,17 @@ export function resolveSendTooltipLabel(input: {
     : input.t("composer.input.send");
 }
 
+export function resolvePreviewActionQueues(input: {
+  defaultActionQueues: boolean;
+  alternateModifierHeld: boolean;
+  canUseAlternateAction: boolean;
+}): boolean {
+  if (!input.alternateModifierHeld || !input.canUseAlternateAction) {
+    return input.defaultActionQueues;
+  }
+  return !input.defaultActionQueues;
+}
+
 /**
  * The primary button mirrors the action Enter will take while a turn is live:
  * queue uses the return/Enter glyph; interrupt keeps the send arrow.
@@ -60,11 +71,14 @@ export function resolveSendTooltipLabel(input: {
 export function resolveSendButtonIcon(input: {
   canPressLoadingButton: boolean;
   defaultActionQueues: boolean;
+  alternateModifierHeld: boolean;
+  canUseAlternateAction: boolean;
   isAgentRunning: boolean;
   submitIcon: "arrow" | "return";
 }): "arrow" | "return" {
   if (input.canPressLoadingButton) return "arrow";
-  if (input.defaultActionQueues) return "return";
+  const actionQueues = resolvePreviewActionQueues(input);
+  if (actionQueues) return "return";
   if (input.isAgentRunning) return "arrow";
   return input.submitIcon;
 }
