@@ -3725,7 +3725,7 @@ function WorkspaceScreenContent({
           });
         }
 
-        if (closePolicy.kind === "layout-only") {
+        if (closePolicy.kind === "layout-only" || closePolicy.kind === "close-only") {
           return;
         }
 

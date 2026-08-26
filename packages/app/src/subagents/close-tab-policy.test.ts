@@ -31,6 +31,15 @@ describe("resolveCloseAgentTabPolicy", () => {
     });
   });
 
+  it("closes an archived chat without offering to archive it again", () => {
+    expect(
+      resolveCloseAgentTabPolicy({
+        archivedAt: new Date("2026-08-26T00:00:00.000Z"),
+        parentAgentId: null,
+      }),
+    ).toEqual({ kind: "close-only" });
+  });
+
   it("preserves the existing archive fallback when the agent is missing", () => {
     expect(resolveCloseAgentTabPolicy(null)).toEqual({ kind: "archive-on-close" });
     expect(resolveCloseAgentTabPolicy(undefined)).toEqual({ kind: "archive-on-close" });
