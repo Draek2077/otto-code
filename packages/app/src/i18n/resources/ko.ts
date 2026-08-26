@@ -4289,6 +4289,13 @@ export const ko: TranslationResources = {
           artifacts: "Artifacts",
           widgets: "Widgets",
           workspace: "Workspaces",
+          orchestration: "오케스트레이션",
+          knowledge: "프로젝트 지식",
+          memory: "메모리",
+          permissions: "권한",
+          providers: "제공자 및 모델",
+          tasks: "제안된 작업",
+          voice: "음성",
         },
       },
       remove: {

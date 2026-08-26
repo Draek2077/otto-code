@@ -33,6 +33,10 @@ import type {
 } from "@otto-code/protocol/agent-types";
 import { compareMatchScores, scoreTextFields } from "@otto-code/protocol/search/text-match";
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
+import {
+  resolveStoredOttoToolGroups,
+  type OttoToolGroup,
+} from "@otto-code/protocol/provider-config";
 import type { ModelVisibilityOverride } from "@otto-code/protocol/messages";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { TextFieldPicker } from "@/components/ui/text-field-picker";
@@ -85,6 +89,23 @@ function rankModels<T>(items: T[], query: string, fields: (item: T) => string[])
     );
   scored.sort((a, b) => compareMatchScores(a.score, b.score));
   return scored.map((entry) => entry.item);
+}
+
+/**
+ * A provider entry's Otto tool-group selection, in whichever taxonomy it was
+ * written in. null = every group.
+ *
+ * COMPAT(ottoToolGroupsV2): the v2 key wins; an entry written before the
+ * "agents" split is migrated forward so the categories carved out of it inherit
+ * whatever "agents" was set to. Drop the legacy argument when floor >= v0.8.20.
+ */
+function readProviderToolGroups(
+  entry: { ottoToolGroups?: unknown; ottoToolGroupsV2?: unknown } | undefined,
+): readonly OttoToolGroup[] | null {
+  return (
+    resolveStoredOttoToolGroups({ v2: entry?.ottoToolGroupsV2, legacy: entry?.ottoToolGroups }) ??
+    null
+  );
 }
 
 function resolveModelVisibilityOverrides(
@@ -969,7 +990,7 @@ export function ProviderDiagnosticSheet({
             <ProviderToolGroupsSection
               key={`tools-${provider}`}
               provider={provider}
-              selectedGroups={config?.providers?.[provider]?.ottoToolGroups ?? null}
+              selectedGroups={readProviderToolGroups(config?.providers?.[provider])}
               supportsArtifactsGroup={supportsArtifactsToolGroup}
               patchConfig={patchConfig}
               refresh={refresh}

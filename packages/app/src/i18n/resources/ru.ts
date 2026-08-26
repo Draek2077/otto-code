@@ -4319,6 +4319,13 @@ export const ru: TranslationResources = {
           artifacts: "Артефакты",
           widgets: "Виджеты",
           workspace: "Рабочие пространства",
+          orchestration: "Оркестрация",
+          knowledge: "Знания о проекте",
+          memory: "Память",
+          permissions: "Разрешения",
+          providers: "Провайдеры и модели",
+          tasks: "Предлагаемые задачи",
+          voice: "Голос",
         },
       },
       remove: {

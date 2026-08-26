@@ -1,4 +1,9 @@
-import { OTTO_TOOL_GROUPS, type OttoToolGroup } from "@otto-code/protocol/provider-config";
+import {
+  OTTO_TOOL_GROUPS,
+  resolveStoredOttoToolGroups,
+  serializeOttoToolGroups,
+  type OttoToolGroup,
+} from "@otto-code/protocol/provider-config";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 
 // User-facing metadata for each Otto tool category. Order here is the display
@@ -20,7 +25,18 @@ export const OTTO_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
   {
     group: "agents",
     label: "Agents",
-    description: "Spawn and coordinate chats (create_chat, wait_for_chats, run status).",
+    description: "Spawn and steer chats (create_chat, send_chat_prompt, wait_for_chats).",
+  },
+  {
+    group: "orchestration",
+    label: "Orchestration",
+    description:
+      "Let an agent declare a multi-chat plan and run it (start_orchestration, get_orchestration_status). Off means agents can still spawn chats one at a time, but not fan out under a daemon-managed graph.",
+  },
+  {
+    group: "tasks",
+    label: "Suggested tasks",
+    description: "Propose and dismiss follow-up work as task cards (suggest_task, dismiss_task).",
   },
   {
     group: "terminals",
@@ -28,9 +44,31 @@ export const OTTO_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
     description: "Run commands in workspace terminals.",
   },
   {
-    group: "web",
-    label: "Web",
-    description: "Web search and fetch.",
+    group: "knowledge",
+    label: "Project knowledge",
+    description:
+      "Read and write the project's durable record - charters, decisions, findings, references. The largest category in the catalog, so switching it off is also the biggest single saving in tool-definition tokens per request.",
+  },
+  {
+    group: "memory",
+    label: "Memory",
+    description: "Let an agent profile record and revise its own lessons (remember_lesson).",
+  },
+  {
+    group: "permissions",
+    label: "Permissions",
+    description:
+      "Let an agent see and answer another chat's pending permission prompts. Off means only you approve them.",
+  },
+  {
+    group: "providers",
+    label: "Providers and models",
+    description: "Look up configured providers and their models (list_providers, list_models).",
+  },
+  {
+    group: "voice",
+    label: "Voice",
+    description: "Let an agent speak a line out loud (speak).",
   },
   {
     group: "preview",
@@ -59,6 +97,11 @@ export const OTTO_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
     description:
       "Let agents draw diagrams, charts and small interactive controls inline in the chat. Widgets run sandboxed with no network access, and can send a message to the chat when you click one.",
   },
+  {
+    group: "web",
+    label: "Web",
+    description: "Web search and fetch.",
+  },
 ];
 
 // The two tool groups that belong under the dedicated "Browser Tools" section
@@ -81,26 +124,41 @@ export const BROWSER_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
   },
 ];
 
-const BROWSER_TOOL_GROUP_SET = new Set<OttoToolGroup>(
-  BROWSER_TOOL_GROUP_META.map((meta) => meta.group),
-);
+// Groups the general "Otto Tools" card does not show.
+//
+// - browser / preview live in the dedicated Browser Tools section instead.
+// - web is deliberately absent: the daemon-wide `mcp.toolGroups` allowlist gates
+//   registration in the Otto tool catalog, and the catalog contains no web
+//   tools. `web` only ever meant "the natively-tooled providers' builtin
+//   web_search/web_fetch", which is a per-provider decision and is toggled in
+//   the provider sheet. Shown here it was a switch that did nothing.
+//   Gating the CLI providers' own web tools the same way is a separate,
+//   unbuilt capability - do not re-add this row until it exists.
+const NON_CORE_TOOL_GROUPS = new Set<OttoToolGroup>([
+  ...BROWSER_TOOL_GROUP_META.map((meta) => meta.group),
+  "web",
+]);
 
-// The general Otto tool catalog shown under "Otto Tools" - every group except
-// the browser-tools groups, which live in their own section. Preserves the
+// The general Otto tool catalog shown under "Otto Tools". Preserves the
 // canonical display order from OTTO_TOOL_GROUP_META.
 export const OTTO_CORE_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = OTTO_TOOL_GROUP_META.filter(
-  (meta) => !BROWSER_TOOL_GROUP_SET.has(meta.group),
+  (meta) => !NON_CORE_TOOL_GROUPS.has(meta.group),
 );
 
-// undefined toolGroups = every group enabled (mirrors openai-compat's
+// An absent selection = every group enabled (mirrors openai-compat's
 // per-provider `ottoToolGroups` semantics). Resolve to a concrete set so the UI
 // renders a switch state without special-casing undefined at every call site.
+//
+// COMPAT(ottoToolGroupsV2): a host whose config predates the "agents" split
+// carries only the legacy key; resolveStoredOttoToolGroups migrates it forward
+// so the categories carved out of "agents" inherit whatever "agents" was set to
+// rather than reading as newly disabled.
 export function resolveEnabledToolGroups(config: MutableDaemonConfig | null): Set<OttoToolGroup> {
-  const groups = config?.mcp?.toolGroups;
-  if (!Array.isArray(groups)) {
-    return new Set<OttoToolGroup>(OTTO_TOOL_GROUPS);
-  }
-  return new Set<OttoToolGroup>(groups);
+  const groups = resolveStoredOttoToolGroups({
+    v2: config?.mcp?.toolGroupsV2,
+    legacy: config?.mcp?.toolGroups,
+  });
+  return new Set<OttoToolGroup>(groups ?? OTTO_TOOL_GROUPS);
 }
 
 export function isToolGroupEnabled(
@@ -114,6 +172,11 @@ export function isToolGroupEnabled(
 // membership (canonical order), so "all on" persists as the complete list -
 // equivalent to undefined but explicit, which is fine (the daemon reads either
 // as "all enabled").
+//
+// COMPAT(ottoToolGroupsV2): both keys are written every time. `toolGroupsV2` is
+// what a current daemon reads; `toolGroups` is the pre-split projection, so a
+// daemon that predates the split still grants the tools the user left enabled
+// instead of withholding a category it cannot name.
 export function createToolGroupsPatch(
   config: MutableDaemonConfig | null,
   group: OttoToolGroup,
@@ -126,7 +189,7 @@ export function createToolGroupsPatch(
     current.delete(group);
   }
   const next = OTTO_TOOL_GROUPS.filter((candidate) => current.has(candidate));
-  return { mcp: { toolGroups: next } };
+  return { mcp: serializeOttoToolGroups(next) };
 }
 
 // Agent behavior toggles (daemon-wide). Each field defaults on.

@@ -445,7 +445,6 @@ import { AgentProviderSchema } from "./provider-manifest.js";
 import {
   ConnectorConfigSchema,
   McpServerConfigSchema,
-  OTTO_TOOL_GROUPS,
   STALL_GUARD_DEFAULT_THRESHOLD,
 } from "./provider-config.js";
 import { TOOL_CALL_ICON_NAMES } from "./agent-types.js";
@@ -551,7 +550,12 @@ const MutableDaemonProviderConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
     additionalModels: z.array(MutableDaemonProviderModelSchema).optional(),
-    ottoToolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
+    // COMPAT(ottoToolGroupsV2): added in v0.8.20. Legacy projection plus the
+    // authoritative v2 key; both are string[] rather than an enum so an older
+    // peer drops unknown group names instead of failing the whole config
+    // message. Read through resolveStoredOttoToolGroups.
+    ottoToolGroups: z.array(z.string().min(1)).optional(),
+    ottoToolGroupsV2: z.array(z.string().min(1)).optional(),
   })
   .passthrough();
 
@@ -710,7 +714,14 @@ export const MutableDaemonConfigSchema = z
         // undefined = all groups enabled (mirrors openai-compat's per-provider
         // ottoToolGroups semantics). An empty array = no Otto tools. Read by the
         // MCP catalog gating (WP-A).
-        toolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
+        //
+        // COMPAT(ottoToolGroupsV2): added in v0.8.20. `toolGroups` is the legacy
+        // projection kept for older peers, `toolGroupsV2` is authoritative, and
+        // both are string[] rather than an enum so an older peer drops group
+        // names it does not know instead of failing the whole config message.
+        // Read through resolveStoredOttoToolGroups, never directly.
+        toolGroups: z.array(z.string().min(1)).optional(),
+        toolGroupsV2: z.array(z.string().min(1)).optional(),
       })
       .passthrough(),
     // Defaults off, matching the daemon's own resolution - browser tools are an

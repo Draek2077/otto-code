@@ -4328,6 +4328,13 @@ export const ptBR: TranslationResources = {
           artifacts: "Artefatos",
           widgets: "Widgets",
           workspace: "Espaços de trabalho",
+          orchestration: "Orquestração",
+          knowledge: "Conhecimento do projeto",
+          memory: "Memória",
+          permissions: "Permissões",
+          providers: "Provedores e modelos",
+          tasks: "Tarefas sugeridas",
+          voice: "Voz",
         },
       },
       remove: {

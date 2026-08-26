@@ -33,6 +33,7 @@ import {
   COMPACTION_THRESHOLD_PERCENTS,
   MAX_TOOL_ROUNDS_DEFAULT,
   OTTO_TOOL_GROUPS,
+  serializeOttoToolGroups,
   type OttoToolGroup,
 } from "@otto-code/protocol/provider-config";
 import { Switch } from "@/components/ui/switch";
@@ -650,6 +651,20 @@ function toolGroupLabel(t: TFunction, group: OttoToolGroup): string {
       return t("settings.providers.tools.groups.widgets");
     case "workspace":
       return t("settings.providers.tools.groups.workspace");
+    case "orchestration":
+      return t("settings.providers.tools.groups.orchestration");
+    case "knowledge":
+      return t("settings.providers.tools.groups.knowledge");
+    case "memory":
+      return t("settings.providers.tools.groups.memory");
+    case "permissions":
+      return t("settings.providers.tools.groups.permissions");
+    case "providers":
+      return t("settings.providers.tools.groups.providers");
+    case "tasks":
+      return t("settings.providers.tools.groups.tasks");
+    case "voice":
+      return t("settings.providers.tools.groups.voice");
   }
 }
 
@@ -729,7 +744,16 @@ export function ProviderToolGroupsSection({
       const nextGroups = availableGroups.filter((candidate) => nextSet.has(candidate));
       setSavingGroup(group);
       setError(null);
-      void patchConfig({ providers: { [provider]: { ottoToolGroups: nextGroups } } })
+      // COMPAT(ottoToolGroupsV2): write both shapes. The v2 key is what a
+      // current daemon reads; the legacy key collapses the categories split out
+      // of "agents" back into it, so a daemon that predates the split still
+      // injects the tools the user left enabled.
+      const { toolGroups, toolGroupsV2 } = serializeOttoToolGroups(nextGroups);
+      void patchConfig({
+        providers: {
+          [provider]: { ottoToolGroups: toolGroups, ottoToolGroupsV2: toolGroupsV2 },
+        },
+      })
         .then(() => refresh([provider]))
         .catch((err) => {
           setError(err instanceof Error ? err.message : t("settings.providers.tools.saveFailed"));

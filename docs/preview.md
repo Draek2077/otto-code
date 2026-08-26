@@ -261,9 +261,14 @@ Anything new gated on `browserToolsEnabled` owes the user the same pointer.
 The Host **Agents** sidebar section renders three grouped cards, each with the
 standard split-line rows: **Agents** (append system prompt, then agent-behavior +
 metadata toggles), **Otto Tools** (the "Enable Otto tools" master over the core
-`mcp.toolGroups` category rows - workspace, agents, terminals, web, schedules,
-artifacts), and **Browser Tools** (the "Enable Browser tools" master over its two
-browser categories, Control = `browser` and Preview = `preview`). Each
+`mcp.toolGroupsV2` category rows - workspace, agents, orchestration, suggested
+tasks, terminals, project knowledge, memory, permissions, providers and models,
+voice, schedules, artifacts, widgets), and **Browser Tools** (the "Enable Browser
+tools" master over its two browser categories, Control = `browser` and Preview =
+`preview`). The `web` group is deliberately absent from the Otto Tools card: the
+daemon-wide allowlist gates registration in the Otto tool catalog, which holds no
+web tools, so `web` only ever meant the natively-tooled providers' builtin
+`web_search`/`web_fetch` and is toggled per provider in the provider sheet. Each
 master's category rows grey out when that master is off. (Agent personalities,
 teams, and voices live on a separate **Teams** sidebar section.)
 

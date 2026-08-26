@@ -1160,12 +1160,24 @@ function buildOrchestrationPolicyGate(
     if (policy === "autonomous") {
       return true;
     }
-    const group = ottoToolGroupForName(name);
-    return (
-      group !== "agents" && group !== "schedules" && group !== "preview" && group !== "browser"
-    );
+    // A deterministic node may not start work of its own: no spawning or
+    // steering chats, no orchestration, no scheduling, and no dev servers or
+    // browser. Listed positively so splitting a group out of the old "agents"
+    // catch-all cannot quietly widen what these nodes can reach - the split
+    // categories that are pure reads (knowledge, providers) stay available,
+    // and the ones that act on their own (orchestration, tasks) do not.
+    return !DETERMINISTIC_NODE_DENIED_GROUPS.has(ottoToolGroupForName(name));
   };
 }
+
+const DETERMINISTIC_NODE_DENIED_GROUPS: ReadonlySet<OttoToolGroup> = new Set<OttoToolGroup>([
+  "agents",
+  "orchestration",
+  "schedules",
+  "tasks",
+  "preview",
+  "browser",
+]);
 
 /**
  * Two independent narrowings of the tool catalog, combined.

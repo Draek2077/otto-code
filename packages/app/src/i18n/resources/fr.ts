@@ -4368,6 +4368,13 @@ export const fr: TranslationResources = {
           artifacts: "Artéfacts",
           widgets: "Widgets",
           workspace: "Espaces de travail",
+          orchestration: "Orchestration",
+          knowledge: "Connaissances du projet",
+          memory: "Mémoire",
+          permissions: "Autorisations",
+          providers: "Fournisseurs et modèles",
+          tasks: "Tâches suggérées",
+          voice: "Voix",
         },
       },
       remove: {

@@ -15,7 +15,7 @@ Matches Claude Desktop exactly - same tool names and field names:
 
 The Otto name is deliberate: `suggest_task`/`dismiss_task` make the deferred lifecycle explicit. A suggestion card never starts a chat by itself.
 
-The tools land in the existing **`agents`** tool group by default (they match no prefix in `ottoToolGroupForName`), so no new toggle was required.
+The tools have their own **`tasks`** tool group, surfaced in Host settings as "Suggested tasks". They first shipped in the `agents` catch-all, which meant switching off task suggestions also switched off spawning chats; the split gave them their own row.
 
 ## Discovery is the whole game
 

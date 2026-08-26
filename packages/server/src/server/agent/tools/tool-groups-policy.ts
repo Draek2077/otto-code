@@ -1,5 +1,5 @@
 import type { OttoToolGroup } from "@otto-code/protocol/provider-config";
-import { OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
+import { resolveStoredOttoToolGroups } from "@otto-code/protocol/provider-config";
 import type { DaemonConfigStore, MutableDaemonConfig } from "../../daemon-config-store.js";
 
 /**
@@ -23,18 +23,13 @@ export class DaemonConfigOttoToolGroupsPolicy implements OttoToolGroupsPolicy {
   }
 }
 
-const OTTO_TOOL_GROUP_SET = new Set<string>(OTTO_TOOL_GROUPS);
-
 function readMcpToolGroups(config: MutableDaemonConfig): OttoToolGroup[] | undefined {
   const mcp = config.mcp;
   if (typeof mcp !== "object" || mcp === null || Array.isArray(mcp)) {
     return undefined;
   }
-  const groups = (mcp as { toolGroups?: unknown }).toolGroups;
-  if (!Array.isArray(groups)) {
-    return undefined;
-  }
-  return groups.filter(
-    (group): group is OttoToolGroup => typeof group === "string" && OTTO_TOOL_GROUP_SET.has(group),
-  );
+  const stored = mcp as { toolGroups?: unknown; toolGroupsV2?: unknown };
+  // COMPAT(ottoToolGroupsV2): v2 is authoritative; a config written before the
+  // "agents" split carries only the legacy key and is migrated forward there.
+  return resolveStoredOttoToolGroups({ v2: stored.toolGroupsV2, legacy: stored.toolGroups });
 }

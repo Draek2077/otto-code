@@ -24,7 +24,7 @@ rides in a request.
    Copilot, ACP, Pi, openai-compat. Measured over a real `tools/list` round-trip: the default config
    is ~48 tools ≈ **9.7K tokens**; with browser tools, ~74 tools ≈ **14.9K tokens**. A 20-round
    openai-compat turn pays roughly 206K–304K input tokens in _fixed overhead alone_. The lever is
-   per-group gating (`mcp.toolGroups`, over the `OTTO_TOOL_GROUPS` taxonomy) and per-agent scoping.
+   per-group gating (`mcp.toolGroupsV2`, over the `OTTO_TOOL_GROUPS` taxonomy) and per-agent scoping.
 
 3. **Every "generation" is a full agent spawn carrying the full injection stack.** Titles, branch
    names, commit messages, PR text, voice cues and run summaries all went through the agent path
@@ -94,14 +94,20 @@ client.
 
 ## The levers
 
-| Lever                 | Field                                                                                          | Governs                                                                                                                                                                               |
-| --------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Per-group tool gating | `mcp.toolGroups` (`OttoToolGroup[]`, **undefined = all enabled**)                              | Multiplier 2. Groups are `preview, browser, web, agents, terminals, schedules, artifacts, workspace`. `browserTools.enabled` remains the authoritative browser master for back-compat |
-| Metadata generation   | `metadataGeneration.enabled`                                                                   | Multiplier 3 - turns generations off entirely                                                                                                                                         |
-| Generation routing    | `metadataGeneration.preferWriterPersonalities` (default **false** - cheap tier is the default) | Multiplier 3 - which tier writes titles and commit messages                                                                                                                           |
-| Prompt suggestions    | `agentBehaviors.promptSuggestions`                                                             | Multiplier 4                                                                                                                                                                          |
-| Progress summaries    | `agentBehaviors.agentProgressSummaries`                                                        | Multiplier 4 - the expensive one on long fan-outs                                                                                                                                     |
-| Notify on finish      | `agentBehaviors.notifyOnFinishDefault`                                                         | Multiplier 4 - the agent-to-agent default                                                                                                                                             |
+`knowledge` is the single largest group in the catalog (17 of 72 tools), so it is
+also the largest saving available from one switch. `agents` used to hold 43 of
+those 72 because it was the resolver's fallback branch; the categories below it
+were split out so a host can drop project knowledge or orchestration without
+also losing the ability to spawn a chat.
+
+| Lever                 | Field                                                                                          | Governs                                                                                                                                                                                                                                                                |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-group tool gating | `mcp.toolGroupsV2` (`OttoToolGroup[]`, **undefined = all enabled**)                            | Multiplier 2. Groups are `preview, browser, web, agents, terminals, schedules, artifacts, widgets, workspace, orchestration, knowledge, memory, permissions, providers, tasks, voice`. `browserTools.enabled` remains the authoritative browser master for back-compat |
+| Metadata generation   | `metadataGeneration.enabled`                                                                   | Multiplier 3 - turns generations off entirely                                                                                                                                                                                                                          |
+| Generation routing    | `metadataGeneration.preferWriterPersonalities` (default **false** - cheap tier is the default) | Multiplier 3 - which tier writes titles and commit messages                                                                                                                                                                                                            |
+| Prompt suggestions    | `agentBehaviors.promptSuggestions`                                                             | Multiplier 4                                                                                                                                                                                                                                                           |
+| Progress summaries    | `agentBehaviors.agentProgressSummaries`                                                        | Multiplier 4 - the expensive one on long fan-outs                                                                                                                                                                                                                      |
+| Notify on finish      | `agentBehaviors.notifyOnFinishDefault`                                                         | Multiplier 4 - the agent-to-agent default                                                                                                                                                                                                                              |
 
 All are additive protocol fields with `.default()` and a `COMPAT(...)` tag, per the back-compat
 contract in [`CLAUDE.md`](../CLAUDE.md).

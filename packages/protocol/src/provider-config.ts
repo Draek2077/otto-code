@@ -48,6 +48,10 @@ export const ProviderProfileModelSchema = z.object({
  * Otto tools natively (see the openai-compat provider) can be scoped to a subset
  * of these groups; omitting the selection means all groups. Kept deliberately
  * coarse - users pick groups, not individual tools.
+ *
+ * The list is APPEND-ONLY, and the wire never carries it as a closed enum (see
+ * normalizeOttoToolGroups): an older peer must be able to parse a newer peer's
+ * selection, dropping names it does not know rather than failing the message.
  */
 export const OTTO_TOOL_GROUPS = [
   "preview",
@@ -59,24 +63,197 @@ export const OTTO_TOOL_GROUPS = [
   "artifacts",
   "widgets",
   "workspace",
+  // Split out of the "agents" catch-all, which had grown to hold 60% of the
+  // catalog and so could not be switched off for one reason without losing six
+  // unrelated capabilities with it.
+  "orchestration",
+  "knowledge",
+  "memory",
+  "permissions",
+  "providers",
+  "tasks",
+  "voice",
 ] as const;
 
 export type OttoToolGroup = (typeof OTTO_TOOL_GROUPS)[number];
 
 /**
+ * The taxonomy as it stood before the "agents" split. A stored selection that
+ * uses only these names predates the split and is migrated forward by
+ * expandLegacyOttoToolGroups.
+ */
+export const LEGACY_OTTO_TOOL_GROUPS = [
+  "preview",
+  "browser",
+  "web",
+  "agents",
+  "terminals",
+  "schedules",
+  "artifacts",
+  "widgets",
+  "workspace",
+] as const satisfies readonly OttoToolGroup[];
+
+/**
+ * The categories carved out of the legacy "agents" catch-all. They inherit
+ * "agents" when a pre-split selection is migrated forward, and collapse back
+ * into it when a current selection is projected back for an older peer.
+ */
+export const AGENTS_DERIVED_TOOL_GROUPS = [
+  "orchestration",
+  "knowledge",
+  "memory",
+  "permissions",
+  "providers",
+  "tasks",
+  "voice",
+] as const satisfies readonly OttoToolGroup[];
+
+const OTTO_TOOL_GROUP_SET: ReadonlySet<string> = new Set<string>(OTTO_TOOL_GROUPS);
+const LEGACY_OTTO_TOOL_GROUP_SET: ReadonlySet<string> = new Set<string>(LEGACY_OTTO_TOOL_GROUPS);
+const AGENTS_DERIVED_TOOL_GROUP_SET: ReadonlySet<string> = new Set<string>(
+  AGENTS_DERIVED_TOOL_GROUPS,
+);
+
+export function isOttoToolGroup(value: unknown): value is OttoToolGroup {
+  return typeof value === "string" && OTTO_TOOL_GROUP_SET.has(value);
+}
+
+/**
+ * Post-validation normalization for a stored or wire-carried group selection.
+ * The schemas that carry it are `string[]` on purpose - wire schemas are pure
+ * structural declarations - and this is the one place unknown names are
+ * dropped, so a group added by a newer peer degrades to "not selected" instead
+ * of failing the whole message.
+ *
+ * Returns undefined for a non-array, which every caller reads as "all groups".
+ */
+export function normalizeOttoToolGroups(value: unknown): OttoToolGroup[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const seen = new Set<OttoToolGroup>(value.filter(isOttoToolGroup));
+  return OTTO_TOOL_GROUPS.filter((group) => seen.has(group));
+}
+
+/**
+ * Migrate a pre-split selection forward: every category carved out of "agents"
+ * inherits whatever "agents" was set to. Without this, upgrading would silently
+ * strip project knowledge, orchestration, memory, permissions, provider lookups,
+ * tasks and voice from anyone who had ever touched a tool toggle.
+ */
+export function expandLegacyOttoToolGroups(groups: readonly OttoToolGroup[]): OttoToolGroup[] {
+  const selected = new Set<OttoToolGroup>(
+    groups.filter((group) => LEGACY_OTTO_TOOL_GROUP_SET.has(group)),
+  );
+  if (selected.has("agents")) {
+    for (const derived of AGENTS_DERIVED_TOOL_GROUPS) {
+      selected.add(derived);
+    }
+  }
+  return OTTO_TOOL_GROUPS.filter((group) => selected.has(group));
+}
+
+/**
+ * Project a current selection back into the pre-split taxonomy for the legacy
+ * key we keep writing. "agents" stands in for the whole family, so a peer that
+ * predates the split still grants the tools the user left enabled rather than
+ * withholding them.
+ */
+export function toLegacyOttoToolGroups(groups: readonly OttoToolGroup[]): OttoToolGroup[] {
+  const selected = new Set<OttoToolGroup>(
+    groups.filter((group) => LEGACY_OTTO_TOOL_GROUP_SET.has(group)),
+  );
+  if (groups.some((group) => AGENTS_DERIVED_TOOL_GROUP_SET.has(group))) {
+    selected.add("agents");
+  }
+  return LEGACY_OTTO_TOOL_GROUPS.filter((group) => selected.has(group));
+}
+
+/**
+ * Read a persisted selection that may be in either taxonomy.
+ *
+ * COMPAT(ottoToolGroupsV2): added in v0.8.20. The v2 key wins when present; the
+ * legacy key is migrated forward otherwise. A second key rather than a
+ * heuristic, because the two shapes are genuinely ambiguous - "no new groups
+ * listed" reads as "pre-split config" one way and "the user turned all seven
+ * off" the other, and silently re-enabling tools somebody disabled is the worse
+ * way to be wrong. Drop the legacy branch when the floor is >= v0.8.20.
+ */
+export function resolveStoredOttoToolGroups(input: {
+  v2?: unknown;
+  legacy?: unknown;
+}): OttoToolGroup[] | undefined {
+  const v2 = normalizeOttoToolGroups(input.v2);
+  if (v2) {
+    return v2;
+  }
+  const legacy = normalizeOttoToolGroups(input.legacy);
+  return legacy ? expandLegacyOttoToolGroups(legacy) : undefined;
+}
+
+/** Both persisted shapes for one selection: the current key and its legacy projection. */
+export function serializeOttoToolGroups(groups: readonly OttoToolGroup[]): {
+  toolGroups: OttoToolGroup[];
+  toolGroupsV2: OttoToolGroup[];
+} {
+  const normalized = OTTO_TOOL_GROUPS.filter((group) => groups.includes(group));
+  return { toolGroups: toLegacyOttoToolGroups(normalized), toolGroupsV2: normalized };
+}
+
+interface OttoToolGroupRule {
+  group: OttoToolGroup;
+  /** Whole families share a prefix (preview_, browser_). */
+  prefixes?: readonly string[];
+  /** A substring the whole family shares, so later additions route themselves. */
+  contains?: readonly string[];
+  /** Exact names, where the family is one or two tools with nothing in common. */
+  names?: readonly string[];
+}
+
+/**
+ * Ordered: the first matching rule wins, so a name that could satisfy two rules
+ * resolves the same way every time. Prefer a shared substring over an exact-name
+ * list, so a tool added later lands in its category without a second edit here.
+ */
+const OTTO_TOOL_GROUP_RULES: readonly OttoToolGroupRule[] = [
+  { group: "preview", prefixes: ["preview_"] },
+  { group: "browser", prefixes: ["browser_"] },
+  { group: "web", names: ["web_search", "web_fetch"] },
+  { group: "terminals", contains: ["terminal"] },
+  // "heartbeat" rather than just create_heartbeat: delete_heartbeat used to fall
+  // through to the catch-all, so switching Schedules off left an agent able to
+  // delete heartbeats it could no longer create.
+  { group: "schedules", contains: ["schedule", "heartbeat"] },
+  { group: "artifacts", contains: ["artifact"] },
+  { group: "widgets", names: ["show_widget", "widget_contract"] },
+  { group: "workspace", contains: ["worktree", "workspace"] },
+  { group: "orchestration", contains: ["orchestration"] },
+  { group: "knowledge", contains: ["project_"] },
+  { group: "memory", contains: ["lesson"] },
+  { group: "permissions", contains: ["permission"] },
+  { group: "tasks", contains: ["task"] },
+  // "model" must stay below the rules above it: it is one character from
+  // matching set_chat_mode, which belongs to the chat family.
+  { group: "providers", contains: ["provider", "model"] },
+  { group: "voice", names: ["speak"] },
+];
+
+/**
  * Map a tool name to its group. Covers both Otto's catalog tools and the
- * openai-compat builtin web tools (web_search/web_fetch → "web"). Unknown/
- * lifecycle tools fall under "agents".
+ * openai-compat builtin web tools (web_search/web_fetch → "web").
+ *
+ * "agents" is still the fallback, but it now means what it says - spawning and
+ * steering chats - instead of "everything not otherwise classified". It used to
+ * collect 43 of the catalog's 72 tools, which made it impossible to switch off
+ * one capability without losing six unrelated ones.
  */
 export function ottoToolGroupForName(name: string): OttoToolGroup {
-  if (name.startsWith("preview_")) return "preview";
-  if (name.startsWith("browser_")) return "browser";
-  if (name === "web_search" || name === "web_fetch") return "web";
-  if (name.includes("terminal")) return "terminals";
-  if (name.includes("schedule") || name === "create_heartbeat") return "schedules";
-  if (name.includes("artifact")) return "artifacts";
-  if (name === "show_widget" || name === "widget_contract") return "widgets";
-  if (name.includes("worktree") || name.includes("workspace")) return "workspace";
+  for (const rule of OTTO_TOOL_GROUP_RULES) {
+    if (rule.prefixes?.some((prefix) => name.startsWith(prefix))) return rule.group;
+    if (rule.names?.includes(name)) return rule.group;
+    if (rule.contains?.some((fragment) => name.includes(fragment))) return rule.group;
+  }
   return "agents";
 }
 
@@ -366,8 +543,15 @@ export const ProviderOverrideSchema = z.object({
   /**
    * Which Otto tool groups to inject for this provider (natively-injected
    * providers only). Omitted = all groups. Empty array = no Otto tools.
+   *
+   * COMPAT(ottoToolGroupsV2): added in v0.8.20. `ottoToolGroups` is the legacy
+   * projection kept for older peers; `ottoToolGroupsV2` is authoritative. Both
+   * are `string[]` rather than an enum so an older peer drops group names it
+   * does not know instead of failing to parse the provider entry - read them
+   * through resolveStoredOttoToolGroups, never directly.
    */
-  ottoToolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
+  ottoToolGroups: z.array(z.string().min(1)).optional(),
+  ottoToolGroupsV2: z.array(z.string().min(1)).optional(),
   /**
    * MCP servers for providers whose tool loop the daemon hosts (openai-compat).
    * Merged with any per-agent AgentSessionConfig.mcpServers; the per-agent

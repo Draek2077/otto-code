@@ -4286,6 +4286,13 @@ export const en = {
           artifacts: "Artifacts",
           widgets: "Widgets",
           workspace: "Workspaces",
+          orchestration: "Orchestration",
+          knowledge: "Project knowledge",
+          memory: "Memory",
+          permissions: "Permissions",
+          providers: "Providers and models",
+          tasks: "Suggested tasks",
+          voice: "Voice",
         },
       },
       remove: {

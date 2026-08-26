@@ -120,7 +120,7 @@ condition targets a node with no declared fields.
 Three narrowings, all applied at spawn and never requested in prose. Workspace access has
 its own section below; the other two:
 
-**Otto tool groups** (`GraphNode.tools`) - an allowlist over the eight existing groups,
+**Otto tool groups** (`GraphNode.tools`) - an allowlist over the existing groups,
 read from a label and **intersected** with the daemon-wide allowlist. A node can hand
 itself less authority than the daemon allows, never more. An empty array is meaningful
 ("no Otto tools at all"). This is a cost lever as much as a safety one: the catalog is

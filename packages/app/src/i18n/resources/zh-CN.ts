@@ -4203,6 +4203,13 @@ export const zhCN: TranslationResources = {
           artifacts: "产物",
           widgets: "小组件",
           workspace: "工作区",
+          orchestration: "编排",
+          knowledge: "项目知识",
+          memory: "记忆",
+          permissions: "权限",
+          providers: "提供方与模型",
+          tasks: "建议任务",
+          voice: "语音",
         },
       },
       remove: {

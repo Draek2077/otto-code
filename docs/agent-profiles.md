@@ -257,7 +257,7 @@ On revise, the **existing** binding wins over the caller's: the Memory tab lists
 
 ### The three tools
 
-Registered on the daemon's existing MCP catalog, so **every provider gets them at once** - Claude, Codex, OpenCode, and an openai-compatible local model alike. They fall in the existing `agents` tool group (`ottoToolGroupForName` routes unprefixed names there), so the per-group allowlist can switch them off; a **new** group value was rejected because `OTTO_TOOL_GROUPS` is a wire enum an older peer could not parse. All three resolve the calling agent's profile from `callerAgentId` and fail with a named error when there is none - memory belongs to a profile, not to a single chat.
+Registered on the daemon's existing MCP catalog, so **every provider gets them at once** - Claude, Codex, OpenCode, and an openai-compatible local model alike. They have their own **`memory`** tool group, so the per-group allowlist can switch profile memory off without touching chat spawning. (They originally shared the `agents` catch-all, because `OTTO_TOOL_GROUPS` was carried on the wire as a closed enum and a new value would have failed an older peer's parse. The wire now carries `string[]` and normalizes after validation - see `normalizeOttoToolGroups` - so a new group is additive and safe.) All three resolve the calling agent's profile from `callerAgentId` and fail with a named error when there is none - memory belongs to a profile, not to a single chat.
 
 | Tool              | Shape                                           | Ergonomics                                                      |
 | ----------------- | ----------------------------------------------- | --------------------------------------------------------------- |

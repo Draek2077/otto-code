@@ -4252,6 +4252,13 @@ export const ar: TranslationResources = {
           artifacts: "المخرجات",
           widgets: "الأدوات المصغّرة",
           workspace: "مساحات العمل",
+          orchestration: "التنسيق",
+          knowledge: "معرفة المشروع",
+          memory: "الذاكرة",
+          permissions: "الأذونات",
+          providers: "المزودون والنماذج",
+          tasks: "المهام المقترحة",
+          voice: "الصوت",
         },
       },
       remove: {

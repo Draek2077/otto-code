@@ -34,7 +34,8 @@ import type {
   ProviderProfileModel,
   ProviderRuntimeSettings,
 } from "./provider-launch-config.js";
-import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
+import type { ConnectorConfig, OttoToolGroup } from "@otto-code/protocol/provider-config";
+import { resolveStoredOttoToolGroups } from "@otto-code/protocol/provider-config";
 import { ClaudeAgentClient } from "./providers/claude/agent.js";
 import { CodexAppServerAgentClient } from "./providers/codex-app-server-agent.js";
 import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
@@ -151,6 +152,22 @@ type ProviderClientFactory = (
   runtimeSettings?: ProviderRuntimeSettings,
   options?: ProviderClientFactoryOptions,
 ) => AgentClient;
+
+/**
+ * A provider override's Otto tool-group selection, in whichever taxonomy it was
+ * written in. undefined = every group.
+ *
+ * COMPAT(ottoToolGroupsV2): added in v0.8.20. Drop the legacy argument when the
+ * floor is >= v0.8.20.
+ */
+function resolveProviderToolGroups(
+  override: Pick<ProviderOverride, "ottoToolGroups" | "ottoToolGroupsV2"> | undefined,
+): OttoToolGroup[] | undefined {
+  return resolveStoredOttoToolGroups({
+    v2: override?.ottoToolGroupsV2,
+    legacy: override?.ottoToolGroups,
+  });
+}
 
 interface ResolvedProvider {
   definition: AgentProviderDefinition;
@@ -273,7 +290,7 @@ function createOttoBrainClient(
     label: OTTO_BRAIN_LABEL,
     resolveProjectRoot: buildProjectRootResolver(options?.workspaceGitService),
     resolveEndpoint: () => resolveBrainEndpoint(options?.brainEndpoint),
-    ottoToolGroups: override?.ottoToolGroups,
+    ottoToolGroups: resolveProviderToolGroups(override),
     mcpServers: override?.mcpServers,
     connectors: options?.connectors,
     mcpToolPermissions: override?.mcpToolPermissions,
@@ -1000,7 +1017,7 @@ function resolveOpenAICompatProvider(
         label,
         env: override.env,
         resolveProjectRoot: buildProjectRootResolver(options.workspaceGitService),
-        ottoToolGroups: override.ottoToolGroups,
+        ottoToolGroups: resolveProviderToolGroups(override),
         mcpServers: override.mcpServers,
         connectors: options.connectors,
         mcpToolPermissions: override.mcpToolPermissions,

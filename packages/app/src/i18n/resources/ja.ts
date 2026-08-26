@@ -4312,6 +4312,13 @@ export const ja: TranslationResources = {
           artifacts: "アーティファクト",
           widgets: "ウィジェット",
           workspace: "ワークスペース",
+          orchestration: "オーケストレーション",
+          knowledge: "プロジェクトナレッジ",
+          memory: "メモリ",
+          permissions: "権限",
+          providers: "プロバイダーとモデル",
+          tasks: "提案タスク",
+          voice: "音声",
         },
       },
       remove: {
