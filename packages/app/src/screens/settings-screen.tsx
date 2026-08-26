@@ -55,6 +55,7 @@ import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarFooterNavRow } from "@/components/sidebar/sidebar-footer-nav";
+import { resolveBrainRailRoute, useBrainRail } from "@/components/brain/use-brain-rail-state";
 import { KeyedFadeContainer } from "@/components/route-fade-container";
 import { SidebarSeamShadow } from "@/components/sidebar-seam-shadow";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
@@ -1894,6 +1895,16 @@ function SettingsSidebar({
   const handleFooterSettings = useCallback(() => {
     onSelectSection("general");
   }, [onSelectSection]);
+
+  // Destructured, not passed whole: `useBrainRail` returns a fresh object every
+  // poll, so depending on it would rebuild the handler on every tick.
+  const { disabled: isBrainDisabled, serverId: brainServerId } = useBrainRail();
+  const footerRouter = useRouter();
+  const handleFooterBrain = useCallback(() => {
+    footerRouter.push(
+      resolveBrainRailRoute({ disabled: isBrainDisabled, serverId: brainServerId }),
+    );
+  }, [footerRouter, isBrainDisabled, brainServerId]);
   const footerLabels = useMemo(
     () => ({
       home: t("sidebar.actions.home"),
@@ -2011,9 +2022,10 @@ function SettingsSidebar({
           {sidebarBody}
         </ScrollView>
 
-        {/* Same footer icon bar as the workspace sidebar, so Home and Metrics
-            remain one click away from inside settings. No Brain button here:
-            this sidebar has no Brain destination of its own to mark. */}
+        {/* Same footer icon bar as the workspace sidebar, so Home, Brain and
+            Metrics remain one click away from inside settings. `activeItem`
+            stays "settings": Brain is a destination you leave for, never the
+            surface this sidebar is marking. */}
         <View style={sidebarStyles.footer}>
           <SidebarFooterNavRow
             theme={theme}
@@ -2021,6 +2033,7 @@ function SettingsSidebar({
             onHome={onNavigateHome}
             onSettings={handleFooterSettings}
             onStats={onNavigateStats}
+            onBrain={handleFooterBrain}
             activeItem="settings"
           />
         </View>

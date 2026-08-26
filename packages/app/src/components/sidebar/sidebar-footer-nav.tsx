@@ -159,8 +159,10 @@ export function SidebarFooterNavRow({
   onHome: () => void;
   onSettings: () => void;
   onStats: () => void;
-  // Absent on the settings sidebar footer, which has no Brain destination of
-  // its own to mark.
+  // Optional so a surface can drop the Brain destination entirely. Both
+  // sidebars pass it: the rail resolves its own host (see use-brain-rail-state)
+  // and stays honest with no active workspace, which is exactly the Settings
+  // case.
   onBrain?: () => void;
   activeItem?: SidebarFooterNavItem;
   settingsButtonRef?: Ref<View>;
