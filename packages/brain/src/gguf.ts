@@ -239,24 +239,88 @@ interface GgufSummary {
   reasoning: boolean;
   /** Native preservation argument, normalized by model enrichment when present. */
   reasoningPreservationArgument?: "preserve_thinking" | "preserve_reasoning";
+  /** Template argument that switches the thinking channel on or off. */
+  reasoningToggleArgument?: string;
+  /** Template argument that carries a graduated effort level. */
+  reasoningEffortArgument?: string;
+  /** Effort levels the template itself names, when it validates a literal set. */
+  reasoningEffortValues?: string[];
+}
+
+/** Effort levels Otto can express, in the spelling a chat template uses. */
+const TEMPLATE_EFFORT_LEVELS = new Set(["low", "medium", "high", "xhigh"]);
+
+/** Template argument spellings that switch the thinking channel on or off. */
+const TOGGLE_ARGUMENTS = ["enable_thinking", "enable_reasoning"] as const;
+
+/** Template argument spellings that carry a graduated effort level. */
+const EFFORT_ARGUMENTS = ["reasoning_effort", "thinking_effort"] as const;
+
+/**
+ * Pull the effort levels a template names itself, e.g. Qwen3.8's guard clause
+ * `{%- if reasoning_effort not in ['low', 'medium', 'xhigh'] %}`. Only literals
+ * from a list sitting next to the effort argument are trusted: a level this
+ * function invents is one llama.cpp fails the whole completion over.
+ */
+function detectTemplateEffortValues(chatTemplate: string, effortArgument: string): string[] {
+  const values: string[] = [];
+  let from = 0;
+  for (;;) {
+    const at = chatTemplate.indexOf(effortArgument, from);
+    if (at < 0) break;
+    from = at + effortArgument.length;
+    // The list has to sit in the same expression as the argument, so a window
+    // this short is what keeps an unrelated list elsewhere in the template out.
+    const window = chatTemplate.slice(from, from + 120);
+    const open = window.indexOf("[");
+    const close = window.indexOf("]");
+    if (open < 0 || close < open) continue;
+    for (const literal of window.slice(open + 1, close).matchAll(/["']([a-z]+)["']/giu)) {
+      const value = literal[1]!.toLowerCase();
+      if (TEMPLATE_EFFORT_LEVELS.has(value) && !values.includes(value)) values.push(value);
+    }
+    if (values.length > 0) break;
+  }
+  return values;
 }
 
 /** Read model-specific template spellings without leaking them into the UI contract. */
 export function detectTemplateReasoningCapabilities(chatTemplate: string): {
   reasoning: boolean;
   reasoningPreservationArgument?: "preserve_thinking" | "preserve_reasoning";
+  reasoningToggleArgument?: string;
+  reasoningEffortArgument?: string;
+  reasoningEffortValues?: string[];
 } {
   const reasoningPreservationArgument = /\bpreserve_thinking\b/iu.test(chatTemplate)
     ? "preserve_thinking"
     : /\bpreserve_reasoning\b/iu.test(chatTemplate)
       ? "preserve_reasoning"
       : undefined;
+  // The control contract, read from the template instead of the catalog. An
+  // uncurated GGUF can expose a thinking channel and the argument that steers
+  // it, and without reading that here the model reports a reasoning channel no
+  // Otto control can reach.
+  const reasoningToggleArgument = TOGGLE_ARGUMENTS.find((argument) =>
+    chatTemplate.includes(argument),
+  );
+  const reasoningEffortArgument = EFFORT_ARGUMENTS.find((argument) =>
+    chatTemplate.includes(argument),
+  );
+  const reasoningEffortValues = reasoningEffortArgument
+    ? detectTemplateEffortValues(chatTemplate, reasoningEffortArgument)
+    : [];
   return {
     reasoning: Boolean(
       reasoningPreservationArgument ||
-      /<think>|<\/think>|reasoning_content|enable_thinking/iu.test(chatTemplate),
+      reasoningToggleArgument ||
+      reasoningEffortArgument ||
+      /<think>|<\/think>|reasoning_content/iu.test(chatTemplate),
     ),
     ...(reasoningPreservationArgument ? { reasoningPreservationArgument } : {}),
+    ...(reasoningToggleArgument ? { reasoningToggleArgument } : {}),
+    ...(reasoningEffortArgument ? { reasoningEffortArgument } : {}),
+    ...(reasoningEffortValues.length > 0 ? { reasoningEffortValues } : {}),
   };
 }
 

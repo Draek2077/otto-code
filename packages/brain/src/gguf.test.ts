@@ -80,6 +80,38 @@ test("normalizes both template preservation spellings into one capability", () =
   );
 });
 
+test("reads the reasoning control contract a chat template declares", () => {
+  assert.deepEqual(
+    gguf.detectTemplateReasoningCapabilities(
+      "{%- if enable_thinking is defined and enable_thinking is false %}<think></think>{%- endif %}",
+    ),
+    { reasoning: true, reasoningToggleArgument: "enable_thinking" },
+  );
+  assert.deepEqual(
+    gguf.detectTemplateReasoningCapabilities(
+      "{%- if reasoning_effort not in ['low', 'medium', 'xhigh'] %}{{ raise_exception('bad') }}{%- endif %}",
+    ),
+    {
+      reasoning: true,
+      reasoningEffortArgument: "reasoning_effort",
+      reasoningEffortValues: ["low", "medium", "xhigh"],
+    },
+  );
+});
+
+test("a thinking template that names no control argument earns no contract", () => {
+  assert.deepEqual(gguf.detectTemplateReasoningCapabilities("<think>{{ content }}</think>"), {
+    reasoning: true,
+  });
+});
+
+test("ignores effort literals that Otto cannot express", () => {
+  const detected = gguf.detectTemplateReasoningCapabilities(
+    "{%- if reasoning_effort not in ['low', 'ultra', 'high'] %}{{ raise_exception('bad') }}{%- endif %}",
+  );
+  assert.deepEqual(detected.reasoningEffortValues, ["low", "high"]);
+});
+
 (skip ? test.skip : test)("the catalog pairs vision projectors with their model", () => {
   const catalog = models.scan({ withMetadata: false });
   assert.ok(catalog.length > 0);

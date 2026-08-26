@@ -26,6 +26,12 @@ export interface ModelMetadata {
   reasoning?: boolean;
   /** Native template key detected from `preserve_thinking` or `preserve_reasoning`. */
   reasoningPreservationArgument?: string;
+  /** Template argument that switches the thinking channel on or off. */
+  reasoningToggleArgument?: string;
+  /** Template argument that carries a graduated effort level. */
+  reasoningEffortArgument?: string;
+  /** Effort levels the chat template names itself, when it validates a set. */
+  reasoningEffortValues?: string[];
   [key: string]: unknown;
 }
 

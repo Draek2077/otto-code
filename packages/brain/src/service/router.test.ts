@@ -415,6 +415,43 @@ test("maps a native model's effort choices onto its template arguments", () => {
   });
 });
 
+test("switches a template-detected toggle without inventing an effort level", () => {
+  const model = {
+    id: "qwen3.8-uncensored",
+    displayName: "Qwen3.8 27B Uncensored",
+    modelPath: "/models/uncensored.gguf",
+    mmprojPath: null,
+    mmprojBytes: 0,
+    quant: "Q4_K_M",
+    sizeBytes: 0,
+    features: { mtp: false, imatrix: false, distilled: false },
+    metadata: { reasoning: true, reasoningToggleArgument: "enable_thinking" },
+    reasoningEfforts: ["on"],
+    reasoningTemplate: {
+      enableThinkingArgument: "enable_thinking",
+      effortArgument: "reasoning_effort",
+    },
+  } satisfies Model;
+
+  const on = applyModelReasoningTemplate(
+    Buffer.from(JSON.stringify({ model: model.id, reasoning_effort: "on" })),
+    model,
+  );
+  assert.deepEqual(JSON.parse(on.toString("utf8")), {
+    model: model.id,
+    chat_template_kwargs: { enable_thinking: true },
+  });
+
+  const off = applyModelReasoningTemplate(
+    Buffer.from(JSON.stringify({ model: model.id, reasoning_effort: "off" })),
+    model,
+  );
+  assert.deepEqual(JSON.parse(off.toString("utf8")), {
+    model: model.id,
+    chat_template_kwargs: { enable_thinking: false },
+  });
+});
+
 test("drops generic effort fields for a model without a declared control contract", () => {
   const model = {
     id: "custom-reasoner",
@@ -464,7 +501,9 @@ test("drops a stale effort level that a native template does not support", () =>
 
 test("completion shape is read from the path, not the body", () => {
   assert.equal(completionShape("/v1/messages"), "anthropic");
+  assert.equal(completionShape("/messages"), "anthropic");
   assert.equal(completionShape("/v1/chat/completions"), "openai");
+  assert.equal(completionShape("/chat/completions"), "openai");
   assert.equal(completionShape(undefined), "openai");
 });
 
@@ -594,13 +633,17 @@ async function completionHarness(
   const llamaPort = await listen(fakeLlama);
   supervisor.internalPort = llamaPort;
   const brainPort = await listen(brain);
-  const call = (stream = true) =>
+  const call = (
+    stream = true,
+    path = "/v1/chat/completions",
+    extraBody: Record<string, unknown> = {},
+  ) =>
     new Promise<{ status: number; body: string; socket: net.Socket }>((resolve, reject) => {
       const req = http.request(
         {
           host: "127.0.0.1",
           port: brainPort,
-          path: "/v1/chat/completions",
+          path,
           method: "POST",
           headers: { accept: stream ? "text/event-stream" : "application/json" },
         },
@@ -617,6 +660,7 @@ async function completionHarness(
           model: "qwen",
           stream,
           messages: [{ role: "user", content: "hi" }],
+          ...extraBody,
         }),
       );
     });
@@ -636,6 +680,28 @@ async function completionHarness(
     },
   };
 }
+
+test("unversioned chat completions enter the safe reasoning-effort route", async () => {
+  let forwarded: Record<string, unknown> | null = null;
+  const h = await completionHarness((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      forwarded = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      SSE_OK(res);
+    });
+  });
+  try {
+    const response = await h.call(true, "/chat/completions", { reasoning_effort: "off" });
+    assert.equal(response.status, 200);
+    // The harness model has no declared template-control contract, so its
+    // generic field is removed rather than reaching llama.cpp's Jinja template.
+    assert.ok(forwarded);
+    assert.equal(forwarded.reasoning_effort, undefined);
+  } finally {
+    await h.close();
+  }
+});
 
 const SSE_OK = (res: http.ServerResponse) => {
   res.writeHead(200, { "content-type": "text/event-stream" });

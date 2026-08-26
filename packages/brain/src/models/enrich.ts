@@ -146,15 +146,18 @@ export function enrichWithCatalog(models: Model[], catalog: Catalog): Model[] {
       const enriched = enrichDiscoveredProjector(model);
       const family = familyFromGgufMetadata(enriched);
       const reasoningPreservation = detectedReasoningPreservation(enriched);
-      if (!family && !reasoningPreservation) return enriched;
+      const reasoningControl = detectedReasoningControl(enriched);
+      if (!family && !reasoningPreservation && !reasoningControl) return enriched;
       return {
         ...enriched,
         ...(family ? { family } : {}),
         ...(reasoningPreservation ? { reasoningPreservation } : {}),
+        ...reasoningControl,
       };
     }
     const components = resolveComponents(model, entry);
     const projector = components?.find((component) => component.role === "vision_projector");
+    const reasoningControl = detectedReasoningControl(model);
     return {
       ...model,
       catalogId: entry.id,
@@ -168,13 +171,50 @@ export function enrichWithCatalog(models: Model[], catalog: Catalog): Model[] {
       useCases: entry.useCases,
       tier: entry.tier,
       thinking: entry.thinking,
-      reasoningEfforts: entry.reasoningEfforts,
+      // A curated declaration wins, but an entry that only says "this model
+      // thinks" still needs a way to steer it, so fall back to the contract the
+      // chat template states.
+      reasoningEfforts: entry.reasoningEfforts ?? reasoningControl?.reasoningEfforts,
       reasoningEffortDefault: entry.reasoningEffortDefault,
-      reasoningTemplate: entry.reasoningTemplate,
+      reasoningTemplate: entry.reasoningTemplate ?? reasoningControl?.reasoningTemplate,
       reasoningPreservation: entry.reasoningPreservation ?? detectedReasoningPreservation(model),
       contextMax: entry.contextMax,
     };
   });
+}
+
+/**
+ * The reasoning control contract a model's own chat template declares.
+ *
+ * Otto only shows an Effort control for a model it can actually steer, and it
+ * only forwards a level the template accepts - an unknown value makes llama.cpp
+ * fail the whole completion with a Jinja exception. A template that names a
+ * toggle argument therefore earns a binary On, a template that also validates a
+ * literal level set earns those levels, and a template that merely emits a
+ * `<think>` block earns no control at all.
+ */
+function detectedReasoningControl(
+  model: Model,
+): Pick<Model, "reasoningEfforts" | "reasoningTemplate"> | undefined {
+  const toggleArgument = model.metadata?.reasoningToggleArgument;
+  const effortArgument = model.metadata?.reasoningEffortArgument;
+  if (typeof toggleArgument !== "string" && typeof effortArgument !== "string") return undefined;
+  const declaredValues = model.metadata?.reasoningEffortValues;
+  const levels =
+    typeof effortArgument === "string" && Array.isArray(declaredValues)
+      ? declaredValues.filter((value): value is string => typeof value === "string")
+      : [];
+  return {
+    // Levels when the template names them, otherwise the generic On, which the
+    // router resolves to the template's own default.
+    reasoningEfforts: levels.length > 0 ? levels : ["on"],
+    reasoningTemplate: {
+      // An argument the template never reads is inert in the kwargs payload, so
+      // a placeholder here costs nothing and keeps the toggle path uniform.
+      enableThinkingArgument: toggleArgument ?? "enable_thinking",
+      effortArgument: effortArgument ?? "reasoning_effort",
+    },
+  };
 }
 
 /** Map the two known template spellings to one model capability. */

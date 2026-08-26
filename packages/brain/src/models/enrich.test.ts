@@ -121,6 +121,86 @@ test("discovers either preservation spelling from an uncatalogued GGUF template"
   assert.deepEqual(enriched.reasoningPreservation, { templateArgument: "preserve_reasoning" });
 });
 
+test("an uncatalogued thinking template earns a binary effort contract", () => {
+  const [enriched] = enrichWithCatalog(
+    [
+      model("someone/Qwen3.8-27B-Uncensored-GGUF/model.gguf", {
+        metadata: { reasoning: true, reasoningToggleArgument: "enable_thinking" },
+      }),
+    ],
+    catalog([]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["on"]);
+  assert.deepEqual(enriched.reasoningTemplate, {
+    enableThinkingArgument: "enable_thinking",
+    effortArgument: "reasoning_effort",
+  });
+});
+
+test("an uncatalogued template that names its levels earns the full ladder", () => {
+  const [enriched] = enrichWithCatalog(
+    [
+      model("someone/Qwen3.8-27B-Uncensored-GGUF/model.gguf", {
+        metadata: {
+          reasoning: true,
+          reasoningToggleArgument: "enable_thinking",
+          reasoningEffortArgument: "reasoning_effort",
+          reasoningEffortValues: ["low", "medium", "xhigh"],
+        },
+      }),
+    ],
+    catalog([]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["low", "medium", "xhigh"]);
+});
+
+test("a template with no control argument earns no effort contract", () => {
+  const [enriched] = enrichWithCatalog(
+    [model("someone/reasoner/model.gguf", { metadata: { reasoning: true } })],
+    catalog([]),
+  );
+  assert.equal(enriched.reasoningEfforts, undefined);
+  assert.equal(enriched.reasoningTemplate, undefined);
+});
+
+test("a catalog entry without a declared contract falls back to the template's", () => {
+  const scanned = model("unsloth/gemma-4-E4B-it-GGUF/gemma-4-E4B-it-Q4_K_M.gguf", {
+    metadata: { reasoning: true, reasoningToggleArgument: "enable_thinking" },
+  });
+  const [enriched] = enrichWithCatalog(
+    [scanned],
+    catalog([
+      { ...CODER, id: "gemma-4-e4b", hfRepo: "unsloth/gemma-4-E4B-it-GGUF", thinking: true },
+    ]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["on"]);
+  assert.equal(enriched.reasoningTemplate?.enableThinkingArgument, "enable_thinking");
+});
+
+test("a catalog declaration outranks the template detection", () => {
+  const scanned = model("unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", {
+    metadata: { reasoning: true, reasoningToggleArgument: "enable_thinking" },
+  });
+  const [enriched] = enrichWithCatalog(
+    [scanned],
+    catalog([
+      {
+        ...CODER,
+        id: "qwen3.8-27b",
+        hfRepo: "unsloth/Qwen3.8-27B-GGUF",
+        reasoningEfforts: ["low", "medium", "xhigh"],
+        reasoningEffortDefault: "xhigh",
+        reasoningTemplate: {
+          enableThinkingArgument: "enable_thinking",
+          effortArgument: "reasoning_effort",
+        },
+      },
+    ]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["low", "medium", "xhigh"]);
+  assert.equal(enriched.reasoningEffortDefault, "xhigh");
+});
+
 test("matching is case-insensitive on the repo path", () => {
   const scanned = model("UNSLOTH/qwen3-coder-30b-gguf/Qwen3-Coder-30B-Q4_K_M.gguf");
   assert.equal(matchCatalogEntry(scanned, catalog([CODER]))?.id, "qwen3-coder-30b");

@@ -40,7 +40,11 @@ const MAX_ANALYSIS_BYTES = 2 * 1024 * 1024;
 // Completion bodies are buffered so the scheduler can read `model` and replay
 // them after a possible model switch. Long-context prompts are large but bounded.
 const MAX_REQUEST_BYTES = 64 * 1024 * 1024;
-const COMPLETION_RE = /\/v1\/(messages|chat\/completions)/;
+// llama.cpp accepts both its versioned OpenAI paths and the unversioned
+// aliases. They are the same completion surface to Brain: both must enter the
+// scheduler so generic reasoning_effort is translated before a chat template
+// can render it.
+const COMPLETION_RE = /\/(?:v1\/)?(messages|chat\/completions)(?:[/?]|$)/;
 
 type Verdict = "ok" | "reasoning-only" | "truncated" | "failed";
 
@@ -471,11 +475,14 @@ export function applyModelReasoningTemplate(body: Buffer, model: Model): Buffer 
   if (suppliedKwargs !== undefined && !isRecord(suppliedKwargs)) return body;
   const templateKwargs: Record<string, unknown> = { ...suppliedKwargs };
   templateKwargs[template.enableThinkingArgument] = !isDisabled;
-  if (knownEfforts.has(requested)) {
+  if (requested !== "on" && knownEfforts.has(requested)) {
     templateKwargs[template.effortArgument] = requested;
   } else {
     // The generic On selection means the model's native default, not a stale
-    // explicit effort that happened to be supplied by a previous client.
+    // explicit effort that happened to be supplied by a previous client. It
+    // stays generic even for a model that advertises "on" as its only level:
+    // that answer says the template has a toggle and no named ladder, so
+    // forwarding the word itself is the invalid value this guard exists to stop.
     delete templateKwargs[template.effortArgument];
   }
 
@@ -782,7 +789,7 @@ function proxyBuffered({
 export type CompletionShape = "anthropic" | "openai";
 
 export function completionShape(url: string | null | undefined): CompletionShape {
-  return /\/v1\/messages/.test(url ?? "") ? "anthropic" : "openai";
+  return /\/(?:v1\/)?messages(?:[/?]|$)/.test(url ?? "") ? "anthropic" : "openai";
 }
 
 /** One text block, as both API shapes spell it inside a structured content array. */
@@ -1445,7 +1452,7 @@ export function createRouter({
         }
         res.writeHead(upstreamRes.statusCode ?? 502, outHeaders);
 
-        const isCompletion = /\/v1\/(messages|chat\/completions)/.test(req.url || "");
+        const isCompletion = COMPLETION_RE.test(req.url || "");
         const isStream = String(upstreamRes.headers["content-type"] || "").includes("event-stream");
 
         if (!isCompletion || isStream) {
