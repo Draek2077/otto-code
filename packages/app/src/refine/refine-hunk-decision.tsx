@@ -25,6 +25,7 @@ export function RefineHunkDecision({
   kept,
   onToggle,
   presentation,
+  wrap = false,
   testID = "refine-hunk",
   displayLines = hunk.lines,
 }: {
@@ -36,6 +37,8 @@ export function RefineHunkDecision({
   kept: boolean;
   onToggle: (hunkId: string) => void;
   presentation: DiffPresentation;
+  /** The owner controls wrapping across every hunk in its review. */
+  wrap?: boolean;
   testID?: string;
   /** A source-only field boundary may be hidden without changing replay semantics. */
   displayLines?: RefineHunk["lines"];
@@ -89,7 +92,9 @@ export function RefineHunkDecision({
             diffLines={displayLines}
             document={document}
             presentation={presentation}
-            frame="top"
+            frame="bottom"
+            embedded
+            wrap={wrap}
           />
         </View>
       )}

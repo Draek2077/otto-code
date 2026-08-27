@@ -105,6 +105,12 @@ describe("groupDiffHunks", () => {
     const firstLines = new Set(hunks[0]!.lines.map((line) => line.content));
     const secondLines = hunks[1]!.lines.map((line) => line.content);
     expect(secondLines.filter((content) => firstLines.has(content))).toEqual([]);
+    // The document review uses these source ranges to place plain context
+    // between the independently toggleable hunks.
+    expect(hunks.map((hunk) => [hunk.displayStart, hunk.displayEnd])).toEqual([
+      [0, 4],
+      [5, 9],
+    ]);
   });
 
   it("counts additions and removals per hunk", () => {

@@ -70,8 +70,13 @@ interface DiffViewerProps {
   maxHeight?: number;
   emptyLabel?: string;
   fillAvailableHeight?: boolean;
-  /** `top` is for hosts that already supply the matching bottom separator. */
-  frame?: "full" | "top";
+  /** `top` / `bottom` are for hosts that own the opposite separator. */
+  frame?: "full" | "top" | "bottom" | "none";
+  /**
+   * Render inside a parent document scroller. Hunk review needs one vertical
+   * reading flow, not a stack of independently scrolling mini-diffs.
+   */
+  embedded?: boolean;
   // "Wrap long lines" appearance setting: soft-wrap long diff lines instead of
   // horizontal scrolling. Visual only - selection/copy still yields the
   // original unwrapped text.
@@ -94,6 +99,7 @@ export function DiffViewer({
   emptyLabel,
   fillAvailableHeight = false,
   frame = "full",
+  embedded = false,
   wrap,
 }: DiffViewerProps) {
   const { t } = useTranslation();
@@ -287,15 +293,40 @@ export function DiffViewer({
       </View>
     );
   };
-  const lineContent = renderScrollableContent(lines);
-  const structuralContent = renderScrollableContent(
+  const renderContent = (content: React.ReactNode) => {
+    if (!embedded) {
+      return renderScrollableContent(content);
+    }
+    // The outer article owns vertical scrolling. Long unwrapped lines still
+    // retain a local horizontal rail, which is the only axis this segment owns.
+    return resolvedWrap ? (
+      <View style={styles.horizontalContent}>{content}</View>
+    ) : (
+      <ScrollView
+        horizontal
+        nestedScrollEnabled
+        showsHorizontalScrollIndicator={!showDesktopWebScrollbar}
+        contentContainerStyle={styles.horizontalContent}
+        onLayout={handleInnerLayout}
+      >
+        {content}
+      </ScrollView>
+    );
+  };
+  const lineContent = renderContent(lines);
+  const structuralContent = renderContent(
     <View style={linesContainerStyle} dataSet={CODE_SURFACE_DATASET}>
       <StructuralDiff document={diffPresentation.document} layout={resolvedLayout} />
     </View>,
   );
   const diffSurface = (
     <View
-      style={[styles.diffSurface, frame === "top" && styles.diffSurfaceTopOnly]}
+      style={[
+        styles.diffSurface,
+        frame === "top" && styles.diffSurfaceTopOnly,
+        frame === "bottom" && styles.diffSurfaceBottomOnly,
+        frame === "none" && styles.diffSurfaceFrameless,
+      ]}
       onLayout={handleSurfaceLayout}
     >
       {diffPresentation.effectivePresentation === "structural" ? structuralContent : lineContent}
@@ -357,6 +388,13 @@ const styles = StyleSheet.create((theme) => {
       backgroundColor: theme.colors.surface1,
     },
     diffSurfaceTopOnly: {
+      borderBottomWidth: 0,
+    },
+    diffSurfaceBottomOnly: {
+      borderTopWidth: 0,
+    },
+    diffSurfaceFrameless: {
+      borderTopWidth: 0,
       borderBottomWidth: 0,
     },
   };

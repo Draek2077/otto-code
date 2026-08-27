@@ -14,6 +14,7 @@ import {
   Architecture,
   BookOpen,
   Check,
+  CheckSquare,
   Checklist,
   ClearAll,
   FolderOpen,
@@ -27,6 +28,7 @@ import {
   Shield,
   SquarePen,
   Trash2,
+  WrapText,
   X,
 } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
@@ -46,6 +48,7 @@ import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
+import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { usePaneContext } from "@/panels/pane-context";
 import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 import {
@@ -58,10 +61,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { KnowledgeMarkdownEditor } from "./knowledge-markdown-editor";
 import { KnowledgeReviewProposalView } from "./knowledge-review-proposal";
 import { KnowledgeReviewSurface } from "./knowledge-review-surface";
-import {
-  useKnowledgeReviewRefreshRevision,
-  useKnowledgeReviewRefreshStore,
-} from "./knowledge-review-refresh-store";
+import { allHunkIds, applyRefineDecisions, buildRefineDiff, type RefineDiff } from "@/refine/hunks";
 import {
   applyDirectReplacements,
   type KnowledgeReviewDirective,
@@ -91,14 +91,15 @@ const SELECTED_ACCESSIBILITY_STATE = { selected: true } as const;
 // the review engine needs one stable string for source-owned ranges spanning
 // Current understanding and Evidence.
 const RECORD_REVIEW_SEPARATOR = "\n\n<!-- otto:knowledge-review-evidence -->\n\n";
+const EMPTY_REVIEW_DIFF: RefineDiff = { lines: [], hunks: [] };
 
 /** Markdown knowledge is rendered as a document, while Otto owns mutations. */
 // eslint-disable-next-line complexity -- panel intentionally owns its three explicit review states.
 export function ProjectKnowledgePanel(): ReactElement {
   const { serverId, workspaceId, openFileInWorkspace } = usePaneContext();
   const knowledge = useProjectKnowledge(serverId, workspaceId);
-  const reloadKnowledge = knowledge.reload;
-  const knowledgeReviewRevision = useKnowledgeReviewRefreshRevision(serverId, workspaceId);
+  const replaceKnowledgeRecord = knowledge.replaceRecord;
+  const replaceKnowledgeRoot = knowledge.replaceRoot;
   const animationsEnabled = useAnimationsEnabled();
   const readRecord = knowledge.readRecord;
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -144,7 +145,8 @@ export function ProjectKnowledgePanel(): ReactElement {
     (state) => state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeTagEditing === true,
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
-  const notifyKnowledgeReviewRefresh = useKnowledgeReviewRefreshStore((state) => state.notify);
+  const { preferences: changesPreferences, updatePreferences: updateChangesPreferences } =
+    useChangesPreferences();
   const knowledgeSidebarWidth = usePanelStore((state) => state.projectKnowledgeSidebarWidth);
   const setKnowledgeSidebarWidth = usePanelStore((state) => state.setProjectKnowledgeSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -248,9 +250,6 @@ export function ProjectKnowledgePanel(): ReactElement {
       cancelled = true;
     };
   }, [readRecord, selectedSummary]);
-  useEffect(() => {
-    if (knowledgeReviewRevision > 0) void reloadKnowledge();
-  }, [knowledgeReviewRevision, reloadKnowledge]);
   const summary = useMemo(
     () => summarizeProjectKnowledge(knowledge.view?.records ?? []),
     [knowledge.view?.records],
@@ -274,6 +273,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   if (selectedRoot) documentIdentity = `Knowledge root · ${selectedRoot.slug}`;
   else if (selected)
     documentIdentity = `${recordStatusLabel(selected)} · Updated ${new Date(selected.updatedAt).toLocaleDateString()}`;
+  if (reviewProposal) documentIdentity = `Review proposal · ${documentIdentity}`;
   const openMarkdown = useCallback(() => {
     if (!markdownPath) return;
     openFileInWorkspace({ location: { path: markdownPath }, disposition: "main" });
@@ -400,22 +400,63 @@ export function ProjectKnowledgePanel(): ReactElement {
           setFormError(payload.error);
           return;
         }
+        if ("record" in payload && payload.record) {
+          replaceKnowledgeRecord(payload.record);
+          setRecordDetail(payload.record);
+        } else if ("page" in payload && payload.page) {
+          replaceKnowledgeRoot(payload.page);
+        }
         setReviewProposal(null);
-        notifyKnowledgeReviewRefresh(serverId, workspaceId);
-        await reloadKnowledge();
       } finally {
         setReviewApplying(false);
       }
     },
     [
       client,
-      notifyKnowledgeReviewRefresh,
-      reloadKnowledge,
+      replaceKnowledgeRecord,
+      replaceKnowledgeRoot,
       reviewApplying,
       reviewProposal,
-      serverId,
       workspaceId,
     ],
+  );
+  // The review decision state lives beside the article toolbar. This keeps the
+  // only actions that change proposal state in the one pinned control row,
+  // while the canvas stays a continuous document for reading.
+  const reviewDiff = useMemo<RefineDiff | null>(
+    () => (reviewProposal ? buildRefineDiff(reviewProposal.base, reviewProposal.proposal) : null),
+    [reviewProposal],
+  );
+  const [reviewKeptHunks, setReviewKeptHunks] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setReviewKeptHunks(reviewDiff ? allHunkIds(reviewDiff) : new Set());
+  }, [reviewDiff]);
+  const reviewAllKept =
+    reviewDiff !== null &&
+    reviewDiff.hunks.length > 0 &&
+    reviewKeptHunks.size === reviewDiff.hunks.length;
+  const toggleReviewHunk = useCallback((id: string) => {
+    setReviewKeptHunks((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const toggleAllReviewHunks = useCallback(() => {
+    setReviewKeptHunks(reviewAllKept || !reviewDiff ? new Set() : allHunkIds(reviewDiff));
+  }, [reviewAllKept, reviewDiff]);
+  const reviewProposalContent = useMemo(
+    () => (reviewDiff ? applyRefineDecisions(reviewDiff, reviewKeptHunks) : null),
+    [reviewDiff, reviewKeptHunks],
+  );
+  const applyKeptReviewProposal = useCallback(() => {
+    if (reviewProposalContent === null) return;
+    void applyReviewProposal(reviewProposalContent);
+  }, [applyReviewProposal, reviewProposalContent]);
+  const toggleReviewWrap = useCallback(
+    () => void updateChangesPreferences({ wrapLines: !changesPreferences.wrapLines }),
+    [changesPreferences.wrapLines, updateChangesPreferences],
   );
   const setStatus = useCallback(
     async (status: "confirmed" | "superseded") => {
@@ -757,12 +798,10 @@ export function ProjectKnowledgePanel(): ReactElement {
         {reviewProposal ? (
           <KnowledgeReviewProposalView
             proposal={reviewProposal}
-            applying={reviewApplying}
-            onApply={(content) => void applyReviewProposal(content)}
-            onDiscard={() => {
-              setReviewProposal(null);
-              setFormError(null);
-            }}
+            diff={reviewDiff ?? EMPTY_REVIEW_DIFF}
+            keptHunks={reviewKeptHunks}
+            onToggleHunk={toggleReviewHunk}
+            wrap={changesPreferences.wrapLines}
           />
         ) : (
           <>
@@ -964,12 +1003,10 @@ export function ProjectKnowledgePanel(): ReactElement {
         {reviewProposal ? (
           <KnowledgeReviewProposalView
             proposal={reviewProposal}
-            applying={reviewApplying}
-            onApply={(content) => void applyReviewProposal(content)}
-            onDiscard={() => {
-              setReviewProposal(null);
-              setFormError(null);
-            }}
+            diff={reviewDiff ?? EMPTY_REVIEW_DIFF}
+            keptHunks={reviewKeptHunks}
+            onToggleHunk={toggleReviewHunk}
+            wrap={changesPreferences.wrapLines}
           />
         ) : (
           <>
@@ -1130,10 +1167,48 @@ export function ProjectKnowledgePanel(): ReactElement {
             <View style={styles.documentToolbar}>
               {markdownPath ? (
                 <ToolbarIconButton
-                  label="Open Markdown source"
+                  label="Open in Markdown editor"
                   Icon={ThemedFolderOpen}
                   onPress={openMarkdown}
                 />
+              ) : null}
+              {reviewProposal ? (
+                <>
+                  {markdownPath ? <ToolbarSeparator /> : null}
+                  <ToolbarIconButton
+                    label="Discard proposal"
+                    Icon={ThemedX}
+                    onPress={() => {
+                      setReviewProposal(null);
+                      setFormError(null);
+                    }}
+                    disabled={reviewApplying}
+                  />
+                  <ToolbarIconButton
+                    label={reviewAllKept ? "Drop all changes" : "Keep all changes"}
+                    Icon={ThemedCheckSquare}
+                    onPress={toggleAllReviewHunks}
+                    selected={reviewAllKept}
+                    disabled={reviewApplying || !reviewDiff || reviewDiff.hunks.length === 0}
+                  />
+                  <ToolbarSeparator />
+                  <ToolbarIconButton
+                    label={changesPreferences.wrapLines ? "Scroll long lines" : "Wrap long lines"}
+                    Icon={ThemedWrapText}
+                    onPress={toggleReviewWrap}
+                    selected={changesPreferences.wrapLines}
+                    disabled={reviewApplying}
+                  />
+                  <ToolbarSeparator />
+                  <ToolbarIconButton
+                    label="Apply kept changes"
+                    Icon={ThemedCheck}
+                    onPress={applyKeptReviewProposal}
+                    tone="accent"
+                    loading={reviewApplying}
+                    disabled={!reviewDiff || reviewKeptHunks.size === 0}
+                  />
+                </>
               ) : null}
               {!editingTruth &&
               !editingMetadata &&
@@ -1485,6 +1560,7 @@ const ThemedArticleKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) 
 }));
 const ThemedArchive = withUnistyles(Archive);
 const ThemedCheck = withUnistyles(Check);
+const ThemedCheckSquare = withUnistyles(CheckSquare);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedRobot = withUnistyles(Robot);
@@ -1492,6 +1568,8 @@ const ThemedSearch = withUnistyles(Search);
 const ThemedSettings2 = withUnistyles(Settings2);
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedTrash2 = withUnistyles(Trash2);
+const ThemedWrapText = withUnistyles(WrapText);
+const ThemedX = withUnistyles(X);
 const ThemedTextInput = withUnistyles(TextInput);
 
 const searchIconProps = (theme: {

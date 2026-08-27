@@ -93,24 +93,6 @@ export type WorkspaceTabTarget =
       paths: string[];
       references?: string[];
       presetId?: string;
-      /** An in-memory Project Knowledge review; annotations are consumed when this tab opens. */
-      knowledgeReview?:
-        | {
-            target: "record";
-            id: string;
-            title: string;
-            content: string;
-            expectedUpdatedAt: string;
-            instruction: string;
-          }
-        | {
-            target: "root";
-            slug: string;
-            title: string;
-            content: string;
-            expectedBodyDigest?: string;
-            instruction: string;
-          };
     }
   // Context Management - everything the provider sends before the user types.
   // One per workspace: the report is a property of the workspace and its

@@ -20,6 +20,10 @@ export interface RefineHunk {
   id: string;
   /** The lines to render, including up to `contextLines` on each side. */
   lines: DiffLine[];
+  /** Inclusive range of `lines` this hunk renders in the complete flat diff. */
+  displayStart: number;
+  /** Inclusive range of `lines` this hunk renders in the complete flat diff. */
+  displayEnd: number;
   /** Inclusive index of the hunk's first changed line in the flat diff. */
   changeStart: number;
   /** Inclusive index of the hunk's last changed line in the flat diff. */
@@ -83,6 +87,8 @@ export function groupDiffHunks(
     hunks.push({
       id: `h${hunks.length}`,
       lines: slice,
+      displayStart: start,
+      displayEnd: end,
       changeStart,
       changeEnd,
       additions: slice.filter((line) => line.type === "add").length,

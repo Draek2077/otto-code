@@ -2,10 +2,10 @@
 id: "provider-neutral-capability-parity-defines-done"
 kind: "decision"
 title: "Provider-neutral capability parity defines done"
-status: "confirmed"
+status: "proposed"
 tags: ["mission","provider-neutral","architecture","capability-parity"]
 created_at: "2026-08-08T05:16:39.765Z"
-updated_at: "2026-08-27T17:59:14.349Z"
+updated_at: "2026-08-27T23:10:26.254Z"
 ---
 # Provider-neutral capability parity defines done
 
@@ -31,3 +31,9 @@ This applies to browser-verified previews, artifacts, subagent visibility, conte
   summary: "Git-hosting review discussions now use provider-neutral thread-resolution and comment-reaction RPCs. GitHub supplies GraphQL thread and reaction mutations; Bitbucket Cloud supplies native reply-thread grouping and resolve/reopen operations. Bitbucket Cloud advertises comment reactions as unsupported because its documented Cloud API has no such endpoint. Evidence: `packages/server/src/services/{forge-service,github-service}.ts`, `packages/server/src/services/git-hosting/bitbucket-cloud-service.ts`, `docs/git-providers.md`; focused protocol, GitHub, Bitbucket, and PR-timeline suites pass along with targeted lint and server/app typechecks."
   source: "Verified implementation, 2026-08-27"
   affects: ["provider-neutral-capability-parity-defines-done"]
+- time: "2026-08-27T23:09:48.114Z"
+  kind: "decision"
+  summary: "Applied an accepted AI refinement. Status returned to proposed for review."
+- time: "2026-08-27T23:10:26.254Z"
+  kind: "decision"
+  summary: "Applied an accepted AI refinement."

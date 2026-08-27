@@ -90,7 +90,6 @@ export type WorkspaceTabTarget =
       paths: string[];
       references?: string[];
       presetId?: string;
-      knowledgeReview?: Extract<BaseWorkspaceTabTarget, { kind: "refine" }>["knowledgeReview"];
     }
   // Context Management - everything the provider sends before the user types.
   // One per workspace: the report is a property of the workspace and its

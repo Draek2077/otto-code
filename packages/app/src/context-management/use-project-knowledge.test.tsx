@@ -60,4 +60,31 @@ describe("useProjectKnowledge", () => {
     expect(result.current.loading).toBe(false);
     expect(listProjectKnowledge).toHaveBeenCalledTimes(2);
   });
+
+  it("replaces a mutation response in the loaded view without reloading the pane", async () => {
+    const originalRecord = { id: "record-1", title: "Before", updatedAt: "2026-08-27T00:00:00Z" };
+    const updatedRecord = { ...originalRecord, title: "After", updatedAt: "2026-08-27T00:01:00Z" };
+    const originalRoot = { slug: "architecture", title: "Architecture", body: "Before" };
+    const updatedRoot = { ...originalRoot, body: "After" };
+    listProjectKnowledge.mockResolvedValueOnce({
+      ...view,
+      records: [originalRecord],
+      rootPages: [originalRoot],
+    });
+
+    const { result } = renderHook(() => useProjectKnowledge(SERVER_ID, WORKSPACE_ID));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.replaceRecord(updatedRecord as never);
+      result.current.replaceRoot(updatedRoot as never);
+    });
+
+    expect(result.current.view?.records).toEqual([updatedRecord]);
+    expect(result.current.view?.rootPages).toEqual([updatedRoot]);
+    expect(listProjectKnowledge).toHaveBeenCalledTimes(1);
+    expect(result.current.loading).toBe(false);
+  });
 });

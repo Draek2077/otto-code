@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectKnowledgeListResponseMessage } from "@otto-code/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
 
+type ProjectKnowledgePayload = ProjectKnowledgeListResponseMessage["payload"];
+type ProjectKnowledgeRecord = ProjectKnowledgePayload["records"][number];
+type ProjectKnowledgeRootPage = NonNullable<ProjectKnowledgePayload["rootPages"]>[number];
+
 export type ProjectDeliveryStatus =
   | "charter"
   | "in_build"
@@ -43,13 +47,15 @@ export function useProjectKnowledge(
   serverId: string,
   workspaceId: string,
 ): {
-  view: ProjectKnowledgeListResponseMessage["payload"] | null;
+  view: ProjectKnowledgePayload | null;
   loading: boolean;
   error: string | null;
   reload: () => void;
-  readRecord: (
-    id: string,
-  ) => Promise<ProjectKnowledgeListResponseMessage["payload"]["records"][number] | null>;
+  readRecord: (id: string) => Promise<ProjectKnowledgeRecord | null>;
+  /** Apply the canonical response from an already-completed mutation in place. */
+  replaceRecord: (record: ProjectKnowledgeRecord) => void;
+  /** Apply the canonical response from an already-completed root mutation in place. */
+  replaceRoot: (page: ProjectKnowledgeRootPage) => void;
   setStatus: (
     id: string,
     status: "proposed" | "confirmed" | "superseded",
@@ -101,7 +107,7 @@ export function useProjectKnowledge(
 } {
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const enabled = useProjectKnowledgeEnabled(serverId);
-  const [view, setView] = useState<ProjectKnowledgeListResponseMessage["payload"] | null>(null);
+  const [view, setView] = useState<ProjectKnowledgePayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -115,6 +121,29 @@ export function useProjectKnowledge(
     },
     [client, workspaceId],
   );
+  const replaceRecord = useCallback((record: ProjectKnowledgeRecord) => {
+    setView((current) =>
+      current
+        ? {
+            ...current,
+            records: current.records.map((candidate) =>
+              candidate.id === record.id ? record : candidate,
+            ),
+          }
+        : current,
+    );
+  }, []);
+  const replaceRoot = useCallback((page: ProjectKnowledgeRootPage) => {
+    setView((current) => {
+      if (!current?.rootPages) return current;
+      return {
+        ...current,
+        rootPages: current.rootPages.map((candidate) =>
+          candidate.slug === page.slug ? page : candidate,
+        ),
+      };
+    });
+  }, []);
   useEffect(() => {
     if (!client || !enabled) {
       setView(null);
@@ -295,6 +324,8 @@ export function useProjectKnowledge(
       error,
       reload,
       readRecord,
+      replaceRecord,
+      replaceRoot,
       setStatus,
       createProposal,
       updateTruth,
@@ -310,6 +341,8 @@ export function useProjectKnowledge(
       loading,
       reload,
       readRecord,
+      replaceRecord,
+      replaceRoot,
       setStatus,
       updateProject,
       updateReference,
