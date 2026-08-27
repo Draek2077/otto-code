@@ -1,81 +1,95 @@
-/** Temporary, in-memory directives collected while reviewing a Knowledge article. */
-export type KnowledgeReviewDirective =
-  | {
-      id: string;
-      kind: "replace";
-      selectedText: string;
-      beforeContext: string;
-      afterContext: string;
-      value: string;
-    }
-  | {
-      id: string;
-      kind: "refine";
-      selectedText: string;
-      beforeContext: string;
-      afterContext: string;
-      value: string;
-    };
+/** Exact, editable Markdown owned by one temporary review directive. */
+export type KnowledgeReviewAnchor =
+  | { kind: "text"; start: number; end: number; label: string }
+  | { kind: "fence"; start: number; end: number; label: string; language: string | null };
 
-export function buildKnowledgeReviewInstruction(
-  directives: readonly KnowledgeReviewDirective[],
-): string {
-  const refine = directives.filter((directive) => directive.kind === "refine");
-  const replacements = directives.filter((directive) => directive.kind === "replace");
-  return [
-    "Refine this Project Knowledge article while preserving its Markdown structure and factual scope.",
-    replacements.length
-      ? "The exact replacements below are already applied in the source. Preserve their replacement text verbatim."
-      : "",
-    ...replacements.map((directive) => `- Exact replacement: ${JSON.stringify(directive.value)}`),
-    refine.length ? "Apply these targeted editorial directions:" : "",
-    ...refine.map(
-      (directive) => `- For ${JSON.stringify(directive.selectedText)}: ${directive.value.trim()}`,
-    ),
-  ]
-    .filter(Boolean)
-    .join("\n");
+/** Temporary, in-memory directives collected while reviewing a Knowledge article. */
+export interface KnowledgeReviewDirective {
+  id: string;
+  kind: "replace" | "refine";
+  anchor: KnowledgeReviewAnchor;
+  value: string;
+}
+
+/** The source pinned while a temporary in-place proposal is being reviewed. */
+export type KnowledgeReviewTarget =
+  | { kind: "record"; id: string; title: string; expectedUpdatedAt: string }
+  | { kind: "root"; slug: string; title: string; expectedBodyDigest?: string };
+
+/** A proposal belongs to the current Knowledge article, never to a workspace tab. */
+export interface KnowledgeReviewProposal {
+  target: KnowledgeReviewTarget;
+  /** Source sent to the model and later committed after the reader accepts. */
+  base: string;
+  proposal: string;
+  /** Clean, reader-facing source for the diff when the stored source has field sentinels. */
+  displayBase?: string;
+  displayProposal?: string;
 }
 
 /**
- * Direct replacements are made before the model sees the article. Context is
- * stored beside the selected text, not a DOM range, so this stays independent
- * of Markdown renderer structure. An ambiguous match is rejected rather than
- * silently replacing the wrong repeated phrase.
+ * Direct replacements are made before the model sees the article, in reverse
+ * source order so every anchor remains exact even when the replacement lengths
+ * differ. Refinement anchors are then shifted into that updated article.
  */
 export function applyDirectReplacements(
   source: string,
   directives: readonly KnowledgeReviewDirective[],
-): { content: string; error: string | null } {
-  let content = source;
-  for (const directive of directives) {
-    if (directive.kind !== "replace") continue;
-    const candidates: number[] = [];
-    let from = 0;
-    while (true) {
-      const index = content.indexOf(directive.selectedText, from);
-      if (index < 0) break;
-      const before = content.slice(Math.max(0, index - directive.beforeContext.length), index);
-      const after = content.slice(
-        index + directive.selectedText.length,
-        index + directive.selectedText.length + directive.afterContext.length,
-      );
-      if (
-        (!directive.beforeContext || before.endsWith(directive.beforeContext)) &&
-        (!directive.afterContext || after.startsWith(directive.afterContext))
-      ) {
-        candidates.push(index);
-      }
-      from = index + directive.selectedText.length;
-    }
-    if (candidates.length !== 1) {
+): {
+  content: string;
+  refinements: KnowledgeReviewDirective[];
+  error: string | null;
+} {
+  const ordered = [...directives].sort((left, right) => left.anchor.start - right.anchor.start);
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1];
+    const current = ordered[index];
+    if (previous && current && previous.anchor.end > current.anchor.start) {
       return {
         content: source,
-        error: "A replacement no longer identifies one exact passage. Re-select it.",
+        refinements: [],
+        error: "Two review notes overlap. Remove one before generating a proposal.",
       };
     }
-    const index = candidates[0];
-    content = `${content.slice(0, index)}${directive.value}${content.slice(index + directive.selectedText.length)}`;
   }
-  return { content, error: null };
+  let content = source;
+  const replacements = ordered.filter((directive) => directive.kind === "replace");
+  for (let index = replacements.length - 1; index >= 0; index -= 1) {
+    const directive = replacements[index];
+    if (!directive) continue;
+    if (
+      directive.anchor.start < 0 ||
+      directive.anchor.end <= directive.anchor.start ||
+      directive.anchor.end > source.length
+    ) {
+      return {
+        content: source,
+        refinements: [],
+        error: "A review note no longer identifies editable article source. Re-select it.",
+      };
+    }
+    content = `${content.slice(0, directive.anchor.start)}${directive.value}${content.slice(directive.anchor.end)}`;
+  }
+  const refinements: KnowledgeReviewDirective[] = [];
+  for (const directive of ordered) {
+    if (directive.kind !== "refine") continue;
+    refinements.push({
+      id: directive.id,
+      kind: directive.kind,
+      anchor: shiftAnchorAfterReplacements(directive.anchor, replacements),
+      value: directive.value,
+    });
+  }
+  return { content, refinements, error: null };
+}
+
+function shiftAnchorAfterReplacements(
+  anchor: KnowledgeReviewAnchor,
+  replacements: readonly KnowledgeReviewDirective[],
+): KnowledgeReviewAnchor {
+  const shift = replacements.reduce((total, directive) => {
+    if (directive.anchor.end > anchor.start) return total;
+    return total + directive.value.length - (directive.anchor.end - directive.anchor.start);
+  }, 0);
+  return { ...anchor, start: anchor.start + shift, end: anchor.end + shift };
 }

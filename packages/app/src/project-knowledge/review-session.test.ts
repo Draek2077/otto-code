@@ -1,39 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { applyDirectReplacements, buildKnowledgeReviewInstruction } from "./review-session";
+import { applyDirectReplacements } from "./review-session";
 
 describe("Project Knowledge review directives", () => {
-  it("applies an exact replacement only when its saved context identifies one passage", () => {
+  it("applies an exact replacement to its selected source range", () => {
     const source = "The daemon owns the writes. The daemon serves the reads.";
     const result = applyDirectReplacements(source, [
       {
         id: "replace-1",
         kind: "replace",
-        selectedText: "daemon",
-        beforeContext: "The ",
-        afterContext: " owns",
+        anchor: { kind: "text", start: 4, end: 10, label: "daemon" },
         value: "service",
       },
     ]);
     expect(result).toEqual({
       content: "The service owns the writes. The daemon serves the reads.",
+      refinements: [],
       error: null,
     });
   });
 
-  it("refuses an ambiguous replacement and tells the model to preserve accepted exact text", () => {
-    const directive = {
-      id: "replace-1",
-      kind: "replace" as const,
-      selectedText: "daemon",
-      beforeContext: "",
-      afterContext: "",
-      value: "service",
-    };
-    expect(applyDirectReplacements("daemon and daemon", [directive]).error).toMatch(
-      /one exact passage/,
-    );
-    expect(buildKnowledgeReviewInstruction([directive])).toContain(
-      "Preserve their replacement text verbatim",
-    );
+  it("moves refinement ranges after earlier direct replacements", () => {
+    const result = applyDirectReplacements("daemon and daemon", [
+      {
+        id: "replace-1",
+        kind: "replace",
+        anchor: { kind: "text", start: 0, end: 6, label: "daemon" },
+        value: "service",
+      },
+      {
+        id: "refine-1",
+        kind: "refine",
+        anchor: { kind: "text", start: 11, end: 17, label: "daemon" },
+        value: "Make this precise.",
+      },
+    ]);
+    expect(result).toEqual({
+      content: "service and daemon",
+      refinements: [
+        {
+          id: "refine-1",
+          kind: "refine",
+          anchor: { kind: "text", start: 12, end: 18, label: "daemon" },
+          value: "Make this precise.",
+        },
+      ],
+      error: null,
+    });
   });
 });

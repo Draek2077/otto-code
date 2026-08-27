@@ -185,6 +185,8 @@ import {
   ProjectKnowledgeRootApplyResponseMessageSchema,
   ProjectKnowledgeRefineApplyRequestMessageSchema,
   ProjectKnowledgeRefineApplyResponseMessageSchema,
+  ProjectKnowledgeRefinementProposeRequestMessageSchema,
+  ProjectKnowledgeRefinementProposeResponseMessageSchema,
   ProjectKnowledgeDeleteRequestMessageSchema,
   ProjectKnowledgeStoreLocationValueSchema,
   ProjectKnowledgeStoreGetRequestMessageSchema,
@@ -4296,6 +4298,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectKnowledgeReferenceApplyRequestMessageSchema,
   ProjectKnowledgeRootApplyRequestMessageSchema,
   ProjectKnowledgeRefineApplyRequestMessageSchema,
+  ProjectKnowledgeRefinementProposeRequestMessageSchema,
   ProjectKnowledgeDeleteRequestMessageSchema,
   ProjectKnowledgeStoreGetRequestMessageSchema,
   ProjectKnowledgeStoreSetRequestMessageSchema,
@@ -4901,6 +4904,16 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(projectKnowledgeRefinement): added in v0.8.19, drop the gate
         // when floor >= v0.8.19.
         projectKnowledgeRefinement: z.boolean().optional(),
+        // COMPAT(projectKnowledgeReviewedRefinement): added in v0.8.20, remove
+        // the gate after 2027-02-26. The dedicated reviewed-Knowledge proposal
+        // RPC is not supported by hosts that only expose the original apply RPC.
+        projectKnowledgeReviewedRefinement: z.boolean().optional(),
+        // COMPAT(projectKnowledgeAnchoredRefinement): added in v0.8.21, remove
+        // the gate after 2027-02-27.
+        projectKnowledgeAnchoredRefinement: z.boolean().optional(),
+        // COMPAT(projectKnowledgeTagEditing): added in v0.8.21, remove the
+        // gate after 2027-02-27.
+        projectKnowledgeTagEditing: z.boolean().optional(),
         // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate
         // when daemon floor >= v0.8.18. A project's Knowledge store can live
         // host-local instead of in the repository: the project.knowledge.store.*
@@ -8514,6 +8527,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectKnowledgeReferenceApplyResponseMessageSchema,
   ProjectKnowledgeRootApplyResponseMessageSchema,
   ProjectKnowledgeRefineApplyResponseMessageSchema,
+  ProjectKnowledgeRefinementProposeResponseMessageSchema,
   ProjectKnowledgeDeleteResponseMessageSchema,
   ProjectKnowledgeStoreGetResponseMessageSchema,
   ProjectKnowledgeStoreSetResponseMessageSchema,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ProjectKnowledgeApplyRequestMessageSchema,
   ProjectKnowledgeCreateRequestMessageSchema,
   ProjectKnowledgeDeleteRequestMessageSchema,
   ProjectKnowledgeProjectApplyRequestMessageSchema,
@@ -22,6 +23,26 @@ describe("project knowledge protocol", () => {
         statement,
       }).statement,
     ).toBe(statement);
+  });
+
+  it("accepts an optional tag-only metadata update without narrowing old apply requests", () => {
+    expect(
+      ProjectKnowledgeApplyRequestMessageSchema.parse({
+        type: "project.knowledge.apply.request",
+        requestId: "request-tags",
+        workspaceId: "workspace-1",
+        id: "provider-neutral-tools",
+        tags: ["protocol", "compatibility"],
+      }).tags,
+    ).toEqual(["protocol", "compatibility"]);
+    expect(
+      ProjectKnowledgeApplyRequestMessageSchema.safeParse({
+        type: "project.knowledge.apply.request",
+        requestId: "request-old-client",
+        workspaceId: "workspace-1",
+        id: "provider-neutral-tools",
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts an unresolved finding as a normal knowledge kind", () => {

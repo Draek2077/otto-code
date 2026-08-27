@@ -9,7 +9,9 @@ import {
 // The project.knowledge.* RPCs the domain dispatches, with the response type each must
 // answer and whether a successful mutation must re-scan and push the context report.
 // session.ts keeps one registration line for the whole domain; this is that contract.
-const cases: Array<[SessionInboundMessage, string, { pushes: boolean }]> = [
+const cases: Array<
+  [SessionInboundMessage, string, { pushes: boolean; refreshesChanges?: boolean }]
+> = [
   [
     { type: "project.knowledge.list.request", requestId: "r", workspaceId: "w" },
     "project.knowledge.list.response",
@@ -92,6 +94,18 @@ const cases: Array<[SessionInboundMessage, string, { pushes: boolean }]> = [
   ],
   [
     {
+      type: "project.knowledge.refine.apply.request",
+      requestId: "r",
+      workspaceId: "w",
+      target: "record",
+      id: "k1",
+      statement: "S2",
+    },
+    "project.knowledge.refine.apply.response",
+    { pushes: true, refreshesChanges: true },
+  ],
+  [
+    {
       type: "project.knowledge.delete.request",
       requestId: "r",
       workspaceId: "w",
@@ -108,6 +122,7 @@ const record = { id: "k1", kind: "decision", title: "T", statement: "S" };
 function buildSession(overrides: Partial<ProjectKnowledgeSessionOptions> = {}) {
   const emitted: SessionOutboundMessage[] = [];
   const pushContextReport = vi.fn(async () => undefined);
+  const notifyWorkspaceFilesChanged = vi.fn();
   const invalidate = vi.fn();
   const projectKnowledge = {
     catalogViewAtStore: vi.fn(async () => ({
@@ -119,7 +134,7 @@ function buildSession(overrides: Partial<ProjectKnowledgeSessionOptions> = {}) {
     get: vi.fn(async () => record),
     record: vi.fn(async () => record),
     updateTruth: vi.fn(async () => ({ record })),
-    applyReviewedMutation: vi.fn(async () => ({ record })),
+    applyReviewedRefinement: vi.fn(async () => ({ record, demoted: false })),
     setStatus: vi.fn(async () => record),
     updateProject: vi.fn(async () => ({ record })),
     updateReference: vi.fn(async () => ({ record })),
@@ -127,7 +142,7 @@ function buildSession(overrides: Partial<ProjectKnowledgeSessionOptions> = {}) {
     delete: vi.fn(async () => ({ deleted: true })),
   };
   const session = new ProjectKnowledgeSession({
-    host: { emit: (msg) => emitted.push(msg), pushContextReport },
+    host: { emit: (msg) => emitted.push(msg), pushContextReport, notifyWorkspaceFilesChanged },
     projectKnowledge:
       projectKnowledge as unknown as ProjectKnowledgeSessionOptions["projectKnowledge"],
     contextManagement: {
@@ -149,14 +164,25 @@ function buildSession(overrides: Partial<ProjectKnowledgeSessionOptions> = {}) {
     workspaceGitService: {
       resolveRepoRoot: vi.fn(async () => "/repo"),
     } as unknown as ProjectKnowledgeSessionOptions["workspaceGitService"],
+    knowledgeRefinementGenerator: {
+      propose: vi.fn(async () => "Refined knowledge."),
+    } as unknown as ProjectKnowledgeSessionOptions["knowledgeRefinementGenerator"],
     ...overrides,
   });
-  return { session, emitted, pushContextReport, invalidate, projectKnowledge };
+  return {
+    session,
+    emitted,
+    pushContextReport,
+    notifyWorkspaceFilesChanged,
+    invalidate,
+    projectKnowledge,
+  };
 }
 
 describe("ProjectKnowledgeSession", () => {
   it.each(cases)("answers %j with the matching response", async (msg, responseType, expected) => {
-    const { session, emitted, pushContextReport, invalidate } = buildSession();
+    const { session, emitted, pushContextReport, notifyWorkspaceFilesChanged, invalidate } =
+      buildSession();
     const handled = session.dispatch(msg);
     expect(handled).toBeInstanceOf(Promise);
     await handled;
@@ -167,6 +193,7 @@ describe("ProjectKnowledgeSession", () => {
     // invalidate and push the report, and reads must not.
     expect(pushContextReport).toHaveBeenCalledTimes(expected.pushes ? 1 : 0);
     expect(invalidate).toHaveBeenCalledTimes(expected.pushes ? 1 : 0);
+    expect(notifyWorkspaceFilesChanged).toHaveBeenCalledTimes(expected.refreshesChanges ? 1 : 0);
   });
 
   it("answers list with the empty catalog when the daemon has no knowledge service", async () => {

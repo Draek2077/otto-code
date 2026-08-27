@@ -1,11 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { Check, CheckSquare, Robot, RotateCw, X } from "@/components/icons/material-icons";
-import { DiffViewer } from "@/components/diff-viewer";
-import { TreeChevron } from "@/components/tree-primitives";
 import { Button } from "@/components/ui/button";
 import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 import { Switch } from "@/components/ui/switch";
@@ -44,9 +42,8 @@ import {
 } from "@/refine/refine-presets";
 import { buildRefineWorkingSet } from "@/refine/refine-working-set";
 import type { RefineFileProposal, RefineSetFile, RefineSetStats } from "@/refine/refine-set";
-import type { RefineHunk } from "@/refine/hunks";
+import { RefineHunkDecision } from "@/refine/refine-hunk-decision";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
-import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { compactFont, type Theme } from "@/styles/theme";
 import type { DiffPresentation } from "@/utils/diff-document";
@@ -100,7 +97,7 @@ type RefineTarget = Extract<WorkspaceTabTarget, { kind: "refine" }>;
  * preset, exactly as the toolbar button that opened it does.
  */
 function useRefinePanelDescriptor(target: RefineTarget): PanelDescriptor {
-  const { tail } = splitPath(target.knowledgeReview?.title ?? target.paths[0] ?? "");
+  const { tail } = splitPath(target.paths[0] ?? "");
   const extra = target.paths.length - 1;
   const job = refineJobFor(target.presetId);
   const preset = findRefinePreset(target.presetId);
@@ -134,10 +131,6 @@ function RefinePanel() {
   invariant(target.kind === "refine", "RefinePanel requires refine target");
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
   const hasRefine = useRefineFeature(serverId);
-  const hasKnowledgeReview = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeRefinement === true,
-  );
-  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
   const files = useMemo(
     () =>
@@ -148,78 +141,16 @@ function RefinePanel() {
       }),
     [cwd, target.paths, target.references],
   );
-  const virtualDocuments = useMemo(
-    () =>
-      target.knowledgeReview
-        ? [
-            {
-              id: "knowledge-review",
-              absolutePath:
-                target.paths[0] ?? `project-knowledge://${target.knowledgeReview.title}`,
-              label: target.knowledgeReview.title,
-              writable: true,
-              content: target.knowledgeReview.content,
-              modifiedAt:
-                target.knowledgeReview.target === "record"
-                  ? target.knowledgeReview.expectedUpdatedAt
-                  : "",
-              hash: null,
-            },
-          ]
-        : undefined,
-    [target.knowledgeReview, target.paths],
-  );
-  const acceptKnowledgeReview = useCallback(
-    async (results: { id: string; label: string; content: string }[]) => {
-      const review = target.knowledgeReview;
-      const result = results[0];
-      if (!review || !result || !client) {
-        return [
-          {
-            label: result?.label ?? "Knowledge article",
-            kind: "failed" as const,
-            reason: "Knowledge review is unavailable.",
-          },
-        ];
-      }
-      const payload =
-        review.target === "record"
-          ? await client.applyProjectKnowledgeRefinement({
-              workspaceId,
-              target: "record",
-              id: review.id,
-              statement: result.content,
-              expectedUpdatedAt: review.expectedUpdatedAt,
-            })
-          : await client.applyProjectKnowledgeRefinement({
-              workspaceId,
-              target: "root",
-              slug: review.slug,
-              body: result.content,
-              ...(review.expectedBodyDigest
-                ? { expectedBodyDigest: review.expectedBodyDigest }
-                : {}),
-            });
-      let kind: "written" | "stale" | "failed" = "written";
-      if (payload.error) kind = payload.error.includes("changed") ? "stale" : "failed";
-      return [{ label: result.label, kind, reason: payload.error ?? null }];
-    },
-    [client, target.knowledgeReview, workspaceId],
-  );
-
   const session = useRefineSession({
     serverId,
     cwd: cwd ?? "",
     files,
-    enabled: hasRefine && (!target.knowledgeReview || hasKnowledgeReview) && Boolean(cwd),
-    ...(virtualDocuments ? { virtualDocuments, acceptResults: acceptKnowledgeReview } : {}),
+    enabled: hasRefine && Boolean(cwd),
   });
 
   const preset = useMemo(() => findRefinePreset(target.presetId), [target.presetId]);
   const job = preset?.job ?? "refine";
-  const [instruction, setInstruction] = useState(
-    () => target.knowledgeReview?.instruction ?? preset?.instruction ?? "",
-  );
+  const [instruction, setInstruction] = useState(() => preset?.instruction ?? "");
   const [activePresetId, setActivePresetId] = useState<string | null>(preset?.id ?? null);
   const { preferences: changesPreferences } = useChangesPreferences();
   const presentation = changesPreferences.presentation;
@@ -249,14 +180,10 @@ function RefinePanel() {
     [activePresetId],
   );
 
-  if (!hasRefine || (target.knowledgeReview && !hasKnowledgeReview)) {
+  if (!hasRefine) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.mutedText}>
-          {target.knowledgeReview && !hasKnowledgeReview
-            ? "Update the host to review Project Knowledge with AI."
-            : i18n.t("refine.unsupported")}
-        </Text>
+        <Text style={styles.mutedText}>{i18n.t("refine.unsupported")}</Text>
       </View>
     );
   }
@@ -807,6 +734,10 @@ function FileProposalGroup({
     () => session.setFileKept(proposal.id, !allKept),
     [allKept, proposal.id, session],
   );
+  const toggleHunk = useCallback(
+    (hunkId: string) => session.toggleHunk(proposal.id, hunkId),
+    [proposal.id, session],
+  );
   // The heading hands back the label it was given; the fold set is keyed by id,
   // which is what the rest of the session addresses a file by.
   const toggleCollapsed = useCallback(
@@ -844,106 +775,18 @@ function FileProposalGroup({
       {collapsed
         ? null
         : proposal.diff.hunks.map((hunk, index) => (
-            <HunkGroup
+            <RefineHunkDecision
               key={hunk.id}
-              fileId={proposal.id}
               filePath={proposal.label}
               beforeSource={proposal.beforeSource}
               afterSource={proposal.afterSource}
               hunk={hunk}
               ordinal={index + 1}
               kept={session.isKept(proposal.id, hunk.id)}
-              onToggle={session.toggleHunk}
+              onToggle={toggleHunk}
               presentation={presentation}
             />
           ))}
-    </View>
-  );
-}
-
-/**
- * One change, with its decision.
- *
- * The switch is the decision and the chevron is the folding - separate
- * controls, because a group you have folded away is not a group you have
- * dropped, and conflating them would make "I've read this one" destructive. A
- * dropped group stays on screen, dimmed: what you refused is part of the
- * picture of what the model wanted to do.
- */
-function HunkGroup({
-  fileId,
-  filePath,
-  beforeSource,
-  afterSource,
-  hunk,
-  ordinal,
-  kept,
-  onToggle,
-  presentation,
-}: {
-  fileId: string;
-  filePath: string;
-  beforeSource?: string;
-  afterSource?: string;
-  hunk: RefineHunk;
-  ordinal: number;
-  kept: boolean;
-  onToggle: (fileId: string, hunkId: string) => void;
-  presentation: DiffPresentation;
-}) {
-  const { t } = useTranslation();
-  const [collapsed, setCollapsed] = useState(false);
-  const toggleCollapsed = useCallback(() => setCollapsed((current) => !current), []);
-  const toggleKept = useCallback(() => onToggle(fileId, hunk.id), [fileId, hunk.id, onToggle]);
-  const bodyStyle = useMemo(() => [styles.hunkBody, !kept && styles.hunkBodyDropped], [kept]);
-  const document = useMemo(
-    () => ({
-      source: "proposal" as const,
-      filePath,
-      lines: hunk.lines,
-      beforeSource,
-      afterSource,
-    }),
-    [afterSource, beforeSource, filePath, hunk.lines],
-  );
-  const foldState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
-
-  return (
-    <View style={styles.hunk} testID="refine-hunk">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={foldState}
-        accessibilityLabel={t("refine.hunk.title", { ordinal })}
-        onPress={toggleCollapsed}
-        style={styles.hunkHeader}
-        testID="refine-hunk-fold"
-      >
-        <TreeChevron expanded={!collapsed} />
-        <Text style={styles.hunkName}>{t("refine.hunk.title", { ordinal })}</Text>
-        <Text style={styles.hunkStat}>
-          +{hunk.additions} −{hunk.removals}
-        </Text>
-        <View style={styles.spacer} />
-        <Text style={kept ? styles.decisionKept : styles.decisionDropped}>
-          {kept ? t("refine.hunk.keeping") : t("refine.hunk.dropped")}
-        </Text>
-        <Switch
-          value={kept}
-          onValueChange={toggleKept}
-          accessibilityLabel={t("refine.hunk.keepAccessibility", { ordinal })}
-          testID="refine-hunk-keep"
-        />
-      </Pressable>
-      {collapsed ? null : (
-        <View style={bodyStyle}>
-          <DiffViewer
-            diffLines={hunk.lines}
-            document={document}
-            presentation={presentation}
-            frame="top"
-          />
-        </View>
-      )}
     </View>
   );
 }
@@ -1240,48 +1083,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: compactFont(theme.fontSize.xs),
     fontVariant: ["tabular-nums"],
-  },
-  hunk: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  hunkHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    minHeight: 32,
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    backgroundColor: theme.colors.surface1,
-    ...(isWeb ? ({ cursor: "pointer" } as object) : {}),
-  },
-  hunkName: {
-    color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.sm),
-    fontWeight: theme.fontWeight.semibold,
-  },
-  hunkStat: {
-    color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
-    fontVariant: ["tabular-nums"],
-  },
-  decisionKept: {
-    color: theme.colors.statusSuccess,
-    fontSize: compactFont(theme.fontSize.sm),
-  },
-  decisionDropped: {
-    color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
-  },
-  hunkBody: {
-    // The shared diff surface owns its code well, gutter, and borders. Refine
-    // only provides the decision row immediately above it.
-    backgroundColor: theme.colors.surfaceCode,
-  },
-  // A refused change stays visible but recedes: it is context for the decision,
-  // not something you are still being asked about.
-  hunkBodyDropped: {
-    opacity: 0.45,
   },
   outcomeRow: {
     paddingHorizontal: theme.spacing[3],

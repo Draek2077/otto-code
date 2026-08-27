@@ -31,20 +31,96 @@ describe("ProjectKnowledgeService", () => {
         kind: "decision",
         title: "Reviewed refinement",
         statement: "The original truth.",
+        evidence: "The original evidence.",
         status: "confirmed",
       });
       const applied = await knowledge.applyReviewedRefinement({
         cwd: root,
         id: record.id,
         statement: "The reviewed truth.",
+        evidence: "The reviewed evidence.",
         expectedUpdatedAt: record.updatedAt,
       });
       expect(applied).toMatchObject({
         demoted: true,
-        record: { status: "proposed", statement: "The reviewed truth." },
+        record: {
+          status: "proposed",
+          statement: "The reviewed truth.",
+          evidence: "The reviewed evidence.",
+        },
       });
+      expect(applied.record?.provenance?.at(-1)?.text).toContain("and evidence");
       expect(applied.record?.provenance?.at(-1)?.text).toContain("Status returned to proposed");
       expect(await knowledge.query(root, "reviewed")).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("updates tags without changing current truth or review status", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const knowledge = service(root);
+      const record = await knowledge.record({
+        cwd: root,
+        kind: "requirement",
+        title: "Human tags remain editable",
+        statement: "People can correct Knowledge metadata without rewriting its truth.",
+        evidence: "The review status must remain stable.",
+        tags: ["legacy"],
+        status: "confirmed",
+      });
+
+      const updated = await knowledge.applyReviewedMutation({
+        cwd: root,
+        id: record.id,
+        tags: ["Metadata", "discovery"],
+        expectedUpdatedAt: record.updatedAt,
+      });
+
+      expect(updated.record).toMatchObject({
+        status: "confirmed",
+        statement: "People can correct Knowledge metadata without rewriting its truth.",
+        evidence: "The review status must remain stable.",
+        tags: ["metadata", "discovery"],
+      });
+      expect(updated.record?.provenance?.at(-1)).toMatchObject({
+        kind: "note",
+        text: "Updated tags: metadata, discovery.",
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a confirmed record to proposed when a manual truth edit changes it", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const knowledge = service(root);
+      const record = await knowledge.record({
+        cwd: root,
+        kind: "architecture",
+        title: "Manual truth review",
+        statement: "The original reviewed architecture.",
+        status: "confirmed",
+      });
+
+      const updated = await knowledge.updateTruth({
+        cwd: root,
+        id: record.id,
+        statement: "The corrected architecture needs another review.",
+        reason: "The implementation boundary changed.",
+        expectedUpdatedAt: record.updatedAt,
+      });
+
+      expect(updated.record).toMatchObject({
+        status: "proposed",
+        statement: "The corrected architecture needs another review.",
+      });
+      expect(updated.record?.provenance?.at(-1)?.text).toBe(
+        "The implementation boundary changed. Status returned to proposed for review.",
+      );
+      expect(await knowledge.query(root, "corrected architecture")).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -365,6 +441,56 @@ describe("ProjectKnowledgeService", () => {
       expect(await knowledge.lintLinks(root)).toEqual([
         { source: "architecture", target: "daemon-owns-memory" },
       ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("creates evidence-backed root drafts without replacing a reviewer’s root", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      await mkdir(path.join(root, "docs"), { recursive: true });
+      await mkdir(path.join(root, "packages", "app"), { recursive: true });
+      await writeFile(
+        path.join(root, "package.json"),
+        JSON.stringify({
+          name: "evidence-backed-repo",
+          packageManager: "npm@11.0.0",
+          workspaces: ["packages/*"],
+          scripts: { build: "npm run build", test: "npm run test" },
+        }),
+      );
+      await writeFile(path.join(root, "README.md"), "# Evidence-backed repo\n");
+      await writeFile(path.join(root, "docs", "README.md"), "# Documentation\n");
+      await writeFile(path.join(root, "docs", "architecture.md"), "# Architecture\n");
+      const knowledge = service(root);
+
+      await knowledge.bootstrap(root);
+      const firstView = await knowledge.view(root);
+      const architecture = firstView.rootPages.find((page) => page.slug === "architecture");
+      const background = firstView.rootPages.find((page) => page.slug === "background");
+      const flow = firstView.rootPages.find((page) => page.slug === "flow");
+      expect(background?.body).toContain("`evidence-backed-repo`");
+      expect(architecture?.body).toContain("`packages/*`");
+      expect(architecture?.body).toContain("`packages`");
+      expect(flow?.body).toContain("`build`");
+      expect(
+        firstView.rootPages.every((page) =>
+          page.body.includes("Evidence collected during initialization"),
+        ),
+      ).toBe(true);
+
+      await knowledge.updateRoot({
+        cwd: root,
+        slug: "architecture",
+        body: "The reviewer owns this architecture draft.",
+      });
+      const preserved = await knowledge.getRoot(root, "architecture");
+      const flowBeforeRepeat = await knowledge.getRoot(root, "flow");
+      await knowledge.bootstrap(root);
+
+      expect((await knowledge.getRoot(root, "architecture"))?.body).toBe(preserved?.body);
+      expect((await knowledge.getRoot(root, "flow"))?.body).toBe(flowBeforeRepeat?.body);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

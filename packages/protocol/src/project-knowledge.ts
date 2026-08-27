@@ -178,6 +178,9 @@ export const ProjectKnowledgeApplyRequestMessageSchema = z.object({
   title: z.string().max(160).optional(),
   statement: z.string().optional(),
   evidence: z.string().optional(),
+  // COMPAT(projectKnowledgeTagEditing): added in v0.8.21, accepted through
+  // 2027-02-27 for clients before tag editing.
+  tags: z.array(z.string().max(48)).max(32).optional(),
   provenanceText: z.string().optional(),
   provenanceSource: z.string().max(160).optional(),
   provenanceAffects: z.array(z.string()).optional(),
@@ -276,6 +279,9 @@ export const ProjectKnowledgeRefineApplyRequestMessageSchema = z.object({
   id: z.string().optional(),
   slug: z.string().optional(),
   statement: z.string().optional(),
+  // COMPAT(projectKnowledgeEvidenceRefinement): added in v0.8.18, accepted
+  // through 2027-02-27 for clients before multi-field record review.
+  evidence: z.string().optional(),
   body: z.string().optional(),
   expectedUpdatedAt: z.string().optional(),
   expectedBodyDigest: z.string().optional(),
@@ -288,6 +294,52 @@ export const ProjectKnowledgeRefineApplyResponseMessageSchema = z.object({
     record: ProjectKnowledgeRecordSchema.nullable(),
     page: ProjectKnowledgeRootPageSchema.nullable(),
     demoted: z.boolean(),
+    error: z.string().optional(),
+  }),
+});
+
+/** An exact source span inside an editable Project Knowledge title or body. */
+export const ProjectKnowledgeRefinementAnchorSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("text"), start: z.number().int(), end: z.number().int() }),
+  z.object({
+    kind: z.literal("fence"),
+    start: z.number().int(),
+    end: z.number().int(),
+    language: z.string().nullable(),
+  }),
+]);
+
+/** A temporary source-bound instruction sent to the dedicated Knowledge writer. */
+export const ProjectKnowledgeRefinementDirectiveSchema = z.object({
+  id: z.string().optional(),
+  kind: z.enum(["replace", "refine"]),
+  // COMPAT(projectKnowledgePhraseRefinement): accepted through 2027-02-27 for
+  // clients before source-owned review anchors.
+  selectedText: z.string().optional(),
+  beforeContext: z.string().optional(),
+  afterContext: z.string().optional(),
+  anchor: ProjectKnowledgeRefinementAnchorSchema.optional(),
+  value: z.string(),
+});
+
+/**
+ * Produces one inert Knowledge proposal. Direct replacements have already been
+ * applied by the caller; this request carries only the remaining refinement
+ * instructions and never writes the store.
+ */
+export const ProjectKnowledgeRefinementProposeRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.refinement.propose.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  content: z.string(),
+  directives: z.array(ProjectKnowledgeRefinementDirectiveSchema),
+});
+
+export const ProjectKnowledgeRefinementProposeResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.refinement.propose.response"),
+  payload: z.object({
+    requestId: z.string(),
+    content: z.string().nullable(),
     error: z.string().optional(),
   }),
 });
@@ -324,6 +376,9 @@ export type ProjectKnowledgeCreateResponseMessage = z.infer<
 
 export type ProjectKnowledgeApplyResponseMessage = z.infer<
   typeof ProjectKnowledgeApplyResponseMessageSchema
+>;
+export type ProjectKnowledgeRefinementProposeResponseMessage = z.infer<
+  typeof ProjectKnowledgeRefinementProposeResponseMessageSchema
 >;
 
 export type ProjectKnowledgeStatusResponseMessage = z.infer<

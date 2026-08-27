@@ -257,6 +257,16 @@ export class CheckoutSession {
     }
   }
 
+  /**
+   * A sibling domain wrote a file in this checkout. It cannot reach the diff
+   * subscriber directly, but its write must land in the active Changes view
+   * just as promptly as a checkout command does.
+   */
+  notifyWorkingTreeChanged(cwd: string): void {
+    this.workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
+    this.scheduleDiffRefresh(cwd);
+  }
+
   async handleValidateBranchRequest(msg: ValidateBranchRequest): Promise<void> {
     const { cwd, branchName, requestId } = msg;
 

@@ -9,7 +9,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { MarkdownRenderer } from "@/components/markdown/renderer";
 import {
   Archive,
   Architecture,
@@ -56,11 +55,18 @@ import {
 } from "@/context-management/use-project-knowledge";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
-import { openRefineTab } from "@/refine/open-refine-tab";
+import { KnowledgeMarkdownEditor } from "./knowledge-markdown-editor";
+import { KnowledgeReviewProposalView } from "./knowledge-review-proposal";
+import { KnowledgeReviewSurface } from "./knowledge-review-surface";
+import {
+  useKnowledgeReviewRefreshRevision,
+  useKnowledgeReviewRefreshStore,
+} from "./knowledge-review-refresh-store";
 import {
   applyDirectReplacements,
-  buildKnowledgeReviewInstruction,
   type KnowledgeReviewDirective,
+  type KnowledgeReviewProposal,
+  type KnowledgeReviewTarget,
 } from "./review-session";
 import {
   formatDeliveryStatus,
@@ -81,12 +87,18 @@ const MAX_SIDEBAR_WIDTH = 520;
 const MIN_VIEWER_WIDTH = 360;
 const SIDEBAR_SHELL_STYLE = { position: "relative" } as const;
 const SELECTED_ACCESSIBILITY_STATE = { selected: true } as const;
+// This is source-only. The renderer receives the normal record article, while
+// the review engine needs one stable string for source-owned ranges spanning
+// Current understanding and Evidence.
+const RECORD_REVIEW_SEPARATOR = "\n\n<!-- otto:knowledge-review-evidence -->\n\n";
 
 /** Markdown knowledge is rendered as a document, while Otto owns mutations. */
 // eslint-disable-next-line complexity -- panel intentionally owns its three explicit review states.
 export function ProjectKnowledgePanel(): ReactElement {
   const { serverId, workspaceId, openFileInWorkspace } = usePaneContext();
   const knowledge = useProjectKnowledge(serverId, workspaceId);
+  const reloadKnowledge = knowledge.reload;
+  const knowledgeReviewRevision = useKnowledgeReviewRefreshRevision(serverId, workspaceId);
   const animationsEnabled = useAnimationsEnabled();
   const readRecord = knowledge.readRecord;
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -102,6 +114,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   const [creating, setCreating] = useState(false);
   const [editingTruth, setEditingTruth] = useState(false);
   const [editingMetadata, setEditingMetadata] = useState(false);
+  const [editingTags, setEditingTags] = useState(false);
   const [title, setTitle] = useState("");
   const [statement, setStatement] = useState("");
   const [kind, setKind] = useState<
@@ -119,13 +132,19 @@ export function ProjectKnowledgePanel(): ReactElement {
   const [sourceUrl, setSourceUrl] = useState("");
   const [metadataReason, setMetadataReason] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-  const [reviewSelection, setReviewSelection] = useState<string | null>(null);
-  const [reviewKind, setReviewKind] = useState<"replace" | "refine">("refine");
-  const [reviewValue, setReviewValue] = useState("");
   const [reviewDirectives, setReviewDirectives] = useState<KnowledgeReviewDirective[]>([]);
+  const [reviewGenerating, setReviewGenerating] = useState(false);
+  const [reviewProposal, setReviewProposal] = useState<KnowledgeReviewProposal | null>(null);
+  const [reviewApplying, setReviewApplying] = useState(false);
   const reviewSupported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeRefinement === true,
+    (state) =>
+      state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeAnchoredRefinement === true,
   );
+  const tagEditingSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeTagEditing === true,
+  );
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  const notifyKnowledgeReviewRefresh = useKnowledgeReviewRefreshStore((state) => state.notify);
   const knowledgeSidebarWidth = usePanelStore((state) => state.projectKnowledgeSidebarWidth);
   const setKnowledgeSidebarWidth = usePanelStore((state) => state.setProjectKnowledgeSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -198,18 +217,17 @@ export function ProjectKnowledgePanel(): ReactElement {
       ? recordDetail
       : null;
   const selected = detailedSelection ?? selectedSummary;
-  const reviewContent = selectedRoot
-    ? rootDocumentBody(selectedRoot.body)
-    : (detailedSelection?.statement ?? null);
+  const reviewContent = reviewContentForSelection(selectedRoot, detailedSelection);
   const reviewDocumentKey = selectedRoot
     ? `root:${selectedRoot.slug}`
     : `record:${selected?.id ?? ""}`;
   useEffect(() => {
     // Review comments have no durable identity and must never follow a reader
     // to a different article in the same tab.
-    setReviewSelection(null);
-    setReviewValue("");
     setReviewDirectives([]);
+    setReviewProposal(null);
+    setFormError(null);
+    setEditingTags(false);
   }, [reviewDocumentKey]);
   useEffect(() => {
     if (!selectedSummary) {
@@ -230,6 +248,9 @@ export function ProjectKnowledgePanel(): ReactElement {
       cancelled = true;
     };
   }, [readRecord, selectedSummary]);
+  useEffect(() => {
+    if (knowledgeReviewRevision > 0) void reloadKnowledge();
+  }, [knowledgeReviewRevision, reloadKnowledge]);
   const summary = useMemo(
     () => summarizeProjectKnowledge(knowledge.view?.records ?? []),
     [knowledge.view?.records],
@@ -257,97 +278,145 @@ export function ProjectKnowledgePanel(): ReactElement {
     if (!markdownPath) return;
     openFileInWorkspace({ location: { path: markdownPath }, disposition: "main" });
   }, [markdownPath, openFileInWorkspace]);
-  const captureReviewSelection = useCallback(() => {
-    if (!isWeb || !reviewContent) return;
-    const value = window.getSelection?.()?.toString().trim() ?? "";
-    if (!value) {
-      setFormError("Select a phrase in the article before adding review feedback.");
-      return;
-    }
-    if (!reviewContent.includes(value)) {
-      setFormError("The selection is not part of this article's editable text.");
-      return;
-    }
-    if (reviewContent.indexOf(value) !== reviewContent.lastIndexOf(value)) {
-      setFormError(
-        "That phrase appears more than once. Select a larger passage so the review stays exact.",
-      );
-      return;
-    }
-    setFormError(null);
-    setReviewSelection(value);
-    setReviewValue("");
-  }, [reviewContent]);
-  const addReviewDirective = useCallback(() => {
-    if (!reviewSelection || !reviewValue.trim() || !reviewContent) return;
-    const index = reviewContent.indexOf(reviewSelection);
+  const addReviewDirective = useCallback((directive: Omit<KnowledgeReviewDirective, "id">) => {
+    const id = `review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setReviewDirectives((current) => [
       ...current,
       {
-        id: `${Date.now()}-${current.length}`,
-        kind: reviewKind,
-        selectedText: reviewSelection,
-        beforeContext: reviewContent.slice(Math.max(0, index - 96), index),
-        afterContext: reviewContent.slice(
-          index + reviewSelection.length,
-          index + reviewSelection.length + 96,
-        ),
-        value: reviewValue.trim(),
+        id,
+        ...directive,
       },
     ]);
-    setReviewSelection(null);
-    setReviewValue("");
-  }, [reviewContent, reviewKind, reviewSelection, reviewValue]);
-  const startKnowledgeRefine = useCallback(() => {
-    if (!reviewContent || reviewDirectives.length === 0 || !reviewSupported) return;
-    const replacements = applyDirectReplacements(reviewContent, reviewDirectives);
+    return id;
+  }, []);
+  const updateReviewDirective = useCallback(
+    (id: string, update: Pick<KnowledgeReviewDirective, "kind" | "value">) => {
+      setReviewDirectives((current) =>
+        current.map((directive) => (directive.id === id ? { ...directive, ...update } : directive)),
+      );
+    },
+    [],
+  );
+  const runnableReviewDirectives = useMemo(
+    () => reviewDirectives.filter((directive) => directive.value.trim().length > 0),
+    [reviewDirectives],
+  );
+  const startKnowledgeRefine = useCallback(async () => {
+    if (
+      !reviewContent ||
+      runnableReviewDirectives.length === 0 ||
+      !reviewSupported ||
+      !client ||
+      reviewGenerating
+    )
+      return;
+    const replacements = applyDirectReplacements(reviewContent, runnableReviewDirectives);
     if (replacements.error) {
       setFormError(replacements.error);
       return;
     }
-    let target: Parameters<typeof openRefineTab>[0]["knowledgeReview"] | undefined;
+    let target: KnowledgeReviewTarget | null = null;
     if (selectedRoot) {
       target = {
-        target: "root",
+        kind: "root",
         slug: selectedRoot.slug,
         title: selectedRoot.title,
-        content: replacements.content,
         ...(selectedRoot.bodyDigest ? { expectedBodyDigest: selectedRoot.bodyDigest } : {}),
-        instruction: buildKnowledgeReviewInstruction(reviewDirectives),
       };
     } else if (selected) {
       target = {
-        target: "record",
+        kind: "record",
         id: selected.id,
         title: selected.title,
-        content: replacements.content,
         expectedUpdatedAt: selected.updatedAt,
-        instruction: buildKnowledgeReviewInstruction(reviewDirectives),
       };
     }
     if (!target) return;
-    const opened = openRefineTab({
-      serverId,
-      workspaceId,
-      paths: [
-        `project-knowledge://${target.target}/${target.target === "root" ? target.slug : target.id}`,
-      ],
-      knowledgeReview: target,
-    });
-    if (opened) {
+    const refinements = replacements.refinements;
+    setReviewGenerating(true);
+    setFormError(null);
+    try {
+      const response = refinements.length
+        ? await client.proposeProjectKnowledgeRefinement({
+            workspaceId,
+            content: replacements.content,
+            directives: refinements,
+          })
+        : { content: replacements.content };
+      if (!response.content) {
+        setFormError(
+          ("error" in response ? response.error : undefined) ??
+            "No Knowledge refinement was produced.",
+        );
+        return;
+      }
+      const proposal = buildKnowledgeReviewProposal(target, reviewContent, response.content);
+      if (!proposal) {
+        setFormError("The Knowledge proposal could not preserve its editable field boundary.");
+        return;
+      }
+      setReviewProposal(proposal);
       setReviewDirectives([]);
-      setReviewSelection(null);
-      setReviewValue("");
+    } finally {
+      setReviewGenerating(false);
     }
   }, [
+    client,
     reviewContent,
-    reviewDirectives,
+    reviewGenerating,
+    runnableReviewDirectives,
     reviewSupported,
     selected,
     selectedRoot,
-    serverId,
     workspaceId,
   ]);
+  const applyReviewProposal = useCallback(
+    async (content: string) => {
+      if (!client || !reviewProposal || reviewApplying) return;
+      setReviewApplying(true);
+      setFormError(null);
+      try {
+        let payload;
+        const selectedProposal = { ...reviewProposal, proposal: content };
+        if (reviewProposal.target.kind === "record") {
+          const recordProposal = { ...selectedProposal, target: reviewProposal.target };
+          payload = await applyRecordReviewProposal({
+            client,
+            reviewProposal: recordProposal,
+            workspaceId,
+          });
+        } else {
+          payload = await client.applyProjectKnowledgeRefinement({
+            workspaceId,
+            target: "root",
+            slug: reviewProposal.target.slug,
+            body: content,
+            ...(reviewProposal.target.expectedBodyDigest
+              ? { expectedBodyDigest: reviewProposal.target.expectedBodyDigest }
+              : {}),
+          });
+        }
+        if (payload.error) {
+          setFormError(payload.error);
+          return;
+        }
+        setReviewProposal(null);
+        notifyKnowledgeReviewRefresh(serverId, workspaceId);
+        await reloadKnowledge();
+      } finally {
+        setReviewApplying(false);
+      }
+    },
+    [
+      client,
+      notifyKnowledgeReviewRefresh,
+      reloadKnowledge,
+      reviewApplying,
+      reviewProposal,
+      serverId,
+      workspaceId,
+    ],
+  );
   const setStatus = useCallback(
     async (status: "confirmed" | "superseded") => {
       if (!selected) return;
@@ -464,6 +533,21 @@ export function ProjectKnowledgePanel(): ReactElement {
       setTruthReason("");
     }
   }, [knowledge, selected, statement, truthReason]);
+  const saveTags = useCallback(async () => {
+    if (!selected) return;
+    setFormError(null);
+    const error = await knowledge.updateTags({
+      id: selected.id,
+      tags: parseTagInput(tags),
+      expectedUpdatedAt: selected.updatedAt,
+    });
+    if (!error) {
+      setEditingTags(false);
+      setTags("");
+      return;
+    }
+    setFormError(error);
+  }, [knowledge, selected, tags]);
   const saveMetadata = useCallback(async () => {
     if (!selected) return;
     setFormError(null);
@@ -564,13 +648,11 @@ export function ProjectKnowledgePanel(): ReactElement {
           style={styles.input}
         />
         <Text style={styles.fieldLabel}>{creationCopy.bodyLabel}</Text>
-        <TextInput
+        <KnowledgeMarkdownEditor
+          documentKey={`create:${kind}`}
           value={statement}
-          onChangeText={setStatement}
-          multiline
-          placeholder="Rich Markdown: headings, lists, links, code, and [[wiki links]]"
-          placeholderTextColor="#777"
-          style={[styles.input, styles.statement]}
+          onChange={setStatement}
+          minHeight={260}
         />
         {kind === "project" ? (
           <>
@@ -655,7 +737,6 @@ export function ProjectKnowledgePanel(): ReactElement {
           placeholderTextColor="#777"
           style={styles.input}
         />
-        {formError ? <Text style={styles.error}>{formError}</Text> : null}
         <View style={styles.viewerToolbar}>
           <Button variant="outline" size="sm" onPress={() => setCreating(false)}>
             Cancel
@@ -673,22 +754,81 @@ export function ProjectKnowledgePanel(): ReactElement {
   } else if (selectedRoot) {
     viewer = (
       <View style={styles.documentContent}>
-        <Text style={styles.documentContentTitle}>{selectedRoot.title}</Text>
-        <KnowledgeReviewStrip
-          directives={reviewDirectives}
-          selection={reviewSelection}
-          kind={reviewKind}
-          value={reviewValue}
-          enabled={reviewSupported}
-          onKindChange={setReviewKind}
-          onValueChange={setReviewValue}
-          onSave={addReviewDirective}
-          onRemove={(id) =>
-            setReviewDirectives((current) => current.filter((item) => item.id !== id))
-          }
-          onRefine={startKnowledgeRefine}
+        {reviewProposal ? (
+          <KnowledgeReviewProposalView
+            proposal={reviewProposal}
+            applying={reviewApplying}
+            onApply={(content) => void applyReviewProposal(content)}
+            onDiscard={() => {
+              setReviewProposal(null);
+              setFormError(null);
+            }}
+          />
+        ) : (
+          <>
+            <Text style={styles.documentContentTitle}>{selectedRoot.title}</Text>
+            <KnowledgeReviewSurface
+              source={document}
+              directiveSource={reviewContent ?? ""}
+              directives={reviewDirectives}
+              enabled={reviewSupported}
+              onAdd={addReviewDirective}
+              onUpdate={updateReviewDirective}
+              onRemove={(id) =>
+                setReviewDirectives((current) => current.filter((item) => item.id !== id))
+              }
+              onSelectionError={setFormError}
+            />
+          </>
+        )}
+      </View>
+    );
+  } else if (editingTags && selected) {
+    const suggestions = scopedTags.filter((tag) => !parseTagInput(tags).includes(tag)).slice(0, 16);
+    viewer = (
+      <View style={styles.composer}>
+        <Text style={styles.viewerTitle}>Edit tags</Text>
+        <Text style={styles.description}>
+          Tags improve discovery and keep related Knowledge together. This does not change the
+          article&apos;s current truth or review status.
+        </Text>
+        <Text style={styles.fieldLabel}>Tags</Text>
+        <TextInput
+          value={tags}
+          onChangeText={setTags}
+          placeholder="Comma-separated, for example: protocol, compatibility"
+          placeholderTextColor="#777"
+          style={styles.input}
         />
-        <MarkdownRenderer text={document} remoteImages="altText" />
+        {suggestions.length > 0 ? (
+          <View style={styles.tagSuggestionGroup}>
+            <Text style={styles.muted}>Suggestions from this Knowledge scope</Text>
+            <View style={styles.tagSuggestionList}>
+              {suggestions.map((tag) => (
+                <Pressable
+                  key={tag}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add tag ${tag}`}
+                  onPress={() => setTags((current) => addTagToInput(current, tag))}
+                  style={({ hovered, pressed }) => [
+                    styles.tagSuggestion,
+                    (hovered || pressed) && styles.tagSuggestionActive,
+                  ]}
+                >
+                  <Text style={styles.tagSuggestionText}>{tag}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+        <View style={styles.viewerToolbar}>
+          <Button variant="outline" size="sm" onPress={() => setEditingTags(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" onPress={() => void saveTags()}>
+            Save tags
+          </Button>
+        </View>
       </View>
     );
   } else if (editingTruth && selected) {
@@ -696,15 +836,14 @@ export function ProjectKnowledgePanel(): ReactElement {
       <View style={styles.composer}>
         <Text style={styles.viewerTitle}>Update current truth</Text>
         <Text style={styles.description}>
-          Otto will atomically append the reason to this page&apos;s permanent timeline.
+          Otto will atomically append the reason to this page&apos;s permanent timeline. Editing a
+          confirmed article returns it to Proposed for review.
         </Text>
-        <TextInput
+        <KnowledgeMarkdownEditor
+          documentKey={`truth:${selected.id}:${selected.updatedAt}`}
           value={statement}
-          onChangeText={setStatement}
-          multiline
-          placeholder="Compiled truth in rich Markdown"
-          placeholderTextColor="#777"
-          style={[styles.input, styles.statement]}
+          onChange={setStatement}
+          minHeight={360}
         />
         <TextInput
           value={truthReason}
@@ -809,7 +948,6 @@ export function ProjectKnowledgePanel(): ReactElement {
           placeholderTextColor="#777"
           style={[styles.input, styles.evidence]}
         />
-        {formError ? <Text style={styles.error}>{formError}</Text> : null}
         <View style={styles.viewerToolbar}>
           <Button variant="outline" size="sm" onPress={() => setEditingMetadata(false)}>
             Cancel
@@ -823,25 +961,36 @@ export function ProjectKnowledgePanel(): ReactElement {
   } else if (selected) {
     viewer = (
       <View style={styles.documentContent}>
-        <View style={styles.documentContentTitleRow}>
-          <ThemedArticleKnowledgeKindIcon kind={selected.kind} />
-          <Text style={styles.documentContentTitle}>{selected.title}</Text>
-        </View>
-        <KnowledgeReviewStrip
-          directives={reviewDirectives}
-          selection={reviewSelection}
-          kind={reviewKind}
-          value={reviewValue}
-          enabled={reviewSupported && Boolean(detailedSelection)}
-          onKindChange={setReviewKind}
-          onValueChange={setReviewValue}
-          onSave={addReviewDirective}
-          onRemove={(id) =>
-            setReviewDirectives((current) => current.filter((item) => item.id !== id))
-          }
-          onRefine={startKnowledgeRefine}
-        />
-        <MarkdownRenderer text={document} remoteImages="altText" />
+        {reviewProposal ? (
+          <KnowledgeReviewProposalView
+            proposal={reviewProposal}
+            applying={reviewApplying}
+            onApply={(content) => void applyReviewProposal(content)}
+            onDiscard={() => {
+              setReviewProposal(null);
+              setFormError(null);
+            }}
+          />
+        ) : (
+          <>
+            <View style={styles.documentContentTitleRow}>
+              <ThemedArticleKnowledgeKindIcon kind={selected.kind} />
+              <Text style={styles.documentContentTitle}>{selected.title}</Text>
+            </View>
+            <KnowledgeReviewSurface
+              source={document}
+              directiveSource={reviewContent ?? ""}
+              directives={reviewDirectives}
+              enabled={reviewSupported && Boolean(detailedSelection)}
+              onAdd={addReviewDirective}
+              onUpdate={updateReviewDirective}
+              onRemove={(id) =>
+                setReviewDirectives((current) => current.filter((item) => item.id !== id))
+              }
+              onSelectionError={setFormError}
+            />
+          </>
+        )}
       </View>
     );
   } else {
@@ -986,15 +1135,30 @@ export function ProjectKnowledgePanel(): ReactElement {
                   onPress={openMarkdown}
                 />
               ) : null}
-              {!editingTruth && !editingMetadata && !creating ? (
+              {!editingTruth &&
+              !editingMetadata &&
+              !editingTags &&
+              !creating &&
+              !reviewProposal &&
+              runnableReviewDirectives.length > 0 ? (
                 <ToolbarIconButton
-                  label="Add review feedback from selected text"
+                  label={
+                    reviewGenerating
+                      ? "Generating Knowledge refinement"
+                      : `Refine ${runnableReviewDirectives.length} review note${runnableReviewDirectives.length === 1 ? "" : "s"} with AI`
+                  }
                   Icon={ThemedRobot}
-                  onPress={captureReviewSelection}
+                  onPress={startKnowledgeRefine}
                   disabled={!reviewSupported || !reviewContent}
+                  loading={reviewGenerating}
                 />
               ) : null}
-              {selected && !editingTruth && !editingMetadata && !creating ? (
+              {selected &&
+              !editingTruth &&
+              !editingMetadata &&
+              !editingTags &&
+              !creating &&
+              !reviewProposal ? (
                 <>
                   {markdownPath ? <ToolbarSeparator /> : null}
                   <ToolbarIconButton
@@ -1006,6 +1170,17 @@ export function ProjectKnowledgePanel(): ReactElement {
                       setEditingTruth(true);
                     }}
                   />
+                  {tagEditingSupported ? (
+                    <ToolbarIconButton
+                      label="Edit tags"
+                      Icon={ThemedSettings2}
+                      onPress={() => {
+                        setTags(selected.tags.join(", "));
+                        setFormError(null);
+                        setEditingTags(true);
+                      }}
+                    />
+                  ) : null}
                   {selected.kind === "project" || selected.kind === "reference" ? (
                     <ToolbarIconButton
                       label={`Edit ${selected.kind === "project" ? "delivery" : "evaluation"}`}
@@ -1052,12 +1227,18 @@ export function ProjectKnowledgePanel(): ReactElement {
           </View>
         ) : null}
         <View style={styles.documentCanvas}>
-          <ScrollView contentContainerStyle={styles.viewerContent}>{viewer}</ScrollView>
+          <ScrollView
+            contentContainerStyle={
+              reviewProposal ? styles.viewerProposalContent : styles.viewerContent
+            }
+          >
+            {viewer}
+          </ScrollView>
         </View>
-        {selectedRoot || selected ? (
-          <View style={styles.documentStatusBar}>
-            <Text numberOfLines={1} style={styles.pathLabel}>
-              {markdownPath ?? "Markdown source unavailable"}
+        {selectedRoot || selected || formError ? (
+          <View style={formError ? styles.documentStatusError : styles.documentStatusBar}>
+            <Text numberOfLines={1} style={formError ? styles.statusErrorLabel : styles.pathLabel}>
+              {formError ?? markdownPath ?? "Markdown source unavailable"}
             </Text>
           </View>
         ) : null}
@@ -1215,25 +1396,6 @@ function KnowledgeTagFilter({
   );
 }
 
-function KnowledgeKindIcon({
-  kind,
-  size,
-  color,
-}: {
-  kind: KnowledgeRecord["kind"];
-  size: IconSizeProp;
-  color: string;
-}): ReactElement {
-  if (kind === "architecture") return <Architecture size={size} color={color} />;
-  if (kind === "decision") return <Gavel size={size} color={color} />;
-  if (kind === "constraint") return <Shield size={size} color={color} />;
-  if (kind === "requirement") return <Checklist size={size} color={color} />;
-  if (kind === "finding") return <Lightbulb size={size} color={color} />;
-  if (kind === "project") return <FolderTree size={size} color={color} />;
-  if (kind === "reference") return <BookOpen size={size} color={color} />;
-  return <Gavel size={size} color={color} />;
-}
-
 function KnowledgeTypeFilter({
   selectedTypes,
   onChange,
@@ -1293,6 +1455,25 @@ function KnowledgeTypeFilter({
     </View>
   );
 }
+
+function KnowledgeKindIcon({
+  kind,
+  size,
+  color,
+}: {
+  kind: KnowledgeRecord["kind"];
+  size: IconSizeProp;
+  color: string;
+}): ReactElement {
+  if (kind === "architecture") return <Architecture size={size} color={color} />;
+  if (kind === "decision") return <Gavel size={size} color={color} />;
+  if (kind === "constraint") return <Shield size={size} color={color} />;
+  if (kind === "requirement") return <Checklist size={size} color={color} />;
+  if (kind === "finding") return <Lightbulb size={size} color={color} />;
+  if (kind === "project") return <FolderTree size={size} color={color} />;
+  if (kind === "reference") return <BookOpen size={size} color={color} />;
+  return <Gavel size={size} color={color} />;
+}
 const ThemedKnowledgeTagFilter = withUnistyles(KnowledgeTagFilter, (theme) => ({ theme }));
 const ThemedKnowledgeTypeFilter = withUnistyles(KnowledgeTypeFilter, (theme) => ({ theme }));
 const ThemedKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
@@ -1307,104 +1488,11 @@ const ThemedCheck = withUnistyles(Check);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedRobot = withUnistyles(Robot);
-const ThemedX = withUnistyles(X);
 const ThemedSearch = withUnistyles(Search);
+const ThemedSettings2 = withUnistyles(Settings2);
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedTextInput = withUnistyles(TextInput);
-
-function KnowledgeReviewStrip({
-  directives,
-  selection,
-  kind,
-  value,
-  enabled,
-  onKindChange,
-  onValueChange,
-  onSave,
-  onRemove,
-  onRefine,
-}: {
-  directives: readonly KnowledgeReviewDirective[];
-  selection: string | null;
-  kind: "replace" | "refine";
-  value: string;
-  enabled: boolean;
-  onKindChange: (kind: "replace" | "refine") => void;
-  onValueChange: (value: string) => void;
-  onSave: () => void;
-  onRemove: (id: string) => void;
-  onRefine: () => void;
-}): ReactElement | null {
-  if (!selection && directives.length === 0) return null;
-  return (
-    <View style={styles.reviewStrip}>
-      {directives.map((directive) => (
-        <View
-          key={directive.id}
-          style={[
-            styles.reviewDirective,
-            directive.kind === "replace" ? styles.reviewReplace : styles.reviewRefine,
-          ]}
-        >
-          <View style={styles.reviewDirectiveCopy}>
-            <Text style={styles.reviewDirectiveKind}>
-              {directive.kind === "replace" ? "Replace" : "Refine"}
-            </Text>
-            <Text style={styles.reviewDirectiveText} numberOfLines={2}>
-              “{directive.selectedText}” · {directive.value}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityLabel="Remove review feedback"
-            onPress={() => onRemove(directive.id)}
-          >
-            <ThemedX size={16} />
-          </Pressable>
-        </View>
-      ))}
-      {selection ? (
-        <View style={styles.reviewComposer}>
-          <Text style={styles.reviewSelection} numberOfLines={2}>
-            Selected: “{selection}”
-          </Text>
-          <SegmentedControl
-            size="sm"
-            value={kind}
-            onValueChange={onKindChange}
-            options={[
-              { value: "replace", label: "Replace" },
-              { value: "refine", label: "Refine" },
-            ]}
-          />
-          <TextInput
-            value={value}
-            onChangeText={onValueChange}
-            multiline
-            placeholder={
-              kind === "replace" ? "Exact replacement text" : "How should this be improved?"
-            }
-            placeholderTextColor="#777"
-            style={[styles.input, styles.reviewInput]}
-          />
-          <Button size="sm" disabled={!enabled || !value.trim()} onPress={onSave}>
-            Add feedback
-          </Button>
-        </View>
-      ) : null}
-      {directives.length > 0 ? (
-        <View style={styles.reviewActions}>
-          <Text style={styles.muted}>
-            Feedback is temporary and is consumed when the Refine tab opens.
-          </Text>
-          <Button size="sm" disabled={!enabled} onPress={onRefine}>
-            Refine with AI
-          </Button>
-        </View>
-      ) : null}
-    </View>
-  );
-}
 
 const searchIconProps = (theme: {
   colors: { foregroundMuted: string };
@@ -1443,6 +1531,92 @@ function recordMarkdown(
     operational = `\n\n## Reference\n\n- Evaluation: **${formatMetadataLabel(record.referenceDisposition ?? "unevaluated")}**\n- Source: ${source}`;
   }
   return `## Current understanding\n\n${record.statement}${operational}\n\n## Evidence\n\n${record.evidence || "No evidence recorded."}\n\n## Tags\n\n${record.tags.map((tag) => `\`${tag}\``).join(" ") || "None"}\n\n## Timeline\n\n${record.provenance?.map((entry) => `- ${entry.recordedAt} [${entry.kind ?? "note"}]: ${entry.text}${entry.source ? ` (${entry.source})` : ""}`).join("\n") || "No timeline recorded."}\n\n${reviewSignalsMarkdown(record, records, findings)}`;
+}
+
+function recordReviewContent(statement: string, evidence: string | undefined): string {
+  return `${statement}${RECORD_REVIEW_SEPARATOR}${evidence ?? ""}`;
+}
+
+function parseTagInput(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((tag) => tag.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function addTagToInput(value: string, tag: string): string {
+  const tags = parseTagInput(value);
+  return tags.includes(tag) ? value : [...tags, tag].join(", ");
+}
+
+function reviewContentForSelection(
+  root: { body: string } | null,
+  record: KnowledgeRecord | null,
+): string | null {
+  if (root) return rootDocumentBody(root.body);
+  if (record) return recordReviewContent(record.statement, record.evidence);
+  return null;
+}
+
+function splitRecordReviewContent(content: string): { statement: string; evidence: string } | null {
+  const index = content.indexOf(RECORD_REVIEW_SEPARATOR);
+  if (index === -1 || content.indexOf(RECORD_REVIEW_SEPARATOR, index + 1) !== -1) return null;
+  return {
+    statement: content.slice(0, index),
+    evidence: content.slice(index + RECORD_REVIEW_SEPARATOR.length),
+  };
+}
+
+function recordReviewDisplay(fields: { statement: string; evidence: string }): string {
+  return `## Current understanding\n\n${fields.statement}\n\n## Evidence\n\n${fields.evidence || "No evidence recorded."}`;
+}
+
+function buildKnowledgeReviewProposal(
+  target: KnowledgeReviewTarget,
+  base: string,
+  proposal: string,
+): KnowledgeReviewProposal | null {
+  if (target.kind !== "record") return { target, base, proposal };
+  const baseFields = splitRecordReviewContent(base);
+  const proposalFields = splitRecordReviewContent(proposal);
+  if (!baseFields || !proposalFields) return null;
+  return {
+    target,
+    base,
+    proposal,
+    displayBase: recordReviewDisplay(baseFields),
+    displayProposal: recordReviewDisplay(proposalFields),
+  };
+}
+
+async function applyRecordReviewProposal({
+  client,
+  reviewProposal,
+  workspaceId,
+}: {
+  client: NonNullable<ReturnType<typeof useSessionStore.getState>["sessions"][string]["client"]>;
+  reviewProposal: KnowledgeReviewProposal & {
+    target: Extract<KnowledgeReviewTarget, { kind: "record" }>;
+  };
+  workspaceId: string;
+}) {
+  const proposal = splitRecordReviewContent(reviewProposal.proposal);
+  const base = splitRecordReviewContent(reviewProposal.base);
+  if (!proposal || !base) {
+    return { error: "The Knowledge proposal could not preserve its editable field boundary." };
+  }
+  return client.applyProjectKnowledgeRefinement({
+    workspaceId,
+    target: "record",
+    id: reviewProposal.target.id,
+    statement: proposal.statement,
+    ...(proposal.evidence !== base.evidence ? { evidence: proposal.evidence } : {}),
+    expectedUpdatedAt: reviewProposal.target.expectedUpdatedAt,
+  });
 }
 
 function reviewSignalsMarkdown(
@@ -1765,6 +1939,7 @@ const styles = StyleSheet.create((theme) => ({
   // footer deliberately remain on surface0 as pane chrome.
   documentCanvas: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surfaceCode },
   viewerContent: { padding: theme.spacing[6], maxWidth: 920 },
+  viewerProposalContent: { flexGrow: 1, width: "100%" },
   documentContent: { gap: 0 },
   documentContentTitleRow: {
     flexDirection: "row",
@@ -1848,7 +2023,18 @@ const styles = StyleSheet.create((theme) => ({
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
   },
+  documentStatusError: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    minHeight: 24,
+    borderTopWidth: theme.borderWidth[1],
+    borderTopColor: theme.colors.statusDanger,
+    backgroundColor: theme.colors.statusDangerSurface,
+  },
   pathLabel: { color: theme.colors.mutedForeground, fontSize: theme.fontSize.xs, flex: 1 },
+  statusErrorLabel: { color: theme.colors.statusDanger, fontSize: theme.fontSize.xs, flex: 1 },
   empty: { gap: theme.spacing[3], maxWidth: 440, paddingTop: theme.spacing[12] },
   composer: { gap: theme.spacing[3], maxWidth: 640 },
   input: {
@@ -1862,13 +2048,28 @@ const styles = StyleSheet.create((theme) => ({
   },
   statement: { minHeight: 132, paddingVertical: theme.spacing[3], textAlignVertical: "top" },
   evidence: { minHeight: 88, paddingVertical: theme.spacing[3], textAlignVertical: "top" },
+  tagSuggestionGroup: { gap: theme.spacing[2] },
+  tagSuggestionList: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing[1] },
+  tagSuggestion: {
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface1,
+  },
+  tagSuggestionActive: { backgroundColor: theme.colors.surface2 },
+  tagSuggestionText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
   fieldLabel: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   optional: { color: theme.colors.mutedForeground, fontWeight: theme.fontWeight.normal },
-  error: { color: theme.colors.destructive, fontSize: theme.fontSize.sm },
   progressFields: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
   progressNumber: { width: 88 },
   progressUnit: { flex: 1 },

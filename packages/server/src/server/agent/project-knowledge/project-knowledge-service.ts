@@ -369,7 +369,7 @@ export class ProjectKnowledgeService {
     return { imported, skipped };
   }
 
-  /** A truth change is inseparable from its append-only explanation. */
+  /** A truth change is inseparable from its append-only explanation and review reset. */
   async updateTruth(input: {
     cwd: string;
     id: string;
@@ -381,18 +381,23 @@ export class ProjectKnowledgeService {
   }): Promise<{ record: ProjectKnowledgeRecord | null; error?: string }> {
     if (!singleLine(input.reason, 800))
       return { record: null, error: "A truth update requires a reason." };
-    return this.mutateRecord(input.cwd, input.id, input.expectedUpdatedAt, (record, now) => ({
-      ...record,
-      statement: richMarkdown(input.statement),
-      updatedAt: now,
-      provenance: appendTimeline(record.provenance, {
-        kind: "decision",
-        text: cleanText(input.reason),
-        recordedAt: now,
-        ...(input.source ? { source: singleLine(input.source, 160) } : {}),
-        ...(input.affects?.length ? { affects: normalizeLinks(input.affects) } : {}),
-      }),
-    }));
+    return this.mutateRecord(input.cwd, input.id, input.expectedUpdatedAt, (record, now) => {
+      const statement = richMarkdown(input.statement);
+      const demoted = record.status === "confirmed" && statement !== record.statement;
+      return {
+        ...record,
+        statement,
+        ...(demoted ? { status: "proposed" as const } : {}),
+        updatedAt: now,
+        provenance: appendTimeline(record.provenance, {
+          kind: "decision",
+          text: `${cleanText(input.reason)}${demoted ? " Status returned to proposed for review." : ""}`,
+          recordedAt: now,
+          ...(input.source ? { source: singleLine(input.source, 160) } : {}),
+          ...(input.affects?.length ? { affects: normalizeLinks(input.affects) } : {}),
+        }),
+      };
+    });
   }
 
   async appendEvidence(input: {
@@ -554,11 +559,29 @@ export class ProjectKnowledgeService {
     id: string;
     title?: string;
     evidence?: string;
+    tags?: string[];
     expectedUpdatedAt?: string;
   }): Promise<{ record: ProjectKnowledgeRecord | null; error?: string }> {
     return this.mutateRecord(input.cwd, input.id, input.expectedUpdatedAt, (record, now) => {
       const evidence = input.evidence === undefined ? undefined : richMarkdown(input.evidence);
       const evidenceChanged = Boolean(evidence && evidence !== record.evidence);
+      const tags = input.tags === undefined ? undefined : normalizeTags(input.tags);
+      const tagsChanged = Boolean(tags && !sameTags(tags, record.tags));
+      let provenance = record.provenance;
+      if (evidenceChanged) {
+        provenance = appendTimeline(provenance, {
+          kind: "evidence",
+          text: evidence ?? "",
+          recordedAt: now,
+        });
+      }
+      if (tagsChanged) {
+        provenance = appendTimeline(provenance, {
+          kind: "note",
+          text: `Updated tags: ${tags?.join(", ") || "none"}.`,
+          recordedAt: now,
+        });
+      }
       return {
         ...record,
         ...(input.title !== undefined ? { title: singleLine(input.title, 160) } : {}),
@@ -569,15 +592,8 @@ export class ProjectKnowledgeService {
                 : record.evidence,
             }
           : {}),
-        ...(evidenceChanged
-          ? {
-              provenance: appendTimeline(record.provenance, {
-                kind: "evidence",
-                text: evidence ?? "",
-                recordedAt: now,
-              }),
-            }
-          : {}),
+        ...(tags !== undefined ? { tags } : {}),
+        ...(evidenceChanged || tagsChanged ? { provenance } : {}),
         updatedAt: now,
       };
     });
@@ -592,6 +608,7 @@ export class ProjectKnowledgeService {
     cwd: string;
     id: string;
     statement: string;
+    evidence?: string;
     expectedUpdatedAt?: string;
   }): Promise<{ record: ProjectKnowledgeRecord | null; demoted: boolean; error?: string }> {
     let demoted = false;
@@ -604,19 +621,28 @@ export class ProjectKnowledgeService {
         return {
           ...record,
           statement: richMarkdown(input.statement),
+          ...(input.evidence !== undefined ? { evidence: richMarkdown(input.evidence) } : {}),
           ...(demoted ? { status: "proposed" as const } : {}),
           updatedAt: now,
           provenance: appendTimeline(record.provenance, {
             kind: "decision",
-            text: demoted
-              ? "Applied an accepted AI refinement. Status returned to proposed for review."
-              : "Applied an accepted AI refinement.",
+            text: this.reviewedRefinementTimelineText(demoted, input.evidence !== undefined),
             recordedAt: now,
           }),
         };
       },
     );
     return { ...result, demoted: Boolean(result.record && demoted) };
+  }
+
+  private reviewedRefinementTimelineText(demoted: boolean, includesEvidence: boolean): string {
+    if (includesEvidence && demoted)
+      return "Applied an accepted AI refinement to current understanding and evidence. Status returned to proposed for review.";
+    if (includesEvidence)
+      return "Applied an accepted AI refinement to current understanding and evidence.";
+    if (demoted)
+      return "Applied an accepted AI refinement. Status returned to proposed for review.";
+    return "Applied an accepted AI refinement.";
   }
 
   private async mutateRecord(
@@ -913,15 +939,18 @@ export class ProjectKnowledgeService {
     if (!alreadyInitialized)
       await this.writeIfMissing(this.entryPointPath(store), compatibilityKnowledgeEntry());
     await this.upgradeGeneratedKnowledgeEntryIfPresent(this.entryPointPath(store));
-    for (const rootPage of ROOT_PAGES)
-      await this.writeIfMissing(
-        path.join(this.knowledgeDirectory(store), `${rootPage}.md`),
-        renderRootPage(
-          rootPage,
-          "_Draft this page from verified code, docs, and Git history. Do not invent facts._",
-          new Date().toISOString(),
-        ),
+    const evidence = await collectBootstrapEvidence(store.projectRoot);
+    for (const rootPage of ROOT_PAGES) {
+      const target = path.join(this.knowledgeDirectory(store), `${rootPage}.md`);
+      const existing = await readOptionalFile(target);
+      // Upgrade only the old ceremonial shell. Any authored or previously
+      // generated evidence draft remains the reviewer's document to refine.
+      if (existing !== null && !isCeremonialRootPlaceholder(existing)) continue;
+      await writeAtomic(
+        target,
+        renderRootPage(rootPage, bootstrapRootDraft(rootPage, evidence), new Date().toISOString()),
       );
+    }
     await this.reindex(store);
   }
   private async upgradeGeneratedKnowledgeEntryIfPresent(target: string): Promise<void> {
@@ -1301,6 +1330,9 @@ function appendTimeline(
 function normalizeTags(tags: readonly string[] | undefined): string[] {
   return [...new Set((tags ?? []).map((tag) => singleLine(tag, 48).toLowerCase()).filter(Boolean))];
 }
+function sameTags(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((tag, index) => tag === right[index]);
+}
 function normalizeLinks(links: readonly string[]): string[] {
   return [...new Set(links.map((link) => slugify(link)).filter(Boolean))];
 }
@@ -1634,6 +1666,267 @@ async function readOptionalFile(target: string): Promise<string | null> {
     throw error;
   }
 }
+interface BootstrapEvidence {
+  packageName: string | null;
+  packageManager: string | null;
+  packageManifest: "missing" | "invalid" | "valid";
+  workspacePatterns: string[];
+  scripts: string[];
+  topLevelDirectories: string[];
+  documentationFiles: string[];
+  hasReadme: boolean;
+  hasDocumentationIndex: boolean;
+  hasRoadmap: boolean;
+}
+
+/**
+ * Bootstrap cannot responsibly manufacture an architectural narrative. It can,
+ * however, turn directly observable repository structure into a useful draft
+ * with source paths a reviewer can inspect before adding interpretation.
+ */
+async function collectBootstrapEvidence(projectRoot: string): Promise<BootstrapEvidence> {
+  const packageRaw = await readOptionalFile(path.join(projectRoot, "package.json"));
+  let packageName: string | null = null;
+  let packageManager: string | null = null;
+  let workspacePatterns: string[] = [];
+  let scripts: string[] = [];
+  let packageManifest: BootstrapEvidence["packageManifest"] = packageRaw ? "invalid" : "missing";
+  if (packageRaw) {
+    try {
+      const parsed: unknown = JSON.parse(packageRaw);
+      if (isPlainObject(parsed)) {
+        packageManifest = "valid";
+        packageName = stringField(parsed, "name");
+        packageManager = stringField(parsed, "packageManager");
+        workspacePatterns = workspacePatternsFrom(parsed.workspaces);
+        scripts = objectKeys(parsed.scripts);
+      }
+    } catch {
+      // A malformed manifest is evidence itself. The draft reports it rather
+      // than guessing at package metadata.
+    }
+  }
+  const rootEntries = await readableDirectory(projectRoot);
+  const topLevelDirectories = rootEntries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => entry.name)
+    .filter((name) => name !== "node_modules")
+    .sort()
+    .slice(0, 16);
+  const docsDirectory = path.join(projectRoot, "docs");
+  const documentationFiles = (await readableDirectory(docsDirectory))
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"))
+    .map((entry) => `docs/${entry.name}`)
+    .sort()
+    .slice(0, 16);
+  const rootNames = new Set(rootEntries.map((entry) => entry.name.toLowerCase()));
+  const documentationNames = new Set(documentationFiles.map((file) => path.posix.basename(file)));
+  return {
+    packageName,
+    packageManager,
+    packageManifest,
+    workspacePatterns,
+    scripts,
+    topLevelDirectories,
+    documentationFiles,
+    hasReadme: rootNames.has("readme.md"),
+    hasDocumentationIndex: documentationNames.has("readme.md"),
+    hasRoadmap: rootNames.has("roadmap.md") || documentationNames.has("roadmap.md"),
+  };
+}
+
+async function readableDirectory(directory: string) {
+  try {
+    return await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringField(value: Record<string, unknown>, key: string): string | null {
+  const candidate = value[key];
+  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
+}
+
+function objectKeys(value: unknown): string[] {
+  return isPlainObject(value) ? Object.keys(value).sort().slice(0, 16) : [];
+}
+
+function workspacePatternsFrom(value: unknown): string[] {
+  if (Array.isArray(value))
+    return value.filter((item): item is string => typeof item === "string").slice(0, 16);
+  if (!isPlainObject(value) || !Array.isArray(value.packages)) return [];
+  return value.packages.filter((item): item is string => typeof item === "string").slice(0, 16);
+}
+
+function bootstrapRootDraft(slug: ProjectKnowledgeRootSlug, evidence: BootstrapEvidence): string {
+  const sources = bootstrapSources(evidence);
+  const evidenceSection = [
+    "## Evidence collected during initialization",
+    "",
+    ...sources.map((source) => `- ${source}`),
+    "",
+    "This generated draft is not confirmed project truth. Review the named sources, add missing evidence, and refine deliberately.",
+  ].join("\n");
+  const packageSummary = bootstrapPackageSummary(evidence);
+  const directories = listOrAbsence(
+    evidence.topLevelDirectories,
+    "No top-level source directories were found.",
+  );
+  const docs = listOrAbsence(
+    evidence.documentationFiles,
+    "No Markdown files were found in `docs/`.",
+  );
+  switch (slug) {
+    case "background":
+      return [
+        "## Draft",
+        "",
+        packageSummary,
+        evidence.hasReadme
+          ? "A root `README.md` is available as the first product-background source."
+          : "No root `README.md` was found; add product background from a verified source.",
+        "",
+        "## Review next",
+        "",
+        "State why this project exists and its durable goals only after reviewing the listed sources.",
+        "",
+        evidenceSection,
+      ].join("\n");
+    case "architecture":
+      return [
+        "## Draft",
+        "",
+        packageSummary,
+        `Top-level directories observed: ${directories}.`,
+        evidence.workspacePatterns.length
+          ? `The package manifest declares workspace patterns: ${inlineCode(evidence.workspacePatterns)}.`
+          : "No workspace patterns were declared in the root package manifest.",
+        "",
+        "## Review next",
+        "",
+        "Describe component boundaries and ownership from code and architecture documents; do not infer them from folder names alone.",
+        "",
+        evidenceSection,
+      ].join("\n");
+    case "flow":
+      return [
+        "## Draft",
+        "",
+        evidence.scripts.length
+          ? `The root package declares these scripts: ${inlineCode(evidence.scripts)}.`
+          : "No root package scripts were available as an executable-flow source.",
+        evidence.hasDocumentationIndex
+          ? "The documentation index is available at `docs/README.md`."
+          : "No `docs/README.md` documentation index was found.",
+        "",
+        "## Review next",
+        "",
+        "Map user and daemon flows from the named scripts and documentation, then link verified atomic records where they clarify a flow.",
+        "",
+        evidenceSection,
+      ].join("\n");
+    case "mindmap":
+      return [
+        "## Draft",
+        "",
+        `The initial repository map contains: ${directories}.`,
+        `Documentation files observed: ${docs}.`,
+        "",
+        "## Review next",
+        "",
+        "Organize confirmed product areas and dependencies after inspecting their source. This directory map is evidence, not a feature taxonomy.",
+        "",
+        evidenceSection,
+      ].join("\n");
+    case "stack":
+      return [
+        "## Draft",
+        "",
+        packageSummary,
+        evidence.packageManager
+          ? `The manifest selects \`${evidence.packageManager}\` as its package manager.`
+          : "The root manifest does not declare a package-manager field.",
+        `Top-level directories observed: ${directories}.`,
+        "",
+        "## Review next",
+        "",
+        "Record technologies and their reasons from manifests, lockfiles, code, and operational documentation. Do not treat a directory name as a technology decision.",
+        "",
+        evidenceSection,
+      ].join("\n");
+    case "roadmap":
+      return [
+        "## Draft",
+        "",
+        evidence.hasRoadmap
+          ? "A conventional roadmap source was found. Review it before recording milestones."
+          : "No conventional `ROADMAP.md` source was found in the repository root or `docs/`.",
+        evidence.hasDocumentationIndex
+          ? "Use the documentation index and verified project records to establish current milestones."
+          : "Add milestone evidence from verified project records, issues, or Git history.",
+        "",
+        "## Review next",
+        "",
+        "Create milestones only from verified planning evidence. This page deliberately does not synthesize a roadmap from directory names or package scripts.",
+        "",
+        evidenceSection,
+      ].join("\n");
+  }
+}
+
+function bootstrapSources(evidence: BootstrapEvidence): string[] {
+  const sources = [
+    bootstrapPackageSource(evidence.packageManifest),
+    evidence.hasReadme ? "`README.md` exists." : "No root `README.md` was found.",
+    evidence.hasDocumentationIndex ? "`docs/README.md` exists." : "No `docs/README.md` was found.",
+    evidence.documentationFiles.length
+      ? `Markdown files in \`docs/\`: ${inlineCode(evidence.documentationFiles)}.`
+      : "No Markdown files were found in `docs/`.",
+  ];
+  return sources;
+}
+
+function bootstrapPackageSummary(evidence: BootstrapEvidence): string {
+  if (evidence.packageManifest === "missing") return "No root `package.json` was found.";
+  if (evidence.packageManifest === "invalid")
+    return "A root `package.json` exists but could not be parsed as JSON.";
+  return evidence.packageName
+    ? `The root package declares its name as \`${evidence.packageName}\`.`
+    : "A valid root package manifest exists but does not declare a package name.";
+}
+
+function bootstrapPackageSource(manifest: BootstrapEvidence["packageManifest"]): string {
+  if (manifest === "missing") return "No root `package.json` was found.";
+  if (manifest === "invalid") return "`package.json` exists but could not be parsed.";
+  return "`package.json` was parsed for its package name, package manager, workspaces, and scripts.";
+}
+
+function listOrAbsence(values: string[], absence: string): string {
+  return values.length ? inlineCode(values) : absence;
+}
+
+function inlineCode(values: string[]): string {
+  return values.map((value) => `\`${value}\``).join(", ");
+}
+
+function isCeremonialRootPlaceholder(raw: string): boolean {
+  const normalized = raw
+    .replace(/\r\n/g, "\n")
+    .replace(/^---\n[\s\S]*?\n---(?:\n+|$)/, "")
+    .replace(/^# [^\n]*(?:\n+|$)/, "")
+    .trim();
+  return (
+    normalized ===
+    "_Draft this page from verified code, docs, and Git history. Do not invent facts._"
+  );
+}
+
 function isCanonicalPage(raw: string): boolean {
   return raw.replace(/\r\n/g, "\n").includes("\n<!-- compiled_truth -->\n");
 }

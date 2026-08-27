@@ -16,11 +16,6 @@ construction rather than by promise: Refine never names a provider, resolving th
 chat titles already use - so a local model served from LM Studio and a hosted frontier model reach
 it identically, and the host's `metadataGeneration.enabled === false` opt-out is honoured.
 
-Project Knowledge can also supply an in-memory article to this same job tab. Its accepted result
-does not use `file.write`: the daemon conditionally commits it through the Knowledge store so the
-record lifecycle and root-page stale-write guard remain intact. See
-[project-knowledge.md](project-knowledge.md#reviewed-ai-refinement).
-
 ## Prose only, and why that restriction must not be relaxed
 
 **Refine is offered over prose and instruction files. Never over code, of any language.**

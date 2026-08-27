@@ -235,6 +235,10 @@ import {
   createRefineGenerator,
   type RefineGenerator,
 } from "./session/files/refine-generator.js";
+import {
+  createKnowledgeRefinementGenerator,
+  type KnowledgeRefinementGenerator,
+} from "./session/project-knowledge/knowledge-refinement-generator.js";
 import { ScheduleSession } from "./session/schedule/schedule-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
@@ -907,6 +911,7 @@ export class Session {
   // WorkspaceFilesSession because that class is deliberately file I/O only -
   // it reaches no agent, and this is a model call that touches no file.
   private readonly refineGenerator: RefineGenerator;
+  private readonly knowledgeRefinementGenerator: KnowledgeRefinementGenerator;
   private readonly pushNotifications: PushNotifications;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeCommunicationsPresenceChanges: (() => void) | null = null;
@@ -1238,6 +1243,14 @@ export class Session {
       fallbackCwd: () => this.agentManager.listAgents()[0]?.cwd ?? process.cwd(),
     });
     this.refineGenerator = createRefineGenerator({
+      generation: createAgentStructuredTextGeneration({
+        agentManager: this.agentManager,
+        providerSnapshotManager,
+        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
+        getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
+      }),
+    });
+    this.knowledgeRefinementGenerator = createKnowledgeRefinementGenerator({
       generation: createAgentStructuredTextGeneration({
         agentManager: this.agentManager,
         providerSnapshotManager,
@@ -1629,6 +1642,7 @@ export class Session {
       host: {
         emit: (msg) => this.emit(msg),
         pushContextReport: (workspaceId) => this.pushContextReport(workspaceId),
+        notifyWorkspaceFilesChanged: (cwd) => this.checkoutSession.notifyWorkingTreeChanged(cwd),
         announceProjectUpdate: (projectId) => this.announceProjectUpdate(projectId),
       },
       projectKnowledge: this.projectKnowledge,
@@ -1637,6 +1651,7 @@ export class Session {
       workspaceRegistry: this.workspaceRegistry,
       projectRegistry: this.projectRegistry,
       workspaceGitService: this.workspaceGitService,
+      knowledgeRefinementGenerator: this.knowledgeRefinementGenerator,
     });
 
     this.voiceSession = new VoiceSession({

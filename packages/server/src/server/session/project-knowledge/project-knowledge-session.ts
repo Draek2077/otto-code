@@ -13,6 +13,10 @@ import type { ProjectKnowledgeStoreDescriptor } from "@otto-code/protocol/messag
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
+import {
+  KnowledgeRefinementError,
+  type KnowledgeRefinementGenerator,
+} from "./knowledge-refinement-generator.js";
 
 /**
  * Everything the project-knowledge RPCs need from the owning session: the wire,
@@ -23,6 +27,11 @@ import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registr
 export interface ProjectKnowledgeSessionHost {
   emit(msg: SessionOutboundMessage): void;
   pushContextReport(workspaceId: string): Promise<void>;
+  /**
+   * A Knowledge write is a working-tree write too. Wake the live Git status
+   * and diff subscribers without coupling this domain to the checkout session.
+   */
+  notifyWorkspaceFilesChanged?(cwd: string): void;
   /**
    * Announce a project's changed metadata on the host-global project channel.
    * The store location is project metadata like the name and the Kanban target,
@@ -40,6 +49,7 @@ export interface ProjectKnowledgeSessionOptions {
   workspaceRegistry: WorkspaceRegistry;
   projectRegistry: ProjectRegistry;
   workspaceGitService: WorkspaceGitService;
+  knowledgeRefinementGenerator: KnowledgeRefinementGenerator;
 }
 
 /**
@@ -59,6 +69,7 @@ export class ProjectKnowledgeSession {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceGitService: WorkspaceGitService;
+  private readonly knowledgeRefinementGenerator: KnowledgeRefinementGenerator;
 
   constructor(options: ProjectKnowledgeSessionOptions) {
     this.host = options.host;
@@ -68,6 +79,7 @@ export class ProjectKnowledgeSession {
     this.workspaceRegistry = options.workspaceRegistry;
     this.projectRegistry = options.projectRegistry;
     this.workspaceGitService = options.workspaceGitService;
+    this.knowledgeRefinementGenerator = options.knowledgeRefinementGenerator;
   }
 
   dispatch(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -90,6 +102,8 @@ export class ProjectKnowledgeSession {
         return this.handleProjectKnowledgeRootApplyRequest(msg);
       case "project.knowledge.refine.apply.request":
         return this.handleProjectKnowledgeRefineApplyRequest(msg);
+      case "project.knowledge.refinement.propose.request":
+        return this.handleProjectKnowledgeRefinementProposeRequest(msg);
       case "project.knowledge.delete.request":
         return this.handleProjectKnowledgeDeleteRequest(msg);
       case "project.knowledge.store.get.request":
@@ -226,6 +240,7 @@ export class ProjectKnowledgeSession {
             id: msg.id,
             ...(msg.title !== undefined ? { title: msg.title } : {}),
             ...(msg.evidence !== undefined ? { evidence: msg.evidence } : {}),
+            ...(msg.tags !== undefined ? { tags: msg.tags } : {}),
             ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
           });
     if (result.record) {
@@ -338,12 +353,12 @@ export class ProjectKnowledgeSession {
               cwd,
               id: msg.id,
               statement: msg.statement,
+              ...(msg.evidence !== undefined ? { evidence: msg.evidence } : {}),
               ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
             })
           : { record: null, demoted: false, error: "A reviewed record requires its id and text." };
       if (result.record) {
-        this.contextManagement.invalidate(msg.workspaceId);
-        await this.host.pushContextReport(msg.workspaceId);
+        this.refreshReviewedRefinementConsumers(cwd, msg.workspaceId);
       }
       this.host.emit({
         type: "project.knowledge.refine.apply.response",
@@ -367,8 +382,7 @@ export class ProjectKnowledgeSession {
           })
         : { page: null, error: "A reviewed root page requires its slug and text." };
     if (result.page) {
-      this.contextManagement.invalidate(msg.workspaceId);
-      await this.host.pushContextReport(msg.workspaceId);
+      this.refreshReviewedRefinementConsumers(cwd, msg.workspaceId);
     }
     this.host.emit({
       type: "project.knowledge.refine.apply.response",
@@ -380,6 +394,49 @@ export class ProjectKnowledgeSession {
         ...(result.error ? { error: result.error } : {}),
       },
     });
+  }
+
+  /**
+   * The atomic write has already succeeded when this runs. Do not make the
+   * review tab wait for Context Management's derived scan before it can return
+   * to the changed document. The scan emits its own authoritative push when
+   * it completes, while Git gets an immediate working-tree refresh.
+   */
+  private refreshReviewedRefinementConsumers(cwd: string, workspaceId: string): void {
+    this.contextManagement.invalidate(workspaceId);
+    this.host.notifyWorkspaceFilesChanged?.(cwd);
+    void this.host.pushContextReport(workspaceId);
+  }
+
+  private async handleProjectKnowledgeRefinementProposeRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.refinement.propose.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    const respond = (content: string | null, error?: string): void => {
+      this.host.emit({
+        type: "project.knowledge.refinement.propose.response",
+        payload: { requestId: msg.requestId, content, ...(error ? { error } : {}) },
+      });
+    };
+    if (!cwd || !this.projectKnowledge) {
+      respond(null, "Project knowledge is unavailable for this workspace.");
+      return;
+    }
+    try {
+      respond(
+        await this.knowledgeRefinementGenerator.propose({
+          cwd,
+          content: msg.content,
+          directives: msg.directives,
+        }),
+      );
+    } catch (error) {
+      const message =
+        error instanceof KnowledgeRefinementError || error instanceof Error
+          ? error.message
+          : "Failed to refine this Knowledge article.";
+      respond(null, message);
+    }
   }
   private async handleProjectKnowledgeDeleteRequest(
     msg: Extract<SessionInboundMessage, { type: "project.knowledge.delete.request" }>,

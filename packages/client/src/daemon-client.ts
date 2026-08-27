@@ -145,6 +145,7 @@ import type {
   ProjectKnowledgeReferenceApplyResponseMessage,
   ProjectKnowledgeRootApplyResponseMessage,
   ProjectKnowledgeRefineApplyResponseMessage,
+  ProjectKnowledgeRefinementProposeResponseMessage,
   ProjectKnowledgeDeleteResponseMessage,
   ProjectIconGetResponse,
   ProjectAddResponse,
@@ -6641,6 +6642,7 @@ export class DaemonClient {
       title?: string;
       statement?: string;
       evidence?: string;
+      tags?: string[];
       provenanceText?: string;
       provenanceSource?: string;
       provenanceAffects?: string[];
@@ -6724,6 +6726,7 @@ export class DaemonClient {
           target: "record";
           id: string;
           statement: string;
+          evidence?: string;
           expectedUpdatedAt?: string;
         }
       | {
@@ -6738,6 +6741,27 @@ export class DaemonClient {
     return this.sendNamespacedCorrelatedSessionRequest({
       requestId,
       message: { type: "project.knowledge.refine.apply.request", ...input },
+    });
+  }
+  /** Requires server_info.features.projectKnowledgeAnchoredRefinement. */
+  async proposeProjectKnowledgeRefinement(
+    input: {
+      workspaceId: string;
+      content: string;
+      directives: Array<{
+        id: string;
+        kind: "replace" | "refine";
+        anchor:
+          | { kind: "text"; start: number; end: number }
+          | { kind: "fence"; start: number; end: number; language: string | null };
+        value: string;
+      }>;
+    },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeRefinementProposeResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.refinement.propose.request", ...input },
     });
   }
   async deleteProjectKnowledge(

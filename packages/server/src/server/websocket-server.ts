@@ -2108,6 +2108,15 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(projectKnowledgeRefinement): added in v0.8.19, drop the gate
         // when floor >= v0.8.19.
         projectKnowledgeRefinement: this.projectKnowledgeService !== null,
+        // COMPAT(projectKnowledgeReviewedRefinement): added in v0.8.20, remove
+        // the gate after 2027-02-26.
+        projectKnowledgeReviewedRefinement: this.projectKnowledgeService !== null,
+        // COMPAT(projectKnowledgeAnchoredRefinement): added in v0.8.21, remove
+        // the gate after 2027-02-27.
+        projectKnowledgeAnchoredRefinement: this.projectKnowledgeService !== null,
+        // COMPAT(projectKnowledgeTagEditing): added in v0.8.21, remove the
+        // gate after 2027-02-27.
+        projectKnowledgeTagEditing: this.projectKnowledgeService !== null,
         // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate
         // when floor >= v0.8.18.
         projectKnowledgeStoreLocation: this.projectKnowledgeStoreResolver !== null,

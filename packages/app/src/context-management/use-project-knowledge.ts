@@ -92,6 +92,11 @@ export function useProjectKnowledge(
     reason: string;
     expectedUpdatedAt: string;
   }) => Promise<string | null>;
+  updateTags: (input: {
+    id: string;
+    tags: string[];
+    expectedUpdatedAt: string;
+  }) => Promise<string | null>;
   deleteRecord: (input: { id: string; expectedUpdatedAt: string }) => Promise<string | null>;
 } {
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
@@ -209,6 +214,20 @@ export function useProjectKnowledge(
     },
     [client, reload, workspaceId],
   );
+  const updateTags = useCallback(
+    async (input: { id: string; tags: string[]; expectedUpdatedAt: string }) => {
+      if (!client) return "Not connected.";
+      try {
+        const result = await client.applyProjectKnowledge({ workspaceId, ...input });
+        if (result.error) return result.error;
+        reload();
+        return null;
+      } catch (cause) {
+        return cause instanceof Error ? cause.message : String(cause);
+      }
+    },
+    [client, reload, workspaceId],
+  );
   const updateProject = useCallback(
     async (input: {
       id: string;
@@ -279,6 +298,7 @@ export function useProjectKnowledge(
       setStatus,
       createProposal,
       updateTruth,
+      updateTags,
       updateProject,
       updateReference,
       deleteRecord,
@@ -293,6 +313,7 @@ export function useProjectKnowledge(
       setStatus,
       updateProject,
       updateReference,
+      updateTags,
       updateTruth,
       view,
     ],
