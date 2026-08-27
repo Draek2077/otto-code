@@ -3,12 +3,11 @@ id: "e2e-qa-coverage"
 kind: "project"
 title: "E2e Qa Coverage"
 status: "confirmed"
-tags: ["project-charter", "legacy-projects-migration"]
+tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "partial"
 created_at: "2026-08-08T06:17:54.313Z"
-updated_at: "2026-08-12T23:56:06.847Z"
+updated_at: "2026-08-27T02:15:43.606Z"
 ---
-
 # E2e Qa Coverage
 
 <!-- compiled_truth -->
@@ -66,6 +65,63 @@ every test under its module, so the plan document and the run artifacts stay in 
 run produces (per-module table of contents, per-test evidence directories, the money-shot digest,
 the failure report) and the conventions for money shots and regression specs are in
 [reporting.md](reporting.md).
+
+
+## Module claim ledger and evidence discipline
+
+The coverage matrix is an index of executable specs, not a substitute for a module's completion
+argument. Every 0.9 feature charter maintains the associated claim ledger. For every end-user
+promise, it records: current classification (**Proven**, **Implemented, not yet proven**,
+**Provider or host limited**, **Planned**, or **Out of scope**); code owner; exact T1/T2/T3 or
+manual proof; environment and command; principal failure/recovery case; documentation claim; and
+release verdict.
+
+Evidence is collected in two passes:
+
+1. **Baseline assertion audit:** turn claims about already-shipped behavior into reproducible
+   checks. Code inspection, screenshots, and an internal service are useful evidence but do not
+   alone prove a product claim.
+2. **End-user acceptance proof:** exercise the complete UI and daemon journey after implementation.
+   T1 proves deterministic product plumbing. T2 or controlled live proof is mandatory whenever
+   model behavior, a real daemon restart, provider behavior, rendering, or runtime coordination is
+   material. Live-model assertions target durable side effects, never generated wording.
+
+A capability becomes release-complete only when its happy path and principal recovery path have
+the named passing evidence. Platform-specific claims additionally require the relevant
+Electron/native or T3 evidence. An unavailable dependency is a recorded limitation with
+remediation, not a green omission; documentation can describe general availability only after the
+claim is Proven.
+
+## 0.9 module proof map
+
+This is the executable proof companion to [[release-0-9-product-completion]].
+**Existing** means the named check is in the repository; **required** means it is a release
+obligation and remains a gap until that check is written and passes. Browser-spec additions are
+blocked on moving the live coverage matrix out of the read-only legacy `projects/` tree; do not
+edit that source in place.
+
+| Module | Existing deterministic evidence | Required T1 proof | Required controlled/live proof | Release verdict |
+| --- | --- | --- | --- | --- |
+| [[workflows]] | `packages/server/src/server/orchestration/*.test.ts`; `packages/server/src/server/daemon-e2e/orchestration.e2e.test.ts` | Workflow entry/library, AI dialog, Graph validation, gate/cancel/error browser journey | Local/controlled daemon fan-out, await/gate and output visualizer for AI and Graph | Required, not yet proven |
+| [[artifacts]] | `artifact-store.test.ts`, `artifact-data.test.ts`, `artifact-store-resolver.test.ts`, HTML validator regression | Artifact library/open/status/error and update-versus-regenerate browser journey | Generation plus persisted data update proving the design survives | Required, not yet proven |
+| [[schedules]] | `schedule-create-flow.spec.ts`, `schedules-edit-model-hydration.spec.ts`, `schedules-project-target.spec.ts`, `schedule-hidden-runs-promote.spec.ts`, `schedule-run-lifecycle.e2e.test.ts` | Workflow/artifact target configuration, missing-target remediation, history and retry UI | One controlled run per target adapter with an auditable result | Existing-agent path proven; 0.9 targets unproven |
+| [[kanban]] | GitHub/Jira provider, session and project-target unit tests | Project Settings target, board read/create/link/move/edit/reconcile/error browser journey | GitHub Projects and Jira sandbox/live proof under documented scopes | Required, not yet proven |
+| [[project-knowledge-context-management]] | Project Knowledge store/resolver/migration/service tests; Context Management graph/service tests; review-session tests | Knowledge management, roots/records/review/delivery/reference and context-selection browser journey | External edit refresh, pull-on-demand injection and review-retention daemon proof | Required, not yet proven |
+| [[connectors]] | Connector OAuth/secret tests and settings catalog/config tests | Every catalog row’s setup, tool enumeration, enablement, scope and transport assertion | Vendor or sandbox proof per row, or explicit external-blocker verdict | Required, ledger not yet proven |
+| [[managed-model-server-runtimes]] | Brain manager/ops, app Brain state and runtime-driver/supervisor tests | Brain route/capability/operations/error browser journey | Managed runtime lifecycle, queue/query/log/recovery proof per driver/platform | Required, not yet proven |
+
+### Phase 1 harness boundary
+
+Run `npm run e2e:coverage` after any matrix/spec migration or new browser-spec contribution.
+It verifies only that every browser spec is mapped once and every referenced spec exists. It does
+not run tests, prove a journey, or change a row to **Proven**.
+
+The next shared-harness change is a deliberate migration, not a local edit: move
+`projects/e2e-qa-coverage/coverage-matrix.md` to a non-legacy canonical location and update both
+`scripts/e2e-coverage-check.mjs` and `packages/app/e2e/reporters/qa-reporter.ts` atomically.
+Only then may new 0.9 browser specs enter the executable matrix. This is recorded as a Phase 1
+blocker rather than silently bypassed.
+
 
 ## Running locally
 
@@ -688,6 +744,30 @@ guards. The convention:
 Bugs found _by_ the suite during an iron-out pass are recorded in
 [`iron-out.md`](../README.md#testing--tooling) with their diagnosis; once fixed, they graduate into a
 regression spec by the rules above.
+## Managed Brain runtime proof obligations
+
+[[managed-model-server-runtimes]] adds a driver/platform evidence matrix to the release-quality program. This charter owns the test-tier rule and coverage reporting; the managed-runtimes charter owns driver contract details and the product support matrix.
+
+### Required coverage rows
+
+The live coverage matrix must gain rows when executable specs land, covering:
+
+| Behavior | Required tier |
+| --- | --- |
+| Capability-gated Brain entry, unavailable state and driver-native controls | T1 |
+| Host lifecycle, status/log recovery, model load/unload/switch, queue/busy state and actionable error surface | T1 |
+| Protocol compatibility and centralized upgrade boundary for runtime-aware additions | T1 |
+| Managed bundle compatibility, component lifecycle and failure recovery | T1 |
+| Remote-host read/write authorization, certificate trust/pinning and restart authority | T1, plus T3 when advertised |
+| Otto agent tool-loop side effect through a managed runtime | T2 |
+| Real runtime install/verify, model readiness, lifecycle/crash recovery and benchmark provenance for a claimed platform row | T2 or T3 according to hardware availability |
+| Native-only OS/accelerator checks | T3 or desktop/manual release evidence, never silently excluded |
+
+### Evidence discipline
+
+A browser mock can prove the shared user journey but cannot prove a runtime, accelerator, TLS boundary or model server. T1 tests must therefore be paired with the managed-runtimes semantic host/driver tests; T2/T3 prove the actual engine and hardware. Assertions on live models use deterministic side effects, not generated prose.
+
+The coverage matrix records only executable coverage. The runtime support matrix records the companion hardware/provenance verdict. A release may advertise a runtime/platform tuple only when both records point to passing evidence. A missing native proof is an explicit unsupported or planned matrix cell, not a partially covered claim.
 
 ## Timeline
 
@@ -713,3 +793,17 @@ regression spec by the rules above.
   summary: "Follow-up correction, 2026-08-12: the former packages/app/src/file-pane/ tree was restored as an unmounted Paseo reference/merge surface. It is intentionally retained for future upstream comparison and porting; the active app graph still uses FileTabPane/CodeEditor. Only the redundant skipped dirty-draft/conflict E2E was removed."
   source: "packages/app/src/file-pane/; packages/app/e2e/file-editing.spec.ts"
   affects: ["vim-neovim-developer-workflows"]
+- time: "2026-08-27T02:07:21.412Z"
+  kind: "decision"
+  summary: "User requested the managed-runtime testing insights be reflected in the release QA charter without treating planned test coverage as executable coverage."
+  affects: ["managed-model-server-runtimes"]
+- time: "2026-08-27T02:08:57.474Z"
+  kind: "decision"
+  summary: "User requested every module charter use a traceable current-state assertion audit and end-user acceptance evidence model rather than treating test existence as completion."
+  source: "User direction, 2026-08-26; [[release-0-9-product-completion]] completion contract; docs/testing.md."
+  affects: ["release-0-9-product-completion","workflows","artifacts","schedules","kanban","project-knowledge-context-management","connectors","managed-model-server-runtimes"]
+- time: "2026-08-27T02:15:43.606Z"
+  kind: "decision"
+  summary: "Phase 1 added the 0.9 module proof map, separating existing deterministic checks from required T1, controlled-local and provider/live evidence, and recording the legacy coverage-matrix migration boundary."
+  source: "Phase 1 release-completion audit, 2026-08-27"
+  affects: ["release-0-9-product-completion","workflows","artifacts","schedules","kanban","project-knowledge-context-management","connectors","managed-model-server-runtimes"]

@@ -5,7 +5,7 @@ title: "Project knowledge is repository-owned Markdown managed atomically by Ott
 status: "confirmed"
 tags: ["architecture","project-knowledge","workflow","provenance"]
 created_at: "2026-08-08T03:27:34.679Z"
-updated_at: "2026-08-26T02:44:55.580Z"
+updated_at: "2026-08-27T00:42:24.062Z"
 ---
 # Project knowledge is repository-owned Markdown managed atomically by Otto
 
@@ -16,7 +16,7 @@ Otto keeps shared project memory as Otto-owned rich Markdown, in one layout that
 - **Repository**, at `.otto/knowledge` in the working tree. Versioned, shared, reviewable in a pull request. This is the default.
 - **Host**, at `$OTTO_HOME/project-knowledge/<project>/`, so nothing appears in the working tree and no repository has to gitignore anything. Not versioned, not shared.
 
-The effective location resolves in a fixed order: a project's own override, then a repository store that already exists on disk, then the host default. The middle rule is what makes changing the host default safe, since a checked-in `.otto/knowledge` always keeps working. See [[configurable-project-knowledge-store-location]].
+The effective location resolves in a fixed order: a project's own override, then a repository store that already exists on disk, then the host default. The middle rule is what makes changing the host default safe, since a checked-in `.otto/knowledge` always keeps working.
 
 Everything below is identical in both locations.
 
@@ -59,3 +59,7 @@ This deliberately mirrors Brain.md's behavioral model while retaining Otto's own
   summary: "Repository ownership stopped being the whole truth: a project's Knowledge store can now be host-local under `$OTTO_HOME/project-knowledge/<project>/` instead of `.otto/` in the working tree, so a repository never has to gitignore anything to use Knowledge. Everything else on this page is unchanged, and the repository location remains the default. Recorded while building the store-location feature (see the `configurable-project-knowledge-store-location` project page) at the user's direction."
   source: "packages/server/src/server/agent/project-knowledge/project-knowledge-store-resolver.ts; docs/project-knowledge.md \"Where the store lives\""
   affects: ["packages-server-src-server-agent-project-knowledge","docs-project-knowledge-md"]
+- time: "2026-08-27T00:42:24.062Z"
+  kind: "decision"
+  summary: "Remove a dangling wiki link to the missing configurable-project-knowledge-store-location record while preserving the documented storage-resolution rule."
+  source: "Knowledge link maintenance, 2026-08-26"

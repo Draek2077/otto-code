@@ -3,516 +3,211 @@ id: "connectors"
 kind: "project"
 title: "Connectors"
 status: "confirmed"
-tags: ["project-charter", "legacy-projects-migration"]
+tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "partial"
+progress_completed: 0
+progress_total: 5
+progress_unit: "0.9 delivery slices"
 created_at: "2026-08-08T06:17:20.615Z"
-updated_at: "2026-08-08T06:19:42.485Z"
+updated_at: "2026-08-27T02:08:00.464Z"
 ---
-
 # Connectors
 
 <!-- compiled_truth -->
 
-# Connectors: the verified vendor ledger
-
-Status: research complete. **Section 1 has shipped: 29 connectors are selectable
-today** (25 sign-in, 4 needing no account). Four setup shapes remain unbuilt,
-which is the only thing holding back section 2.
-
-Meta Ads is the one section 1 row that did NOT ship. `mcp.facebook.com/ads` was
-reported without a scheme or trailing path, and the catalog rule is that an
-unverified endpoint does not get an entry. It goes in the moment someone reads it
-off Meta's own docs.
-
-This is the working record of **every connector we have considered, what was actually
-found, and what is still needed to ship it**. It exists because the first catalog
-shipped about seventy entries whose command was the literal string
-`npx -y <slug-mcp-server>`, and the correction to that overshot: a broad sweep
-failed to find several vendors and they were cut as "no official server", when in
-fact most of them have one. Absence of evidence got recorded as evidence of
-absence. This file is the audit trail that stops both mistakes.
-
-Durable design rules live in [docs/connectors.md](../../docs/connectors.md). This
-page is the point-in-time ledger: verdicts, gather lists, open questions.
-
-All entries verified 2026-08-03 unless noted.
-
----
-
-## 1. Ready to ship: fixed endpoint, OAuth, no extra input
-
-These work with the broker exactly as built (dynamic client registration plus
-PKCE against a fixed URL). Nothing needed from anyone.
-
-| Connector         | Endpoint                              | Notes                                                                                                             | Source                                                   |
-| ----------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Notion            | `https://mcp.notion.com/mcp`          | shipped                                                                                                           | developers.notion.com/docs/mcp                           |
-| Jira & Confluence | `https://mcp.atlassian.com/v1/mcp`    | shipped. `/v1/sse` retired after 2026-06-30                                                                       | atlassian.com/blog/announcements/remote-mcp-server       |
-| Linear            | `https://mcp.linear.app/mcp`          | shipped                                                                                                           | linear.app/docs/mcp                                      |
-| Asana             | `https://mcp.asana.com/sse`           | shipped. SSE; confirm whether an `/mcp` twin now exists                                                           | developers.asana.com                                     |
-| Canva             | `https://mcp.canva.com/mcp`           | shipped                                                                                                           | canva.dev/docs/connect/mcp-server/                       |
-| Figma             | `https://mcp.figma.com/mcp`           | shipped                                                                                                           | developers.figma.com                                     |
-| Webflow           | `https://mcp.webflow.com/`            | shipped                                                                                                           | developers.webflow.com/data/docs/ai-tools                |
-| Intercom          | `https://mcp.intercom.com/mcp`        | shipped                                                                                                           | developers.intercom.com/docs/guides/mcp                  |
-| Stripe            | `https://mcp.stripe.com`              | shipped                                                                                                           | docs.stripe.com/mcp                                      |
-| GitHub            | `https://api.githubcopilot.com/mcp/`  | shipped                                                                                                           | github.com/github/github-mcp-server                      |
-| Sentry            | `https://mcp.sentry.dev/mcp`          | shipped                                                                                                           | docs.sentry.io/product/sentry-mcp/                       |
-| Supabase          | `https://mcp.supabase.com/mcp`        | shipped                                                                                                           | supabase.com/docs/guides/ai-tools/mcp                    |
-| Cloudflare        | `https://mcp.cloudflare.com/mcp`      | shipped                                                                                                           | developers.cloudflare.com/agents/model-context-protocol/ |
-| Vercel            | `https://mcp.vercel.com`              | shipped. Gated to clients Vercel has reviewed; may refuse Otto                                                    | vercel.com/docs/agent-resources/vercel-mcp               |
-| **Slack**         | `https://mcp.slack.com/mcp`           | shipped                                                                                                           | docs.slack.dev/ai/slack-mcp-server/                      |
-| **HubSpot**       | `https://mcp.hubspot.com`             | shipped. GA since Apr 2026                                                                                        | developers.hubspot.com/mcp                               |
-| **monday.com**    | `https://mcp.monday.com/mcp`          | shipped. Documents DCR explicitly                                                                                 | developer.monday.com                                     |
-| **Box**           | `https://mcp.box.com`                 | shipped                                                                                                           | developer.box.com/guides/box-mcp                         |
-| **Airtable**      | `https://mcp.airtable.com/mcp`        | shipped. PAT also supported                                                                                       | support.airtable.com                                     |
-| **Dropbox**       | `https://mcp.dropbox.com/mcp`         | shipped. Open beta since Mar 2026                                                                                 | help.dropbox.com                                         |
-| **ClickUp**       | `https://mcp.clickup.com/mcp`         | shipped. Public beta, all plans                                                                                   | mcp.clickup.com                                          |
-| **Trello**        | `https://mcp.trello.com/v1`           | shipped. Workspace-scoped consent, any plan                                                                       | github.com/atlassian/trello-mcp-server                   |
-| **Ahrefs**        | `https://api.ahrefs.com/mcp/mcp`      | shipped                                                                                                           | github.com/ahrefs/ahrefs-mcp-server                      |
-| **Netlify**       | `https://netlify-mcp.netlify.app/mcp` | shipped                                                                                                           | docs.netlify.com                                         |
-| **Square**        | `https://mcp.squareup.com/sse`        | shipped. Beta; gated to approved clients like Vercel                                                              | developer.squareup.com/docs/mcp                          |
-| **Meta Ads**      | `mcp.facebook.com/ads`                | **HELD BACK**. Open beta since 2026-04-29, but the scheme and path are unconfirmed, so it fails the citation rule | Meta announcement                                        |
-
----
-
-## 2. Blocked on a new setup shape
-
-Real, official, and verified. They cannot be expressed by the current
-`ConnectorSetup` type, which only knows "fixed URL plus DCR". Each row names the
-shape it needs.
-
-### Shape A: user supplies their own OAuth client ID and secret
-
-The vendor does not support dynamic client registration, so the user registers an
-app once and pastes two values.
-
-**Google Workspace.** Endpoints are exact and confirmed:
-
-| Product  | Endpoint                                    |
-| -------- | ------------------------------------------- |
-| Gmail    | `https://gmailmcp.googleapis.com/mcp/v1`    |
-| Drive    | `https://drivemcp.googleapis.com/mcp/v1`    |
-| Docs     | `https://docsmcp.googleapis.com/mcp/v1`     |
-| Sheets   | `https://sheetsmcp.googleapis.com/mcp/v1`   |
-| Slides   | `https://slidesmcp.googleapis.com/mcp/v1`   |
-| Calendar | `https://calendarmcp.googleapis.com/mcp/v1` |
-| Chat     | `https://chatmcp.googleapis.com/mcp/v1`     |
-| People   | `https://people.googleapis.com/mcp/v1`      |
-
-Source: developers.google.com/workspace/guides/configure-mcp-servers. Auth is
-OAuth 2.0 with a client ID and secret created in Google Cloud Console.
-
-This is the single highest-value row in the ledger: eight connectors, one shape.
-
-### Shape B: templated URL with a user-supplied variable
-
-| Connector               | Template                                                                          | Variable                                      |
-| ----------------------- | --------------------------------------------------------------------------------- | --------------------------------------------- |
-| Microsoft 365 (Work IQ) | `https://agent365.svc.cloud.microsoft/agents/tenants/{tenantId}/servers/{server}` | tenant ID, plus a client ID (shape A as well) |
-| GitLab                  | `https://{host}/api/v4/mcp`                                                       | instance host                                 |
-| Shopify                 | store's own domain                                                                | store domain                                  |
-| Datadog                 | `https://mcp.datadoghq.com` or `.eu`                                              | site region                                   |
-| AWS                     | `https://aws-mcp.{region}.api.aws/mcp`                                            | region (`us-east-1`, `eu-central-1` only)     |
-| Salesforce              | per-org server URL from Setup                                                     | server URL, plus shape A                      |
-| Microsoft Ads           | `https://partner.api.bingads.microsoft.com/ext/mcp/vnext?toolSetNames=OpenBeta`   | AAD client ID (shape A)                       |
-
-Microsoft 365 servers confirmed available: Mail, Calendar, Teams, SharePoint,
-OneDrive, Word, User, Copilot. Preview, and requires a Microsoft 365 Copilot
-license.
+# Connectors — 0.9 delivery charter
 
-### Shape C: client-credentials grant
+## Outcome
 
-| Connector | Endpoint                     | Note                                        |
-| --------- | ---------------------------- | ------------------------------------------- |
-| PayPal    | `https://mcp.paypal.com/sse` | Sandbox at `https://mcp.sandbox.paypal.com` |
+A Connector is a host-installed, agent-facing MCP capability, not an Otto-controlled Forge or Kanban integration. Every catalog row is real: it has guided in-app setup, daemon-owned credentials, add-time connect-and-enumerate verification, a durable actual-tool record, per-tool enablement, operation-to-scope evidence, honest provider routing, and repeatable automated and vendor or sandbox proof.
 
-Not the authorization-code flow. The SDK supports it through
-`prepareTokenRequest`, so this is a provider change, not a new protocol.
+Forge and Kanban may reuse daemon authorization infrastructure but never inherit Connector credentials, configuration, workspace truth, board truth, or authority by default.
 
-### Shape D: static API token, no OAuth
+## Verified baseline — 2026-08-26
 
-| Connector | Endpoint                           | Note                                                                                                                                             |
-| --------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Bitbucket | `https://mcp.atlassian.com/v1/mcp` | Bitbucket tools are API-token only, not the OAuth browser flow. Org admin must enable them, and the workspace must be linked to an Atlassian org |
+- The software catalog currently contains **28** entries: Notion, Atlassian, Box, Dropbox, Slack, Linear, monday.com, ClickUp, Trello, Asana, Canva, Figma, Webflow, Intercom, HubSpot, Stripe, Square, Airtable, Ahrefs, GitHub, Sentry, Supabase, Cloudflare, Netlify, Vercel, DeepWiki, Local files, and Persistent memory. The historic 29-row count in older records and the master charter is not supported by `connectors-catalog.ts`.
+- Catalog entries carry a source URL and verification date. The current dates are `2026-08-03`, which are stale under [docs/connectors.md](../docs/connectors.md)'s six-month re-verification rule.
+- All current rows are expressible only as fixed endpoint DCR OAuth, unauthenticated HTTP, or unauthenticated stdio. `ConnectorSetup` cannot represent ordered user fields, own OAuth client credentials, URL substitution, OAuth client-credentials, static HTTP-token authentication, or secure official local-server configuration.
+- Settings has catalog search/filtering, add-time live `listTools` verification, installed-connector on/off and per-tool switches. Enumeration is transient: the daemon does not persist a verification timestamp, tool snapshot, scope evidence, or outcome.
+- The daemon stores OAuth state separately from client-controlled config, uses loopback PKCE/DCR authorization and silent refresh, and redacts connector transport secret values plus OAuth tokens before emitting config to a client. Existing protocol has `connectors.list_tools.*` and OAuth authorize/disconnect/status messages gated by `features.connectors` and `features.connectorOauth`.
+- Global connector and disabled-tool filtering is enforced in the OpenAI-compatible MCP manager. Provider registry passes connectors to the OpenAI-compatible family only. Other adapters can support user-supplied MCP server configuration but do not receive the Connector registry or its daemon-owned OAuth attachment. Therefore provider-neutral Connector routing is not yet implemented or proven.
+- Automated coverage currently tests catalog citations/basic setup properties, OAuth state helpers, secret redaction, and OpenAI-compatible MCP behavior. No test proves every catalog row's setup contract, persisted enumeration state, scope map, provider routing matrix, connector recovery, or T1/T2/T3 release journey. No vendor-live proof was found in the repository.
 
-### Local servers (stdio), official, credential supplied at add time
+## Release ledger
 
-These need no new shape beyond the existing `token` kind, but they are commands
-rather than URLs.
+The catalog is the roster, and a daemon-owned ledger is the release evidence. It must contain exactly one entry per current catalog id and become the only place a row is declared release-ready. New research candidates remain outside the roster until deliberately added.
 
-| Connector        | Package / repo                         | Credential                                                                           |
-| ---------------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
-| MongoDB          | `mongodb-mcp-server` (npm, official)   | connection string                                                                    |
-| Redis            | `redis/mcp-redis` (official)           | connection string                                                                    |
-| Grafana          | `grafana/mcp-grafana` (official)       | API token                                                                            |
-| Kubernetes       | Red Hat `kubernetes-mcp-server`        | kubeconfig                                                                           |
-| Google Analytics | `googleanalytics/google-analytics-mcp` | Google Cloud OAuth creds. Read-only, experimental                                    |
-| Google Ads       | `googleads/google-ads-mcp` (pipx)      | 22-char developer token, GCP project, OAuth creds. Read-only, **no hosted endpoint** |
-| TikTok Ads       | TikTok for Business MCP Server         | developer app App ID and Secret                                                      |
-| Docker           | Docker MCP Gateway                     | this is a gateway, not a connector; probably out of scope                            |
-
----
-
-## 3. No official server: do not add
-
-Checked individually. Community implementations may exist; the catalog rule is
-official-and-cited, so these stay out until a vendor ships one.
+The initial roster is grouped by current setup shape:
 
-| Connector                   | Finding                                                                                                                                                                                                                                                 |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Zendesk                     | Zendesk is an MCP **client**, not a server publisher. Community servers only                                                                                                                                                                            |
-| Todoist                     | Community only                                                                                                                                                                                                                                          |
-| Google Search Console       | Google ships Analytics, not GSC. Not on Google's official list                                                                                                                                                                                          |
-| Google Business Profile     | Community only. API access also needs a 60-day-old verified profile                                                                                                                                                                                     |
-| LinkedIn Ads                | No official server as of mid-2026                                                                                                                                                                                                                       |
-| Reddit Ads                  | No official server                                                                                                                                                                                                                                      |
-| StackAdapt                  | Nothing found                                                                                                                                                                                                                                           |
-| CircleCI                    | Nothing found                                                                                                                                                                                                                                           |
-| Apple Pages                 | Not applicable, no such API surface                                                                                                                                                                                                                     |
-| Pinterest Ads               | Official server exists but is **alpha, named partners only**. Unusable for us today. Recheck later                                                                                                                                                      |
-| PostgreSQL / MySQL / SQLite | Reference servers are **archived upstream**. The SQLite one has an unpatched SQL injection flaw and is still downloaded ~13k/week. **Do not ship it.** Use Bytebase DBHub (Postgres, MySQL, MariaDB, SQL Server, SQLite in one) if we want SQL coverage |
-
-Also archived and not to be used: `@modelcontextprotocol/server-github`,
-`-slack`, `-postgres`, `-gdrive`. The live replacements are the vendor endpoints
-in section 1.
-
----
-
-## 4. What Philippe needs to gather
-
-One list, grouped by what a single gathering session unlocks.
-
-**Google Cloud (unlocks 8 connectors plus Analytics and Google Ads)**
-
-1. A Google Cloud project with the Gmail, Drive, Docs, Sheets, Slides, Calendar,
-   Chat and People APIs enabled.
-2. An OAuth 2.0 client ID and client secret from that project.
-3. Redirect URI registered on that client: `http://127.0.0.1:6871/connectors/oauth/callback`
-   (the broker's preferred loopback; it falls back to an ephemeral port, so
-   register the fixed one to avoid re-registration).
-4. For Google Ads only: the 22-character developer token.
-
-**Microsoft Entra (unlocks 8 Work IQ connectors plus Microsoft Ads)**
-
-1. Tenant ID (GUID).
-2. An Entra app registration, public client, and its Application (client) ID.
-3. Redirect URI on that app: `http://127.0.0.1:6871/connectors/oauth/callback`.
-   Microsoft's own docs use `http://localhost:8080/callback`, so confirm which
-   loopback form they accept.
-4. The `WorkIQ-*` API permissions consented for the servers we want (Mail,
-   Calendar, Teams, SharePoint, OneDrive, Word).
-5. Confirmation of a Microsoft 365 Copilot license, which is a hard prerequisite.
-
-**Salesforce**
-
-1. My Domain URL (`https://<your-domain>.my.salesforce.com`).
-2. In Setup, search MCP Servers, open Salesforce Servers, Activate the servers we
-   want, then copy each **Server URL** and **API name**.
-3. An External Client App, and its OAuth client ID and secret.
-4. Confirmation the org is Enterprise Edition or above.
-
-**PayPal**
-
-1. Client ID and secret from the PayPal Developer Dashboard.
-2. Whether we target live or sandbox first.
+| Shape | Catalog IDs |
+| --- | --- |
+| Fixed endpoint + DCR OAuth | notion, atlassian, box, dropbox, slack, linear, monday, clickup, trello, asana, canva, figma, webflow, intercom, hubspot, stripe, square, airtable, ahrefs, github, sentry, supabase, cloudflare, netlify, vercel |
+| No credential HTTP | deepwiki |
+| Official local stdio, no credential | filesystem, memory |
 
-**Atlassian / Bitbucket**
+Each ledger row must record:
 
-1. An API token from id.atlassian.com, Security, API tokens.
-2. Org admin enabling Bitbucket tools.
-3. Confirmation the Bitbucket workspace is linked to the Atlassian org.
+1. vendor documentation URL, re-verification date, release-roster status, transport, endpoint or approved local-server identity, and vendor limitations;
+2. setup/auth shape, ordered nonsecret and secret setup fields with issue URLs, requested scope inventory, approved portal scope inventory, and ownership boundary;
+3. latest live `initialize` and `tools/list` result, normalized tool names/descriptions, tool fingerprint, verification date, enabled subset, disabled subset, and a redacted failure/recovery verdict;
+4. an exact operation-to-scope map for every Otto-owned API operation. Remote vendor-owned MCP tools may state **vendor-declared / unavailable to Otto** rather than invent a scope mapping;
+5. provider routing evidence: each installed provider is classified as compatible and routed, compatible but blocked by a documented security/runtime boundary, or incapable. A provider without MCP capability must state that limitation and receive no connector;
+6. linked deterministic setup/transport/redaction/routing tests and the appropriate live or vendor-sandbox proof. Credential- or vendor-gated rows record the actual externally-gated verdict, not success by inference.
 
-**TikTok Ads**
-
-1. A TikTok for Business developer app, and its App ID and App Secret.
-
-**Simple choices, no credentials needed**
-
-1. Datadog: which site, US1 or EU.
-2. AWS: which region, `us-east-1` or `eu-central-1`. Also confirm whether AWS MCP
-   authenticates with SigV4 rather than OAuth, which would be a fifth shape.
-3. GitLab: gitlab.com or a self-hosted host.
-4. Shopify: store domain, and whether the account is Plus (the native servers are
-   enabled from Settings, Apps and sales channels, MCP).
-
----
-
-## 5. Open questions
-
-1. **AWS auth method.** Endpoints are confirmed but the auth scheme is not. If it
-   is SigV4, that is a fifth setup shape and a separate signing path.
-2. **Pinterest Ads endpoint.** Official but alpha and partner-gated. No public
-   endpoint published.
-3. **Meta Ads exact URL.** `mcp.facebook.com/ads` is reported without a scheme or
-   trailing path. Confirm against Meta's own docs before shipping.
-4. **TikTok Ads endpoint.** Docs exist at
-   business-api.tiktok.com/portal/docs/tiktok-ads-mcp-server/v1.3 but the endpoint
-   string was not captured.
-5. **Asana transport.** We ship the documented SSE endpoint. Given Atlassian
-   retired its SSE endpoint, check whether Asana now offers `/mcp`.
-6. **GitLab auth.** Endpoint confirmed; PAT versus OAuth not confirmed.
-7. **Square and Vercel client gating.** Both restrict to reviewed clients. Find
-   out whether Otto can be registered, or whether these will always fail for us.
-
----
-
-## 6. Build sequence
-
-1. ~~**Land section 1.**~~ **Done.** Eleven added (Slack, HubSpot, monday.com,
-   Box, Dropbox, ClickUp, Trello, Airtable, Ahrefs, Netlify, Square), bringing the
-   catalog to 29 selectable connectors. The picker gained search, an
-   audience filter, and in-place expansion, because a flat list stops being
-   browsable somewhere around twenty entries.
-2. **Shape A** (own client ID and secret). Unlocks all of Google Workspace, the
-   largest single win in the ledger.
-3. **Shape B** (templated URLs). Unlocks Microsoft 365, GitLab, Shopify, Datadog,
-   AWS, Salesforce.
-4. **Shape C** (client credentials) for PayPal, and **shape D** (static token) for
-   Bitbucket. Both small.
-5. Re-check the section 3 list on a schedule. Half of it was wrong within a
-   single day of research, and these vendors are shipping fast.
-
----
-
-## 7. Otto-native connectors: we write the MCP server
-
-Section 3 says "no official server exists". That is a statement about what a
-vendor chose to ship, not about what is possible. Every service on that list has
-a documented REST API. **When a vendor has not shipped an MCP server and we need
-the integration, we write one.**
-
-This is the fork's mission applied to connectors instead of providers: stop being
-blocked on someone else's roadmap.
-
-### The mechanism
-
-The MCP SDK ships `InMemoryTransport.createLinkedPair()`. The daemon hosts the
-server **in its own process** and connects a client to it over memory. No
-subprocess, no port, no network hop.
-
-Downstream, nothing changes. `OpenAICompatMcpManager` sees an ordinary MCP
-client, so tool namespacing, per-tool disable switches, permission gating, and
-the add-time verification gate all keep working untouched. We write the API
-wrapper and inherit the entire connector subsystem for free.
-
-### The protocol wrinkle
-
-`McpServerConfigSchema` is a `z.discriminatedUnion` on `type`. Adding an `"otto"`
-branch would make an old client fail to parse a new daemon's whole config, which
-breaks the backward-compatibility contract. The safe shape is an **optional
-`builtin` field on `ConnectorConfig`**, carried alongside a `server` value that
-still parses on old clients. New daemons read `builtin` and route in-process.
-Tag it `COMPAT(connectorBuiltin)`.
-
-### The cost, stated plainly
-
-An Otto-native connector is code we own forever: API drift, pagination, rate
-limits, token refresh, token economy, tests. Adding a URL to the catalog is free.
-This is not. Two or three of these is a healthy capability. Twenty is a second
-product. Add them because we need them, never because we can.
-
-### API research for the candidates
-
-Everything below was gathered for implementation, not for triage.
-
-#### Google Search Console (first target)
-
-|                  |                                                                                           |
-| ---------------- | ----------------------------------------------------------------------------------------- |
-| Auth             | OAuth 2.0, user's own client ID and secret                                                |
-| Scope            | `https://www.googleapis.com/auth/webmasters.readonly`, or `webmasters` to submit sitemaps |
-| Search analytics | `POST https://www.googleapis.com/webmasters/v3/sites/{siteUrl}/searchAnalytics/query`     |
-| Sites            | `GET https://www.googleapis.com/webmasters/v3/sites`                                      |
-| URL inspection   | `POST https://searchconsole.googleapis.com/v1/urlInspection/index:inspect`                |
-| Docs             | developers.google.com/webmaster-tools/v1/                                                 |
-
-Query body: `startDate` and `endDate` (required, `YYYY-MM-DD`), `dimensions[]`,
-`type` (web, image, video, news, googleNews, discover), `dimensionFilterGroups[]`,
-`aggregationType`, `rowLimit` (1 to 25,000, default 1,000), `startRow`,
-`dataState`.
-
-Dimensions: `query`, `page`, `country`, `device`, `date`, `hour`,
-`searchAppearance`. Metrics per row: `clicks`, `impressions`, `ctr`, `position`.
-
-**Token-economy constraint, and it is the main design risk.** A single query can
-return 25,000 rows. Piping that at a model is precisely what
-[docs/token-economy.md](../../docs/token-economy.md) exists to prevent. The tool
-must default `rowLimit` low (25 or so), require an explicit date range, and
-return a compact aggregate unless raw rows are asked for. Build this in from the
-first commit; it is not a later optimization.
-
-Note the legacy naming: the scope and v3 endpoints still say "webmasters"
-because Search Console used to be Webmaster Tools.
-
-#### Google Business Profile
-
-|                      |                                                           |
-| -------------------- | --------------------------------------------------------- |
-| Auth                 | OAuth 2.0, own client ID and secret                       |
-| Scope                | `https://www.googleapis.com/auth/business.manage`         |
-| Account management   | `https://mybusinessaccountmanagement.googleapis.com/v1`   |
-| Business information | `https://mybusinessbusinessinformation.googleapis.com/v1` |
-| Performance          | `https://businessprofileperformance.googleapis.com/v1`    |
-| Docs                 | developers.google.com/my-business/                        |
-
-Covers locations, reviews and review replies, local posts, and performance
-insights. Split across three base URLs, so one connector fans out over several
-hosts. **Gotcha:** Google gates API access behind an application, and requires a
-verified profile active for 60 or more days.
-
-#### Zendesk
-
-|                |                                                            |
-| -------------- | ---------------------------------------------------------- |
-| Auth           | OAuth 2.0, or an API token                                 |
-| Base URL       | `https://{subdomain}.zendesk.com/api/v2`                   |
-| Token endpoint | `https://{subdomain}.zendesk.com/api/v2/oauth/tokens.json` |
-| Docs           | developer.zendesk.com                                      |
-
-**Per-tenant base URL**, so this needs a subdomain field. Scopes are
-resource-grained: `tickets`, `users`, `organizations`, `macros`, `triggers`,
-`automations`, `webhooks`, `requests`, `satisfaction_ratings`, `hc`,
-`auditlogs` (read only), plus `read`, `write`, `impersonate`, `unrestricted`.
-Scope format differs by endpoint: the OAuth Tokens API takes an array, the
-grant-type token endpoint takes a space-separated string. Search is one endpoint
-(List Search Results) across tickets, users, organizations and groups.
-
-#### Todoist
-
-|          |                                                                 |
-| -------- | --------------------------------------------------------------- |
-| Auth     | Bearer token: personal API token, or OAuth 2.0                  |
-| Base URL | `https://api.todoist.com/rest/v2`                               |
-| Scopes   | `data:read`, `data:read_write`, `data:delete`, `project:delete` |
-| Docs     | developer.todoist.com/rest/v2/                                  |
-
-Tasks, projects, sections, labels, comments, filters. Tokens do not expire unless
-revoked via `POST /oauth/revoke_token`. **The cheapest connector on this list**:
-a personal token needs no OAuth flow at all, so it is the right one to prove the
-`builtin` plumbing on before tackling GSC's OAuth.
-
-#### CircleCI
-
-|          |                                                                        |
-| -------- | ---------------------------------------------------------------------- |
-| Auth     | Personal API token in a `Circle-Token` header (or Basic auth username) |
-| Base URL | `https://circleci.com/api/v2`                                          |
-| Docs     | circleci.com/docs/api/v2/                                              |
-
-Categories: Pipeline, Workflow, Job, Project, Insights, Schedule, Context,
-Webhook, Usage, User, OIDC, Policy. **Project tokens do not work on v2**, only
-personal API tokens. No OAuth, so this is a pure static-token connector.
-
-#### LinkedIn Ads
-
-|          |                                                           |
-| -------- | --------------------------------------------------------- |
-| Auth     | OAuth 2.0 authorization code                              |
-| Base URL | `https://api.linkedin.com/v2` (REST paths under `/rest/`) |
-| Scopes   | `r_ads`, `rw_ads`, `r_ads_reporting`                      |
-| Docs     | learn.microsoft.com/linkedin/marketing/                   |
-
-`GET /rest/adAccounts?q=search` finds accounts. `adAnalytics` serves impressions,
-clicks, spend and conversions with three finders: Analytics (group by one
-element), Statistics (group by up to three), AttributedRevenueMetrics.
-
-#### Reddit Ads
-
-|          |                                                                |
-| -------- | -------------------------------------------------------------- |
-| Auth     | OAuth 2.0, scope `ads:manage`                                  |
-| Base URL | `/api/v3/accounts/{account_id}/...`                            |
-| Docs     | Reddit developer portal, requires an authenticated Ads account |
-
-Access tokens expire after one hour, so refresh handling is mandatory rather than
-optional. **Two real gotchas:** campaign-management endpoints fail even with
-correct scopes until the account is approved, and rate limits are undocumented,
-so backoff with jitter is required.
-
-#### Pinterest
-
-|                |                                                                                |
-| -------------- | ------------------------------------------------------------------------------ |
-| Auth           | OAuth 2.0; token exchange uses HTTP Basic with `app_id:app_secret`             |
-| Base URL       | `https://api.pinterest.com/v5`                                                 |
-| Token endpoint | `https://api.pinterest.com/oauth/token`                                        |
-| Scopes         | `user_accounts:read`, `pins:read`, `pins:write`, `boards:read`, and ads scopes |
-| Docs           | developers.pinterest.com/docs/api/v5/                                          |
-
-Covers campaigns, ad groups, ads, creatives, reporting and catalogs. Worth doing
-even though Pinterest has an official MCP server, because that server is a
-partner-gated alpha we cannot reach.
-
-#### StackAdapt
-
-|           |                                        |
-| --------- | -------------------------------------- |
-| Auth      | API key in an `X-AUTHORIZATION` header |
-| Interface | **GraphQL**, not REST                  |
-| Docs      | docs.stackadapt.com                    |
-
-Campaigns, creatives, audiences, pixels, conversion attribution, reporting. The
-REST API's write operations are deprecated in favour of GraphQL, and **the
-GraphQL API needs its own key**: an old REST key will not work. Being GraphQL,
-this one does not fit a generic REST wrapper and needs hand-written queries.
-
-### Suggested order
-
-1. **Todoist.** Static token, small surface. Proves the `builtin` plumbing end to
-   end with almost no auth work.
-2. **Google Search Console.** The one actually asked for. Reuses the Google
-   client ID and secret already being gathered for Workspace, so it costs one
-   extra scope. Carries the token-economy design work.
-3. **CircleCI**, then **Zendesk**. Static token and per-tenant OAuth respectively,
-   which together exercise the last two auth shapes.
-4. Ads platforms last. They are the most gated (Reddit needs account approval,
-   LinkedIn needs a reviewed app) and the least likely to work first try.
-
----
-
-## 8. Guided setup: everything configures from the Connectors UI
-
-**The rule: no connector may require editing a config file, running a terminal
-command, or leaving Otto except to click through a vendor's own consent screen.**
-If a value is needed, the UI asks for it, tells the user what it is, and links
-straight to the page that issues it.
-
-This one concept replaces shapes A through D from section 2 rather than adding a
-fifth. A connector declares an ordered list of fields; the UI renders them; the
-daemon substitutes them into the endpoint and the auth flow.
+## End-to-end delivery inventory
+
+### UI and user journey
+
+- Keep Settings as the installed-host ledger and the add sheet as catalog browsing. A catalog row must render its guided ordered setup fields, help, issue links, scope disclosure, provider availability, and vendor limitations without exposing MCP transport as user homework.
+- Add and reconnect follow one explicit state machine: draft → input validation → daemon-owned save/authorization → connect/enumerate → verified or failed → recover/retry/disconnect/remove. A row cannot appear installed as verified merely because configuration was saved.
+- Installed rows show last verification, actual tools, individual enablement, provider routing verdict, granted/account status where available, and actionable remediation. Switching a tool must affect the advertised agent surface, not only the Settings UI.
+- Capability gates are centralized. An old host shows its upgrade boundary; it never receives new Connector RPCs or a silent compatibility fallback.
+
+### Data, secrets, and storage
+
+- The daemon owns authorization tokens, OAuth client credentials, client-credentials secrets, static tokens, verification state, tool snapshots, and account/consent metadata. Clients receive only masked presence and safe labels.
+- Setup fields distinguish text, choice, and secret. Field values must have explicit persistence ownership, template substitution rules, validation, issue URL, and redaction coverage. Secrets may never enter transcript, browser, logs, config projection, analytics, tool result, or error text.
+- Verification evidence is append-only enough to audit the current verdict, while stale snapshots are invalidated by connection/config/tool fingerprint change. Config evolution remains additive and parses in both directions.
+
+### Daemon, protocol, transport, and recovery
+
+- One daemon service resolves setup fields, stores secrets, constructs a transport, authorizes or refreshes as required, performs add-time and explicit re-verification, normalizes tools, and records redacted evidence.
+- Support fixed DCR OAuth, own OAuth client ID/secret, templated endpoint fields, client-credentials, static token/header, and explicitly approved official local servers. Do not add arbitrary command execution to catalog setup.
+- OAuth replacement rejects stale callbacks without terminating a current attempt. Silent agent refresh never opens a browser. Expiry, revoked consent, denied consent, missing setup field, port collision, invalid redirect, 401/403, transport mismatch, enumeration failure, vendor client approval refusal, rate limit, and local process failure each provide a safe recoverable verdict.
+- New protocol fields are optional and pure structural schemas; new RPCs use dotted `.request`/`.response` names; client use is feature-gated in one place with a dated `COMPAT(...)` cleanup tag. No new union branch may make old clients reject Connector configuration.
+
+### Provider routing and authority
+
+- The provider-neutral resolver is the only entry point from the host registry to agent launch. It filters globally disabled connectors and disabled tools before a provider can advertise a tool.
+- A provider receives a Connector only when its runtime can honor the required MCP transport, daemon-owned authorization boundary, tool filtering, and permission posture. It must not receive a serialized OAuth secret as a shortcut.
+- OpenAI-compatible routing remains the reference implementation. Every other capable provider requires an explicit adapter or a daemon-owned authenticated bridge with the same namespacing, permission, output-capping, redaction, cancellation, and lifecycle guarantees. Incapable providers show an explicit limitation.
+- Forge and Kanban remain separately configured, host/project-owned product integrations. A same-vendor Connector is free-form, has separate auth and per-tool grants, and cannot alter their configured authority by default.
+
+### Catalog truth, scopes, docs, migration, and proof
+
+- Revalidate every roster row against vendor documentation before the release. Correct stale endpoints, OAuth methods, supported transports, tool lists, scope statements, and partner/client approval restrictions. Remove a row that cannot meet the catalog rule rather than fabricating a result.
+- Retire the misleading old count and update the master charter only after the roster ledger establishes its current count.
+- Document supported setup shapes, security boundary, provider routing limitation/compatibility matrix, re-verification lifecycle, failure remediation, and official local-server allowlist in [docs/connectors.md](../docs/connectors.md). Keep the documentation index current.
+- Existing configurations must preserve their transport, enabled state, disabled tools, and daemon-owned auth. New fields are additive; never migrate a user credential into a broader authority domain.
+- T1 covers every roster row's metadata/setup validation, construction, redaction, tool-filter enforcement, provider-routing decision, failure classification, and capability gate. T2 exercises a local authenticated/unauthed MCP fixture through add → enumerate → per-tool disable → agent availability → retry. T3 or controlled vendor sandbox proof records per-row success or externally-gated verdict. Add the core journey to [[e2e-qa-coverage]]'s release matrix.
+
+## Dependencies and explicit non-goals
+
+Dependencies: [[integration-authorization-is-daemon-owned-and-reusable]], provider MCP adapters and capability reporting, [docs/protocol-validation.md](../docs/protocol-validation.md), [docs/rpc-namespacing.md](../docs/rpc-namespacing.md), [docs/token-economy.md](../docs/token-economy.md), and [[e2e-qa-coverage]].
+
+Out of scope for this charter: turning Forge or Kanban into MCP connectors; credential sharing by default; cataloging unofficial or guessed endpoints; unbounded tool output; shipping archived reference servers, especially the archived SQLite server; treating a vendor's client-approval, account-review, or missing official MCP server as an Otto success; and adding Otto-native wrappers merely to inflate catalog count. An Otto-native connector requires explicit selection and its own pagination, rate-limit, token-economy, scope, lifecycle, and live-proof plan.
+
+## Delivery slices
+
+1. **Truth and ledger foundation:** make catalog roster metadata and daemon-owned verification evidence explicit; repair the count/staleness mismatch; add deterministic row-contract coverage.
+2. **Guided setup shapes:** implement typed setup fields and daemon-owned construction for own OAuth client, templated URLs, client credentials, static header token, and approved local servers, with secret-safe recovery.
+3. **Provider-neutral routing:** build the capability matrix and authenticated provider adapter/bridge path; prove the selected capable providers receive exactly the enabled tools and incapable ones state why not.
+4. **Roster completion:** revalidate and add the currently blocked official rows only after their setup shape works, recording each live or externally-gated verdict.
+5. **Release proof:** finish every row's scope/operation evidence, T1/T2 coverage, T3 or sandbox result, docs, and E2E coverage-matrix entry.
+
+## Acceptance
+
+Every current catalog row can be configured through Otto, connected and enumerated at add time, inspected using a current actual tool list, controlled per tool, and routed only to providers that can honor its security and MCP requirements. Every row has fresh vendor evidence, scope/operation truth or an explicit vendor-owned limitation, automated proof, and a live/sandbox/external-gate outcome. Failures are visible, redacted, recoverable, and never silently treated as a working integration.
+
+## Plan-completeness gate and documentation readiness
+
+The question is not “does the Settings screen render?” It is **“can Otto truthfully explain what this Connector can do for this user, through this provider, and prove it?”** The plan is complete only when every current roster row can answer the following questions with a linked implementation and evidence record.
+
+| Question Otto must answer | Completion evidence |
+| --- | --- |
+| What is this Connector, and is it genuinely in the release roster? | Exact catalog id, vendor citation, current re-verification date, transport and release verdict. The roster count is derived from the catalog, never copied from an old planning number. |
+| What must the user supply, and where do they obtain it? | Guided setup field definitions, validation, help and issue URLs. A user never needs a config file, command line, or guessed header. |
+| Who owns the credential, and can it escape? | Daemon-only storage/write path, outbound redaction and inbound sentinel preservation tests for every secret-bearing shape. |
+| What can Otto really enumerate today? | A redacted successful or failed `initialize → tools/list` evidence record with timestamp, actual tool set and fingerprint. Catalog prose is not a substitute. |
+| What tools are currently available to the agent? | Current enabled connector/tool state, filtered before provider advertising, plus proof that a disabled tool cannot be called. |
+| Which provider can use it? | A provider/transport/auth routing verdict: routed, explicitly blocked by a documented security/runtime boundary, or incapable. “MCP capable” alone is insufficient if that adapter cannot honor daemon-owned auth and tool filtering. |
+| What authority does it carry? | Vendor-approved scopes, requested scopes and Otto-owned operation-to-scope map. For a remote vendor-owned tool surface, record that the mapping is vendor-declared/unavailable rather than inventing precision. |
+| How does a failure recover? | Tested and user-visible remediation for missing fields, denial, expiry/revocation, stale callback, transport failure, empty tool surface, vendor approval restriction, rate limit and local-server failure. |
+| What has been proved? | Deterministic T1 coverage, local fixture T2 journey and live vendor/sandbox or explicitly externally-gated T3 verdict, all linked per row. |
+
+### Per-row completion chain
+
+Each catalog id must pass this chain in order. A failure stops the row at its real verdict; it is not converted to an implied success.
 
 ```
-SetupField =
-  | { kind: "text";   key; label; help?; placeholder?; issueUrl? }
-  | { kind: "secret"; key; label; help?; issueUrl? }
-  | { kind: "choice"; key; label; options: { value; label }[]; help? }
+Roster truth → Guided setup → Daemon-owned authorization/storage
+→ Initialize + tools/list → Per-tool enablement → Provider routing
+→ Real tool invocation → Recovery → Automated proof → Live/sandbox verdict → End-user documentation
 ```
 
-and the connector's auth becomes one of:
+The release ledger records the evidence at every arrow. A row is **release-ready** only after it reaches the documentation stage or has an explicit, current externally-gated verdict. A row that is merely researched, renders in the picker, or has a hand-written endpoint is not release-ready.
 
-| Auth kind                  | Who needs it                                                                                             |
-| -------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `oauth-dcr`                | the 25 already shipped. Nothing to ask                                                                   |
-| `oauth-client`             | Google Workspace, GSC, Business Profile, LinkedIn, Reddit, Pinterest, Zendesk, Microsoft 365, Salesforce |
-| `oauth-client-credentials` | PayPal                                                                                                   |
-| `header-token`             | CircleCI (`Circle-Token`), StackAdapt (`X-AUTHORIZATION`), Bitbucket                                     |
-| `none`                     | DeepWiki, Semgrep, local servers                                                                         |
+### Module-level “is our plan complete?” review
 
-The endpoint becomes a template over the same field values, which is what
-section 2's shape B needed: `https://{host}/api/v4/mcp` for GitLab,
-`https://{subdomain}.zendesk.com/api/v2` for Zendesk,
-`https://aws-mcp.{region}.api.aws/mcp` for AWS.
+Before changing delivery status to complete, conduct one adversarial review against the catalog, source, release charter and documentation. The reviewer must be able to answer **yes** to all of these:
 
-`issueUrl` is the part that makes this feel finished rather than like a form. A
-field asking for a Google client secret links to the Google Cloud credentials
-page. A field asking for a CircleCI token links to the personal API tokens page.
-The existing rule that a `token` entry must carry `credential.issueUrl`
-generalizes to every field.
+- Does the ledger contain exactly every catalog id, with no phantom, duplicate, stale or uncited row?
+- Is every setup/auth shape represented by a secure in-app path, including its field validation, storage, transport construction, failure and migration behavior?
+- Does every secret-bearing path have redaction proof across config projection, echo-back patch, logs, errors and provider execution?
+- Are actual tool snapshots durable, freshness-bounded, tool-filtered and visible to users, rather than inferred from catalog copy?
+- Does every MCP-capable provider have an explicit Connector routing outcome, and does no provider receive authorization material it cannot safely honor?
+- Are Forge and Kanban still authority-separated from same-vendor Connectors by default?
+- Does every active Otto-owned operation have a scope map, while vendor-owned remote tool scopes are honestly labelled as unavailable to Otto?
+- Is every failure class actionable and recoverable, with no failed add retained as a verified installation?
+- Is T1/T2/T3 proof present at the required level for every row, with vendor policy/account gates reported rather than waived?
+- Does [docs/connectors.md](../docs/connectors.md) describe exactly the shipped provider matrix, setup shapes, limitations, recovery and verification semantics, without implying unshipped capabilities?
 
-The browser half is already built: the daemon's OAuth broker opens the vendor's
-consent screen, catches the redirect on its loopback listener, and stores the
-tokens. Guided setup only supplies the values the flow cannot discover on its
-own.
+A single unanswered question is either a planned delivery item, an explicit non-goal, or a blocker. It is never silently omitted from the completion claim.
+
+### End-user documentation contract
+
+Documentation must be generated from the same ledger, not from aspirational catalog copy. An installed Connector's documentation card needs: what it does; required setup; provider availability; account/authorization and last verification state; actual tools and enabled subset; access/scopes and vendor limitations; recovery actions; and proof/outcome status.
+
+Until provider-neutral routing and durable per-row evidence exist, documentation may accurately describe the current **OpenAI-compatible / Otto Brain** Connector journey and the catalog's stated setup, but must explicitly say that broader capable-provider support and per-row live proof are still in delivery. It must not claim that every provider, every catalog row, or every vendor scope is fully supported.
+
+## Executable assertion audit and feature-acceptance proof
+
+This charter uses two test gates. The first turns every statement about the current implementation into reproducible evidence. The second proves the completed user-facing feature. Neither code inspection, a rendered Settings screen, nor an isolated vendor success substitutes for the other.
+
+### Gate A — current-state assertion audit
+
+Maintain a claim matrix whose rows are the assertions in **Verified baseline**. Each row is classified **Proven**, **Implemented but unproven**, **Provider/host limited**, **Planned**, or **Out of scope**, and links the exact test or controlled observation. The initial test work must cover:
+
+| Assertion | Required proof |
+| --- | --- |
+| Catalog truth | Exact roster ids, uniqueness, current citation/date validity, no placeholders, and a roster count derived from source rather than planning prose. |
+| Current setup boundary | Type/data tests prove the catalog exposes only supported shapes; UI tests prove unsupported rows cannot masquerade as guided setup. |
+| Secret boundary | Config projection, redacted echo-back, logs/errors and tool output never reveal OAuth, header, environment, client-credential or setup-field secrets. |
+| Add-time gate | A failed authorization, unreachable transport, failed `tools/list`, or zero tool surface leaves no verified installed Connector; rollback failure is explicit. |
+| Tool enforcement | Enumerated disabled tools are visible for management but absent from the agent-advertised/callable surface. |
+| Provider boundary | OpenAI-compatible/Otto Brain routing is proved; every other provider has an explicit non-routing or capability verdict until an adapter/bridge exists. |
+| Authority boundary | Same-vendor Connector configuration/credential cannot alter Forge or Kanban configuration or authority by default. |
+
+### Gate B — end-user feature acceptance
+
+After implementation, every roster entry is tested at three complementary tiers.
+
+#### T1: deterministic PR coverage
+
+Use local fixtures and pure tests, never environment-auth checks, to cover every roster id and every supported setup shape. Required cases include schema backward compatibility; guided field validation and endpoint construction; OAuth DCR, supplied client credentials, templated URL, client-credentials, static header token and approved local-server construction; redaction; expiry/reconnect/stale callback behavior; HTTP/SSE/stdio initialization; tool snapshot/freshness/filtering; provider routing; Forge/Kanban separation; failure classification; and documentation/ledger traceability.
+
+#### T2: controlled local daemon journey
+
+Run a real daemon and app/client against controlled OAuth and MCP fixtures. The fixture must execute:
+
+```
+Add connector → guided setup/authorization → initialize + tools/list
+→ disable one tool → launch compatible provider → enabled tool succeeds
+→ disabled tool is unavailable → expire/revoke or break transport
+→ actionable recovery → re-verification
+```
+
+This is the primary integration proof because it crosses UI, protocol, daemon storage, redaction, transport, routing and agent execution without depending on a vendor’s availability. The fixture uses known local credentials and records no real secret.
+
+#### T3: vendor or sandbox outcome
+
+For each release roster row, use a controlled vendor account/sandbox where policy permits: connect, enumerate actual tools, invoke one safe read-only or sandbox operation, and retain a dated redacted verdict. A vendor-required account review, client approval or unavailable sandbox passes only as **externally gated** with the actual vendor response captured. It never becomes a green success by inference. Do not make routine automated tests conditional on a developer’s vendor credentials.
+
+### Documentation and release evidence gate
+
+The documentation is tested as a projection of the ledger. Every published Connector card must name its setup requirement, provider availability, latest verification/tool state, enabled subset, authority/scopes or vendor-owned limitation, recovery action and outcome status. A documentation contract test fails if a row claims provider-neutral availability, an unimplemented setup shape, a scope Otto cannot map, or a live success that lacks evidence.
+
+The feature is complete only when every roster id has passing T1 coverage, a passing T2 journey, and a current T3 success or explicit externally-gated verdict. Any missing row, stale claim, unclassified provider, unredacted path, missing recovery proof or unsupported documentation statement keeps delivery status **partial**.
 
 ## Timeline
 
@@ -525,3 +220,24 @@ own.
 - time: "2026-08-08T06:19:42.485Z"
   kind: "note"
   summary: "Migrated from the repository's existing authoritative project or reference documentation at the user's request. New status: confirmed."
+- time: "2026-08-27T01:47:17.129Z"
+  kind: "decision"
+  summary: "User requested a canonical 0.9 end-to-end delivery inventory after source-based review; replace the migrated research ledger with a current, evidence-backed charter while retaining its history in the timeline."
+  source: "User direction, docs/connectors.md, packages/app/src/screens/settings/connectors-catalog.ts, connectors-add-sheet.tsx, connectors-section.tsx, connectors-config"
+- time: "2026-08-27T01:49:53.971Z"
+  kind: "note"
+  summary: "Completed and verified only the add-time admission-gate sub-slice: failed authorization/enumeration now rolls back the temporary connector and zero-tool servers are rejected. This strengthens slice 1 but does not complete the roster-ledger foundation, so no delivery slice is marked complete."
+  affects: ["connectors"]
+- time: "2026-08-27T01:50:04.895Z"
+  kind: "evidence"
+  summary: "Verified 0.9 admission-gate sub-slice: catalog installation persists a temporary connector only to let the daemon-owned OAuth flow identify it, then removes that exact snapshot when OAuth or tools/list fails. A zero-tool result is rejected. Unit coverage proves success retention, verification-failure rollback, and honest rollback-failure reporting. `npx vitest run packages/app/src/screens/settings/connectors-config.test.ts packages/app/src/screens/settings/connectors-catalog.test.ts --bail=1` passed (3 files, 187 tests); targeted format and lint passed. App typecheck still fails in pre-existing Project Knowledge/refinement sources outside the Connector files; no Connector errors remain."
+  source: "packages/app/src/screens/settings/connectors-add-sheet.tsx; packages/app/src/screens/settings/connectors-config.ts; packages/app/src/screens/settings/connectors"
+  affects: ["packages-app-src-screens-settings-connectors-add-sheet-tsx","packages-app-src-screens-settings-connectors-config-ts"]
+- time: "2026-08-27T02:00:40.704Z"
+  kind: "decision"
+  summary: "User requested an explicit way to judge whether the Connector plan is complete and whether end-user documentation reflects actual capability; add the evidence questions, per-row completion chain, adversarial review gate, and documentation contract."
+  source: "User direction on 2026-08-26; verified baseline in docs/connectors.md and Connector catalog/daemon/provider sources recorded in this charter."
+- time: "2026-08-27T02:08:00.464Z"
+  kind: "decision"
+  summary: "User requested the project charters capture how current assertions and final Connector completion will be tested; add an executable baseline audit plus T1, T2, T3, documentation and release-evidence gates."
+  source: "User direction on 2026-08-26; docs/testing.md; docs/connectors.md; source-audit findings already recorded in this charter."

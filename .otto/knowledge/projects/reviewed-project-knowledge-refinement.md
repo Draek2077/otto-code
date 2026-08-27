@@ -4,12 +4,12 @@ kind: "project"
 title: "Reviewed Project Knowledge refinement"
 status: "proposed"
 tags: ["project-knowledge","refine","markdown","review","ui"]
-delivery_status: "complete"
-progress_completed: 5
+delivery_status: "partial"
+progress_completed: 4
 progress_total: 5
-progress_unit: "delivery slices"
+progress_unit: "milestones"
 created_at: "2026-08-26T23:59:34.477Z"
-updated_at: "2026-08-27T01:55:47.883Z"
+updated_at: "2026-08-27T02:57:43.222Z"
 ---
 # Reviewed Project Knowledge refinement
 
@@ -114,4 +114,12 @@ No raw file write may update Project Knowledge. The Refine session's normal file
 - time: "2026-08-27T01:55:47.883Z"
   kind: "note"
   summary: "Implemented and verified the reviewed Project Knowledge refinement flow: capability-gated atomic apply, in-memory replace/refine directives, Refine-tab handoff, root-page stale guard, and focused tests."
+  affects: ["reviewed-project-knowledge-refinement"]
+- time: "2026-08-27T02:26:53.602Z"
+  kind: "note"
+  summary: "The user redirected the feature away from the generic Refine tab. The atomic Knowledge write foundation remains, but the review UI and generation flow are being rebuilt as a dedicated Knowledge experience with a proper Markdown editor."
+  affects: ["reviewed-project-knowledge-refinement"]
+- time: "2026-08-27T02:57:43.222Z"
+  kind: "note"
+  summary: "Dedicated reviewed-Knowledge refinement, source-anchored annotation UI, two-pass proposal/apply flow, and Markdown authoring are implemented and pass focused verification. The final rendered interaction pass remains pending because this session has no in-app browser available."
   affects: ["reviewed-project-knowledge-refinement"]
