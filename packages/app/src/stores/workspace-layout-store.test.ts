@@ -16,7 +16,11 @@ vi.mock("@react-native-async-storage/async-storage", () => {
 });
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { buildWorkspaceTabPersistenceKey, type WorkspaceTab } from "@/workspace-tabs/model";
+import {
+  buildWorkspaceTabPersistenceKey,
+  type WorkspaceTab,
+  type WorkspaceTabTarget,
+} from "@/workspace-tabs/model";
 import {
   collectAllPanes,
   collectAllTabs,
@@ -378,6 +382,131 @@ describe("SplitPane.tabOrientation persistence", () => {
     });
 
     expect(findPaneById(layout.root, "main")?.tabOrientation).toBeUndefined();
+  });
+});
+
+describe("workspace tab target persistence", () => {
+  beforeEach(async () => {
+    await AsyncStorage.removeItem("workspace-layout-state");
+  });
+
+  const persistedTargets: Array<[string, WorkspaceTabTarget]> = [
+    ["Context Management", { kind: "contextManagement" as const }],
+    ["Project Knowledge", { kind: "projectKnowledge" as const }],
+    ["artifact", { kind: "artifact", artifactId: "artifact-1" }],
+    [
+      "communications room",
+      {
+        kind: "communicationsRoom",
+        providerId: "zoom",
+        conversationId: "conversation-1",
+        title: "Engineering",
+      },
+    ],
+    ["Git log", { kind: "gitLog", operation: "commit" }],
+    ["run-scoped visualizer", { kind: "visualizer", runId: "run-1" }],
+    [
+      "file history",
+      { kind: "fileHistory", path: "/repo/src/index.ts", startLine: 5, endLine: 12 },
+    ],
+    [
+      "code references",
+      { kind: "codeReferences", path: "/repo/src/index.ts", line: 8, column: 4, symbol: "run" },
+    ],
+    [
+      "code rename",
+      {
+        kind: "codeRename",
+        path: "/repo/src/index.ts",
+        line: 8,
+        column: 4,
+        symbol: "run",
+        newName: "execute",
+      },
+    ],
+    [
+      "refine job",
+      {
+        kind: "refine",
+        paths: ["/repo/docs/design.md"],
+        references: ["/repo/docs/reference.md"],
+        presetId: "concise",
+      },
+    ],
+    [
+      "run-scoped orchestration graph",
+      { kind: "orchestrationGraph", graphId: "graph-1", runId: "run-1" },
+    ],
+  ];
+
+  it.each(persistedTargets)(
+    "round-trips %s through validated persisted storage",
+    async (_label, target) => {
+      const workspaceKey = createWorkspaceKey();
+      const writingStore = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+
+      writingStore.getState().openTabFocused(workspaceKey, target);
+
+      await vi.waitFor(async () => {
+        const persisted = await AsyncStorage.getItem("workspace-layout-state");
+        expect(persisted).not.toBeNull();
+        expect(JSON.parse(persisted!)).toMatchObject({
+          state: {
+            layoutByWorkspace: {
+              [workspaceKey]: {
+                root: { kind: "pane", pane: { tabs: [{ target }] } },
+              },
+            },
+          },
+        });
+      });
+
+      const restoredStore = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+      await restoredStore.persist.rehydrate();
+
+      expect(restoredStore.getState().getWorkspaceTabs(workspaceKey)).toEqual([
+        expect.objectContaining({ target }),
+      ]);
+    },
+  );
+
+  it.each([
+    ["an unknown target kind", { kind: "unknownTarget" }],
+    ["a target with unexpected fields", { kind: "contextManagement", unexpected: true }],
+    [
+      "an incomplete code rename job",
+      { kind: "codeRename", path: "/repo/src/index.ts", line: 8, column: 4, symbol: "run" },
+    ],
+  ])("rejects a persisted layout containing %s", async (_label, target) => {
+    const workspaceKey = createWorkspaceKey();
+    await AsyncStorage.setItem(
+      "workspace-layout-state",
+      JSON.stringify({
+        state: {
+          layoutByWorkspace: {
+            [workspaceKey]: {
+              root: {
+                kind: "pane",
+                pane: {
+                  id: "main",
+                  tabIds: ["invalid-tab"],
+                  focusedTabId: "invalid-tab",
+                  tabs: [{ tabId: "invalid-tab", target, createdAt: 1 }],
+                },
+              },
+              focusedPaneId: "main",
+            },
+          },
+        },
+        version: 1,
+      }),
+    );
+
+    const restoredStore = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+    await restoredStore.persist.rehydrate();
+
+    expect(restoredStore.getState().layoutByWorkspace[workspaceKey]).toBeUndefined();
+    await expect(AsyncStorage.getItem("workspace-layout-state")).resolves.toBeNull();
   });
 });
 
