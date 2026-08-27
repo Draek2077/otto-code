@@ -20,7 +20,7 @@ export interface HostingHttpClientOptions {
 }
 
 export interface HostingHttpRequest {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "DELETE";
   path: string;
   query?: Record<string, string | number | undefined>;
   body?: unknown;

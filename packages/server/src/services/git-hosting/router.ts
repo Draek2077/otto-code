@@ -84,6 +84,22 @@ function createGitHostingForgeAdapter(options: {
       return (await serviceFor(input.cwd)).getPullRequestTimeline(input);
     },
 
+    async setPullRequestThreadResolved(input) {
+      const service = await serviceFor(input.cwd);
+      if (!service.setPullRequestThreadResolved) {
+        throw new Error("Pull request thread resolution is not supported by this provider");
+      }
+      return service.setPullRequestThreadResolved(input);
+    },
+
+    async setPullRequestCommentReaction(input) {
+      const service = await serviceFor(input.cwd);
+      if (!service.setPullRequestCommentReaction) {
+        throw new Error("Pull request comment reactions are not supported by this provider");
+      }
+      return service.setPullRequestCommentReaction(input);
+    },
+
     async getCheckDetails(input) {
       return (await serviceFor(input.cwd)).getCheckDetails(input);
     },

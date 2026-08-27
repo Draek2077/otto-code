@@ -53,6 +53,19 @@ export interface PrPaneActivity {
   createdAt?: number;
   age: string;
   url: string;
+  reactions?: Array<{
+    content:
+      | "THUMBS_UP"
+      | "THUMBS_DOWN"
+      | "LAUGH"
+      | "HOORAY"
+      | "CONFUSED"
+      | "HEART"
+      | "ROCKET"
+      | "EYES";
+    count: number;
+    viewerHasReacted: boolean;
+  }>;
   /** For inline review comments: the review this comment was submitted with. */
   reviewId?: string;
   /**
@@ -97,6 +110,7 @@ export interface PrPaneData {
    */
   forgeSpecific?: ForgeSpecificStatusFacts;
   activity: PrPaneActivity[];
+  commentReactionsSupported: boolean;
 }
 
 type CheckoutPrStatus = CheckoutPrStatusResponse["payload"]["status"];
@@ -140,6 +154,8 @@ export function mapPrPaneData(
     activity: timelineMatchesStatus
       ? timeline.items.flatMap((item) => mapActivity(item, nowMs, forge))
       : [],
+    commentReactionsSupported:
+      timelineMatchesStatus && timeline?.commentReactionsSupported === true,
   };
 }
 
@@ -251,6 +267,7 @@ function mapActivity(item: PullRequestTimelineItem, nowMs: number, forge: Forge)
         createdAt: item.createdAt,
         age: formatAge(item.createdAt, nowMs),
         url: item.url,
+        ...(item.reactions ? { reactions: item.reactions } : {}),
         ...(item.reviewId ? { reviewId: item.reviewId } : {}),
         ...(item.threadId ? { threadId: item.threadId } : {}),
         ...(item.threadIsResolved !== undefined ? { threadIsResolved: item.threadIsResolved } : {}),

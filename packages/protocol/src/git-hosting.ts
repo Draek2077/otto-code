@@ -24,6 +24,10 @@ export const GitHostingCapabilitiesSchema = z.object({
   checkDetails: z.boolean().optional().default(false),
   draftPrs: z.boolean().optional().default(false),
   reviewDecisions: z.boolean().optional().default(false),
+  // Pull-request discussion capabilities. A provider advertises only what its
+  // own API supports; clients must not emulate a missing forge operation.
+  reviewThreads: z.boolean().optional().default(false),
+  commentReactions: z.boolean().optional().default(false),
   issues: z.boolean().optional().default(false),
   // COMPAT(projectScaffold): added in v0.6.9. Repository-level operations used
   // by the New project page - enumerate the repos/owners you can reach, and
@@ -35,6 +39,57 @@ export const GitHostingCapabilitiesSchema = z.object({
 
 export type GitHostingProviderId = z.infer<typeof GitHostingProviderIdSchema>;
 export type GitHostingCapabilities = z.infer<typeof GitHostingCapabilitiesSchema>;
+
+export const PullRequestCommentReactionContentSchema = z.enum([
+  "THUMBS_UP",
+  "THUMBS_DOWN",
+  "LAUGH",
+  "HOORAY",
+  "CONFUSED",
+  "HEART",
+  "ROCKET",
+  "EYES",
+]);
+
+// Provider-neutral mutations for a change-request discussion. `threadId` and
+// `commentId` are opaque provider identifiers returned by the timeline; the
+// selected adapter owns their interpretation.
+export const HostingPullRequestThreadSetResolvedRequestSchema = z.object({
+  type: z.literal("hosting.pull_request_thread.set_resolved.request"),
+  cwd: z.string(),
+  prNumber: z.number().int().positive(),
+  threadId: z.string().min(1),
+  resolved: z.boolean(),
+  requestId: z.string(),
+});
+
+export const HostingPullRequestThreadSetResolvedResponseSchema = z.object({
+  type: z.literal("hosting.pull_request_thread.set_resolved.response"),
+  payload: z.object({
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const HostingPullRequestCommentSetReactionRequestSchema = z.object({
+  type: z.literal("hosting.pull_request_comment.set_reaction.request"),
+  cwd: z.string(),
+  prNumber: z.number().int().positive(),
+  commentId: z.string().min(1),
+  content: PullRequestCommentReactionContentSchema,
+  reacted: z.boolean(),
+  requestId: z.string(),
+});
+
+export const HostingPullRequestCommentSetReactionResponseSchema = z.object({
+  type: z.literal("hosting.pull_request_comment.set_reaction.response"),
+  payload: z.object({
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
 
 export const GIT_HOSTING_PROVIDER_IDS = GitHostingProviderIdSchema.options;
 
@@ -195,3 +250,11 @@ export type HostingIssueAttachment = z.infer<typeof HostingIssueAttachmentSchema
 export type HostingListRepositoriesRequest = z.infer<typeof HostingListRepositoriesRequestSchema>;
 
 export type HostingListOwnersRequest = z.infer<typeof HostingListOwnersRequestSchema>;
+
+export type HostingPullRequestThreadSetResolvedRequest = z.infer<
+  typeof HostingPullRequestThreadSetResolvedRequestSchema
+>;
+
+export type HostingPullRequestCommentSetReactionRequest = z.infer<
+  typeof HostingPullRequestCommentSetReactionRequestSchema
+>;

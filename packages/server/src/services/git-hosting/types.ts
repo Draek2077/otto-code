@@ -34,6 +34,8 @@ export const GITHUB_CAPABILITIES: GitHostingCapabilities = {
   checkDetails: true,
   draftPrs: true,
   reviewDecisions: true,
+  reviewThreads: true,
+  commentReactions: true,
   issues: true,
   listRepositories: true,
   createRepository: true,
@@ -46,6 +48,8 @@ export const BITBUCKET_CLOUD_CAPABILITIES: GitHostingCapabilities = {
   checkDetails: false,
   draftPrs: true,
   reviewDecisions: true,
+  reviewThreads: true,
+  commentReactions: false,
   // Most Bitbucket Cloud teams track issues in Jira; the native tracker is
   // deprecated and off by default, so v1 exposes PR search only.
   issues: false,

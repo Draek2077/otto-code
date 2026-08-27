@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Image,
   Pressable,
@@ -81,6 +82,7 @@ import {
   type PrThreadEntry,
   type PrTimelineEntry,
 } from "./timeline";
+import { prPaneTimelineQueryKey } from "./query-keys";
 import {
   CheckStatusIcon,
   Section,
@@ -226,6 +228,7 @@ export function PullRequestPane({
   const { t } = useTranslation();
   const toast = useToast();
   const daemonClient = useHostRuntimeClient(serverId);
+  const queryClient = useQueryClient();
   // COMPAT(githubCheckDetailsRpc): added in v0.1.106, remove after 2026-12-28 once
   // all supported clients use checkout.forge.get_check_details.*.
   const canFetchCheckDetails = useSessionStore(
@@ -236,6 +239,9 @@ export function PullRequestPane({
   );
   const forgeProvidersEnabled = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.forgeProviders === true,
+  );
+  const canManageReviewThreads = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.forgeReviewThreads === true,
   );
   const addWorkspaceAttachment = useWorkspaceAttachmentsStore(
     (state) => state.addWorkspaceAttachment,
@@ -372,6 +378,49 @@ export function PullRequestPane({
       data.url,
       workspaceAttachmentScopeKey,
     ],
+  );
+
+  const invalidateTimeline = useCallback(
+    async () =>
+      queryClient.invalidateQueries({
+        queryKey: prPaneTimelineQueryKey({ serverId, cwd, prNumber: data.number }),
+      }),
+    [cwd, data.number, queryClient, serverId],
+  );
+
+  const handleSetThreadResolved = useCallback(
+    async (thread: PrThreadEntry, resolved: boolean) => {
+      if (!daemonClient || !canManageReviewThreads) return;
+      const response = await daemonClient.setHostingPullRequestThreadResolved({
+        cwd,
+        prNumber: data.number,
+        threadId: thread.id.replace(/^thread:/u, ""),
+        resolved,
+      });
+      if (!response.success) throw new Error(response.error ?? "Unable to update thread");
+      await invalidateTimeline();
+    },
+    [canManageReviewThreads, cwd, daemonClient, data.number, invalidateTimeline],
+  );
+
+  const handleSetReaction = useCallback(
+    async (
+      activity: PrPaneActivity,
+      content: NonNullable<PrPaneActivity["reactions"]>[number]["content"],
+      reacted: boolean,
+    ) => {
+      if (!daemonClient || !canManageReviewThreads) return;
+      const response = await daemonClient.setHostingPullRequestCommentReaction({
+        cwd,
+        prNumber: data.number,
+        commentId: activity.id,
+        content,
+        reacted,
+      });
+      if (!response.success) throw new Error(response.error ?? "Unable to update reaction");
+      await invalidateTimeline();
+    },
+    [canManageReviewThreads, cwd, daemonClient, data.number, invalidateTimeline],
   );
 
   // Which entries a bulk attach picks - resolved and outdated excluded - is
@@ -676,6 +725,10 @@ export function PullRequestPane({
                   brandLabel={forgePresentation.brandLabel}
                   onAddToChat={handleAddActivityToChat}
                   onAddThreadToChat={handleAddThreadToChat}
+                  canManageReviewThreads={canManageReviewThreads}
+                  canReactToComments={data.commentReactionsSupported}
+                  onSetThreadResolved={handleSetThreadResolved}
+                  onSetReaction={handleSetReaction}
                   onToggleCollapsed={handleToggleEntryCollapsed}
                 />
               ))
@@ -792,8 +845,16 @@ function CheckRow({
 interface TimelineEntryCallbacks {
   attachEnabled: boolean;
   brandLabel: string;
+  canManageReviewThreads: boolean;
+  canReactToComments: boolean;
   onAddToChat: (activity: PrPaneActivity) => void;
   onAddThreadToChat: (thread: PrThreadEntry) => void;
+  onSetThreadResolved: (thread: PrThreadEntry, resolved: boolean) => Promise<void>;
+  onSetReaction: (
+    activity: PrPaneActivity,
+    content: NonNullable<PrPaneActivity["reactions"]>[number]["content"],
+    reacted: boolean,
+  ) => Promise<void>;
   onToggleCollapsed: (entryId: string, collapsed: boolean) => void;
 }
 
@@ -840,6 +901,8 @@ function ActivityKebab({
   brandLabel,
   onMenuOpenChange,
   onAddToChat,
+  onSetReaction,
+  canReactToComments = false,
 }: {
   activity: PrPaneActivity;
   visible: boolean;
@@ -847,6 +910,8 @@ function ActivityKebab({
   brandLabel: string;
   onMenuOpenChange: (open: boolean) => void;
   onAddToChat: (activity: PrPaneActivity) => void;
+  onSetReaction?: TimelineEntryCallbacks["onSetReaction"];
+  canReactToComments?: boolean;
 }) {
   const { t } = useTranslation();
   const handleAddToChat = useCallback(() => onAddToChat(activity), [activity, onAddToChat]);
@@ -856,6 +921,17 @@ function ActivityKebab({
   const handleOpen = useCallback(() => {
     void openExternalUrl(activity.url);
   }, [activity.url]);
+  const handleReaction = useCallback(
+    (content: NonNullable<PrPaneActivity["reactions"]>[number]["content"]) => {
+      const existing = activity.reactions?.find((reaction) => reaction.content === content);
+      void onSetReaction?.(activity, content, !(existing?.viewerHasReacted ?? false));
+    },
+    [activity, onSetReaction],
+  );
+  const handleThumbsUpReaction = useCallback(() => handleReaction("THUMBS_UP"), [handleReaction]);
+  const handleHeartReaction = useCallback(() => handleReaction("HEART"), [handleReaction]);
+  const handleLaughReaction = useCallback(() => handleReaction("LAUGH"), [handleReaction]);
+  const handleEyesReaction = useCallback(() => handleReaction("EYES"), [handleReaction]);
 
   return (
     <View style={kebabSlotStyle(visible)} pointerEvents={visible ? "auto" : "none"}>
@@ -877,6 +953,14 @@ function ActivityKebab({
             <DropdownMenuItem leading={COPY_MENU_ICON} onSelect={handleCopy}>
               Copy
             </DropdownMenuItem>
+          ) : null}
+          {onSetReaction && canReactToComments && activity.kind === "comment" ? (
+            <>
+              <DropdownMenuItem onSelect={handleThumbsUpReaction}>👍 Thumbs up</DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleHeartReaction}>❤ Heart</DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleLaughReaction}>😄 Laugh</DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleEyesReaction}>👀 Eyes</DropdownMenuItem>
+            </>
           ) : null}
           <DropdownMenuItem leading={OPEN_MENU_ICON} onSelect={handleOpen}>
             {t("workspace.git.pr.actions.openOn", { brand: brandLabel })}
@@ -971,6 +1055,8 @@ function SingleActivityCard({
   attachEnabled,
   brandLabel,
   onAddToChat,
+  onSetReaction,
+  canReactToComments,
   onToggleCollapsed,
 }: TimelineEntryCallbacks & {
   entry: Extract<PrTimelineEntry, { kind: "single" }>;
@@ -1006,6 +1092,8 @@ function SingleActivityCard({
               brandLabel={brandLabel}
               onMenuOpenChange={setMenuOpen}
               onAddToChat={onAddToChat}
+              onSetReaction={onSetReaction}
+              canReactToComments={canReactToComments}
             />
           </ActivityHeader>
         </Pressable>
@@ -1029,6 +1117,8 @@ function SingleActivityCard({
             brandLabel={brandLabel}
             onMenuOpenChange={setMenuOpen}
             onAddToChat={onAddToChat}
+            onSetReaction={onSetReaction}
+            canReactToComments={canReactToComments}
           />
         </ActivityHeader>
       </Pressable>
@@ -1037,6 +1127,7 @@ function SingleActivityCard({
           <View style={styles.cardBody}>
             <MarkdownRenderer text={activity.body} compact onLinkPress={handleMarkdownLinkPress} />
           </View>
+          <ReactionBar activity={activity} />
           {attachEnabled && canAddPullRequestActivityToChat(activity) ? (
             <View style={styles.cardFooter}>
               <Button
@@ -1062,6 +1153,10 @@ function ThreadCard({
   brandLabel,
   onAddToChat,
   onAddThreadToChat,
+  canManageReviewThreads,
+  onSetThreadResolved,
+  onSetReaction,
+  canReactToComments,
   onToggleCollapsed,
 }: TimelineEntryCallbacks & {
   entry: PrThreadEntry;
@@ -1076,6 +1171,10 @@ function ThreadCard({
         brandLabel={brandLabel}
         onAddToChat={onAddToChat}
         onAddThreadToChat={onAddThreadToChat}
+        canManageReviewThreads={canManageReviewThreads}
+        onSetThreadResolved={onSetThreadResolved}
+        onSetReaction={onSetReaction}
+        canReactToComments={canReactToComments}
         onToggleCollapsed={onToggleCollapsed}
       />
     </View>
@@ -1090,6 +1189,10 @@ function ReviewCard({
   brandLabel,
   onAddToChat,
   onAddThreadToChat,
+  canManageReviewThreads,
+  onSetThreadResolved,
+  onSetReaction,
+  canReactToComments,
   onToggleCollapsed,
 }: TimelineEntryCallbacks & {
   entry: PrReviewEntry;
@@ -1171,6 +1274,10 @@ function ReviewCard({
                     brandLabel={brandLabel}
                     onAddToChat={onAddToChat}
                     onAddThreadToChat={onAddThreadToChat}
+                    canManageReviewThreads={canManageReviewThreads}
+                    onSetThreadResolved={onSetThreadResolved}
+                    onSetReaction={onSetReaction}
+                    canReactToComments={canReactToComments}
                     onToggleCollapsed={onToggleCollapsed}
                   />
                 </View>
@@ -1190,6 +1297,10 @@ function ThreadBlock({
   brandLabel,
   onAddToChat,
   onAddThreadToChat,
+  canManageReviewThreads,
+  onSetThreadResolved,
+  onSetReaction,
+  canReactToComments,
   onToggleCollapsed,
 }: {
   thread: PrThreadEntry;
@@ -1198,6 +1309,10 @@ function ThreadBlock({
   brandLabel: string;
   onAddToChat: (activity: PrPaneActivity) => void;
   onAddThreadToChat: (thread: PrThreadEntry) => void;
+  canManageReviewThreads: boolean;
+  onSetThreadResolved: TimelineEntryCallbacks["onSetThreadResolved"];
+  onSetReaction: TimelineEntryCallbacks["onSetReaction"];
+  canReactToComments: boolean;
   onToggleCollapsed: (entryId: string, collapsed: boolean) => void;
 }) {
   const { t } = useTranslation();
@@ -1215,6 +1330,19 @@ function ThreadBlock({
   }, [thread.comments]);
 
   const [root, ...replies] = thread.comments;
+  const [isUpdatingResolution, setIsUpdatingResolution] = useState(false);
+  const toast = useToast();
+  const handleSetResolved = useCallback(async () => {
+    if (thread.isResolved === undefined || isUpdatingResolution) return;
+    setIsUpdatingResolution(true);
+    try {
+      await onSetThreadResolved(thread, !thread.isResolved);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to update thread");
+    } finally {
+      setIsUpdatingResolution(false);
+    }
+  }, [isUpdatingResolution, onSetThreadResolved, thread, toast]);
 
   return (
     <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
@@ -1246,6 +1374,11 @@ function ThreadBlock({
                 {renderKebabTriggerIcon}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" width={200}>
+                {canManageReviewThreads && thread.isResolved !== undefined ? (
+                  <DropdownMenuItem onSelect={handleSetResolved} disabled={isUpdatingResolution}>
+                    {thread.isResolved ? "Reopen thread" : "Resolve thread"}
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem leading={OPEN_MENU_ICON} onSelect={handleOpenThread}>
                   {t("workspace.git.pr.actions.openOn", { brand: brandLabel })}
                 </DropdownMenuItem>
@@ -1261,6 +1394,8 @@ function ThreadBlock({
             attachEnabled={attachEnabled}
             brandLabel={brandLabel}
             onAddToChat={onAddToChat}
+            onSetReaction={onSetReaction}
+            canReact={canReactToComments}
           />
           {replies.length > 0 ? (
             <View style={styles.replyRail}>
@@ -1271,6 +1406,8 @@ function ThreadBlock({
                     attachEnabled={attachEnabled}
                     brandLabel={brandLabel}
                     onAddToChat={onAddToChat}
+                    onSetReaction={onSetReaction}
+                    canReact={canReactToComments}
                     contentStyle={styles.replyThreadComment}
                   />
                 </View>
@@ -1308,12 +1445,16 @@ function ThreadComment({
   attachEnabled,
   brandLabel,
   onAddToChat,
+  onSetReaction,
+  canReact,
   contentStyle,
 }: {
   comment: PrPaneActivity;
   attachEnabled: boolean;
   brandLabel: string;
   onAddToChat: (activity: PrPaneActivity) => void;
+  onSetReaction: TimelineEntryCallbacks["onSetReaction"];
+  canReact: boolean;
   contentStyle?: ViewStyle;
 }) {
   const { actionsVisible, handlePointerEnter, handlePointerLeave, setMenuOpen } =
@@ -1333,6 +1474,8 @@ function ThreadComment({
             brandLabel={brandLabel}
             onMenuOpenChange={setMenuOpen}
             onAddToChat={onAddToChat}
+            onSetReaction={onSetReaction}
+            canReactToComments={canReact}
           />
         </ActivityHeader>
       </View>
@@ -1341,6 +1484,33 @@ function ThreadComment({
           <MarkdownRenderer text={comment.body} compact onLinkPress={handleMarkdownLinkPress} />
         </View>
       ) : null}
+      <ReactionBar activity={comment} />
+    </View>
+  );
+}
+
+const REACTION_LABELS: Record<NonNullable<PrPaneActivity["reactions"]>[number]["content"], string> =
+  {
+    THUMBS_UP: "👍",
+    THUMBS_DOWN: "👎",
+    LAUGH: "😄",
+    HOORAY: "🎉",
+    CONFUSED: "😕",
+    HEART: "❤",
+    ROCKET: "🚀",
+    EYES: "👀",
+  };
+
+function ReactionBar({ activity }: { activity: PrPaneActivity }) {
+  const reactions = activity.reactions?.filter((reaction) => reaction.count > 0) ?? [];
+  if (reactions.length === 0) return null;
+  return (
+    <View style={styles.reactionBar}>
+      {reactions.map((reaction) => (
+        <Text key={reaction.content} style={styles.reactionLabel}>
+          {REACTION_LABELS[reaction.content]} {reaction.count}
+        </Text>
+      ))}
     </View>
   );
 }
@@ -1626,6 +1796,17 @@ const styles = StyleSheet.create((theme) => ({
   threadCommentBody: {
     paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[2],
+  },
+  reactionBar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[3],
+    paddingBottom: theme.spacing[2],
+  },
+  reactionLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   replyRail: {
     marginHorizontal: theme.spacing[3],

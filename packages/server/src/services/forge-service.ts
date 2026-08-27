@@ -146,6 +146,22 @@ export interface CurrentPullRequestStatus {
 
 export type PullRequestTimelineReviewState = "approved" | "changes_requested" | "commented";
 
+export type PullRequestCommentReactionContent =
+  | "THUMBS_UP"
+  | "THUMBS_DOWN"
+  | "LAUGH"
+  | "HOORAY"
+  | "CONFUSED"
+  | "HEART"
+  | "ROCKET"
+  | "EYES";
+
+export interface PullRequestCommentReaction {
+  content: PullRequestCommentReactionContent;
+  count: number;
+  viewerHasReacted: boolean;
+}
+
 interface PullRequestTimelineItemBase {
   id: string;
   author: string;
@@ -154,6 +170,7 @@ interface PullRequestTimelineItemBase {
   body: string;
   createdAt: number;
   url: string;
+  reactions?: PullRequestCommentReaction[];
 }
 
 export type PullRequestTimelineItem =
@@ -190,6 +207,8 @@ export interface PullRequestTimeline {
   repoOwner: string;
   repoName: string;
   items: PullRequestTimelineItem[];
+  /** Whether this provider can mutate reactions on comments in this timeline. */
+  commentReactionsSupported?: boolean;
   truncated: boolean;
   error: PullRequestTimelineError | null;
 }
@@ -267,6 +286,23 @@ export type GetPullRequestTimelineOptions = {
   repoOwner: string;
   repoName: string;
 } & ForgeReadOptions;
+
+export interface SetPullRequestThreadResolvedOptions {
+  cwd: string;
+  prNumber: number;
+  /** Opaque provider thread id returned in timeline data. */
+  threadId: string;
+  resolved: boolean;
+}
+
+export interface SetPullRequestCommentReactionOptions {
+  cwd: string;
+  prNumber: number;
+  /** Opaque provider comment id returned in timeline data. */
+  commentId: string;
+  content: PullRequestCommentReactionContent;
+  reacted: boolean;
+}
 
 export type GetCheckDetailsOptions = {
   cwd: string;
@@ -474,6 +510,8 @@ export interface ForgeService {
     } & ForgeReadOptions,
   ): Promise<CurrentPullRequestStatus | null>;
   getPullRequestTimeline(options: GetPullRequestTimelineOptions): Promise<PullRequestTimeline>;
+  setPullRequestThreadResolved?(options: SetPullRequestThreadResolvedOptions): Promise<void>;
+  setPullRequestCommentReaction?(options: SetPullRequestCommentReactionOptions): Promise<void>;
   getCheckDetails(options: GetCheckDetailsOptions): Promise<CheckDetails>;
   searchIssuesAndPrs(options: SearchIssuesAndPrsOptions): Promise<SearchResult>;
   createPullRequest(options: CreatePullRequestOptions): Promise<PullRequestCreateResult>;

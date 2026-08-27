@@ -1549,6 +1549,7 @@ export class CheckoutSession {
           cwd,
           prNumber: timeline.prNumber,
           items: timeline.items.map(toPullRequestTimelinePayloadItem),
+          commentReactionsSupported: timeline.commentReactionsSupported === true,
           truncated: timeline.truncated,
           error: timeline.error,
           requestId,
@@ -1571,6 +1572,65 @@ export class CheckoutSession {
           githubFeaturesEnabled: true,
         },
       });
+    }
+  }
+
+  async handleHostingPullRequestThreadSetResolvedRequest(
+    msg: Extract<
+      SessionInboundMessage,
+      { type: "hosting.pull_request_thread.set_resolved.request" }
+    >,
+  ): Promise<void> {
+    const emitResult = (success: boolean, error: string | null) => {
+      this.host.emit({
+        type: "hosting.pull_request_thread.set_resolved.response",
+        payload: { success, error, requestId: msg.requestId },
+      });
+    };
+    if (!this.github.setPullRequestThreadResolved) {
+      emitResult(false, "Pull request thread resolution is not supported by this host");
+      return;
+    }
+    try {
+      await this.github.setPullRequestThreadResolved({
+        cwd: msg.cwd,
+        prNumber: msg.prNumber,
+        threadId: msg.threadId,
+        resolved: msg.resolved,
+      });
+      emitResult(true, null);
+    } catch (error) {
+      emitResult(false, getErrorMessage(error));
+    }
+  }
+
+  async handleHostingPullRequestCommentSetReactionRequest(
+    msg: Extract<
+      SessionInboundMessage,
+      { type: "hosting.pull_request_comment.set_reaction.request" }
+    >,
+  ): Promise<void> {
+    const emitResult = (success: boolean, error: string | null) => {
+      this.host.emit({
+        type: "hosting.pull_request_comment.set_reaction.response",
+        payload: { success, error, requestId: msg.requestId },
+      });
+    };
+    if (!this.github.setPullRequestCommentReaction) {
+      emitResult(false, "Pull request comment reactions are not supported by this host");
+      return;
+    }
+    try {
+      await this.github.setPullRequestCommentReaction({
+        cwd: msg.cwd,
+        prNumber: msg.prNumber,
+        commentId: msg.commentId,
+        content: msg.content,
+        reacted: msg.reacted,
+      });
+      emitResult(true, null);
+    } catch (error) {
+      emitResult(false, getErrorMessage(error));
     }
   }
 

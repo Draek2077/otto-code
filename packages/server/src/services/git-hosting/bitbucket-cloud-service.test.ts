@@ -380,8 +380,16 @@ describe("bitbucket cloud service", () => {
                 id: 13,
                 content: { raw: "Rename this" },
                 inline: { path: "src/widget.ts", to: 42 },
+                resolution: { created_on: "2026-07-09T11:05:00.000000+00:00" },
                 user: { display_name: "Bo" },
                 created_on: "2026-07-09T11:00:00.000000+00:00",
+              },
+              {
+                id: 14,
+                content: { raw: "Done" },
+                parent: { id: 13 },
+                user: { display_name: "Cyd" },
+                created_on: "2026-07-09T11:10:00.000000+00:00",
               },
             ],
           });
@@ -410,13 +418,24 @@ describe("bitbucket cloud service", () => {
       repoName: "widgets",
     });
     expect(timeline.error).toBeNull();
-    expect(timeline.items.map((item) => item.kind)).toEqual(["comment", "comment", "review"]);
+    expect(timeline.items.map((item) => item.kind)).toEqual([
+      "comment",
+      "comment",
+      "comment",
+      "review",
+    ]);
     const inline = timeline.items[1];
-    expect(inline?.kind === "comment" && inline.location).toEqual({
-      path: "src/widget.ts",
-      line: 42,
-    });
-    const review = timeline.items[2];
+    expect(inline?.kind === "comment" && { ...inline.location, threadId: inline.threadId }).toEqual(
+      {
+        path: "src/widget.ts",
+        line: 42,
+        threadId: "13",
+      },
+    );
+    expect(inline?.kind === "comment" && inline.threadIsResolved).toBe(true);
+    const reply = timeline.items[2];
+    expect(reply?.kind === "comment" && reply.threadId).toBe("13");
+    const review = timeline.items[3];
     expect(review?.kind === "review" && review.reviewState).toBe("approved");
   });
 });

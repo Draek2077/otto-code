@@ -937,6 +937,7 @@ describe("GitHubService", () => {
       prNumber: 42,
       repoOwner: "parentOwner",
       repoName: "parentRepo",
+      commentReactionsSupported: true,
       truncated: false,
       error: null,
       items: [
@@ -974,6 +975,34 @@ describe("GitHubService", () => {
         },
       ],
     });
+  });
+
+  it("mutates review-thread resolution and comment reactions through GraphQL", async () => {
+    const runner = createRunner([JSON.stringify({ data: {} }), JSON.stringify({ data: {} })]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    await service.setPullRequestThreadResolved?.({
+      cwd: "/repo",
+      prNumber: 42,
+      threadId: "PRRT_1",
+      resolved: true,
+    });
+    await service.setPullRequestCommentReaction?.({
+      cwd: "/repo",
+      prNumber: 42,
+      commentId: "PRRC_1",
+      content: "HEART",
+      reacted: true,
+    });
+
+    expect(runner.calls[0]?.args.join(" ")).toContain("resolveReviewThread");
+    expect(runner.calls[0]?.args).toContain("threadId=PRRT_1");
+    expect(runner.calls[1]?.args.join(" ")).toContain("addReaction");
+    expect(runner.calls[1]?.args).toContain("content=HEART");
   });
 
   it("rewrites GitHub attachment image URLs in timeline comments", async () => {

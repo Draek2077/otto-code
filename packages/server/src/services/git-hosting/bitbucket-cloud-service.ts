@@ -288,6 +288,8 @@ const BitbucketCommentSchema = z.object({
     .nullable()
     .optional()
     .catch(null),
+  parent: z.object({ id: z.number() }).nullable().optional().catch(null),
+  resolution: z.unknown().nullable().optional().catch(null),
 });
 
 const BitbucketActivityEntrySchema = z.object({
@@ -426,6 +428,7 @@ function parseOptionalTime(value: string | null | undefined): number {
 
 function timelineCommentItem(
   comment: z.infer<typeof BitbucketCommentSchema>,
+  thread: { id: number; isResolved: boolean } | null,
 ): PullRequestTimelineItem {
   return {
     kind: "comment",
@@ -436,6 +439,12 @@ function timelineCommentItem(
     body: comment.content?.raw ?? "",
     createdAt: parseOptionalTime(comment.created_on),
     url: comment.links?.html?.href ?? "",
+    ...(thread
+      ? {
+          threadId: String(thread.id),
+          threadIsResolved: thread.isResolved,
+        }
+      : {}),
     ...(comment.inline
       ? {
           location: {
@@ -451,7 +460,7 @@ async function loadTimelineComments(params: {
   http: HostingHttpClient;
   prPath: string;
 }): Promise<{ items: PullRequestTimelineItem[]; truncated: boolean }> {
-  const items: PullRequestTimelineItem[] = [];
+  const comments: z.infer<typeof BitbucketCommentSchema>[] = [];
   let truncated = false;
   let commentsPath: string | null = `${params.prPath}/comments`;
   for (let pageIndex = 0; pageIndex < MAX_TIMELINE_COMMENT_PAGES && commentsPath; pageIndex += 1) {
@@ -466,7 +475,7 @@ async function loadTimelineComments(params: {
       if (!parsed.success || parsed.data.deleted) {
         continue;
       }
-      items.push(timelineCommentItem(parsed.data));
+      comments.push(parsed.data);
     }
     if (page.next) {
       // `next` is an absolute URL; keep only the API-relative path.
@@ -477,6 +486,30 @@ async function loadTimelineComments(params: {
       commentsPath = null;
     }
   }
+  const byId = new Map(comments.map((comment) => [comment.id, comment]));
+  const rootIdFor = (comment: z.infer<typeof BitbucketCommentSchema>): number => {
+    const visited = new Set<number>();
+    let current = comment;
+    while (current.parent && !visited.has(current.parent.id)) {
+      visited.add(current.id);
+      const parent = byId.get(current.parent.id);
+      if (!parent) break;
+      current = parent;
+    }
+    return current.id;
+  };
+  const replyRootIds = new Set(
+    comments.filter((comment) => comment.parent).map((comment) => rootIdFor(comment)),
+  );
+  const items = comments.map((comment) => {
+    const rootId = rootIdFor(comment);
+    const root = byId.get(rootId) ?? comment;
+    const isThread = replyRootIds.has(rootId) || root.resolution !== null;
+    return timelineCommentItem(
+      comment,
+      isThread ? { id: rootId, isResolved: root.resolution !== null } : null,
+    );
+  });
   return { items, truncated };
 }
 
@@ -860,6 +893,7 @@ export function createBitbucketCloudService(
             return {
               ...base,
               items,
+              commentReactionsSupported: false,
               truncated: comments.truncated || reviews.truncated,
               error: null,
             };
@@ -873,6 +907,17 @@ export function createBitbucketCloudService(
           }
         },
       });
+    },
+
+    async setPullRequestThreadResolved(input) {
+      const identity = await requireIdentity(input.cwd);
+      const threadId = Number(input.threadId);
+      if (!Number.isSafeInteger(threadId) || threadId < 1) {
+        throw new Error("Bitbucket thread id is invalid");
+      }
+      const path = `${repoPath(identity)}/pullrequests/${input.prNumber}/comments/${threadId}/resolve`;
+      await http.request({ method: input.resolved ? "POST" : "DELETE", path });
+      api.invalidate({ cwd: input.cwd });
     },
 
     getCheckDetails(_input: GetCheckDetailsOptions): Promise<CheckDetails> {

@@ -33,6 +33,8 @@ Resolutions are cached 30s per cwd; `invalidateAll()` fires on any daemon-config
 | ------------------ | :----: | :----------------: |
 | `draftPrs`         |   ✓    |         ✓          |
 | `reviewDecisions`  |   ✓    |         ✓          |
+| `reviewThreads`    |   ✓    |         ✓          |
+| `commentReactions` |   ✓    |         ✗          |
 | `autoMerge`        |   ✓    |         ✗          |
 | `mergeQueue`       |   ✓    |         ✗          |
 | `checkAnnotations` |   ✓    |         ✗          |
@@ -41,7 +43,13 @@ Resolutions are cached 30s per cwd; `invalidateAll()` fires on any daemon-config
 | `listRepositories` |   ✓    |         ✓          |
 | `createRepository` |   ✓    |         ✓          |
 
-The GitHub adapter (`github/`) wraps the existing gh-CLI service with no behavior change. Bitbucket Cloud (`bitbucket-cloud-service.ts`) is a native REST 2.0 client (`https://api.bitbucket.org/2.0`) that mirrors the GitHub service's discipline - 30s TTL cache, single-flight, retain-based polling - with more conservative poll intervals (30s pending / 180s settled) to respect Bitbucket's ~1000 req/hour budget. Its `listIssues` returns `[]`; check-details and auto-merge throw an unsupported-capability error.
+The GitHub adapter (`github/`) uses the existing gh-CLI service. Bitbucket Cloud (`bitbucket-cloud-service.ts`) is a native REST 2.0 client (`https://api.bitbucket.org/2.0`) that mirrors the GitHub service's discipline - 30s TTL cache, single-flight, retain-based polling - with more conservative poll intervals (30s pending / 180s settled) to respect Bitbucket's ~1000 req/hour budget. Its `listIssues` returns `[]`; check-details and auto-merge throw an unsupported-capability error.
+
+## Review discussions
+
+The PR activity timeline carries opaque provider comment and thread identifiers through one neutral model. A thread groups its root comment and replies, exposes its resolved and outdated state when the forge provides it, and can be resolved or reopened through the provider-neutral `hosting.pull_request_thread.set_resolved.*` RPC. GitHub uses review-thread GraphQL mutations; Bitbucket Cloud resolves the root comment through its native `/resolve` endpoint. A successful mutation invalidates the timeline so the server remains the source of truth.
+
+Comment reactions are similarly modelled as aggregate counts plus the current viewer's state and mutate through `hosting.pull_request_comment.set_reaction.*`. GitHub supports those operations. Bitbucket Cloud does not document a comment-reaction API, so its capability is false and the client does not offer a substitute.
 
 ## Configuration & secrets
 

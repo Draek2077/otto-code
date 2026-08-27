@@ -91,6 +91,8 @@ import type {
   PreviewStopResponse,
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
+  HostingPullRequestThreadSetResolvedResponse,
+  HostingPullRequestCommentSetReactionResponse,
   CheckoutSwitchBranchResponse,
   StashSaveResponse,
   StashPopResponse,
@@ -547,6 +549,10 @@ type PreviewStopPayload = PreviewStopResponse["payload"];
 type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
+type HostingPullRequestThreadSetResolvedPayload =
+  HostingPullRequestThreadSetResolvedResponse["payload"];
+type HostingPullRequestCommentSetReactionPayload =
+  HostingPullRequestCommentSetReactionResponse["payload"];
 type CheckoutSwitchBranchPayload = CheckoutSwitchBranchResponse["payload"];
 export type RenameBranchResult = z.infer<typeof CheckoutRenameBranchResponseSchema>["payload"];
 type StashSavePayload = StashSaveResponse["payload"];
@@ -5487,6 +5493,46 @@ export class DaemonClient {
       },
       responseType: "pull_request_timeline_response",
     });
+  }
+
+  /** Requires server_info.features.forgeReviewThreads. */
+  async setHostingPullRequestThreadResolved(
+    input: { cwd: string; prNumber: number; threadId: string; resolved: boolean },
+    requestId?: string,
+  ): Promise<HostingPullRequestThreadSetResolvedPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"hosting.pull_request_thread.set_resolved.response">(
+      {
+        requestId,
+        message: { type: "hosting.pull_request_thread.set_resolved.request", ...input },
+      },
+    );
+  }
+
+  /** Requires server_info.features.forgeReviewThreads. */
+  async setHostingPullRequestCommentReaction(
+    input: {
+      cwd: string;
+      prNumber: number;
+      commentId: string;
+      content:
+        | "THUMBS_UP"
+        | "THUMBS_DOWN"
+        | "LAUGH"
+        | "HOORAY"
+        | "CONFUSED"
+        | "HEART"
+        | "ROCKET"
+        | "EYES";
+      reacted: boolean;
+    },
+    requestId?: string,
+  ): Promise<HostingPullRequestCommentSetReactionPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"hosting.pull_request_comment.set_reaction.response">(
+      {
+        requestId,
+        message: { type: "hosting.pull_request_comment.set_reaction.request", ...input },
+      },
+    );
   }
 
   async checkoutSwitchBranch(

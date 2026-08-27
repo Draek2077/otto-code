@@ -1934,6 +1934,8 @@ export class VoiceAssistantWebSocketServer {
         githubCheckDetails: true,
         // COMPAT(forgeCheckDetails): added in v0.1.106, remove githubCheckDetails fallback after 2026-12-28.
         forgeCheckDetails: true,
+        // COMPAT(forgeReviewThreads): added in v0.8.15, remove gate after 2027-02-27.
+        forgeReviewThreads: true,
         // COMPAT(forgeSearch): added in v0.1.106, remove github_search fallback after 2026-12-28.
         forgeSearch: true,
         // COMPAT(daemonStatusRpc): added in v0.1.76, remove gate after 2026-11-18.

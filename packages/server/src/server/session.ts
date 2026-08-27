@@ -3798,6 +3798,10 @@ export class Session {
         return this.checkoutSession.handleCheckoutPrStatusRequest(msg);
       case "pull_request_timeline_request":
         return this.checkoutSession.handlePullRequestTimelineRequest(msg);
+      case "hosting.pull_request_thread.set_resolved.request":
+        return this.checkoutSession.handleHostingPullRequestThreadSetResolvedRequest(msg);
+      case "hosting.pull_request_comment.set_reaction.request":
+        return this.checkoutSession.handleHostingPullRequestCommentSetReactionRequest(msg);
       case "forge.search.request":
       case "github_search_request":
         return this.checkoutSession.handleForgeSearchRequest(msg);
@@ -8200,12 +8204,15 @@ export class Session {
       // prevents.
       return { adapter: "jira", boardId: target.boardId };
     }
-    // GitHub with no explicit board derives the project's boards from its git
-    // remote, so a repo-scoped board needs no configuration at all.
-    const remote = target.boardId ? null : await this.readProjectGitHubRemote(project.rootPath);
+    // A GitHub board number is only unique within an owner. A pasted Projects
+    // URL preserves that owner; older number-only records fall back to the
+    // project's remote owner. The remote also scopes the zero-config board
+    // discovery path.
+    const remote = await this.readProjectGitHubRemote(project.rootPath);
     return {
       adapter: "github",
       boardId: target.boardId,
+      ...(target.boardOwner ? { boardOwner: target.boardOwner } : {}),
       ...(remote ? { owner: remote.owner, repo: remote.repo } : {}),
     };
   }

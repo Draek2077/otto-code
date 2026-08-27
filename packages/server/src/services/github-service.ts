@@ -376,6 +376,26 @@ const PullRequestTimelineCommentNodeSchema = z.object({
   url: z.string().catch(""),
   createdAt: z.string().nullable().catch(null),
   author: TimelineAuthorSchema,
+  reactionGroups: z
+    .array(
+      z.object({
+        content: z
+          .enum([
+            "THUMBS_UP",
+            "THUMBS_DOWN",
+            "LAUGH",
+            "HOORAY",
+            "CONFUSED",
+            "HEART",
+            "ROCKET",
+            "EYES",
+          ])
+          .catch("THUMBS_UP"),
+        viewerHasReacted: z.boolean().catch(false),
+        users: z.object({ totalCount: z.number().catch(0) }).catch({ totalCount: 0 }),
+      }),
+    )
+    .catch([]),
 });
 
 const PullRequestReviewThreadCommentNodeSchema = PullRequestTimelineCommentNodeSchema.extend({
@@ -570,6 +590,11 @@ query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
             url
             avatarUrl
           }
+          reactionGroups {
+            content
+            viewerHasReacted
+            users { totalCount }
+          }
         }
         pageInfo {
           hasNextPage
@@ -586,6 +611,11 @@ query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
             login
             url
             avatarUrl
+          }
+          reactionGroups {
+            content
+            viewerHasReacted
+            users { totalCount }
           }
         }
         pageInfo {
@@ -612,6 +642,11 @@ query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
                 url
                 avatarUrl
               }
+              reactionGroups {
+                content
+                viewerHasReacted
+                users { totalCount }
+              }
               pullRequestReview {
                 id
               }
@@ -628,6 +663,20 @@ query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
     }
   }
 }`;
+
+const SET_PULL_REQUEST_THREAD_RESOLVED_MUTATION = `
+mutation SetPullRequestThreadResolved($threadId: ID!, $resolved: Boolean!) {
+  resolve: resolveReviewThread(input: {threadId: $threadId}) @include(if: $resolved) { thread { id } }
+  unresolve: unresolveReviewThread(input: {threadId: $threadId}) @skip(if: $resolved) { thread { id } }
+}`;
+
+const SET_PULL_REQUEST_COMMENT_REACTION_MUTATION = `
+mutation SetPullRequestCommentReaction($commentId: ID!, $content: ReactionContent!, $reacted: Boolean!) {
+  add: addReaction(input: {subjectId: $commentId, content: $content}) @include(if: $reacted) { reaction { content } }
+  remove: removeReaction(input: {subjectId: $commentId, content: $content}) @skip(if: $reacted) { reaction { content } }
+}`;
+
+const GitHubMutationSchema = z.object({ data: z.unknown().optional() });
 
 interface CacheEntry {
   value: unknown;
@@ -1289,6 +1338,46 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
           }
         },
       });
+    },
+
+    async setPullRequestThreadResolved(input) {
+      await runGhJson(
+        [
+          "api",
+          "graphql",
+          "-f",
+          `query=${SET_PULL_REQUEST_THREAD_RESOLVED_MUTATION}`,
+          "-F",
+          `threadId=${input.threadId}`,
+          "-F",
+          `resolved=${input.resolved ? "true" : "false"}`,
+        ],
+        { cwd: input.cwd },
+        GitHubMutationSchema,
+        "{}",
+      );
+      api.invalidate({ cwd: input.cwd });
+    },
+
+    async setPullRequestCommentReaction(input) {
+      await runGhJson(
+        [
+          "api",
+          "graphql",
+          "-f",
+          `query=${SET_PULL_REQUEST_COMMENT_REACTION_MUTATION}`,
+          "-F",
+          `commentId=${input.commentId}`,
+          "-F",
+          `content=${input.content}`,
+          "-F",
+          `reacted=${input.reacted ? "true" : "false"}`,
+        ],
+        { cwd: input.cwd },
+        GitHubMutationSchema,
+        "{}",
+      );
+      api.invalidate({ cwd: input.cwd });
     },
 
     getCheckDetails(input) {
@@ -2710,6 +2799,7 @@ function toPullRequestTimeline(
     repoOwner: identity.repoOwner,
     repoName: identity.repoName,
     items,
+    commentReactionsSupported: true,
     // S3 deliberately caps timeline fetches at the first 100 reviews, comments, and review threads.
     truncated: Boolean(
       pullRequest?.reviews.pageInfo.hasNextPage ||
@@ -2755,6 +2845,15 @@ function toPullRequestTimelineCommentItem(
     body: normalizeGitHubTimelineBody(comment.body ?? "", comment.bodyHTML ?? ""),
     createdAt: parseOptionalTime(comment.createdAt ?? null),
     url: comment.url,
+    ...(comment.reactionGroups.length > 0
+      ? {
+          reactions: comment.reactionGroups.map((reaction) => ({
+            content: reaction.content,
+            count: reaction.users.totalCount,
+            viewerHasReacted: reaction.viewerHasReacted,
+          })),
+        }
+      : {}),
   };
 }
 

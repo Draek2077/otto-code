@@ -197,6 +197,30 @@ describe("pull request timeline message schemas", () => {
     ]);
   });
 
+  test("parses additive comment reactions without changing old timeline entries", () => {
+    const parsed = PullRequestTimelineResponseSchema.parse({
+      type: "pull_request_timeline_response",
+      payload: {
+        items: [
+          {
+            id: "comment-1",
+            kind: "comment",
+            author: "octocat",
+            body: "Thank you",
+            createdAt: 1710000000000,
+            url: "https://github.com/otto-code-ai/otto-code/pull/42#discussion_r1",
+            reactions: [{ content: "THUMBS_UP", count: 3, viewerHasReacted: true }],
+          },
+        ],
+      },
+    });
+
+    expect(parsed.payload.items[0]).toMatchObject({
+      kind: "comment",
+      reactions: [{ content: "THUMBS_UP", count: 3, viewerHasReacted: true }],
+    });
+  });
+
   test("parses response through the outbound message union", () => {
     const parsed = SessionOutboundMessageSchema.parse({
       type: "pull_request_timeline_response",

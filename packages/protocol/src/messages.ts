@@ -62,6 +62,10 @@ import {
   HostingListRepositoriesResponseSchema,
   HostingListOwnersResponseSchema,
   HostingAuthStatusResponseSchema,
+  HostingPullRequestThreadSetResolvedRequestSchema,
+  HostingPullRequestThreadSetResolvedResponseSchema,
+  HostingPullRequestCommentSetReactionRequestSchema,
+  HostingPullRequestCommentSetReactionResponseSchema,
   GitHostingCapabilitiesSchema,
   GitHostingProviderIdWireSchema,
 } from "./git-hosting.js";
@@ -4392,6 +4396,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   PreviewStopRequestSchema,
   CheckoutPrStatusRequestSchema,
   PullRequestTimelineRequestSchema,
+  HostingPullRequestThreadSetResolvedRequestSchema,
+  HostingPullRequestCommentSetReactionRequestSchema,
   CheckoutSwitchBranchRequestSchema,
   CheckoutRenameBranchRequestSchema,
   StashSaveRequestSchema,
@@ -4707,6 +4713,9 @@ export const ServerInfoStatusPayloadSchema = z
         githubCheckDetails: z.boolean().optional(),
         // COMPAT(forgeCheckDetails): added in v0.1.106, remove githubCheckDetails fallback after 2026-12-28.
         forgeCheckDetails: z.boolean().optional(),
+        // COMPAT(forgeReviewThreads): added in v0.8.15, remove gate after 2027-02-27.
+        // The daemon accepts the provider-neutral discussion mutations.
+        forgeReviewThreads: z.boolean().optional(),
         // COMPAT(forgeSearch): added in v0.1.106, remove github_search fallback after 2026-12-28.
         forgeSearch: z.boolean().optional(),
         // COMPAT(daemonStatusRpc): added in v0.1.76, remove gate after 2026-11-18.
@@ -7300,6 +7309,26 @@ const PullRequestTimelineCommentItemSchema = z.object({
   body: z.string().optional().default(""),
   createdAt: z.number().optional().default(0),
   url: z.string().optional().default(""),
+  // Provider-neutral aggregate reaction state. Absent on forges that do not
+  // expose comment reactions and on daemons that predate discussion support.
+  reactions: z
+    .array(
+      z.object({
+        content: z.enum([
+          "THUMBS_UP",
+          "THUMBS_DOWN",
+          "LAUGH",
+          "HOORAY",
+          "CONFUSED",
+          "HEART",
+          "ROCKET",
+          "EYES",
+        ]),
+        count: z.number().int().nonnegative(),
+        viewerHasReacted: z.boolean(),
+      }),
+    )
+    .optional(),
   // GitHub review id this inline comment belongs to; lets clients nest review
   // threads under their parent review. Absent on issue comments and on
   // timelines from daemons that predate the field.
@@ -7350,6 +7379,7 @@ export const PullRequestTimelineResponseSchema = z.object({
       cwd: z.string().optional().default(""),
       prNumber: z.number().nullable().optional().default(null),
       items: z.array(PullRequestTimelineItemSchema).optional().default([]),
+      commentReactionsSupported: z.boolean().optional(),
       truncated: z.boolean().optional().default(false),
       error: PullRequestTimelineErrorSchema.nullable().optional().default(null),
       requestId: z.string().optional().default(""),
@@ -8443,6 +8473,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   PreviewStopResponseSchema,
   CheckoutPrStatusResponseSchema,
   PullRequestTimelineResponseSchema,
+  HostingPullRequestThreadSetResolvedResponseSchema,
+  HostingPullRequestCommentSetReactionResponseSchema,
   CheckoutSwitchBranchResponseSchema,
   CheckoutRenameBranchResponseSchema,
   StashSaveResponseSchema,
@@ -8980,6 +9012,12 @@ export type CheckoutPrStatusResponse = z.infer<typeof CheckoutPrStatusResponseSc
 export type PullRequestTimelineRequest = z.infer<typeof PullRequestTimelineRequestSchema>;
 export type PullRequestTimelineItem = z.infer<typeof PullRequestTimelineItemSchema>;
 export type PullRequestTimelineResponse = z.infer<typeof PullRequestTimelineResponseSchema>;
+export type HostingPullRequestThreadSetResolvedResponse = z.infer<
+  typeof HostingPullRequestThreadSetResolvedResponseSchema
+>;
+export type HostingPullRequestCommentSetReactionResponse = z.infer<
+  typeof HostingPullRequestCommentSetReactionResponseSchema
+>;
 export type CheckoutSwitchBranchRequest = z.infer<typeof CheckoutSwitchBranchRequestSchema>;
 export type CheckoutSwitchBranchResponse = z.infer<typeof CheckoutSwitchBranchResponseSchema>;
 export type CheckoutRenameBranchRequest = z.infer<typeof CheckoutRenameBranchRequestSchema>;
