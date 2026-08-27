@@ -29,7 +29,9 @@ import {
   buildCatalogConnectorServer,
   buildConnectorServer,
   connectorExists,
+  createRemoveConnectorPatch,
   createAddConnectorPatch,
+  addVerifiedCatalogConnector,
   type ConnectorCredentialInput,
   type ConnectorTransport,
 } from "./connectors-config";
@@ -202,32 +204,39 @@ function CatalogInstallPanel(props: {
         server,
         enabled: true,
       };
-      const patched = await patchConfig(createAddConnectorPatch(config, connector));
-      if (!patched) {
-        throw new Error("Host disconnected");
-      }
+      const result = await addVerifiedCatalogConnector({
+        add: () => patchConfig(createAddConnectorPatch(config, connector)),
+        remove: (saved) => patchConfig(createRemoveConnectorPatch(saved, entry.id)),
+        verify: async () => {
+          if (entry.setup.kind === "oauth") {
+            setState({ phase: "signing-in", message: "Opening your browser to sign in…" });
+            const authorization = await client.connectorsOauthAuthorize(
+              entry.id,
+              entry.setup.scope,
+            );
+            if (authorization.status === "error") {
+              throw new Error(authorization.error ?? "Sign-in failed.");
+            }
+            if (authorization.status === "redirect" && authorization.authorizationUrl) {
+              // The daemon holds the loopback listener open while the user is away;
+              // the push below is what tells us they came back.
+              const settled = waitForOauthStatus(client, entry.id);
+              void openExternalUrl(authorization.authorizationUrl);
+              await settled;
+            }
+          }
 
-      if (entry.setup.kind === "oauth") {
-        setState({ phase: "signing-in", message: "Opening your browser to sign in…" });
-        const scope = entry.setup.scope;
-        const authorization = await client.connectorsOauthAuthorize(entry.id, scope);
-        if (authorization.status === "error") {
-          throw new Error(authorization.error ?? "Sign-in failed.");
-        }
-        if (authorization.status === "redirect" && authorization.authorizationUrl) {
-          // The daemon holds the loopback listener open while the user is away;
-          // the push below is what tells us they came back.
-          const settled = waitForOauthStatus(client, entry.id);
-          void openExternalUrl(authorization.authorizationUrl);
-          await settled;
-        }
-      }
-
-      setState({ phase: "verifying", message: "Checking the connection…" });
-      const result = await client.connectorsListTools(entry.id);
-      if (result.error) {
-        throw new Error(result.error);
-      }
+          setState({ phase: "verifying", message: "Checking the connection…" });
+          const verified = await client.connectorsListTools(entry.id);
+          if (verified.error) {
+            throw new Error(verified.error);
+          }
+          if (verified.tools.length === 0) {
+            throw new Error("This connector connected but exposed no tools.");
+          }
+          return verified;
+        },
+      });
       setState({
         phase: "done",
         message: `Connected. ${result.tools.length} ${result.tools.length === 1 ? "tool" : "tools"} available.`,

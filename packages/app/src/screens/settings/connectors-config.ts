@@ -49,6 +49,48 @@ export function createRemoveConnectorPatch(
   return connectorsPatch(getConnectors(config).filter((connector) => connector.id !== id));
 }
 
+/**
+ * A catalog connector is admitted only after its live verification succeeds.
+ *
+ * OAuth needs a temporary persisted connector because the daemon owns the
+ * authorization state by connector id. That does not make the temporary row
+ * installed: when authorization or tools/list fails, remove the exact saved
+ * config snapshot before surfacing the failure. Keeping an unreachable row in
+ * Settings would turn an add-time gate into a decorative warning.
+ */
+export async function addVerifiedCatalogConnector<T>(params: {
+  add(): Promise<MutableDaemonConfig | undefined>;
+  verify(): Promise<T>;
+  remove(config: MutableDaemonConfig): Promise<MutableDaemonConfig | undefined>;
+}): Promise<T> {
+  const saved = await params.add();
+  if (!saved) {
+    throw new Error("Host disconnected");
+  }
+
+  try {
+    return await params.verify();
+  } catch (error) {
+    try {
+      const reverted = await params.remove(saved);
+      if (!reverted) {
+        throw new Error("Host disconnected while removing the incomplete connector.", {
+          cause: error,
+        });
+      }
+    } catch (rollbackError) {
+      const original = error instanceof Error ? error.message : String(error);
+      const rollback =
+        rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+      throw new Error(
+        `Could not verify this connector: ${original} Its incomplete setup could not be removed automatically: ${rollback}`,
+        { cause: rollbackError },
+      );
+    }
+    throw error;
+  }
+}
+
 export function createSetConnectorEnabledPatch(
   config: MutableDaemonConfig | null,
   id: string,
