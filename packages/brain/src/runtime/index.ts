@@ -26,6 +26,12 @@ import {
 export { BACKENDS_DIR, LMSTUDIO_ROOT, listRuntimes as listLmStudioRuntimes } from "./lmstudio.js";
 export { buildArgs, buildEnv, formatCommand, type ServeTarget } from "./args.js";
 export {
+  llamaCppRuntimeDriver,
+  type ModelServerDriverLaunchInput,
+  type ModelServerLaunch,
+  type ModelServerRuntimeDriver,
+} from "./model-server-driver.js";
+export {
   installManagedRuntime,
   removeManagedRuntime,
   listManagedRuntimes,

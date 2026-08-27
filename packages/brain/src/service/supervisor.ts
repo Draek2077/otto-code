@@ -1,10 +1,12 @@
 import http from "node:http";
-import path from "node:path";
-import { mkdirSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 
-import { buildArgs, buildEnv, formatCommand } from "../runtime/index.js";
+import {
+  llamaCppRuntimeDriver,
+  type ModelServerLaunch,
+  type ModelServerRuntimeDriver,
+} from "../runtime/index.js";
 import { resolveHostingProfileForLaunch } from "../config/hosting-profiles.js";
 import { getCalibrationForBudget } from "../config/profiles.js";
 import { resolveBrainPaths, type BrainPaths } from "../config/paths.js";
@@ -12,7 +14,7 @@ import { loadProfilesStore } from "../config/store.js";
 import { usedBytes } from "../gpu.js";
 import type { Model, Runtime } from "../types.js";
 import type { Profile, ProfilesStore } from "../config/schema.js";
-import { formatBrainLog, formatLlamaServerLog, type BrainLogArea } from "./log-format.js";
+import { formatBrainLog, type BrainLogArea } from "./log-format.js";
 
 const LOG_LINES_KEPT = 10_000;
 
@@ -32,6 +34,8 @@ export type SupervisorState = "stopped" | "starting" | "ready" | "failed" | "sto
 
 export interface SupervisorOptions {
   runtime: Runtime | null;
+  /** Native launch/introspection mechanics; lifecycle policy stays in this host. */
+  driver?: ModelServerRuntimeDriver;
   internalPort?: number;
   host?: string;
   logVerbosity?: number;
@@ -60,7 +64,7 @@ export interface SupervisorStatus {
 }
 
 /**
- * Owns the llama-server child process.
+ * Owns the model-server child process.
  *
  * The server always listens on a private port; `router.js` fronts it on a
  * stable one so switching models never asks a client to reconnect elsewhere.
@@ -73,6 +77,7 @@ export class Supervisor extends EventEmitter {
   readyTimeoutMs: number;
   paths: BrainPaths;
   getProfilesStore: () => ProfilesStore;
+  driver: ModelServerRuntimeDriver;
 
   state: SupervisorState;
   child: ChildProcess | null;
@@ -91,9 +96,11 @@ export class Supervisor extends EventEmitter {
    * shell line is for reading, not for re-parsing.
    */
   args: string[] | null;
+  launch: ModelServerLaunch | null;
 
   constructor({
     runtime,
+    driver = llamaCppRuntimeDriver,
     internalPort = DEFAULT_INTERNAL_PORT,
     host = "127.0.0.1",
     logVerbosity = 3,
@@ -103,6 +110,7 @@ export class Supervisor extends EventEmitter {
   }: SupervisorOptions) {
     super();
     this.runtime = runtime;
+    this.driver = driver;
     this.internalPort = internalPort;
     this.host = host;
     this.logVerbosity = logVerbosity;
@@ -122,6 +130,7 @@ export class Supervisor extends EventEmitter {
     this.vramBaselineBytes = null;
     this.command = null;
     this.args = null;
+    this.launch = null;
   }
 
   get upstreamBase(): string {
@@ -141,7 +150,7 @@ export class Supervisor extends EventEmitter {
   }
 
   /**
-   * Add a host-operation event to the same in-process tail as llama-server output.
+   * Add a host-operation event to the same in-process tail as model-server output.
    *
    * Calibrate, sweep, and benchmark deliberately reuse this supervisor rather
    * than creating invisible sidecar servers. Their lifecycle markers belong in
@@ -155,31 +164,20 @@ export class Supervisor extends EventEmitter {
   /**
    * Start (or restart) the server for a model + profile.
    *
-   * This is the sole llama-server launch boundary, so it materializes the
-   * selected hosting profile here. Keeping it beside `buildArgs()` makes the
-   * Jinja template and router-visible system addendum mandatory for every
+   * This is the sole model-server launch boundary, so it materializes the
+   * selected hosting profile here. Keeping it at this one driver call makes
+   * the Jinja template and router-visible system addendum mandatory for every
    * caller, including future maintenance operations that start a sidecar.
    */
   async start(model: Model, profile: Profile): Promise<this> {
     await this.stop();
 
     if (!this.runtime) {
-      this.lastError = "no llama.cpp runtime available";
+      this.lastError = `no ${this.driver.displayName} runtime available`;
       this.#setState("failed", this.lastError);
       throw new Error(this.lastError);
     }
     const runtime = this.runtime;
-    // The engine's slot save/erase directory, under the brain's home so it
-    // survives across model relaunches (the dir is persistent; the engine only
-    // ever uses it for the `action=erase` the scheduler issues on a handoff,
-    // which never writes a file). Created before the args are built because
-    // llama.cpp validates it exists at launch and throws otherwise.
-    const slotSavePath = path.join(this.paths.root, "slot-saves");
-    try {
-      mkdirSync(slotSavePath, { recursive: true });
-    } catch {
-      /* the engine then starts without slot actions - the pre-fix behavior */
-    }
     const launchProfile = resolveHostingProfileForLaunch(
       this.paths,
       this.getProfilesStore(),
@@ -193,35 +191,35 @@ export class Supervisor extends EventEmitter {
     this.vramBaselineBytes = await usedBytes();
     this.#setState("starting");
 
-    const args = buildArgs(
-      { ...launchProfile, modelPath: model.modelPath, mmprojPath: model.mmprojPath },
-      {
-        port: this.internalPort,
-        host: this.host,
-        logVerbosity: this.logVerbosity,
-        slotSavePath,
-      },
+    const launch = this.driver.createLaunch({
+      runtime,
       model,
+      profile: launchProfile,
       // The prompt-cache budget is derived from measured KV bytes/token, so the
       // launch boundary is where it has to be resolved - nothing downstream of
       // here can reach the calibration store.
-      getCalibrationForBudget(this.getProfilesStore(), model, launchProfile),
-    );
-    this.args = args;
-    this.command = formatCommand(runtime, args);
+      calibration: getCalibrationForBudget(this.getProfilesStore(), model, launchProfile),
+      paths: this.paths,
+      host: this.host,
+      port: this.internalPort,
+      logVerbosity: this.logVerbosity,
+    });
+    this.launch = launch;
+    this.args = launch.args;
+    this.command = launch.command;
     this.#log(formatBrainLog("model", `launching: ${this.command}`));
 
     const started = Date.now();
-    this.child = spawn(runtime.exe, args, {
-      cwd: runtime.dir,
-      env: buildEnv(runtime),
+    this.child = spawn(launch.executable, launch.args, {
+      cwd: launch.cwd,
+      env: launch.env,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
     const onChunk = (chunk: Buffer): void => {
       for (const line of String(chunk).split(/\r?\n/)) {
-        if (line.trim()) this.#log(formatLlamaServerLog(line.trim()));
+        if (line.trim()) this.#log(launch.formatLogLine(line.trim()));
       }
     };
     this.child.stdout?.on("data", onChunk);
@@ -236,16 +234,13 @@ export class Supervisor extends EventEmitter {
         return;
       }
       exitedEarly = { code, signal };
-      // 3221225781 == 0xC0000135 STATUS_DLL_NOT_FOUND: the vendor DLL trap.
-      const hint =
-        code === 3221225781 ? " (missing runtime DLLs - the vendor directory was not on PATH)" : "";
-      this.lastError = `llama-server exited with code ${code}${signal ? ` signal ${signal}` : ""}${hint}`;
+      this.lastError = this.driver.describeProcessExit({ code, signal });
       this.#setState("failed", this.lastError);
       if (wasReady) this.emit("crashed", this.lastError);
     });
 
     this.child.once("error", (error: Error) => {
-      this.lastError = `could not launch llama-server: ${error.message}`;
+      this.lastError = this.driver.describeLaunchError(error);
       this.#setState("failed", this.lastError);
     });
 
@@ -260,7 +255,7 @@ export class Supervisor extends EventEmitter {
       const used = await usedBytes();
       if (used && used > peakVram) peakVram = used;
 
-      const health = await this.#health();
+      const health = await this.#health(launch.readinessPath);
       if (health) {
         this.loadSeconds = (Date.now() - started) / 1000;
         this.startedAt = new Date();
@@ -281,10 +276,10 @@ export class Supervisor extends EventEmitter {
     throw new Error(this.lastError);
   }
 
-  #health(): Promise<boolean> {
+  #health(pathname: string): Promise<boolean> {
     return new Promise((resolve) => {
       const req = http.get(
-        { host: this.host, port: this.internalPort, path: "/health", timeout: 2500 },
+        { host: this.host, port: this.internalPort, path: pathname, timeout: 2500 },
         (res) => {
           res.resume();
           resolve(res.statusCode === 200);
@@ -300,9 +295,11 @@ export class Supervisor extends EventEmitter {
 
   /** Fetch /props from the running server (modalities, template caps, defaults). */
   props(): Promise<unknown> {
+    const pathname = this.launch?.propertiesPath;
+    if (!pathname) return Promise.resolve(null);
     return new Promise((resolve) => {
       const req = http.get(
-        { host: this.host, port: this.internalPort, path: "/props", timeout: 5000 },
+        { host: this.host, port: this.internalPort, path: pathname, timeout: 5000 },
         (res) => {
           let body = "";
           res.on("data", (c) => (body += c));

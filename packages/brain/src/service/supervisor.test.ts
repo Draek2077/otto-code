@@ -10,7 +10,8 @@ test("Supervisor is the mandatory hosting-profile launch boundary", () => {
   const supervisor = readFileSync(path.join(serviceDir, "supervisor.ts"), "utf8");
   assert.match(supervisor, /resolveHostingProfileForLaunch\(/);
   assert.match(supervisor, /this\.profile = launchProfile/);
-  assert.match(supervisor, /\{ \.\.\.launchProfile, modelPath:/);
+  assert.match(supervisor, /this\.driver\.createLaunch\(/);
+  assert.doesNotMatch(supervisor, /buildArgs\(/);
 
   // These are every module that owns a model-starting workflow. They may pass a
   // plain profile to `start`, because Supervisor resolves it immediately before
