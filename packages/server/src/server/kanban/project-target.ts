@@ -20,6 +20,8 @@ export interface NormalizedKanbanProjectTarget {
   adapter: KanbanAdapter;
   /** Null on the github adapter means "derive from the project's git remote". */
   boardId: string | null;
+  /** GitHub owner parsed from a Projects URL, when the target is a board number. */
+  boardOwner?: string;
 }
 
 export type NormalizeKanbanProjectTargetResult =
@@ -38,7 +40,7 @@ const MAX_BOARD_ID_LENGTH = 200;
 const TOKEN_PREFIXES = /^(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|ATATT|ATCTT|xox)/;
 
 /** `https://github.com/orgs|users/<login>/projects/<number>` */
-const GITHUB_PROJECT_URL = /\/(?:orgs|users)\/[^/]+\/projects\/(\d+)/;
+const GITHUB_PROJECT_URL = /\/(?:orgs|users)\/([^/]+)\/projects\/(\d+)/;
 /** Jira board URLs: `/boards/<id>`, `/b/<id>/`, or `?rapidView=<id>`. */
 const JIRA_BOARD_URL = /(?:\/boards\/|\/b\/|[?&]rapidView=)(\d+)/;
 
@@ -71,20 +73,28 @@ export function normalizeKanbanProjectTarget(
 
   // GitHub: empty is the recommended default and means "use the boards on this
   // project's repository", which needs no input at all.
-  return { ok: true, target: { adapter: "github", boardId: parseGitHubBoardId(raw) } };
+  const githubTarget = parseGitHubBoardTarget(raw);
+  return {
+    ok: true,
+    target: {
+      adapter: "github",
+      boardId: githubTarget.boardId,
+      ...(githubTarget.boardOwner ? { boardOwner: githubTarget.boardOwner } : {}),
+    },
+  };
 }
 
-function parseGitHubBoardId(raw: string): string | null {
+function parseGitHubBoardTarget(raw: string): { boardId: string | null; boardOwner?: string } {
   if (!raw) {
-    return null;
+    return { boardId: null };
   }
   const fromUrl = GITHUB_PROJECT_URL.exec(raw);
   if (fromUrl) {
-    return fromUrl[1];
+    return { boardId: fromUrl[2], boardOwner: fromUrl[1] };
   }
   // A bare number or a GraphQL node id both pass through; the provider resolves
-  // a number against the project's owner when it lists boards.
-  return raw;
+  // a number against the project's remote owner when the URL did not carry one.
+  return { boardId: raw };
 }
 
 function parseJiraBoardId(raw: string): string | null {

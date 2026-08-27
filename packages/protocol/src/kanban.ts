@@ -289,6 +289,10 @@ export const ProjectKanbanTargetSchema = z
   .object({
     adapter: z.enum(["github", "jira"]),
     boardId: z.string().nullable().optional(),
+    // A GitHub board number is unique only within a user or organization. The
+    // daemon derives this from a pasted GitHub Projects URL; it stays optional
+    // so existing project records (and older peers) keep parsing.
+    boardOwner: z.string().nullable().optional(),
   })
   .passthrough();
 

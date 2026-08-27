@@ -37,6 +37,8 @@ export interface KanbanProjectTarget {
   adapter: "github" | "jira";
   /** Explicit board, or null for github meaning "derive from the git remote". */
   boardId: string | null;
+  /** GitHub owner parsed from an explicit Projects URL, when available. */
+  boardOwner?: string;
   /** Repo scoping for the github adapter, from the project's git remote. */
   owner?: string;
   repo?: string;
@@ -114,6 +116,10 @@ export class KanbanSession {
       context = {
         ...(target.owner ? { owner: target.owner } : {}),
         ...(target.repo ? { repo: target.repo } : {}),
+        ...(target.boardId ? { targetBoardId: target.boardId } : {}),
+        ...(target.boardOwner || target.owner
+          ? { targetBoardOwner: target.boardOwner ?? target.owner }
+          : {}),
       };
     }
 

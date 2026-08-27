@@ -80,6 +80,14 @@ const ORG_PROJECTS_QUERY =
 const VIEWER_PROJECTS_QUERY =
   "query KanbanViewerProjects { viewer { projectsV2(first: 50) { nodes { id title url } } } }";
 
+const PROJECT_BY_NODE_ID_QUERY =
+  "query KanbanProjectByNode($id: ID!) { node(id: $id) { ... on ProjectV2 { id title url } } }";
+
+const PROJECT_BY_NUMBER_QUERY =
+  "query KanbanProjectByNumber($login: String!, $number: Int!) { " +
+  "organization(login: $login) { projectV2(number: $number) { id title url } } " +
+  "user(login: $login) { projectV2(number: $number) { id title url } } }";
+
 const BOARD_QUERY =
   "query KanbanBoard($id: ID!) { node(id: $id) { ... on ProjectV2 { title " +
   "fields(first: 20) { nodes { id name ... on ProjectV2FieldSingleSelect { options(first: 50) { nodes { id name } } } } } " +
@@ -140,6 +148,9 @@ export class GitHubProjectV2Provider implements KanbanProvider {
   // ── Reads ─────────────────────────────────────────────────────────────────
 
   async listBoards(context: KanbanBoardListContext): Promise<KanbanBoardRef[]> {
+    if (context.targetBoardId) {
+      return [await this.resolveConfiguredBoard(context)];
+    }
     const owner = context.owner?.trim();
     const repo = context.repo?.trim();
     let query: string;
@@ -164,11 +175,7 @@ export class GitHubProjectV2Provider implements KanbanProvider {
       data.organization?.projectsV2?.nodes ??
       data.viewer?.projectsV2?.nodes ??
       [];
-    return nodes.map((node) => ({
-      providerId: this.providerId,
-      boardId: node.id,
-      title: node.title || "Untitled board",
-    }));
+    return nodes.map((node) => this.boardRef(node));
   }
 
   async getBoard(boardId: string): Promise<KanbanBoard> {
@@ -390,6 +397,51 @@ export class GitHubProjectV2Provider implements KanbanProvider {
       );
     }
     return cached;
+  }
+
+  /**
+   * Resolves the one board configured for a project. A GraphQL node id already
+   * names a board globally; a human-facing board number needs its owning user
+   * or organization, preserved from a pasted URL or inferred from the
+   * project's GitHub remote by the session resolver.
+   */
+  private async resolveConfiguredBoard(context: KanbanBoardListContext): Promise<KanbanBoardRef> {
+    const targetBoardId = context.targetBoardId;
+    if (!targetBoardId) {
+      throw new Error("Configured GitHub board id is missing.");
+    }
+    let board: RawBoardNode | null | undefined;
+    if (/^\d+$/.test(targetBoardId)) {
+      const owner = context.targetBoardOwner?.trim();
+      if (!owner) {
+        throw new Error(
+          "Configured GitHub board number needs an owner. Paste the board URL in Project Settings, " +
+            "or use a project with a GitHub remote.",
+        );
+      }
+      const data = await this.graphql<{
+        organization?: { projectV2?: RawBoardNode | null } | null;
+        user?: { projectV2?: RawBoardNode | null } | null;
+      }>(PROJECT_BY_NUMBER_QUERY, { login: owner, number: Number(targetBoardId) });
+      board = data.organization?.projectV2 ?? data.user?.projectV2;
+    } else {
+      const data = await this.graphql<{ node?: RawBoardNode | null }>(PROJECT_BY_NODE_ID_QUERY, {
+        id: targetBoardId,
+      });
+      board = data.node;
+    }
+    if (!board) {
+      throw new Error(`Configured GitHub board not found: ${targetBoardId}`);
+    }
+    return this.boardRef(board);
+  }
+
+  private boardRef(node: RawBoardNode): KanbanBoardRef {
+    return {
+      providerId: this.providerId,
+      boardId: node.id,
+      title: node.title || "Untitled board",
+    };
   }
 
   // ── GraphQL transport ─────────────────────────────────────────────────────

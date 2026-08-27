@@ -8,6 +8,7 @@ import {
   KanbanCardCreateRequestSchema,
   KanbanCardMoveRequestSchema,
   KanbanTaskLinkRequestSchema,
+  ProjectKanbanTargetSchema,
 } from "./kanban.js";
 
 describe("kanban wire model", () => {
@@ -171,5 +172,21 @@ describe("kanban response schemas", () => {
       requestId: "r1",
     });
     expect(parsed.boardId).toBe("b1");
+  });
+});
+
+describe("project Kanban target schema", () => {
+  it("keeps the GitHub board owner additive for existing project records", () => {
+    expect(ProjectKanbanTargetSchema.parse({ adapter: "github", boardId: "12" })).toEqual({
+      adapter: "github",
+      boardId: "12",
+    });
+    expect(
+      ProjectKanbanTargetSchema.parse({
+        adapter: "github",
+        boardId: "12",
+        boardOwner: "acme",
+      }),
+    ).toEqual({ adapter: "github", boardId: "12", boardOwner: "acme" });
   });
 });

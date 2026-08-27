@@ -10,6 +10,7 @@ import { KanbanRemediationError } from "./kanban-remediation.js";
 function makeProvider(options: {
   token?: string | null;
   viewerProjects?: { id: string; title: string; url?: string }[];
+  configuredBoard?: { id: string; title: string; url?: string } | null;
   board?: unknown;
 }) {
   const calls: Array<{ url: string; query: string; variables: Record<string, unknown> }> = [];
@@ -22,6 +23,10 @@ function makeProvider(options: {
     let data: unknown = {};
     if (body.query.startsWith("query KanbanViewerProjects")) {
       data = { viewer: { projectsV2: { nodes: options.viewerProjects ?? [] } } };
+    } else if (body.query.startsWith("query KanbanProjectByNumber")) {
+      data = { organization: { projectV2: options.configuredBoard ?? null }, user: null };
+    } else if (body.query.startsWith("query KanbanProjectByNode")) {
+      data = { node: options.configuredBoard ?? null };
     } else if (body.query.startsWith("query KanbanViewer")) {
       // The login probe only requests viewer { login }.
       data = { viewer: { login: "octocat" } };
@@ -164,6 +169,44 @@ describe("GitHubProjectV2Provider", () => {
     await provider.initialize({ githubToken: "ghp_test" });
     const boards = await provider.listBoards({});
     expect(boards).toEqual([{ providerId: "github", boardId: "PVT_1", title: "Board A" }]);
+  });
+
+  it("resolves a configured board number against its GitHub owner", async () => {
+    const { provider, calls } = makeProvider({
+      token: "ghp_test",
+      configuredBoard: { id: "PVT_configured", title: "Release board" },
+    });
+    await provider.initialize({ githubToken: "ghp_test" });
+
+    const boards = await provider.listBoards({ targetBoardId: "12", targetBoardOwner: "acme" });
+
+    expect(boards).toEqual([
+      { providerId: "github", boardId: "PVT_configured", title: "Release board" },
+    ]);
+    const call = calls.find((entry) => entry.query.startsWith("query KanbanProjectByNumber"));
+    expect(call?.variables).toEqual({ login: "acme", number: 12 });
+  });
+
+  it("resolves a configured GraphQL node id without a discovery list", async () => {
+    const { provider, calls } = makeProvider({
+      token: "ghp_test",
+      configuredBoard: { id: "PVT_configured", title: "Release board" },
+    });
+    await provider.initialize({ githubToken: "ghp_test" });
+
+    const boards = await provider.listBoards({ targetBoardId: "PVT_configured" });
+
+    expect(boards).toEqual([
+      { providerId: "github", boardId: "PVT_configured", title: "Release board" },
+    ]);
+    expect(calls.some((entry) => entry.query.startsWith("query KanbanViewerProjects"))).toBe(false);
+  });
+
+  it("rejects an ownerless configured board number rather than choosing another board", async () => {
+    const { provider } = makeProvider({ token: "ghp_test" });
+    await provider.initialize({ githubToken: "ghp_test" });
+
+    await expect(provider.listBoards({ targetBoardId: "12" })).rejects.toThrow(/needs an owner/i);
   });
 
   it("reports signed out, and points at the gh CLI, when it has no token", async () => {

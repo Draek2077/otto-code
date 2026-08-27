@@ -133,16 +133,18 @@ export class JiraKanbanProvider implements KanbanProvider {
 
   // ── Reads ─────────────────────────────────────────────────────────────────
 
-  async listBoards(_context: KanbanBoardListContext): Promise<KanbanBoardRef[]> {
+  async listBoards(context: KanbanBoardListContext): Promise<KanbanBoardRef[]> {
+    if (context.targetBoardId) {
+      const board = await this.http<RawJiraBoard>(`${AGILE_API}/board/${context.targetBoardId}`, {
+        method: "GET",
+      });
+      return [this.boardRef(board)];
+    }
     const page = await this.http<JiraPage<RawJiraBoard>>(
       `${AGILE_API}/board?maxResults=${PAGE_SIZE}`,
       { method: "GET" },
     );
-    return (page.values ?? []).map((board) => ({
-      providerId: this.providerId,
-      boardId: String(board.id),
-      title: board.name || "Untitled board",
-    }));
+    return (page.values ?? []).map((board) => this.boardRef(board));
   }
 
   async getBoard(boardId: string): Promise<KanbanBoard> {
@@ -330,6 +332,14 @@ export class JiraKanbanProvider implements KanbanProvider {
       status,
       assignees: assignee ? [assignee.displayName || assignee.name || ""] : [],
       rawProviderId: issue.key,
+    };
+  }
+
+  private boardRef(board: RawJiraBoard): KanbanBoardRef {
+    return {
+      providerId: this.providerId,
+      boardId: String(board.id),
+      title: board.name || "Untitled board",
     };
   }
 

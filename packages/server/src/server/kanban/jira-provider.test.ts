@@ -173,6 +173,22 @@ describe("JiraKanbanProvider", () => {
     expect(calls.every((call) => call.path.startsWith("/rest/"))).toBe(true);
   });
 
+  it("returns only the configured board instead of the site's board list", async () => {
+    const { provider, calls } = makeProvider({
+      boards: [
+        { id: 100, name: "Sprint Board" },
+        { id: 101, name: "Support Board" },
+      ],
+    });
+    await provider.initialize(CREDENTIALS);
+    calls.length = 0;
+
+    const boards = await provider.listBoards({ targetBoardId: "100" });
+
+    expect(boards).toEqual([{ providerId: "jira", boardId: "100", title: "Sprint Board" }]);
+    expect(calls.map((call) => call.path)).toEqual(["/rest/agile/1.0/board/100"]);
+  });
+
   it("normalizes a board into its configured columns", async () => {
     const { provider } = makeProvider();
     await provider.initialize(CREDENTIALS);

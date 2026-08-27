@@ -26,7 +26,10 @@ describe("normalizeKanbanProjectTarget", () => {
         adapter: "github",
         boardId: "https://github.com/orgs/acme/projects/12",
       }),
-    ).toEqual({ ok: true, target: { adapter: "github", boardId: "12" } });
+    ).toEqual({
+      ok: true,
+      target: { adapter: "github", boardId: "12", boardOwner: "acme" },
+    });
   });
 
   it("parses a GitHub user project URL down to its number", () => {
@@ -35,7 +38,10 @@ describe("normalizeKanbanProjectTarget", () => {
         adapter: "github",
         boardId: "https://github.com/users/draekz/projects/3/views/1",
       }),
-    ).toEqual({ ok: true, target: { adapter: "github", boardId: "3" } });
+    ).toEqual({
+      ok: true,
+      target: { adapter: "github", boardId: "3", boardOwner: "draekz" },
+    });
   });
 
   it("passes a GitHub GraphQL node id through untouched", () => {

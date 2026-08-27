@@ -11,8 +11,9 @@ import type { KanbanBoard, KanbanBoardRef, KanbanCard } from "@otto-code/protoco
  * `null` (list) or throws a plain Error (mutations); the session translates
  * that into a wire error - no provider-specific error types cross this line.
  *
- * Jira is the next provider: boards map to Jira boards, columns to quick
- * filters, and moveCard to `moveIssue`. The wire and the UI stay untouched.
+ * Jira maps boards to Jira boards, columns to their configured status groups,
+ * and a move to an ordinary issue workflow transition. The wire and UI stay
+ * provider-neutral.
  */
 export interface KanbanProvider {
   /** Provider id used on the wire ("github", "jira", ...). */
@@ -73,7 +74,11 @@ export interface MutableKanbanProviderConfig {
 }
 
 export interface KanbanBoardListContext {
-  /** Optional scoping hints; providers ignore what they do not understand. */
+  /** Repository scoping hints for provider discovery. */
   owner?: string;
   repo?: string;
+  /** An explicit project target. Providers must return this board only. */
+  targetBoardId?: string;
+  /** GitHub owner parsed from the configured Projects URL, when available. */
+  targetBoardOwner?: string;
 }

@@ -5,8 +5,9 @@ import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { KanbanSession } from "./kanban-session.js";
 import { KanbanRemediationError } from "./kanban-remediation.js";
 import type { KanbanRegistry } from "./kanban-registry.js";
-import type { KanbanProvider } from "./types.js";
+import type { KanbanBoardListContext, KanbanProvider } from "./types.js";
 import type { KanbanBoardRef } from "@otto-code/protocol/kanban";
+import type { KanbanProjectTarget } from "./kanban-session.js";
 
 const REMEDIATION = {
   reason: KANBAN_REMEDIATION_GITHUB_SCOPES,
@@ -52,7 +53,10 @@ function makeScopeGatedProvider(): { provider: KanbanProvider; initializeCount: 
   return { provider, initializeCount: () => initializations };
 }
 
-function makeSession(provider: KanbanProvider) {
+function makeSession(
+  provider: KanbanProvider,
+  target: KanbanProjectTarget = { adapter: "github", boardId: null },
+) {
   const emitted: SessionOutboundMessage[] = [];
   const registry: KanbanRegistry = {
     listProviderIds: () => [provider.providerId],
@@ -65,7 +69,7 @@ function makeSession(provider: KanbanProvider) {
   const session = new KanbanSession({
     emit: (message) => emitted.push(message),
     readConfig: () => ({}) as MutableDaemonConfig,
-    resolveProjectTarget: async () => ({ adapter: "github", boardId: null }),
+    resolveProjectTarget: async () => target,
     log: { info: () => {}, error: () => {} },
     createRegistry: () => registry,
   });
@@ -155,5 +159,50 @@ describe("KanbanSession remediation", () => {
 
     expect(initializations).toBe(1);
     expect(boardsListPayload(emitted[1]).remediation).toBeNull();
+  });
+});
+
+describe("KanbanSession configured target", () => {
+  it("passes the explicit board and its owner to the provider", async () => {
+    let context: KanbanBoardListContext | null = null;
+    const provider: KanbanProvider = {
+      providerId: "github",
+      async initialize() {},
+      async listBoards(input) {
+        context = input;
+        return [{ providerId: "github", boardId: "PVT_12", title: "Release" }];
+      },
+      async getBoard() {
+        throw new Error("not used");
+      },
+      async moveCard() {},
+      async createCard() {
+        throw new Error("not used");
+      },
+      async linkExternalTask() {
+        throw new Error("not used");
+      },
+    };
+    const { session } = makeSession(provider, {
+      adapter: "github",
+      boardId: "12",
+      boardOwner: "acme",
+      owner: "widgets",
+      repo: "otto",
+    });
+
+    await session.handleBoardsListRequest({
+      type: "kanban.boards.list.request",
+      providerId: "github",
+      projectId: "project-1",
+      requestId: "req-1",
+    });
+
+    expect(context).toEqual({
+      owner: "widgets",
+      repo: "otto",
+      targetBoardId: "12",
+      targetBoardOwner: "acme",
+    });
   });
 });

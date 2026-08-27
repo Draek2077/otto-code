@@ -45,6 +45,11 @@ const PersistedProjectRecordSchema = z.object({
         .nullable()
         .optional()
         .transform((value) => value ?? null),
+      // A GitHub Projects URL supplies the owner that makes a human-facing
+      // board number unambiguous. Old targets omitted it and retain the remote
+      // owner fallback in the session resolver.
+      // COMPAT(projectKanbanBoardOwner): added in v0.8.18; remove optional after 2027-02-28.
+      boardOwner: z.string().nullable().optional(),
     })
     .nullable()
     .optional()
