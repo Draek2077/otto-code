@@ -49,7 +49,7 @@ describe("ArtifactStore run history", () => {
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), "artifact-store-"));
-    store = new ArtifactStore(cwd);
+    store = new ArtifactStore(join(cwd, ".otto", "artifacts"));
   });
 
   afterEach(async () => {
@@ -154,7 +154,7 @@ describe("ArtifactStore id validation", () => {
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), "artifact-store-"));
-    store = new ArtifactStore(cwd);
+    store = new ArtifactStore(join(cwd, ".otto", "artifacts"));
   });
 
   afterEach(async () => {

@@ -81,7 +81,7 @@ export class ArtifactService {
 
   constructor(options: ArtifactServiceOptions) {
     this.projectCwd = options.projectCwd;
-    this.store = new ArtifactStore(options.projectCwd);
+    this.store = new ArtifactStore(join(options.projectCwd, ".otto", "artifacts"));
     this.logger = options.logger.child({ module: "artifact-service" });
     this.agentManager = options.agentManager;
     this.providerSnapshotManager = options.providerSnapshotManager;

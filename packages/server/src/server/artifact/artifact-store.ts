@@ -33,10 +33,10 @@ function toMetadata(stored: StoredArtifact): ArtifactMetadata {
 }
 
 export class ArtifactStore {
-  constructor(private readonly projectCwd: string) {}
+  constructor(private readonly artifactsDirectory: string) {}
 
   private artifactsDir(): string {
-    return join(this.projectCwd, ".otto", "artifacts");
+    return this.artifactsDirectory;
   }
 
   private metadataPath(artifactId: string): string {
@@ -163,7 +163,7 @@ export class ArtifactStore {
   }
 
   async scanAll(projectRoots: string[]): Promise<ArtifactMetadata[]> {
-    const stores = projectRoots.map((root) => new ArtifactStore(root));
+    const stores = projectRoots.map((root) => new ArtifactStore(join(root, ".otto", "artifacts")));
     const results = await Promise.all(
       stores.map(async (store) => {
         try {
