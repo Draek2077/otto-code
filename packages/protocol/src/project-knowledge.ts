@@ -111,6 +111,8 @@ export const ProjectKnowledgeRootPageSchema = z.object({
   // on ProjectKnowledgeRecordSchema.
   absolutePath: z.string().optional(),
   body: z.string(),
+  /** Conditional-write precondition for a reviewed root-page refinement. */
+  bodyDigest: z.string().optional(),
 });
 
 export const ProjectKnowledgeListRequestMessageSchema = z.object({
@@ -261,6 +263,35 @@ export const ProjectKnowledgeRootApplyResponseMessageSchema = z.object({
   }),
 });
 
+/**
+ * A reviewed refinement commits an accepted proposal, not an ordinary edit.
+ * Confirmed atomic Knowledge is demoted atomically with its new truth; root
+ * pages use a body digest because they have no review state.
+ */
+export const ProjectKnowledgeRefineApplyRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.refine.apply.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  target: z.enum(["record", "root"]),
+  id: z.string().optional(),
+  slug: z.string().optional(),
+  statement: z.string().optional(),
+  body: z.string().optional(),
+  expectedUpdatedAt: z.string().optional(),
+  expectedBodyDigest: z.string().optional(),
+});
+
+export const ProjectKnowledgeRefineApplyResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.refine.apply.response"),
+  payload: z.object({
+    requestId: z.string(),
+    record: ProjectKnowledgeRecordSchema.nullable(),
+    page: ProjectKnowledgeRootPageSchema.nullable(),
+    demoted: z.boolean(),
+    error: z.string().optional(),
+  }),
+});
+
 export const ProjectKnowledgeDeleteRequestMessageSchema = z.object({
   type: z.literal("project.knowledge.delete.request"),
   requestId: z.string(),
@@ -309,6 +340,10 @@ export type ProjectKnowledgeReferenceApplyResponseMessage = z.infer<
 
 export type ProjectKnowledgeRootApplyResponseMessage = z.infer<
   typeof ProjectKnowledgeRootApplyResponseMessageSchema
+>;
+
+export type ProjectKnowledgeRefineApplyResponseMessage = z.infer<
+  typeof ProjectKnowledgeRefineApplyResponseMessageSchema
 >;
 
 export type ProjectKnowledgeDeleteResponseMessage = z.infer<

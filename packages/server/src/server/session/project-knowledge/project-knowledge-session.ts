@@ -88,6 +88,8 @@ export class ProjectKnowledgeSession {
         return this.handleProjectKnowledgeReferenceApplyRequest(msg);
       case "project.knowledge.root.apply.request":
         return this.handleProjectKnowledgeRootApplyRequest(msg);
+      case "project.knowledge.refine.apply.request":
+        return this.handleProjectKnowledgeRefineApplyRequest(msg);
       case "project.knowledge.delete.request":
         return this.handleProjectKnowledgeDeleteRequest(msg);
       case "project.knowledge.store.get.request":
@@ -321,6 +323,62 @@ export class ProjectKnowledgeSession {
     this.host.emit({
       type: "project.knowledge.root.apply.response",
       payload: { requestId: msg.requestId, page },
+    });
+  }
+  private async handleProjectKnowledgeRefineApplyRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.refine.apply.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    if (!this.projectKnowledge || !cwd)
+      throw new Error("Project knowledge is unavailable for this workspace.");
+    if (msg.target === "record") {
+      const result =
+        msg.id && msg.statement !== undefined
+          ? await this.projectKnowledge.applyReviewedRefinement({
+              cwd,
+              id: msg.id,
+              statement: msg.statement,
+              ...(msg.expectedUpdatedAt ? { expectedUpdatedAt: msg.expectedUpdatedAt } : {}),
+            })
+          : { record: null, demoted: false, error: "A reviewed record requires its id and text." };
+      if (result.record) {
+        this.contextManagement.invalidate(msg.workspaceId);
+        await this.host.pushContextReport(msg.workspaceId);
+      }
+      this.host.emit({
+        type: "project.knowledge.refine.apply.response",
+        payload: {
+          requestId: msg.requestId,
+          record: result.record,
+          page: null,
+          demoted: result.demoted,
+          ...(result.error ? { error: result.error } : {}),
+        },
+      });
+      return;
+    }
+    const result =
+      msg.slug && msg.body !== undefined
+        ? await this.projectKnowledge.applyRootRefinement({
+            cwd,
+            slug: msg.slug,
+            body: msg.body,
+            ...(msg.expectedBodyDigest ? { expectedBodyDigest: msg.expectedBodyDigest } : {}),
+          })
+        : { page: null, error: "A reviewed root page requires its slug and text." };
+    if (result.page) {
+      this.contextManagement.invalidate(msg.workspaceId);
+      await this.host.pushContextReport(msg.workspaceId);
+    }
+    this.host.emit({
+      type: "project.knowledge.refine.apply.response",
+      payload: {
+        requestId: msg.requestId,
+        record: null,
+        page: result.page,
+        demoted: false,
+        ...(result.error ? { error: result.error } : {}),
+      },
     });
   }
   private async handleProjectKnowledgeDeleteRequest(

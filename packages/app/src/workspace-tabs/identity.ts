@@ -220,11 +220,13 @@ function normalizeRefineTabTarget(
   }
   const references = normalizePathList(value.references).filter((path) => !paths.includes(path));
   const presetId = trimNonEmpty(value.presetId);
+  const knowledgeReview = value.knowledgeReview;
   return {
     kind: "refine",
     paths,
     ...(references.length > 0 ? { references } : {}),
     ...(presetId ? { presetId } : {}),
+    ...(knowledgeReview ? { knowledgeReview } : {}),
   };
 }
 

@@ -583,6 +583,42 @@ export class ProjectKnowledgeService {
     });
   }
 
+  /**
+   * Commit an accepted Refine proposal. This is deliberately not updateTruth:
+   * a confirmed fact must leave the active catalog before an editor confirms
+   * its new wording, and the truth/status/timeline update must be one write.
+   */
+  async applyReviewedRefinement(input: {
+    cwd: string;
+    id: string;
+    statement: string;
+    expectedUpdatedAt?: string;
+  }): Promise<{ record: ProjectKnowledgeRecord | null; demoted: boolean; error?: string }> {
+    let demoted = false;
+    const result = await this.mutateRecord(
+      input.cwd,
+      input.id,
+      input.expectedUpdatedAt,
+      (record, now) => {
+        demoted = record.status === "confirmed";
+        return {
+          ...record,
+          statement: richMarkdown(input.statement),
+          ...(demoted ? { status: "proposed" as const } : {}),
+          updatedAt: now,
+          provenance: appendTimeline(record.provenance, {
+            kind: "decision",
+            text: demoted
+              ? "Applied an accepted AI refinement. Status returned to proposed for review."
+              : "Applied an accepted AI refinement.",
+            recordedAt: now,
+          }),
+        };
+      },
+    );
+    return { ...result, demoted: Boolean(result.record && demoted) };
+  }
+
   private async mutateRecord(
     cwd: string,
     id: string,
@@ -699,6 +735,7 @@ export class ProjectKnowledgeService {
               path: path.relative(store.pathBase, target).split(path.sep).join("/"),
               absolutePath: target,
               body: raw,
+              bodyDigest: createHash("sha256").update(raw).digest("hex"),
             };
           } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -731,6 +768,34 @@ export class ProjectKnowledgeService {
       );
     });
     return this.getRoot(input.cwd, slug);
+  }
+
+  /** Conditional root-page counterpart of applyReviewedRefinement. */
+  async applyRootRefinement(input: {
+    cwd: string;
+    slug: string;
+    body: string;
+    expectedBodyDigest?: string;
+  }): Promise<{ page: ProjectKnowledgeRootPage | null; error?: string }> {
+    if (!isRootSlug(input.slug)) return { page: null, error: "Unknown root knowledge page." };
+    const slug = input.slug;
+    const store = await this.store(input.cwd);
+    let error: string | undefined;
+    await this.queued(store, async () => {
+      await this.bootstrapFiles(store);
+      const target = path.join(this.knowledgeDirectory(store), `${slug}.md`);
+      const current = await readOptionalFile(target);
+      const digest = current ? createHash("sha256").update(current).digest("hex") : undefined;
+      if (input.expectedBodyDigest && input.expectedBodyDigest !== digest) {
+        error = "This root page changed while it was under review.";
+        return;
+      }
+      await writeAtomic(target, renderRootPage(slug, input.body, new Date().toISOString()));
+    });
+    return {
+      page: error ? null : await this.getRoot(input.cwd, slug),
+      ...(error ? { error } : {}),
+    };
   }
 
   /** Validate wiki links in current truth and root pages. Timeline history is immutable evidence. */

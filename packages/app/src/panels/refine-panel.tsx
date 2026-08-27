@@ -46,6 +46,7 @@ import { buildRefineWorkingSet } from "@/refine/refine-working-set";
 import type { RefineFileProposal, RefineSetFile, RefineSetStats } from "@/refine/refine-set";
 import type { RefineHunk } from "@/refine/hunks";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { compactFont, type Theme } from "@/styles/theme";
 import type { DiffPresentation } from "@/utils/diff-document";
@@ -99,7 +100,7 @@ type RefineTarget = Extract<WorkspaceTabTarget, { kind: "refine" }>;
  * preset, exactly as the toolbar button that opened it does.
  */
 function useRefinePanelDescriptor(target: RefineTarget): PanelDescriptor {
-  const { tail } = splitPath(target.paths[0] ?? "");
+  const { tail } = splitPath(target.knowledgeReview?.title ?? target.paths[0] ?? "");
   const extra = target.paths.length - 1;
   const job = refineJobFor(target.presetId);
   const preset = findRefinePreset(target.presetId);
@@ -133,6 +134,10 @@ function RefinePanel() {
   invariant(target.kind === "refine", "RefinePanel requires refine target");
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
   const hasRefine = useRefineFeature(serverId);
+  const hasKnowledgeReview = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeRefinement === true,
+  );
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
   const files = useMemo(
     () =>
@@ -143,17 +148,78 @@ function RefinePanel() {
       }),
     [cwd, target.paths, target.references],
   );
+  const virtualDocuments = useMemo(
+    () =>
+      target.knowledgeReview
+        ? [
+            {
+              id: "knowledge-review",
+              absolutePath:
+                target.paths[0] ?? `project-knowledge://${target.knowledgeReview.title}`,
+              label: target.knowledgeReview.title,
+              writable: true,
+              content: target.knowledgeReview.content,
+              modifiedAt:
+                target.knowledgeReview.target === "record"
+                  ? target.knowledgeReview.expectedUpdatedAt
+                  : "",
+              hash: null,
+            },
+          ]
+        : undefined,
+    [target.knowledgeReview, target.paths],
+  );
+  const acceptKnowledgeReview = useCallback(
+    async (results: { id: string; label: string; content: string }[]) => {
+      const review = target.knowledgeReview;
+      const result = results[0];
+      if (!review || !result || !client) {
+        return [
+          {
+            label: result?.label ?? "Knowledge article",
+            kind: "failed" as const,
+            reason: "Knowledge review is unavailable.",
+          },
+        ];
+      }
+      const payload =
+        review.target === "record"
+          ? await client.applyProjectKnowledgeRefinement({
+              workspaceId,
+              target: "record",
+              id: review.id,
+              statement: result.content,
+              expectedUpdatedAt: review.expectedUpdatedAt,
+            })
+          : await client.applyProjectKnowledgeRefinement({
+              workspaceId,
+              target: "root",
+              slug: review.slug,
+              body: result.content,
+              ...(review.expectedBodyDigest
+                ? { expectedBodyDigest: review.expectedBodyDigest }
+                : {}),
+            });
+      let kind: "written" | "stale" | "failed" = "written";
+      if (payload.error) kind = payload.error.includes("changed") ? "stale" : "failed";
+      return [{ label: result.label, kind, reason: payload.error ?? null }];
+    },
+    [client, target.knowledgeReview, workspaceId],
+  );
 
   const session = useRefineSession({
     serverId,
     cwd: cwd ?? "",
     files,
-    enabled: hasRefine && Boolean(cwd),
+    enabled: hasRefine && (!target.knowledgeReview || hasKnowledgeReview) && Boolean(cwd),
+    ...(virtualDocuments ? { virtualDocuments, acceptResults: acceptKnowledgeReview } : {}),
   });
 
   const preset = useMemo(() => findRefinePreset(target.presetId), [target.presetId]);
   const job = preset?.job ?? "refine";
-  const [instruction, setInstruction] = useState(() => preset?.instruction ?? "");
+  const [instruction, setInstruction] = useState(
+    () => target.knowledgeReview?.instruction ?? preset?.instruction ?? "",
+  );
   const [activePresetId, setActivePresetId] = useState<string | null>(preset?.id ?? null);
   const { preferences: changesPreferences } = useChangesPreferences();
   const presentation = changesPreferences.presentation;
@@ -183,10 +249,14 @@ function RefinePanel() {
     [activePresetId],
   );
 
-  if (!hasRefine) {
+  if (!hasRefine || (target.knowledgeReview && !hasKnowledgeReview)) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.mutedText}>{i18n.t("refine.unsupported")}</Text>
+        <Text style={styles.mutedText}>
+          {target.knowledgeReview && !hasKnowledgeReview
+            ? "Update the host to review Project Knowledge with AI."
+            : i18n.t("refine.unsupported")}
+        </Text>
       </View>
     );
   }

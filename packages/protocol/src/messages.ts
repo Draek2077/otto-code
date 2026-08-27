@@ -183,6 +183,8 @@ import {
   ProjectKnowledgeReferenceApplyResponseMessageSchema,
   ProjectKnowledgeRootApplyRequestMessageSchema,
   ProjectKnowledgeRootApplyResponseMessageSchema,
+  ProjectKnowledgeRefineApplyRequestMessageSchema,
+  ProjectKnowledgeRefineApplyResponseMessageSchema,
   ProjectKnowledgeDeleteRequestMessageSchema,
   ProjectKnowledgeStoreLocationValueSchema,
   ProjectKnowledgeStoreGetRequestMessageSchema,
@@ -4293,6 +4295,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectKnowledgeProjectApplyRequestMessageSchema,
   ProjectKnowledgeReferenceApplyRequestMessageSchema,
   ProjectKnowledgeRootApplyRequestMessageSchema,
+  ProjectKnowledgeRefineApplyRequestMessageSchema,
   ProjectKnowledgeDeleteRequestMessageSchema,
   ProjectKnowledgeStoreGetRequestMessageSchema,
   ProjectKnowledgeStoreSetRequestMessageSchema,
@@ -4895,6 +4898,9 @@ export const ServerInfoStatusPayloadSchema = z
         personalityMemory: z.boolean().optional(),
         // COMPAT(projectKnowledge): added in v0.8.5, drop the gate when daemon floor >= v0.8.5.
         projectKnowledge: z.boolean().optional(),
+        // COMPAT(projectKnowledgeRefinement): added in v0.8.19, drop the gate
+        // when floor >= v0.8.19.
+        projectKnowledgeRefinement: z.boolean().optional(),
         // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate
         // when daemon floor >= v0.8.18. A project's Knowledge store can live
         // host-local instead of in the repository: the project.knowledge.store.*
@@ -8507,6 +8513,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectKnowledgeProjectApplyResponseMessageSchema,
   ProjectKnowledgeReferenceApplyResponseMessageSchema,
   ProjectKnowledgeRootApplyResponseMessageSchema,
+  ProjectKnowledgeRefineApplyResponseMessageSchema,
   ProjectKnowledgeDeleteResponseMessageSchema,
   ProjectKnowledgeStoreGetResponseMessageSchema,
   ProjectKnowledgeStoreSetResponseMessageSchema,

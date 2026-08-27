@@ -144,6 +144,7 @@ import type {
   ProjectKnowledgeProjectApplyResponseMessage,
   ProjectKnowledgeReferenceApplyResponseMessage,
   ProjectKnowledgeRootApplyResponseMessage,
+  ProjectKnowledgeRefineApplyResponseMessage,
   ProjectKnowledgeDeleteResponseMessage,
   ProjectIconGetResponse,
   ProjectAddResponse,
@@ -6713,6 +6714,30 @@ export class DaemonClient {
     return this.sendNamespacedCorrelatedSessionRequest({
       requestId,
       message: { type: "project.knowledge.root.apply.request", ...input },
+    });
+  }
+  /** Requires server_info.features.projectKnowledgeRefinement. */
+  async applyProjectKnowledgeRefinement(
+    input:
+      | {
+          workspaceId: string;
+          target: "record";
+          id: string;
+          statement: string;
+          expectedUpdatedAt?: string;
+        }
+      | {
+          workspaceId: string;
+          target: "root";
+          slug: string;
+          body: string;
+          expectedBodyDigest?: string;
+        },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeRefineApplyResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.refine.apply.request", ...input },
     });
   }
   async deleteProjectKnowledge(

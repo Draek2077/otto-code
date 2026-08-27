@@ -22,6 +22,34 @@ async function temporaryWriteFiles(root: string): Promise<string[]> {
 }
 
 describe("ProjectKnowledgeService", () => {
+  it("atomically demotes confirmed truth when an accepted refinement changes it", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
+    try {
+      const knowledge = service(root);
+      const record = await knowledge.record({
+        cwd: root,
+        kind: "decision",
+        title: "Reviewed refinement",
+        statement: "The original truth.",
+        status: "confirmed",
+      });
+      const applied = await knowledge.applyReviewedRefinement({
+        cwd: root,
+        id: record.id,
+        statement: "The reviewed truth.",
+        expectedUpdatedAt: record.updatedAt,
+      });
+      expect(applied).toMatchObject({
+        demoted: true,
+        record: { status: "proposed", statement: "The reviewed truth." },
+      });
+      expect(applied.record?.provenance?.at(-1)?.text).toContain("Status returned to proposed");
+      expect(await knowledge.query(root, "reviewed")).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("stores rich Markdown under a human slug and publishes an active-page catalog", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "otto-project-knowledge-"));
     try {

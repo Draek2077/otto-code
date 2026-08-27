@@ -87,6 +87,12 @@ This is the practical distinction between discovery and context injection: disco
 
 **Manage knowledge** is a capability-gated workspace tab with Knowledge, Projects, and References modes. Knowledge shows the six project-map roots and factual pages, including findings. Projects creates and reviews charters, displays status and completion metrics, and updates delivery with a reason. References records source URLs and adoption or rejection. All modes render the canonical Markdown page and its complete timeline, support explicit review status, and require a reason to change current truth. The panel never writes raw Markdown directly.
 
+### Reviewed AI refinement
+
+On a supported host, a reader can select one unambiguous phrase in a rendered Knowledge article and add temporary feedback before opening a dedicated **Refine** tab. Feedback is either **Replace**, whose replacement text is applied before the model sees the article and must remain verbatim, or **Refine**, an instruction for improving the selected passage. The two kinds use distinct semantic annotation treatments as well as their labels. Feedback is local to that review session and is consumed when the Refine tab opens; it is neither a durable comment thread nor part of the Knowledge record.
+
+Refine still presents a base-pinned diff and per-hunk accept/reject choices. Accepting an atomic record updates only its compiled current truth and, in the same daemon-owned conditional transaction, moves a previously confirmed record back to `proposed` with a timeline entry. It therefore leaves normal Knowledge retrieval until a person confirms the revision. The six root pages join this first release: they have no review lifecycle, so Refine uses their stored body digest to refuse an overwrite if the page changed during review. Their existing `updated` frontmatter and repository Git history remain the audit boundary. This path requires `server_info.features.projectKnowledgeRefinement` (v0.8.19); there is no old-host fallback.
+
 The same tools and UI work in any repository. A project no longer needs an Otto-specific `projects/` ledger or a monolithic `docs/references.md` to reproduce the practice. Existing repositories migrate by creating Knowledge pages through daemon APIs, verifying page counts and contents, and only then retiring old files or instructions. Import-first prevents a partial migration from destroying the source record.
 
 ## Agent tools

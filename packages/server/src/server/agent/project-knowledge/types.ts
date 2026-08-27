@@ -106,6 +106,8 @@ export interface ProjectKnowledgeRootPage {
   /** Absolute on-disk page; see `ProjectKnowledgeRecord.absolutePath`. */
   absolutePath?: string;
   body: string;
+  /** Hash of the complete stored root page for conditional reviewed writes. */
+  bodyDigest?: string;
 }
 
 export interface ProjectKnowledgeBrokenLink {

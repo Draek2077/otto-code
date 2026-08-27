@@ -85,7 +85,13 @@ export type WorkspaceTabTarget =
   // `references` are read-only context, so a rewrite can be made in the context
   // of the project without that context becoming editable. All absolute - a
   // context set legitimately spans repo and home files.
-  | { kind: "refine"; paths: string[]; references?: string[]; presetId?: string }
+  | {
+      kind: "refine";
+      paths: string[];
+      references?: string[];
+      presetId?: string;
+      knowledgeReview?: Extract<BaseWorkspaceTabTarget, { kind: "refine" }>["knowledgeReview"];
+    }
   // Context Management - everything the provider sends before the user types.
   // One per workspace: the report is a property of the workspace and its
   // provider, so a second tab would show the same thing.

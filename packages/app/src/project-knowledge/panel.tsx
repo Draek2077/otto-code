@@ -22,6 +22,7 @@ import {
   Gavel,
   Lightbulb,
   Pencil,
+  Robot,
   Search,
   Settings2,
   Shield,
@@ -54,6 +55,13 @@ import {
   type ProjectReferenceDisposition,
 } from "@/context-management/use-project-knowledge";
 import { usePanelStore } from "@/stores/panel-store";
+import { useSessionStore } from "@/stores/session-store";
+import { openRefineTab } from "@/refine/open-refine-tab";
+import {
+  applyDirectReplacements,
+  buildKnowledgeReviewInstruction,
+  type KnowledgeReviewDirective,
+} from "./review-session";
 import {
   formatDeliveryStatus,
   formatMetadataLabel,
@@ -103,6 +111,13 @@ export function ProjectKnowledgePanel(): ReactElement {
   const [sourceUrl, setSourceUrl] = useState("");
   const [metadataReason, setMetadataReason] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [reviewSelection, setReviewSelection] = useState<string | null>(null);
+  const [reviewKind, setReviewKind] = useState<"replace" | "refine">("refine");
+  const [reviewValue, setReviewValue] = useState("");
+  const [reviewDirectives, setReviewDirectives] = useState<KnowledgeReviewDirective[]>([]);
+  const reviewSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeRefinement === true,
+  );
   const knowledgeSidebarWidth = usePanelStore((state) => state.projectKnowledgeSidebarWidth);
   const setKnowledgeSidebarWidth = usePanelStore((state) => state.setProjectKnowledgeSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -174,6 +189,19 @@ export function ProjectKnowledgePanel(): ReactElement {
       ? recordDetail
       : null;
   const selected = detailedSelection ?? selectedSummary;
+  const reviewContent = selectedRoot
+    ? rootDocumentBody(selectedRoot.body)
+    : (detailedSelection?.statement ?? null);
+  const reviewDocumentKey = selectedRoot
+    ? `root:${selectedRoot.slug}`
+    : `record:${selected?.id ?? ""}`;
+  useEffect(() => {
+    // Review comments have no durable identity and must never follow a reader
+    // to a different article in the same tab.
+    setReviewSelection(null);
+    setReviewValue("");
+    setReviewDirectives([]);
+  }, [reviewDocumentKey]);
   useEffect(() => {
     if (!selectedSummary) {
       setRecordDetail(null);
@@ -220,6 +248,97 @@ export function ProjectKnowledgePanel(): ReactElement {
     if (!markdownPath) return;
     openFileInWorkspace({ location: { path: markdownPath }, disposition: "main" });
   }, [markdownPath, openFileInWorkspace]);
+  const captureReviewSelection = useCallback(() => {
+    if (!isWeb || !reviewContent) return;
+    const value = window.getSelection?.()?.toString().trim() ?? "";
+    if (!value) {
+      setFormError("Select a phrase in the article before adding review feedback.");
+      return;
+    }
+    if (!reviewContent.includes(value)) {
+      setFormError("The selection is not part of this article's editable text.");
+      return;
+    }
+    if (reviewContent.indexOf(value) !== reviewContent.lastIndexOf(value)) {
+      setFormError(
+        "That phrase appears more than once. Select a larger passage so the review stays exact.",
+      );
+      return;
+    }
+    setFormError(null);
+    setReviewSelection(value);
+    setReviewValue("");
+  }, [reviewContent]);
+  const addReviewDirective = useCallback(() => {
+    if (!reviewSelection || !reviewValue.trim() || !reviewContent) return;
+    const index = reviewContent.indexOf(reviewSelection);
+    setReviewDirectives((current) => [
+      ...current,
+      {
+        id: `${Date.now()}-${current.length}`,
+        kind: reviewKind,
+        selectedText: reviewSelection,
+        beforeContext: reviewContent.slice(Math.max(0, index - 96), index),
+        afterContext: reviewContent.slice(
+          index + reviewSelection.length,
+          index + reviewSelection.length + 96,
+        ),
+        value: reviewValue.trim(),
+      },
+    ]);
+    setReviewSelection(null);
+    setReviewValue("");
+  }, [reviewContent, reviewKind, reviewSelection, reviewValue]);
+  const startKnowledgeRefine = useCallback(() => {
+    if (!reviewContent || reviewDirectives.length === 0 || !reviewSupported) return;
+    const replacements = applyDirectReplacements(reviewContent, reviewDirectives);
+    if (replacements.error) {
+      setFormError(replacements.error);
+      return;
+    }
+    let target: Parameters<typeof openRefineTab>[0]["knowledgeReview"] | undefined;
+    if (selectedRoot) {
+      target = {
+        target: "root",
+        slug: selectedRoot.slug,
+        title: selectedRoot.title,
+        content: replacements.content,
+        ...(selectedRoot.bodyDigest ? { expectedBodyDigest: selectedRoot.bodyDigest } : {}),
+        instruction: buildKnowledgeReviewInstruction(reviewDirectives),
+      };
+    } else if (selected) {
+      target = {
+        target: "record",
+        id: selected.id,
+        title: selected.title,
+        content: replacements.content,
+        expectedUpdatedAt: selected.updatedAt,
+        instruction: buildKnowledgeReviewInstruction(reviewDirectives),
+      };
+    }
+    if (!target) return;
+    const opened = openRefineTab({
+      serverId,
+      workspaceId,
+      paths: [
+        `project-knowledge://${target.target}/${target.target === "root" ? target.slug : target.id}`,
+      ],
+      knowledgeReview: target,
+    });
+    if (opened) {
+      setReviewDirectives([]);
+      setReviewSelection(null);
+      setReviewValue("");
+    }
+  }, [
+    reviewContent,
+    reviewDirectives,
+    reviewSupported,
+    selected,
+    selectedRoot,
+    serverId,
+    workspaceId,
+  ]);
   const setStatus = useCallback(
     async (status: "confirmed" | "superseded") => {
       if (!selected) return;
@@ -546,6 +665,20 @@ export function ProjectKnowledgePanel(): ReactElement {
     viewer = (
       <View style={styles.documentContent}>
         <Text style={styles.documentContentTitle}>{selectedRoot.title}</Text>
+        <KnowledgeReviewStrip
+          directives={reviewDirectives}
+          selection={reviewSelection}
+          kind={reviewKind}
+          value={reviewValue}
+          enabled={reviewSupported}
+          onKindChange={setReviewKind}
+          onValueChange={setReviewValue}
+          onSave={addReviewDirective}
+          onRemove={(id) =>
+            setReviewDirectives((current) => current.filter((item) => item.id !== id))
+          }
+          onRefine={startKnowledgeRefine}
+        />
         <MarkdownRenderer text={document} remoteImages="altText" />
       </View>
     );
@@ -685,6 +818,20 @@ export function ProjectKnowledgePanel(): ReactElement {
           <ThemedArticleKnowledgeKindIcon kind={selected.kind} />
           <Text style={styles.documentContentTitle}>{selected.title}</Text>
         </View>
+        <KnowledgeReviewStrip
+          directives={reviewDirectives}
+          selection={reviewSelection}
+          kind={reviewKind}
+          value={reviewValue}
+          enabled={reviewSupported && Boolean(detailedSelection)}
+          onKindChange={setReviewKind}
+          onValueChange={setReviewValue}
+          onSave={addReviewDirective}
+          onRemove={(id) =>
+            setReviewDirectives((current) => current.filter((item) => item.id !== id))
+          }
+          onRefine={startKnowledgeRefine}
+        />
         <MarkdownRenderer text={document} remoteImages="altText" />
       </View>
     );
@@ -824,6 +971,14 @@ export function ProjectKnowledgePanel(): ReactElement {
                   label="Open Markdown source"
                   Icon={ThemedFolderOpen}
                   onPress={openMarkdown}
+                />
+              ) : null}
+              {!editingTruth && !editingMetadata && !creating ? (
+                <ToolbarIconButton
+                  label="Add review feedback from selected text"
+                  Icon={ThemedRobot}
+                  onPress={captureReviewSelection}
+                  disabled={!reviewSupported || !reviewContent}
                 />
               ) : null}
               {selected && !editingTruth && !editingMetadata && !creating ? (
@@ -1077,10 +1232,105 @@ const ThemedArchive = withUnistyles(Archive);
 const ThemedCheck = withUnistyles(Check);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedPencil = withUnistyles(Pencil);
+const ThemedRobot = withUnistyles(Robot);
+const ThemedX = withUnistyles(X);
 const ThemedSearch = withUnistyles(Search);
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedTextInput = withUnistyles(TextInput);
+
+function KnowledgeReviewStrip({
+  directives,
+  selection,
+  kind,
+  value,
+  enabled,
+  onKindChange,
+  onValueChange,
+  onSave,
+  onRemove,
+  onRefine,
+}: {
+  directives: readonly KnowledgeReviewDirective[];
+  selection: string | null;
+  kind: "replace" | "refine";
+  value: string;
+  enabled: boolean;
+  onKindChange: (kind: "replace" | "refine") => void;
+  onValueChange: (value: string) => void;
+  onSave: () => void;
+  onRemove: (id: string) => void;
+  onRefine: () => void;
+}): ReactElement | null {
+  if (!selection && directives.length === 0) return null;
+  return (
+    <View style={styles.reviewStrip}>
+      {directives.map((directive) => (
+        <View
+          key={directive.id}
+          style={[
+            styles.reviewDirective,
+            directive.kind === "replace" ? styles.reviewReplace : styles.reviewRefine,
+          ]}
+        >
+          <View style={styles.reviewDirectiveCopy}>
+            <Text style={styles.reviewDirectiveKind}>
+              {directive.kind === "replace" ? "Replace" : "Refine"}
+            </Text>
+            <Text style={styles.reviewDirectiveText} numberOfLines={2}>
+              “{directive.selectedText}” · {directive.value}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityLabel="Remove review feedback"
+            onPress={() => onRemove(directive.id)}
+          >
+            <ThemedX size={16} />
+          </Pressable>
+        </View>
+      ))}
+      {selection ? (
+        <View style={styles.reviewComposer}>
+          <Text style={styles.reviewSelection} numberOfLines={2}>
+            Selected: “{selection}”
+          </Text>
+          <SegmentedControl
+            size="sm"
+            value={kind}
+            onValueChange={onKindChange}
+            options={[
+              { value: "replace", label: "Replace" },
+              { value: "refine", label: "Refine" },
+            ]}
+          />
+          <TextInput
+            value={value}
+            onChangeText={onValueChange}
+            multiline
+            placeholder={
+              kind === "replace" ? "Exact replacement text" : "How should this be improved?"
+            }
+            placeholderTextColor="#777"
+            style={[styles.input, styles.reviewInput]}
+          />
+          <Button size="sm" disabled={!enabled || !value.trim()} onPress={onSave}>
+            Add feedback
+          </Button>
+        </View>
+      ) : null}
+      {directives.length > 0 ? (
+        <View style={styles.reviewActions}>
+          <Text style={styles.muted}>
+            Feedback is temporary and is consumed when the Refine tab opens.
+          </Text>
+          <Button size="sm" disabled={!enabled} onPress={onRefine}>
+            Refine with AI
+          </Button>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 const searchIconProps = (theme: {
   colors: { foregroundMuted: string };
@@ -1475,6 +1725,39 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
   },
   viewerToolbar: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
+  reviewStrip: {
+    gap: theme.spacing[2],
+    padding: theme.spacing[3],
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface1,
+  },
+  reviewDirective: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingLeft: theme.spacing[2],
+    borderLeftWidth: 3,
+  },
+  reviewReplace: { borderLeftColor: theme.colors.statusWarning },
+  reviewRefine: { borderLeftColor: theme.colors.primary },
+  reviewDirectiveCopy: { flex: 1, minWidth: 0, gap: 2 },
+  reviewDirectiveKind: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  reviewDirectiveText: { color: theme.colors.mutedForeground, fontSize: theme.fontSize.xs },
+  reviewComposer: { gap: theme.spacing[2] },
+  reviewSelection: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
+  reviewInput: { minHeight: 72, paddingVertical: theme.spacing[2], textAlignVertical: "top" },
+  reviewActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
   documentToolbar: {
     flexDirection: "row",
     flexWrap: "wrap",

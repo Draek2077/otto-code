@@ -18,6 +18,23 @@ export interface OpenRefineTabInput {
   references?: string[];
   /** Optional preset to seed the instruction with (see refine-presets.ts). */
   presetId?: string;
+  knowledgeReview?:
+    | {
+        target: "record";
+        id: string;
+        title: string;
+        content: string;
+        expectedUpdatedAt: string;
+        instruction: string;
+      }
+    | {
+        target: "root";
+        slug: string;
+        title: string;
+        content: string;
+        expectedBodyDigest?: string;
+        instruction: string;
+      };
 }
 
 /**
@@ -49,6 +66,7 @@ export function openRefineTab(input: OpenRefineTabInput): boolean {
       paths,
       ...(references.length > 0 ? { references } : {}),
       ...(input.presetId ? { presetId: input.presetId } : {}),
+      ...(input.knowledgeReview ? { knowledgeReview: input.knowledgeReview } : {}),
     },
     { insertAfterFocusedTab: true },
   );

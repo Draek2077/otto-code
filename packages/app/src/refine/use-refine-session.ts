@@ -123,6 +123,11 @@ export interface UseRefineSessionInput {
   /** The working set. Absolute paths; the first is the primary. */
   files: readonly RefineSetFile[];
   enabled: boolean;
+  /** A memory-backed document whose accepted result is committed by its owner. */
+  virtualDocuments?: readonly RefinePinnedFile[];
+  acceptResults?: (
+    results: { id: string; label: string; content: string }[],
+  ) => Promise<RefineWriteOutcome[]>;
   onAccepted?: (outcomes: RefineWriteOutcome[]) => void;
 }
 
@@ -221,7 +226,7 @@ function useRefineClient(serverId: string) {
 }
 
 export function useRefineSession(input: UseRefineSessionInput): RefineSession {
-  const { serverId, cwd, files, enabled, onAccepted } = input;
+  const { serverId, cwd, files, enabled, virtualDocuments, acceptResults, onAccepted } = input;
   const client = useRefineClient(serverId);
 
   const [phase, setPhase] = useState<RefinePhase>({ kind: "pinning" });
@@ -243,12 +248,19 @@ export function useRefineSession(input: UseRefineSessionInput): RefineSession {
 
   // The seed array is rebuilt on every render by its host; key on the paths so
   // re-pinning happens when the set genuinely changes, not on every render.
-  const seedKey = useMemo(() => files.map((file) => file.absolutePath).join("\0"), [files]);
+  const seedKey = useMemo(
+    () =>
+      [
+        ...files.map((file) => file.absolutePath),
+        ...(virtualDocuments ?? []).map((file) => file.absolutePath),
+      ].join("\0"),
+    [files, virtualDocuments],
+  );
   const filesRef = useRef(files);
   filesRef.current = files;
 
   const pin = useCallback(async () => {
-    if (!client || !enabled || filesRef.current.length === 0) {
+    if (!client || !enabled || (filesRef.current.length === 0 && !virtualDocuments?.length)) {
       return;
     }
     const token = bump();
@@ -260,6 +272,11 @@ export function useRefineSession(input: UseRefineSessionInput): RefineSession {
     setWritableOverrides({});
     const seed = filesRef.current;
     try {
+      if (virtualDocuments?.length) {
+        setPinned([...virtualDocuments]);
+        setPhase({ kind: "idle" });
+        return;
+      }
       // The documents first and on their own: the job is about them, so a read
       // that fails here fails the session rather than quietly shrinking it.
       const documents = await Promise.all(
@@ -287,7 +304,7 @@ export function useRefineSession(input: UseRefineSessionInput): RefineSession {
     }
     // seedKey, not `files`: the identity of the set is its paths.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bump, client, cwd, enabled, seedKey]);
+  }, [bump, client, cwd, enabled, seedKey, virtualDocuments]);
 
   useEffect(() => {
     void pin();
@@ -411,6 +428,31 @@ export function useRefineSession(input: UseRefineSessionInput): RefineSession {
     const token = bump();
     setPhase({ kind: "accepting" });
     void (async () => {
+      if (acceptResults) {
+        try {
+          const outcomes = await acceptResults(results);
+          if (tokenRef.current !== token) return;
+          const complete = outcomes.every((outcome) => outcome.kind === "written");
+          setPhase(
+            complete ? { kind: "accepted", outcomes } : { kind: "partiallyAccepted", outcomes },
+          );
+          onAccepted?.(outcomes);
+        } catch (writeError) {
+          if (tokenRef.current === token) {
+            setPhase({
+              kind: "partiallyAccepted",
+              outcomes: [
+                {
+                  label: results[0]?.label ?? "Document",
+                  kind: "failed",
+                  reason: getErrorMessage(writeError),
+                },
+              ],
+            });
+          }
+        }
+        return;
+      }
       const outcomes: RefineWriteOutcome[] = [];
       for (const result of results) {
         const identity = identityById.get(result.id);
@@ -454,7 +496,7 @@ export function useRefineSession(input: UseRefineSessionInput): RefineSession {
       setPhase(complete ? { kind: "accepted", outcomes } : { kind: "partiallyAccepted", outcomes });
       onAccepted?.(outcomes);
     })();
-  }, [bump, client, keptKeys, onAccepted, pinned, proposals]);
+  }, [acceptResults, bump, client, keptKeys, onAccepted, pinned, proposals]);
 
   const isKept = useCallback(
     (fileId: string, hunkId: string) => keptKeys.has(refineDecisionKey(fileId, hunkId)),
