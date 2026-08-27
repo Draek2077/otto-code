@@ -98,7 +98,7 @@ type OrchestrationFlavor = "ai" | "graph";
 type SubmitIntent = "run" | "save-draft";
 
 function resolveSheetTitle(isEditingDraft: boolean): string {
-  return isEditingDraft ? "Edit Orchestration" : "New Orchestration";
+  return isEditingDraft ? "Edit Workflow" : "New Workflow";
 }
 
 /** Create mode starts empty; edit mode starts on the draft's own values. */
@@ -122,8 +122,8 @@ const NEW_GRAPH_VALUE = "__new-graph__";
 const TEAM_ORCHESTRATOR_ENTRY_ID = "__team-orchestrator__";
 
 const FLAVOR_OPTIONS: SegmentedControlOption<OrchestrationFlavor>[] = [
-  { value: "ai", label: "AI", testID: "orchestration-flavor-ai" },
-  { value: "graph", label: "Graph", testID: "orchestration-flavor-graph" },
+  { value: "ai", label: "AI Workflow", testID: "orchestration-flavor-ai" },
+  { value: "graph", label: "Graph Workflow", testID: "orchestration-flavor-graph" },
 ];
 
 interface OrchestrationProjectOptions {
@@ -348,8 +348,8 @@ function resolveMutationServerId(input: {
 
 function resolveFlavorHint(flavor: OrchestrationFlavor): string {
   return flavor === "ai"
-    ? "An orchestrator plans and runs the orchestration from your prompt."
-    : "A graph runs deterministically, exactly as drawn.";
+    ? "An agent coordinates open-ended work from your prompt."
+    : "A declared graph runs deterministically, exactly as drawn.";
 }
 
 function openKey(props: NewOrchestrationSheetProps): string {
@@ -837,7 +837,7 @@ function OpenNewOrchestrationSheet({
             initialValue={description}
             value={description}
             onChangeText={setDescription}
-            placeholder="What is this orchestration for?"
+            placeholder="What is this workflow for?"
             style={styles.multilineInput}
             multiline
             numberOfLines={3}
@@ -906,7 +906,7 @@ function OpenNewOrchestrationSheet({
               initialValue={prompt}
               value={prompt}
               onChangeText={setPrompt}
-              placeholder="What should the orchestration accomplish?"
+              placeholder="What should the workflow accomplish?"
               style={styles.multilineInput}
               multiline
               numberOfLines={4}

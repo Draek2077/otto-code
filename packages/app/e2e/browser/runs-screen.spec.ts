@@ -23,7 +23,7 @@ async function cleanupSeededRunState(client: SeedDaemonClient, projectId: string
   await client.close().catch(() => undefined);
 }
 
-// The Runs ("Orchestrations") screen lists orchestration runs and offers a
+// The Workflows screen lists durable workflow runs and offers a
 // "Visualize" action that opens a run-scoped Visualizer tab in the run's
 // workspace. Runs have no client-side create RPC (only the conductor `start_run`
 // tool makes them), so this spec seeds one deterministically by writing a
@@ -107,7 +107,7 @@ test.describe("Runs screen", () => {
     await page.goto(buildRunsRoute());
 
     // The run card renders status, complexity, phases, and frozen timing.
-    await expect(page.getByText("Orchestrations", { exact: true }).first()).toBeVisible({
+    await expect(page.getByText("Workflows", { exact: true }).first()).toBeVisible({
       timeout: 30_000,
     });
     const runsList = page.getByTestId("runs-list");

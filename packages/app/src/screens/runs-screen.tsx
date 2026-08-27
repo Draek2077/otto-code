@@ -465,7 +465,7 @@ function RunsScreenContent(): ReactElement {
 
   return (
     <View style={styles.container}>
-      <MenuHeader title="Orchestrations" />
+      <MenuHeader title="Workflows" />
       <NewOrchestrationSheet
         visible={newOrchestrationOpen || editPrefill !== null}
         onClose={closeNewOrchestration}
@@ -515,18 +515,18 @@ interface RunsScreenBodyProps {
 
 function resolveEmptyFilterText(status: RunStatusFilter): string {
   if (status === "draft") {
-    return "No draft orchestrations";
+    return "No draft workflows";
   }
   if (status === "active") {
-    return "No active orchestrations";
+    return "No active workflows";
   }
   if (status === "failed") {
-    return "No failed orchestrations";
+    return "No failed workflows";
   }
   if (status === "completed") {
-    return "No completed orchestrations";
+    return "No completed workflows";
   }
-  return "No orchestrations match the current filters";
+  return "No workflows match the current filters";
 }
 
 function RunsScreenBody({
@@ -557,7 +557,7 @@ function RunsScreenBody({
   if (!hasAny) {
     return (
       <View style={styles.centered} testID="runs-empty">
-        <Text style={styles.message}>No orchestrations yet</Text>
+        <Text style={styles.message}>No workflows yet</Text>
         {canCreate ? (
           <Button
             variant="outline"
@@ -566,7 +566,7 @@ function RunsScreenBody({
             onPress={onCreate}
             testID="runs-empty-new"
           >
-            Create an orchestration
+            Create a workflow
           </Button>
         ) : (
           <Text style={styles.messageSub}>Teams will orchestrate work on their own.</Text>
@@ -607,7 +607,7 @@ function RunsScreenBody({
             style={styles.newButton}
             testID="runs-new-orchestration"
           >
-            New Orchestration
+            New Workflow
           </Button>
         ) : null}
       </View>
@@ -792,9 +792,9 @@ function RunCard({
   const cancelRun = useCallback(() => {
     void (async () => {
       const confirmed = await confirmDialog({
-        title: "Cancel orchestration",
+        title: "Cancel workflow",
         message: `Cancel "${runTitle}"? Its agents stop where they are.`,
-        confirmLabel: "Cancel orchestration",
+        confirmLabel: "Cancel workflow",
         destructive: true,
       });
       if (confirmed) {
@@ -806,7 +806,7 @@ function RunCard({
   const deleteRun = useCallback(() => {
     void (async () => {
       const confirmed = await confirmDialog({
-        title: "Delete orchestration",
+        title: "Delete workflow",
         message: `Delete "${runTitle}"? This cannot be undone.`,
         confirmLabel: "Delete",
         destructive: true,
@@ -1051,7 +1051,7 @@ function RunKebabMenu({
         onPressIn={stopPressInPropagation}
         style={kebabTriggerStyle}
         accessibilityRole={isNative ? "button" : undefined}
-        accessibilityLabel="Orchestration actions"
+        accessibilityLabel="Workflow actions"
         testID={`run-kebab-${run.id}`}
       >
         <MoreVertical size="mdPlus" color={styles.icon.color} />
@@ -1065,7 +1065,7 @@ function RunKebabMenu({
             onSelect={onEdit}
             testID={`run-menu-edit-${run.id}`}
           >
-            Edit Orchestration
+            Edit Workflow
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem
@@ -1085,7 +1085,7 @@ function RunKebabMenu({
             onSelect={cancelPending ? undefined : onCancel}
             testID={`run-menu-cancel-${run.id}`}
           >
-            Cancel orchestration
+            Cancel workflow
           </DropdownMenuItem>
         ) : null}
         {canDelete ? (

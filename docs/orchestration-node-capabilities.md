@@ -24,7 +24,7 @@ a node - an ordinary outcome, never an error - and it always carries a reason:
 | `upstream-failed`     | An upstream node failed.                           |
 | `canceled`            | The run was canceled before this node dispatched.  |
 
-`notes` carries the same fact as a sentence, which is what the Orchestrations page shows.
+`notes` carries the same fact as a sentence, which is what the Workflows page shows.
 The wrap-up message names every skipped node and tells the orchestrator to say so -
 **a run must never report success while silently omitting part of the graph.**
 
