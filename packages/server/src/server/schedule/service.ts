@@ -957,6 +957,10 @@ export class ScheduleService {
       startedAt: now.toISOString(),
       endedAt: null,
       status: "running",
+      // Record the requested target before resolving or executing it. A later
+      // schedule edit must never make an old run look as though it targeted
+      // something else.
+      target: structuredClone(schedule.target),
       agentId: null,
       output: null,
       error: null,

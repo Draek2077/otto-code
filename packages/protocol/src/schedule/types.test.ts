@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { ScheduleCadenceSchema, ScheduleTargetSchema } from "./types.js";
+import { ScheduleCadenceSchema, ScheduleRunSchema, ScheduleTargetSchema } from "./types.js";
 
 describe("ScheduleCadenceSchema", () => {
   test("accepts existing UTC cron cadence without a time zone", () => {
@@ -44,5 +44,40 @@ describe("ScheduleTargetSchema", () => {
     };
 
     expect(ScheduleTargetSchema.parse(stored)).toEqual(stored);
+  });
+});
+
+describe("ScheduleRunSchema", () => {
+  test("accepts historical runs without a requested-target snapshot", () => {
+    expect(
+      ScheduleRunSchema.parse({
+        id: "run-1",
+        scheduledFor: "2026-01-01T00:00:00.000Z",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        endedAt: null,
+        status: "running",
+        agentId: null,
+        output: null,
+        error: null,
+      }),
+    ).not.toHaveProperty("target");
+  });
+
+  test("preserves the requested target snapshot for durable run audit", () => {
+    expect(
+      ScheduleRunSchema.parse({
+        id: "run-1",
+        scheduledFor: "2026-01-01T00:00:00.000Z",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        endedAt: null,
+        status: "running",
+        target: { type: "new-agent", config: { provider: "codex", cwd: "/repo" } },
+        agentId: null,
+        output: null,
+        error: null,
+      }),
+    ).toMatchObject({
+      target: { type: "new-agent", config: { provider: "codex", cwd: "/repo" } },
+    });
   });
 });

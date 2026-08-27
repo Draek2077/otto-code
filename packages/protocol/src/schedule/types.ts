@@ -75,6 +75,11 @@ export const ScheduleRunSchema = z.object({
   startedAt: z.string(),
   endedAt: z.string().nullable(),
   status: z.enum(["running", "succeeded", "failed"]),
+  // The exact schedule target requested when this run was claimed. Keeping the
+  // snapshot on the run means later edits do not rewrite history, and gives
+  // future Workflow/artifact target adapters one compatibility-safe audit slot.
+  // Optional because persisted runs before v0.9 do not carry it.
+  target: ScheduleTargetSchema.optional(),
   agentId: z.guid().nullable(),
   workspaceId: z.string().nullable().optional(),
   // Who actually executed this run - the resolved personality (if any),

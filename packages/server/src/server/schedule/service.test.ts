@@ -480,6 +480,10 @@ describe("ScheduleService", () => {
     expect(inspected.runs).toHaveLength(1);
     expect(inspected.runs[0]).toMatchObject({
       status: "succeeded",
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", cwd: tempDir },
+      },
       agentId: "00000000-0000-0000-0000-000000000001",
       output: "ran:Review new PRs",
     });
