@@ -2,6 +2,16 @@ import type { ProjectKnowledgeListResponseMessage } from "@otto-code/protocol/me
 
 type Record = ProjectKnowledgeListResponseMessage["payload"]["records"][number];
 
+export type KnowledgeArticleKind = Exclude<Record["kind"], "project" | "reference">;
+
+export const KNOWLEDGE_ARTICLE_KINDS = [
+  "architecture",
+  "decision",
+  "constraint",
+  "requirement",
+  "finding",
+] as const satisfies readonly KnowledgeArticleKind[];
+
 export interface ProjectKnowledgeSummary {
   projects: number;
   projectsComplete: number;
@@ -52,6 +62,31 @@ export function recordMatchesTags(
   if (selected.length === 0) return true;
   const owned = new Set(record.tags.map((tag) => tag.toLowerCase()));
   return selected.every((tag) => owned.has(tag.toLowerCase()));
+}
+
+/** Knowledge articles match any chosen type; the picker never permits an empty selection. */
+export function recordMatchesKnowledgeTypes(
+  record: { kind: string },
+  selected: readonly KnowledgeArticleKind[],
+): boolean {
+  return selected.includes(record.kind as KnowledgeArticleKind);
+}
+
+/** Choosing All restores every article type; clearing the final type does the same. */
+export function toggleKnowledgeTypeFilter(
+  selected: readonly KnowledgeArticleKind[],
+  kind: KnowledgeArticleKind | "all",
+): KnowledgeArticleKind[] {
+  if (kind === "all") return [...KNOWLEDGE_ARTICLE_KINDS];
+  const next = selected.includes(kind)
+    ? selected.filter((value) => value !== kind)
+    : [...selected, kind];
+  return next.length > 0 ? next : [...KNOWLEDGE_ARTICLE_KINDS];
+}
+
+/** Alternate selection makes one type the complete filter. */
+export function isolateKnowledgeTypeFilter(kind: KnowledgeArticleKind): KnowledgeArticleKind[] {
+  return [kind];
 }
 
 /** Distinct tags across records, deduped case-insensitively in stable order. */

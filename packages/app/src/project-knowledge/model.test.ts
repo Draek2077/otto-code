@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   formatDeliveryStatus,
   formatMetadataLabel,
+  isolateKnowledgeTypeFilter,
+  KNOWLEDGE_ARTICLE_KINDS,
+  recordMatchesKnowledgeTypes,
   recordMatchesTags,
   summarizeProjectKnowledge,
+  toggleKnowledgeTypeFilter,
   uniqueTags,
 } from "./model";
 
@@ -83,5 +87,21 @@ describe("tag filtering", () => {
       { tags: [] },
     ]);
     expect(tags).toEqual(["knowledge", "protocol", "ui"]);
+  });
+});
+
+describe("knowledge type filtering", () => {
+  it("matches any selected article type", () => {
+    expect(recordMatchesKnowledgeTypes({ kind: "architecture" }, ["architecture"])).toBe(true);
+    expect(recordMatchesKnowledgeTypes({ kind: "finding" }, ["architecture"])).toBe(false);
+  });
+
+  it("restores All types when the final individual type is cleared", () => {
+    expect(toggleKnowledgeTypeFilter(["finding"], "finding")).toEqual(KNOWLEDGE_ARTICLE_KINDS);
+    expect(toggleKnowledgeTypeFilter(["finding"], "all")).toEqual(KNOWLEDGE_ARTICLE_KINDS);
+  });
+
+  it("can isolate one type without clearing every other type individually", () => {
+    expect(isolateKnowledgeTypeFilter("requirement")).toEqual(["requirement"]);
   });
 });

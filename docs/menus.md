@@ -150,6 +150,9 @@ Independent toggles stay on their page as a checkmark list. A pick-one group can
 below a `MenuSeparator`; make selecting the checked row clear it, so "none" doesn't need a row of
 its own.
 
+When a checkmark list has a useful single-choice accelerator, `onAlternateSelect` runs on desktop
+right-click and touch long-press while a regular press keeps the normal toggle behavior.
+
 ## Gotchas
 
 - **Released height.** Reanimated's web entering animation leaves an inline height snapshot on

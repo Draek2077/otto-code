@@ -65,9 +65,14 @@ import {
 import {
   formatDeliveryStatus,
   formatMetadataLabel,
+  isolateKnowledgeTypeFilter,
+  KNOWLEDGE_ARTICLE_KINDS,
+  recordMatchesKnowledgeTypes,
   recordMatchesTags,
   summarizeProjectKnowledge,
+  toggleKnowledgeTypeFilter,
   uniqueTags,
+  type KnowledgeArticleKind,
 } from "./model";
 import type { IconSizeProp } from "@/components/icons/icon-size";
 
@@ -90,6 +95,9 @@ export function ProjectKnowledgePanel(): ReactElement {
   const [scope, setScope] = useState<"knowledge" | "projects" | "references">("knowledge");
   const [filter, setFilter] = useState<"all" | "proposed" | "confirmed" | "superseded">("all");
   const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<KnowledgeArticleKind[]>([
+    ...KNOWLEDGE_ARTICLE_KINDS,
+  ]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [editingTruth, setEditingTruth] = useState(false);
@@ -162,10 +170,11 @@ export function ProjectKnowledgePanel(): ReactElement {
         (record) =>
           (filter === "all" || record.status === filter) &&
           recordMatchesScope(record.kind, scope) &&
+          (scope !== "knowledge" || recordMatchesKnowledgeTypes(record, typeFilter)) &&
           recordMatchesTags(record, tagFilter) &&
           record.title.toLowerCase().includes(normalizedQuery),
       ) ?? [],
-    [filter, knowledge.view, normalizedQuery, scope, tagFilter],
+    [filter, knowledge.view, normalizedQuery, scope, tagFilter, typeFilter],
   );
   const scopedTags = useMemo(
     () =>
@@ -866,6 +875,7 @@ export function ProjectKnowledgePanel(): ReactElement {
                 setSelectedRootSlug(null);
                 setCreating(false);
                 setQuery("");
+                setTypeFilter([...KNOWLEDGE_ARTICLE_KINDS]);
                 setTagFilter([]);
               }}
               options={[
@@ -916,6 +926,9 @@ export function ProjectKnowledgePanel(): ReactElement {
               />
               {query ? <SearchClearButton onPress={() => setQuery("")} /> : null}
             </View>
+            {scope === "knowledge" ? (
+              <ThemedKnowledgeTypeFilter selectedTypes={typeFilter} onChange={setTypeFilter} />
+            ) : null}
             {scopedTags.length > 0 ? (
               <ThemedKnowledgeTagFilter
                 tags={scopedTags}
@@ -1220,7 +1233,68 @@ function KnowledgeKindIcon({
   if (kind === "reference") return <BookOpen size={size} color={color} />;
   return <Gavel size={size} color={color} />;
 }
+
+function KnowledgeTypeFilter({
+  selectedTypes,
+  onChange,
+  theme,
+}: {
+  selectedTypes: readonly KnowledgeArticleKind[];
+  onChange: (types: KnowledgeArticleKind[]) => void;
+  theme: { colors: { foreground: string; foregroundMuted: string } };
+}): ReactElement {
+  const allSelected = selectedTypes.length === KNOWLEDGE_ARTICLE_KINDS.length;
+  const triggerColor = allSelected ? theme.colors.foregroundMuted : theme.colors.foreground;
+  return (
+    <View style={styles.tagFilters} accessibilityLabel="Filter by article type">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          accessibilityLabel="Filter by article type"
+          accessibilityRole="button"
+          style={styles.tagTrigger}
+          testID="project-knowledge-type-filter-trigger"
+        >
+          <Checklist size="sm" color={triggerColor} />
+          <Text style={[styles.tagTriggerLabel, !allSelected && styles.tagTriggerActive]}>
+            {allSelected ? "Types · All" : `Types · ${selectedTypes.length}`}
+          </Text>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          side="bottom"
+          offset={4}
+          minWidth={220}
+          testID="project-knowledge-type-filter-content"
+        >
+          <DropdownMenuItem
+            closeOnSelect={false}
+            selected={allSelected}
+            showSelectedCheck
+            onSelect={() => onChange(toggleKnowledgeTypeFilter(selectedTypes, "all"))}
+          >
+            All types
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {KNOWLEDGE_ARTICLE_KINDS.map((kind) => (
+            <DropdownMenuItem
+              key={kind}
+              closeOnSelect={false}
+              selected={selectedTypes.includes(kind)}
+              showSelectedCheck
+              onSelect={() => onChange(toggleKnowledgeTypeFilter(selectedTypes, kind))}
+              onAlternateSelect={() => onChange(isolateKnowledgeTypeFilter(kind))}
+              tooltip="Right-click or long-press to show only this type"
+            >
+              {formatMetadataLabel(kind)}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </View>
+  );
+}
 const ThemedKnowledgeTagFilter = withUnistyles(KnowledgeTagFilter, (theme) => ({ theme }));
+const ThemedKnowledgeTypeFilter = withUnistyles(KnowledgeTypeFilter, (theme) => ({ theme }));
 const ThemedKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));

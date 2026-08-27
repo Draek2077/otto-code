@@ -218,9 +218,23 @@ function resolveItemLabel(input: {
   return children;
 }
 
+function createAlternateSelectHandler(
+  isDisabled: boolean | undefined,
+  onAlternateSelect: (() => void) | undefined,
+): ((event: { preventDefault?: () => void; stopPropagation?: () => void }) => void) | undefined {
+  if (isDisabled || !onAlternateSelect) return undefined;
+  return (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    onAlternateSelect();
+  };
+}
+
 export interface MenuItemProps {
   description?: string;
   onSelect?: (event: GestureResponderEvent) => void;
+  /** Right-click or long-press action for an item that has a useful alternate selection. */
+  onAlternateSelect?: () => void;
   disabled?: boolean;
   muted?: boolean;
   destructive?: boolean;
@@ -256,6 +270,7 @@ export function MenuItem({
   children,
   description,
   onSelect,
+  onAlternateSelect,
   disabled,
   muted = false,
   destructive,
@@ -303,6 +318,10 @@ export function MenuItem({
     },
     [isDisabled, selectItem, onSelect, closeOnSelect],
   );
+  const handleAlternateSelect = useMemo(
+    () => createAlternateSelectHandler(isDisabled, onAlternateSelect),
+    [isDisabled, onAlternateSelect],
+  );
 
   const itemPressableStyle = useCallback(
     ({
@@ -340,6 +359,9 @@ export function MenuItem({
       accessibilityRole="button"
       disabled={isDisabled}
       onPress={handleItemPress}
+      onLongPress={handleAlternateSelect}
+      // @ts-expect-error - onContextMenu is web-only and not in RN types.
+      onContextMenu={handleAlternateSelect}
       style={itemPressableStyle}
     >
       {showSelectedCheck ? (
