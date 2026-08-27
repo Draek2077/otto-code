@@ -47,7 +47,6 @@ import {
   resolveWindowBounds,
   setupWindowResizeEvents,
   setupWindowStatePersistence,
-  setupDefaultContextMenu,
   setupDragDropPrevention,
   setupCursorHoverForwarding,
   buildStandardContextMenuItems,
@@ -1061,7 +1060,6 @@ async function createWindow(
   if (windowStateStore) {
     setupWindowStatePersistence(mainWindow, windowStateStore);
   }
-  setupDefaultContextMenu(mainWindow);
   setupDragDropPrevention(mainWindow, trustedOttoOriginPolicy);
   setupCursorHoverForwarding(mainWindow);
   mainWindow.webContents.on("will-attach-webview", (event, webPreferences, params) => {

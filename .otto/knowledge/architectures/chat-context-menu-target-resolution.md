@@ -3,16 +3,19 @@ id: "chat-context-menu-target-resolution"
 kind: "architecture"
 title: "Chat context menus resolve actions from the clicked target"
 status: "confirmed"
-tags: ["chat", "context-menu", "ux", "architecture"]
+tags: ["chat","context-menu","ux","architecture"]
 created_at: "2026-08-13T03:21:44.211Z"
-updated_at: "2026-08-13T03:32:35.592Z"
+updated_at: "2026-08-27T13:47:52.283Z"
 ---
-
 # Chat context menus resolve actions from the clicked target
 
 <!-- compiled_truth -->
 
-Chat uses one shared context-menu presentation and a target/action resolver. Transcript elements contribute typed context targets, and the resolver composes only actions that are valid for the clicked item and its workspace scope. The native text-selection menu remains an intentional selection-first exception until product requirements justify replacing it with accessible in-app selection actions. Link actions are migrated into this resolver before image or further chat-target actions are added.
+Chat uses one shared target/action context-menu presentation. Transcript elements contribute typed context targets, and the resolver composes only actions valid for the clicked item and workspace scope.
+
+A root `TextSelectionMenuProvider` owns normal rendered-text selection throughout Otto’s desktop and browser UI. It supplies the standard **Cut**, **Copy**, **Paste**, and **Select all** actions according to whether the target is editable and whether it has a selection; every row displays its platform shortcut. Text selection wins over an ordinary target menu, so a selected label remains copyable.
+
+A surface that needs both target-specific and selection actions uses `TextSelectionMenuHybridScope` and `useTextSelectionContextMenu().open(...)` to prepend its local actions above the shared standard group. Browser guests and isolated webviews retain their native menus because their selections are not owned by the Otto renderer.
 
 ## Timeline
 
@@ -26,3 +29,11 @@ Chat uses one shared context-menu presentation and a target/action resolver. Tra
 - time: "2026-08-13T03:32:35.592Z"
   kind: "note"
   summary: "User explicitly approved implementation of the shared target-resolved chat context menu. New status: confirmed."
+- time: "2026-08-27T13:38:49.652Z"
+  kind: "decision"
+  summary: "The user explicitly approved replacing native selection menus with shared Otto-owned text actions, and the root provider plus hybrid Knowledge review integration are implemented and typechecked."
+  source: "Implementation: packages/app/src/components/text-selection-menu/text-selection-menu.web.tsx, packages/app/src/app/_layout.tsx, packages/app/src/project-knowledg"
+- time: "2026-08-27T13:47:52.283Z"
+  kind: "decision"
+  summary: "Keep the durable architecture record scoped to the reusable text-menu capability so its commit remains independent of the pre-existing untracked Knowledge review feature bundle."
+  source: "Implementation: packages/app/src/components/text-selection-menu/text-selection-menu.web.tsx, packages/app/src/app/_layout.tsx; verification: focused Vitest, app"

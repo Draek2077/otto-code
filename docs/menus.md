@@ -8,6 +8,23 @@ directly only when you are building a third trigger shape.
 Do not add a third menu implementation. The two that existed were byte-identical from
 `computePosition` down, and the copies drifted: only one of them ever grew a sheet.
 
+## Text selection menus
+
+Desktop and browser Otto UI text is owned by the root
+`TextSelectionMenuProvider`, not Chromium's context menu. An unclaimed right click opens the
+standard action group: static text gets **Copy** and **Select all**; a text input additionally gets
+**Cut** and **Paste**. Disabled actions remain visible when their target has no selection, and every
+row prints its platform shortcut.
+
+A target with a specific context menu claims an **unselected** browser event, while a non-empty text
+selection always yields to the root standard group. That keeps Copy available from selected labels
+inside workspace rows and tabs. To build a hybrid menu, wrap the target in
+`TextSelectionMenuHybridScope`, then call
+`useTextSelectionContextMenu().open(event, { beforeStandardActions, selectAllScope })`. The caller
+supplies only actions above the standard group; the provider owns the clipboard operation,
+availability, separators, shortcuts, and Select all scope. Browser guests and isolated webviews
+remain native-owned because their selections do not belong to the Otto renderer.
+
 ## Two presentations
 
 `MenuRoot` picks one from form factor, never from platform — a tablet in a narrow split view

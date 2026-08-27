@@ -222,12 +222,9 @@ It is a **selection-aware toolbar button** instead: pressing History with lines
 selected scopes the history to that range (and opens blame at that line), with
 the scope stated above the list and a one-press "Show whole file".
 
-Right-click inside the editor belongs to the platform's own edit menu - copy,
-paste, spellcheck. On Electron that menu fires even when the renderer calls
-`preventDefault` (see `shouldShowDefaultContextMenu` in
-`packages/desktop/src/window/window-manager.ts`), so an app-level menu over the
-editor would double up with the native one. Select-then-press is the same
-gesture in one fewer step and costs nothing.
+Right-click inside the editor belongs to the editor's own edit menu - copy,
+paste, spellcheck, and language actions. Select-then-press is the same gesture
+in one fewer step and costs nothing.
 
 ## Testing
 

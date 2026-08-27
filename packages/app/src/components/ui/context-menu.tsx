@@ -214,6 +214,11 @@ export function ContextMenuTrigger({
   const handleContextMenu = useCallback(
     (event: unknown) => {
       if (isNative) return;
+      // Text selection is an app-wide capability. Let the root selection menu
+      // own it instead of turning a selected row label into unrelated row
+      // actions. A surface that genuinely needs both uses the explicit hybrid
+      // text-menu API and claims the event itself.
+      if (hasWebTextSelection()) return;
       if (typeof event === "object" && event !== null) {
         const preventDefault = Reflect.get(event, "preventDefault");
         const stopPropagation = Reflect.get(event, "stopPropagation");

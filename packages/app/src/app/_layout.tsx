@@ -59,6 +59,7 @@ import { WorkspacePinShortcutHandler } from "@/components/workspace-pin-shortcut
 import { ClientResourceBar } from "@/components/client-resource-bar";
 import { resolveClientResourceBarPlacement } from "@/components/client-resource-bar-placement";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
+import { TextSelectionMenuProvider } from "@/components/text-selection-menu/text-selection-menu";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
 import {
   getIsElectronRuntime,
@@ -1424,7 +1425,9 @@ function SheetPortalProviders({ children }: { children: ReactNode }) {
   return (
     <ToastProvider>
       <PortalProvider>
-        <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+        <BottomSheetModalProvider>
+          <TextSelectionMenuProvider>{children}</TextSelectionMenuProvider>
+        </BottomSheetModalProvider>
       </PortalProvider>
     </ToastProvider>
   );

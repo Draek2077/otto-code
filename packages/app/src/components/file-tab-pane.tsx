@@ -969,11 +969,9 @@ function FileGitToolbarGroup({
  * you are pointing at, so the pointer is the natural place to ask for it (the
  * core moves the caret to the click first - see its `contextmenu` handler).
  *
- * Because claiming the right-click suppresses the platform's own menu, this
- * menu owes the user the edit actions that menu had. On Electron the native one
- * is suppressed to match, via `shouldShowDefaultContextMenu` - two menus for
- * one click is worse than either. Web-only: on a phone, long-press belongs to
- * the platform's text selection menu.
+ * Because claiming the right-click suppresses the app-wide text menu, this
+ * specialist menu owns the edit actions too. Web-only: on a phone, long-press
+ * belongs to the platform's text selection menu.
  */
 function EditorContextMenu({
   anchor,
