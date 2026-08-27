@@ -280,13 +280,12 @@ losing its window) on every flush.
 
 The load-bearing decisions:
 
-- **Web renders in the page; native renders in a webview.** There is no DOM on iOS/Android and
-  mermaid measures label text by laying it out, so native gets the CM6 editor's recipe: an esbuilt
-  self-contained HTML payload (`scripts/build-mermaid-webview-html.mjs`, wired into
-  `eas-build-post-install` next to the editor and terminal payloads) driven over a typed bridge.
-  Rebuild it with `npm run build:mermaid-webview` after touching anything the payload imports -
-  including `mermaid-render.ts`, which it shares with web. Nothing in the payload reaches the
-  network.
+- **Browser web uses a sandboxed iframe; Electron and native use a webview.** There is no DOM on
+  iOS/Android and mermaid measures label text by laying it out, so each runtime uses the same
+  self-contained HTML payload driven over a typed bridge. Electron must use an isolated `<webview>`:
+  the app shell's `script-src 'self'` CSP is inherited by a `srcDoc` iframe and would block the
+  payload's inline script before it can render or report its size. Nothing in the payload reaches
+  the network.
 - **Both hosts sit behind a dynamic `import()`, and that is not optional.** Mermaid is **~3.4 MB
   minified / ~950 KB gzipped** - bigger than the editor and terminal payloads combined. On web
   `import("mermaid")` is the boundary; on native it is `import("./webview/mermaid-webview-html")`,

@@ -23,6 +23,8 @@ export type MermaidRuntimeMessage =
       revision: number;
       source: string;
       themeKey: string;
+      /** A static SVG artifact for native hosts that cannot embed a live guest. */
+      svg?: string;
     } & DiagramDimensions)
   | { type: "renderError"; revision: number };
 
@@ -93,6 +95,7 @@ export function parseMermaidRuntimeMessage(value: unknown): MermaidRuntimeMessag
     typeof value.width === "number" &&
     Number.isFinite(value.width)
   ) {
+    const svg = typeof value.svg === "string" ? value.svg : undefined;
     return {
       type: "rendered",
       revision: value.revision,
@@ -100,6 +103,7 @@ export function parseMermaidRuntimeMessage(value: unknown): MermaidRuntimeMessag
       themeKey: value.themeKey,
       height: value.height,
       width: value.width,
+      ...(svg ? { svg } : {}),
     };
   }
   return null;

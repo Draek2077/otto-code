@@ -82,7 +82,12 @@ describe("Mermaid sandbox runtime", () => {
     const invalid = await render(frame, { revision: 2, source: "not a mermaid diagram" });
     const second = await render(frame, { revision: 3, source: secondSource });
 
-    expect(first).toMatchObject({ type: "rendered", revision: 1, source: firstSource });
+    expect(first).toMatchObject({
+      type: "rendered",
+      revision: 1,
+      source: firstSource,
+      svg: expect.stringContaining("<svg"),
+    });
     expect(invalid).toEqual({ type: "renderError", revision: 2 });
     expect(second).toMatchObject({ type: "rendered", revision: 3, source: secondSource });
   });

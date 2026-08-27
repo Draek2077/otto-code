@@ -64,6 +64,77 @@ function setViewport(interactive: boolean): void {
     );
 }
 
+/**
+ * Mindmap derives its section fills with fixed HSL lightness offsets from the
+ * primary palette. On Otto's warm themes several offsets become almost black,
+ * while the label stays foreground-dark. Unlike flowcharts, its generated CSS
+ * does not consistently honour the ordinary node/text variables. Override the
+ * family once with the concrete app palette so every branch stays readable.
+ */
+function applyMindmapTheme(host: HTMLElement, themeVariables: Record<string, string>): void {
+  const svg = host.querySelector("svg.mindmapDiagram");
+  if (!svg) {
+    return;
+  }
+  const surface = themeVariables.primaryColor;
+  const border = themeVariables.primaryBorderColor;
+  const foreground = themeVariables.primaryTextColor;
+  const edge = themeVariables.lineColor;
+  if (!surface || !border || !foreground || !edge) {
+    return;
+  }
+  const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  style.textContent = `
+    .mindmap-node rect, .mindmap-node path, .mindmap-node circle, .mindmap-node polygon {
+      fill: ${surface} !important;
+      stroke: ${border} !important;
+    }
+    .mindmap-node text, .mindmap-node .label, .mindmap-node .label *,
+    .mindmap-node foreignObject, .mindmap-node foreignObject * {
+      fill: ${foreground} !important;
+      color: ${foreground} !important;
+    }
+    .edge { stroke: ${edge} !important; }
+  `;
+  svg.append(style);
+}
+
+/**
+ * Mermaid occasionally emits `height: 100vh` and `overflow: auto` on its root
+ * SVG. In an embedded Electron guest that turns the SVG itself into a tall,
+ * scrollable viewport, while the host correctly reserves only the diagram's
+ * natural height. Let the viewBox determine the SVG's aspect ratio and leave
+ * clipping to Otto's pan/zoom viewport.
+ */
+function normalizeSvgViewport(host: HTMLElement): void {
+  const svg = host.querySelector("svg");
+  if (!svg) {
+    return;
+  }
+  svg.style.removeProperty("height");
+  svg.style.removeProperty("overflow");
+}
+
+/**
+ * An Electron webview reports the dimensions of its own viewport, not the
+ * rendered SVG, while the host is still measuring it. Derive the height from
+ * the fitted viewBox and displayed width instead, so the host can grow the
+ * webview to the diagram's full natural size on the first render.
+ */
+function measureDiagram(host: HTMLElement): { height: number; width: number } {
+  const svg = host.querySelector("svg");
+  const rect = svg?.getBoundingClientRect();
+  const viewBox = svg?.viewBox.baseVal;
+  const width = Math.ceil(
+    rect?.width || host.clientWidth || host.scrollWidth || viewBox?.width || 1,
+  );
+  const height =
+    viewBox && viewBox.width > 0 && viewBox.height > 0
+      ? Math.ceil((width * viewBox.height) / viewBox.width)
+      : Math.ceil(rect?.height || host.scrollHeight || 1);
+  return { height, width };
+}
+
 let latestRevision = 0;
 let pendingRender: MermaidRuntimeRenderMessage | null = null;
 let isRendering = false;
@@ -82,14 +153,17 @@ async function render(message: MermaidRuntimeRenderMessage): Promise<void> {
       return;
     }
     host.innerHTML = svg;
-    const rect = host.querySelector("svg")?.getBoundingClientRect();
+    applyMindmapTheme(host, message.themeVariables);
+    normalizeSvgViewport(host);
+    const dimensions = measureDiagram(host);
+    const renderedSvg = host.querySelector("svg")?.outerHTML;
     sendToHost({
       type: "rendered",
       revision: message.revision,
       source: message.source,
       themeKey: message.themeKey,
-      height: Math.ceil(rect?.height ?? host.scrollHeight),
-      width: Math.ceil(rect?.width ?? host.scrollWidth),
+      ...dimensions,
+      ...(renderedSvg ? { svg: renderedSvg } : {}),
     });
   } catch {
     if (message.revision === latestRevision) {

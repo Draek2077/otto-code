@@ -90,6 +90,13 @@ import {
   registerArtifactWebviewSessionGuards,
 } from "./features/artifact-webview.js";
 import {
+  hardenMermaidWebviewPreferences,
+  isMermaidWebviewAttach,
+  lockDownMermaidWebviewContents,
+  registerMermaidWebviewDiagnostics,
+  registerMermaidWebviewSessionGuards,
+} from "./features/mermaid-webview.js";
+import {
   hardenWidgetWebviewPreferences,
   isWidgetWebviewAttach,
   lockDownWidgetWebviewContents,
@@ -356,6 +363,7 @@ function readActiveBrowserInput(
 type PendingWebviewAttach =
   | { kind: "browser" }
   | { kind: "artifact" }
+  | { kind: "mermaid" }
   | { kind: "widget" }
   | { kind: "visualizer" };
 const pendingWebviewAttaches: PendingWebviewAttach[] = [];
@@ -1071,6 +1079,14 @@ async function createWindow(
       registerArtifactWebviewSessionGuards();
       return;
     }
+    if (isMermaidWebviewAttach(params)) {
+      pendingWebviewAttaches.push({ kind: "mermaid" });
+      hardenMermaidWebviewPreferences(webPreferences);
+      delete params.preload;
+      delete (params as { preloadURL?: string }).preloadURL;
+      registerMermaidWebviewSessionGuards();
+      return;
+    }
     if (isWidgetWebviewAttach(params)) {
       pendingWebviewAttaches.push({ kind: "widget" });
       // Order matters: drop whatever preload the renderer asked for FIRST, then
@@ -1118,6 +1134,11 @@ async function createWindow(
     const pending = pendingWebviewAttaches.shift() ?? null;
     if (pending?.kind === "artifact") {
       lockDownArtifactWebviewContents(contents);
+      return;
+    }
+    if (pending?.kind === "mermaid") {
+      lockDownMermaidWebviewContents(contents);
+      registerMermaidWebviewDiagnostics(contents);
       return;
     }
     if (pending?.kind === "widget") {
