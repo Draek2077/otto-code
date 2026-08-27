@@ -407,6 +407,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [isMobile],
     );
     const [isNearBottom, setIsNearBottom] = useState(true);
+    // Freeze the mounted/virtualized boundary for the entire detached interval.
+    // Advancing it replaces measured DOM with estimates, shrinks the document,
+    // and lets the browser clamp the reader's scroll position toward zero.
+    const [pinnedMountedWindowStartId, setPinnedMountedWindowStartId] = useState<string | null>(
+      null,
+    );
     const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(
       new Set(),
     );
@@ -472,6 +478,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     useEffect(() => {
       setIsNearBottom(true);
+      setPinnedMountedWindowStartId(null);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
       setExpandAllCommand(null);
@@ -654,6 +661,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
         groupConsecutiveActions,
+        pinnedMountedWindowStartId,
       });
     }, [
       isMobile,
@@ -662,7 +670,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       projectedToolCalls.tail,
       effectiveTurnPresentation.startedAt,
       groupConsecutiveActions,
+      pinnedMountedWindowStartId,
     ]);
+    const mountedWindowStartId = baseRenderModel.segments.historyMounted[0]?.id ?? null;
+    const mountedWindowStartIdRef = useRef(mountedWindowStartId);
+    mountedWindowStartIdRef.current = mountedWindowStartId;
+    useEffect(() => {
+      if (isNearBottom) {
+        setPinnedMountedWindowStartId(null);
+        return;
+      }
+      setPinnedMountedWindowStartId((current) => current ?? mountedWindowStartIdRef.current);
+    }, [isNearBottom]);
     const streamLayout = useMemo(
       () =>
         layoutStream({

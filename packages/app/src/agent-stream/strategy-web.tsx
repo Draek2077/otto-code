@@ -14,7 +14,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { Theme } from "@/styles/theme";
 import { WEB_SCROLLBAR_SIZE_PX } from "@/styles/web-scrollbar";
-import { estimateStreamItemHeight } from "./web-virtualization";
+import { estimateStreamItemHeight, shouldAbsorbVirtualRowResize } from "./web-virtualization";
 import {
   forgetReaderPosition,
   readReaderPosition,
@@ -248,11 +248,15 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const isActiveRef = useRef(isActive);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLElement | null>(null);
+  const virtualizedBlockRef = useRef<HTMLElement | null>(null);
   const handleScrollContainerRef = useCallback((node: HTMLElement | null) => {
     scrollContainerRef.current = node;
   }, []);
   const handleContentRef = useCallback((node: HTMLElement | null) => {
     contentRef.current = node;
+  }, []);
+  const handleVirtualizedBlockRef = useCallback((node: HTMLElement | null) => {
+    virtualizedBlockRef.current = node;
   }, []);
   // A remount of this chat is not an open of it. If the reader had taken the
   // position before the tab was evicted from its pane's mounted set, that place
@@ -324,14 +328,24 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     overscan: 8,
   });
   useEffect(() => {
-    rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (_item, _delta, instance) => {
+    // This override replaces TanStack's default "row is above the viewport"
+    // guard wholesale. Keep that decision row-relative: opting in a row below
+    // the reader turns its measurement into an unsolicited scroll write.
+    rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item) => {
       if (historyStartPrependAnchorActiveRef.current) {
         return false;
       }
-      const viewportHeight = instance.scrollRect?.height ?? 0;
-      const scrollOffset = instance.scrollOffset ?? 0;
-      const remainingDistance = instance.getTotalSize() - (scrollOffset + viewportHeight);
-      return remainingDistance > AUTO_SCROLL_BOTTOM_THRESHOLD_PX;
+      const scrollContainer = scrollContainerRef.current;
+      const virtualizedBlock = virtualizedBlockRef.current;
+      if (!scrollContainer || !virtualizedBlock) {
+        return false;
+      }
+      return shouldAbsorbVirtualRowResize({
+        blockViewportRelativeTop:
+          virtualizedBlock.getBoundingClientRect().top -
+          scrollContainer.getBoundingClientRect().top,
+        rowStart: item.start,
+      });
     };
     return () => {
       rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined;
@@ -1270,7 +1284,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       <div ref={handleContentRef} style={contentContainerStyle}>
         {historyStartSlot}
         {shouldUseVirtualizer ? (
-          <div style={virtualRowsContainerStyle}>
+          <div ref={handleVirtualizedBlockRef} style={virtualRowsContainerStyle}>
             {virtualRows.map((virtualRow) => {
               const item = segments.historyVirtualized[virtualRow.index];
               if (!item) {
