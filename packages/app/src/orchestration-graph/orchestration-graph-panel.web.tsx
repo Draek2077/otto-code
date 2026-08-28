@@ -21,6 +21,7 @@ import {
 } from "@/components/orchestration/new-orchestration-sheet";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
@@ -365,8 +366,9 @@ function CanvasEmptyState({
   }
   return (
     <View style={styles.loading}>
+      {isLoading ? <LoadingSpinner size="large" /> : null}
       <Text style={styles.loadingText}>
-        {isLoading ? "Loading graph…" : "This graph no longer exists on the host."}
+        {isLoading ? "Loading graph..." : "This graph no longer exists on the host."}
       </Text>
     </View>
   );
@@ -605,6 +607,7 @@ const styles = StyleSheet.create((theme) => ({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    gap: theme.spacing[3],
     zIndex: 1,
   },
   loadingText: {

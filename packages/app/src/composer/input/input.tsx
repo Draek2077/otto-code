@@ -68,6 +68,7 @@ import {
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useShowShortcutDiscovery } from "@/hooks/use-show-shortcut-badges";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useIosHardwareKeyboardSubmit } from "@/hooks/use-ios-hardware-keyboard-submit";
 import { formatShortcut } from "@/utils/format-shortcut";
 import { mergeRefs } from "@/utils/merge-refs";
@@ -234,17 +235,6 @@ type WebTextInputKeyPressEvent = NativeSyntheticEvent<
     keyCode?: number;
   }
 >;
-
-type WebTextInputModifierEvent = NativeSyntheticEvent<
-  TextInputKeyPressEventData & {
-    metaKey?: boolean;
-    ctrlKey?: boolean;
-  }
->;
-
-function hasAlternateSendModifier(event: WebTextInputModifierEvent): boolean {
-  return Boolean(event.nativeEvent.ctrlKey || event.nativeEvent.metaKey);
-}
 
 function canUseAlternateSendAction(
   isAgentRunning: boolean,
@@ -756,7 +746,6 @@ interface ComposerTextSurfaceProps {
   autoFocus: boolean;
   onContentSizeChange: (event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => void;
   onKeyPress: ((event: WebTextInputKeyPressEvent) => void) | undefined;
-  onWebModifierChange: ((event: WebTextInputModifierEvent) => void) | undefined;
   onSelectionChange: (event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => void;
   focusHintVisible: boolean;
   focusInputKeys: ShortcutChord | null | undefined;
@@ -797,12 +786,6 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
         onContentSizeChange={props.onContentSizeChange}
         editable={props.editable}
         onKeyPress={props.onKeyPress}
-        {...(isWeb
-          ? ({
-              onKeyDown: props.onWebModifierChange,
-              onKeyUp: props.onWebModifierChange,
-            } as Record<string, unknown>)
-          : {})}
         onSelectionChange={props.onSelectionChange}
         autoFocus={props.autoFocus}
         spellCheck
@@ -1427,7 +1410,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const focusInputKeys = useShortcutKeys("focus-message-input");
     const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
     const [isInputFocused, setIsInputFocused] = useState(false);
-    const [isAlternateSendModifierHeld, setIsAlternateSendModifierHeld] = useState(false);
+    const isAlternateSendModifierHeld = useKeyboardShortcutsStore(
+      (state) => state.shortcutDiscoveryModifiers.ctrl || state.shortcutDiscoveryModifiers.meta,
+    );
     const rootRef = useRef<View | null>(null);
     const tutorialAnchorRef = useTutorialAnchor("chat-input");
     const rootMergedRef = useMemo(() => mergeRefs(rootRef, tutorialAnchorRef), [tutorialAnchorRef]);
@@ -2007,13 +1992,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const handleInputBlur = useCallback(() => {
       isInputFocusedRef.current = false;
       setIsInputFocused(false);
-      setIsAlternateSendModifierHeld(false);
       onFocusChange?.(false);
     }, [onFocusChange]);
-
-    const handleWebModifierChange = useCallback((event: WebTextInputModifierEvent) => {
-      setIsAlternateSendModifierHeld(hasAlternateSendModifier(event));
-    }, []);
 
     const attachButtonStyle = useCallback(
       (state: PressableStateCallbackType) => {
@@ -2134,7 +2114,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             autoFocus={isWeb && autoFocus}
             onContentSizeChange={handleContentSizeChange}
             onKeyPress={shouldHandleWebKeyPress ? handleDesktopKeyPress : undefined}
-            onWebModifierChange={handleWebModifierChange}
             onSelectionChange={handleSelectionChange}
             focusHintVisible={computeFocusHintVisible({
               isPaneFocused,
