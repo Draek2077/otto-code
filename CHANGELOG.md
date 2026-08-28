@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.8.19 - 2026-08-27
+
+### Changed
+
+- Review and accept source-backed AI refinements to Project Knowledge articles without leaving the article
+- Filter Project Knowledge articles by type
+- Open Project Knowledge articles directly in the Manage knowledge view
+- View every active workspace chat together in the Visualizer
+- Open and edit files outside a registered project directly
+- Show the Composer’s alternate Enter action before you use it
+- Give selected rendered text one consistent Otto context menu with platform shortcuts
+- Manage pull-request discussion threads, reactions, and resolution on GitHub and Bitbucket Cloud
+- Keep Artifacts in their owning project’s configured storage location
+- Preserve a snapshot of each schedule run’s target for an accurate history
+- Honor the board target configured for each GitHub Projects or Jira project
+- Rename the orchestration surface to Workflows
+- Limit connector installation to verified catalog configurations
+
+### Fixed
+
+- Render Mermaid diagrams reliably in the desktop app
+- Keep your chat transcript fixed in place when you have scrolled away from the latest message
+- Restore workspace tabs after restarting Otto
+- Close archived chat tabs correctly
+- Support older GitHub CLI JSON fields when reading GitHub data
+- Close failed encrypted relay connections cleanly
+- Record actionable desktop updater diagnostics when an update check fails
+
 ## 0.8.17 - 2026-08-25
 
 ### Fixed
