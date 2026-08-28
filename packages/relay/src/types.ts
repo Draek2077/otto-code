@@ -25,4 +25,11 @@ export interface RelaySessionAttachment {
    */
   connectionId?: string | null;
   createdAt: number;
+  /**
+   * Ephemeral per-socket message allowance. This travels with Cloudflare's
+   * hibernatable WebSocket attachment only; it is neither user identity nor
+   * relay history and disappears when the socket closes.
+   */
+  rateWindowStartedAt?: number;
+  rateWindowMessageCount?: number;
 }

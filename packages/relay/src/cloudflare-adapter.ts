@@ -35,6 +35,12 @@ const CURRENT_RELAY_VERSION: RelayProtocolVersion = "2";
 const MAX_PENDING_FRAMES_PER_CONNECTION = 200;
 const MAX_PENDING_BYTES_PER_CONNECTION = 1024 * 1024; // fits one max-size (1 MiB) frame
 const MAX_PENDING_BYTES_TOTAL = 16 * 1024 * 1024; // across all connectionIds in this DO
+const MAX_ROUTE_KEY_BYTES = 256;
+const MAX_CLIENT_SOCKETS_PER_SESSION = 4;
+const DATA_MESSAGE_WINDOW_MS = 10_000;
+const MAX_DATA_MESSAGES_PER_WINDOW = 200;
+const CONTROL_MESSAGE_WINDOW_MS = 60_000;
+const MAX_CONTROL_MESSAGES_PER_WINDOW = 6;
 
 function resolveRelayVersion(rawValue: string | null): RelayProtocolVersion | null {
   if (rawValue == null) return LEGACY_RELAY_VERSION;
@@ -95,6 +101,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function getString(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function getFiniteNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
 
 function getGlobalWebSocketPair(): (new () => WebSocketPair) | undefined {
@@ -205,6 +220,63 @@ export class RelayDurableObject {
         ws.close(1008, "Replaced by new connection");
       }
     }
+  }
+
+  private hasClientCapacity(): boolean {
+    return this.state.getWebSockets("client").length < MAX_CLIENT_SOCKETS_PER_SESSION;
+  }
+
+  private validateV2Admission(
+    role: ConnectionRole,
+    resolvedConnectionId: string,
+  ): Response | undefined {
+    // A real daemon only opens a v2 data socket after the client socket has
+    // connected and its control notification has been delivered. Refusing an
+    // orphan data socket eliminates an otherwise unbounded fake-socket shape.
+    if (role === "server" && resolvedConnectionId && !this.hasClientSocket(resolvedConnectionId)) {
+      return new Response("No matching client connection", { status: 409 });
+    }
+
+    if (role === "client" && !this.hasClientCapacity()) {
+      return new Response("Relay session client capacity reached", { status: 429 });
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Count opaque frames without inspecting them. The counter is part of the
+   * hibernatable socket attachment so a wake/sleep cycle cannot reset a flood.
+   */
+  private consumeMessageAllowance(ws: WebSocket, attachment: Record<string, unknown>): boolean {
+    const connectionId = getString(attachment, "connectionId");
+    const version = getString(attachment, "version") ?? LEGACY_RELAY_VERSION;
+    // v1 has no separate control channel: both roles carry opaque relay data.
+    const isControl =
+      version === CURRENT_RELAY_VERSION && attachment.role === "server" && !connectionId;
+    const windowMs = isControl ? CONTROL_MESSAGE_WINDOW_MS : DATA_MESSAGE_WINDOW_MS;
+    const maxMessages = isControl ? MAX_CONTROL_MESSAGES_PER_WINDOW : MAX_DATA_MESSAGES_PER_WINDOW;
+    const now = Date.now();
+    const windowStartedAt = Math.floor(now / windowMs) * windowMs;
+    const previousWindowStartedAt = getFiniteNumber(attachment, "rateWindowStartedAt");
+    const previousCount = getFiniteNumber(attachment, "rateWindowMessageCount") ?? 0;
+    const count = previousWindowStartedAt === windowStartedAt ? previousCount : 0;
+
+    if (count >= maxMessages) {
+      try {
+        ws.close(1013, "Relay message rate exceeded");
+      } catch {
+        // ignore
+      }
+      return false;
+    }
+
+    serializeAttachment(ws, {
+      ...attachment,
+      rateWindowStartedAt: windowStartedAt,
+      rateWindowMessageCount: count + 1,
+    });
+    return true;
   }
 
   // COMPAT(relay-json-ping): Old daemons (< v0.1.76) send JSON {type:"ping"} on the control
@@ -399,6 +471,9 @@ export class RelayDurableObject {
     const isServerControl = role === "server" && !resolvedConnectionId;
     const isServerData = role === "server" && !!resolvedConnectionId;
 
+    const admissionError = this.validateV2Admission(role, resolvedConnectionId);
+    if (admissionError) return admissionError;
+
     // Close any existing server-side connection with the same identity.
     // - server-control: single per serverId
     // - server-data: single per connectionId
@@ -498,6 +573,10 @@ export class RelayDurableObject {
       return;
     }
     const attachment = attachmentRaw;
+
+    if (!this.consumeMessageAllowance(ws, attachment)) {
+      return;
+    }
 
     const version = getString(attachment, "version") ?? LEGACY_RELAY_VERSION;
 
@@ -646,6 +725,25 @@ export default {
       const serverId = url.searchParams.get("serverId");
       if (!serverId) {
         return new Response("Missing serverId parameter", { status: 400 });
+      }
+
+      if (utf8ByteLength(serverId) > MAX_ROUTE_KEY_BYTES) {
+        return new Response("serverId is too long", { status: 400 });
+      }
+
+      const connectionId = url.searchParams.get("connectionId");
+      if (connectionId !== null && utf8ByteLength(connectionId) > MAX_ROUTE_KEY_BYTES) {
+        return new Response("connectionId is too long", { status: 400 });
+      }
+
+      const role = url.searchParams.get("role");
+      if (role !== "server" && role !== "client") {
+        return new Response("Missing or invalid role parameter", { status: 400 });
+      }
+
+      const upgradeHeader = request.headers.get("Upgrade");
+      if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
+        return new Response("Expected WebSocket upgrade", { status: 426 });
       }
 
       const version = resolveRelayVersion(url.searchParams.get("v"));

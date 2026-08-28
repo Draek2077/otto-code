@@ -1,8 +1,8 @@
 name: Deploy Relay
 
 on:
-  # Manual-only while relay.otto-code.me bridges traffic to the Fly deployment.
-  # A release or main push must not redeploy the temporary Cloudflare bridge.
+  # Manual-only: a relay deploy replaces live WebSocket behavior and must be a
+  # deliberate operator action, never a side effect of a release or main push.
   workflow_dispatch:
 
 permissions:
@@ -27,10 +27,6 @@ jobs:
         run: npm run typecheck --workspace=@otto-code/relay
 
       - name: Deploy worker
-        # OTTO_RELAY_UPSTREAM is set here, not in wrangler.toml [vars], so the
-        # Fly cutover bridge only applies to the deployed production worker and
-        # never leaks into local/e2e `wrangler dev` runs (which would then fail
-        # to reach the external upstream in CI). See wrangler.toml for context.
-        run: cd packages/relay && npx wrangler deploy --var OTTO_RELAY_UPSTREAM:https://otto-relay-next.fly.dev
+        run: cd packages/relay && npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
