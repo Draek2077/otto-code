@@ -22,6 +22,10 @@ import { settleVisualState } from './simulation/settle-visual-state'
 /** ms between React state updates — canvas uses frameRef for smooth 60fps */
 const UI_THROTTLE_MS = 250
 
+// OTTO PATCH (OTTO-PATCHES.md): the host's synthetic All active picker value
+// means no session filtering; every live chat remains an independent root.
+const ALL_ACTIVE_CHATS_SESSION_ID = 'otto:all-active-chats'
+
 export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
   const { useMockData = true, externalEvents, onExternalEventsConsumed, sessionFilter, sessionFilterRef: externalFilterRef, disable1MContext = false, suppressAudioRef } = options
   const internalFilterRef = useRef(sessionFilter)
@@ -243,7 +247,7 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     if (capturedEvents) {
       for (const event of capturedEvents) {
         const activeFilter = sessionFilterRef.current
-        if (activeFilter && event.sessionId && event.sessionId !== activeFilter) {
+        if (activeFilter && activeFilter !== ALL_ACTIVE_CHATS_SESSION_ID && event.sessionId && event.sessionId !== activeFilter) {
           continue
         }
         if (event.hydrate) sawHydrateBatch = true

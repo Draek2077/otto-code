@@ -10,6 +10,29 @@ import { edgeId, asString, asBoolean } from './types'
 
 const KNOWN_RUNTIMES = ['claude', 'codex', 'copilot', 'opencode', 'pi', 'openai-compat'] as const
 
+// OTTO PATCH (see OTTO-PATCHES.md): independent workspace chats are all root
+// nodes in the synthetic All session. The upstream default put every root at
+// the origin, so force ticks began with coincident nodes and rendered their
+// trees on top of each other. Keep the first root centered (the normal
+// single-chat view) and seed additional roots into a deterministic golden-angle
+// spiral. The force layout then has distinct islands to settle rather than one
+// overlapping clump to untangle.
+const ROOT_LAYOUT_GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+const ROOT_LAYOUT_SPACING = AGENT_SPAWN_DISTANCE * 1.4
+
+function rootSeedPosition(index: number): { x: number, y: number } {
+  if (index === 0) {
+    return { x: 0, y: 0 }
+  }
+
+  const radius = ROOT_LAYOUT_SPACING * Math.sqrt(index)
+  const angle = index * ROOT_LAYOUT_GOLDEN_ANGLE
+  return {
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * radius,
+  }
+}
+
 export function handleAgentSpawn(
   payload: Record<string, unknown>,
   currentTime: number,
@@ -83,6 +106,16 @@ export function handleAgentSpawn(
       x = parent.x + Math.cos(angle) * AGENT_SPAWN_DISTANCE
       y = parent.y + Math.sin(angle) * AGENT_SPAWN_DISTANCE
     }
+  } else {
+    let rootCount = 0
+    for (const agent of state.agents.values()) {
+      if (agent.parentId === null) {
+        rootCount++
+      }
+    }
+    const position = rootSeedPosition(rootCount)
+    x = position.x
+    y = position.y
   }
 
   const agent: Agent = {

@@ -48,6 +48,13 @@ let nextSubscriptionSourceId = 0;
  * are one level deep today (root -> observed subagent). */
 const MAX_PARENT_WALK_DEPTH = 8;
 
+/** Synthetic picker value understood by the vendored Visualizer bridge. It is
+ * never attached to an event: selecting it makes the page render every LIVE
+ * real chat session as one unconnected workspace forest. A closed chat has no
+ * provider session, so it stays selectable individually but does not crowd the
+ * aggregate view. */
+export const ALL_ACTIVE_CHATS_SESSION_ID = "otto:all-active-chats";
+
 interface LiveEnvelope {
   event: AgentStreamEventPayload;
   time: number;
@@ -76,6 +83,9 @@ interface TrackedNode {
    * pulsing 'thinking'. See `backfillAgentTimeline`. */
   lastStatus: AgentLifecycleStatus;
   terminalEmitted: boolean;
+  /** A root's provider session has closed, so it remains individually
+   * selectable as completed but must leave the synthetic All active view. */
+  sessionEnded: boolean;
   /** True once a root node's session has been removed from the page because the
    * chat was archived. Archiving is a removal, not a completion - the session
    * disappears (page returns to "Waiting for chat activity" / auto-selects a
@@ -141,7 +151,9 @@ interface StreamingMessage {
 
 interface AdapterState {
   nodes: Map<string, TrackedNode>;
-  /** Names already assigned within a session, for collision suffixing. */
+  /** Names already assigned in this workspace. Individual chat sessions do
+   * not need this broad a namespace, but the synthetic All view consumes all
+   * of them at once and the vendor simulation keys agents by name. */
   sessionNames: Map<string, Set<string>>;
   pending: SimulationEvent[];
   pendingSessionMessages: VisualizerHostToPageMessage[];
@@ -345,8 +357,11 @@ function ensureNode(
     state.sessionEpochMs.set(rootId, time);
   }
 
-  const usedNames = state.sessionNames.get(rootId) ?? new Set<string>();
-  state.sessionNames.set(rootId, usedNames);
+  // Names must be unique across the workspace, not only inside each root
+  // session: the toolbar's All view asks the page to consume every session at
+  // once, and its simulation keys agents by this display identity.
+  const usedNames = state.sessionNames.get(ALL_ACTIVE_CHATS_SESSION_ID) ?? new Set<string>();
+  state.sessionNames.set(ALL_ACTIVE_CHATS_SESSION_ID, usedNames);
   const name = resolveAgentNodeName({ agentId, title: agent.title, usedNames });
   usedNames.add(name);
 
@@ -362,6 +377,7 @@ function ensureNode(
     lastStatus: agent.status,
     terminalEmitted: false,
     sessionRemoved: false,
+    sessionEnded: false,
     cursor: null,
     bufferedLive: [],
     startedToolCallIds: new Set(),
@@ -433,7 +449,7 @@ function pruneVanishedNode(state: AdapterState, agentId: string, node: TrackedNo
     );
   }
   state.nodes.delete(agentId);
-  state.sessionNames.get(node.sessionId)?.delete(node.name);
+  state.sessionNames.get(ALL_ACTIVE_CHATS_SESSION_ID)?.delete(node.name);
 }
 
 /** Diffs the workspace's current agent snapshots against tracked nodes:
@@ -594,6 +610,7 @@ function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: A
     if (!archived && node.sessionRemoved) {
       // Un-archived while attached: bring the session (and its node) back.
       node.sessionRemoved = false;
+      node.sessionEnded = false;
       node.terminalEmitted = false;
       state.pendingSessionMessages.push({
         type: "session-started",
@@ -628,6 +645,13 @@ function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: A
   const time = toSimTime(state, agent.lastActivityAt.getTime(), node.sessionId);
   if (isTerminal && !node.terminalEmitted) {
     node.terminalEmitted = true;
+    if (node.isRoot && !node.sessionEnded) {
+      // A closed root remains an individually selectable completed chat, but
+      // it is not part of All active: the provider runtime is gone. The page
+      // retains its per-session history while its aggregate buffer filters it.
+      node.sessionEnded = true;
+      state.pendingSessionMessages.push({ type: "session-ended", sessionId: node.sessionId });
+    }
     state.pending.push(buildAgentCompleteEvent({ ctx: nodeCtx(node), time }));
     // A root's provider session can close while its chat remains a durable,
     // viewable record. Keep that chat in the Visualizer's session picker; only
@@ -644,6 +668,19 @@ function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: A
     // and deleted the node; a fresh agent_spawn recreates it (or reactivates
     // it mid-fade - spawn of an existing name is a reactivate).
     node.terminalEmitted = false;
+    if (node.isRoot && node.sessionEnded) {
+      node.sessionEnded = false;
+      state.pendingSessionMessages.push({
+        type: "session-started",
+        session: {
+          id: node.sessionId,
+          label: truncateSessionLabel(agent.title ?? node.name),
+          status: "active",
+          startTime: agent.createdAt.getTime(),
+          lastActivityTime: agent.lastActivityAt.getTime(),
+        },
+      });
+    }
     state.pending.push(buildReSpawnEvent(state, node, agent, personaColorsOf(agent), time));
   }
 }

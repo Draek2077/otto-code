@@ -334,6 +334,58 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     });
   });
 
+  it("gives same-titled root chats distinct graph identities for All chats", async () => {
+    setAgents([
+      makeAgent({ id: "root-1", title: "Investigate the failure" }),
+      makeAgent({
+        id: "root-2",
+        title: "Investigate the failure",
+        createdAt: new Date(BASE_TIME.getTime() + 1_000),
+      }),
+    ]);
+    renderAdapter();
+    await settle();
+
+    const rootNames = collectEvents(messages)
+      .filter((event) => event.type === "agent_spawn")
+      .map((event) => (event.payload as { name: string }).name);
+    expect(rootNames).toEqual(["Investigate the failure", "Investigate the failure (root-2)"]);
+  });
+
+  it("keeps a closed chat individually selectable but marks it completed for All active", async () => {
+    setAgents([makeAgent({ id: "cold-root", title: "Cold chat", status: "closed" })]);
+    renderAdapter();
+    await settle();
+
+    expect(messages).toContainEqual({ type: "session-ended", sessionId: "cold-root" });
+    expect(
+      collectEvents(messages).some(
+        (event) => event.type === "agent_complete" && event.payload.name === "Cold chat",
+      ),
+    ).toBe(true);
+
+    messages.length = 0;
+    upsertAgent(
+      makeAgent({
+        id: "cold-root",
+        title: "Cold chat",
+        status: "idle",
+        lastActivityAt: new Date(BASE_TIME.getTime() + 1_000),
+      }),
+    );
+    await settle();
+
+    expect(messages).toContainEqual({
+      type: "session-started",
+      session: expect.objectContaining({ id: "cold-root", status: "active" }),
+    });
+    expect(
+      collectEvents(messages).some(
+        (event) => event.type === "agent_spawn" && event.payload.name === "Cold chat",
+      ),
+    ).toBe(true);
+  });
+
   it("prunes a node whose agent has left the authoritative set", async () => {
     // A child fades and a vanished root closes only AFTER hydration settles -
     // during the attach window the set is a partial pre-refresh view.
@@ -562,7 +614,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     ).toBe(true);
   });
 
-  it("keeps a closed root chat in the session picker until it is archived or removed", async () => {
+  it("keeps a closed root chat individually selectable but ends it for All active", async () => {
     setAgents([makeAgent({ id: "root-1", title: "Codex chat", provider: "codex" })]);
     renderAdapter();
     await settle();
@@ -580,7 +632,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     );
     await settle();
 
-    expect(messages.some((m) => m.type === "session-ended")).toBe(false);
+    expect(messages).toContainEqual({ type: "session-ended", sessionId: "root-1" });
     expect(messages.some((m) => m.type === "close-session")).toBe(false);
     expect(
       collectEvents(messages).some(

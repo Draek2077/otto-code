@@ -7,6 +7,23 @@ here (rather than a fork-wide diff) are the exception, logged one entry per
 patch, oldest first. Each entry should be small enough to re-apply by hand
 after a `git subtree pull` if the upstream diff conflicts with it.
 
+## 2026-08-27 — cursor-anchored wheel zoom
+
+The render layer reserved zoom for Ctrl/Command-wheel and interpreted an
+ordinary mouse wheel as a canvas pan. In Otto, that makes the Visualizer feel
+like the surrounding document is scrolling instead of behaving as a direct
+manipulation canvas.
+
+- `web/hooks/use-canvas-interaction.ts` — every wheel event now prevents host
+  scrolling and changes the camera scale. The camera translation is adjusted
+  from the canvas-relative pointer position so the same world point remains
+  directly under the cursor. Wheel input also cancels any in-flight pan inertia.
+- `web/lib/canvas-constants.ts` — wheel zoom steps are a reciprocal 16% rather
+  than the upstream 8%, so large graphs traverse in a practical number of
+  mouse-wheel notches without accumulating zoom drift.
+
+No Otto-side counterpart. Needs `npm run build:visualizer`.
+
 ## 2026-07-15 — widen the agent-runtime brand mapping (projects/visualizer/tasks/04-polish.md item 4)
 
 Upstream only recognizes `runtime: 'claude' | 'codex'` — every other value
@@ -1628,6 +1645,41 @@ action union; `visualizer-surface.tsx` owns the enter/exit sequence
 (`config.showMockData` + `cold-restart`, with the event adapter gated off while
 it runs) and `visualizer-toolbar.tsx` renders the Demo button. Needs
 `npm run build:visualizer`.
+
+## 2026-08-27 — synthetic All active session in the native toolbar
+
+The Otto toolbar now offers **All active** above the individual live chat
+sessions. The
+visualizer must render the workspace as a forest: every root chat and its
+subagents appear together, but independent chats acquire no invented edge or
+shared parent. The synthetic selection is `otto:all-active-chats`; it is a bridge
+control value, not a new host event session.
+
+- `web/hooks/use-vscode-bridge.ts` — keeps the normal per-session buffers plus
+  an arrival-ordered all-session buffer; selecting `otto:all-active-chats`
+  flushes only live sessions' events. A root mapped to `session-ended` is
+  excluded from this aggregate while its individual history remains available;
+  a revived session re-enters it. New real sessions do not auto-select away
+  from All active, and closing one removes its events from the aggregate buffer.
+- `web/hooks/use-agent-simulation.ts` — treats that synthetic selection as no
+  session filter, allowing the existing multi-root renderer to consume every
+  real session's events together.
+- `web/components/agent-visualizer/index.tsx` — when All is selected and a
+  real chat closes, cold-restarts and replays the remaining aggregate buffer so
+  the archived chat does not linger on the canvas.
+- `web/hooks/simulation/handle-agent-events.ts` — keeps the first root at the
+  origin for the normal one-chat view, then seeds each further root on a
+  golden-angle spiral before force layout begins. This prevents hydrated All
+  views from rendering every independent chat and its descendants on the same
+  focal point.
+
+Otto-side counterpart: `ALL_ACTIVE_CHATS_SESSION_ID` in
+`packages/app/src/visualizer/use-visualizer-event-adapter.ts`, prepended by
+`visualizer-surface.tsx` to the native toolbar session list only when a real
+live root exists (not a draft). The adapter marks a closed root session ended;
+the page retains that session individually but filters it from All active. The
+node-name registry is workspace-wide because the vendor simulation keys agents
+by display name in the aggregate view. Needs `npm run build:visualizer`.
 
 
 ## 2026-08-21 — visualizer stops reflecting its linked chat mid-session

@@ -3,12 +3,11 @@ id: "visualizer-pip"
 kind: "project"
 title: "Visualizer Pip"
 status: "confirmed"
-tags: ["project-charter", "legacy-projects-migration"]
+tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "partial"
 created_at: "2026-08-08T06:18:02.234Z"
-updated_at: "2026-08-08T06:19:52.887Z"
+updated_at: "2026-08-28T02:48:06.265Z"
 ---
-
 # Visualizer Pip
 
 <!-- compiled_truth -->
@@ -155,3 +154,15 @@ line to speak never burns the slot for one that has), and the pre-existing
 - time: "2026-08-08T06:19:52.887Z"
   kind: "note"
   summary: "Migrated from the repository's existing authoritative project or reference documentation at the user's request. New status: confirmed."
+- time: "2026-08-28T02:05:05.893Z"
+  kind: "evidence"
+  summary: "2026-08-27: shipped the first workspace-scoped multi-chat visualizer slice. The native Visualizer chat picker now prepends `All`, selecting the synthetic `otto:all-chats` bridge value. It renders every real chat session in one scene while preserving independent root/subagent trees and avoiding invented cross-chat edges. The vendor bridge holds arrival-ordered aggregate history, keeps All selected as new chats begin, and rebuilds All when a chat closes. `npm run build:visualizer`, `npx vitest run packages/app/src/visualizer/use-visualizer-event-adapter.test.tsx --bail=1` (47 tests), `npm run typecheck`, and `npm run lint` passed. This does not complete the charter's host-wide Arena mode or its separate-window surface."
+  source: "Implementation verified in current workspace"
+- time: "2026-08-28T02:17:01.130Z"
+  kind: "evidence"
+  summary: "2026-08-27: Corrected the workspace-wide All visualizer layout after live observation showed independent root chats stacked at the origin. The vendor spawn handler now keeps the ordinary first root centered and seeds later roots on a deterministic golden-angle spiral before force layout, so each chat starts as a separate top-level island without inventing cross-chat edges. Rebuilt with `npm run build:visualizer`; focused `use-visualizer-event-adapter` tests (47), workspace typecheck, lint, and `git diff --check` passed."
+  source: "implementation verification"
+- time: "2026-08-28T02:48:06.265Z"
+  kind: "evidence"
+  summary: "2026-08-27: User refined the aggregate workspace view: cold chats must not appear because they make the graph intolerable. Shipped the picker as `All active`: it includes only root chats with a live provider lifecycle (`initializing`, `idle`, `running`, or recoverable `error`), including unfocused idle chats retaining provider context. Closed, archived, and draft chats remain individually selectable but are excluded. A last-live-session close automatically falls back to an individual historical session so the picker never retains an invisible synthetic value. Verified with 48 focused adapter tests, `npm run build:visualizer`, full workspace typecheck, lint, and `git diff --check`."
+  source: "user decision + implementation verification"

@@ -67,9 +67,10 @@ export function truncateSessionLabel(label: string): string {
     : trimmed;
 }
 
-/** Node names must be stable and unique per session (the page keys agents by
- * `name`). `usedNames` is the set already assigned within the same
- * SimulationEvent sessionId; on collision a short id suffix disambiguates. */
+/** Node names must be stable and unique across the workspace (the page keys
+ * agents by `name`). The All chats picker view consumes every root session at
+ * once, so `usedNames` spans the workspace; on collision a short id suffix
+ * disambiguates. */
 export function resolveAgentNodeName(input: {
   agentId: string;
   title: string | null;

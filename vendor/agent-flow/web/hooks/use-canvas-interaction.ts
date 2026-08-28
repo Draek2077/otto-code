@@ -178,23 +178,28 @@ export function useCanvasInteraction({
     dragTargetRef.current = null
   }, [screenToCanvas, findAgentAt, findBubbleAgentAt, findToolCallAt, findDiscoveryAt, drawPropsRef, panVelocityRef])
 
-  // Wheel handler attached as native event (passive: false) to allow preventDefault
+  // Wheel handler attached as a native event (passive: false) so the Visualizer
+  // owns wheel input instead of letting its host page scroll.
   const handleWheelRef = useRef<(e: WheelEvent) => void>(() => {})
   handleWheelRef.current = (e: WheelEvent) => {
     e.preventDefault()
     userHasNavigatedRef.current = true
-    if (e.ctrlKey || e.metaKey) {
-      const delta = e.deltaY > 0 ? CAMERA.zoomStepDown : CAMERA.zoomStepUp
-      const rect = mainCanvasRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const mouseX = e.clientX - rect.left
-      const mouseY = e.clientY - rect.top
-      const prev = transformRef.current
-      const newScale = Math.max(CAMERA.minZoom, Math.min(CAMERA.maxZoom, prev.scale * delta))
-      transformRef.current = { scale: newScale, x: mouseX - (mouseX - prev.x) * (newScale / prev.scale), y: mouseY - (mouseY - prev.y) * (newScale / prev.scale) }
-    } else {
-      const prev = transformRef.current
-      transformRef.current = { ...prev, x: prev.x - e.deltaX, y: prev.y - e.deltaY }
+    panVelocityRef.current = { vx: 0, vy: 0, active: false }
+
+    const delta = e.deltaY > 0 ? CAMERA.zoomStepDown : CAMERA.zoomStepUp
+    const rect = mainCanvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+    const prev = transformRef.current
+    const newScale = Math.max(CAMERA.minZoom, Math.min(CAMERA.maxZoom, prev.scale * delta))
+    const scaleRatio = newScale / prev.scale
+
+    // Keep the world coordinate under the cursor fixed while changing scale.
+    transformRef.current = {
+      scale: newScale,
+      x: mouseX - (mouseX - prev.x) * scaleRatio,
+      y: mouseY - (mouseY - prev.y) * scaleRatio,
     }
   }
   useEffect(() => {

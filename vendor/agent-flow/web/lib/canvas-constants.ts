@@ -123,8 +123,10 @@ export const AUTO_SCROLL_THRESHOLD = 60
 // ─── Camera / interaction constants ─────────────────────────────────────────
 
 export const CAMERA = {
-  zoomStepDown: 0.92,
-  zoomStepUp: 1.08,
+  // Wheel zoom needs to cross a large graph in a practical number of notches.
+  // Keep the steps reciprocal so an in/out pair returns to the prior scale.
+  zoomStepDown: 0.86,
+  zoomStepUp: 1 / 0.86,
   minZoom: 0.2,
   maxZoom: 4,
   velocityScale: 0.016,
@@ -444,4 +446,3 @@ export const HIT_DETECTION = {
   toolExpandedH: 34,
   toolCollapsedH: 24,
 } as const
-

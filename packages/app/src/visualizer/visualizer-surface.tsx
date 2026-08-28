@@ -10,6 +10,7 @@ import { useAppSettings, useSettings } from "@/hooks/use-settings";
 import { VisualizerToolbar } from "@/panels/visualizer-toolbar";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTab } from "@/stores/workspace-tabs-store";
 import {
+  ALL_ACTIVE_CHATS_SESSION_ID,
   sessionIdForDraft,
   sessionIdForRootAgent,
   useVisualizerEventAdapter,
@@ -352,6 +353,27 @@ export function VisualizerSurface({
     },
     [setFollowActive],
   );
+
+  // The page reports only real chat sessions. All active is a synthetic
+  // selection understood by the vendored bridge: it renders every live
+  // provider session together without inventing a parent or connection between
+  // those chat roots. Closed chats remain available individually.
+  const hasLiveSession = useMemo(
+    () =>
+      sessionState.sessions.some(
+        (session) => session.status === "active" && !session.id.startsWith("draft:"),
+      ),
+    [sessionState.sessions],
+  );
+  const toolbarSessions = useMemo(() => {
+    if (!hasLiveSession) {
+      return sessionState.sessions;
+    }
+    return [
+      { id: ALL_ACTIVE_CHATS_SESSION_ID, label: "All active", status: "active" as const },
+      ...sessionState.sessions,
+    ];
+  }, [hasLiveSession, sessionState.sessions]);
   const handleToggleFollow = useCallback(() => {
     // Flipping follow back on re-syncs to the focused chat via the effect below.
     setFollowActive((previous) => !previous);
@@ -643,6 +665,33 @@ export function VisualizerSurface({
   // double-fire for the focused workspace. The only thing this surface still
   // owns is the shared sound volume + the speaker button's mute.
 
+  // All active disappears when the last live provider session closes. Its
+  // synthetic id would otherwise remain selected with no matching dropdown
+  // option, so settle on an individual historical chat instead.
+  useEffect(() => {
+    if (
+      !ready ||
+      demoActive ||
+      hasLiveSession ||
+      sessionState.selectedId !== ALL_ACTIVE_CHATS_SESSION_ID
+    ) {
+      return;
+    }
+    const fallback =
+      sessionState.sessions.find((session) => session.id === followTargetSessionId) ??
+      sessionState.sessions[0];
+    if (fallback) {
+      viewRef.current?.postMessage({ type: "select-session", sessionId: fallback.id });
+    }
+  }, [
+    ready,
+    demoActive,
+    hasLiveSession,
+    sessionState.selectedId,
+    sessionState.sessions,
+    followTargetSessionId,
+  ]);
+
   // Follow the focused chat: whenever follow is on, drive the page's selection
   // to the workspace's focused chat. PIP must be willing to select before its
   // asynchronous guest -> host session mirror has caught up: unlike the tab it
@@ -698,7 +747,7 @@ export function VisualizerSurface({
           host-side strip drawn by visualizer-pip.tsx. */}
       {isPip ? null : (
         <VisualizerToolbar
-          sessions={sessionState.sessions}
+          sessions={toolbarSessions}
           selectedSessionId={sessionState.selectedId}
           onSelectSession={handleSelectSession}
           followActive={followActive}

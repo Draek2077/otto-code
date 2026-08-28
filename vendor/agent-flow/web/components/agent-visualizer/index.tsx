@@ -25,6 +25,9 @@ import { TopBar } from "./top-bar"
 import { FpsMeter } from "./fps-meter"
 import { useAudioEffects } from "@/hooks/use-audio-effects"
 
+// OTTO PATCH (OTTO-PATCHES.md): native toolbar synthetic session value.
+const ALL_ACTIVE_CHATS_SESSION_ID = "otto:all-active-chats"
+
 export function AgentVisualizer() {
   const bridge = useVSCodeBridge()
 
@@ -182,11 +185,16 @@ export function AgentVisualizer() {
       // Restore or cold-start the incoming session, then flush events.
       // Flushing happens HERE (after state swap) to prevent the animation
       // frame from processing events in the wrong simulation context.
-      const cached = sessionCacheRef.current.get(bridge.selectedSessionId)
+      // All active is an aggregate whose membership changes as provider
+      // sessions close and revive. Never restore a cached aggregate snapshot:
+      // rebuild it from the bridge's currently live session buffers instead.
+      const isAllActive = bridge.selectedSessionId === ALL_ACTIVE_CHATS_SESSION_ID
+      const cached = isAllActive ? undefined : sessionCacheRef.current.get(bridge.selectedSessionId)
       if (cached) {
         restoreSnapshot(cached.snapshot)
         bridge.flushSessionEvents(bridge.selectedSessionId, cached.eventCount)
       } else {
+        if (isAllActive) sessionCacheRef.current.delete(ALL_ACTIVE_CHATS_SESSION_ID)
         restart()
         bridge.flushSessionEvents(bridge.selectedSessionId)
       }
@@ -368,10 +376,23 @@ export function AgentVisualizer() {
   // canvas's onContextMenu prop is simply not passed anymore.
 
   const handleCloseSession = useCallback((id: string) => {
+    const remaining = bridge.sessions.filter(s => s.id !== id)
     bridge.removeSession(id)
     sessionCacheRef.current.delete(id)
+    if (bridge.selectedSessionId === ALL_ACTIVE_CHATS_SESSION_ID) {
+      // The synthetic All active session has no page-owned close event. Rebuild it
+      // from the remaining real session buffers so an archived chat disappears
+      // instead of lingering as a disconnected stale node.
+      sessionCacheRef.current.delete(ALL_ACTIVE_CHATS_SESSION_ID)
+      if (remaining.length === 0) {
+        bridge.selectSession(null)
+      } else {
+        restart()
+        bridge.flushSessionEvents(ALL_ACTIVE_CHATS_SESSION_ID)
+      }
+      return
+    }
     if (bridge.selectedSessionId === id) {
-      const remaining = bridge.sessions.filter(s => s.id !== id)
       if (remaining.length > 0) {
         bridge.selectSession(remaining[remaining.length - 1].id)
       } else {
@@ -382,7 +403,7 @@ export function AgentVisualizer() {
         bridge.selectSession(null)
       }
     }
-  }, [bridge])
+  }, [bridge, restart])
 
   // OTTO PATCH (OTTO-PATCHES.md): mirror the live session list/selection/activity
   // to the host so the Otto toolbar's chats dropdown can render + drive them.

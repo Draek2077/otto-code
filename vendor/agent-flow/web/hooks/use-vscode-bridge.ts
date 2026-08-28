@@ -4,6 +4,11 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type CameraConfig, type SessionStateReport, type TogglablePanel, type ViewportCommand } from '@/lib/vscode-bridge'
 import { SimulationEvent } from '@/lib/agent-types'
 
+// OTTO PATCH (OTTO-PATCHES.md): synthetic picker value from the native toolbar.
+// It is not an event session; selecting it streams every LIVE chat session into
+// one unconnected workspace forest.
+const ALL_ACTIVE_CHATS_SESSION_ID = 'otto:all-active-chats'
+
 interface BridgeHookResult {
   isVSCode: boolean
   connectionStatus: ConnectionStatus
@@ -112,6 +117,14 @@ export function useVSCodeBridge(): BridgeHookResult {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const selectedSessionIdRef = useRef<string | null>(null)
   const sessionEventsRef = useRef<Map<string, SimulationEvent[]>>(new Map())
+  // Keep arrival order across the real per-chat buffers. A workspace-wide
+  // view must replay the same independent events in their observed order.
+  const allSessionEventsRef = useRef<SimulationEvent[]>([])
+  // Otto's synthetic All active view includes only sessions whose provider is
+  // still live. The host maps a closed root to `ended`; it remains selectable
+  // individually, while this status map filters its retained history out of
+  // the aggregate without deleting the normal session buffer.
+  const sessionStatusesRef = useRef<Map<string, SessionInfo['status']>>(new Map())
   /** True while a session switch is pending (between auto-select and useLayoutEffect).
    *  Prevents the animation frame from processing events in the wrong simulation context. */
   const sessionSwitchPendingRef = useRef(false)
@@ -184,16 +197,26 @@ export function useVSCodeBridge(): BridgeHookResult {
         const buf = sessionEventsRef.current.get(event.sessionId) || []
         buf.push(simEvent)
         sessionEventsRef.current.set(event.sessionId, buf)
+        allSessionEventsRef.current.push(simEvent)
       }
 
       // Deliver to pending if session matches (ref is always current).
       // Skip if a session switch is pending — useLayoutEffect will flush
       // from the session buffer once the simulation state is swapped.
       const selected = selectedSessionIdRef.current
-      if (selected && event.sessionId === selected && !sessionSwitchPendingRef.current) {
+      const isAllActive = selected === ALL_ACTIVE_CHATS_SESSION_ID
+      const isLiveSession = event.sessionId
+        ? (sessionStatusesRef.current.get(event.sessionId) ?? 'active') === 'active'
+        : false
+      // Let a root's terminal event reach the aggregate after its session has
+      // just been marked completed: an already-visible live tree needs that
+      // event to fade out. Historical closed trees still cannot appear, because
+      // their spawn events remain filtered and the completion has no node.
+      const completesLiveTree = simEvent.type === 'agent_complete'
+      if (selected && ((isAllActive && (isLiveSession || completesLiveTree)) || event.sessionId === selected) && !sessionSwitchPendingRef.current) {
         pendingEventsRef.current.push(simEvent)
         setEventVersion(v => v + 1)
-      } else if (event.sessionId && event.sessionId !== selected) {
+      } else if (event.sessionId && !isAllActive && event.sessionId !== selected) {
         // Track background activity for unselected sessions
         setSessionsWithActivity(prev => {
           if (prev.has(event.sessionId!)) return prev
@@ -244,6 +267,8 @@ export function useVSCodeBridge(): BridgeHookResult {
         selectedSessionIdRef.current = null
         pendingEventsRef.current.length = 0
         sessionEventsRef.current.clear()
+        allSessionEventsRef.current.length = 0
+        sessionStatusesRef.current.clear()
         setSessionsWithActivity(new Set())
         dismissedSessionsRef.current.clear()
         setEventVersion(v => v + 1)
@@ -251,6 +276,7 @@ export function useVSCodeBridge(): BridgeHookResult {
       }
       if (type === 'list') {
         const sessionList = data as SessionInfo[]
+        sessionStatusesRef.current = new Map(sessionList.map(session => [session.id, session.status]))
         setSessions(sessionList)
         // Auto-select: prefer active sessions, then most recently active.
         // Only set selection — useLayoutEffect handles flushing events.
@@ -269,6 +295,7 @@ export function useVSCodeBridge(): BridgeHookResult {
         }
       } else if (type === 'started') {
         const session = data as SessionInfo
+        sessionStatusesRef.current.set(session.id, 'active')
         setSessions(prev => {
           const existing = prev.find(s => s.id === session.id)
           if (existing) {
@@ -289,7 +316,7 @@ export function useVSCodeBridge(): BridgeHookResult {
         // session-state echo) left it set forever, silently diverting every
         // later live event for that chat into the background-activity
         // bucket: the canvas froze mid-chat until the tab was reopened.
-        if (selectedSessionIdRef.current !== session.id) {
+        if (selectedSessionIdRef.current !== ALL_ACTIVE_CHATS_SESSION_ID && selectedSessionIdRef.current !== session.id) {
           // Auto-select newly started session.
           // Set switch-pending flag to prevent the animation frame from processing
           // events in the wrong simulation state before useLayoutEffect swaps it.
@@ -305,6 +332,7 @@ export function useVSCodeBridge(): BridgeHookResult {
         ))
       } else if (type === 'ended') {
         const sessionId = data as string
+        sessionStatusesRef.current.set(sessionId, 'completed')
         setSessions(prev => prev.map(s =>
           s.id === sessionId ? { ...s, status: 'completed' as const } : s
         ))
@@ -357,21 +385,34 @@ export function useVSCodeBridge(): BridgeHookResult {
 
   /** Flush buffered events for the selected session into pending.
    *  Must be called from useLayoutEffect AFTER simulation state is saved/swapped. */
+  const getAllActiveEvents = useCallback(() => allSessionEventsRef.current.filter(
+    (event) => event.sessionId && sessionStatusesRef.current.get(event.sessionId) === 'active',
+  ), [])
+
   const flushSessionEvents = useCallback((sessionId: string, fromIndex = 0) => {
     sessionSwitchPendingRef.current = false
-    const buffered = sessionEventsRef.current.get(sessionId) || []
+    const buffered = sessionId === ALL_ACTIVE_CHATS_SESSION_ID
+      ? getAllActiveEvents()
+      : sessionEventsRef.current.get(sessionId) || []
     pendingEventsRef.current.length = 0
     pendingEventsRef.current.push(...buffered.slice(fromIndex))
     setEventVersion(v => v + 1)
-  }, [])
+  }, [getAllActiveEvents])
 
   const getSessionEventCount = useCallback((sessionId: string): number => {
-    return sessionEventsRef.current.get(sessionId)?.length ?? 0
-  }, [])
+    return sessionId === ALL_ACTIVE_CHATS_SESSION_ID
+      ? getAllActiveEvents().length
+      : sessionEventsRef.current.get(sessionId)?.length ?? 0
+  }, [getAllActiveEvents])
 
   const dismissedSessionsRef = useRef<Map<string, SessionInfo>>(new Map())
 
   const removeSession = useCallback((sessionId: string) => {
+    sessionEventsRef.current.delete(sessionId)
+    sessionStatusesRef.current.delete(sessionId)
+    allSessionEventsRef.current = allSessionEventsRef.current.filter(
+      (event) => event.sessionId !== sessionId,
+    )
     setSessions(prev => {
       const session = prev.find(s => s.id === sessionId)
       if (session) { dismissedSessionsRef.current.set(sessionId, session) }
