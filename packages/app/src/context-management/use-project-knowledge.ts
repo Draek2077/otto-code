@@ -46,10 +46,13 @@ function retryAfterHostWait(
 export function useProjectKnowledge(
   serverId: string,
   workspaceId: string,
+  options?: { deferInitialLoad?: boolean },
 ): {
   view: ProjectKnowledgePayload | null;
   loading: boolean;
   error: string | null;
+  /** Starts a deliberately deferred initial catalog load without forcing a refresh. */
+  load: () => void;
   reload: () => void;
   readRecord: (id: string) => Promise<ProjectKnowledgeRecord | null>;
   /** Apply the canonical response from an already-completed mutation in place. */
@@ -108,11 +111,16 @@ export function useProjectKnowledge(
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const enabled = useProjectKnowledgeEnabled(serverId);
   const [view, setView] = useState<ProjectKnowledgePayload | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => !options?.deferInitialLoad);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [shouldLoad, setShouldLoad] = useState(() => !options?.deferInitialLoad);
   const retryAttemptRef = useRef(0);
-  const reload = useCallback(() => setNonce((value) => value + 1), []);
+  const load = useCallback(() => setShouldLoad(true), []);
+  const reload = useCallback(() => {
+    setShouldLoad(true);
+    setNonce((value) => value + 1);
+  }, []);
   const readRecord = useCallback(
     async (id: string) => {
       if (!client) return null;
@@ -147,6 +155,11 @@ export function useProjectKnowledge(
   useEffect(() => {
     if (!client || !enabled) {
       setView(null);
+      setLoading(false);
+      return;
+    }
+    if (!shouldLoad) {
+      setLoading(false);
       return;
     }
     let cancelled = false;
@@ -179,7 +192,7 @@ export function useProjectKnowledge(
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [client, enabled, nonce, reload, workspaceId]);
+  }, [client, enabled, nonce, reload, shouldLoad, workspaceId]);
   const setStatus = useCallback(
     async (id: string, status: "proposed" | "confirmed" | "superseded") => {
       if (!client) return "Not connected.";
@@ -322,6 +335,7 @@ export function useProjectKnowledge(
       view,
       loading,
       error,
+      load,
       reload,
       readRecord,
       replaceRecord,
@@ -338,6 +352,7 @@ export function useProjectKnowledge(
       createProposal,
       deleteRecord,
       error,
+      load,
       loading,
       reload,
       readRecord,

@@ -252,3 +252,21 @@ describe("communications room tab identity", () => {
     expect(normalizeWorkspaceTabTarget({ ...room, conversationId: " " })).toBeNull();
   });
 });
+
+describe("Project Knowledge tab selection", () => {
+  it("keeps one Knowledge tab while allowing a new article selection to retarget it", () => {
+    const architecture = {
+      kind: "projectKnowledge" as const,
+      selection: { kind: "root" as const, slug: "architecture" },
+    };
+    const record = {
+      kind: "projectKnowledge" as const,
+      selection: { kind: "record" as const, id: "editor-canvas" },
+    };
+
+    expect(normalizeWorkspaceTabTarget(architecture)).toEqual(architecture);
+    expect(workspaceTabTargetsEqual(architecture, record)).toBe(false);
+    expect(buildDeterministicWorkspaceTabId(architecture)).toBe("project-knowledge");
+    expect(buildDeterministicWorkspaceTabId(record)).toBe("project-knowledge");
+  });
+});

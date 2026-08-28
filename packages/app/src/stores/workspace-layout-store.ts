@@ -211,7 +211,15 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
     presetId: z.string().optional(),
   }),
   z.strictObject({ kind: z.literal("contextManagement") }),
-  z.strictObject({ kind: z.literal("projectKnowledge") }),
+  z.strictObject({
+    kind: z.literal("projectKnowledge"),
+    selection: z
+      .discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("root"), slug: z.string() }),
+        z.strictObject({ kind: z.literal("record"), id: z.string() }),
+      ])
+      .optional(),
+  }),
   z.strictObject({
     kind: z.literal("orchestrationGraph"),
     graphId: z.string(),

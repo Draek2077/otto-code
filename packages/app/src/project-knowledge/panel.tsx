@@ -32,6 +32,8 @@ import {
   X,
 } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { PageLoading } from "@/components/ui/page-loading";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,7 +41,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { PageLoading } from "@/components/ui/page-loading";
 import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SearchClearButton } from "@/components/ui/search-clear-button";
@@ -50,6 +51,7 @@ import { isWeb } from "@/constants/platform";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { usePaneContext } from "@/panels/pane-context";
+import { createWorkspaceFileTabTarget } from "@/workspace/file-open";
 import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 import {
   useProjectKnowledge,
@@ -96,8 +98,13 @@ const EMPTY_REVIEW_DIFF: RefineDiff = { lines: [], hunks: [] };
 /** Markdown knowledge is rendered as a document, while Otto owns mutations. */
 // eslint-disable-next-line complexity -- panel intentionally owns its three explicit review states.
 export function ProjectKnowledgePanel(): ReactElement {
-  const { serverId, workspaceId, openFileInWorkspace } = usePaneContext();
-  const knowledge = useProjectKnowledge(serverId, workspaceId);
+  const { serverId, workspaceId, target: paneTarget, openTab } = usePaneContext();
+  const requestedSelection =
+    paneTarget.kind === "projectKnowledge" ? paneTarget.selection : undefined;
+  const knowledge = useProjectKnowledge(serverId, workspaceId, {
+    deferInitialLoad: Boolean(requestedSelection),
+  });
+  const ensureKnowledgeLoaded = knowledge.load;
   const replaceKnowledgeRecord = knowledge.replaceRecord;
   const replaceKnowledgeRoot = knowledge.replaceRoot;
   const animationsEnabled = useAnimationsEnabled();
@@ -208,21 +215,47 @@ export function ProjectKnowledgePanel(): ReactElement {
     scope === "knowledge"
       ? (knowledge.view?.rootPages?.find((page) => page.slug === selectedRootSlug) ?? null)
       : null;
-  const selectedSummary = selectedRoot
-    ? null
-    : (records.find((record) => record.id === selectedId) ?? records[0] ?? null);
-  const detailedSelection =
-    recordDetail &&
-    selectedSummary &&
-    recordDetail.id === selectedSummary.id &&
-    recordDetail.updatedAt === selectedSummary.updatedAt
-      ? recordDetail
-      : null;
+  let selectedSummary: KnowledgeRecord | null = null;
+  if (!selectedRoot) {
+    selectedSummary = selectedId
+      ? (records.find((record) => record.id === selectedId) ?? null)
+      : (records[0] ?? null);
+  }
+  const detailedSelection = recordDetail && recordDetail.id === selectedId ? recordDetail : null;
   const selected = detailedSelection ?? selectedSummary;
+  const showWholePageLoading = knowledge.loading && !knowledge.view && !requestedSelection;
   const reviewContent = reviewContentForSelection(selectedRoot, detailedSelection);
   const reviewDocumentKey = selectedRoot
     ? `root:${selectedRoot.slug}`
     : `record:${selected?.id ?? ""}`;
+  const lastAppliedSelectionKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!requestedSelection) return;
+    const selectionKey =
+      requestedSelection.kind === "root"
+        ? `root:${requestedSelection.slug}`
+        : `record:${requestedSelection.id}`;
+    if (lastAppliedSelectionKey.current === selectionKey) return;
+    lastAppliedSelectionKey.current = selectionKey;
+    if (requestedSelection.kind === "root") {
+      setScope("knowledge");
+      setSelectedRootSlug(requestedSelection.slug);
+      setSelectedId(null);
+      ensureKnowledgeLoaded();
+    } else {
+      setScope("knowledge");
+      setSelectedRootSlug(null);
+      setSelectedId(requestedSelection.id);
+    }
+    setCreating(false);
+    setEditingTruth(false);
+    setEditingMetadata(false);
+    setEditingTags(false);
+    setQuery("");
+    setFilter("all");
+    setTypeFilter([...KNOWLEDGE_ARTICLE_KINDS]);
+    setTagFilter([]);
+  }, [ensureKnowledgeLoaded, requestedSelection]);
   useEffect(() => {
     // Review comments have no durable identity and must never follow a reader
     // to a different article in the same tab.
@@ -232,24 +265,30 @@ export function ProjectKnowledgePanel(): ReactElement {
     setEditingTags(false);
   }, [reviewDocumentKey]);
   useEffect(() => {
-    if (!selectedSummary) {
+    if (!selectedId) {
       setRecordDetail(null);
       return;
     }
     let cancelled = false;
     setRecordDetail(null);
-    void readRecord(selectedSummary.id)
+    void readRecord(selectedId)
       .then((record) => {
-        if (!cancelled) setRecordDetail(record);
+        if (cancelled || !record) return undefined;
+        setRecordDetail(record);
+        if (record.kind === "project") setScope("projects");
+        else if (record.kind === "reference") setScope("references");
         return undefined;
       })
       .catch(() => {
         if (!cancelled) setRecordDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) ensureKnowledgeLoaded();
       });
     return () => {
       cancelled = true;
     };
-  }, [readRecord, selectedSummary]);
+  }, [ensureKnowledgeLoaded, readRecord, selectedId]);
   const summary = useMemo(
     () => summarizeProjectKnowledge(knowledge.view?.records ?? []),
     [knowledge.view?.records],
@@ -276,8 +315,8 @@ export function ProjectKnowledgePanel(): ReactElement {
   if (reviewProposal) documentIdentity = `Review proposal · ${documentIdentity}`;
   const openMarkdown = useCallback(() => {
     if (!markdownPath) return;
-    openFileInWorkspace({ location: { path: markdownPath }, disposition: "main" });
-  }, [markdownPath, openFileInWorkspace]);
+    openTab(createWorkspaceFileTabTarget({ path: markdownPath }));
+  }, [markdownPath, openTab]);
   const addReviewDirective = useCallback((directive: Omit<KnowledgeReviewDirective, "id">) => {
     const id = `review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setReviewDirectives((current) => [
@@ -1039,8 +1078,9 @@ export function ProjectKnowledgePanel(): ReactElement {
       </View>
     );
   }
-  if (knowledge.loading)
+  if (showWholePageLoading) {
     return <PageLoading label="Loading project knowledge…" testID="project-knowledge-loading" />;
+  }
 
   return (
     <Animated.View
@@ -1136,19 +1176,26 @@ export function ProjectKnowledgePanel(): ReactElement {
                 ]}
               />
             </View>
-            <ScrollView style={styles.browser} contentContainerStyle={styles.browserContent}>
-              {records.map((record) => (
-                <KnowledgeRecordRow
-                  key={record.id}
-                  record={record}
-                  selected={record.id === selected?.id}
-                  onSelect={() => {
-                    setSelectedRootSlug(null);
-                    setSelectedId(record.id);
-                  }}
-                />
-              ))}
-            </ScrollView>
+            {knowledge.loading && !knowledge.view ? (
+              <View style={styles.catalogLoading} testID="project-knowledge-catalog-loading">
+                <LoadingSpinner size="small" />
+                <Text style={styles.muted}>Loading project knowledge…</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.browser} contentContainerStyle={styles.browserContent}>
+                {records.map((record) => (
+                  <KnowledgeRecordRow
+                    key={record.id}
+                    record={record}
+                    selected={record.id === selected?.id}
+                    onSelect={() => {
+                      setSelectedRootSlug(null);
+                      setSelectedId(record.id);
+                    }}
+                  />
+                ))}
+              </ScrollView>
+            )}
           </>
         </View>
         <GestureDetector gesture={resizeGesture}>
@@ -1988,6 +2035,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   browser: { flex: 1 },
   browserContent: { gap: theme.spacing[1], padding: theme.spacing[1] },
+  catalogLoading: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[2],
+    padding: theme.spacing[3],
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",

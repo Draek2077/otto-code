@@ -96,6 +96,11 @@ import { shouldShowWakeWordToolbarButton } from "@/voice/wake-word-control-state
 import { getWakeWordCapability } from "@/wake-word/wake-word-capability";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { openProjectKnowledgeTab } from "@/project-knowledge/open-project-knowledge-tab";
+import {
+  findProjectKnowledgeFileSelection,
+  findRepositoryKnowledgeFileSelection,
+  isMarkdownFilePath,
+} from "@/project-knowledge/file-target";
 import { useCloseDisabledFeatureTabs } from "@/features/use-close-disabled-feature-tabs";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
 import {
@@ -2365,6 +2370,21 @@ function WorkspaceScreenContent({
     (state) => state.openChildTabFocused,
   );
   const focusWorkspacePane = useWorkspaceLayoutStore((state) => state.focusPane);
+  const findKnowledgeFileSelection = useCallback(
+    async (path: string, knowledgeWorkspaceId: string) => {
+      const repositorySelection = findRepositoryKnowledgeFileSelection(path);
+      if (repositorySelection) return repositorySelection;
+      if (!client || !isMarkdownFilePath(path)) return null;
+      try {
+        const knowledge = await client.listProjectKnowledge(knowledgeWorkspaceId);
+        return findProjectKnowledgeFileSelection({ path, view: knowledge });
+      } catch {
+        // A disconnected or pre-Knowledge host still opens the requested file.
+        return null;
+      }
+    },
+    [client],
+  );
   const hasHydratedWorkspaces = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false,
   );
@@ -3153,7 +3173,7 @@ function WorkspaceScreenContent({
   ]);
 
   const handleOpenFileFromExplorer = useCallback(
-    function handleOpenFileFromExplorer(
+    async function handleOpenFileFromExplorer(
       filePath: string,
       options?: { edit?: boolean; lineStart?: number },
     ) {
@@ -3167,6 +3187,15 @@ function WorkspaceScreenContent({
       if (!location) {
         return;
       }
+      const selection = await findKnowledgeFileSelection(location.path, normalizedWorkspaceId);
+      if (selection) {
+        const tabId = openWorkspaceTabFocused(persistenceKey, {
+          kind: "projectKnowledge",
+          selection,
+        });
+        if (tabId) navigateToTabId(tabId);
+        return;
+      }
       if (options?.edit) {
         // One tab per file: "Edit" opens the same file tab in editor view.
         setFileViewModeFor({ persistenceKey, path: location.path, mode: "editor" });
@@ -3176,11 +3205,17 @@ function WorkspaceScreenContent({
         navigateToTabId(tabId);
       }
     },
-    [navigateToTabId, openWorkspaceTabFocused, persistenceKey],
+    [
+      findKnowledgeFileSelection,
+      navigateToTabId,
+      normalizedWorkspaceId,
+      openWorkspaceTabFocused,
+      persistenceKey,
+    ],
   );
 
   const handleOpenFileFromChat = useCallback(
-    (location: WorkspaceFileLocation, options?: { parentTabId?: string | null }) => {
+    async (location: WorkspaceFileLocation, options?: { parentTabId?: string | null }) => {
       const normalizedLocation = normalizeWorkspaceFileLocation(location);
       if (!normalizedLocation) {
         return;
@@ -3195,6 +3230,20 @@ function WorkspaceScreenContent({
       // open in place with an origin discriminator; project ownership never
       // blocks opening or editing.
       const resolved = crossProjectFileOpenGate(normalizedLocation);
+      const knowledgeWorkspaceId = resolved.origin?.workspaceId ?? normalizedWorkspaceId;
+      const selection = await findKnowledgeFileSelection(
+        resolved.location.path,
+        knowledgeWorkspaceId,
+      );
+      if (selection) {
+        openProjectKnowledgeTab({
+          serverId: normalizedServerId,
+          workspaceId: knowledgeWorkspaceId,
+          selection,
+          navigate: true,
+        });
+        return;
+      }
       const target = createWorkspaceFileTabTarget(resolved.location, resolved.origin);
       const tabId = options?.parentTabId
         ? openWorkspaceChildTabFocused(persistenceKey, target, options.parentTabId)
@@ -3205,8 +3254,11 @@ function WorkspaceScreenContent({
     },
     [
       crossProjectFileOpenGate,
+      findKnowledgeFileSelection,
       isMobile,
       navigateToTabId,
+      normalizedServerId,
+      normalizedWorkspaceId,
       openWorkspaceChildTabFocused,
       openWorkspaceTabFocused,
       persistenceKey,

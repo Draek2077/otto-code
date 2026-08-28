@@ -87,4 +87,36 @@ describe("useProjectKnowledge", () => {
     expect(listProjectKnowledge).toHaveBeenCalledTimes(1);
     expect(result.current.loading).toBe(false);
   });
+
+  it("keeps the loaded Knowledge view when the caller rerenders to select another article", async () => {
+    listProjectKnowledge.mockResolvedValueOnce(view);
+
+    const { rerender } = renderHook(() => useProjectKnowledge(SERVER_ID, WORKSPACE_ID));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    rerender();
+
+    expect(listProjectKnowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it("defers the catalog until the selected article has had first priority", async () => {
+    listProjectKnowledge.mockResolvedValueOnce(view);
+
+    const { result } = renderHook(() =>
+      useProjectKnowledge(SERVER_ID, WORKSPACE_ID, { deferInitialLoad: true }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(listProjectKnowledge).not.toHaveBeenCalled();
+    act(() => result.current.load());
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(listProjectKnowledge).toHaveBeenCalledTimes(1);
+  });
 });

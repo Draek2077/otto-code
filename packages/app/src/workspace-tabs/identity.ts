@@ -84,7 +84,10 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "contextManagement") {
     return { kind: "contextManagement" };
   }
-  if (value.kind === "projectKnowledge") return { kind: "projectKnowledge" };
+  if (value.kind === "projectKnowledge") {
+    const selection = normalizeProjectKnowledgeTabSelection(value.selection);
+    return selection ? { kind: "projectKnowledge", selection } : { kind: "projectKnowledge" };
+  }
   if (value.kind === "orchestrationGraph") {
     const graphId = trimNonEmpty(value.graphId);
     if (!graphId) {
@@ -252,6 +255,21 @@ function normalizePositiveInteger(value: number | undefined): number | null {
   return value;
 }
 
+function normalizeProjectKnowledgeTabSelection(
+  value: unknown,
+): Extract<WorkspaceTabTarget, { kind: "projectKnowledge" }>["selection"] {
+  if (!isPlainRecord(value) || typeof value.kind !== "string") return undefined;
+  if (value.kind === "root") {
+    const slug = trimNonEmpty(typeof value.slug === "string" ? value.slug : null);
+    return slug ? { kind: "root", slug } : undefined;
+  }
+  if (value.kind === "record") {
+    const id = trimNonEmpty(typeof value.id === "string" ? value.id : null);
+    return id ? { kind: "record", id } : undefined;
+  }
+  return undefined;
+}
+
 export function normalizeWorkspaceDraftTabSetup(
   value: unknown,
 ): WorkspaceDraftTabSetup | undefined {
@@ -327,9 +345,11 @@ export function workspaceTabTargetsEqual(
   if (isPositionKeyedTarget(left) && isPositionKeyedTarget(right)) {
     return positionKeyedTargetsEqual(left, right);
   }
-  // Singleton per workspace - kind alone settles identity.
-  if (left.kind === "contextManagement" || left.kind === "projectKnowledge") {
-    return true;
+  // Singleton per workspace. `openTabInLayoutFocused` also checks the
+  // deterministic id, so a new selection retargets that same tab rather than
+  // creating another Knowledge tab.
+  if (isWorkspaceSingletonTarget(left, right)) {
+    return singletonTargetsEqual(left, right);
   }
   // One designer tab per graph; the draft runId doesn't change identity (the
   // dialog retargets the same tab when it attaches a draft to the graph).
@@ -351,6 +371,31 @@ function communicationsRoomTargetsEqual(
   right: Extract<WorkspaceTabTarget, { kind: "communicationsRoom" }>,
 ): boolean {
   return left.providerId === right.providerId && left.conversationId === right.conversationId;
+}
+
+function isWorkspaceSingletonTarget(
+  left: WorkspaceTabTarget,
+  right: WorkspaceTabTarget,
+): left is Extract<WorkspaceTabTarget, { kind: "contextManagement" | "projectKnowledge" }> {
+  return (
+    left.kind === right.kind &&
+    (left.kind === "contextManagement" || left.kind === "projectKnowledge")
+  );
+}
+
+function singletonTargetsEqual(
+  left: Extract<WorkspaceTabTarget, { kind: "contextManagement" | "projectKnowledge" }>,
+  right: WorkspaceTabTarget,
+): boolean {
+  if (left.kind === "contextManagement") return true;
+  if (right.kind !== "projectKnowledge") return false;
+  const leftSelection = left.selection;
+  const rightSelection = right.selection;
+  if (!leftSelection || !rightSelection) return leftSelection === rightSelection;
+  if (leftSelection.kind === "root") {
+    return rightSelection.kind === "root" && leftSelection.slug === rightSelection.slug;
+  }
+  return rightSelection.kind === "record" && leftSelection.id === rightSelection.id;
 }
 
 function workspaceDraftTabSetupsEqual(
