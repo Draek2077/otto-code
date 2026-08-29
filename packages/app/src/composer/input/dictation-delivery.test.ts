@@ -44,6 +44,18 @@ describe("applyDictationTranscript", () => {
     expect(ctx.onSubmit).not.toHaveBeenCalled();
   });
 
+  it("queues auto-sent dictation while compaction is active", () => {
+    const ctx = context({ isAgentRunning: true, isCompacting: true });
+    applyDictationTranscript("follow up", ctx);
+
+    expect(ctx.onQueue).toHaveBeenCalledWith({
+      text: "follow up",
+      attachments: [],
+      cwd: "C:/project",
+    });
+    expect(ctx.onSubmit).not.toHaveBeenCalled();
+  });
+
   it("only inserts when auto-send was not requested", () => {
     const ctx = context({ autoSend: false });
     applyDictationTranscript("draft text", ctx);

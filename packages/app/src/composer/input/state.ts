@@ -41,6 +41,7 @@ interface StopRealtimeVoiceContext {
 interface SendActionContext {
   defaultSendBehavior: SendBehavior;
   isAgentRunning: boolean;
+  isCompacting?: boolean;
   onQueue: ((payload: MessagePayload) => void) | undefined;
   handleSendMessage: () => void;
   handleQueueMessage: () => void;
@@ -50,6 +51,7 @@ interface DictationTranscriptContext {
   value: string;
   defaultSendBehavior: SendBehavior;
   isAgentRunning: boolean;
+  isCompacting?: boolean;
   onQueue: ((payload: MessagePayload) => void) | undefined;
   onSubmit: (payload: MessagePayload) => void;
   onChangeText: (text: string) => void;
@@ -70,7 +72,11 @@ export function applyDictationTranscript(text: string, ctx: DictationTranscriptC
 
   ctx.onChangeText(nextValue);
 
-  if (ctx.defaultSendBehavior === "queue" && ctx.isAgentRunning && ctx.onQueue) {
+  if (
+    (ctx.isCompacting || ctx.defaultSendBehavior === "queue") &&
+    ctx.isAgentRunning &&
+    ctx.onQueue
+  ) {
     ctx.onQueue({ text: nextValue, attachments: ctx.attachments, cwd: ctx.cwd });
     ctx.onChangeText("");
     return;
@@ -110,6 +116,10 @@ export function computeCanStartDictation(input: {
 }
 
 export function runDefaultSendAction(ctx: SendActionContext): void {
+  if (ctx.isCompacting) {
+    ctx.handleQueueMessage();
+    return;
+  }
   if (ctx.defaultSendBehavior === "queue" && ctx.isAgentRunning && ctx.onQueue) {
     ctx.handleQueueMessage();
     return;
@@ -118,6 +128,10 @@ export function runDefaultSendAction(ctx: SendActionContext): void {
 }
 
 export function runAlternateSendAction(ctx: SendActionContext): void {
+  if (ctx.isCompacting) {
+    ctx.handleQueueMessage();
+    return;
+  }
   if (ctx.defaultSendBehavior === "queue") {
     ctx.handleSendMessage();
     return;

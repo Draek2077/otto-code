@@ -177,6 +177,8 @@ export interface MessageInputProps {
   voiceAgentId?: string;
   /** When true and there's sendable content, calls onQueue instead of onSubmit */
   isAgentRunning?: boolean;
+  /** An in-flight context compaction accepts queued prompts only. */
+  isCompacting?: boolean;
   /** Controls what the default send action (Enter, send button, dictation) does
    *  when the agent is running. "interrupt" sends immediately, "queue" queues. */
   defaultSendBehavior?: "interrupt" | "queue";
@@ -238,9 +240,10 @@ type WebTextInputKeyPressEvent = NativeSyntheticEvent<
 
 function canUseAlternateSendAction(
   isAgentRunning: boolean,
+  isCompacting: boolean,
   onQueue: ((payload: MessagePayload) => void) | undefined,
 ): boolean {
-  return isAgentRunning && Boolean(onQueue);
+  return isAgentRunning && !isCompacting && Boolean(onQueue);
 }
 
 interface TextAreaHandle {
@@ -927,10 +930,11 @@ function resolvePrimaryActionKind(input: {
   hasSendableContent: boolean;
   allowEmptySubmit: boolean;
   isAgentRunning: boolean;
+  isCompacting: boolean;
   isSubmitLoading: boolean;
 }): PrimaryActionKind {
   if (input.hasSendableContent || input.allowEmptySubmit) return "send";
-  if (input.isAgentRunning) return "active";
+  if (input.isAgentRunning && !input.isCompacting) return "active";
   if (input.isSubmitLoading) return "send";
   return "none";
 }
@@ -1064,6 +1068,7 @@ interface SendMessageContext {
   allowEmptySubmit: boolean;
   cwd: string;
   isAgentRunning: boolean;
+  isCompacting: boolean;
   onSubmit: SubmitMessageHandler;
   onMinimizeHeight: () => void;
   preserveHeightOnSubmit: boolean;
@@ -1083,7 +1088,7 @@ function sendMessageImpl(ctx: SendMessageContext): void {
     text: trimmed,
     attachments: ctx.attachments,
     cwd: ctx.cwd,
-    forceSend: ctx.isAgentRunning || undefined,
+    forceSend: ctx.isAgentRunning && !ctx.isCompacting ? true : undefined,
   });
   // When the host preserves and locks the composer (e.g. new-workspace creation),
   // the text stays put - collapsing the height would clip it. Keep it grown.
@@ -1208,6 +1213,7 @@ interface SendButtonStateInput {
   onSubmitLoadingPress: (() => void) | undefined;
   defaultSendBehavior: "interrupt" | "queue";
   isAgentRunning: boolean;
+  isCompacting: boolean;
 }
 
 interface SendButtonStateOutput {
@@ -1221,7 +1227,8 @@ function computeSendButtonState(input: SendButtonStateInput): SendButtonStateOut
     input.isSubmitLoading && typeof input.onSubmitLoadingPress === "function";
   const isSendButtonDisabled =
     input.disabled || (!canPressLoadingButton && (input.isSubmitDisabled || input.isSubmitLoading));
-  const defaultActionQueues = input.defaultSendBehavior === "queue" && input.isAgentRunning;
+  const defaultActionQueues =
+    input.isAgentRunning && (input.isCompacting || input.defaultSendBehavior === "queue");
   return { canPressLoadingButton, isSendButtonDisabled, defaultActionQueues };
 }
 
@@ -1264,6 +1271,7 @@ interface ResolvedMessageInputProps {
   voiceServerId: string | undefined;
   voiceAgentId: string | undefined;
   isAgentRunning: boolean;
+  isCompacting: boolean;
   defaultSendBehavior: "interrupt" | "queue";
   onQueue: ((payload: MessagePayload) => void) | undefined;
   onSubmitLoadingPress: (() => void) | undefined;
@@ -1316,6 +1324,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     voiceServerId: props.voiceServerId,
     voiceAgentId: props.voiceAgentId,
     isAgentRunning: props.isAgentRunning ?? false,
+    isCompacting: props.isCompacting ?? false,
     defaultSendBehavior: props.defaultSendBehavior ?? "interrupt",
     onQueue: props.onQueue,
     onSubmitLoadingPress: props.onSubmitLoadingPress,
@@ -1376,6 +1385,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       voiceServerId,
       voiceAgentId,
       isAgentRunning,
+      isCompacting,
       defaultSendBehavior,
       onQueue,
       onSubmitLoadingPress,
@@ -1501,6 +1511,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           value: valueRef.current,
           defaultSendBehavior,
           isAgentRunning,
+          isCompacting,
           onQueue,
           onSubmit,
           onChangeText,
@@ -1510,7 +1521,16 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         });
         setCleanDictation(false);
       },
-      [onChangeText, onSubmit, onQueue, attachments, cwd, isAgentRunning, defaultSendBehavior],
+      [
+        onChangeText,
+        onSubmit,
+        onQueue,
+        attachments,
+        cwd,
+        isAgentRunning,
+        isCompacting,
+        defaultSendBehavior,
+      ],
     );
 
     const handleDictationError = useCallback(
@@ -1778,6 +1798,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           allowEmptySubmit,
           cwd,
           isAgentRunning,
+          isCompacting,
           onSubmit,
           onMinimizeHeight: minimizeInputHeight,
           preserveHeightOnSubmit,
@@ -1788,6 +1809,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         cwd,
         onSubmit,
         isAgentRunning,
+        isCompacting,
         hasExternalContent,
         minimizeInputHeight,
         preserveHeightOnSubmit,
@@ -1811,21 +1833,37 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       runDefaultSendAction({
         defaultSendBehavior,
         isAgentRunning,
+        isCompacting,
         onQueue,
         handleSendMessage,
         handleQueueMessage,
       });
-    }, [defaultSendBehavior, isAgentRunning, onQueue, handleQueueMessage, handleSendMessage]);
+    }, [
+      defaultSendBehavior,
+      isAgentRunning,
+      isCompacting,
+      onQueue,
+      handleQueueMessage,
+      handleSendMessage,
+    ]);
 
     const handleAlternateSendAction = useCallback(() => {
       runAlternateSendAction({
         defaultSendBehavior,
         isAgentRunning,
+        isCompacting,
         onQueue,
         handleSendMessage,
         handleQueueMessage,
       });
-    }, [defaultSendBehavior, isAgentRunning, handleSendMessage, handleQueueMessage, onQueue]);
+    }, [
+      defaultSendBehavior,
+      isAgentRunning,
+      isCompacting,
+      handleSendMessage,
+      handleQueueMessage,
+      onQueue,
+    ]);
 
     const getWebTextArea = useCallback(
       (): TextAreaHandle | null => getWebTextAreaImpl(textInputRef.current),
@@ -1919,6 +1957,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }),
       allowEmptySubmit,
       isAgentRunning,
+      isCompacting,
       isSubmitLoading,
     });
     const { canPressLoadingButton, isSendButtonDisabled, defaultActionQueues } =
@@ -1929,8 +1968,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         onSubmitLoadingPress,
         defaultSendBehavior,
         isAgentRunning,
+        isCompacting,
       });
-    const alternateActionAvailable = canUseAlternateSendAction(isAgentRunning, onQueue);
+    const alternateActionAvailable = canUseAlternateSendAction(
+      isAgentRunning,
+      isCompacting,
+      onQueue,
+    );
     const previewActionQueues = resolvePreviewActionQueues({
       defaultActionQueues,
       alternateModifierHeld: isAlternateSendModifierHeld,

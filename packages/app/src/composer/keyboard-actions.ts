@@ -14,6 +14,7 @@ export interface DispatchComposerKeyboardActionArgs {
   isPaneFocused: boolean;
   messageInputRef: { current: ComposerKeyboardTarget | null };
   isAgentRunning: boolean;
+  isCompacting: boolean;
   isCancellingAgent: boolean;
   isConnected: boolean;
   handleCancelAgent: () => void;
@@ -26,6 +27,7 @@ export function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardAct
     isPaneFocused,
     messageInputRef,
     isAgentRunning,
+    isCompacting,
     isCancellingAgent,
     isConnected,
     handleCancelAgent,
@@ -39,7 +41,10 @@ export function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardAct
     // persisted draft, and the Up-arrow history only holds messages that were
     // actually sent. Escape cancels dictation, then the running agent.
     if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) return true;
-    if (!isAgentRunning || isCancellingAgent || !isConnected) return false;
+    // A compaction is an exclusive maintenance turn. Escape must not cancel it
+    // (or make a queued prompt race its context rewrite); the only prompt path
+    // while its marker is loading is the normal queue action.
+    if (!isAgentRunning || isCompacting || isCancellingAgent || !isConnected) return false;
     handleCancelAgent();
     return true;
   }

@@ -53,6 +53,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useCachedContextWindowUsage } from "@/hooks/use-cached-context-window-usage";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { selectAgentTurnPresentation, useSessionStore, type Agent } from "@/stores/session-store";
+import { isCompactionActive } from "@/timeline/compaction-state";
 import { useWidgetPromptStore } from "@/widgets/prompt-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
@@ -386,8 +387,8 @@ function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | nu
 interface RenderQueueTrackArgs {
   queuedMessages: readonly QueuedMessage[];
   handleEditQueuedMessage: (id: string) => void;
-  handleSendQueuedNow: (id: string) => Promise<void>;
-  handleSendAllQueued: () => Promise<void>;
+  handleSendQueuedNow: ((id: string) => Promise<void>) | null;
+  handleSendAllQueued: (() => Promise<void>) | null;
   handleMoveQueuedMessage: ((id: string, direction: "up" | "down") => void) | null;
   editLabel: string;
   sendNowLabel: string;
@@ -548,7 +549,7 @@ function attemptStartRealtimeVoice(args: AttemptStartRealtimeVoiceArgs): void {
 interface QueuedMessageRowProps {
   item: QueuedMessage;
   onEdit: (id: string) => void;
-  onSendNow: (id: string) => void;
+  onSendNow: ((id: string) => void) | null;
   /** Non-null on the head row only, and only when more than one message waits. */
   onSendAll: (() => void) | null;
   /** Null when the host cannot re-order - the move controls are then absent. */
@@ -582,7 +583,7 @@ function QueuedMessageRow({
     onEdit(item.id);
   }, [onEdit, item.id]);
   const handleSendNow = useCallback(() => {
-    onSendNow(item.id);
+    onSendNow?.(item.id);
   }, [onSendNow, item.id]);
   const handleMoveUp = useCallback(() => {
     onMove?.(item.id, "up");
@@ -687,19 +688,21 @@ function QueuedMessageRow({
             </TooltipContent>
           </Tooltip>
         ) : null}
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger
-            onPress={handleSendNow}
-            style={QUEUE_SEND_BUTTON_STYLE}
-            accessibilityLabel={sendNowLabel}
-            accessibilityRole="button"
-          >
-            <ThemedArrowUp size="sm" uniProps={iconAccentForegroundMapping} />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{sendNowLabel}</Text>
-          </TooltipContent>
-        </Tooltip>
+        {onSendNow ? (
+          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger
+              onPress={handleSendNow}
+              style={QUEUE_SEND_BUTTON_STYLE}
+              accessibilityLabel={sendNowLabel}
+              accessibilityRole="button"
+            >
+              <ThemedArrowUp size="sm" uniProps={iconAccentForegroundMapping} />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>{sendNowLabel}</Text>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
       </View>
     </View>
   );
@@ -1474,22 +1477,6 @@ export function Composer({
 
   const registerWidgetPromptSender = useWidgetPromptStore((state) => state.registerSender);
 
-  // Widgets in this chat's transcript may call sendPrompt(). Registering here
-  // is what makes the "active chat only" rule real rather than advisory: a
-  // widget resolves its sender from the mounted composer, so one sitting in a
-  // background tab or an unopened transcript finds nothing and does nothing.
-  //
-  // Routes through submitMessage rather than the full composer submit path on
-  // purpose - the widget's message must not clear a draft the user is halfway
-  // through typing, and must not force-interrupt a running turn.
-  useEffect(() => {
-    return registerWidgetPromptSender({ serverId, agentId }, (text) => {
-      void submitMessage(text, []).catch((error: unknown) => {
-        console.error("[Composer] Widget prompt failed to send:", error);
-      });
-    });
-  }, [registerWidgetPromptSender, serverId, agentId, submitMessage]);
-
   useEffect(() => {
     agentIdRef.current = agentId;
   }, [agentId]);
@@ -1528,6 +1515,16 @@ export function Composer({
   const beginAgentCancellation = useSessionStore((state) => state.beginAgentCancellation);
   const settleAgentCancellation = useSessionStore((state) => state.settleAgentCancellation);
   const isAgentRunning = hasActiveTurn;
+  const isCompacting = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    return isCompactionActive(
+      [
+        ...(session?.agentStreamTail.get(agentId) ?? []),
+        ...(session?.agentStreamHead.get(agentId) ?? []),
+      ],
+      selectAgentTurnPresentation(session, agentId).isActive,
+    );
+  });
   const hasAgent = agentState.status !== null;
 
   const queueMessage = useCallback(
@@ -1563,6 +1560,26 @@ export function Composer({
     ],
   );
 
+  // Widgets in this chat's transcript may call sendPrompt(). Registering here
+  // is what makes the "active chat only" rule real rather than advisory: a
+  // widget resolves its sender from the mounted composer, so one sitting in a
+  // background tab or an unopened transcript finds nothing and does nothing.
+  //
+  // A compaction is the exception to the normal direct widget route. Its
+  // context rewrite must finish before another prompt is delivered, so retain
+  // the prompt in the same queue as the text composer without touching a draft.
+  useEffect(() => {
+    return registerWidgetPromptSender({ serverId, agentId }, (text) => {
+      if (isCompacting) {
+        queueMessage(text, []);
+        return;
+      }
+      void submitMessage(text, []).catch((error: unknown) => {
+        console.error("[Composer] Widget prompt failed to send:", error);
+      });
+    });
+  }, [agentId, isCompacting, queueMessage, registerWidgetPromptSender, serverId, submitMessage]);
+
   const sendMessageWithContent = useCallback(
     async (
       outgoingMessage: string,
@@ -1578,7 +1595,8 @@ export function Composer({
       // (suppressible). Runs before submitAgentInput so a cancel leaves the
       // composer untouched - including its grown height (the false return
       // tells the input not to collapse).
-      if (forceSend && isAgentRunning) {
+      const canForceSend = forceSend === true && !isCompacting;
+      if (canForceSend && isAgentRunning) {
         const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
           serverId,
           parentAgentId: agentId,
@@ -1592,7 +1610,7 @@ export function Composer({
         attachments: outgoingAttachments,
         hasExternalContent,
         allowEmptySubmit,
-        forceSend,
+        forceSend: canForceSend,
         submitBehavior,
         isAgentRunning,
         // Parent-managed submits are still valid submit paths even when the
@@ -1645,6 +1663,7 @@ export function Composer({
       completeSubmit,
       hasExternalContent,
       isAgentRunning,
+      isCompacting,
       queueMessage,
       resetFollowSuggestionChain,
       serverId,
@@ -1829,6 +1848,7 @@ export function Composer({
   );
 
   const handleCancelAgent = useCallback(() => {
+    if (isCompacting) return;
     const targetAgentId = agentIdRef.current;
     const cancellation = cancelComposerAgent({
       client,
@@ -1854,6 +1874,7 @@ export function Composer({
     beginAgentCancellation,
     client,
     isAgentRunning,
+    isCompacting,
     isCancellingAgent,
     isConnected,
     serverId,
@@ -1871,6 +1892,7 @@ export function Composer({
         isPaneFocused,
         messageInputRef,
         isAgentRunning,
+        isCompacting,
         isCancellingAgent,
         isConnected,
         handleCancelAgent,
@@ -1880,6 +1902,7 @@ export function Composer({
       focusMessageInputForKeyboardAction,
       handleCancelAgent,
       isAgentRunning,
+      isCompacting,
       isCancellingAgent,
       isConnected,
       isPaneFocused,
@@ -1952,6 +1975,7 @@ export function Composer({
 
   const handleSendQueuedNow = useCallback(
     async (id: string) => {
+      if (isCompacting) return;
       if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
       // "Send now" on a queued message interrupts the active turn, which kills
       // any in-flight observed subagents/workflows - confirm first (suppressible).
@@ -1986,6 +2010,7 @@ export function Composer({
     [
       agentId,
       isAgentRunning,
+      isCompacting,
       messageQueue,
       serverId,
       setSelectedAttachments,
@@ -2003,6 +2028,7 @@ export function Composer({
    * prompt. Entries the drain beat us to simply come back empty and are skipped.
    */
   const handleSendAllQueued = useCallback(async () => {
+    if (isCompacting) return;
     if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
     // Which entries may merge is the queue's own question, and it must be asked
     // live: a message queued a moment ago is on screen before this client knows
@@ -2054,6 +2080,7 @@ export function Composer({
   }, [
     agentId,
     isAgentRunning,
+    isCompacting,
     messageQueue,
     serverId,
     setSelectedAttachments,
@@ -2516,8 +2543,8 @@ export function Composer({
       renderQueueTrack({
         queuedMessages,
         handleEditQueuedMessage,
-        handleSendQueuedNow,
-        handleSendAllQueued,
+        handleSendQueuedNow: isCompacting ? null : handleSendQueuedNow,
+        handleSendAllQueued: isCompacting ? null : handleSendAllQueued,
         handleMoveQueuedMessage,
         editLabel: t("composer.attachments.editQueuedMessage"),
         sendNowLabel: t("composer.attachments.sendQueuedMessageNow"),
@@ -2532,6 +2559,7 @@ export function Composer({
       handleMoveQueuedMessage,
       handleSendAllQueued,
       handleSendQueuedNow,
+      isCompacting,
       queuedMessages,
       t,
     ],
@@ -2556,7 +2584,7 @@ export function Composer({
   );
 
   const messageInputAutoFocus = autoFocus && isDesktopWebBreakpoint;
-  const submitLoadingPressHandler = isAgentRunning ? handleCancelAgent : undefined;
+  const submitLoadingPressHandler = isAgentRunning && !isCompacting ? handleCancelAgent : undefined;
   const sendErrorNode = useMemo(
     () => (sendError ? <Text style={styles.sendErrorText}>{sendError}</Text> : null),
     [sendError],
@@ -2643,6 +2671,7 @@ export function Composer({
               voiceServerId={serverId}
               voiceAgentId={agentId}
               isAgentRunning={isAgentRunning}
+              isCompacting={isCompacting}
               defaultSendBehavior={appSettings.sendBehavior}
               onQueue={handleQueue}
               onSubmitLoadingPress={submitLoadingPressHandler}

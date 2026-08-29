@@ -243,6 +243,31 @@ describe("composer send behavior", () => {
     expect(defaultAction.calls).toEqual(["queue"]);
     expect(alternateAction.calls).toEqual(["send"]);
   });
+
+  it("queues both Enter actions while compaction is active", () => {
+    const defaultAction = actions();
+    runDefaultSendAction({
+      defaultSendBehavior: "interrupt",
+      isAgentRunning: true,
+      isCompacting: true,
+      onQueue: defaultAction.onQueue,
+      handleSendMessage: defaultAction.handleSendMessage,
+      handleQueueMessage: defaultAction.handleQueueMessage,
+    });
+
+    const alternateAction = actions();
+    runAlternateSendAction({
+      defaultSendBehavior: "queue",
+      isAgentRunning: true,
+      isCompacting: true,
+      onQueue: alternateAction.onQueue,
+      handleSendMessage: alternateAction.handleSendMessage,
+      handleQueueMessage: alternateAction.handleQueueMessage,
+    });
+
+    expect(defaultAction.calls).toEqual(["queue"]);
+    expect(alternateAction.calls).toEqual(["queue"]);
+  });
 });
 
 describe("stopRealtimeVoice", () => {

@@ -14,6 +14,7 @@ function buildArgs(
     isPaneFocused: true,
     messageInputRef: { current: target },
     isAgentRunning: false,
+    isCompacting: false,
     isCancellingAgent: false,
     isConnected: true,
     handleCancelAgent: vi.fn(),
@@ -65,6 +66,14 @@ describe("dispatchComposerKeyboardAction", () => {
   it("leaves Escape unhandled when nothing is running", () => {
     const handleCancelAgent = vi.fn();
     const args = buildArgs({ isAgentRunning: false, handleCancelAgent });
+
+    expect(dispatchComposerKeyboardAction(args)).toBe(false);
+    expect(handleCancelAgent).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel an active compaction", () => {
+    const handleCancelAgent = vi.fn();
+    const args = buildArgs({ isAgentRunning: true, isCompacting: true, handleCancelAgent });
 
     expect(dispatchComposerKeyboardAction(args)).toBe(false);
     expect(handleCancelAgent).not.toHaveBeenCalled();

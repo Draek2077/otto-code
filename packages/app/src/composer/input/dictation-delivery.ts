@@ -5,6 +5,7 @@ export interface DictationTranscriptContext {
   value: string;
   defaultSendBehavior: "interrupt" | "queue";
   isAgentRunning: boolean;
+  isCompacting?: boolean;
   onQueue: ((payload: MessagePayload) => void) | undefined;
   onSubmit: (payload: MessagePayload) => unknown;
   onChangeText: (text: string) => void;
@@ -23,7 +24,11 @@ export function applyDictationTranscript(text: string, ctx: DictationTranscriptC
     return;
   }
 
-  if (ctx.defaultSendBehavior === "queue" && ctx.isAgentRunning && ctx.onQueue) {
+  if (
+    (ctx.isCompacting || ctx.defaultSendBehavior === "queue") &&
+    ctx.isAgentRunning &&
+    ctx.onQueue
+  ) {
     console.info("[MessageInput] wake-word dictation delivery: queue");
     ctx.onQueue({ text: nextValue, attachments: ctx.attachments, cwd: ctx.cwd });
     ctx.onChangeText("");
@@ -37,6 +42,6 @@ export function applyDictationTranscript(text: string, ctx: DictationTranscriptC
     text: nextValue,
     attachments: ctx.attachments,
     cwd: ctx.cwd,
-    forceSend: ctx.isAgentRunning || undefined,
+    forceSend: ctx.isAgentRunning && !ctx.isCompacting ? true : undefined,
   });
 }
