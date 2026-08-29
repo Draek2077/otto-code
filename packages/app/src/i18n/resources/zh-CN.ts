@@ -3477,6 +3477,11 @@ export const zhCN: TranslationResources = {
           hint: "将三个或以上的连续操作折叠为一个可展开的分组；最近一次操作始终显示在其下方",
           accessibilityLabel: "将连续操作分组",
         },
+        chatOutline: {
+          title: "聊天大纲",
+          hint: "在宽聊天的左边缘显示章节浏览器。",
+          accessibilityLabel: "聊天大纲",
+        },
         wrapToolCallText: {
           title: "换行显示工具调用文本",
           hint: "在多行中显示完整的工具调用名称和摘要，而不是截断它们。",

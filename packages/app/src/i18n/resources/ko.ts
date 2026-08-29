@@ -3545,6 +3545,11 @@ export const ko: TranslationResources = {
           hint: "Collapse runs of three or more consecutive actions into one expandable group; the most recent action always stays visible below it",
           accessibilityLabel: "Group consecutive actions together",
         },
+        chatOutline: {
+          title: "채팅 개요",
+          hint: "넓은 채팅의 왼쪽 가장자리에 챕터 브라우저를 표시합니다.",
+          accessibilityLabel: "채팅 개요",
+        },
         wrapToolCallText: {
           title: "Wrap tool-call text",
           hint: "Show complete tool-call names and summaries on multiple lines instead of truncating them.",

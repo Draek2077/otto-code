@@ -3560,6 +3560,11 @@ export const ja: TranslationResources = {
           hint: "3 つ以上続く操作を折りたたんで展開可能なグループにまとめます。最新の操作は常にその下に表示されます",
           accessibilityLabel: "連続する操作をまとめる",
         },
+        chatOutline: {
+          title: "チャットのアウトライン",
+          hint: "幅の広いチャットの左端にチャプターブラウザーを表示します。",
+          accessibilityLabel: "チャットのアウトライン",
+        },
         wrapToolCallText: {
           title: "ツール呼び出しテキストを折り返す",
           hint: "ツール呼び出しの名前と要約を省略せず、複数行で完全に表示します。",

@@ -222,6 +222,10 @@ export interface OttoAppSettings {
   // `screens/workspace/mounted-tab-retention.ts`.
   mountedTabLimit: number | null;
   chatWidth: ChatWidth;
+  // Display the prompt chapter rail on the left side of wide agent chats.
+  // Device-local presentation only. The rail reserves its own content inset
+  // while it is visible so it never overlays transcript content. Default on.
+  chatOutlineEnabled: boolean;
   // Chat tabs + chat pane use a pure black background with dark-theme colors
   // in both light and dark modes (see the `black` scoped theme key).
   blackTabBackground: boolean;
@@ -818,6 +822,7 @@ const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
   "hasCompletedTutorial",
   "pinnedTaskListEnabled",
   "pinnedTaskListAutoDismiss",
+  "chatOutlineEnabled",
 ] as const satisfies readonly (keyof AppSettings)[];
 
 function copyStoredBooleans(
@@ -1442,6 +1447,7 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   mountedWorkspaceLimit: DEFAULT_MOUNTED_WORKSPACE_LIMIT,
   mountedTabLimit: null,
   chatWidth: "default",
+  chatOutlineEnabled: true,
   blackTabBackground: false,
   groupConsecutiveActions: true,
   chatMetricsBar: false,

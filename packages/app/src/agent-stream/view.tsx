@@ -332,6 +332,13 @@ function useRetainedValue<T>(value: T, active: boolean): T {
 const EMPTY_PENDING_MESSAGE_SUBMISSIONS: readonly PendingMessageSubmission[] = [];
 const GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT = 200;
 
+function shouldEnableChatOutline(input: {
+  supported: boolean;
+  preferenceEnabled: boolean;
+}): boolean {
+  return input.supported && input.preferenceEnabled;
+}
+
 const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(
   function AgentStreamView(
     {
@@ -358,6 +365,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const groupConsecutiveActions = useSettings((settings) => settings.groupConsecutiveActions);
+    const chatOutlineEnabled = useSettings((settings) => settings.chatOutlineEnabled);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
     const messageFindQuery = useMemo(
       () =>
@@ -440,6 +448,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       (state) =>
         state.sessions[resolvedServerId]?.serverInfo?.features?.agentTimelinePromptIndex === true,
     );
+    const isChatOutlineEnabled = shouldEnableChatOutline({
+      supported: supportsChatOutline,
+      preferenceEnabled: chatOutlineEnabled,
+    });
     const timelineEpoch = useSessionStore(
       (state) => state.sessions[resolvedServerId]?.agentTimelineCursor.get(agentId)?.epoch ?? null,
     );
@@ -708,7 +720,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       timelineEpoch,
       tail: displayedStreamItems,
       head: displayedStreamHead,
-      enabled: supportsChatOutline,
+      enabled: isChatOutlineEnabled,
       viewportRef,
       onJumpError: handleTimelineHistoryLoadError,
     });
@@ -1329,6 +1341,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                   <ChatSeamFade edge="bottom" />
                   {webScrollbar}
                   <ChatOutlineRail
+                    enabled={isChatOutlineEnabled}
                     prompts={chatOutline.prompts}
                     activePrompt={chatOutline.activePrompt}
                     onJumpToPrompt={chatOutline.jumpToPrompt}

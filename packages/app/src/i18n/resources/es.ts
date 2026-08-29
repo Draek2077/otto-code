@@ -3598,6 +3598,11 @@ export const es: TranslationResources = {
           hint: "Colapsa series de tres o más acciones consecutivas en un grupo expandible; la acción más reciente siempre queda visible debajo",
           accessibilityLabel: "Agrupar acciones consecutivas",
         },
+        chatOutline: {
+          title: "Esquema del chat",
+          hint: "Muestra el explorador de capítulos en el borde izquierdo de los chats amplios.",
+          accessibilityLabel: "Esquema del chat",
+        },
         wrapToolCallText: {
           title: "Ajustar texto de llamadas a herramientas",
           hint: "Muestra nombres y resúmenes completos de llamadas a herramientas en varias líneas en lugar de truncarlos.",

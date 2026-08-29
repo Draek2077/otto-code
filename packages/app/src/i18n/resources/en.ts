@@ -3545,6 +3545,11 @@ export const en = {
           hint: "Collapse runs of three or more consecutive actions into one expandable group; the most recent action always stays visible below it",
           accessibilityLabel: "Group consecutive actions together",
         },
+        chatOutline: {
+          title: "Chat outline",
+          hint: "Show the chapter browser along the left edge of wide chats.",
+          accessibilityLabel: "Chat outline",
+        },
         wrapToolCallText: {
           title: "Wrap tool-call text",
           hint: "Show complete tool-call names and summaries on multiple lines instead of truncating them.",

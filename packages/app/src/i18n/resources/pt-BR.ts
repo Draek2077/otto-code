@@ -3577,6 +3577,11 @@ export const ptBR: TranslationResources = {
           hint: "Recolhe sequências de três ou mais ações consecutivas em um grupo expansível; a ação mais recente permanece sempre visível abaixo",
           accessibilityLabel: "Agrupar ações consecutivas",
         },
+        chatOutline: {
+          title: "Estrutura da conversa",
+          hint: "Mostra o navegador de capítulos na borda esquerda de conversas largas.",
+          accessibilityLabel: "Estrutura da conversa",
+        },
         wrapToolCallText: {
           title: "Quebrar texto de chamadas de ferramentas",
           hint: "Mostra nomes e resumos completos das chamadas de ferramentas em várias linhas, em vez de truncá-los.",

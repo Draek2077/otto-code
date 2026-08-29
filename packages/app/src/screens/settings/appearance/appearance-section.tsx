@@ -763,6 +763,10 @@ export function ChatAppearanceSection() {
     (value: boolean) => updateBoolean("groupConsecutiveActions", value),
     [updateBoolean],
   );
+  const handleChatOutlineEnabledChange = useCallback(
+    (value: boolean) => updateBoolean("chatOutlineEnabled", value),
+    [updateBoolean],
+  );
   const handleWrapToolCallTextChange = useCallback(
     (value: boolean) => updateBoolean("wrapToolCallText", value),
     [updateBoolean],
@@ -826,6 +830,15 @@ export function ChatAppearanceSection() {
           withBorder
           onValueChange={handleGroupConsecutiveActionsChange}
           testID="settings-group-consecutive-actions-switch"
+        />
+        <LayoutToggleRow
+          title={t("settings.appearance.agents.chatOutline.title")}
+          hint={t("settings.appearance.agents.chatOutline.hint")}
+          accessibilityLabel={t("settings.appearance.agents.chatOutline.accessibilityLabel")}
+          value={settings.chatOutlineEnabled}
+          withBorder
+          onValueChange={handleChatOutlineEnabledChange}
+          testID="settings-chat-outline-switch"
         />
         <ToolCallDetailRow
           value={settings.toolCallDetailLevel}

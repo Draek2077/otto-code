@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { useUnistyles } from "react-native-unistyles";
+import { useChatOutlineLayout } from "@/agent-stream/chat-outline/layout";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 interface ChatWidthBoundsProps {
@@ -17,9 +18,19 @@ interface ChatWidthBoundsProps {
 // genuine inline style instead of baking it into a themed stylesheet class.
 export function ChatWidthBounds({ style, children }: ChatWidthBoundsProps) {
   const { theme } = useUnistyles();
+  const { isRailVisible } = useChatOutlineLayout();
   const combinedStyle = useMemo(
-    () => [style, inlineUnistylesStyle({ maxWidth: theme.layout.chatMaxWidth })],
-    [style, theme.layout.chatMaxWidth],
+    () => [
+      style,
+      inlineUnistylesStyle({
+        maxWidth: theme.layout.chatMaxWidth,
+        // The rail spans 8px..44px. This outer inset combines with the chat's
+        // existing inner gutter to clear it, without translating a full-width
+        // track beyond its right edge or over-shifting narrow message bubbles.
+        paddingLeft: isRailVisible ? theme.spacing[6] : 0,
+      }),
+    ],
+    [isRailVisible, style, theme.layout.chatMaxWidth, theme.spacing],
   );
   return <View style={combinedStyle}>{children}</View>;
 }

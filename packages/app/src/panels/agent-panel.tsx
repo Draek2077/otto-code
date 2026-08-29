@@ -31,6 +31,7 @@ import {
   useBlackChatScope,
 } from "@/components/black-chat-scope-context";
 import { ChatThemeScope } from "@/components/chat-theme-scope";
+import { ChatOutlineLayoutProvider } from "@/agent-stream/chat-outline/layout";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
@@ -514,7 +515,13 @@ export function AgentConversationPanel() {
   // Black tab background: render the whole chat pane (stream + composer) on
   // pure black with dark-theme colors regardless of the app-wide light/dark
   // mode. Chat tabs only - terminal/browser/preview panes are not wrapped.
-  return <BlackChatScope enabled={settings.blackTabBackground}>{content}</BlackChatScope>;
+  return (
+    <BlackChatScope enabled={settings.blackTabBackground}>
+      <ChatOutlineLayoutProvider enabled={settings.chatOutlineEnabled}>
+        {content}
+      </ChatOutlineLayoutProvider>
+    </BlackChatScope>
+  );
 }
 
 export const agentPanelRegistration: PanelRegistration<"agent"> = {

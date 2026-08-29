@@ -3611,6 +3611,11 @@ export const fr: TranslationResources = {
           hint: "Réduit les séries d'au moins trois actions consécutives en un groupe dépliable ; l'action la plus récente reste toujours visible en dessous",
           accessibilityLabel: "Regrouper les actions consécutives",
         },
+        chatOutline: {
+          title: "Plan de discussion",
+          hint: "Affiche le navigateur de chapitres sur le bord gauche des discussions larges.",
+          accessibilityLabel: "Plan de discussion",
+        },
         wrapToolCallText: {
           title: "Retour à la ligne du texte des appels d’outils",
           hint: "Affiche les noms et résumés complets des appels d’outils sur plusieurs lignes au lieu de les tronquer.",

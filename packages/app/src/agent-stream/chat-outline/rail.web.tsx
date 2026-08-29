@@ -5,6 +5,7 @@ import { useReducedMotion } from "react-native-reanimated";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { createChatOutlineHoverIntent } from "./hover-intent";
+import { useChatOutlineLayout } from "./layout";
 import { promptTickMagnification } from "./model";
 import type { ChatOutlineRailProps } from "./rail";
 
@@ -23,6 +24,7 @@ const PREVIEW_HEIGHT = 48;
 const PREVIEW_GAP = 4;
 
 export const ChatOutlineRail = memo(function ChatOutlineRail({
+  enabled,
   prompts,
   activePrompt,
   onJumpToPrompt,
@@ -32,6 +34,7 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   const activeSeq = useSyncExternalStore(activePrompt.subscribe, activePrompt.getActiveSeq);
   const prefersReducedMotion = useReducedMotion();
   const { onLayout, isBelow: isPanelNarrow } = useContainerWidthBelow(MIN_PANEL_WIDTH);
+  const { setRailVisible } = useChatOutlineLayout();
 
   const hoverIntent = useMemo(
     () =>
@@ -63,6 +66,11 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   useEffect(() => {
     if (isPanelNarrow) hoverIntent.leave();
   }, [hoverIntent, isPanelNarrow]);
+  const isRailVisible = enabled && prompts.length >= 2 && !isPanelNarrow;
+  useEffect(() => {
+    setRailVisible(isRailVisible);
+    return () => setRailVisible(false);
+  }, [isRailVisible, setRailVisible]);
   const handleFocusChange = useCallback((index: number, focused: boolean) => {
     setFocusedIndex((current) => {
       if (focused) return index;
@@ -74,7 +82,9 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   // same band and the same preview once the pointer leaves.
   const attentionIndex = hoveredIndex ?? focusedIndex;
 
-  if (prompts.length < 2) return null;
+  if (!isRailVisible) {
+    return <View style={styles.panelMeasure} pointerEvents="none" onLayout={onLayout} />;
+  }
 
   return (
     <View style={styles.panelMeasure} pointerEvents="box-none" onLayout={onLayout}>

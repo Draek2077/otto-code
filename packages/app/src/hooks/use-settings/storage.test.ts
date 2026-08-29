@@ -329,6 +329,20 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.chatWidth).toBe("default");
   });
 
+  it("shows the chat outline by default and preserves an explicit opt-out", async () => {
+    expect((await loadAppSettingsFromStorage(makeDeps())).chatOutlineEnabled).toBe(true);
+
+    const configured = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ chatOutlineEnabled: false }),
+        }),
+      }),
+    );
+
+    expect(configured.chatOutlineEnabled).toBe(false);
+  });
+
   it("defaults featureEnabled to an empty map when storage is empty", async () => {
     const deps = makeDeps();
 
