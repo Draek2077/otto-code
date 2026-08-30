@@ -2,21 +2,95 @@
   "id": "graph_mtf8h6lp_q7adsb",
   "name": "test",
   "description": "test",
-  "inputs": [],
+  "inputs": [
+    {
+      "key": "question",
+      "label": "What is up with this?",
+      "multiline": true,
+      "required": true
+    }
+  ],
   "nodes": [
     {
       "id": "root",
       "kind": "orchestrator",
       "title": "Orchestrator",
       "position": {
-        "x": 40,
-        "y": 200
+        "x": 17,
+        "y": 93
+      }
+    },
+    {
+      "id": "n2",
+      "kind": "agent",
+      "title": "Agent 1",
+      "role": "researcher",
+      "position": {
+        "x": 377,
+        "y": 219
+      }
+    },
+    {
+      "id": "n3",
+      "kind": "agent",
+      "title": "Agent 2",
+      "role": "researcher",
+      "position": {
+        "x": 378,
+        "y": 551
+      }
+    },
+    {
+      "id": "n4",
+      "kind": "agent",
+      "title": "Agent 3",
+      "role": "researcher",
+      "access": "read",
+      "position": {
+        "x": 388,
+        "y": 883
+      }
+    },
+    {
+      "id": "n5",
+      "kind": "agent",
+      "title": "Agent 4",
+      "role": "advisor",
+      "access": "read",
+      "position": {
+        "x": 838,
+        "y": 336
       }
     }
   ],
-  "edges": [],
+  "edges": [
+    {
+      "from": "root",
+      "to": "n2"
+    },
+    {
+      "from": "root",
+      "to": "n3"
+    },
+    {
+      "from": "root",
+      "to": "n4"
+    },
+    {
+      "from": "n2",
+      "to": "n5"
+    },
+    {
+      "from": "n3",
+      "to": "n5"
+    },
+    {
+      "from": "n4",
+      "to": "n5"
+    }
+  ],
   "createdAt": "2026-08-30T03:12:09.138Z",
-  "updatedAt": "2026-08-30T03:12:09.138Z",
+  "updatedAt": "2026-08-30T04:26:07.250Z",
   "workflowStorage": {
     "schemaVersion": 1,
     "projectRoot": "C:\\Users\\phili\\Projects\\otto-code",
