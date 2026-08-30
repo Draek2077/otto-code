@@ -20,7 +20,7 @@ export function ArtifactHtmlView({ html }: ArtifactHtmlViewProps): ReactElement 
     <iframe
       title="artifact"
       srcDoc={html}
-      sandbox="allow-scripts allow-forms allow-popups allow-modals"
+      sandbox="allow-scripts allow-forms allow-modals"
       style={IFRAME_STYLE}
     />
   );

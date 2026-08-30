@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { ArtifactMetadataSchema, ArtifactSpinnerSchema } from "./types.js";
+import {
+  ArtifactMetadataSchema,
+  ArtifactSpinnerSchema,
+  ProjectArtifactStoreLocationValueSchema,
+} from "./types.js";
 import type { CreateArtifactInput } from "./types.js";
 
 // ============================================================================
@@ -79,6 +83,40 @@ export const ArtifactStarRequestSchema = z.object({
 export const ArtifactGetContentRequestSchema = z.object({
   type: z.literal("artifact.get-content.request"),
   artifactId: z.string(),
+  requestId: z.string(),
+});
+
+export const ArtifactRepairRequestSchema = z.object({
+  type: z.literal("artifact.repair.request"),
+  artifactId: z.string(),
+  requestId: z.string(),
+});
+
+export const ArtifactDataGetRequestSchema = z.object({
+  type: z.literal("artifact.data.get.request"),
+  artifactId: z.string(),
+  requestId: z.string(),
+});
+
+export const ArtifactDataUpdateRequestSchema = z.object({
+  type: z.literal("artifact.data.update.request"),
+  artifactId: z.string(),
+  data: z.json(),
+  requestId: z.string(),
+});
+
+export const ArtifactStoreMoveRequestSchema = z.object({
+  type: z.literal("artifact.store.move.request"),
+  artifactId: z.string(),
+  destination: ProjectArtifactStoreLocationValueSchema,
+  requestId: z.string(),
+});
+
+export const ProjectArtifactStoreSetRequestSchema = z.object({
+  type: z.literal("project.artifact.store.set.request"),
+  projectId: z.string(),
+  // Null inherits the host-wide Artifacts default.
+  location: ProjectArtifactStoreLocationValueSchema.nullable(),
   requestId: z.string(),
 });
 
@@ -165,6 +203,56 @@ export const ArtifactGetContentResponseSchema = z.object({
   }),
 });
 
+export const ArtifactRepairResponseSchema = z.object({
+  type: z.literal("artifact.repair.response"),
+  payload: z.object({
+    artifact: ArtifactMetadataSchema,
+    success: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const ArtifactDataGetResponseSchema = z.object({
+  type: z.literal("artifact.data.get.response"),
+  payload: z.object({
+    data: z.json().nullable(),
+    success: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const ArtifactDataUpdateResponseSchema = z.object({
+  type: z.literal("artifact.data.update.response"),
+  payload: z.object({
+    artifact: ArtifactMetadataSchema,
+    success: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const ArtifactStoreMoveResponseSchema = z.object({
+  type: z.literal("artifact.store.move.response"),
+  payload: z.object({
+    artifact: ArtifactMetadataSchema,
+    success: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const ProjectArtifactStoreSetResponseSchema = z.object({
+  type: z.literal("project.artifact.store.set.response"),
+  payload: z.object({
+    requestId: z.string(),
+    projectId: z.string(),
+    accepted: z.boolean(),
+    error: z.string().nullable(),
+  }),
+});
+
 // ============================================================================
 // Daemon → Client (Push Notifications)
 // ============================================================================
@@ -202,6 +290,10 @@ export type ArtifactCancelRequest = z.infer<typeof ArtifactCancelRequestSchema>;
 export type ArtifactDeleteRequest = z.infer<typeof ArtifactDeleteRequestSchema>;
 export type ArtifactStarRequest = z.infer<typeof ArtifactStarRequestSchema>;
 export type ArtifactGetContentRequest = z.infer<typeof ArtifactGetContentRequestSchema>;
+export type ArtifactRepairRequest = z.infer<typeof ArtifactRepairRequestSchema>;
+export type ArtifactDataGetRequest = z.infer<typeof ArtifactDataGetRequestSchema>;
+export type ArtifactDataUpdateRequest = z.infer<typeof ArtifactDataUpdateRequestSchema>;
+export type ArtifactStoreMoveRequest = z.infer<typeof ArtifactStoreMoveRequestSchema>;
 
 export type ArtifactListResponse = z.infer<typeof ArtifactListResponseSchema>;
 export type ArtifactCreateResponse = z.infer<typeof ArtifactCreateResponseSchema>;
@@ -211,6 +303,10 @@ export type ArtifactCancelResponse = z.infer<typeof ArtifactCancelResponseSchema
 export type ArtifactDeleteResponse = z.infer<typeof ArtifactDeleteResponseSchema>;
 export type ArtifactStarResponse = z.infer<typeof ArtifactStarResponseSchema>;
 export type ArtifactGetContentResponse = z.infer<typeof ArtifactGetContentResponseSchema>;
+export type ArtifactRepairResponse = z.infer<typeof ArtifactRepairResponseSchema>;
+export type ArtifactDataGetResponse = z.infer<typeof ArtifactDataGetResponseSchema>;
+export type ArtifactDataUpdateResponse = z.infer<typeof ArtifactDataUpdateResponseSchema>;
+export type ArtifactStoreMoveResponse = z.infer<typeof ArtifactStoreMoveResponseSchema>;
 
 export type ArtifactCreatedNotification = z.infer<typeof ArtifactCreatedNotificationSchema>;
 export type ArtifactUpdatedNotification = z.infer<typeof ArtifactUpdatedNotificationSchema>;
@@ -224,7 +320,11 @@ export type ArtifactRequest =
   | ArtifactCancelRequest
   | ArtifactDeleteRequest
   | ArtifactStarRequest
-  | ArtifactGetContentRequest;
+  | ArtifactGetContentRequest
+  | ArtifactRepairRequest
+  | ArtifactDataGetRequest
+  | ArtifactDataUpdateRequest
+  | ArtifactStoreMoveRequest;
 
 export type ArtifactResponse =
   | ArtifactListResponse
@@ -234,7 +334,11 @@ export type ArtifactResponse =
   | ArtifactCancelResponse
   | ArtifactDeleteResponse
   | ArtifactStarResponse
-  | ArtifactGetContentResponse;
+  | ArtifactGetContentResponse
+  | ArtifactRepairResponse
+  | ArtifactDataGetResponse
+  | ArtifactDataUpdateResponse
+  | ArtifactStoreMoveResponse;
 
 export type ArtifactNotification =
   | ArtifactCreatedNotification

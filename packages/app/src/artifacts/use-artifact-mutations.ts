@@ -33,6 +33,23 @@ export interface CancelArtifactVariables {
   artifactId: string;
 }
 
+export interface RepairArtifactVariables {
+  serverId: string;
+  artifactId: string;
+}
+
+export interface UpdateArtifactDataVariables {
+  serverId: string;
+  artifactId: string;
+  data: unknown;
+}
+
+export interface MoveArtifactStoreVariables {
+  serverId: string;
+  artifactId: string;
+  destination: "repository" | "host";
+}
+
 export interface DeleteArtifactVariables {
   serverId: string;
   artifactId: string;
@@ -57,11 +74,15 @@ export interface UseArtifactMutationsResult {
   updateArtifact: (variables: UpdateArtifactVariables) => Promise<ArtifactMetadata>;
   regenerateArtifact: (variables: RegenerateArtifactVariables) => Promise<ArtifactMetadata>;
   cancelArtifact: (variables: CancelArtifactVariables) => Promise<ArtifactMetadata>;
+  repairArtifact: (variables: RepairArtifactVariables) => Promise<ArtifactMetadata>;
+  updateArtifactData: (variables: UpdateArtifactDataVariables) => Promise<ArtifactMetadata>;
+  moveArtifactStore: (variables: MoveArtifactStoreVariables) => Promise<ArtifactMetadata>;
   deleteArtifact: (variables: DeleteArtifactVariables) => Promise<void>;
   toggleStar: (variables: StarArtifactVariables) => Promise<ArtifactMetadata>;
   isCreating: boolean;
   isUpdating: boolean;
   isRegenerating: boolean;
+  isUpdatingData: boolean;
   isDeleting: boolean;
 }
 
@@ -147,6 +168,53 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
     onSuccess: invalidate,
   });
 
+  const repairMutation = useMutation({
+    mutationFn: async ({
+      serverId,
+      artifactId,
+    }: RepairArtifactVariables): Promise<ArtifactMetadata> => {
+      const payload = await requireClient(serverId, t).artifactRepair({ artifactId });
+      if (!payload.success) {
+        throw new Error(payload.error ?? "Failed to repair artifact");
+      }
+      return payload.artifact;
+    },
+    onSuccess: invalidate,
+  });
+
+  const updateDataMutation = useMutation({
+    mutationFn: async ({
+      serverId,
+      artifactId,
+      data,
+    }: UpdateArtifactDataVariables): Promise<ArtifactMetadata> => {
+      const payload = await requireClient(serverId, t).artifactUpdateData({ artifactId, data });
+      if (!payload.success) {
+        throw new Error(payload.error ?? "Failed to update artifact data");
+      }
+      return payload.artifact;
+    },
+    onSuccess: invalidate,
+  });
+
+  const moveStoreMutation = useMutation({
+    mutationFn: async ({
+      serverId,
+      artifactId,
+      destination,
+    }: MoveArtifactStoreVariables): Promise<ArtifactMetadata> => {
+      const payload = await requireClient(serverId, t).artifactMoveStore({
+        artifactId,
+        destination,
+      });
+      if (!payload.success) {
+        throw new Error(payload.error ?? "Failed to move artifact");
+      }
+      return payload.artifact;
+    },
+    onSuccess: invalidate,
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async ({ serverId, artifactId }: DeleteArtifactVariables): Promise<void> => {
       const payload = await requireClient(serverId, t).artifactDelete({ artifactId });
@@ -177,11 +245,15 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
     updateArtifact: (variables) => updateMutation.mutateAsync(variables),
     regenerateArtifact: (variables) => regenerateMutation.mutateAsync(variables),
     cancelArtifact: (variables) => cancelMutation.mutateAsync(variables),
+    repairArtifact: (variables) => repairMutation.mutateAsync(variables),
+    updateArtifactData: (variables) => updateDataMutation.mutateAsync(variables),
+    moveArtifactStore: (variables) => moveStoreMutation.mutateAsync(variables),
     deleteArtifact: (variables) => deleteMutation.mutateAsync(variables),
     toggleStar: (variables) => starMutation.mutateAsync(variables),
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
     isRegenerating: regenerateMutation.isPending,
+    isUpdatingData: updateDataMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
 }

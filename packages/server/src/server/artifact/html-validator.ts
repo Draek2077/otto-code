@@ -92,14 +92,20 @@ export function sanitizeHtmlContent(content: string): string {
  * Validates an HTML file on disk exists and contains valid HTML.
  * Returns the validated content or null if validation fails.
  */
-export function validateHtmlFile(filePath: string): { content: string; isValid: boolean } {
+export function validateHtmlFile(filePath: string): {
+  content: string;
+  // The bytes as read, so callers can tell whether sanitizing changed anything
+  // without a second read of the file.
+  raw: string;
+  isValid: boolean;
+} {
   try {
     // Check file exists and has minimum size
     const stats = statSync(filePath);
 
     // Must have non-zero size (minimum ~50 bytes for basic HTML)
     if (stats.size < 50) {
-      return { content: "", isValid: false };
+      return { content: "", raw: "", isValid: false };
     }
 
     // Read and validate content
@@ -110,9 +116,10 @@ export function validateHtmlFile(filePath: string): { content: string; isValid: 
 
     return {
       content: sanitized,
+      raw: rawContent,
       isValid: isValidHtmlContent(sanitized),
     };
   } catch {
-    return { content: "", isValid: false };
+    return { content: "", raw: "", isValid: false };
   }
 }

@@ -11,6 +11,15 @@ describe("artifact data blocks", () => {
     expect(updated.replace('{"visits":4,"labels":["today"]}', '{"visits":3}')).toBe(html);
   });
 
+  test("keeps a closing script tag inside a value from escaping the data block", () => {
+    const hostile = { title: "</script><script>document.body.innerHTML='pwned'</script>" };
+    const updated = replaceArtifactData(html, hostile);
+
+    expect(updated.split("</script>")).toHaveLength(3);
+    expect(updated).not.toContain("</script><script>document");
+    expect(readArtifactData(updated)).toEqual(hostile);
+  });
+
   test("rejects artifacts without the data-only update contract", () => {
     expect(() => replaceArtifactData("<main>No data block</main>", {})).toThrow(
       "does not support data-only updates",

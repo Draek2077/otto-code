@@ -21,10 +21,39 @@ export async function writeFileAtomic(
     if (options?.mode !== undefined) {
       await fs.chmod(tempPath, options.mode);
     }
-    await fs.rename(tempPath, filePath);
+    await renameWithRetry(tempPath, filePath);
   } catch (error) {
     await fs.rm(tempPath, { force: true });
     throw error;
+  }
+}
+
+// Windows refuses to rename over a file another handle currently has open
+// (EPERM/EBUSY rather than POSIX's silent replace). Anything that reads a
+// record on a timer - the artifact watcher polls every ready artifact's JSON
+// once a second - can therefore collide with a writer for a few
+// milliseconds. Retry briefly; a persistent failure still surfaces.
+const RENAME_RETRY_CODES = new Set(["EPERM", "EBUSY", "EACCES"]);
+const RENAME_RETRY_ATTEMPTS = 6;
+const RENAME_RETRY_BASE_DELAY_MS = 10;
+
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await fs.rename(from, to);
+      return;
+    } catch (error) {
+      const code =
+        error instanceof Error && "code" in error
+          ? (error as NodeJS.ErrnoException).code
+          : undefined;
+      if (!code || !RENAME_RETRY_CODES.has(code) || attempt >= RENAME_RETRY_ATTEMPTS - 1) {
+        throw error;
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, RENAME_RETRY_BASE_DELAY_MS * 2 ** attempt),
+      );
+    }
   }
 }
 

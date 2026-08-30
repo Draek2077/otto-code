@@ -10,17 +10,26 @@ export interface ArtifactSessionHost {
 export interface ArtifactSessionOptions {
   host: ArtifactSessionHost;
   artifactService: ArtifactService;
+  /**
+   * Whether this session created the service and must stop it on close. The
+   * daemon-wide service (which owns every ready-file watcher and outlives any
+   * client) is shared into sessions; stopping it from one session would
+   * silently end monitoring for every other client.
+   */
+  ownsArtifactService: boolean;
   logger: Logger;
 }
 
 export class ArtifactSession {
   private readonly host: ArtifactSessionHost;
   private readonly artifactService: ArtifactService;
+  private readonly ownsArtifactService: boolean;
   private readonly logger: Logger;
 
   constructor(options: ArtifactSessionOptions) {
     this.host = options.host;
     this.artifactService = options.artifactService;
+    this.ownsArtifactService = options.ownsArtifactService;
     this.logger = options.logger.child({ module: "artifact-session" });
   }
 
@@ -299,23 +308,110 @@ export class ArtifactSession {
     }
   }
 
-  async startWatchingGeneratingArtifacts(): Promise<void> {
+  async handleArtifactRepairRequest(
+    msg: Extract<SessionInboundMessage, { type: "artifact.repair.request" }>,
+  ): Promise<void> {
     try {
-      const artifacts = await this.artifactService.list();
-      const generating = artifacts.filter((a: ArtifactMetadata) => a.status === "generating");
-      if (generating.length > 0) {
-        this.logger.info(
-          { count: generating.length },
-          "Found artifacts with generating status from previous session",
-        );
-      }
+      const artifact = await this.artifactService.repair(msg.artifactId);
+      this.host.emit({
+        type: "artifact.repair.response",
+        payload: {
+          artifact,
+          success: true,
+          requestId: msg.requestId,
+        },
+      });
+      this.host.emit({
+        type: "artifact.updated.notification",
+        payload: { artifact },
+      });
     } catch (error) {
-      this.logger.warn({ error }, "Failed to scan for generating artifacts on startup");
+      this.logger.error({ error, requestId: msg.requestId }, "Failed to repair artifact");
+      this.host.emit({
+        type: "artifact.repair.response",
+        payload: {
+          artifact: this.createEmptyArtifact(),
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  async handleArtifactDataGetRequest(
+    msg: Extract<SessionInboundMessage, { type: "artifact.data.get.request" }>,
+  ): Promise<void> {
+    try {
+      const data = await this.artifactService.getData(msg.artifactId);
+      this.host.emit({
+        type: "artifact.data.get.response",
+        payload: { data, success: true, requestId: msg.requestId },
+      });
+    } catch (error) {
+      this.logger.error({ error, requestId: msg.requestId }, "Failed to get artifact data");
+      this.host.emit({
+        type: "artifact.data.get.response",
+        payload: {
+          data: null,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  async handleArtifactDataUpdateRequest(
+    msg: Extract<SessionInboundMessage, { type: "artifact.data.update.request" }>,
+  ): Promise<void> {
+    try {
+      const artifact = await this.artifactService.updateData(msg.artifactId, msg.data);
+      this.host.emit({
+        type: "artifact.data.update.response",
+        payload: { artifact, success: true, requestId: msg.requestId },
+      });
+      this.host.emit({ type: "artifact.updated.notification", payload: { artifact } });
+    } catch (error) {
+      this.logger.error({ error, requestId: msg.requestId }, "Failed to update artifact data");
+      this.host.emit({
+        type: "artifact.data.update.response",
+        payload: {
+          artifact: this.createEmptyArtifact(),
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  async handleArtifactStoreMoveRequest(
+    msg: Extract<SessionInboundMessage, { type: "artifact.store.move.request" }>,
+  ): Promise<void> {
+    try {
+      const artifact = await this.artifactService.move(msg.artifactId, msg.destination);
+      this.host.emit({
+        type: "artifact.store.move.response",
+        payload: { artifact, success: true, requestId: msg.requestId },
+      });
+      this.host.emit({ type: "artifact.updated.notification", payload: { artifact } });
+    } catch (error) {
+      this.logger.error({ error, requestId: msg.requestId }, "Failed to move artifact store");
+      this.host.emit({
+        type: "artifact.store.move.response",
+        payload: {
+          artifact: this.createEmptyArtifact(),
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          requestId: msg.requestId,
+        },
+      });
     }
   }
 
   stop(): void {
-    this.artifactService.stop();
+    if (this.ownsArtifactService) this.artifactService.stop();
   }
 
   private createEmptyArtifact(): ArtifactMetadata {

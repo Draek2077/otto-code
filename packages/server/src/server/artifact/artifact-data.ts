@@ -60,5 +60,11 @@ export function replaceArtifactData(html: string, data: unknown): string {
   if (serialized === undefined) {
     throw new Error("Artifact data must be JSON-serializable.");
   }
-  return `${html.slice(0, bounds.contentStart)}${serialized}${html.slice(bounds.contentEnd)}`;
+  // The block is parsed by the HTML tokenizer before JSON.parse ever sees it,
+  // so a "</script>" (or "<!--") inside a string value would close the data
+  // element early and hand the remainder to the page as live markup. Escaping
+  // every "<" keeps the JSON byte-for-byte equivalent after JSON.parse while
+  // guaranteeing the tokenizer never finds a tag inside the block.
+  const htmlSafe = serialized.replace(/</g, "\\u003c");
+  return `${html.slice(0, bounds.contentStart)}${htmlSafe}${html.slice(bounds.contentEnd)}`;
 }

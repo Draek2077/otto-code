@@ -1,4 +1,5 @@
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import { MAX_ARTIFACT_RUNS, StoredArtifactSchema } from "@otto-code/protocol/artifacts/types";
 import type {
@@ -39,12 +40,12 @@ export class ArtifactStore {
     return this.artifactsDirectory;
   }
 
-  private metadataPath(artifactId: string): string {
+  recordPath(artifactId: string): string {
     assertValidArtifactId(artifactId);
     return join(this.artifactsDir(), `${artifactId}.json`);
   }
 
-  private htmlPath(artifactId: string): string {
+  htmlPath(artifactId: string): string {
     assertValidArtifactId(artifactId);
     return join(this.artifactsDir(), `${artifactId}.html`);
   }
@@ -56,9 +57,8 @@ export class ArtifactStore {
   // Read the full on-disk record, run history included. Everything else in the
   // store layers on top of this: get()/list() strip runs, inspect() keeps them.
   private async readStored(artifactId: string): Promise<StoredArtifact | null> {
-    await this.ensureDir();
     try {
-      const content = await readFile(this.metadataPath(artifactId), "utf-8");
+      const content = await readFile(this.recordPath(artifactId), "utf-8");
       return StoredArtifactSchema.parse(JSON.parse(content));
     } catch (error) {
       if (isEnoent(error)) {
@@ -80,8 +80,13 @@ export class ArtifactStore {
   }
 
   async list(options?: { projectId?: string }): Promise<ArtifactMetadata[]> {
-    await this.ensureDir();
-    const entries = await readdir(this.artifactsDir(), { withFileTypes: true });
+    let entries: Dirent[];
+    try {
+      entries = await readdir(this.artifactsDir(), { withFileTypes: true });
+    } catch (error) {
+      if (isEnoent(error)) return [];
+      throw error;
+    }
     const results = await Promise.all(
       entries
         .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
@@ -107,7 +112,7 @@ export class ArtifactStore {
   async create(metadata: ArtifactMetadata): Promise<void> {
     await this.ensureDir();
     const stored: StoredArtifact = { ...metadata, runs: [] };
-    await writeJsonFileAtomic(this.metadataPath(metadata.id), stored);
+    await writeJsonFileAtomic(this.recordPath(metadata.id), stored);
   }
 
   async update(artifactId: string, changes: Partial<ArtifactMetadata>): Promise<void> {
@@ -121,7 +126,7 @@ export class ArtifactStore {
       ...changes,
       updatedAt: new Date().toISOString(),
     };
-    await writeJsonFileAtomic(this.metadataPath(artifactId), updated);
+    await writeJsonFileAtomic(this.recordPath(artifactId), updated);
   }
 
   // Append a generation attempt to the run history, oldest entries pruned so the
@@ -135,7 +140,7 @@ export class ArtifactStore {
     }
     const runs = [...existing.runs, run].slice(-MAX_ARTIFACT_RUNS);
     const updated: StoredArtifact = { ...existing, runs };
-    await writeJsonFileAtomic(this.metadataPath(artifactId), updated);
+    await writeJsonFileAtomic(this.recordPath(artifactId), updated);
   }
 
   // Patch the current (most recent still-"running") run - to stamp its agent id
@@ -153,12 +158,12 @@ export class ArtifactStore {
     }
     const runs = existing.runs.map((run, i) => (i === index ? { ...run, ...patch } : run));
     const updated: StoredArtifact = { ...existing, runs };
-    await writeJsonFileAtomic(this.metadataPath(artifactId), updated);
+    await writeJsonFileAtomic(this.recordPath(artifactId), updated);
   }
 
   async delete(artifactId: string): Promise<void> {
     await this.ensureDir();
-    await rm(this.metadataPath(artifactId), { force: true });
+    await rm(this.recordPath(artifactId), { force: true });
     await rm(this.htmlPath(artifactId), { force: true });
   }
 

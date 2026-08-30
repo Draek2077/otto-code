@@ -25,6 +25,8 @@ const workspaceIds = [
   "desktop-browser-evict-three",
 ];
 const timeoutMs = 90_000;
+const artifactPreviewId = "artifact-preview-security";
+const artifactOnly = process.env.OTTO_DESKTOP_E2E_ARTIFACT_ONLY === "1";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -83,7 +85,25 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function seedOttoHome(ottoHome, listen, workspaceRoot) {
+function artifactPreviewHtml(probeUrl) {
+  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head><body>
+    <button id="interactive" onclick="this.textContent = 'Interaction preserved'">Interactive artifact</button>
+    <p id="network">waiting</p><p id="navigation">waiting</p><p id="popup">waiting</p><p id="host">waiting</p>
+    <script>
+      const probe = ${JSON.stringify(probeUrl)};
+      const networkState = document.getElementById('network');
+      const navigationState = document.getElementById('navigation');
+      const popupState = document.getElementById('popup');
+      const hostState = document.getElementById('host');
+      fetch(probe).then(() => networkState.textContent = 'network reached').catch(() => networkState.textContent = 'network blocked');
+      try { top.location.href = probe; navigationState.textContent = 'navigation attempted'; } catch { navigationState.textContent = 'navigation blocked'; }
+      popupState.textContent = window.open(probe) === null ? 'popup blocked' : 'popup reached';
+      hostState.textContent = typeof globalThis.require === 'undefined' && typeof globalThis.process === 'undefined' && typeof globalThis.ottoDesktop === 'undefined' ? 'host blocked' : 'host reached';
+    </script>
+  </body></html>`;
+}
+
+function seedOttoHome(ottoHome, listen, workspaceRoot, artifactProbeUrl) {
   const timestamp = "2026-01-01T00:00:00.000Z";
   const projects = workspaceIds.map((workspaceId, index) => {
     const cwd = path.join(workspaceRoot, `workspace-${index + 1}`);
@@ -126,6 +146,26 @@ function seedOttoHome(ottoHome, listen, workspaceRoot) {
   });
   writeJson(path.join(ottoHome, "projects", "projects.json"), projects);
   writeJson(path.join(ottoHome, "projects", "workspaces.json"), workspaces);
+  const artifactDirectory = path.join(projects[0].rootPath, ".otto", "artifacts");
+  const artifactPath = path.join(artifactDirectory, `${artifactPreviewId}.html`);
+  fs.mkdirSync(artifactDirectory, { recursive: true });
+  fs.writeFileSync(artifactPath, artifactPreviewHtml(artifactProbeUrl));
+  writeJson(path.join(artifactDirectory, `${artifactPreviewId}.json`), {
+    id: artifactPreviewId,
+    name: "Hostile interactive artifact",
+    description: "Electron security-boundary proof",
+    projectId: projects[0].rootPath,
+    filePath: artifactPath,
+    kind: "html",
+    starred: false,
+    status: "ready",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    generationAgentId: null,
+    generationProvider: "mock",
+    generationModel: "ten-second-stream",
+    errorMessage: null,
+  });
 }
 
 function spawnLogged(name, command, args, options, logDir) {
@@ -193,7 +233,17 @@ async function waitForDesktopStatus(page) {
 }
 
 async function startTargetPage() {
-  const server = createServer((_request, response) => {
+  let artifactProbeRequests = 0;
+  const server = createServer((request, response) => {
+    if (request.url === "/artifact-probe") {
+      artifactProbeRequests += 1;
+      response.writeHead(200, {
+        "access-control-allow-origin": "*",
+        "content-type": "text/plain; charset=utf-8",
+      });
+      response.end("network reached");
+      return;
+    }
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(`<!doctype html>
       <html>
@@ -211,7 +261,162 @@ async function startTargetPage() {
   });
   const address = server.address();
   assert(address && typeof address !== "string", "Target page did not bind a TCP port");
-  return { server, url: `http://127.0.0.1:${address.port}/` };
+  const origin = `http://127.0.0.1:${address.port}`;
+  return {
+    server,
+    url: `${origin}/`,
+    artifactProbeUrl: `${origin}/artifact-probe`,
+    artifactProbeRequests: () => artifactProbeRequests,
+  };
+}
+
+async function runArtifactPreviewSecurityRegression(page, target) {
+  await page.evaluate(() => {
+    history.pushState(null, "", "/artifacts");
+    dispatchEvent(new PopStateEvent("popstate"));
+  });
+  const card = page.getByTestId(`artifact-card-${artifactPreviewId}`);
+  await card.waitFor({ state: "visible", timeout: timeoutMs });
+  await page.getByTestId(`artifact-menu-${artifactPreviewId}`).click();
+  await page.getByTestId(`artifact-menu-view-${artifactPreviewId}`).click();
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('webview[partition="otto-artifact-preview"]')
+        ?.getAttribute("src")
+        ?.startsWith("data:text/html") === true &&
+      document.querySelector('[data-testid="artifact-view-dialog"]'),
+    { timeout: timeoutMs },
+  );
+
+  const guestState = async () =>
+    page.evaluate(async () => {
+      const webview = document.querySelector('webview[partition="otto-artifact-preview"]');
+      if (!webview || typeof webview.executeJavaScript !== "function") return null;
+      return await webview.executeJavaScript(`({
+        network: document.querySelector('#network')?.textContent,
+        navigation: document.querySelector('#navigation')?.textContent,
+        popup: document.querySelector('#popup')?.textContent,
+        host: document.querySelector('#host')?.textContent,
+        url: location.href,
+      })`);
+    });
+  await page.waitForFunction(
+    async () => {
+      const webview = document.querySelector('webview[partition="otto-artifact-preview"]');
+      if (!webview || typeof webview.executeJavaScript !== "function") return false;
+      const state = await webview.executeJavaScript(
+        "document.querySelector('#network')?.textContent",
+      );
+      return state === "network blocked";
+    },
+    undefined,
+    { timeout: timeoutMs },
+  );
+  const beforeInteraction = await guestState();
+  assert(beforeInteraction?.network === "network blocked", "Artifact guest reached the network");
+  assert(beforeInteraction?.popup === "popup blocked", "Artifact guest opened a popup");
+  assert(beforeInteraction?.host === "host blocked", "Artifact guest accessed host privileges");
+  assert(
+    beforeInteraction?.url?.startsWith("data:text/html"),
+    "Artifact guest navigated externally",
+  );
+  assert(target.artifactProbeRequests() === 0, "Artifact network request reached the probe server");
+
+  const interaction = await page.evaluate(async () => {
+    const webview = document.querySelector('webview[partition="otto-artifact-preview"]');
+    if (!webview || typeof webview.executeJavaScript !== "function") return null;
+    return await webview.executeJavaScript(
+      "document.querySelector('#interactive')?.click(); document.querySelector('#interactive')?.textContent",
+    );
+  });
+  assert(interaction === "Interaction preserved", "Artifact interactivity was lost to hardening");
+}
+
+async function runArtifactPreviewSecurityElectronHarness(page, target) {
+  const html = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"></head><body>
+    <button id="interactive" onclick="this.textContent = 'Interaction preserved'">Interactive artifact</button>
+    <p id="network">waiting</p><p id="navigation">waiting</p><p id="popup">waiting</p><p id="host">waiting</p>
+    <script>
+      const probe = ${JSON.stringify(target.artifactProbeUrl)};
+      const networkState = document.getElementById('network');
+      const navigationState = document.getElementById('navigation');
+      const popupState = document.getElementById('popup');
+      const hostState = document.getElementById('host');
+      fetch(probe).then(() => networkState.textContent = 'network reached').catch(() => networkState.textContent = 'network blocked');
+      try { top.location.href = probe; navigationState.textContent = 'navigation attempted'; } catch { navigationState.textContent = 'navigation blocked'; }
+      popupState.textContent = window.open(probe) === null ? 'popup blocked' : 'popup reached';
+      hostState.textContent = typeof globalThis.require === 'undefined' && typeof globalThis.process === 'undefined' && typeof globalThis.ottoDesktop === 'undefined' ? 'host blocked' : 'host reached';
+    </script>
+  </body></html>`;
+  const selector = 'webview[data-otto-artifact-security-harness="true"]';
+  await page.evaluate(
+    ({ html: documentHtml, selector: webviewSelector }) => {
+      document.querySelector(webviewSelector)?.remove();
+      const webview = document.createElement("webview");
+      webview.setAttribute("data-otto-artifact-security-harness", "true");
+      webview.setAttribute("partition", "otto-artifact-preview");
+      webview.style.width = "640px";
+      webview.style.height = "480px";
+      webview.src = `data:text/html;charset=utf-8,${encodeURIComponent(documentHtml)}`;
+      document.body.appendChild(webview);
+    },
+    { html, selector },
+  );
+  await page.waitForFunction(
+    (webviewSelector) => {
+      const webview = document.querySelector(webviewSelector);
+      return webview?.getAttribute("src")?.startsWith("data:text/html") === true;
+    },
+    selector,
+    { timeout: timeoutMs },
+  );
+
+  const guestState = async () =>
+    page.evaluate(async (webviewSelector) => {
+      const webview = document.querySelector(webviewSelector);
+      if (!webview || typeof webview.executeJavaScript !== "function") return null;
+      return await webview.executeJavaScript(`({
+        network: document.querySelector('#network')?.textContent,
+        popup: document.querySelector('#popup')?.textContent,
+        host: document.querySelector('#host')?.textContent,
+        url: location.href,
+      })`);
+    }, selector);
+  await page.waitForFunction(
+    async (webviewSelector) => {
+      const webview = document.querySelector(webviewSelector);
+      if (!webview || typeof webview.executeJavaScript !== "function") return false;
+      return (
+        (await webview.executeJavaScript("document.querySelector('#network')?.textContent")) ===
+        "network blocked"
+      );
+    },
+    selector,
+    { timeout: timeoutMs },
+  );
+  const beforeInteraction = await guestState();
+  assert(beforeInteraction?.network === "network blocked", "Artifact guest reached the network");
+  assert(beforeInteraction?.popup === "popup blocked", "Artifact guest opened a popup");
+  assert(beforeInteraction?.host === "host blocked", "Artifact guest accessed host privileges");
+  assert(
+    beforeInteraction?.url?.startsWith("data:text/html"),
+    "Artifact guest navigated externally",
+  );
+  assert(target.artifactProbeRequests() === 0, "Artifact network request reached the probe server");
+
+  const interaction = await page.evaluate(async (webviewSelector) => {
+    const webview = document.querySelector(webviewSelector);
+    if (!webview || typeof webview.executeJavaScript !== "function") return null;
+    return await webview.executeJavaScript(
+      "document.querySelector('#interactive')?.click(); document.querySelector('#interactive')?.textContent",
+    );
+  }, selector);
+  assert(interaction === "Interaction preserved", "Artifact interactivity was lost to hardening");
+  await page.evaluate(
+    (webviewSelector) => document.querySelector(webviewSelector)?.remove(),
+    selector,
+  );
 }
 
 async function closeServer(server) {
@@ -718,8 +923,8 @@ async function main() {
     reservePort(),
   ]);
   const listen = `127.0.0.1:${daemonPort}`;
-  seedOttoHome(ottoHome, listen, workspaceRoot);
   const target = await startTargetPage();
+  seedOttoHome(ottoHome, listen, workspaceRoot, target.artifactProbeUrl);
   const children = [];
   let browser = null;
   let client = null;
@@ -781,7 +986,17 @@ async function main() {
     const page = await waitForAppPage(browser, expoPort);
     const status = await waitForDesktopStatus(page);
 
+    if (artifactOnly) {
+      await page
+        .getByRole("button", { name: "Settings", exact: true })
+        .waitFor({ state: "visible", timeout: timeoutMs });
+      await runArtifactPreviewSecurityElectronHarness(page, target);
+      console.log("Electron Artifact preview security E2E passed.");
+      return;
+    }
+
     await runAppearanceFontSizeRegression(page);
+    await runArtifactPreviewSecurityRegression(page, target);
 
     const callerAgentId = await createCallerAgent(daemonPort);
     const transport = new StreamableHTTPClientTransport(

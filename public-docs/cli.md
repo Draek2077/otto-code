@@ -169,6 +169,24 @@ otto schedule ls
 otto schedule pause <id>
 ```
 
+## Artifacts
+
+Inspect and manage durable artifacts from the terminal. See [Artifacts](/docs/artifacts) for storage, recovery, and update behavior.
+
+```bash
+otto artifact ls
+otto artifact ls --project ~/dev/my-app
+otto artifact create "Release report" --project ~/dev/my-app --provider codex --description "Interactive release readiness report"
+otto artifact data <id>
+otto artifact update-data <id> --data '{"visits":42}'
+otto artifact regenerate <id>
+otto artifact cancel <id>
+otto artifact repair <id>
+otto artifact move <id> --to repository
+```
+
+`update-data` replaces only the artifact's declared JSON data contract. It does not regenerate or redesign the HTML. Use `regenerate` only when you explicitly want a new visual output.
+
 ## Permissions
 
 Agents may request permission for certain actions. Manage these from the CLI:

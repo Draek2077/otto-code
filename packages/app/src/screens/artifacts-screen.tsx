@@ -7,6 +7,7 @@ import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ArtifactGrid } from "@/components/artifacts/artifact-grid";
+import { SearchField } from "@/components/ui/search-field";
 import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
@@ -16,13 +17,14 @@ import {
   type ArtifactEditTarget,
 } from "@/components/artifacts/artifact-create-sheet";
 import { ArtifactViewDialog } from "@/components/artifacts/artifact-view-dialog";
+import { ArtifactDataUpdateSheet } from "@/components/artifacts/artifact-data-update-sheet";
 import {
   TranscriptViewDialog,
   type TranscriptViewDialogProps,
 } from "@/components/transcript-view-dialog";
 import { useArtifacts, type AggregatedArtifact } from "@/artifacts/use-artifacts";
 import { useArtifactMutations } from "@/artifacts/use-artifact-mutations";
-import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
+import { artifactBelongsToWorkspace, artifactMatchesSearch } from "@/artifacts/artifact-derivation";
 import {
   buildProjectNameByCwd,
   buildScheduleProjectTargets,
@@ -33,6 +35,7 @@ import {
   usePreferredWorkspaceProjectScope,
 } from "@/hooks/use-preferred-workspace-project-scope";
 import { useHosts } from "@/runtime/host-runtime";
+import { toErrorMessage } from "@/utils/error-messages";
 import type { ArtifactStatus } from "@otto-code/protocol/artifacts/types";
 
 type ArtifactStatusFilter = "all" | ArtifactStatus;
@@ -57,6 +60,12 @@ type ArtifactFormState =
   | { mode: "create" }
   | { mode: "edit"; artifact: AggregatedArtifact };
 
+interface ArtifactMoveFailure {
+  artifact: AggregatedArtifact;
+  destination: "repository" | "host";
+  message: string;
+}
+
 function toEditTarget(artifact: AggregatedArtifact): ArtifactEditTarget {
   return {
     id: artifact.id,
@@ -72,7 +81,14 @@ function toEditTarget(artifact: AggregatedArtifact): ArtifactEditTarget {
 
 function ArtifactsScreenContent(): ReactElement {
   const { artifacts, isInitialLoad, isError, refetch } = useArtifacts();
-  const { toggleStar, deleteArtifact, regenerateArtifact, cancelArtifact } = useArtifactMutations();
+  const {
+    toggleStar,
+    deleteArtifact,
+    regenerateArtifact,
+    cancelArtifact,
+    repairArtifact,
+    moveArtifactStore,
+  } = useArtifactMutations();
   const { projects } = useProjects();
   const hosts = useHosts();
   const preferredWorkspaceScope = usePreferredWorkspaceProjectScope();
@@ -81,16 +97,22 @@ function ArtifactsScreenContent(): ReactElement {
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
   const hasExplicitScopeSelection = useRef(false);
   const [statusFilter, setStatusFilter] = useState<ArtifactStatusFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [form, setForm] = useState<ArtifactFormState>({ mode: "closed" });
   const [viewingArtifact, setViewingArtifact] = useState<AggregatedArtifact | null>(null);
+  const [dataUpdateArtifact, setDataUpdateArtifact] = useState<AggregatedArtifact | null>(null);
   const [transcriptTarget, setTranscriptTarget] =
     useState<TranscriptViewDialogProps["target"]>(null);
+  const [movingArtifactId, setMovingArtifactId] = useState<string | null>(null);
+  const movingArtifactIdRef = useRef<string | null>(null);
+  const [moveFailure, setMoveFailure] = useState<ArtifactMoveFailure | null>(null);
   const openCreate = useCallback(() => setForm({ mode: "create" }), []);
   const handleView = useCallback(
     (artifact: AggregatedArtifact) => setViewingArtifact(artifact),
     [],
   );
   const closeView = useCallback(() => setViewingArtifact(null), []);
+  const closeDataUpdate = useCallback(() => setDataUpdateArtifact(null), []);
   const handleViewGenerationChat = useCallback((artifact: AggregatedArtifact) => {
     if (!artifact.generationAgentId) {
       return;
@@ -99,6 +121,14 @@ function ArtifactsScreenContent(): ReactElement {
       serverId: artifact.serverId,
       agentId: artifact.generationAgentId,
       title: artifact.name || artifact.id,
+    });
+  }, []);
+  const handleViewSourceChat = useCallback((artifact: AggregatedArtifact) => {
+    if (artifact.source?.kind !== "chat") return;
+    setTranscriptTarget({
+      serverId: artifact.serverId,
+      agentId: artifact.source.agentId,
+      title: `Source: ${artifact.name || artifact.id}`,
     });
   }, []);
   const closeTranscript = useCallback(() => setTranscriptTarget(null), []);
@@ -164,9 +194,10 @@ function ArtifactsScreenContent(): ReactElement {
           (selectedHost === ALL_HOSTS_OPTION_ID || artifact.serverId === selectedHost) &&
           (projectFilter === undefined ||
             artifactBelongsToWorkspace(artifact.projectId, projectFilter)) &&
+          artifactMatchesSearch(artifact, searchQuery) &&
           (statusFilter === "all" || artifact.status === statusFilter),
       ),
-    [artifacts, projectFilter, selectedHost, statusFilter],
+    [artifacts, projectFilter, searchQuery, selectedHost, statusFilter],
   );
 
   const handleStar = useCallback(
@@ -200,6 +231,44 @@ function ArtifactsScreenContent(): ReactElement {
     },
     [cancelArtifact],
   );
+  const handleRepair = useCallback(
+    (artifact: AggregatedArtifact) => {
+      void repairArtifact({ serverId: artifact.serverId, artifactId: artifact.id });
+    },
+    [repairArtifact],
+  );
+  const handleUpdateData = useCallback(
+    (artifact: AggregatedArtifact) => setDataUpdateArtifact(artifact),
+    [],
+  );
+  const handleMove = useCallback(
+    async (artifact: AggregatedArtifact, destination: "repository" | "host") => {
+      if (movingArtifactIdRef.current === artifact.id) return;
+      setMoveFailure(null);
+      movingArtifactIdRef.current = artifact.id;
+      setMovingArtifactId(artifact.id);
+      try {
+        await moveArtifactStore({
+          serverId: artifact.serverId,
+          artifactId: artifact.id,
+          destination,
+        });
+      } catch (error) {
+        setMoveFailure({ artifact, destination, message: toErrorMessage(error) });
+      } finally {
+        if (movingArtifactIdRef.current === artifact.id) {
+          movingArtifactIdRef.current = null;
+          setMovingArtifactId(null);
+        }
+      }
+    },
+    [moveArtifactStore],
+  );
+  const retryMove = useCallback(() => {
+    if (!moveFailure) return;
+    void handleMove(moveFailure.artifact, moveFailure.destination);
+  }, [handleMove, moveFailure]);
+  const dismissMoveFailure = useCallback(() => setMoveFailure(null), []);
 
   return (
     <View style={styles.container}>
@@ -219,13 +288,23 @@ function ArtifactsScreenContent(): ReactElement {
         onProjectFilterChange={handleProjectFilterChange}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
         onRetry={refetch}
         onCreate={openCreate}
         onView={handleView}
         onViewGenerationChat={handleViewGenerationChat}
+        onViewSourceChat={handleViewSourceChat}
         onEdit={handleEdit}
         onRegenerate={handleRegenerate}
         onCancel={handleCancel}
+        onRepair={handleRepair}
+        onUpdateData={handleUpdateData}
+        onMove={handleMove}
+        movingArtifactId={movingArtifactId}
+        moveFailure={moveFailure}
+        onRetryMove={retryMove}
+        onDismissMoveFailure={dismissMoveFailure}
         onStar={handleStar}
         onDelete={handleDelete}
       />
@@ -236,6 +315,7 @@ function ArtifactsScreenContent(): ReactElement {
         onClose={closeForm}
       />
       <ArtifactViewDialog artifact={viewingArtifact} onClose={closeView} />
+      <ArtifactDataUpdateSheet artifact={dataUpdateArtifact} onClose={closeDataUpdate} />
       <TranscriptViewDialog target={transcriptTarget} onClose={closeTranscript} />
     </View>
   );
@@ -256,13 +336,23 @@ interface ArtifactsBodyProps {
   onProjectFilterChange: (projectId: string | undefined) => void;
   statusFilter: ArtifactStatusFilter;
   onStatusFilterChange: (status: ArtifactStatusFilter) => void;
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
   onRetry: () => void;
   onCreate: () => void;
   onView: (artifact: AggregatedArtifact) => void;
   onViewGenerationChat: (artifact: AggregatedArtifact) => void;
+  onViewSourceChat: (artifact: AggregatedArtifact) => void;
   onEdit: (artifact: AggregatedArtifact) => void;
   onRegenerate: (artifact: AggregatedArtifact) => void;
   onCancel: (artifact: AggregatedArtifact) => void;
+  onRepair: (artifact: AggregatedArtifact) => void;
+  onUpdateData: (artifact: AggregatedArtifact) => void;
+  onMove: (artifact: AggregatedArtifact, destination: "repository" | "host") => Promise<void>;
+  movingArtifactId: string | null;
+  moveFailure: ArtifactMoveFailure | null;
+  onRetryMove: () => void;
+  onDismissMoveFailure: () => void;
   onStar: (artifact: AggregatedArtifact) => void;
   onDelete: (artifact: AggregatedArtifact) => void;
 }
@@ -282,13 +372,23 @@ function ArtifactsBody({
   onProjectFilterChange,
   statusFilter,
   onStatusFilterChange,
+  searchQuery,
+  onSearchQueryChange,
   onRetry,
   onCreate,
   onView,
   onViewGenerationChat,
+  onViewSourceChat,
   onEdit,
   onRegenerate,
   onCancel,
+  onRepair,
+  onUpdateData,
+  onMove,
+  movingArtifactId,
+  moveFailure,
+  onRetryMove,
+  onDismissMoveFailure,
   onStar,
   onDelete,
 }: ArtifactsBodyProps): ReactElement {
@@ -329,7 +429,9 @@ function ArtifactsBody({
   }
 
   let emptyFilterText = "No artifacts for this project";
-  if (statusFilter !== "all") {
+  if (searchQuery.trim()) {
+    emptyFilterText = "No matching artifacts";
+  } else if (statusFilter !== "all") {
     const label = STATUS_FILTER_OPTIONS.find((option) => option.value === statusFilter)?.label;
     emptyFilterText = `No ${label?.toLowerCase()} artifacts`;
   }
@@ -340,6 +442,14 @@ function ArtifactsBody({
     <View style={styles.body}>
       <View style={styles.filterRow}>
         <View style={styles.filterControls}>
+          <SearchField
+            value={searchQuery}
+            onChangeText={onSearchQueryChange}
+            placeholder="Search artifacts"
+            clearAccessibilityLabel="Clear artifact search"
+            testID="artifacts-search"
+            clearTestID="artifacts-search-clear"
+          />
           {hosts.length > 1 ? (
             <HostFilter hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
           ) : null}
@@ -374,6 +484,22 @@ function ArtifactsBody({
         showsVerticalScrollIndicator={false}
         testID="artifacts-list"
       >
+        {moveFailure ? (
+          <View style={styles.moveFailure} testID="artifact-move-failure">
+            <Text style={styles.moveFailureText}>
+              Couldn&apos;t move {moveFailure.artifact.name || "this artifact"}:{" "}
+              {moveFailure.message}
+            </Text>
+            <View style={styles.moveFailureActions}>
+              <Button size="sm" variant="secondary" onPress={onRetryMove}>
+                Try again
+              </Button>
+              <Button size="sm" variant="ghost" onPress={onDismissMoveFailure}>
+                Dismiss
+              </Button>
+            </View>
+          </View>
+        ) : null}
         {artifacts.length > 0 ? (
           <ArtifactGrid
             artifacts={artifacts}
@@ -381,9 +507,14 @@ function ArtifactsBody({
             projectNameByCwd={projectNameByCwd}
             onView={onView}
             onViewGenerationChat={onViewGenerationChat}
+            onViewSourceChat={onViewSourceChat}
             onEdit={onEdit}
             onRegenerate={onRegenerate}
             onCancel={onCancel}
+            onRepair={onRepair}
+            onUpdateData={onUpdateData}
+            onMove={onMove}
+            movingArtifactId={movingArtifactId}
             onStar={onStar}
             onDelete={onDelete}
           />
@@ -447,6 +578,25 @@ const styles = StyleSheet.create((theme) => ({
   scrollContent: {
     paddingTop: theme.spacing[4],
     paddingBottom: theme.spacing[6],
+  },
+  moveFailure: {
+    gap: theme.spacing[2],
+    marginHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    marginBottom: theme.spacing[3],
+    padding: theme.spacing[3],
+    borderWidth: 1,
+    borderColor: theme.colors.palette.red[500],
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface2,
+  },
+  moveFailureText: {
+    color: theme.colors.palette.red[500],
+    fontSize: theme.fontSize.sm,
+  },
+  moveFailureActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   filterEmpty: {
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },

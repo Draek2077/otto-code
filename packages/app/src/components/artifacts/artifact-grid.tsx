@@ -12,9 +12,14 @@ export interface ArtifactGridProps {
   projectNameByCwd: ReadonlyMap<string, string>;
   onView: (artifact: AggregatedArtifact) => void;
   onViewGenerationChat: (artifact: AggregatedArtifact) => void;
+  onViewSourceChat: (artifact: AggregatedArtifact) => void;
   onEdit: (artifact: AggregatedArtifact) => void;
   onRegenerate: (artifact: AggregatedArtifact) => void;
   onCancel: (artifact: AggregatedArtifact) => void;
+  onRepair: (artifact: AggregatedArtifact) => void;
+  onUpdateData: (artifact: AggregatedArtifact) => void;
+  onMove: (artifact: AggregatedArtifact, destination: "repository" | "host") => Promise<void>;
+  movingArtifactId: string | null;
   onStar: (artifact: AggregatedArtifact) => void;
   onDelete: (artifact: AggregatedArtifact) => void;
 }
@@ -25,9 +30,14 @@ export function ArtifactGrid({
   projectNameByCwd,
   onView,
   onViewGenerationChat,
+  onViewSourceChat,
   onEdit,
   onRegenerate,
   onCancel,
+  onRepair,
+  onUpdateData,
+  onMove,
+  movingArtifactId,
   onStar,
   onDelete,
 }: ArtifactGridProps): ReactElement {
@@ -44,9 +54,14 @@ export function ArtifactGrid({
             })}
             onView={onView}
             onViewGenerationChat={onViewGenerationChat}
+            onViewSourceChat={onViewSourceChat}
             onEdit={onEdit}
             onRegenerate={onRegenerate}
             onCancel={onCancel}
+            onRepair={onRepair}
+            onUpdateData={onUpdateData}
+            onMove={onMove}
+            isMoving={movingArtifactId === artifact.id}
             onStar={onStar}
             onDelete={onDelete}
             showHost={showHost}

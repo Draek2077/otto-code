@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useState, type ReactElement } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
@@ -66,12 +66,21 @@ export interface ArtifactCardProps {
   onView: (artifact: AggregatedArtifact) => void;
   /** Open a read-only view of the chat that generated the artifact. */
   onViewGenerationChat: (artifact: AggregatedArtifact) => void;
+  /** Open the originating chat when the artifact was created from one. */
+  onViewSourceChat: (artifact: AggregatedArtifact) => void;
   /** Open the edit dialog (also the card's primary click). */
   onEdit: (artifact: AggregatedArtifact) => void;
   /** Re-run generation with the stored config. */
   onRegenerate: (artifact: AggregatedArtifact) => void;
   /** Cancel an in-progress generation and recover the artifact. */
   onCancel: (artifact: AggregatedArtifact) => void;
+  /** Restore the durable last good output after an invalid external edit. */
+  onRepair: (artifact: AggregatedArtifact) => void;
+  /** Change the explicit data contract without regenerating the artifact. */
+  onUpdateData: (artifact: AggregatedArtifact) => void;
+  onMove: (artifact: AggregatedArtifact, destination: "repository" | "host") => Promise<void>;
+  /** A confirmed location move is in progress for this artifact. */
+  isMoving: boolean;
   onStar: (artifact: AggregatedArtifact) => void;
   onDelete: (artifact: AggregatedArtifact) => void;
   showHost: boolean;
@@ -91,14 +100,52 @@ function formatDate(iso: string): string {
   });
 }
 
+function storageLocationLabel(location: AggregatedArtifact["storageLocation"]): string {
+  switch (location) {
+    case "repository":
+      return "Repository";
+    case "host":
+      return "This host";
+    default:
+      return "Legacy location";
+  }
+}
+
+function storageLocationDescription(location: AggregatedArtifact["storageLocation"]): string {
+  switch (location) {
+    case "repository":
+      return "the repository";
+    case "host":
+      return "this host";
+    default:
+      return "its legacy location";
+  }
+}
+
+function sourceLabel(source: NonNullable<AggregatedArtifact["source"]>): string {
+  switch (source.kind) {
+    case "chat":
+      return "Chat";
+    case "workflow":
+      return "Workflow";
+    case "schedule":
+      return "Schedule";
+  }
+}
+
 function ArtifactCardComponent({
   artifact,
   projectName,
   onView,
   onViewGenerationChat,
+  onViewSourceChat,
   onEdit,
   onRegenerate,
   onCancel,
+  onRepair,
+  onUpdateData,
+  onMove,
+  isMoving,
   onStar,
   onDelete,
   showHost,
@@ -111,15 +158,45 @@ function ArtifactCardComponent({
   // The daemon only serves a closed generation agent's transcript when it
   // advertises retainedTranscripts; older hosts have no record to fetch.
   const canViewGenerationChat = useHostFeature(artifact.serverId, "retainedTranscripts");
+  // COMPAT(artifactProvenance): added in v0.9.0, remove after 2027-02-28.
+  const canViewSourceChat =
+    useHostFeature(artifact.serverId, "artifactProvenance") && artifact.source?.kind === "chat";
+  // COMPAT(artifactRepair): added in v0.9.0, remove after 2027-02-28.
+  const canRepair = useHostFeature(artifact.serverId, "artifactRepair");
+  // COMPAT(artifactDataUpdate): added in v0.9.0, remove after 2027-02-28.
+  const canUpdateData = useHostFeature(artifact.serverId, "artifactDataUpdate");
+  // COMPAT(artifactStoreMove): added in v0.9.0, remove after 2027-02-28.
+  const canMove = useHostFeature(artifact.serverId, "artifactStoreMove");
 
   const handleView = useCallback(() => onView(artifact), [artifact, onView]);
   const handleViewGenerationChat = useCallback(
     () => onViewGenerationChat(artifact),
     [artifact, onViewGenerationChat],
   );
+  const handleViewSourceChat = useCallback(
+    () => onViewSourceChat(artifact),
+    [artifact, onViewSourceChat],
+  );
   const handleEdit = useCallback(() => onEdit(artifact), [artifact, onEdit]);
   const handleRegenerate = useCallback(() => onRegenerate(artifact), [artifact, onRegenerate]);
   const handleCancel = useCallback(() => onCancel(artifact), [artifact, onCancel]);
+  const handleRepair = useCallback(() => onRepair(artifact), [artifact, onRepair]);
+  const handleUpdateData = useCallback(() => onUpdateData(artifact), [artifact, onUpdateData]);
+  const handleMove = useCallback(
+    (destination: "repository" | "host") => {
+      const destinationLabel = destination === "repository" ? "the repository" : "this host";
+      const currentLocation = storageLocationDescription(artifact.storageLocation);
+      void (async () => {
+        const confirmed = await confirmDialog({
+          title: "Move artifact",
+          message: `Move "${artifact.name}" from ${currentLocation} to ${destinationLabel}? Its location changes, but its data and rendered output do not.`,
+          confirmLabel: "Move",
+        });
+        if (confirmed) void onMove(artifact, destination);
+      })();
+    },
+    [artifact, onMove],
+  );
   const handleStar = useCallback(() => onStar(artifact), [artifact, onStar]);
 
   const handleDelete = useCallback(() => {
@@ -188,9 +265,18 @@ function ArtifactCardComponent({
             canViewGenerationChat={canViewGenerationChat}
             onView={handleView}
             onViewGenerationChat={handleViewGenerationChat}
+            onViewSourceChat={handleViewSourceChat}
+            canViewSourceChat={canViewSourceChat}
             onEdit={handleEdit}
             onRegenerate={handleRegenerate}
             onCancel={handleCancel}
+            onRepair={handleRepair}
+            canRepair={canRepair}
+            onUpdateData={handleUpdateData}
+            canUpdateData={canUpdateData}
+            canMove={canMove}
+            isMoving={isMoving}
+            onMove={handleMove}
             onDelete={handleDelete}
           />
         </View>
@@ -202,6 +288,10 @@ function ArtifactCardComponent({
           model={artifact.generationModel}
         />
         <ProjectNameLine projectName={projectName} />
+        <ArtifactStorageLine location={artifact.storageLocation} />
+        <ArtifactSourceLine source={artifact.source} />
+
+        {isMoving ? <Text style={styles.movingText}>Moving artifact…</Text> : null}
 
         {artifact.status === "error" ? (
           <View style={styles.statusRow}>
@@ -231,23 +321,111 @@ function ArtifactCardComponent({
   );
 }
 
+function ArtifactStorageLine({ location }: { location: AggregatedArtifact["storageLocation"] }) {
+  return (
+    <Text style={styles.storageText} testID="artifact-storage-location">
+      Stored: {storageLocationLabel(location)}
+    </Text>
+  );
+}
+
+function ArtifactSourceLine({ source }: { source: AggregatedArtifact["source"] }) {
+  if (!source) return null;
+  return <Text style={styles.storageText}>Source: {sourceLabel(source)}</Text>;
+}
+
+interface ArtifactMoveMenuItemsProps {
+  artifact: AggregatedArtifact;
+  canMove: boolean;
+  isMoving: boolean;
+  onMove: (destination: "repository" | "host") => void;
+}
+
+function ArtifactMoveMenuItems({
+  artifact,
+  canMove,
+  isMoving,
+  onMove,
+}: ArtifactMoveMenuItemsProps): ReactElement | null {
+  const disabled = artifact.status === "generating" || isMoving;
+  const handleMoveToRepository = useCallback(() => onMove("repository"), [onMove]);
+  const handleMoveToHost = useCallback(() => onMove("host"), [onMove]);
+  const destination = artifact.storageLocation === "repository" ? "host" : "repository";
+  const handleMoveToOther = useCallback(() => onMove(destination), [destination, onMove]);
+
+  if (!canMove) return null;
+
+  if (artifact.storageLocation) {
+    const destinationLabel = destination === "repository" ? "repository" : "this host";
+    return (
+      <DropdownMenuItem
+        leading={editLeading}
+        disabled={disabled}
+        onSelect={disabled ? undefined : handleMoveToOther}
+        testID={`artifact-menu-move-${artifact.id}`}
+      >
+        Move to {destinationLabel}
+      </DropdownMenuItem>
+    );
+  }
+
+  return (
+    <>
+      <DropdownMenuItem
+        leading={editLeading}
+        disabled={disabled}
+        onSelect={disabled ? undefined : handleMoveToRepository}
+        testID={`artifact-menu-move-repository-${artifact.id}`}
+      >
+        Move to repository
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        leading={editLeading}
+        disabled={disabled}
+        onSelect={disabled ? undefined : handleMoveToHost}
+        testID={`artifact-menu-move-host-${artifact.id}`}
+      >
+        Move to this host
+      </DropdownMenuItem>
+    </>
+  );
+}
+
 function ArtifactKebabMenu({
   artifact,
   canViewGenerationChat,
   onView,
   onViewGenerationChat,
+  onViewSourceChat,
+  canViewSourceChat,
   onEdit,
   onRegenerate,
   onCancel,
+  onRepair,
+  canRepair,
+  onUpdateData,
+  canUpdateData,
+  onMove,
+  canMove,
+  isMoving,
   onDelete,
 }: {
   artifact: AggregatedArtifact;
   canViewGenerationChat: boolean;
   onView: () => void;
   onViewGenerationChat: () => void;
+  onViewSourceChat: () => void;
+  canViewSourceChat: boolean;
   onEdit: () => void;
   onRegenerate: () => void;
   onCancel: () => void;
+  onRepair: () => void;
+  canRepair: boolean;
+  onUpdateData: () => void;
+  canUpdateData: boolean;
+  onMove: (destination: "repository" | "host") => void;
+  canMove: boolean;
+  isMoving: boolean;
   onDelete: () => void;
 }) {
   const isGenerating = artifact.status === "generating";
@@ -284,6 +462,15 @@ function ArtifactKebabMenu({
             View generation chat
           </DropdownMenuItem>
         ) : null}
+        {canViewSourceChat ? (
+          <DropdownMenuItem
+            leading={chatLeading}
+            onSelect={onViewSourceChat}
+            testID={`artifact-menu-view-source-chat-${artifact.id}`}
+          >
+            View source chat
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           leading={editLeading}
           onSelect={onEdit}
@@ -308,6 +495,31 @@ function ArtifactKebabMenu({
             Regenerate
           </DropdownMenuItem>
         )}
+        {canRepair && artifact.repairAvailable ? (
+          <DropdownMenuItem
+            leading={editLeading}
+            onSelect={onRepair}
+            testID={`artifact-menu-repair-${artifact.id}`}
+          >
+            Repair last good output
+          </DropdownMenuItem>
+        ) : null}
+        {canUpdateData ? (
+          <DropdownMenuItem
+            leading={editLeading}
+            disabled={isGenerating}
+            onSelect={isGenerating ? undefined : onUpdateData}
+            testID={`artifact-menu-update-data-${artifact.id}`}
+          >
+            Update data
+          </DropdownMenuItem>
+        ) : null}
+        <ArtifactMoveMenuItems
+          artifact={artifact}
+          canMove={canMove}
+          isMoving={isMoving}
+          onMove={onMove}
+        />
         <DropdownMenuSeparator />
         <DropdownMenuItem
           leading={deleteLeading}
@@ -377,6 +589,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     minHeight: 132,
   },
+  storageText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
   cardError: {
     borderColor: theme.colors.palette.red[500],
   },
@@ -430,6 +646,10 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.palette.red[500],
     fontSize: theme.fontSize.xs,
     flexShrink: 1,
+  },
+  movingText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   icon: {
     color: theme.colors.foregroundMuted,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   artifactBelongsToProject,
   artifactMatchesWorkspace,
+  artifactMatchesSearch,
   filterByProject,
   sortArtifacts,
 } from "./artifact-derivation";
@@ -124,6 +125,30 @@ describe("filterByProject", () => {
     const artifacts = [makeArtifact({ id: "a", projectId: "project-1" })];
     const result = filterByProject(artifacts, "project-99");
     expect(result).toEqual([]);
+  });
+});
+
+describe("artifactMatchesSearch", () => {
+  it("matches durable library metadata case-insensitively", () => {
+    const artifact = makeArtifact({
+      name: "Release dashboard",
+      description: "Deployment readiness",
+      projectId: "/projects/otto",
+      storageLocation: "host",
+      source: { kind: "schedule", scheduleId: "nightly", runId: "run-1" },
+    });
+
+    expect(artifactMatchesSearch(artifact, "DASHBOARD")).toBe(true);
+    expect(artifactMatchesSearch(artifact, "readiness")).toBe(true);
+    expect(artifactMatchesSearch(artifact, "host")).toBe(true);
+    expect(artifactMatchesSearch(artifact, "schedule")).toBe(true);
+  });
+
+  it("treats blank search as a match and rejects unrelated metadata", () => {
+    const artifact = makeArtifact({ name: "Release dashboard" });
+
+    expect(artifactMatchesSearch(artifact, "   ")).toBe(true);
+    expect(artifactMatchesSearch(artifact, "unrelated")).toBe(false);
   });
 });
 

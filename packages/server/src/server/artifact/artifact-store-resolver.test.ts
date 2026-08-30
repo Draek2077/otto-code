@@ -1,35 +1,39 @@
+import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import pino from "pino";
 import { describe, expect, it } from "vitest";
-import type { ProjectKnowledgeStore } from "../agent/project-knowledge/project-knowledge-store.js";
 import { ArtifactStoreResolver } from "./artifact-store-resolver.js";
 
-function repositoryKnowledgeStore(projectRoot: string): ProjectKnowledgeStore {
-  return {
-    location: "repository",
-    projectRoot,
-    base: path.join(projectRoot, ".otto"),
-    pathBase: projectRoot,
+function resolverFor(input: {
+  root: string;
+  ottoHome: string;
+  location?: "repository" | "host" | null;
+  defaultLocation?: "repository" | "host";
+}) {
+  const project = {
+    projectId: "prj_1",
+    rootPath: input.root,
+    displayName: "Otto Code",
+    customName: null,
+    projectKey: "github.com/otto-code",
+    artifactLocation: input.location ?? null,
+    artifactDirectoryName: "otto-code-a1b2c3d4",
   };
-}
-
-function hostKnowledgeStore(projectRoot: string, ottoHome: string): ProjectKnowledgeStore {
-  const directoryName = "otto-code-a1b2c3d4";
-  const base = path.join(ottoHome, "project-knowledge", directoryName);
-  return {
-    location: "host",
-    projectRoot,
-    base,
-    pathBase: base,
-  };
+  return new ArtifactStoreResolver({
+    ottoHome: input.ottoHome,
+    findProjectByRoot: async () => project,
+    persistDirectoryName: async () => undefined,
+    defaultLocation: () => input.defaultLocation ?? "repository",
+    logger: pino({ enabled: false }),
+  });
 }
 
 describe("ArtifactStoreResolver", () => {
   it("keeps repository-owned artifacts in the project .otto directory", async () => {
     const root = path.join("C:", "repos", "otto-code");
-    const resolver = new ArtifactStoreResolver({
-      ottoHome: path.join("C:", "otto-home"),
-      resolveKnowledgeStore: async () => repositoryKnowledgeStore(root),
-    });
+    const resolver = resolverFor({ root, ottoHome: path.join("C:", "otto-home") });
 
     await expect(resolver.resolveForProjectRoot(root)).resolves.toEqual({
       location: "repository",
@@ -38,13 +42,10 @@ describe("ArtifactStoreResolver", () => {
     });
   });
 
-  it("uses the knowledge resolver's stable project identity for host-local artifacts", async () => {
+  it("uses its own project override and stable artifact identity for host-local artifacts", async () => {
     const root = path.join("C:", "repos", "otto-code");
     const ottoHome = path.join("C:", "otto-home");
-    const resolver = new ArtifactStoreResolver({
-      ottoHome,
-      resolveKnowledgeStore: async () => hostKnowledgeStore(root, ottoHome),
-    });
+    const resolver = resolverFor({ root, ottoHome, location: "host" });
 
     await expect(resolver.resolveForProjectRoot(root)).resolves.toEqual({
       location: "host",
@@ -58,14 +59,119 @@ describe("ArtifactStoreResolver", () => {
     let resolvedRoot: string | null = null;
     const resolver = new ArtifactStoreResolver({
       ottoHome: path.join("C:", "otto-home"),
-      resolveKnowledgeStore: async (projectRoot) => {
+      findProjectByRoot: async (projectRoot) => {
         resolvedRoot = projectRoot;
-        return repositoryKnowledgeStore(projectRoot);
+        return null;
       },
+      persistDirectoryName: async () => undefined,
+      defaultLocation: () => "repository",
+      logger: pino({ enabled: false }),
     });
 
     await resolver.resolveForProjectRoot(path.join(root, "..", "otto-code"));
 
     expect(resolvedRoot).toBe(path.resolve(root));
+  });
+
+  it("keeps an existing repository artifact store visible when the host default changes", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "artifact-store-resolver-"));
+    try {
+      await mkdir(path.join(root, ".otto", "artifacts"), { recursive: true });
+      await writeFile(path.join(root, ".otto", "artifacts", "abc123.json"), "{}", "utf-8");
+      const resolver = resolverFor({
+        root,
+        ottoHome: path.join(root, "otto-home"),
+        defaultLocation: "host",
+      });
+
+      await expect(resolver.resolveForProjectRoot(root)).resolves.toMatchObject({
+        location: "repository",
+        artifactsDirectory: path.join(root, ".otto", "artifacts"),
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores an empty repository artifact directory left by an older daemon", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "artifact-store-resolver-"));
+    try {
+      await mkdir(path.join(root, ".otto", "artifacts"), { recursive: true });
+      const ottoHome = path.join(root, "otto-home");
+      const resolver = resolverFor({ root, ottoHome, defaultLocation: "host" });
+
+      await expect(resolver.resolveForProjectRoot(root)).resolves.toMatchObject({
+        location: "host",
+        artifactsDirectory: path.join(ottoHome, "project-artifacts", "otto-code-a1b2c3d4"),
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("adopts a pre-0.9 host directory filed under the Knowledge directory name", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "artifact-store-resolver-"));
+    try {
+      const ottoHome = path.join(root, "otto-home");
+      const inherited = path.join(ottoHome, "project-artifacts", "otto-code-a1b2c3d4-2");
+      await mkdir(inherited, { recursive: true });
+      const persisted: string[] = [];
+      const resolver = new ArtifactStoreResolver({
+        ottoHome,
+        findProjectByRoot: async () => ({
+          projectId: "prj_1",
+          rootPath: root,
+          displayName: "Otto Code",
+          customName: null,
+          projectKey: "github.com/otto-code",
+          artifactLocation: "host",
+          artifactDirectoryName: null,
+          knowledgeDirectoryName: "otto-code-a1b2c3d4-2",
+        }),
+        persistDirectoryName: async ({ directoryName }) => {
+          persisted.push(directoryName);
+        },
+        defaultLocation: () => "repository",
+        logger: pino({ enabled: false }),
+      });
+
+      await expect(resolver.resolveForProjectRoot(root)).resolves.toMatchObject({
+        location: "host",
+        artifactsDirectory: inherited,
+      });
+      expect(persisted).toEqual(["otto-code-a1b2c3d4-2"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not persist a host directory name when only peeking at the host location", async () => {
+    const root = path.join("C:", "repos", "otto-code");
+    const persisted: string[] = [];
+    const resolver = new ArtifactStoreResolver({
+      ottoHome: path.join("C:", "otto-home"),
+      findProjectByRoot: async () => ({
+        projectId: "prj_1",
+        rootPath: root,
+        displayName: "Otto Code",
+        customName: null,
+        projectKey: null,
+        artifactLocation: null,
+        artifactDirectoryName: null,
+      }),
+      persistDirectoryName: async ({ directoryName }) => {
+        persisted.push(directoryName);
+      },
+      defaultLocation: () => "repository",
+      logger: pino({ enabled: false }),
+    });
+
+    const peeked = await resolver.storeAtLocation(root, "host", { persist: false });
+    expect(peeked.location).toBe("host");
+    expect(persisted).toEqual([]);
+
+    const chosen = await resolver.storeAtLocation(root, "host");
+    expect(chosen.artifactsDirectory).toBe(peeked.artifactsDirectory);
+    expect(persisted).toHaveLength(1);
   });
 });

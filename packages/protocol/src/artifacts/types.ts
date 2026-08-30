@@ -3,6 +3,13 @@ import { z } from "zod";
 export const ArtifactKindSchema = z.enum(["html"]);
 export type ArtifactKind = z.infer<typeof ArtifactKindSchema>;
 
+// Independent from Knowledge's equivalent setting: each durable category has
+// its own project override and host default.
+export const ProjectArtifactStoreLocationValueSchema = z.enum(["repository", "host"]);
+export type ProjectArtifactStoreLocationValue = z.infer<
+  typeof ProjectArtifactStoreLocationValueSchema
+>;
+
 export const ArtifactStatusSchema = z.enum(["generating", "ready", "error"]);
 export type ArtifactStatus = z.infer<typeof ArtifactStatusSchema>;
 
@@ -17,6 +24,17 @@ export const ArtifactSpinnerSchema = z
   })
   .passthrough();
 export type ArtifactSpinner = z.infer<typeof ArtifactSpinnerSchema>;
+
+// The latest durable trigger that created or refreshed an artifact. The
+// referenced object can later be deleted, so consumers must show an honest
+// unavailable state rather than trying to reconstruct provenance from prompt
+// text. Optional keeps records written before provenance readable.
+export const ArtifactSourceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("chat"), agentId: z.string() }),
+  z.object({ kind: z.literal("workflow"), workflowId: z.string(), runId: z.string() }),
+  z.object({ kind: z.literal("schedule"), scheduleId: z.string(), runId: z.string() }),
+]);
+export type ArtifactSource = z.infer<typeof ArtifactSourceSchema>;
 
 export const ArtifactMetadataSchema = z.object({
   id: z.string(),
@@ -50,6 +68,21 @@ export const ArtifactMetadataSchema = z.object({
   // provider/model. Absent ⇒ no personality was used (plain provider/model
   // selection). Purely additive (no daemon floor needed).
   generationPersonalityName: z.string().nullable().optional(),
+  // COMPAT(artifactProvenance): added in v0.9.0, remove after 2027-02-28.
+  // The latest Chat, Workflow, or Schedule source, when Otto has one.
+  source: ArtifactSourceSchema.optional(),
+  // Where this particular deliverable was created. This is a durable resolved
+  // location, not the project's current preference: changing the preference
+  // never changes an existing Artifact's ownership. Optional so records from
+  // before independent Artifact storage remain readable.
+  // COMPAT(artifactStorageMetadata): added in v0.9.0, remove after 2027-02-28.
+  storageLocation: ProjectArtifactStoreLocationValueSchema.optional(),
+  // An external edit left the on-disk HTML invalid. Otto retains the invalid
+  // file for inspection, never renders it, and can explicitly restore the
+  // separately retained last-known-good output. Optional for records written
+  // before repair tracking existed.
+  // COMPAT(artifactRepair): added in v0.9.0, remove after 2027-02-28.
+  repairAvailable: z.boolean().optional(),
   errorMessage: z.string().nullable(),
 });
 export type ArtifactMetadata = z.infer<typeof ArtifactMetadataSchema>;
@@ -116,4 +149,6 @@ export interface CreateArtifactInput {
    * so its card can show who generated it (persona · provider · model). Absent
    * when no personality was used. */
   personalityName?: string;
+  /** Latest durable source, stamped only by daemon-owned creation adapters. */
+  source?: ArtifactSource;
 }

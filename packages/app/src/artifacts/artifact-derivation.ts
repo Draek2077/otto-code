@@ -90,3 +90,22 @@ export function filterByProject<T extends ArtifactMetadata>(
   }
   return artifacts.filter((artifact) => artifact.projectId === projectId);
 }
+
+/**
+ * Search the durable metadata already loaded for the Artifact library. This
+ * deliberately does not inspect HTML: search must remain quick, local to the
+ * library snapshot, and safe for every renderer.
+ */
+export function artifactMatchesSearch(artifact: ArtifactMetadata, query: string): boolean {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return true;
+  const fields = [
+    artifact.name,
+    artifact.description,
+    artifact.projectId,
+    artifact.status,
+    artifact.storageLocation ?? "legacy",
+    artifact.source?.kind ?? "",
+  ];
+  return fields.some((field) => field.toLocaleLowerCase().includes(normalizedQuery));
+}
