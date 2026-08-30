@@ -298,7 +298,7 @@ export const COMPAT_TOOL_SPECS: CompatToolSpec[] = [
       type: "object",
       properties: {
         path: { type: "string", description: "File path, absolute or relative to the workspace" },
-        old_string: { type: "string", description: "Exact text to replace" },
+        old_string: { type: "string", minLength: 1, description: "Exact text to replace" },
         new_string: { type: "string", description: "Replacement text" },
         replace_all: { type: "boolean", description: "Replace every occurrence (default false)" },
       },
@@ -902,6 +902,15 @@ async function editFileTool(input: CompatToolCallInput): Promise<CompatToolOutco
   }
   const filePath = resolveToolPath(input.cwd, relPath);
   const detail: ToolCallDetail = { type: "edit", filePath, oldString, newString };
+  // An empty old_string is destructive, not a no-op: split("") yields every
+  // character, so join() interleaves new_string between all of them and rewrites
+  // the whole file. The occurrence guards below cannot catch it either - the
+  // count is the character count (so `replace_all` waves it through), it is 1 for
+  // a two-character file (so even that guard passes), and it is -1 for an empty
+  // file. Refuse before the read; the model has to name the text it is replacing.
+  if (oldString === "") {
+    return errorOutcome("edit_file requires a non-empty 'old_string'", detail);
+  }
   let content: string;
   try {
     content = await fs.readFile(filePath, "utf8");
