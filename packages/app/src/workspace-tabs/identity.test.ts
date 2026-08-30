@@ -14,6 +14,51 @@ const ORIGIN: WorkspaceFileOrigin = {
   projectName: "Other",
 };
 
+describe("Architectural View draft tab identity", () => {
+  const target = {
+    kind: "architecturalViewDraft",
+    viewId: "workflows",
+    draftId: "workflows-revision-2",
+  } as const;
+
+  it("requires both durable ids and keys the preview by their pair", () => {
+    expect(normalizeWorkspaceTabTarget(target)).toEqual(target);
+    expect(normalizeWorkspaceTabTarget({ ...target, viewId: " " })).toBeNull();
+    expect(workspaceTabTargetsEqual(target, { ...target })).toBe(true);
+    expect(workspaceTabTargetsEqual(target, { ...target, draftId: "workflows-revision-3" })).toBe(
+      false,
+    );
+    expect(buildDeterministicWorkspaceTabId(target)).toBe(
+      "architectural-view-draft_workflows_workflows-revision-2",
+    );
+  });
+
+  it("keeps the authoring-chat draft reference while restoring a chat setup tab", () => {
+    expect(
+      normalizeWorkspaceTabTarget({
+        kind: "draft",
+        draftId: "architectural-view-workflows-workflows-revision-2",
+        architecturalViewDraft: { viewId: "workflows", draftId: "workflows-revision-2" },
+      }),
+    ).toEqual({
+      kind: "draft",
+      draftId: "architectural-view-workflows-workflows-revision-2",
+      architecturalViewDraft: { viewId: "workflows", draftId: "workflows-revision-2" },
+    });
+  });
+});
+
+describe("Published Architectural View tab identity", () => {
+  it("opens one durable visual per view id", () => {
+    const target = { kind: "architecturalView", viewId: "workflows" } as const;
+    expect(normalizeWorkspaceTabTarget(target)).toEqual(target);
+    expect(normalizeWorkspaceTabTarget({ ...target, viewId: " " })).toBeNull();
+    expect(workspaceTabTargetsEqual(target, { ...target })).toBe(true);
+    expect(workspaceTabTargetsEqual(target, { ...target, viewId: "runtime" })).toBe(false);
+    expect(buildDeterministicWorkspaceTabId(target)).toBe("architectural-view_workflows");
+  });
+});
+
 describe("normalizeWorkspaceTabTarget file origin", () => {
   it("preserves the origin of a cross-project file tab", () => {
     const normalized = normalizeWorkspaceTabTarget({

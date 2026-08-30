@@ -4,12 +4,12 @@ kind: "project"
 title: "Architecture visual documents"
 status: "proposed"
 tags: ["architecture","documentation","knowledge","artifacts","vendor","archify"]
-delivery_status: "charter"
-progress_completed: 0
+delivery_status: "in_build"
+progress_completed: 4
 progress_total: 5
 progress_unit: "delivery slices"
 created_at: "2026-08-27T19:16:46.149Z"
-updated_at: "2026-08-27T19:16:46.149Z"
+updated_at: "2026-08-30T00:25:52.788Z"
 ---
 # Architecture visual documents
 
@@ -171,3 +171,47 @@ Source changes set a visible stale indicator. Refresh is an explicit authoring a
 - time: "2026-08-27T19:16:46.149Z"
   kind: "evidence"
   summary: "User direction and design decisions from the Archify evaluation conversation on 2026-08-27. Upstream capability and license review is recorded in [[reference-archify]]. Existing Otto baselines reviewed: [[artifacts]], [[project-knowledge-is-repository-owned-markdown-managed-atomically-by-otto]], docs/project-knowledge.md, docs/preview.md, and docs/visualizer.md."
+- time: "2026-08-29T20:01:15.978Z"
+  kind: "evidence"
+  summary: "The user fixed the product boundary: the feature is named **Architectural Views**; Archify is an internal vendor detail. Every operation is daemon-owned. Canonical JSON, rendered HTML, receipt, and Knowledge-reference manifest are packaged under the existing resolved Project Knowledge store, so repository-backed Knowledge and host-backed Knowledge carry their Architectural Views with them. The first verified slice vendors Archify at `9a5060566c832832fb843e457e58c8ee6bac82fd`, packages its runtime with the daemon, adds an `architectural-views.deliver` daemon RPC and capability gate, and exposes `otto architectural-view deliver` as a daemon client. The slice writes only to the resolved Knowledge store and never starts Archify's local server, OS opener, or Chrome checks."
+  source: "Implementation verified 2026-08-29"
+  affects: ["project-knowledge-is-repository-owned-markdown-managed-atomically-by-otto","reference-archify"]
+- time: "2026-08-29T20:01:17.178Z"
+  kind: "note"
+  summary: "Verified vendor baseline plus daemon-owned, Knowledge-packaged Architecture delivery and CLI boundary landed. Draft revisions, reader UI, discovery, and chat tools remain future slices."
+  affects: ["architecture-visual-documents"]
+- time: "2026-08-29T20:02:18.437Z"
+  kind: "evidence"
+  summary: "Reader experience is anchored in Manage Knowledge. Any Knowledge root or atomic Markdown article may own Architectural Views. Its pinned Knowledge toolbar offers an explicit Article / Architectural View toggle; selecting an attached view replaces the article canvas in the same Knowledge context, while the toggle returns to the article. Multiple attached views use a view selector and one current published default. Otto-native chrome owns view identity, source Knowledge links, published/draft/stale state, revision actions, and the app-level light/dark choice. The embedded renderer retains only diagram-intrinsic navigation such as pan/zoom, search, focus, tracing, and similar reader interactions. The theme choice is passed from Otto rather than treated as an authored diagram fact; exact host-to-renderer control needs proof before removing upstream controls.\n\nAuthoring must not turn a Knowledge article into a chat transcript. Starting or reopening a view creates/focuses a durable staged draft linked to its parent Knowledge article and opens an explicitly linked Architectural Views authoring chat in a companion split beside the draft preview. The chat updates only that draft; the article remains its source anchor and ordinary reader surface. Publish promotes the draft to the article's current view, while discard preserves the article/current published view and closes only the authoring binding. Exact draft-entry affordances and split/tab behavior remain a product-design discussion before implementation."
+  source: "User product direction 2026-08-29"
+  affects: ["artifacts","project-knowledge-is-repository-owned-markdown-managed-atomically-by-otto"]
+- time: "2026-08-29T20:14:21.157Z"
+  kind: "note"
+  summary: "Verified the second delivery slice: daemon list/content RPCs discover only the selected Knowledge root or record’s valid manifests, deliver daemon-sanitized CSP-protected interactive HTML, and the Manage Knowledge toolbar now owns the Article / Architectural View toggle plus multi-view selector. Targeted service/session tests, protocol/client builds, app/server typechecks, targeted lint, and server build passed. Draft authoring, revision publication, staleness, and chat tools remain open."
+  affects: ["architecture-visual-documents"]
+- time: "2026-08-29T22:00:56.152Z"
+  kind: "note"
+  summary: "Verified the durable draft/revision foundation beneath the existing reader: drafts have separate canonical JSON, last-valid sanitized HTML, receipt, base published specification hash, and explicit discard. Publishing uses optimistic concurrency, snapshots the prior published files into revision history, and rejects stale drafts for an explicit rebase. Focused service tests and targeted lint pass. This is not yet a completed authoring journey: no daemon draft RPC/CLI, bound authoring chat, draft workspace tab, lease, or app controls have landed."
+  affects: ["architecture-visual-documents"]
+- time: "2026-08-29T22:10:32.800Z"
+  kind: "note"
+  summary: "Exposed the verified staged model through daemon-owned, workspace-scoped Architectural Views draft RPCs for create, publish, and discard, plus matching daemon-client methods and `otto architectural-view draft create|publish|discard` commands. Create retains the source-path workspace guard; publish/discard remain daemon-only. Protocol/client builds, CLI typecheck, targeted lint, Architectural Views session tests, and the CLI surface test pass. A root test invocation encountered an unrelated stale .tmp/android-tablet-build CLI copy; the intended CLI-workspace test passed. Draft update, authoring chat/tab binding, leases, and app controls remain open."
+  affects: ["architecture-visual-documents"]
+- time: "2026-08-29T22:13:51.489Z"
+  kind: "note"
+  summary: "Completed the daemon-bound CLI draft lifecycle: `otto architectural-view draft create`, `update`, `publish`, and `discard` are all client calls to workspace-scoped daemon RPCs. Draft update re-renders in staged storage and preserves the last valid staged preview on failure. Protocol/client build and typecheck, CLI typecheck, targeted lint, session/service tests, and CLI surface tests pass. The authoring milestone remains in progress until these operations are bound to a durable authoring chat and draft workspace tab with leases."
+  affects: ["architecture-visual-documents"]
+- time: "2026-08-29T23:15:49.684Z"
+  kind: "evidence"
+  summary: "Extended the in-progress authoring journey with a daemon-served staged-preview RPC and a dedicated persisted Architectural View Draft tab. The tab renders the last validated staged HTML, exposes explicit publish/discard controls, and closing it detaches only. Opening authoring chat launches the standard provider-neutral composer; after the developer chooses a provider and sends, the daemon atomically binds the created agent to that draft, injects a concise draft/tool brief, and rejects another chat's access. Bound chats now receive provider-neutral read/update draft tools that operate on canonical JSON, retain the last-known-good preview on a failed render, and never mutate the published revision. Publication removes the staged draft only after the new published files commit. Focused service/session/tool/tab tests pass, along with app typecheck. Broader server/client typechecks currently encounter unrelated concurrent Workflow confirmation-token errors."
+  source: "Implementation verified 2026-08-29"
+  affects: ["artifacts","project-knowledge-is-repository-owned-markdown-managed-atomically-by-otto"]
+- time: "2026-08-30T00:25:38.690Z"
+  kind: "evidence"
+  summary: "Completed the remaining discovery, freshness, and agent-open slice. Published manifests now record a digest for each linked Knowledge root/record; listing or opening compares only those cited Markdown sources and reports `current`, `stale`, or (for older manifests without provenance) `unknown`. Otto never regenerates or republishes a view automatically. Manage Knowledge now lists Architectural Views as typed reader entries that open the dedicated published-view workspace tab, while linked article/root views retain their Article / Architectural View toggle. Agent and MCP catalogs now include `show_architectural_view`; it verifies the requested published view and emits a daemon-routed workspace intent, so the requesting chat opens the interactive tab instead of receiving HTML. Protocol/client builds, app and server typechecks, targeted lint, `git diff --check`, and 50 focused service/session/tool/tab tests passed."
+  source: "Implementation verified 2026-08-29"
+  affects: ["project-knowledge-context-management","artifacts"]
+- time: "2026-08-30T00:25:52.788Z"
+  kind: "note"
+  summary: "Verified durable draft authoring, source-staleness, Knowledge discovery, published workspace tab, and agent/MCP open behavior. Proof/security/documentation delivery slice remains open."
+  affects: ["architecture-visual-documents"]

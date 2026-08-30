@@ -60,6 +60,12 @@ import {
 } from "@/context-management/use-project-knowledge";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
+import {
+  useArchitecturalViews,
+  type ArchitecturalViewKnowledgeReference,
+  type ArchitecturalViewSummary,
+} from "@/architectural-views/use-architectural-views";
+import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
 import { KnowledgeMarkdownEditor } from "./knowledge-markdown-editor";
 import { KnowledgeReviewProposalView } from "./knowledge-review-proposal";
 import { KnowledgeReviewSurface } from "./knowledge-review-surface";
@@ -144,6 +150,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   const [reviewGenerating, setReviewGenerating] = useState(false);
   const [reviewProposal, setReviewProposal] = useState<KnowledgeReviewProposal | null>(null);
   const [reviewApplying, setReviewApplying] = useState(false);
+  const [documentMode, setDocumentMode] = useState<"article" | "architectural-view">("article");
   const reviewSupported = useSessionStore(
     (state) =>
       state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeAnchoredRefinement === true,
@@ -223,6 +230,19 @@ export function ProjectKnowledgePanel(): ReactElement {
   }
   const detailedSelection = recordDetail && recordDetail.id === selectedId ? recordDetail : null;
   const selected = detailedSelection ?? selectedSummary;
+  let architecturalKnowledgeReference: ArchitecturalViewKnowledgeReference | null = null;
+  if (selectedRoot) {
+    architecturalKnowledgeReference = { kind: "root", id: selectedRoot.slug };
+  } else if (selected) {
+    architecturalKnowledgeReference = { kind: "record", id: selected.id };
+  }
+  const architecturalViews = useArchitecturalViews(
+    serverId,
+    workspaceId,
+    architecturalKnowledgeReference,
+  );
+  const allArchitecturalViews = useArchitecturalViews(serverId, workspaceId, null, false);
+  const showArchitecturalView = documentMode === "architectural-view";
   const showWholePageLoading = knowledge.loading && !knowledge.view && !requestedSelection;
   const reviewContent = reviewContentForSelection(selectedRoot, detailedSelection);
   const reviewDocumentKey = selectedRoot
@@ -264,6 +284,11 @@ export function ProjectKnowledgePanel(): ReactElement {
     setFormError(null);
     setEditingTags(false);
   }, [reviewDocumentKey]);
+  useEffect(() => {
+    // A view belongs to a single source article. Never carry it to the next
+    // Knowledge selection in the same pane.
+    setDocumentMode("article");
+  }, [selected?.id, selectedRoot?.slug]);
   useEffect(() => {
     if (!selectedId) {
       setRecordDetail(null);
@@ -313,6 +338,12 @@ export function ProjectKnowledgePanel(): ReactElement {
   else if (selected)
     documentIdentity = `${recordStatusLabel(selected)} · Updated ${new Date(selected.updatedAt).toLocaleDateString()}`;
   if (reviewProposal) documentIdentity = `Review proposal · ${documentIdentity}`;
+  if (showArchitecturalView && architecturalViews.selectedView) {
+    const freshness = architecturalViewFreshnessSuffix(
+      architecturalViews.selectedView.sourceStatus,
+    );
+    documentIdentity = `Architectural View · ${architecturalViews.selectedView.title}${freshness}`;
+  }
   const openMarkdown = useCallback(() => {
     if (!markdownPath) return;
     openTab(createWorkspaceFileTabTarget({ path: markdownPath }));
@@ -1183,6 +1214,18 @@ export function ProjectKnowledgePanel(): ReactElement {
               </View>
             ) : (
               <ScrollView style={styles.browser} contentContainerStyle={styles.browserContent}>
+                {scope === "knowledge" && allArchitecturalViews.views.length > 0 ? (
+                  <View style={styles.architecturalViewsSection}>
+                    <Text style={styles.sectionLabel}>Architectural Views</Text>
+                    {allArchitecturalViews.views.map((view) => (
+                      <ArchitecturalViewRow
+                        key={view.id}
+                        view={view}
+                        onSelect={() => openTab({ kind: "architecturalView", viewId: view.id })}
+                      />
+                    ))}
+                  </View>
+                ) : null}
                 {records.map((record) => (
                   <KnowledgeRecordRow
                     key={record.id}
@@ -1212,6 +1255,27 @@ export function ProjectKnowledgePanel(): ReactElement {
               <Text style={styles.muted}>{documentIdentity}</Text>
             </View>
             <View style={styles.documentToolbar}>
+              {architecturalViews.views.length > 0 ? (
+                <>
+                  <SegmentedControl
+                    size="xs"
+                    value={documentMode}
+                    onValueChange={setDocumentMode}
+                    options={[
+                      { value: "article", label: "Article" },
+                      { value: "architectural-view", label: "Architectural View" },
+                    ]}
+                  />
+                  {showArchitecturalView && architecturalViews.views.length > 1 ? (
+                    <ArchitecturalViewPicker
+                      views={architecturalViews.views}
+                      selectedViewId={architecturalViews.selectedView?.id ?? null}
+                      onSelect={architecturalViews.selectView}
+                    />
+                  ) : null}
+                  <ToolbarSeparator />
+                </>
+              ) : null}
               {markdownPath ? (
                 <ToolbarIconButton
                   label="Open in Markdown editor"
@@ -1349,23 +1413,90 @@ export function ProjectKnowledgePanel(): ReactElement {
           </View>
         ) : null}
         <View style={styles.documentCanvas}>
-          <ScrollView
-            contentContainerStyle={
-              reviewProposal ? styles.viewerProposalContent : styles.viewerContent
-            }
-          >
-            {viewer}
-          </ScrollView>
+          {showArchitecturalView ? (
+            <ArchitecturalViewCanvas
+              html={architecturalViews.html}
+              loading={architecturalViews.loading}
+              error={architecturalViews.error}
+            />
+          ) : (
+            <ScrollView
+              contentContainerStyle={
+                reviewProposal ? styles.viewerProposalContent : styles.viewerContent
+              }
+            >
+              {viewer}
+            </ScrollView>
+          )}
         </View>
         {selectedRoot || selected || formError ? (
           <View style={formError ? styles.documentStatusError : styles.documentStatusBar}>
             <Text numberOfLines={1} style={formError ? styles.statusErrorLabel : styles.pathLabel}>
-              {formError ?? markdownPath ?? "Markdown source unavailable"}
+              {formError ??
+                (showArchitecturalView
+                  ? (architecturalViews.selectedView?.htmlPath ?? architecturalViews.error)
+                  : markdownPath) ??
+                "Markdown source unavailable"}
             </Text>
           </View>
         ) : null}
       </View>
     </Animated.View>
+  );
+}
+
+function ArchitecturalViewCanvas({
+  html,
+  loading,
+  error,
+}: {
+  html: string | null;
+  loading: boolean;
+  error: string | null;
+}): ReactElement {
+  if (html) return <ArchitecturalViewHtml html={html} />;
+  return (
+    <View style={styles.architecturalViewLoading}>
+      {loading ? <LoadingSpinner size="small" /> : null}
+      <Text style={styles.muted}>{error ?? "Loading Architectural View…"}</Text>
+    </View>
+  );
+}
+
+function ArchitecturalViewPicker({
+  views,
+  selectedViewId,
+  onSelect,
+}: {
+  views: readonly ArchitecturalViewSummary[];
+  selectedViewId: string | null;
+  onSelect: (viewId: string) => void;
+}): ReactElement {
+  const selectedView = views.find((view) => view.id === selectedViewId);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        accessibilityLabel="Choose Architectural View"
+        accessibilityRole="button"
+        style={styles.architecturalViewSelector}
+      >
+        <Text numberOfLines={1} style={styles.architecturalViewSelectorLabel}>
+          {selectedView?.title ?? "Choose view"}
+        </Text>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" side="bottom" offset={4} minWidth={220}>
+        {views.map((view) => (
+          <DropdownMenuItem
+            key={view.id}
+            selected={view.id === selectedViewId}
+            showSelectedCheck
+            onSelect={() => onSelect(view.id)}
+          >
+            {view.title}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1407,6 +1538,57 @@ function KnowledgeRecordRow({
       </View>
     </Pressable>
   );
+}
+
+function ArchitecturalViewRow({
+  view,
+  onSelect,
+}: {
+  view: ArchitecturalViewSummary;
+  onSelect: () => void;
+}): ReactElement {
+  const sourceLabel = architecturalViewSourceLabel(view.sourceStatus);
+  return (
+    <Pressable
+      onPress={onSelect}
+      accessibilityRole="button"
+      accessibilityLabel={`Open Architectural View: ${view.title}`}
+      style={({ hovered, pressed }) => [
+        styles.row,
+        hovered ? styles.hoveredRow : null,
+        pressed ? styles.pressedRow : null,
+      ]}
+    >
+      <View style={styles.rowIcon}>
+        <Architecture size="mdPlus" />
+      </View>
+      <View style={styles.rowContent}>
+        <Text numberOfLines={2} style={styles.rowTitle}>
+          {view.title}
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={view.sourceStatus === "stale" ? styles.staleView : styles.viewMeta}
+        >
+          {sourceLabel}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function architecturalViewFreshnessSuffix(
+  status: ArchitecturalViewSummary["sourceStatus"],
+): string {
+  if (status === "stale") return " · Source changed";
+  if (status === "unknown") return " · Source status unknown";
+  return "";
+}
+
+function architecturalViewSourceLabel(status: ArchitecturalViewSummary["sourceStatus"]): string {
+  if (status === "stale") return "Source changed";
+  if (status === "unknown") return "Source status unknown";
+  return "Current";
 }
 
 /** Selected tags stay visible as small removable chips; the full list lives in a popover. */
@@ -2035,6 +2217,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   browser: { flex: 1 },
   browserContent: { gap: theme.spacing[1], padding: theme.spacing[1] },
+  architecturalViewsSection: {
+    gap: theme.spacing[1],
+    paddingBottom: theme.spacing[2],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
+  },
+  sectionLabel: {
+    paddingHorizontal: theme.spacing[2],
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
   catalogLoading: {
     flex: 1,
     alignItems: "center",
@@ -2066,6 +2260,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.medium,
   },
+  viewMeta: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
+  staleView: { color: theme.colors.statusWarning, fontSize: theme.fontSize.xs },
   viewer: { flex: 1, minWidth: 0, minHeight: 0, backgroundColor: theme.colors.surface0 },
   // Articles share the Text Editor's content well; the surrounding header and
   // footer deliberately remain on surface0 as pane chrome.
@@ -2145,6 +2341,26 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "flex-end",
     gap: theme.spacing[1],
+  },
+  architecturalViewSelector: {
+    maxWidth: 220,
+    minHeight: 24,
+    paddingHorizontal: theme.spacing[2],
+    justifyContent: "center",
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.sm,
+  },
+  architecturalViewSelectorLabel: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+  },
+  architecturalViewLoading: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[2],
+    padding: theme.spacing[4],
   },
   documentStatusBar: {
     flexDirection: "row",

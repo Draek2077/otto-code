@@ -2,6 +2,8 @@ import { agentPanelRegistration } from "@/panels/agent-panel";
 import { contextManagementPanelRegistration } from "@/panels/context-management-panel-registration";
 import { projectKnowledgePanelRegistration } from "@/panels/project-knowledge-panel-registration";
 import { artifactPanelRegistration } from "@/panels/artifact-panel";
+import { architecturalViewDraftPanelRegistration } from "@/panels/architectural-view-draft-panel";
+import { architecturalViewPanelRegistration } from "@/panels/architectural-view-panel";
 import { browserPanelRegistration } from "@/desktop/browser/panel";
 import { draftPanelRegistration } from "@/panels/draft-panel";
 import { filePanelRegistration } from "@/panels/file-panel";
@@ -32,6 +34,8 @@ export function ensurePanelsRegistered(): void {
   registerPanel(browserPanelRegistration);
   registerPanel(filePanelRegistration);
   registerPanel(artifactPanelRegistration);
+  registerPanel(architecturalViewDraftPanelRegistration);
+  registerPanel(architecturalViewPanelRegistration);
   registerPanel(gitLogPanelRegistration);
   registerPanel(fileHistoryPanelRegistration);
   registerPanel(codeReferencesPanelRegistration);

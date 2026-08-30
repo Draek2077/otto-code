@@ -26,7 +26,12 @@ export interface WorkspaceWorkingDiffTabTarget {
 }
 
 export type WorkspaceTabTarget =
-  | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup }
+  | {
+      kind: "draft";
+      draftId: string;
+      setup?: WorkspaceDraftTabSetup;
+      architecturalViewDraft?: { viewId: string; draftId: string };
+    }
   | { kind: "agent"; agentId: string }
   | { kind: "provider_subagent"; parentAgentId: string; subagentId: string }
   | { kind: "terminal"; terminalId: string }
@@ -36,6 +41,12 @@ export type WorkspaceTabTarget =
   | { kind: "setup"; workspaceId: string }
   | { kind: "commit_diff"; sha: string }
   | { kind: "artifact"; artifactId: string }
+  // A durable staged Architectural View. Closing this tab only detaches its
+  // preview; it never discards the daemon-owned draft.
+  | { kind: "architecturalViewDraft"; viewId: string; draftId: string }
+  // A published Knowledge visual. It is a first-class workspace surface so an
+  // agent can open the same document a reader would seek from Manage Knowledge.
+  | { kind: "architecturalView"; viewId: string }
   // A provider-neutral communications room. This is deliberately not an AI
   // chat target: no model, agent, tool, metrics, or transcript controls apply.
   | { kind: "communicationsRoom"; providerId: string; conversationId: string; title?: string }

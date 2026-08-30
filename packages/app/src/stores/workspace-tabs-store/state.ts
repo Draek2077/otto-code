@@ -33,7 +33,12 @@ export type WorkspaceTabTarget =
   // working_diff, commit_diff) arrive without us restating them. `draft` is the
   // one override: Otto's setup carries an inherited personality.
   | Exclude<BaseWorkspaceTabTarget, { kind: "draft" }>
-  | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup }
+  | {
+      kind: "draft";
+      draftId: string;
+      setup?: WorkspaceDraftTabSetup;
+      architecturalViewDraft?: { viewId: string; draftId: string };
+    }
   | { kind: "artifact"; artifactId: string }
   // A git operation's log pane ("Git Commit"/"Git Pull"/"Git Push"). One per
   // operation per workspace; `operation` is the wire operation id.

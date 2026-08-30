@@ -4,10 +4,10 @@ kind: "reference"
 title: "Archify"
 status: "proposed"
 tags: ["architecture","diagrams","documentation","vendor"]
-reference_disposition: "read"
+reference_disposition: "dependency"
 source_url: "https://github.com/tt-a1i/archify"
 created_at: "2026-08-27T19:15:48.882Z"
-updated_at: "2026-08-27T19:15:48.882Z"
+updated_at: "2026-08-29T20:01:18.474Z"
 ---
 # Archify
 
@@ -36,3 +36,7 @@ The current upstream version is a development build. Vendor a pinned subtree com
 - time: "2026-08-27T19:15:48.882Z"
   kind: "evidence"
   summary: "Reviewed the upstream repository, README, SKILL.md, LICENSE, and pinned checkout 9a5060566c832832fb843e457e58c8ee6bac82fd on 2026-08-27. The package declares MIT; its current runtime renderer is Node ESM and its published architecture/workflow/sequence/dataflow/lifecycle outputs are self-contained interactive HTML with inline SVG. Brand marks carry a separate trademark-use caveat."
+- time: "2026-08-29T20:01:18.474Z"
+  kind: "note"
+  summary: "The pinned MIT upstream renderer is now vendored and invoked only through Otto's daemon-owned Architectural Views adapter; upstream remains an implementation dependency, not the product-facing name."
+  affects: ["reference-archify"]

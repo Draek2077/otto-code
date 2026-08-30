@@ -447,9 +447,19 @@ function useAgentPanelDescriptor(
 }
 
 function AgentPanel() {
-  const { serverId, target, openFileInWorkspace } = usePaneContext();
+  const { serverId, workspaceId, target, openFileInWorkspace, openTab } = usePaneContext();
   const { isInteractive, isWorkspaceFocused } = usePaneFocus();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+
+  useEffect(() => {
+    if (!client) return;
+    return client.on("architectural-views.open.notification", (message) => {
+      const request = message.payload;
+      if (request.agentId !== target.agentId || request.workspaceId !== workspaceId) return;
+      openTab({ kind: "architecturalView", viewId: request.viewId });
+    });
+  }, [client, openTab, target.agentId, workspaceId]);
 
   return (
     <AgentPanelContent
@@ -496,6 +506,7 @@ function DraftPanel() {
       tabId={tabId}
       draftId={target.draftId}
       initialSetup={target.setup}
+      architecturalViewDraft={target.architecturalViewDraft}
       isPaneFocused={isInteractive}
       onOpenWorkspaceFile={openFileInWorkspace}
       onCreated={handleCreated}

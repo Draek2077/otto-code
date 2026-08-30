@@ -19,7 +19,15 @@ export function normalizeWorkspaceTabTarget(
       return null;
     }
     const setup = normalizeWorkspaceDraftTabSetup(value.setup);
-    return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
+    const architecturalViewDraft = normalizeArchitecturalViewDraftContext(
+      value.architecturalViewDraft,
+    );
+    return {
+      kind: "draft",
+      draftId,
+      ...(setup ? { setup } : {}),
+      ...(architecturalViewDraft ? { architecturalViewDraft } : {}),
+    };
   }
   if (value.kind === "agent") {
     const agentId = trimNonEmpty(value.agentId);
@@ -52,6 +60,15 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "artifact") {
     const artifactId = trimNonEmpty(value.artifactId);
     return artifactId ? { kind: "artifact", artifactId } : null;
+  }
+  if (value.kind === "architecturalViewDraft") {
+    const viewId = trimNonEmpty(value.viewId);
+    const draftId = trimNonEmpty(value.draftId);
+    return viewId && draftId ? { kind: "architecturalViewDraft", viewId, draftId } : null;
+  }
+  if (value.kind === "architecturalView") {
+    const viewId = trimNonEmpty(value.viewId);
+    return viewId ? { kind: "architecturalView", viewId } : null;
   }
   if (value.kind === "communicationsRoom") {
     const providerId = trimNonEmpty(value.providerId);
@@ -270,6 +287,15 @@ function normalizeProjectKnowledgeTabSelection(
   return undefined;
 }
 
+function normalizeArchitecturalViewDraftContext(
+  value: { viewId: string; draftId: string } | undefined,
+): { viewId: string; draftId: string } | undefined {
+  if (!value) return undefined;
+  const viewId = trimNonEmpty(value.viewId);
+  const draftId = trimNonEmpty(value.draftId);
+  return viewId && draftId ? { viewId, draftId } : undefined;
+}
+
 export function normalizeWorkspaceDraftTabSetup(
   value: unknown,
 ): WorkspaceDraftTabSetup | undefined {
@@ -307,6 +333,7 @@ const SIMPLE_ID_FIELD_BY_KIND: Partial<Record<WorkspaceTabTarget["kind"], string
   browser: "browserId",
   setup: "workspaceId",
   artifact: "artifactId",
+  architecturalView: "viewId",
   gitLog: "operation",
 };
 
@@ -317,8 +344,16 @@ export function workspaceTabTargetsEqual(
   if (left.kind !== right.kind) {
     return false;
   }
-  if (left.kind === "draft" && right.kind === "draft") {
-    return left.draftId === right.draftId && workspaceDraftTabSetupsEqual(left.setup, right.setup);
+  if (isWorkspaceDraftTarget(left, right)) {
+    const rightDraft = right as Extract<WorkspaceTabTarget, { kind: "draft" }>;
+    return (
+      left.draftId === rightDraft.draftId &&
+      workspaceDraftTabSetupsEqual(left.setup, rightDraft.setup)
+    );
+  }
+  if (isArchitecturalViewDraftTarget(left, right)) {
+    const rightDraft = right as Extract<WorkspaceTabTarget, { kind: "architecturalViewDraft" }>;
+    return left.viewId === rightDraft.viewId && left.draftId === rightDraft.draftId;
   }
   if (left.kind === "file" && right.kind === "file") {
     return workspaceFileTabTargetsEqual(left, right);
@@ -371,6 +406,20 @@ function communicationsRoomTargetsEqual(
   right: Extract<WorkspaceTabTarget, { kind: "communicationsRoom" }>,
 ): boolean {
   return left.providerId === right.providerId && left.conversationId === right.conversationId;
+}
+
+function isArchitecturalViewDraftTarget(
+  left: WorkspaceTabTarget,
+  right: WorkspaceTabTarget,
+): left is Extract<WorkspaceTabTarget, { kind: "architecturalViewDraft" }> {
+  return left.kind === "architecturalViewDraft" && right.kind === "architecturalViewDraft";
+}
+
+function isWorkspaceDraftTarget(
+  left: WorkspaceTabTarget,
+  right: WorkspaceTabTarget,
+): left is Extract<WorkspaceTabTarget, { kind: "draft" }> {
+  return left.kind === "draft" && right.kind === "draft";
 }
 
 function isWorkspaceSingletonTarget(
@@ -442,6 +491,8 @@ const SIMPLE_TAB_ID_BUILDERS: {
   browser: (target) => `browser_${target.browserId}`,
   setup: (target) => `setup_${target.workspaceId}`,
   artifact: (target) => `artifact_${target.artifactId}`,
+  architecturalView: (target) => `architectural-view_${target.viewId}`,
+  architecturalViewDraft: (target) => `architectural-view-draft_${target.viewId}_${target.draftId}`,
   communicationsRoom: (target) =>
     `communications-room_${target.providerId}_${target.conversationId}`,
   gitLog: (target) => `gitlog_${target.operation}`,

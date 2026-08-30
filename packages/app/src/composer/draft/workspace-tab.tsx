@@ -71,6 +71,12 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
 
 type AutoSubmitConfig = DraftAutoSubmitConfig;
 
+function authoringArchitecturalViewDraftOption(
+  draft: { viewId: string; draftId: string } | undefined,
+): { architecturalViewDraft: { viewId: string; draftId: string } } | Record<string, never> {
+  return draft ? { architecturalViewDraft: draft } : {};
+}
+
 // Reconcile the form's selected mode against the currently discovered modes.
 // The mode picker displays modeOptions[0] when the stored mode isn't in the
 // list (e.g. a globally-remembered "plan" that this workspace's OpenCode config
@@ -125,6 +131,7 @@ async function submitDraftCreateRequest(input: {
   workspaceDirectory: string | null;
   workspaceId: string | null;
   autoSubmitConfig: AutoSubmitConfig | null;
+  architecturalViewDraft?: { viewId: string; draftId: string };
   composerState: {
     selectedProvider: string | null;
     selectedMode: string;
@@ -194,6 +201,7 @@ async function submitDraftCreateRequest(input: {
     clientMessageId: attempt.clientMessageId,
     ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
     ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
+    ...authoringArchitecturalViewDraftOption(input.architecturalViewDraft),
   });
 
   return {
@@ -315,6 +323,7 @@ interface WorkspaceDraftAgentTabProps {
   tabId: string;
   draftId: string;
   initialSetup?: WorkspaceDraftTabSetup;
+  architecturalViewDraft?: { viewId: string; draftId: string };
   isPaneFocused: boolean;
   onCreated: (snapshot: AgentSnapshotPayload) => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
@@ -337,6 +346,7 @@ export function WorkspaceDraftAgentTab({
   tabId,
   draftId,
   initialSetup = undefined,
+  architecturalViewDraft,
   isPaneFocused,
   onCreated,
   onOpenWorkspaceFile,
@@ -544,6 +554,7 @@ export function WorkspaceDraftAgentTab({
         workspaceDirectory: draftWorkingDirectory,
         workspaceId: workspaceFields?.id ?? null,
         autoSubmitConfig,
+        ...authoringArchitecturalViewDraftOption(architecturalViewDraft),
         composerState,
         hostDisconnectedMessage: t("workspace.terminal.hostDisconnected"),
         selectModelMessage: t("workspaceSetup.errors.selectModel"),

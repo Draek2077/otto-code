@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "generator": "scripts/build-readme-showcase.mjs",
+  "output": "docs/assets/archify-live-proof.gif",
+  "width": 960,
+  "height": 540,
+  "fps": 10,
+  "frameCount": 54,
+  "durationSeconds": 5.4,
+  "bytes": 1638067,
+  "sha256": "106284c0f3cce8331798c66f674888c16f10274d566aca6d0053625fdef9fbc1",
+  "scenes": [
+    {
+      "id": "signal-flow",
+      "artifact": "docs/gallery/artifacts/agent-tool-call.workflow.html",
+      "artifactSha256": "326cad00bebb0753b717067753e6f6ab70ba4d8ca9ebd70f04c3444be964a107",
+      "view": "happy-path",
+      "eyebrow": "WORKFLOW · SIGNAL FLOW",
+      "title": "Agent Tool Call",
+      "receipt": "12 nodes · 11 edges · 9/9 checks"
+    },
+    {
+      "id": "blueprint",
+      "artifact": "docs/gallery/artifacts/production-deployment.architecture.html",
+      "artifactSha256": "845d666d08e1a1e7175f15017fe0b6b4181b2d1e316ffddf963a0eb8586e3cfb",
+      "view": "request-boundary",
+      "eyebrow": "ARCHITECTURE · BLUEPRINT",
+      "title": "Production Deployment",
+      "receipt": "12 nodes · 12 edges · 9/9 checks"
+    },
+    {
+      "id": "classic",
+      "artifact": "docs/gallery/artifacts/cache-miss.sequence.html",
+      "artifactSha256": "dc53913ea5fed26c3021bd1c0a7545bd98a89e458fc0e61b00086e6c7d9cf36d",
+      "view": "cache-fallback",
+      "eyebrow": "SEQUENCE · CLASSIC",
+      "title": "Cache Miss Request",
+      "receipt": "7 participants · 12 messages · 9/9 checks"
+    }
+  ]
+}

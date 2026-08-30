@@ -229,6 +229,12 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "communicationsRoom") {
     return `workspace-communications-room-close-${tab.target.providerId}-${tab.target.conversationId}`;
   }
+  if (tab.target.kind === "architecturalViewDraft") {
+    return `workspace-architectural-view-draft-close-${tab.target.viewId}-${tab.target.draftId}`;
+  }
+  if (tab.target.kind === "architecturalView") {
+    return `workspace-architectural-view-close-${tab.target.viewId}`;
+  }
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 

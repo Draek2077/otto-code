@@ -1,0 +1,5 @@
+.DS_Store
+.harnessed/
+node_modules/
+.claude/
+.lore/
