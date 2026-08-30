@@ -4528,6 +4528,7 @@ describe("session pull request timeline handling", () => {
         error: null,
         requestId: "request-1",
         githubFeaturesEnabled: true,
+        commentReactionsSupported: false,
       },
     });
   });

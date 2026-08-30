@@ -7203,6 +7203,9 @@ test("project.rename.request announces a project with no active workspaces on th
       // A project that has never chosen a Kanban board reports null, which is
       // what the Kanban screen reads as "not configured".
       projectKanban: null,
+      projectKnowledgeLocation: null,
+      projectArtifactLocation: null,
+      projectWorkflowLocation: null,
       projectRootPath: REPO_CWD,
       projectKind: "git",
     },

@@ -379,6 +379,9 @@ describe("wire compatibility", () => {
             projectKind: "git",
             // COMPAT(projectKanbanTarget): emitted as null for legacy project records.
             projectKanban: null,
+            projectKnowledgeLocation: null,
+            projectArtifactLocation: null,
+            projectWorkflowLocation: null,
           },
         },
       },

@@ -820,7 +820,7 @@ function RunCard({
   });
   const totalTokens = sumRunTokens(run, agentsById);
   const terminalCardStyle = terminalPresentation
-    ? CARD_STYLE_BY_TERMINAL_TONE[terminalPresentation.tone]
+    ? cardStyleForTerminalTone(terminalPresentation.tone)
     : null;
 
   const cardStyle = useCallback(
@@ -893,8 +893,8 @@ function RunCard({
         ) : null}
 
         {terminalPresentation ? (
-          <View style={BANNER_STYLE_BY_TERMINAL_TONE[terminalPresentation.tone]}>
-            <Text style={BANNER_TEXT_STYLE_BY_TERMINAL_TONE[terminalPresentation.tone]}>
+          <View style={bannerStyleForTerminalTone(terminalPresentation.tone)}>
+            <Text style={bannerTextStyleForTerminalTone(terminalPresentation.tone)}>
               {terminalPresentation.reason}
             </Text>
           </View>
@@ -1440,17 +1440,12 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const CARD_STYLE_BY_TERMINAL_TONE = {
-  error: styles.cardError,
-  warning: styles.cardCanceled,
-} as const;
-
-const BANNER_STYLE_BY_TERMINAL_TONE = {
-  error: styles.failureBanner,
-  warning: styles.canceledBanner,
-} as const;
-
-const BANNER_TEXT_STYLE_BY_TERMINAL_TONE = {
-  error: styles.failureText,
-  warning: styles.canceledText,
-} as const;
+// Functions rather than module-scope maps: reading a style proxy at module
+// scope bakes in the pre-theme value (docs/unistyles.md).
+type TerminalTone = "error" | "warning";
+const cardStyleForTerminalTone = (tone: TerminalTone) =>
+  tone === "error" ? styles.cardError : styles.cardCanceled;
+const bannerStyleForTerminalTone = (tone: TerminalTone) =>
+  tone === "error" ? styles.failureBanner : styles.canceledBanner;
+const bannerTextStyleForTerminalTone = (tone: TerminalTone) =>
+  tone === "error" ? styles.failureText : styles.canceledText;

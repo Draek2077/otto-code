@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({ scanModels: vi.fn(() => []) }));
 // is all resolveRuntime needs to provide for that path.
 vi.mock("../runtime/index.js", () => ({
   resolveRuntime: () => ({ source: "managed" }),
+  // Supervisor defaults to this driver; these tests never launch a process.
+  llamaCppRuntimeDriver: { displayName: "llama.cpp" },
 }));
 
 vi.mock("../models/index.js", async (importOriginal) => ({
