@@ -989,6 +989,23 @@ interface ManagedAgentBase {
    * Optional so existing `ManagedAgent` fixtures stay valid.
    */
   steerQueueHeld?: boolean;
+  /**
+   * How many out-of-band commands (`/compact`, `/goal pause`) are running.
+   *
+   * An out-of-band command allocates no foreground turn, but it is still work
+   * the agent is doing, and `/compact` in particular rewrites the entire
+   * conversation. While this is non-zero the agent reports `running`, which is
+   * what makes the rest of the lifecycle behave: `delivery: "queue"` parks the
+   * next prompt instead of dispatching it into a session mid-rewrite, and the
+   * composer offers Queue rather than Send. `finalizeOutOfBandRun` drains the
+   * queue when it settles, the way `finalizeForegroundTurn` does for a turn.
+   *
+   * A counter rather than a flag: nothing stops a second out-of-band command
+   * arriving while the first runs, and only the last one out settles the agent.
+   *
+   * Optional so existing `ManagedAgent` fixtures stay valid.
+   */
+  outOfBandRunCount?: number;
   persistence: AgentPersistenceHandle | null;
   historyPrimed: boolean;
   lastUserMessageAt: Date | null;
@@ -1477,6 +1494,12 @@ export class AgentManager {
   private onAgentAttention?: AgentAttentionCallback;
   /** Foreground turns whose idle transition is intentionally silent. */
   private readonly silentCompletionTurnIds = new Map<string, string>();
+  /**
+   * Agents whose next idle transition comes from an out-of-band command rather
+   * than an assistant reply. Same rule as `silentCompletionTurnIds`: a
+   * side-effect command finishing is not something to badge as unread.
+   */
+  private readonly silentOutOfBandAgentIds = new Set<string>();
   private isAgentActivelyWatched?: (agentId: string) => boolean;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
@@ -1742,6 +1765,20 @@ export class AgentManager {
       Boolean(agent.activeForegroundTurnId) ||
       this.foregroundRuns.hasPendingRun(agentId)
     );
+  }
+
+  /**
+   * Busy, but with an out-of-band command rather than a turn - so there is
+   * nothing an interrupting prompt could cancel, and the work in flight
+   * (`/compact`) is exactly the work a new prompt must not land on top of.
+   * The prompt gets queued instead; `finalizeOutOfBandRun` releases it.
+   */
+  isBusyOnlyWithOutOfBandRun(agentId: string): boolean {
+    const agent = this.agents.get(agentId);
+    if (!agent || (agent.outOfBandRunCount ?? 0) === 0) {
+      return false;
+    }
+    return !agent.activeForegroundTurnId && !this.foregroundRuns.hasPendingRun(agentId);
   }
 
   subscribe(callback: AgentSubscriber, options?: SubscribeOptions): () => void {
@@ -3654,6 +3691,16 @@ export class AgentManager {
     if (!handler) {
       return false;
     }
+    // No foreground turn, but the agent is busy until the handler settles, and
+    // `/compact` rewrites the whole conversation while it does. Saying so is
+    // what keeps the queue honest: `hasInFlightRun` now reports true, so
+    // `delivery: "queue"` parks the next prompt instead of racing it into the
+    // session mid-rewrite, and the client sees a running agent so the composer
+    // offers Queue. Silent by construction - a side-effect command finishing is
+    // not an assistant reply, so it must not raise an unread badge.
+    agent.outOfBandRunCount = (agent.outOfBandRunCount ?? 0) + 1;
+    this.silentOutOfBandAgentIds.add(agent.id);
+    agent.lifecycle = "running";
     const dispatch = (event: AgentStreamEvent): void => {
       // Persist timeline items so they show up in fetchAgentTimeline; broadcast
       // for live subscribers. Other event types are broadcast only.
@@ -3692,8 +3739,11 @@ export class AgentManager {
         },
       });
       agent.lastUserMessageAt = new Date();
-      this.emitState(agent);
     }
+    // Unconditional: the running lifecycle set above has to reach the client
+    // even for a system-injected or structured prompt that records no user row.
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
 
     void (async () => {
       try {
@@ -3705,9 +3755,72 @@ export class AgentManager {
           provider: agent.provider,
           item: { type: "assistant_message", text: `[Error] ${text}` },
         });
+      } finally {
+        this.finalizeOutOfBandRun(agent.id);
       }
     })();
     return true;
+  }
+
+  /**
+   * Settle an out-of-band command the way `finalizeForegroundTurn` settles a
+   * turn: put the agent back to rest, and hand the steer queue its next batch.
+   *
+   * The out-of-band path had no drain edge at all, so a prompt queued while
+   * `/compact` rewrote the context sat in the Queue track forever - nothing
+   * ever finished a turn to release it. The drain conditions are deliberately
+   * the foreground finalize's: a terminal error or a held queue (the user
+   * pressed Stop) leaves the entries parked for the user to send.
+   */
+  private finalizeOutOfBandRun(agentId: string): void {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      return;
+    }
+    agent.outOfBandRunCount = Math.max(0, (agent.outOfBandRunCount ?? 1) - 1);
+    if (agent.outOfBandRunCount > 0) {
+      // A second out-of-band command is still running; the last one out settles.
+      return;
+    }
+    // A real turn took the agent over while the command ran - out-of-band
+    // deliberately does not block one. It owns the lifecycle and the drain now,
+    // and reporting idle over it would blank a live turn.
+    if (
+      agent.activeForegroundTurnId ||
+      this.foregroundRuns.hasPendingRun(agentId) ||
+      agent.pendingSteerDrain
+    ) {
+      this.silentOutOfBandAgentIds.delete(agentId);
+      return;
+    }
+    const terminalError = agent.lastError;
+    const drainBatch =
+      !terminalError && !agent.steerQueueHeld ? takeNextSteerQueueBatch(agent.steerQueue) : null;
+    if (drainBatch) {
+      agent.steerQueue = drainBatch.rest;
+      agent.pendingSteerDrain = true;
+      // The drained batch runs as a real turn, and its completion is the user's
+      // to be told about - the silence only ever covered the command itself.
+      this.silentOutOfBandAgentIds.delete(agentId);
+      (agent as ActiveManagedAgent).lifecycle = "running";
+    } else {
+      (agent as ActiveManagedAgent).lifecycle = terminalError ? "error" : "idle";
+    }
+    this.logger.debug(
+      {
+        agentId,
+        provider: agent.provider,
+        lifecycle: agent.lifecycle,
+        steerDrainSize: drainBatch?.entries.length ?? 0,
+        steerQueueSize: agent.steerQueue.length,
+      },
+      "agent.manager.out_of_band.finalize",
+    );
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
+    if (drainBatch) {
+      void this.dispatchSteerQueueBatch(agentId, drainBatch.entries);
+    }
   }
 
   async appendTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
@@ -5311,6 +5424,7 @@ export class AgentManager {
     this.agentStreamCoalescer.flushAndDiscard(agent.id);
     this.agents.delete(agent.id);
     this.previousStatuses.delete(agent.id);
+    this.silentOutOfBandAgentIds.delete(agent.id);
     this.lastReconciledTodoSignature.delete(agent.id);
     if (agent.unsubscribeSession) {
       agent.unsubscribeSession();
@@ -7171,6 +7285,9 @@ export class AgentManager {
       const silentTurnId = this.silentCompletionTurnIds.get(agent.id);
       if (silentTurnId !== undefined) {
         this.silentCompletionTurnIds.delete(agent.id);
+        return;
+      }
+      if (this.silentOutOfBandAgentIds.delete(agent.id)) {
         return;
       }
       agent.attention = {

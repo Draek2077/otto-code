@@ -206,6 +206,13 @@ function asInternals(session: CodexTestSession): CodexSessionTestAccess {
   return castInternals<CodexSessionTestAccess>(session);
 }
 
+/** Let every already-queued continuation run, without advancing timers. */
+async function flushMicrotasks(): Promise<void> {
+  for (let index = 0; index < 5; index += 1) {
+    await Promise.resolve();
+  }
+}
+
 function markdownImageSource(markdown: string): string {
   const match = markdown.match(/^!\[[^\]]*]\((.*)\)$/);
   if (!match) {
@@ -4391,7 +4398,17 @@ describe("Codex app-server provider", () => {
 
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
-    await handler?.run({ emit: (event) => events.push(event) });
+    // The handler must stay open across the whole rewrite: the daemon holds the
+    // agent busy for exactly its lifetime, and that is what keeps a prompt
+    // queued during /compact parked instead of racing the compaction.
+    let settled = false;
+    const running = handler?.run({ emit: (event) => events.push(event) }).then(() => {
+      settled = true;
+      return undefined;
+    });
+    await flushMicrotasks();
+    expect(settled).toBe(false);
+
     asInternals(session).handleNotification("item/started", {
       threadId: "test-thread",
       item: {
@@ -4399,6 +4416,9 @@ describe("Codex app-server provider", () => {
         id: "manual-compact",
       },
     });
+    await flushMicrotasks();
+    expect(settled).toBe(false);
+
     asInternals(session).handleNotification("item/completed", {
       threadId: "test-thread",
       item: {
@@ -4406,6 +4426,8 @@ describe("Codex app-server provider", () => {
         id: "manual-compact",
       },
     });
+    await running;
+    expect(settled).toBe(true);
 
     expect(requests).toContainEqual({
       method: "thread/compact/start",

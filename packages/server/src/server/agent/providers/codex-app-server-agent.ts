@@ -158,6 +158,13 @@ const CODEX_TOOL_THREAD_ITEM_TYPES = new Set([
   "subAgentActivity",
 ]);
 const CODEX_CONTEXT_COMPACTION_TYPE = "contextCompaction";
+/**
+ * How long a manual `/compact` waits for Codex to report the rewrite finished
+ * before releasing the agent anyway. Generous, because the wait is what keeps a
+ * queued prompt from landing mid-rewrite, and cheap to overshoot: the timeline
+ * rows settle on their own whenever the notification arrives.
+ */
+const MANUAL_COMPACTION_TIMEOUT_MS = 5 * 60_000;
 const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX =
   "The user approved the plan. Implement it now. Do not restate or revise the plan unless blocked.";
 // Codex's `visualize` skill emits these host-specific content references. Otto
@@ -3405,6 +3412,21 @@ export class CodexAppServerAgentSession implements AgentSession {
   private readonly userMessageTurnIndexes = new Map<string, number>();
   private readonly userMessageTurnIds: string[] = [];
   private pendingManualCompactionStarts = 0;
+  /**
+   * Settles when the compaction an out-of-band `/compact` kicked off actually
+   * finishes.
+   *
+   * `thread/compact/start` answers as soon as Codex accepts the request, so
+   * awaiting the RPC alone reported the command done while the context rewrite
+   * was still running - and the daemon, which holds the agent busy for exactly
+   * the lifetime of the out-of-band handler, released the steer queue into a
+   * session mid-rewrite. Completion arrives asynchronously instead, on either
+   * `thread/compacted` or the completed `contextCompaction` item.
+   */
+  private manualCompactionCompletion: {
+    resolve: () => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
   private compactionTriggerByItemId = new Map<string, "auto" | "manual">();
   private pendingRootCompactionItemIds = new Set<string>();
   private pendingAnonymousRootCompactions = 0;
@@ -4692,6 +4714,10 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.client = null;
     this.connected = false;
     this.currentTurnId = null;
+    // Nothing will report the compaction finished over a connection we are
+    // dropping. Release the waiter now instead of making /compact sit out its
+    // whole timeout with the agent pinned busy.
+    this.settleManualCompaction();
     if (client) {
       await client.dispose();
     }
@@ -4784,14 +4810,24 @@ export class CodexAppServerAgentSession implements AgentSession {
         throw new Error("Codex thread is not available");
       }
       this.pendingManualCompactionStarts += 1;
+      // Armed before the request, not after: Codex can report the compaction
+      // complete on the same tick the RPC answers, and a waiter registered
+      // afterwards would wait for a completion that already went past.
+      const compacted = this.awaitManualCompaction();
       try {
         await this.client.request("thread/compact/start", {
           threadId: this.currentThreadId,
         });
       } catch (error) {
         this.pendingManualCompactionStarts = Math.max(0, this.pendingManualCompactionStarts - 1);
+        this.settleManualCompaction();
         throw error;
       }
+      // Hold the out-of-band command open until the rewrite actually lands. The
+      // daemon reports the agent busy for exactly this window, which is what
+      // keeps a prompt queued during `/compact` parked until there is a context
+      // for it to run against (see AgentManager.finalizeOutOfBandRun).
+      await compacted;
       return null;
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
@@ -5882,6 +5918,9 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.pendingAnonymousRootCompactions = 0;
     this.unpairedCompactionNotificationCompletions = 0;
     this.unpairedCompactionItemCompletions = 0;
+    // The completion this reset just discarded is never coming, so release a
+    // manual /compact still waiting on it rather than holding the agent busy.
+    this.settleManualCompaction();
   }
 
   private handlePlanUpdatedNotification(
@@ -6007,10 +6046,47 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.pendingAnonymousRootCompactions = 0;
   }
 
+  /**
+   * Arm the wait for the compaction a manual `/compact` just requested.
+   *
+   * Capped: a Codex build that never reports the completion would otherwise
+   * leave the out-of-band command open forever, and with it an agent stuck
+   * reporting busy with a queue that never drains. Timing out releases both -
+   * the timeline rows still settle whenever they arrive.
+   */
+  private awaitManualCompaction(): Promise<void> {
+    // A second /compact supersedes the first; never strand the old waiter.
+    this.settleManualCompaction();
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        this.manualCompactionCompletion = null;
+        resolve();
+      }, MANUAL_COMPACTION_TIMEOUT_MS);
+      timer.unref?.();
+      this.manualCompactionCompletion = { resolve, timer };
+    });
+  }
+
+  private settleManualCompaction(): void {
+    const pending = this.manualCompactionCompletion;
+    if (!pending) {
+      return;
+    }
+    this.manualCompactionCompletion = null;
+    clearTimeout(pending.timer);
+    pending.resolve();
+  }
+
   private createContextCompactionTimelineItem(
     status: "loading" | "completed",
     itemId?: string,
   ): Extract<AgentTimelineItem, { type: "compaction" }> {
+    // Every root compaction completion - the `thread/compacted` notification,
+    // the completed item, and the turn-end sweep - builds its row here, so this
+    // is the one place that sees them all.
+    if (status === "completed") {
+      this.settleManualCompaction();
+    }
     const trigger = this.resolveContextCompactionTrigger(itemId);
     if (itemId && trigger) {
       if (status === "loading") {

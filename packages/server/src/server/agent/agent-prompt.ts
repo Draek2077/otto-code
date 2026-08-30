@@ -14,6 +14,7 @@ export type AgentRunController = Pick<
   | "getAgent"
   | "tryRunOutOfBand"
   | "hasInFlightRun"
+  | "isBusyOnlyWithOutOfBandRun"
   | "replaceAgentRun"
   | "streamAgent"
   | "enqueueSteerMessage"
@@ -62,12 +63,18 @@ function tryQueuePrompt(
   logger: Logger,
   options: StartAgentRunOptions | undefined,
 ): StartAgentRunResult | null {
-  if (options?.delivery !== "queue") {
+  // An out-of-band command has no turn to interrupt, and `/compact` is the one
+  // that matters: cutting in mid-rewrite runs the next turn against a
+  // half-summarized conversation. So an interrupt is downgraded to a queue
+  // here rather than refused - "run this instead of what you're doing" becomes
+  // "run this the moment the rewrite lands", which is what the sender wanted.
+  const mustWaitForOutOfBandRun = agentManager.isBusyOnlyWithOutOfBandRun(agentId);
+  if (options?.delivery !== "queue" && !mustWaitForOutOfBandRun) {
     return null;
   }
   const enqueued = agentManager.enqueueSteerMessage(agentId, prompt, {
-    ...(options.runOptions ? { runOptions: options.runOptions } : {}),
-    ...(options.source ? { source: options.source } : {}),
+    ...(options?.runOptions ? { runOptions: options.runOptions } : {}),
+    ...(options?.source ? { source: options.source } : {}),
   });
   if (!enqueued.queued) {
     return null;

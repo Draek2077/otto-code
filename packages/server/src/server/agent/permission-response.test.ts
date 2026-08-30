@@ -44,6 +44,10 @@ class FakePermissionAgentManager {
     return this.hasRunInFlight;
   }
 
+  isBusyOnlyWithOutOfBandRun(): boolean {
+    return false;
+  }
+
   enqueueSteerMessage(): { queued: boolean } {
     return { queued: false };
   }

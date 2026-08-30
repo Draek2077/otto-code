@@ -71,6 +71,7 @@ function createFinishNotificationScenario(
   });
   Reflect.set(agentManager, "tryRunOutOfBand", () => false);
   Reflect.set(agentManager, "hasInFlightRun", () => Boolean(options?.parentBusy));
+  Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", () => false);
   // Notify-on-finish sends `delivery: "queue"`, so the enqueue attempt is part
   // of the path now. An idle parent reports "not queued" and falls through to a
   // normal dispatch; a busy one takes the prompt.
@@ -162,6 +163,7 @@ test("sendPromptToAgent forwards the client message id as run options", async ()
   );
   Reflect.set(agentManager, "tryRunOutOfBand", vi.fn().mockReturnValue(false));
   Reflect.set(agentManager, "hasInFlightRun", vi.fn().mockReturnValue(false));
+  Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", vi.fn().mockReturnValue(false));
   Reflect.set(agentManager, "streamAgent", streamAgentSpy);
 
   const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
@@ -278,6 +280,7 @@ it("does not notify archived callers", async () => {
     }),
   );
   Reflect.set(agentManager, "hasInFlightRun", vi.fn().mockReturnValue(false));
+  Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", vi.fn().mockReturnValue(false));
   Reflect.set(agentManager, "streamAgent", streamAgentSpy);
   Reflect.set(agentManager, "replaceAgentRun", replaceAgentRunSpy);
 

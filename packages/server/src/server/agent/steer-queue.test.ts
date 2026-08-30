@@ -65,9 +65,11 @@ class ControlledSession implements AgentSession {
   readonly capabilities = TEST_CAPABILITIES;
   readonly id = randomUUID();
   readonly prompts: AgentPromptInput[] = [];
+  readonly outOfBandPrompts: AgentPromptInput[] = [];
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private turnIdCounter = 0;
   private openTurnId: string | null = null;
+  private outOfBandResolve: (() => void) | null = null;
 
   constructor(private readonly config: AgentSessionConfig) {}
 
@@ -102,6 +104,33 @@ class ControlledSession implements AgentSession {
     }
     this.openTurnId = null;
     this.pushEvent({ type: "turn_failed", provider: this.provider, error, turnId });
+  }
+
+  /**
+   * `/compact` the way Codex, Pi and OMP handle it: an out-of-band command that
+   * allocates no turn, and whose promise stays open for the whole rewrite.
+   */
+  tryHandleOutOfBand(prompt: AgentPromptInput) {
+    if (typeof prompt !== "string" || !prompt.trim().startsWith("/compact")) {
+      return null;
+    }
+    this.outOfBandPrompts.push(prompt);
+    return {
+      run: async () => {
+        await new Promise<void>((resolve) => {
+          this.outOfBandResolve = resolve;
+        });
+      },
+    };
+  }
+
+  completeOutOfBand(): void {
+    const resolve = this.outOfBandResolve;
+    if (!resolve) {
+      throw new Error("No out-of-band command to complete");
+    }
+    this.outOfBandResolve = null;
+    resolve();
   }
 
   subscribe(callback: (event: AgentStreamEvent) => void): () => void {
@@ -216,6 +245,25 @@ async function createRunningAgent(): Promise<Harness> {
   startAgentRun(manager, agent.id, "first turn", logger);
   await settle();
   expect(manager.getAgent(agent.id)?.lifecycle).toBe("running");
+
+  return { manager, agentId: agent.id, session };
+}
+
+/** An idle agent partway through an out-of-band `/compact`. */
+async function createCompactingAgent(): Promise<Harness> {
+  const client = new ControlledClient();
+  const manager = new AgentManager({ clients: { codex: client }, logger });
+  const agent = await manager.createAgent({ provider: "codex", cwd: process.cwd() }, undefined, {
+    workspaceId: undefined,
+  });
+  const session = client.session;
+  if (!session) {
+    throw new Error("Expected a created session");
+  }
+
+  const result = startAgentRun(manager, agent.id, "/compact", logger);
+  expect(result).toMatchObject({ outOfBand: true, queued: false });
+  await settle();
 
   return { manager, agentId: agent.id, session };
 }
@@ -489,6 +537,87 @@ describe("queued delivery", () => {
     expect(queuedResult?.queued).toBe(true);
     expect(session.prompts).toEqual(["first turn", "run the follow-up"]);
     expect(manager.getSteerQueue(agentId)).toEqual([]);
+  });
+
+  test("an out-of-band command reports the agent busy for as long as it runs", async () => {
+    const { manager, agentId, session } = await createCompactingAgent();
+
+    // What makes the composer offer Queue instead of Send during a /compact.
+    expect(manager.getAgent(agentId)?.lifecycle).toBe("running");
+    expect(session.outOfBandPrompts).toEqual(["/compact"]);
+    expect(session.prompts).toEqual([]);
+
+    session.completeOutOfBand();
+    await settle();
+
+    expect(manager.getAgent(agentId)?.lifecycle).toBe("idle");
+  });
+
+  test("a message queued during an out-of-band compaction runs when it finishes", async () => {
+    const { manager, agentId, session } = await createCompactingAgent();
+
+    const result = startAgentRun(manager, agentId, "now fix the test", logger, {
+      delivery: "queue",
+    });
+    expect(result).toMatchObject({ outOfBand: false, queued: true });
+    // Nothing dispatched into the session while it is still rewriting context.
+    expect(session.prompts).toEqual([]);
+    expect(toAgentPayload(manager.getAgent(agentId)!).queuedMessages).toMatchObject([
+      { preview: "now fix the test" },
+    ]);
+
+    session.completeOutOfBand();
+    await settle();
+
+    expect(session.prompts).toEqual(["now fix the test"]);
+    expect(manager.getSteerQueue(agentId)).toEqual([]);
+    expect(manager.getAgent(agentId)?.lifecycle).toBe("running");
+  });
+
+  test("messages queued during a compaction are delivered as one turn", async () => {
+    const { manager, agentId, session } = await createCompactingAgent();
+
+    startAgentRun(manager, agentId, "use the existing helper", logger, { delivery: "queue" });
+    startAgentRun(manager, agentId, "and add a test", logger, { delivery: "queue" });
+    expect(manager.getSteerQueue(agentId)).toHaveLength(2);
+
+    session.completeOutOfBand();
+    await settle();
+
+    expect(session.prompts).toEqual(["use the existing helper\n\nand add a test"]);
+    expect(manager.getSteerQueue(agentId)).toEqual([]);
+  });
+
+  test("an interrupting send during a compaction waits for it rather than cutting in", async () => {
+    const { manager, agentId, session } = await createCompactingAgent();
+
+    // There is no turn to clobber, and the rewrite in flight is exactly what a
+    // new turn must not run against - so the interrupt becomes a queue.
+    const result = startAgentRun(manager, agentId, "stop, do this instead", logger, {
+      replaceRunning: true,
+    });
+    expect(result).toMatchObject({ outOfBand: false, queued: true });
+    expect(session.prompts).toEqual([]);
+
+    session.completeOutOfBand();
+    await settle();
+
+    expect(session.prompts).toEqual(["stop, do this instead"]);
+    expect(manager.getSteerQueue(agentId)).toEqual([]);
+  });
+
+  test("stopping during a compaction keeps the queue instead of running it", async () => {
+    const { manager, agentId, session } = await createCompactingAgent();
+    startAgentRun(manager, agentId, "queued behind the stop", logger, { delivery: "queue" });
+
+    await cancelAgentRunCommand({ agentManager: manager, logger }, agentId);
+    session.completeOutOfBand();
+    await settle();
+
+    expect(session.prompts).toEqual([]);
+    expect(manager.getSteerQueue(agentId).map((entry) => entry.prompt)).toEqual([
+      "queued behind the stop",
+    ]);
   });
 
   test("interrupt delivery still clobbers the running turn", async () => {
