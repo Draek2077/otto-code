@@ -85,34 +85,31 @@ const WATCHLIST = [
     // silently-matching-nothing entry can never happen again.
     label: "personalities/teams",
     paths: [
-      "packages/server/src/server/agent/agent-personalities.ts",
+      "packages/protocol/src/default-personalities.ts",
+      "packages/protocol/src/agent-profiles.ts",
+      "packages/server/src/server/agent/agent-profiles.ts",
       "packages/server/src/server/agent/agent-teams.ts",
-      "packages/server/src/server/agent/personality-memory/",
+      "packages/app/src/context-management/use-personality-memory.ts",
       "packages/app/src/components/active-team-group-switcher.tsx",
       // Upstream's rival: host-wide reusable agent profiles (#3208).
       "packages/app/src/agent-profiles/",
     ],
   },
   {
-    // Two complete Mermaid renderers now exist at different paths, so they never
-    // conflict and never announce themselves. Keep both sides on the watchlist
-    // until one is deleted.
+    // The duplicate renderer at components/markdown/mermaid/ that this entry
+    // used to track is gone from both sides; the fence renderer is the survivor.
     label: "mermaid",
-    paths: [
-      "packages/app/src/components/markdown/mermaid/",
-      "packages/app/src/components/markdown/fence/mermaid/",
-    ],
+    paths: ["packages/app/src/components/markdown/fence/mermaid/"],
   },
   {
-    // Otto retains chat rooms and agent loops that upstream deleted in #3053.
-    // The `otto-loop` skill is built on `otto loop run`.
-    label: "chat rooms / agent loops",
-    paths: [
-      "packages/server/src/server/chat/",
-      "packages/server/src/server/loop-service.ts",
-      "packages/cli/src/commands/chat/",
-      "packages/cli/src/commands/loop/",
-    ],
+    // This entry used to claim Otto retained chat rooms and agent loops after
+    // upstream deleted them in #3053. It did not: we ingested that deletion
+    // (94bda1f92), so the server, CLI and app sides are gone from both trees.
+    // What survives is the protocol half, still exported from messages.ts with
+    // no handler behind it - watch it so a future upstream loop feature is
+    // recognised as a rebuild rather than merged on top of dead schema.
+    label: "agent loops (protocol remnant)",
+    paths: ["packages/protocol/src/loop/"],
   },
   {
     label: "artifacts",
