@@ -6,16 +6,16 @@ import type { AgentAutoTitleRequest } from "../../agent/agent-auto-title.js";
 import type { ProviderSnapshotManager } from "../../agent/provider-snapshot-manager.js";
 import type { DaemonConfigStore } from "../../daemon-config-store.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
-import type { GraphStore } from "../../orchestration/graph-store.js";
-import type { GraphSharingService } from "../../orchestration/graph-sharing-service.js";
-import type { NodeOutputStore } from "../../orchestration/node-output.js";
-import type { PromptTemplateStore } from "../../orchestration/prompt-template-store.js";
-import { graphHash } from "../../orchestration/graph-identity.js";
-import { type WorkflowService, toWireRun } from "../../orchestration/run-service.js";
+import type { GraphStore } from "../../workflow/graph-store.js";
+import type { GraphSharingService } from "../../workflow/graph-sharing-service.js";
+import type { NodeOutputStore } from "../../workflow/node-output.js";
+import type { PromptTemplateStore } from "../../workflow/prompt-template-store.js";
+import { graphHash } from "../../workflow/graph-identity.js";
+import { type WorkflowService, toWireRun } from "../../workflow/workflow-service.js";
 import {
   startUserOrchestration,
   type StartUserOrchestrationInput,
-} from "../../orchestration/user-orchestration.js";
+} from "../../workflow/user-workflow.js";
 import type { CreateOttoWorktreeWorkflowFn } from "../../worktree-session.js";
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
 import type { AgentUpdatesService } from "../agent-updates/agent-updates-service.js";

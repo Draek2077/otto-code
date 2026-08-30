@@ -8,8 +8,8 @@ import { createTestLogger } from "../../../test-utils/test-logger.js";
 import type { AgentManager } from "../agent-manager.js";
 import type { AgentStorage } from "../agent-storage.js";
 import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
-import { RunStore } from "../../orchestration/run-store.js";
-import { WorkflowService } from "../../orchestration/run-service.js";
+import { RunStore } from "../../workflow/workflow-run-file-store.js";
+import { WorkflowService } from "../../workflow/workflow-service.js";
 import { createOttoToolCatalog } from "./otto-tools.js";
 
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };

@@ -310,11 +310,11 @@ import type pino from "pino";
 import type { LspService } from "./lsp/service.js";
 import { SolutionService } from "./solution-model/service.js";
 import { ScheduleService } from "./schedule/service.js";
-import type { WorkflowService } from "./orchestration/run-service.js";
-import type { GraphStore } from "./orchestration/graph-store.js";
-import type { GraphSharingService } from "./orchestration/graph-sharing-service.js";
-import type { NodeOutputStore } from "./orchestration/node-output.js";
-import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
+import type { WorkflowService } from "./workflow/workflow-service.js";
+import type { GraphStore } from "./workflow/graph-store.js";
+import type { GraphSharingService } from "./workflow/graph-sharing-service.js";
+import type { NodeOutputStore } from "./workflow/node-output.js";
+import type { PromptTemplateStore } from "./workflow/prompt-template-store.js";
 
 import type { GitHostingResolver } from "../services/git-hosting/resolver.js";
 import {

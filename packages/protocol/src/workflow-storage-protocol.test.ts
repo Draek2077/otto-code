@@ -11,7 +11,7 @@ import {
   PromptTemplateSchema,
   WorkflowGraphExportSchema,
   WorkflowSchema,
-} from "./orchestration.js";
+} from "./workflow.js";
 
 describe("Workflow storage protocol additions", () => {
   it("represents an independent host default", () => {

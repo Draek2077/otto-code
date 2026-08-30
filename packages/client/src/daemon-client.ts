@@ -217,7 +217,7 @@ import type {
   PromptTemplate,
   Run,
   WorkflowStartConfirmation,
-} from "@otto-code/protocol/orchestration";
+} from "@otto-code/protocol/workflow";
 import type {
   BrainCatalogModel,
   BrainDiskUsage,
@@ -3461,7 +3461,7 @@ export class DaemonClient {
 
   async exportWorkflowGraph(
     graphId: string,
-  ): Promise<import("@otto-code/protocol/orchestration").WorkflowGraphExport> {
+  ): Promise<import("@otto-code/protocol/workflow").WorkflowGraphExport> {
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"workflows.graph.export.response">({
         message: { type: "workflows.graph.export.request", graphId },
@@ -3472,9 +3472,9 @@ export class DaemonClient {
 
   async importWorkflowGraph(input: {
     cwd: string;
-    export: import("@otto-code/protocol/orchestration").WorkflowGraphExport;
+    export: import("@otto-code/protocol/workflow").WorkflowGraphExport;
     confirmed: boolean;
-  }): Promise<import("@otto-code/protocol/orchestration").WorkflowGraphImportResult> {
+  }): Promise<import("@otto-code/protocol/workflow").WorkflowGraphImportResult> {
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"workflows.graph.import.response">({
         message: { type: "workflows.graph.import.request", ...input },
@@ -3522,7 +3522,7 @@ export class DaemonClient {
     source: "legacy-host-library" | "repository" | "host";
     destination: "repository" | "host";
     mode: "copy" | "move";
-  }): Promise<import("@otto-code/protocol/orchestration").WorkflowTransferReceipt> {
+  }): Promise<import("@otto-code/protocol/workflow").WorkflowTransferReceipt> {
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"workflows.storage.transfer.response">({
         message: { type: "workflows.storage.transfer.request", ...input },

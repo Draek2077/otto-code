@@ -65,22 +65,22 @@ import {
   type CreateAgentCommandDependencies,
   type CreateAgentFromMcpInput,
 } from "../create-agent/create.js";
-import { RunPlanSchema } from "@otto-code/protocol/orchestration";
+import { RunPlanSchema } from "@otto-code/protocol/workflow";
 import {
   type WorkspaceAccess,
   isOttoToolAllowedForAccess,
   resolveWorkspaceAccess,
 } from "../workspace-access.js";
-import { summarizeRunOutput } from "../../orchestration/run-engine.js";
-import { attachStartRunLifecycle } from "../../orchestration/start-run-lifecycle.js";
+import { summarizeRunOutput } from "../../workflow/workflow-engine.js";
+import { attachStartRunLifecycle } from "../../workflow/workflow-start-lifecycle.js";
 import {
   type NodeOutputStore,
   compileOutputToolInputShape,
   validateNodeOutput,
-} from "../../orchestration/node-output.js";
-import { executeQueryTool, queryToolName } from "../../orchestration/node-query-tools.js";
-import type { RunSpawnPort, WorkflowService } from "../../orchestration/run-service.js";
-import { resolveTeamRoleMember } from "../../orchestration/resolve-team-role.js";
+} from "../../workflow/node-output.js";
+import { executeQueryTool, queryToolName } from "../../workflow/node-query-tools.js";
+import type { RunSpawnPort, WorkflowService } from "../../workflow/workflow-service.js";
+import { resolveTeamRoleMember } from "../../workflow/resolve-team-role.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js";
 import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../../path-utils.js";
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
@@ -277,7 +277,7 @@ export interface OttoToolHostDependencies {
    * Where submit_output writes what a graph node's agent submitted. Present
    * when orchestration is wired; the tool only registers for agents that carry
    * declared output fields on their labels, so hosts without graphs never see
-   * it. See packages/server/src/server/orchestration/node-output.ts.
+   * it. See packages/server/src/server/workflow/node-output.ts.
    */
   nodeOutputStore?: NodeOutputStore | null;
   logger: Logger;

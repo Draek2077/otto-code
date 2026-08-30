@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { Run } from "@otto-code/protocol/orchestration";
+import type { Run } from "@otto-code/protocol/workflow";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 
 // Query keys + cache helpers for the daemon-owned orchestration Runs replica.

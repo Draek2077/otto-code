@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { Run, RunPhase } from "@otto-code/protocol/orchestration";
-import { isTerminalRunStatus } from "@otto-code/protocol/orchestration";
+import type { Run, RunPhase } from "@otto-code/protocol/workflow";
+import { isTerminalRunStatus } from "@otto-code/protocol/workflow";
 import { judgeVerdictPassed } from "@otto-code/protocol/judge-verdict";
 import {
   MoreVertical,
@@ -18,7 +18,7 @@ import { MenuHeader } from "@/components/headers/menu-header";
 import {
   NewOrchestrationSheet,
   type NewOrchestrationPrefill,
-} from "@/components/orchestration/new-orchestration-sheet";
+} from "@/components/workflows/new-workflow-sheet";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -63,7 +63,7 @@ import {
 } from "@/hooks/use-runs";
 import { openVisualizerTab } from "@/visualizer/open-visualizer-tab";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
-import { useRespondToWorkflowStartConfirmation } from "@/hooks/use-orchestration-graphs";
+import { useRespondToWorkflowStartConfirmation } from "@/hooks/use-workflow-graphs";
 import {
   describeWorkflowStorageRemediation,
   describeWorkflowStorageSource,
@@ -565,7 +565,7 @@ function RunsScreenBody({
             onPress={onCreate}
             size="sm"
             style={styles.newButton}
-            testID="runs-new-orchestration"
+            testID="runs-new-workflow"
           >
             New Workflow
           </Button>

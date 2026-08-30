@@ -1,4 +1,4 @@
-import type { WorkflowStorageProvenance } from "@otto-code/protocol/orchestration";
+import type { WorkflowStorageProvenance } from "@otto-code/protocol/workflow";
 
 /** One feature decision for all Workflow storage UI, never a legacy fallback. */
 export function supportsWorkflowStorage(input: {

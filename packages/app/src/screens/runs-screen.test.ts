@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Run } from "@otto-code/protocol/orchestration";
+import type { Run } from "@otto-code/protocol/workflow";
 import type { RunWithHost } from "@/hooks/use-runs";
 import {
   applyRunFilters,

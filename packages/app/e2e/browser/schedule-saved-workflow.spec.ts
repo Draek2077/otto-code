@@ -4,7 +4,7 @@ import type {
   OrchestrationGraph,
   WorkflowGraphExport,
   WorkflowGraphImportResult,
-} from "@otto-code/protocol/orchestration";
+} from "@otto-code/protocol/workflow";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { moneyShot } from "../support/helpers/evidence";

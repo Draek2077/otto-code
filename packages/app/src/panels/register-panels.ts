@@ -11,7 +11,7 @@ import { codeReferencesPanelRegistration } from "@/panels/code-references-panel"
 import { codeRenamePanelRegistration } from "@/panels/code-rename-panel";
 import { fileHistoryPanelRegistration } from "@/panels/file-history-panel";
 import { gitLogPanelRegistration } from "@/panels/git-log-panel";
-import { orchestrationGraphPanelRegistration } from "@/panels/orchestration-graph-panel-registration";
+import { orchestrationGraphPanelRegistration } from "@/panels/workflow-graph-panel-registration";
 import { registerPanel } from "@/panels/panel-registry";
 import { refinePanelRegistration } from "@/panels/refine-panel";
 import { setupPanelRegistration } from "@/panels/setup-panel";

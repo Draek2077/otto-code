@@ -12,7 +12,7 @@ import { applyBrainStatusChanged, invalidateBrainStatusAfterReconnect } from "@/
 import { applyBrainLogLineAdded, invalidateBrainLogsAfterReconnect } from "@/data/brain-logs";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { applyRunUpdate, applyRunsCleared } from "@/data/runs";
-import { applyOrchestrationGraphsChanged } from "@/data/orchestration-graphs";
+import { applyOrchestrationGraphsChanged } from "@/data/workflow-graphs";
 import { applyPromptTemplatesChanged } from "@/data/prompt-templates";
 import { useLspActivityStore } from "@/stores/lsp-activity-store";
 import { useLspDiagnosticsStore } from "@/stores/lsp-diagnostics-store";

@@ -19,7 +19,7 @@ owns role resolution, managed worker creation, gates, cancellation, persistence,
 restart recovery, history, and Visualizer projection. A provider adapter supplies
 the agent session and, for Graph nodes, proves the requested workspace-access
 ceiling before the worker is created. See
-[Graph node capabilities](orchestration-node-capabilities.md).
+[Graph node capabilities](workflow-node-capabilities.md).
 
 | Provider/runtime family                                                                       | Workflow declaration and workers                                                                                                                                 | Graph workspace access                                                                                              | Verified evidence                                                                                                                                                                                                                | Release verdict                                                                                                                        |
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -43,15 +43,15 @@ npx vitest run src/server/agent/agent-profiles.test.ts --bail=1
 
 # Real daemon plumbing with deterministic fake-backed children:
 # worker creation, a human gate, missing-role refusal, and cancellation cascade.
-npx vitest run src/server/orchestration/run-orchestration.integration.test.ts `
+npx vitest run src/server/workflow/workflow.integration.test.ts `
   -t "pauses a Graph at a human gate|hard-fails and names the gap" --bail=1
-npx vitest run src/server/orchestration/run-orchestration.integration.test.ts `
+npx vitest run src/server/workflow/workflow.integration.test.ts `
   -t "cancels a held fake worker" --bail=1
 
 # AI planning cancellation, no-plan error, and durable restart failure.
-npx vitest run src/server/orchestration/run-service.test.ts `
+npx vitest run src/server/workflow/workflow-service.test.ts `
   -t "cancels an AI Workflow while its orchestrator is planning|fails a durable AI Workflow when planning ends without a declared plan" --bail=1
-npx vitest run src/server/orchestration/run-service.test.ts `
+npx vitest run src/server/workflow/workflow-service.test.ts `
   -t "init marks a persisted in-flight run as failed" --bail=1
 
 # Provider authority boundaries. These cover Claude, Codex, and the native
@@ -80,13 +80,13 @@ consume the selected provider's quota. Run each only with fresh owner authorizat
 
 ```powershell
 # Claude representative declaration and managed fan-out.
-npm run live:orchestration -- --bootstrap-sonnet --timeout 300 --prompt `
+npm run live:workflow -- --bootstrap-sonnet --timeout 300 --prompt `
   "Use start_workflow to declare one research phase with fanOut 2. Each worker must return WORKFLOW FAN-OUT CONFIRMED."
 
 # Codex representative attended gate. The one-member fixture intentionally has
 # no worker phase; it proves declaration, pause, approval, and terminal reuse of
 # the same durable Workflow record.
-npm run live:orchestration -- --bootstrap-codex-luna --approve-gate --timeout 300 --prompt `
+npm run live:workflow -- --bootstrap-codex-luna --approve-gate --timeout 300 --prompt `
   "Use start_workflow to declare an attended gate named Release approval and no worker phases. Wait for approval, then report the durable run id."
 ```
 
@@ -97,7 +97,7 @@ Workflow plus a deterministic recovery result. It never reads the source Otto
 home, contacts a provider, or uses ports 6868/6788:
 
 ```powershell
-npm run live:orchestration -- --bootstrap-openai-compatible-fixture --timeout 60
+npm run live:workflow -- --bootstrap-openai-compatible-fixture --timeout 60
 ```
 
 On 2026-08-29 the command reached the isolated daemon and seeded local team,

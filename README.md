@@ -236,7 +236,7 @@ does; `docs/` documents how it is built.
 [Agent personalities](docs/agent-profiles.md) ·
 [Agent teams](docs/agent-teams.md) ·
 [Subagent accounting](docs/subagent-accounting.md) ·
-[Orchestration node capabilities](docs/orchestration-node-capabilities.md) ·
+[Workflow node capabilities](docs/workflow-node-capabilities.md) ·
 [Safe unattended runs](docs/safe-unattended.md) ·
 [Suggested tasks](docs/suggested-tasks.md) ·
 [Timeline sync](docs/timeline-sync.md) ·

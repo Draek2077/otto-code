@@ -1,18 +1,18 @@
-import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
+import type { OrchestrationGraph } from "@otto-code/protocol/workflow";
 import type { ScheduleExecutionResult } from "@otto-code/protocol/schedule/types";
 
 import type {
   UserOrchestrationDependencies,
   StartUserOrchestrationInput,
-} from "../orchestration/user-orchestration.js";
-import { startUserOrchestration } from "../orchestration/user-orchestration.js";
-import { graphHash, hasExpectedWorkflowStorage } from "../orchestration/graph-identity.js";
-import type { GraphStore } from "../orchestration/graph-store.js";
+} from "../workflow/user-workflow.js";
+import { startUserOrchestration } from "../workflow/user-workflow.js";
+import { graphHash, hasExpectedWorkflowStorage } from "../workflow/graph-identity.js";
+import type { GraphStore } from "../workflow/graph-store.js";
 import type {
   WorkflowStorageProjectRecord,
   WorkflowStorageLocation,
   WorkflowStoreRegistry,
-} from "../orchestration/workflow-store-registry.js";
+} from "../workflow/workflow-store-registry.js";
 import { ScheduleWorkflowTargetError, type ScheduleWorkflowRunner } from "./service.js";
 
 export interface WorkflowScheduleTargetRunnerDeps {

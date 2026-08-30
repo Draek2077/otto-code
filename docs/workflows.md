@@ -93,7 +93,7 @@ cancellation. It can open the run-scoped Visualizer for either Workflow kind.
 
 Graph node authority, conditional routing, output fields, retry limits, timeout
 behavior, EJS prompt templates, and the Graph CLI boundary are specified in
-[orchestration-node-capabilities.md](orchestration-node-capabilities.md).
+[workflow-node-capabilities.md](workflow-node-capabilities.md).
 
 ## Scheduling a saved Graph Workflow
 
@@ -204,7 +204,7 @@ until the exact focused Chromium commands pass.
 Deterministic checks, gate outcomes, cancellation cascade, restart recovery,
 AI planning records, the AI-declared start confirmation, and no-plan failure
 are proven by in-process daemon integration tests
-(`run-orchestration.integration.test.ts`, `run-service.test.ts`,
+(`workflow.integration.test.ts`, `workflow-service.test.ts`,
 `graph-engine.test.ts`), not by browser specs. None of these consume provider
 credits. An isolated live-daemon proof uses Claude Sonnet 5 at
 low effort to show a real AI conductor declaring one `fanOut: 2` research phase

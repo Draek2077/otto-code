@@ -139,7 +139,7 @@ and Discovery.
 - **Ch. 11 Goal Setting and Monitoring**, **Ch. 12 Exception Handling and Recovery**, **Ch. 13
   Human-in-the-Loop** are the three chapters that describe things Otto's graph engine has as
   first-class nodes (budget/ceiling, retry policy, Gate). Read them against
-  [orchestration-node-capabilities.md](orchestration-node-capabilities.md) - this is the closest
+  [workflow-node-capabilities.md](workflow-node-capabilities.md) - this is the closest
   published treatment of the same design space.
 - **Ch. 16 Resource-Aware Optimization** is the missing prose for [token-economy.md](token-economy.md): Otto has the measurements but no framework for reasoning about them.
 - **Ch. 8 Memory Management** and **Ch. 9 Learning and Adaptation** are the direct input to

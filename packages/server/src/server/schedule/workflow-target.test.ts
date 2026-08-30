@@ -1,10 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 
-import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
+import type { OrchestrationGraph } from "@otto-code/protocol/workflow";
 import type { StoredSchedule } from "@otto-code/protocol/schedule/types";
 
-import type { GraphStore } from "../orchestration/graph-store.js";
-import type { WorkflowStorageLocation } from "../orchestration/workflow-store-registry.js";
+import type { GraphStore } from "../workflow/graph-store.js";
+import type { WorkflowStorageLocation } from "../workflow/workflow-store-registry.js";
 import { ScheduleWorkflowTargetError } from "./service.js";
 import { createWorkflowScheduleTargetRunner } from "./workflow-target.js";
 

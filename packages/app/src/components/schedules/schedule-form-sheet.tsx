@@ -14,7 +14,7 @@ import { Folder, Psychology } from "@/components/icons/material-icons";
 import { GitBranch } from "@/components/icons/lucide";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
-import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
+import type { OrchestrationGraph } from "@otto-code/protocol/workflow";
 import type { ScheduleCadence, ScheduleSummary } from "@otto-code/protocol/schedule/types";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
@@ -58,7 +58,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { buildScheduleProjectTargets } from "@/schedules/schedule-project-targets";
 import { useScheduleFormModel } from "@/schedules/use-schedule-form-model";
 import { useScheduleFormProviderSnapshot } from "@/schedules/use-schedule-form-provider-snapshot";
-import { useProjectWorkflowGraphs } from "@/hooks/use-orchestration-graphs";
+import { useProjectWorkflowGraphs } from "@/hooks/use-workflow-graphs";
 import type {
   ScheduleFormDisplay,
   ScheduleFormHost,

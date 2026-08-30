@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import type { Run } from "@otto-code/protocol/orchestration";
+import type { Run } from "@otto-code/protocol/workflow";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useReplicaQuery } from "@/data/query";

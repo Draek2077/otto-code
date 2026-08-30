@@ -1,6 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Run } from "@otto-code/protocol/orchestration";
+import type { Run } from "@otto-code/protocol/workflow";
 import type { SeedDaemonClient } from "./seed-client";
 
 /**
@@ -8,7 +8,7 @@ import type { SeedDaemonClient } from "./seed-client";
  * creates a run (runs are born from the conductor-only `start_workflow` tool), but
  * the daemon persists each run as `$OTTO_HOME/runs/{runId}.json` and the
  * RunService reloads that directory on startup (see
- * packages/server/src/server/orchestration/run-store.ts / run-service.ts
+ * packages/server/src/server/workflow/workflow-run-file-store.ts / workflow-service.ts
  * `init`). Specs therefore write a terminal run file into the isolated E2E
  * home and bounce the daemon with helpers/daemon-restart.ts to make it live.
  *

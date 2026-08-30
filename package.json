@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "dev": "npm run dev:server",
-    "live:orchestration": "tsx packages/server/scripts/live-orchestration.ts",
+    "live:workflow": "tsx packages/server/scripts/live-workflow.ts",
     "eval:otto-tools": "tsx packages/server/scripts/evaluate-otto-tool-selection.ts",
     "dev:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
     "dev:agent": "./scripts/dev-agent.sh",

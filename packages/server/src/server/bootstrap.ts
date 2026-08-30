@@ -190,21 +190,21 @@ import {
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { ScheduleService } from "./schedule/service.js";
 import { createWorkflowScheduleTargetRunner } from "./schedule/workflow-target.js";
-import { WorkflowService, toWireRun } from "./orchestration/run-service.js";
-import { WorkflowRunStore } from "./orchestration/workflow-run-store.js";
-import { buildRunSummaryPrompt } from "./orchestration/run-engine.js";
-import { GraphStore } from "./orchestration/graph-store.js";
-import { GraphSharingService } from "./orchestration/graph-sharing-service.js";
-import { WorkflowLibraryService } from "./orchestration/workflow-library-service.js";
-import { seedStarterGraphs } from "./orchestration/starter-graphs.js";
-import { NodeOutputStore } from "./orchestration/node-output.js";
-import { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
-import { startUserOrchestration } from "./orchestration/user-orchestration.js";
+import { WorkflowService, toWireRun } from "./workflow/workflow-service.js";
+import { WorkflowRunStore } from "./workflow/workflow-run-store.js";
+import { buildRunSummaryPrompt } from "./workflow/workflow-engine.js";
+import { GraphStore } from "./workflow/graph-store.js";
+import { GraphSharingService } from "./workflow/graph-sharing-service.js";
+import { WorkflowLibraryService } from "./workflow/workflow-library-service.js";
+import { seedStarterGraphs } from "./workflow/starter-graphs.js";
+import { NodeOutputStore } from "./workflow/node-output.js";
+import { PromptTemplateStore } from "./workflow/prompt-template-store.js";
+import { startUserOrchestration } from "./workflow/user-workflow.js";
 import {
   WORKFLOW_HOST_STORE_ROOT_DIRECTORY,
   WorkflowStoreRegistry,
-} from "./orchestration/workflow-store-registry.js";
-import { seedStarterPromptTemplates } from "./orchestration/starter-prompt-templates.js";
+} from "./workflow/workflow-store-registry.js";
+import { seedStarterPromptTemplates } from "./workflow/starter-prompt-templates.js";
 import { createAgentStructuredTextGeneration } from "./session/checkout/git-metadata-generator.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { ConnectorOAuthBroker, type ConnectorAuthStore } from "./connectors/connector-oauth.js";

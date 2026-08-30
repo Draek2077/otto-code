@@ -688,7 +688,7 @@ Canonical automation uses `otto workspace create/ls/rename/archive`, `otto heart
 Saved Graph Workflows are available headlessly through `otto workflow graph`: `ls`, `inspect`,
 `validate <file>`, and `run <graph-id>`. Validation reads a local JSON document but never
 imports or executes it. Graph file import and `run --file` wait on the Graph trust boundary and
-are described in [orchestration-node-capabilities.md](orchestration-node-capabilities.md). Graph
+are described in [workflow-node-capabilities.md](workflow-node-capabilities.md). Graph
 Runs already persist an exact source-document snapshot; a draft's snapshot is replaced only when
 the user re-saves that draft, while an executed Run's snapshot is immutable history.
 

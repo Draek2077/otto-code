@@ -1,4 +1,4 @@
-import type { Run } from "@otto-code/protocol/orchestration";
+import type { Run } from "@otto-code/protocol/workflow";
 import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
 
 export type BadgeVariant = "success" | "warning" | "error";

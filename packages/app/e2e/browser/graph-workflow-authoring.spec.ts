@@ -58,20 +58,20 @@ test.describe("Graph Workflow authoring", () => {
 
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
 
-      const sheet = page.getByTestId("new-orchestration-sheet");
+      const sheet = page.getByTestId("new-workflow-sheet");
       await expect(sheet).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-graph").click();
-      await page.getByTestId("orchestration-name-input").fill("E2E graph draft");
+      await page.getByTestId("workflow-flavor-graph").click();
+      await page.getByTestId("workflow-name-input").fill("E2E graph draft");
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves graph authoring resolves the selected workspace.");
 
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       // The project selector is portaled above the sheet; the final exact
       // match is its option, after the same project label in the sidebar.
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
@@ -79,15 +79,14 @@ test.describe("Graph Workflow authoring", () => {
       // The regression used to synthesize a "Project root" target because it
       // compared the host workspace's projectId with a cross-host projectKey.
       // A real workspace here is the prerequisite for opening the designer.
-      await expect(page.getByTestId("orchestration-workspace-trigger")).toContainText(
+      await expect(page.getByTestId("workflow-workspace-trigger")).toContainText(
         workspace.workspaceName,
       );
-      await expect(page.getByTestId("orchestration-model-trigger")).toContainText(
-        "Ten second stream",
-        { timeout: 30_000 },
-      );
+      await expect(page.getByTestId("workflow-model-trigger")).toContainText("Ten second stream", {
+        timeout: 30_000,
+      });
 
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
 
       await expect(page.getByTestId("graph-add-agent")).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId("graph-save")).toBeVisible();
@@ -108,8 +107,8 @@ test.describe("Graph Workflow authoring", () => {
 
       await page.getByTestId("graph-run").click();
       await expect(sheet).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId("new-orchestration-submit")).toHaveText("Run");
-      await page.getByTestId("new-orchestration-submit").click();
+      await expect(page.getByTestId("new-workflow-submit")).toHaveText("Run");
+      await page.getByTestId("new-workflow-submit").click();
 
       // The daemon snapshot is the deterministic execution gate. The browser
       // remains responsible for rendering the same durable record afterward.
@@ -168,30 +167,30 @@ test.describe("Graph Workflow authoring", () => {
 
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
 
-      const sheet = page.getByTestId("new-orchestration-sheet");
+      const sheet = page.getByTestId("new-workflow-sheet");
       await expect(sheet).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-graph").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await page.getByTestId("workflow-flavor-graph").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves attended Graph Workflow approval through the durable library.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await expect(page.getByTestId("orchestration-workspace-trigger")).toContainText(
+      await expect(page.getByTestId("workflow-workspace-trigger")).toContainText(
         workspace.workspaceName,
       );
 
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect(page.getByTestId("graph-add-gate")).toBeVisible({ timeout: 30_000 });
       await page.getByTestId("graph-add-gate").click();
       await page.getByTestId("graph-run").click();
       await expect(sheet).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
 
       // A gate is an attended control, not an agent. The daemon must persist
       // its pause before the browser is asked to resolve it.
@@ -254,20 +253,20 @@ test.describe("Graph Workflow authoring", () => {
       await page.goto(buildRunsRoute());
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
-      const sheet = page.getByTestId("new-orchestration-sheet");
+      const sheet = page.getByTestId("new-workflow-sheet");
       await expect(sheet).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-graph").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await page.getByTestId("workflow-flavor-graph").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves a false deterministic Check follows only its declared recovery port.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect(page.getByTestId("graph-add-check")).toBeVisible({ timeout: 30_000 });
       await page.getByTestId("graph-add-check").click();
       const checkNode = page.locator(".og-node.og-node-check").last();
@@ -299,7 +298,7 @@ test.describe("Graph Workflow authoring", () => {
       );
       await page.getByTestId("graph-run").click();
       await expect(sheet).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect
         .poll(
           async () => {
@@ -358,25 +357,25 @@ test.describe("Graph Workflow authoring", () => {
       await page.goto(buildRunsRoute());
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
-      const sheet = page.getByTestId("new-orchestration-sheet");
+      const sheet = page.getByTestId("new-workflow-sheet");
       await expect(sheet).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-graph").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await page.getByTestId("workflow-flavor-graph").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves rejection cancels an attended Graph gate without an agent.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect(page.getByTestId("graph-add-gate")).toBeVisible({ timeout: 30_000 });
       await page.getByTestId("graph-add-gate").click();
       await page.getByTestId("graph-run").click();
       await expect(sheet).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect
         .poll(
           async () => {
@@ -443,20 +442,20 @@ test.describe("Graph Workflow authoring", () => {
       await page.goto(buildRunsRoute());
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
-      const sheet = page.getByTestId("new-orchestration-sheet");
+      const sheet = page.getByTestId("new-workflow-sheet");
       await expect(sheet).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-graph").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await page.getByTestId("workflow-flavor-graph").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves true deterministic checks complete without consuming an agent.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect(page.getByTestId("graph-add-check")).toBeVisible({ timeout: 30_000 });
       await page.getByTestId("graph-add-check").click();
       await page.getByTestId("graph-add-agent").click();
@@ -480,7 +479,7 @@ test.describe("Graph Workflow authoring", () => {
       );
       await page.getByTestId("graph-run").click();
       await expect(sheet).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect
         .poll(
           async () => {
@@ -538,27 +537,27 @@ test.describe("Graph Workflow authoring", () => {
       await page.goto(buildRunsRoute());
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
-      const sheet = page.getByTestId("new-orchestration-sheet");
+      const sheet = page.getByTestId("new-workflow-sheet");
       await expect(sheet).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-graph").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await page.getByTestId("workflow-flavor-graph").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves invalid graph feedback prevents any workflow launch.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect(page.getByTestId("graph-add-check")).toBeVisible({ timeout: 30_000 });
       await page.getByTestId("graph-add-check").click();
       const checkNode = page.locator(".og-node.og-node-check").last();
       await checkNode.locator('[data-og-field="checkExpression"]').fill("(");
       await page.getByTestId("graph-run").click();
       await expect(sheet).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
 
       await expect(sheet).toContainText(
         'Graph is not executable: The Check "Check output" has an invalid expression:',
@@ -597,20 +596,20 @@ test.describe("Graph Workflow authoring", () => {
       await page.goto(buildRunsRoute());
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
-      const sheet = page.getByTestId("new-orchestration-sheet");
+      const sheet = page.getByTestId("new-workflow-sheet");
       await expect(sheet).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-graph").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await page.getByTestId("workflow-flavor-graph").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves active Graph work can be canceled from Workflows.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect(page.getByTestId("graph-add-agent")).toBeVisible({ timeout: 30_000 });
       await page.getByTestId("graph-add-agent").click();
       const agentNode = page.locator(".og-node:not(.og-node-root)").last();
@@ -621,7 +620,7 @@ test.describe("Graph Workflow authoring", () => {
       await agentNode.locator('[data-og-field="model"]').fill("mock/ten-second-stream");
       await page.getByTestId("graph-run").click();
       await expect(sheet).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect
         .poll(
           async () => {
@@ -693,23 +692,23 @@ test.describe("Graph Workflow authoring", () => {
       await page.goto(buildRunsRoute());
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
-      const sheet = page.getByTestId("new-orchestration-sheet");
+      const sheet = page.getByTestId("new-workflow-sheet");
       await expect(sheet).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-ai").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await page.getByTestId("workflow-flavor-ai").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves the durable AI Workflow planning record.");
       await page
-        .getByTestId("orchestration-prompt-input")
+        .getByTestId("workflow-prompt-input")
         .fill("Do not declare a plan; finish immediately.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect
         .poll(
           async () => {
@@ -773,22 +772,22 @@ test.describe("Graph Workflow authoring", () => {
       await page.goto(buildRunsRoute());
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
-      await expect(page.getByTestId("new-orchestration-sheet")).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-ai").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await expect(page.getByTestId("new-workflow-sheet")).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId("workflow-flavor-ai").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves start confirmation preserves the ordinary attended gate.");
       await page
-        .getByTestId("orchestration-prompt-input")
+        .getByTestId("workflow-prompt-input")
         .fill("Emit a synthetic attended AI Workflow gate.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
 
       await expect
         .poll(
@@ -891,22 +890,22 @@ test.describe("Graph Workflow authoring", () => {
       await page.goto(buildRunsRoute());
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
-      await expect(page.getByTestId("new-orchestration-sheet")).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-ai").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await expect(page.getByTestId("new-workflow-sheet")).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId("workflow-flavor-ai").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves start confirmation rejection remains on one durable Workflow record.");
       await page
-        .getByTestId("orchestration-prompt-input")
+        .getByTestId("workflow-prompt-input")
         .fill("Emit a synthetic attended AI Workflow gate.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
 
       await expect
         .poll(
@@ -976,23 +975,23 @@ test.describe("Graph Workflow authoring", () => {
       await page.goto(buildRunsRoute());
       const newWorkflow = page
         .getByTestId("runs-empty-new")
-        .or(page.getByTestId("runs-new-orchestration"))
+        .or(page.getByTestId("runs-new-workflow"))
         .first();
       await expect(newWorkflow).toBeVisible({ timeout: 30_000 });
       await newWorkflow.click();
-      const sheet = page.getByTestId("new-orchestration-sheet");
+      const sheet = page.getByTestId("new-workflow-sheet");
       await expect(sheet).toBeVisible({ timeout: 15_000 });
-      await page.getByTestId("orchestration-flavor-ai").click();
-      await page.getByTestId("orchestration-name-input").fill(title);
+      await page.getByTestId("workflow-flavor-ai").click();
+      await page.getByTestId("workflow-name-input").fill(title);
       await page
-        .getByTestId("orchestration-description-input")
+        .getByTestId("workflow-description-input")
         .fill("Proves AI planning can be canceled from Workflows.");
       await page
-        .getByTestId("orchestration-prompt-input")
+        .getByTestId("workflow-prompt-input")
         .fill("Wait for cancellation without declaring a plan.");
-      await page.getByTestId("orchestration-project-trigger").click();
+      await page.getByTestId("workflow-project-trigger").click();
       await page.getByText(workspace.projectDisplayName, { exact: true }).last().click();
-      await page.getByTestId("new-orchestration-submit").click();
+      await page.getByTestId("new-workflow-submit").click();
       await expect
         .poll(
           async () => {

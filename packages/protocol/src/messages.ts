@@ -341,7 +341,7 @@ import {
   WorkflowsStartConfirmationRespondResponseSchema,
   ProjectWorkflowStoreSetRequestSchema,
   ProjectWorkflowStoreSetResponseSchema,
-} from "./orchestration.js";
+} from "./workflow.js";
 import {
   MeetingsTranscriptsListRequestSchema,
   MeetingsTranscriptsListResponseSchema,
@@ -9421,7 +9421,7 @@ export * from "./personality-schemas.js";
 // The Brain, Preview and Meetings schema modules own these, but messages.ts stays
 // the public import surface for everything it ever exported.
 
-export * from "./orchestration.js";
+export * from "./workflow.js";
 
 export * from "./integration-authorization.js";
 

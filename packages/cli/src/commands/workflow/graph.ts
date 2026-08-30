@@ -9,7 +9,7 @@ import {
   type OrchestrationGraph,
   type WorkflowGraphExport,
   type WorkflowGraphImportResult,
-} from "@otto-code/protocol/orchestration";
+} from "@otto-code/protocol/workflow";
 import type {
   CommandError,
   CommandDiagnostic,
@@ -417,7 +417,7 @@ export async function loadWorkflowGraphExportFile(file: string): Promise<Workflo
       details: error instanceof Error ? error.message : String(error),
     } satisfies CommandError;
   }
-  const { WorkflowGraphExportSchema } = await import("@otto-code/protocol/orchestration");
+  const { WorkflowGraphExportSchema } = await import("@otto-code/protocol/workflow");
   const parsed = WorkflowGraphExportSchema.safeParse(document);
   if (!parsed.success)
     throw {

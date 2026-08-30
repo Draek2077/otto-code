@@ -431,7 +431,7 @@ test.describe("Runs screen", () => {
       });
 
       // This uses the E2E worker's supervisor-owned daemon over WebSocket,
-      // rather than the in-process live-orchestration harness. The mock
+      // rather than the in-process live-workflow harness. The mock
       // conductor declares its plan, then its real managed mock worker fails.
       const started = await client.startWorkflow({
         flavor: "ai",
