@@ -205,6 +205,35 @@ npm run lint
 
 Then merge the branch into `main`.
 
+### 6. Prove no Otto module was orphaned
+
+The doctrine that keeps merges cheap - Paseo owns the architecture, Otto's
+features live in their own files hanging off it - is also what makes a dropped
+feature invisible. An Otto-only module's sole call site usually sits inside an
+upstream file, so resolving that file to THEIRS leaves the module on disk,
+compiling, passing its own tests, and reachable from nothing. Typecheck is
+silent, lint is silent, and UI loss has no compile signal at all.
+
+`scripts/merge-orphan-guard.mjs` snapshots which Otto-only modules have live
+importers, then re-checks after the merge. **The baseline must be captured
+before you merge**; taken afterwards it records the damage as normal.
+
+```bash
+node scripts/merge-orphan-guard.mjs --baseline --at v0.6.1   # clean tree, before merging
+node scripts/merge-orphan-guard.mjs --check                  # after resolving conflicts
+```
+
+Every reported module is an Otto feature whose call site left with a THEIRS
+resolution. Re-attach it to upstream's new structure, or record dropping it in
+the ledger table - a wholesale resolution is a decision either way.
+
+The "Otto-only" set is computed as present in HEAD, absent from the target, and
+absent from the merge base. That last clause is what makes it rename-proof:
+without it every file upstream renamed inside the merge window reads as an Otto
+invention. `explorer-sidebar.tsx` at v0.6.1 is exactly that case, an upstream
+file renamed to `compact-explorer-sidebar.tsx`, whose edits git carries across
+the rename and which needs no guarding.
+
 ## Script gotchas (learned the hard way)
 
 - **Third-party links stay upstream-named.** Community projects like
