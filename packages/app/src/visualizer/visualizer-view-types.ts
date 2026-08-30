@@ -72,7 +72,16 @@ export type VisualizerHostToPageMessage =
   | { type: "reset"; reason?: string }
   | ({ type: "otto-appearance" } & VisualizerAppearance)
   | { type: "session-list"; sessions: VisualizerSessionInfo[] }
-  | { type: "session-started"; session: VisualizerSessionInfo }
+  // `select: false` registers a chat WITHOUT moving the page's selection to it
+  // (OTTO PATCH). Chats can start in the background at any time - a task the
+  // user queued, a scheduled run, an orchestration fanning out - and the page
+  // auto-selects every `session-started` it receives, which yanked the canvas
+  // onto the new chat before follow-the-focused-tab dragged it back. The user
+  // never left their tab, so the Visualizer must not act as if they did. Only
+  // omitted (or true) during the attach replay, where the last started session
+  // legitimately settles the initial selection. See docs/visualizer.md
+  // "Background chats never steal the canvas".
+  | { type: "session-started"; session: VisualizerSessionInfo; select?: boolean }
   | { type: "session-ended"; sessionId: string }
   | { type: "session-updated"; sessionId: string; label: string }
   | { type: "agent-event"; event: SimulationEvent }

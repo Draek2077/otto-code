@@ -35,6 +35,7 @@ import {
 import type {
   SimulationEvent,
   VisualizerHostToPageMessage,
+  VisualizerSessionInfo,
 } from "@/visualizer/visualizer-view-types";
 
 /** Matches the page's internal UI-update throttle - no point batching faster
@@ -218,6 +219,28 @@ function createAdapterState(): AdapterState {
   };
 }
 
+/** Queue a `session-started` for the page.
+ *
+ * Outside the attach-replay window (`hydrating`) it carries `select: false`:
+ * the chat joins the dropdown, but the canvas stays on whatever the user is
+ * actually looking at. Chats appear in a workspace without anyone switching to
+ * them - a queued task starting, a schedule firing, an orchestration fanning
+ * out - and the page auto-selects every `session-started`, so a burst of task
+ * starts made the Visualizer flick through each new chat and back again while
+ * the user sat on one tab the whole time. Selection is the host's job (the
+ * focused-tab follow effect in visualizer-surface.tsx, or the chats dropdown).
+ *
+ * Replayed starts stay selectable: the attach batch is ordered so the most
+ * recently active session lands last (orderSessionMessagesForSelection), and
+ * that is what settles the initial view before follow-the-focused-tab runs. */
+function pushSessionStarted(state: AdapterState, session: VisualizerSessionInfo): void {
+  state.pendingSessionMessages.push({
+    type: "session-started",
+    session,
+    ...(state.hydrating ? {} : { select: false }),
+  });
+}
+
 /** Epoch-ms -> page simulation seconds, anchored at the session's own start
  * when known (see {@link AdapterState.sessionEpochMs}) so a session's events
  * keep their real relative spread, else at adapter activation. Always >= 0. */
@@ -391,15 +414,12 @@ function ensureNode(
   state.pendingBackfill.push(agentId);
 
   if (isRoot) {
-    state.pendingSessionMessages.push({
-      type: "session-started",
-      session: {
-        id: rootId,
-        label: truncateSessionLabel(agent.title ?? name),
-        status: "active",
-        startTime: time,
-        lastActivityTime: agent.lastActivityAt.getTime(),
-      },
+    pushSessionStarted(state, {
+      id: rootId,
+      label: truncateSessionLabel(agent.title ?? name),
+      status: "active",
+      startTime: time,
+      lastActivityTime: agent.lastActivityAt.getTime(),
     });
     state.pending.push(
       buildRootAgentSpawnEvent({
@@ -612,15 +632,12 @@ function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: A
       node.sessionRemoved = false;
       node.sessionEnded = false;
       node.terminalEmitted = false;
-      state.pendingSessionMessages.push({
-        type: "session-started",
-        session: {
-          id: node.sessionId,
-          label: truncateSessionLabel(agent.title ?? node.name),
-          status: "active",
-          startTime: agent.createdAt.getTime(),
-          lastActivityTime: agent.lastActivityAt.getTime(),
-        },
+      pushSessionStarted(state, {
+        id: node.sessionId,
+        label: truncateSessionLabel(agent.title ?? node.name),
+        status: "active",
+        startTime: agent.createdAt.getTime(),
+        lastActivityTime: agent.lastActivityAt.getTime(),
       });
       state.pending.push(
         buildReSpawnEvent(
@@ -670,15 +687,12 @@ function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: A
     node.terminalEmitted = false;
     if (node.isRoot && node.sessionEnded) {
       node.sessionEnded = false;
-      state.pendingSessionMessages.push({
-        type: "session-started",
-        session: {
-          id: node.sessionId,
-          label: truncateSessionLabel(agent.title ?? node.name),
-          status: "active",
-          startTime: agent.createdAt.getTime(),
-          lastActivityTime: agent.lastActivityAt.getTime(),
-        },
+      pushSessionStarted(state, {
+        id: node.sessionId,
+        label: truncateSessionLabel(agent.title ?? node.name),
+        status: "active",
+        startTime: agent.createdAt.getTime(),
+        lastActivityTime: agent.lastActivityAt.getTime(),
       });
     }
     state.pending.push(buildReSpawnEvent(state, node, agent, personaColorsOf(agent), time));
@@ -1321,6 +1335,10 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
             startTime: 0,
             lastActivityTime: 0,
           },
+          // Never on its own: a draft tab opening is not the user asking to
+          // watch it, and the page's auto-select ignores the zero timestamps
+          // above (a `session-started` is last-wins). See pushSessionStarted.
+          select: false,
         });
         registered.set(sessionId, label);
       } else if (prevLabel !== label) {

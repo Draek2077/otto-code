@@ -1,5 +1,6 @@
 import { supportsDesktopPaneSplits } from "@/constants/layout";
 import { getFeatureEnabledSnapshot } from "@/features/use-feature-enabled";
+import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import {
   buildWorkspaceTabPersistenceKey,
   type WorkspaceTabTarget,
@@ -21,6 +22,12 @@ export interface OpenVisualizerTabInput {
    * "Visualize" action in runs-screen.tsx). Omit for the general,
    * workspace-wide Visualizer tab. */
   runId?: string;
+  /** Bring the user to the workspace the tab was opened in. App-wide screens
+   * (Workflows) are not inside any workspace, so opening a tab there is
+   * invisible until the user switches workspaces by hand - the action has to
+   * carry them. In-workspace callers (the header button) are already there and
+   * leave this off. */
+  navigate?: boolean;
 }
 
 /**
@@ -89,6 +96,19 @@ export function openVisualizerTab(input: OpenVisualizerTabInput): boolean {
       tabId,
       targetPaneId: splitTargetPaneId,
       position: "right",
+    });
+  }
+  if (input.navigate) {
+    // The route hop is `navigateToWorkspace` with the explicit tab target, per
+    // docs/expo-router.md: it POP_TOs an already-mounted host route instead of
+    // appending hidden deck entries, and the named target is authoritative so
+    // it will not open an attention agent over the Visualizer. The tab already
+    // exists by now, so its `openTabFocused` just focuses it where it is -
+    // including the pane it was split out into above.
+    navigateToWorkspace({
+      serverId: input.serverId,
+      workspaceId: input.workspaceId,
+      target,
     });
   }
   return true;

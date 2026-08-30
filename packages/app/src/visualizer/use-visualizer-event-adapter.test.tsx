@@ -334,6 +334,39 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     });
   });
 
+  it("registers a chat started after attach without selecting it", async () => {
+    setAgents([makeAgent({ id: "root-1", title: "My chat" })]);
+    renderAdapter();
+    await settle();
+
+    // The attach replay settles the initial selection, so its starts stay
+    // selectable (no `select: false`).
+    const attachStart = messages.find(
+      (m) => m.type === "session-started" && m.session.id === "root-1",
+    );
+    expect(attachStart).toBeDefined();
+    expect(attachStart && "select" in attachStart ? attachStart.select : undefined).toBeUndefined();
+
+    messages.length = 0;
+    // A chat appearing on its own - a queued task starting, a schedule firing -
+    // must not yank the canvas off the chat the user is actually watching.
+    upsertAgent(
+      makeAgent({
+        id: "root-2",
+        title: "Background task",
+        createdAt: new Date(BASE_TIME.getTime() + 10_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 10_000),
+      }),
+    );
+    await settle();
+
+    const backgroundStart = messages.find(
+      (m) => m.type === "session-started" && m.session.id === "root-2",
+    );
+    expect(backgroundStart).toBeDefined();
+    expect(backgroundStart?.type === "session-started" && backgroundStart.select).toBe(false);
+  });
+
   it("gives same-titled root chats distinct graph identities for All chats", async () => {
     setAgents([
       makeAgent({ id: "root-1", title: "Investigate the failure" }),
@@ -375,9 +408,12 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     );
     await settle();
 
+    // Re-registered, but `select: false`: a chat coming back to life on its own
+    // is background activity, not the user switching to it.
     expect(messages).toContainEqual({
       type: "session-started",
       session: expect.objectContaining({ id: "cold-root", status: "active" }),
+      select: false,
     });
     expect(
       collectEvents(messages).some(
