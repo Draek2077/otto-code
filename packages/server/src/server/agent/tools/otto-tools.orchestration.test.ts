@@ -82,7 +82,8 @@ describe("start_workflow AI Workflow binding", () => {
       description: "Keep this user configuration.",
       conductorAgentId: "agent_planner",
       status: "paused",
-      phases: [{ id: "approval", status: "blocked" }],
+      // Start confirmation pauses the run before the engine runs, so no phase has been reached yet.
+      phases: [{ id: "approval", status: "pending" }],
     });
     expect(runService.cancelRun(initial.id)).toBe(true);
 

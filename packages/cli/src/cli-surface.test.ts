@@ -85,7 +85,7 @@ describe("canonical CLI surface", () => {
 
     expect(commandHelp(artifact, "create")).toContain("--project <root>");
     expect(commandHelp(artifact, "create")).toContain("--description <text>");
-    expect(commandHelp(artifact, "ls")).toContain("--project <project>");
+    expect(commandHelp(artifact, "ls")).toContain("--project <root>");
     expect(commandHelp(artifact, "data")).toContain("<id>");
     expect(commandHelp(artifact, "update-data")).toContain("--data <json>");
     expect(commandHelp(artifact, "update-data")).toContain("without regenerating");
