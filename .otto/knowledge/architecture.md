@@ -2,7 +2,7 @@
 slug: "architecture"
 title: "Architecture"
 role: "system architecture"
-updated: "2026-08-08T05:16:40.301Z"
+updated: "2026-08-28T04:05:33.139Z"
 ---
 
 # Architecture
@@ -42,7 +42,7 @@ flowchart LR
 ## Load-bearing boundaries
 
 - Wire changes stay backward-compatible in both directions; see [protocol validation](../../docs/protocol-validation.md) and [RPC namespacing](../../docs/rpc-namespacing.md).
-- New capabilities are provider-neutral by contract; see [[provider-neutral-capability-parity-defines-done]] and [providers](../../docs/providers.md).
+- New capabilities are provider-neutral by contract; see provider-neutral capability parity and [providers](../../docs/providers.md).
 - Project knowledge follows [[project-knowledge-is-repository-owned-markdown-managed-atomically-by-otto]].
 - Dev, agent, test, demo, and installed daemon lanes use isolated ports and homes; see [development](../../docs/development.md).
 

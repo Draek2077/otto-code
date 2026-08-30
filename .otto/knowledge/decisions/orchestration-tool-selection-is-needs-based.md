@@ -12,7 +12,7 @@ updated_at: "2026-08-13T06:11:24.659Z"
 
 <!-- compiled_truth -->
 
-Agents choose direct work, `create_agent`, `spawn_task`, and `start_run` only when the task needs that tool's specific capability. `start_run` is reserved for declared multi-agent plans requiring daemon-managed fan-out, gathering, judging, loops, or approval gates; it is not the default merely because orchestration tooling is available.
+Agents choose direct work, `create_agent`, `spawn_task`, and `start_workflow` only when the task needs that tool's specific capability. `start_workflow` is reserved for declared multi-agent plans requiring daemon-managed fan-out, gathering, judging, loops, or approval gates; it is not the default merely because orchestration tooling is available.
 
 ## Timeline
 

@@ -13,7 +13,7 @@ updated_at: "2026-08-16T13:21:07.387Z"
 
 <!-- compiled_truth -->
 
-A phase run is an orchestration a conducting agent declares at runtime through the `start_run` tool rather than one a user draws in advance; the daemon executes it deterministically. The engine is `packages/server/src/server/orchestration/run-engine.ts` — pure control flow over an injected port, no daemon dependencies. It is one of the two engines sharing the `Run` + `RunPhase[]` projection (the sibling is the graph engine); both project into the same observable type so one store and one client render both.
+A phase run is an orchestration a conducting agent declares at runtime through the `start_workflow` tool rather than one a user draws in advance; the daemon executes it deterministically. The engine is `packages/server/src/server/orchestration/run-engine.ts` — pure control flow over an injected port, no daemon dependencies. It is one of the two engines sharing the `Run` + `RunPhase[]` projection (the sibling is the graph engine); both project into the same observable type so one store and one client render both.
 
 The plan names phase types, never roles; the dispatcher maps type to role so a plan stays readable when a team is re-cast. The phase vocabulary: research (researcher — survey, report findings not solutions), plan (planner), refactor (coder), implement (coder), design (designer — styling/layout/human-skill text), verify (judger — structured verdict), gate (human, no default role), deliver (coder). A phase carries an id, type, title, task, optional role override, dependsOn, fanOut, keepBest, and an optional judge spec; the plan is schema-validated at the tool boundary so a malformed plan is rejected before any agent spawns.
 

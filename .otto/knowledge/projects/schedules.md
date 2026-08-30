@@ -6,10 +6,10 @@ status: "confirmed"
 tags: ["schedules","automation","workflows","artifacts","v0.9"]
 delivery_status: "in_build"
 progress_completed: 0
-progress_total: 7
+progress_total: 8
 progress_unit: "0.9 delivery slices"
 created_at: "2026-08-27T00:35:27.555Z"
-updated_at: "2026-08-27T02:06:41.341Z"
+updated_at: "2026-08-30T02:36:02.387Z"
 ---
 # Schedules
 
@@ -21,15 +21,36 @@ updated_at: "2026-08-27T02:06:41.341Z"
 
 Schedules run durable Otto work safely and explainably. Built-in targets are a single existing agent, a newly created agent, a saved AI or Graph Workflow, and a design-preserving artifact update. The 0.9 product contract names the three user-facing categories as **one agent**, **saved Workflow**, and **artifact update**; the existing new-agent scheduler remains a compatible execution form of the agent category.
 
+## 0.9 storage ownership and resolution
+
+Schedules are an independent durable category. They share the project-storage settings/resolver platform and its UX pattern with Knowledge, Artifacts and Workflows, but **they do not inherit Project Knowledge’s location and no category’s selection changes another category’s selection**.
+
+- **Host Settings:** supplies the global default for **Schedules** alone: repository or host-local.
+- **Project Settings:** supplies an independent Schedules override for that project. The project override wins; otherwise the Schedules host default applies.
+- **Repository location:** `<projectRoot>/.otto/schedules/`. Worktrees resolve to their owning project root, so a repository schedule collection is project-scoped rather than worktree- or user-scoped.
+- **Host-local location:** `$OTTO_HOME/project-schedules/<stable-project-key>/` on the selected daemon host. It is durable only for that project on that host; it is never a user-global bucket and does not imply cross-host synchronization.
+- Every schedule and run carries an origin store key/location as optional additive metadata. The resolver/registry uses that origin for existing records and the selected Schedules location only for new records.
+- Changing either setting selects the destination for newly created schedules only. It never silently moves, deletes, hides, merges, or retargets existing schedule records. Existing schedules remain discoverable, inspectable and executable from their origin store.
+- Copy or move between stores is an explicit user operation. Copy creates a distinct schedule and retains the source. Move first pauses and validates the source schedule, records an auditable migration receipt in both stores, retains a recoverable source record, and resumes only after the destination is durably committed. Active runs are never moved.
+- The UI identifies repository versus host-local storage and the owning daemon host. A remote client is told plainly that host-local schedules execute and remain on the selected host; unavailable-host state offers reconnect/select-host guidance rather than an implicit local copy.
+
+### Storage compatibility, platform and proof
+
+- **Verified current implementation:** the scheduler constructs one `ScheduleStore` at `$OTTO_HOME/schedules`. It is host-global and is not resolved per project, so it remains a legacy source to read. Existing records are neither moved nor deleted by this charter.
+- **Desired 0.9 contract:** a shared project-storage resolver/registry chooses the Schedules store independently, carries origin metadata, aggregates legacy/discovered stores without duplicate execution, and exposes one centralized `server_info.features.*` capability gate for storage-settings UI. Old hosts retain legacy scheduling; new clients show one upgrade boundary for location controls, with no simulated fallback.
+- The shared platform owns stable project-key derivation, worktree-to-project-root resolution, safe path construction, selected-host identity, store discovery, origin metadata, explicit migration receipts and the central settings/capability pattern. Schedules owns schedule/run serialization, execution ownership, duplicate-run prevention across all discovered stores, and Schedule-specific migration/recovery UI.
+- A storage resolver failure, unreadable repository path, unavailable daemon host, duplicate legacy/origin identity, or incomplete explicit migration is a named, durable schedule error. It preserves the source record, suppresses duplicate firing, and presents recovery rather than falling back to another category’s store or a different host.
+- Required proof: two-project and worktree isolation; independent per-category defaults/overrides; repository and host-local placement; legacy `$OTTO_HOME/schedules` discovery; no silent mutation on settings changes; explicit copy/move recovery and audit; unavailable remote-host disclosure; old-client/new-daemon and new-client/old-daemon parsing; capability-upgrade UI; and a run-once/restart check proving a schedule fires exactly once across source, destination and legacy stores.
+
 ## Verified current baseline
 
 - Durable schedule JSON records already persist cadence, target, status, max/expiry, bounded run history, executor metadata and output/error fields.
-- The persisted target schema is a discriminated union of `agent` and `new-agent`; the create RPC also accepts legacy `self` and normalizes it to `agent`.
+- The persisted target schema is an additive discriminated union of `agent`, `new-agent`, and `workflow`; the create RPC also accepts legacy `self` and normalizes it to `agent`. The implemented `workflow` target currently names one saved **Graph** definition by `definitionId` and `projectRoot`; it does not yet schedule AI Workflow definitions.
 - The daemon validates five-field cron cadence and optional IANA time zones, computes/recomputes next fire times, supports create/list/inspect/logs/pause/resume/run-now/update/delete, serializes per-schedule writes, caps global concurrent runs at five, and prevents a schedule from overlapping itself.
 - Existing-agent runs fail closed when busy; target deletion/archival completes the schedule. New-agent runs create a hidden workspace, recover a daemon-interrupted run as failed, and either archive or reveal the workspace according to the stored policy.
 - Runs retry when the existing retry path permits it, retain at most 50 finished records unless a configured max-run count requires more, and preserve a transcript deep link through `agentId` for agent-backed runs.
 - The app provides an agent/new-agent form, cadence editor, multi-host/project/model/profile/worktree controls, cards, pause/resume/run-now/delete, last-run transcript access, and client-side missing-existing-agent indication.
-- No Schedule target schema, resolver, execution adapter, editor selector, capability gate, recovery flow, audit projection, or target-specific proof exists for saved Workflows or artifact updates.
+- A capability-gated saved Graph Workflow target now resolves only the selected project's `WorkflowStoreRegistry` `definitions/` store, requires full provenance equality, and enters the ordinary Graph Workflow launcher with schedule source metadata. It records immutable target and definition fingerprint/run linkage, while missing, mismatched, or unavailable targets pause for repair. The target has focused protocol, adapter, service, form-state, and durable-source proof. It does not yet support saved AI Workflows, editing/re-targeting an existing saved-Workflow schedule, artifact updates, or the independent Schedules-store migration.
 
 ## 0.9 target and version contract
 
@@ -80,10 +101,11 @@ Neither saved Workflow definitions nor artifact metadata currently supply an imm
 
 ### 6. Dependencies and boundaries
 
+- The shared project-storage settings/resolver platform must provide independent category defaults/overrides, project identity/root resolution, host selection, origin metadata, legacy discovery, explicit migration receipts and the centralized storage capability gate. It must not derive Schedules location from Project Knowledge.
 - [[workflows]] must provide saved AI and Graph Workflow lookup, executable saved-definition resolution, revision/fingerprint exposure, lifecycle deep links and cancellation semantics.
 - [[artifacts]] must provide stable metadata lookup, revision/fingerprint exposure and a design-preserving scheduled data/update entrypoint with result/deep-link semantics.
 - Provider authorization remains daemon-owned; Schedules neither stores credentials nor adds auth checks to tests.
-- Workflow and artifact adapters must meet [[provider-neutral-capability-parity-defines-done]]; provider-specific native behavior is not a separate schedule target.
+- Workflow and artifact adapters must meet provider-neutral capability parity; provider-specific native behavior is not a separate schedule target.
 - Keep the existing per-host scheduler store and run history. Cross-host remote dispatch, arbitrary webhooks, arbitrary shell commands, calendar UI and a general job-DAG engine are explicit non-goals for this charter.
 
 ## Completion model
@@ -181,13 +203,14 @@ A target may be marked delivered only when its complete matrix and documentation
 
 ## Delivery slices and proof
 
-1. **Target contract foundation:** additive discriminated target and run-audit schemas, storage identity and compatibility tests. No public creation of a target until its resolver/adapter exists.
-2. **Resolution boundary:** shared target resolver, owning-service revision/fingerprint contract and permanent deleted/unresolvable target outcomes.
-3. **Workflow adapter:** saved AI and Graph Workflow execution, cancellation/retry/overlap/recovery semantics, run deep links and daemon/protocol proof.
-4. **Artifact-update adapter:** design-preserving update execution, revision audit, cancellation/recovery and artifact result deep links.
-5. **Target-aware editor:** target picker/forms, cadence/time-zone preview, unattended posture, capability upgrade state and repair UX.
-6. **History and recovery journey:** durable target audit, failure explanations, target-repair flow and accessible deep links across every target.
-7. **Release proof:** target-specific unit, protocol compatibility, T1 UI and T2 controlled daemon/live-provider evidence, including cron/DST time-zone cases, overlap, retry, cancel, restart recovery and deleted target repair.
+1. **Storage resolution foundation:** shared project-storage resolver/registry integration; independent Schedules host default and project override; repository/host-local origin metadata; legacy global-store discovery; no-duplicate execution and compatibility proof.
+2. **Target contract foundation:** additive discriminated target and run-audit schemas, storage identity and compatibility tests. No public creation of a target until its resolver/adapter exists.
+3. **Resolution boundary:** shared target resolver, owning-service revision/fingerprint contract and permanent deleted/unresolvable target outcomes.
+4. **Workflow adapter:** saved AI and Graph Workflow execution, cancellation/retry/overlap/recovery semantics, run deep links and daemon/protocol proof.
+5. **Artifact-update adapter:** design-preserving update execution, revision audit, cancellation/recovery and artifact result deep links.
+6. **Target-aware editor:** target picker/forms, independent storage location controls/disclosure, cadence/time-zone preview, unattended posture, capability upgrade state and repair UX.
+7. **History and recovery journey:** durable target audit, storage origin/migration evidence, failure explanations, target-repair flow and accessible deep links across every target.
+8. **Release proof:** target-specific unit, protocol compatibility, T1 UI and T2 controlled daemon/live-provider evidence, including storage placement/migration, cron/DST time-zone cases, overlap, retry, cancel, restart recovery and deleted target repair.
 
 ## Acceptance
 
@@ -233,3 +256,54 @@ A user can create, edit, inspect, pause, resume, run and recover agent, saved AI
   summary: "The feature owner requested that the Schedules charter define how existing assertions and completed 0.9 capabilities are proved. The charter now requires a baseline assertion audit, a uniform per-target acceptance matrix, and a release evidence bundle before delivery can advance."
   source: "Schedules capability and documentation audit, 2026-08-26; repository testing conventions in docs/testing.md."
   affects: ["workflows","artifacts","e2e-qa-coverage"]
+- time: "2026-08-28T04:05:32.058Z"
+  kind: "decision"
+  summary: "Remove a wiki link to a proposed decision from confirmed schedule truth while preserving the provider-neutral capability-parity requirement."
+  source: "Knowledge link integrity repair, 2026-08-27"
+- time: "2026-08-29T14:03:12.089Z"
+  kind: "decision"
+  summary: "Product-owner correction: Schedules has its own repository-versus-host-local default and per-project override. It shares only the storage-resolution platform with Knowledge, Artifacts and Workflows; it does not follow Project Knowledge's selected location. Status returned to proposed for review."
+  source: "Product-owner storage-policy correction relayed 2026-08-29; verified current scheduler construction in packages/server/src/server/schedule/service.ts."
+  affects: ["workflows","artifacts","project-knowledge-context-management"]
+- time: "2026-08-29T14:03:54.790Z"
+  kind: "note"
+  summary: "Storage resolution is a required new 0.9 slice. It is planned only; no storage implementation or proof is claimed."
+  affects: ["schedules"]
+- time: "2026-08-29T14:04:26.086Z"
+  kind: "decision"
+  summary: "Correct the literal newline escape introduced while recording the storage-platform dependency, so the charter remains valid Markdown and link discovery can resolve its outgoing dependencies."
+  source: "Knowledge integrity repair 2026-08-29."
+- time: "2026-08-29T14:04:47.891Z"
+  kind: "note"
+  summary: "The product owner explicitly directed the independent Schedules storage contract on 2026-08-29; the charter remains confirmed after its daemon-managed rewrite. New status: confirmed."
+- time: "2026-08-29T22:49:11.308Z"
+  kind: "evidence"
+  summary: "Wave 4B saved Graph Workflow Schedule adapter verified 2026-08-29. Schedule configuration persists only `{ type: \"workflow\", definitionId, projectRoot }`. At fire time the daemon resolves that project’s `WorkflowStoreRegistry` location, opens `location.definitionsDirectory` through an injected `GraphStore` factory, requires full `workflowStorage` provenance equality, and passes that project store into the ordinary graph Workflow launcher. There is no read or fallback to the legacy daemon-global graph store. The durable Workflow run carries `{ scheduleId, scheduleRunId }`; Schedule history retains immutable target and resolved definition/title/project/fingerprint/Workflow-run linkage. Missing definition, unavailable storage host, provenance mismatch, unsupported host capability, and failed launch are `ScheduleWorkflowTargetError`s, preserving history and pausing for repair. The app gates selection on `server_info.features.scheduleWorkflowTargets` and lists only provenance-matching saved project Graphs through `workflows.graphs.list`; it does not list starters or legacy Graphs. Proof: `npm run typecheck:server`, `npm run typecheck --workspace=@otto-code/app`, targeted lint, and 6 focused Vitest files / 151 tests passed (protocol target compatibility, project-store-only and same-id legacy exclusion, storage/provenance failures, durable source, repair pause, and form state). Knowledge link lint passed with zero broken links."
+  source: "Wave 4B source and targeted executable verification, 2026-08-29"
+  affects: ["workflows","release-0-9-product-completion"]
+- time: "2026-08-29T22:53:40.243Z"
+  kind: "decision"
+  summary: "Reconciled the verified Wave 4B saved Graph Workflow Schedule target with the existing Schedules baseline, including its project-store authority boundary and remaining unsupported target/editing/storage work. Status returned to proposed for review."
+  source: "Wave 4B source audit and targeted verification, 2026-08-29"
+  affects: ["workflows","release-0-9-product-completion"]
+- time: "2026-08-29T22:54:29.102Z"
+  kind: "note"
+  summary: "The product owner previously authorized confirmation of verified Workflow facts. This reconciliation records only source-audited and targeted-test-backed Wave 2A/3A/4A/4B outcomes and leaves remaining work explicit. New status: confirmed."
+- time: "2026-08-29T22:55:01.510Z"
+  kind: "evidence"
+  summary: "Wave 4B final verification correction, 2026-08-29: the completed saved-Graph Workflow Schedule adapter pass ran 7 focused Vitest files with 158 tests, superseding the earlier provisional 151-test count in the Wave 4B evidence. Targeted format/lint and app typecheck passed. Server typecheck remains blocked by unrelated dirty `packages/server/src/server/session.ts:11543` (`Logger` missing), which this slice did not modify."
+  source: "Wave 4B final agent report, 2026-08-29"
+  affects: ["workflows","schedules","release-0-9-product-completion"]
+- time: "2026-08-29T23:14:55.600Z"
+  kind: "evidence"
+  summary: "2026-08-29 source audit for the requested existing-agent Schedule-to-Artifact provenance adapter: prerequisites are not yet present, so no implementation was made. The durable existing-agent target is only `{ type: \"agent\", agentId }`; it contains no Artifact identity or structured data-update instruction. `ScheduleService.runSchedule` creates a durable UUID run ID, but the existing-agent branch invokes `agentManager.runAgent(agent.id, wrappedPrompt)` without run-scoped schedule labels. Only the new-agent branch stamps `otto.schedule-id` and `otto.schedule-run` during agent creation, which Artifact creation already resolves. Persisting those labels onto an existing agent is unsafe because agent labels are durable and would misattribute later manual Artifact work. A stable existing-agent execution-context seam plus a persisted Artifact-update target/identity must land before this adapter can be implemented without inventing schedule storage or a prompt fallback."
+  source: "Schedule-to-Artifact provenance prerequisite audit, 2026-08-29"
+  affects: ["artifacts","release-0-9-product-completion"]
+- time: "2026-08-29T23:15:06.848Z"
+  kind: "evidence"
+  summary: "2026-08-29 source audit for the requested existing-agent Schedule-to-Artifact provenance adapter: prerequisites are not yet present, so no implementation was made. The durable existing-agent target is only `{ type: \"agent\", agentId }`; it contains no Artifact identity or structured data-update instruction. `ScheduleService.runSchedule` creates a durable UUID run ID, but the existing-agent branch invokes `agentManager.runAgent(agent.id, wrappedPrompt)` without run-scoped schedule labels. Only the new-agent branch stamps `otto.schedule-id` and `otto.schedule-run` during agent creation, which Artifact creation already resolves. Persisting those labels onto an existing agent is unsafe because agent labels are durable and would misattribute later manual Artifact work. A stable existing-agent execution-context seam plus a persisted Artifact-update target/identity must land before this adapter can be implemented without inventing schedule storage or a prompt fallback."
+  source: "Schedule-to-Artifact provenance prerequisite audit, 2026-08-29"
+  affects: ["artifacts","release-0-9-product-completion"]
+- time: "2026-08-30T02:36:02.387Z"
+  kind: "evidence"
+  summary: "2026-08-29: Reconciled Workflow storage lifecycle evidence. Schedule targets continue to resolve saved Graphs by project scope and recorded provenance rather than a daemon path or legacy fallback. The focused schedule target tests remain green alongside the new verified-transfer storage service; no Schedule delivery status changed."

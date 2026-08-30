@@ -685,6 +685,13 @@ Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/
 
 Canonical automation uses `otto workspace create/ls/rename/archive`, `otto heartbeat create/update/delete`, and the full `otto schedule` group. MCP heartbeat automation is intentionally smaller: create and delete only. Detach remains an explicit user lifecycle action rather than an agent tool. `otto run --new-workspace local|worktree` composes workspace creation with agent creation. The old `otto worktree` and `otto run --worktree` forms are hidden compatibility aliases.
 
+Saved Graph Workflows are available headlessly through `otto workflow graph`: `ls`, `inspect`,
+`validate <file>`, and `run <graph-id>`. Validation reads a local JSON document but never
+imports or executes it. Graph file import and `run --file` wait on the Graph trust boundary and
+are described in [orchestration-node-capabilities.md](orchestration-node-capabilities.md). Graph
+Runs already persist an exact source-document snapshot; a draft's snapshot is replaced only when
+the user re-saves that draft, while an executed Run's snapshot is immutable history.
+
 ```bash
 npm run cli -- ls -a -g              # List all agents globally
 npm run cli -- ls -a -g --json       # Same, as JSON

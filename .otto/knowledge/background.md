@@ -2,7 +2,7 @@
 slug: "background"
 title: "Background"
 role: "project background"
-updated: "2026-08-08T06:37:07.536Z"
+updated: "2026-08-29T15:18:54.023Z"
 ---
 
 # Background
@@ -11,14 +11,14 @@ updated: "2026-08-08T06:37:07.536Z"
 
 Otto is a self-hosted, cross-device environment for running and understanding autonomous coding agents. It grew from Paseo into a fork focused on making agent work legible: what ran, what changed, what it cost, and how the result was verified.
 
-The governing product decision is [[provider-neutral-capability-parity-defines-done]]. The user should be able to choose a hosted frontier model, a provider CLI, or a local OpenAI-compatible model without losing Otto's IDE-grade tools.
+The governing product decision is provider-neutral capability parity. The user should be able to choose a hosted frontier model, a provider CLI, or a local OpenAI-compatible model without losing Otto's IDE-grade tools.
 
 ## Goals
 
 - One interface across desktop, mobile, web, and CLI.
 - Daemon-owned orchestration that keeps agents running independently of any client.
 - Observable work: timelines, subagents, token and cost accounting, diffs, artifacts, and browser-verified previews.
-- User ownership: self-hosted code, credentials, project state, and no required Otto cloud account.
+- User ownership: self-hosted code, credentials, project state, and no required cloud service or account.
 - Repository-owned durable project memory through [[project-knowledge-is-repository-owned-markdown-managed-atomically-by-otto]].
 
 ## Non-goals

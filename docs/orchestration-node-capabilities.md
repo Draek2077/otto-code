@@ -176,6 +176,44 @@ not touch the workspace at all is `none`.
 > for `none` with reads live, is precisely the failure this feature exists to prevent, so
 > **never set either capability flag without the enforcement behind it.**
 
+## Deterministic checks
+
+A Graph `check` node evaluates one JSONata assertion against the material delivered by its incoming
+edges. It never starts an agent, calls a provider, or consumes the agent cap. Its expression has
+one explicit scope:
+
+```text
+upstream.<node-id>.fields.<declared-field>
+upstream.<node-id>.output
+```
+
+For example, `upstream.verify.fields.ready = true` passes only when the upstream worker submitted
+the declared `ready` field as `true`. A true assertion marks the Check done and releases downstream
+nodes. A false assertion fails the durable Run with the Check's optional failure message; evaluation
+or syntax errors also fail loudly. This is deterministic validation, not an instruction asking a
+model to review itself.
+
+This first form has one pass continuation. Pass/fail output ports and recovery branches remain
+future control-flow work; a failed Check stops the current run and ordinary dependency handling
+marks its downstream nodes skipped.
+
+## Human approval gates
+
+A Graph `gate` node is an attended human boundary, not an agent. It has a title and an
+optional review prompt, receives the upstream work as an ordering dependency, and pauses
+the durable run with no provider call and no agent-cap cost. The existing Runs visualizer
+shows the blocked gate and exposes **Approve** and **Reject**.
+
+Approve marks the gate done and releases its downstream nodes. Reject marks the gate
+`canceled` (a user decision, never an error), cancels the run with the gate name and the
+reviewer's note as its reason, and leaves downstream nodes skipped by their ordinary
+dependency rule. The same `canceled` phase status is used for a worker interrupted by a run
+cancel; `failed` is reserved for real errors. A gate is therefore the right boundary before an irreversible, costly, or otherwise
+human-owned action; it is not a prompt asking a model to review itself.
+
+This first form has one approved continuation. Separate approved/rejected output ports and
+branch-specific recovery are future control-flow work.
+
 ## Retry and time limit
 
 **Retry** (`GraphNode.retry`) is resilience, distinct from **Loop**, which is quality
@@ -225,6 +263,31 @@ every node is duplication and tokens on every dispatch.
 > Acceptable today because templates are authored locally by the machine's own user - the
 > same trust level as a workspace script. **The day templates become shareable or
 > importable, this is a code-execution vector and needs an explicit trust gate.**
+
+## Headless Graph Workflow boundary
+
+The CLI can operate a saved Graph without opening the designer:
+
+```bash
+otto workflow graph ls
+otto workflow graph inspect <graph-id> --json
+otto workflow graph run <graph-id> --input question="Should we ship?"
+```
+
+`inspect --json` emits the exact stored Graph document for review or source control.
+`run` binds the Workflow to an existing workspace: it finds one registered for `--cwd`, or
+accepts `--workspace <id>` when the caller needs to name it directly. It never creates a
+workspace as a side effect of execution.
+`workflow graph validate <file>` checks a local JSON document against the shared Graph
+schema, portable-document format/version, and structural validator, but does **not** save it
+or execute it. Its success means **structurally valid**, not execution-ready: JSONata syntax,
+seat availability, workspace authority, and template resolution remain daemon-side launch
+checks. Unversioned local Graphs remain valid with an export warning; portable documents use
+`format: "otto.workflow.graph"` and `formatVersion: 1`. File import and
+`run --file` are deliberately not present yet: Graph query tools and EJS templates make an
+imported document executable local authority. Every drafted and executed Graph Run now carries
+the exact Graph document it was built from, so later Graph edits cannot rewrite run history. Add
+the trust boundary before crossing either file-import line.
 
 ## Authoring these in the designer
 

@@ -2,7 +2,7 @@
 
 Otto is a client-server system for monitoring and controlling local AI coding agents. The daemon runs on your machine, manages agent processes, and streams their output in real time over WebSocket. Clients (mobile app, CLI, desktop app) connect to the daemon to observe and interact with agents.
 
-Your code never leaves your machine. Otto is local-first.
+Otto is local-first: it runs in your environment and has no required cloud service or account. Data can leave that environment when you use cloud providers, Git remotes, integrations, or other network-enabled tools you configure.
 
 ## System overview
 

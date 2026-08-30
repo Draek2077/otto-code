@@ -193,9 +193,13 @@ Two tiers need the browser present:
 | `*.browser.test.ts` | `npm run test:browser` | Vitest browser mode, headless, the **headless shell** |
 | `packages/app/e2e/` | `npm run e2e`          | Playwright, `Desktop Chrome`, the **full chromium**   |
 
-`npm run browsers:install` fetches both, and both `test:browser` and `test:e2e` now run it as a
-`pre` hook, so a missing browser downloads itself instead of failing the run. When the browser is
-already present the hook costs about a second and touches no network.
+`npm run browsers:install` fetches both into the checkout-local
+`.tmp/otto-playwright-browsers/` cache, and both `test:browser` and `test:e2e` run it as a pre-hook.
+The cache is deliberately not Playwright's user-global cache: unrelated repositories must never
+block Otto on a shared `__dirlock`. Otto's installer serializes concurrent installs for this
+checkout, rechecks the pinned browser after it acquires the lock, and reclaims only an Otto lock
+whose owning process is gone. When the browser is already present the hook costs about a second
+and touches no network.
 
 ### When it still goes wrong
 
@@ -204,11 +208,11 @@ always **a missing install, not a version mismatch**. Two things make it look li
 
 - **Headless and headed are separate downloads.** Having `chromium-<rev>` is not enough for
   `test:browser`, which launches the headless shell. `playwright install chromium` lands both.
-- **The browser cache is user-level, not repo-level.** `~/AppData/Local/ms-playwright` (or
-  `~/.cache/ms-playwright`) is shared by every project on the machine, so newer revisions another
-  project installed sit right next to the one this repo needs. Seeing a higher number in that
-  directory does not mean this repo is behind; it means some other repo is ahead. Read what
-  `npx playwright install --dry-run chromium` says this repo wants, then install that.
+- **The browser cache is checkout-local.** Otto's official browser-test scripts set
+  `PLAYWRIGHT_BROWSERS_PATH` to `.tmp/otto-playwright-browsers/`, so another repository's Playwright
+  install cannot block or satisfy this checkout. Do not call bare `npx playwright` for an Otto
+  test: use the npm scripts, which set the cache before Playwright loads. An explicit
+  `PLAYWRIGHT_BROWSERS_PATH` remains an intentional override for specialized environments.
 
 `E2E_BROWSER_CHANNEL=msedge` drives an installed Edge instead of the downloaded Chromium. It is an
 escape hatch for a machine that cannot download browsers, and it tests Edge rather than the browser

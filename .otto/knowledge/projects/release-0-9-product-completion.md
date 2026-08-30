@@ -9,7 +9,7 @@ progress_completed: 0
 progress_total: 8
 progress_unit: "release-train milestones"
 created_at: "2026-08-26T23:24:52.003Z"
-updated_at: "2026-08-27T02:16:13.995Z"
+updated_at: "2026-08-30T02:36:07.680Z"
 ---
 # 0.9 release plan — product completion train toward 1.0
 
@@ -92,9 +92,9 @@ in the appropriate environment.
 
 | Module | Core journey | Verified current evidence | Required proof before completion | Principal recovery proof | Phase 1 verdict |
 | --- | --- | --- | --- | --- | --- |
-| [[workflows]] | Configure AI or Graph Workflow → start → observe → approve/cancel → inspect outcome | Typed run/graph engines and daemon orchestration tests exist; no complete product journey proves the new AI dialog, graph editor, gates and shared visualizer together. | T1: entry/library, AI dialog, graph validation, gate/cancel/error; controlled daemon/T2: start → child work → await/gate → result for both execution models. | Child/node failure remains visible; cancel and unavailable-host states give a next action. | **In build, unproven.** |
-| [[artifacts]] | Create/open durable artifact → update without redesign → inspect provenance/recover | Store, data-update, resolver and HTML-safety tests exist; browser matrix has no Artifact journey. | T1: library/open/status/error/update-versus-regenerate; controlled generation/T2: persisted artifact data update preserves design. | Failed generation/update retains the artifact and offers retry/regenerate. | **Partial, UI proof absent.** |
-| [[schedules]] | Configure agent/Workflow/artifact target → run → inspect history → pause/recover | T1 create/edit/project/hidden-run journeys and daemon lifecycle tests exist for current schedule behavior. New durable target types are not release-proven. | T1: target chooser, invalid/deleted target, history/recovery; controlled daemon/T2: each target adapter runs once and records an auditable result. | Overlap, retry, cancellation and target disappearance are visible and repairable. | **Partial, new-target proof absent.** |
+| [[workflows]] | Configure AI or Graph Workflow → start → observe → approve/cancel → inspect outcome | Focused Chromium T1 proves Graph authoring/launch, checks, gates, cancellation/restart, and Visualizer; AI planning, attended gate, cancellation/restart/Visualizer; and deterministic provider-failure recovery through the normal external client-to-daemon journey. Controlled Sonnet 5 proof verifies AI declaration and `fanOut: 2` workers. Project-store Graph import and a capability-gated saved-Graph Schedule target have focused proof. | Remaining: independent storage settings, project-scoped run/template writers and transfer/aggregation; broad provider/runtime proof; and expanded Graph invalid-validation and pass-routing proof. | Child/node failure remains visible; cancel, target repair, and unavailable-host states give a next action. | **In build, partially proven.** |
+| [[artifacts]] | Create/open durable artifact → update without redesign → inspect provenance/recover | Store, data-update, resolver, restart/migration, protocol, session, CLI, and HTML-safety tests exist. A targeted browser T1 proves hostile-preview rendering/security only; the coverage matrix still has no complete Artifact lifecycle journey. | T1: library/open/status/error/update-versus-regenerate and old-host/unavailable states; controlled generation/T2: persisted artifact data update preserves design. | Failed generation/update retains the artifact and offers retry/regenerate. | **Partial, preview-security UI proof only; lifecycle UI/T2 absent.** |
+| [[schedules]] | Configure agent/Workflow/artifact target → run → inspect history → pause/recover | T1 create/edit/project/hidden-run journeys and daemon lifecycle tests exist. The saved **Graph** Workflow target now has focused protocol, adapter, service, form-state, project-store/provenance, and repair-history proof. | T1: full saved-Workflow chooser and fire journey, invalid/deleted target, linked Workflow inspection/recovery; controlled daemon/T2: each target adapter runs once and records an auditable result. Saved AI Workflow and artifact-update targets remain unimplemented. | Overlap, retry, cancellation and target disappearance are visible and repairable. | **Partial, one narrow new target proven.** |
 | [[kanban]] | Configure board → read/refresh → create/link/move/edit supported card fields | GitHub/Jira provider, session and project-target tests exist; no browser board journey or live provider proof. | T1: project target setup, board read/mutation/error reconciliation; T3/sandbox: GitHub Projects and Jira read/create/link/move/edit under documented scopes. | Auth/scope/unsupported-field failure names remediation and retains board state. | **In build, provider journey unproven.** |
 | [[project-knowledge-context-management]] | Initialize architecture documents → review/refine → choose context → retain verified conclusion | Store/resolver/migration, review-session and Context Management service tests exist; browser management workflows are all gaps. | T1: roots/records/review/delivery/reference/context selection; controlled daemon/T2: external edit refresh and pull-on-demand injection/review retention. | External conflict, unavailable context and unconfirmed conclusion remain explicit. | **In build, end-user journey unproven.** |
 | [[connectors]] | Configure catalog Connector → verify/enumerate tools → enable subset → agent uses them | OAuth/secret/config and catalog tests exist; catalog-row UI, full transport and vendor proof are not uniformly present. | Per row T1/setup/transport/scope test; T3/vendor or sandbox proof with an honest externally-gated verdict. | Authorization, missing scope and unsupported-provider states show actionable remediation. | **Partial, release ledger not yet proven.** |
@@ -131,7 +131,7 @@ This inventory is the input to the first milestone’s completion matrix. It sep
 
 **Purpose:** make an AI-created HTML deliverable a durable project object, not a transient chat by-product.
 
-**Known work:** artifacts already have background generation, status, inspection, regeneration, and a structured data-update path. 0.9 must add a storage resolver parallel to Project Knowledge: repository artifacts live under the project `.otto/artifacts`; host-local project artifacts live under Otto’s project storage. The selected location, watcher, provenance, refresh/error recovery, opening/sharing disclosure, and relationship to a triggering chat, Workflow or schedule must be visible and testable. Artifacts are never moved between projects; the store resolver simply determines where each project’s own artifacts live. Artifacts do not have a fixed product taxonomy; their content defines them.
+**Known work:** artifacts already have background generation, status, inspection, regeneration, and a structured data-update path. 0.9 must add the shared category-storage settings platform, then an **independent Artifacts** resolver: host Settings supplies the Artifacts default and Project Settings can override it without affecting Knowledge, Schedules, or Workflows; repository artifacts live under the project `.otto/artifacts`, while host-local artifacts live under Otto’s stable project storage. The selected location, watcher, provenance, refresh/error recovery, opening/sharing disclosure, and relationship to a triggering chat, Workflow or schedule must be visible and testable. Artifacts are never moved between projects; the store resolver simply determines where each project’s own artifacts live. Artifacts do not have a fixed product taxonomy; their content defines them.
 
 **Done when:** an owner can create, inspect, reopen, refresh or regenerate an artifact after leaving the app, understand its current state, source and selected storage policy, and recover from a failed generation without losing the project deliverable. An update preserves the artifact’s design unless the owner explicitly chooses regeneration.
 
@@ -310,7 +310,7 @@ Ship SGLang under the same driver contract and explicit matrix. Run cross-runtim
 
 ## Adjacent charter triage
 
-**Included as dependencies:** [[agent-orchestration]], [[graph-templates]] (starter catalog and measurement prerequisites only), [[managed-model-server-runtimes]], [[brain-model-bundles]], [[brain-coding-capabilities]], [[e2e-qa-coverage]], [[provider-neutral-capability-parity-defines-done]], and the Kanban GitHub/Jira credential and project-target requirements.
+**Included as dependencies:** [[agent-orchestration]], [[graph-templates]] (starter catalog and measurement prerequisites only), [[managed-model-server-runtimes]], [[brain-model-bundles]], [[brain-coding-capabilities]], [[e2e-qa-coverage]], provider-neutral capability parity, and the Kanban GitHub/Jira credential and project-target requirements.
 
 **Explicitly deferred unless they directly unblock an exit:** broad connector-catalog expansion, deep benchmark mode and automatic model routing, AI-authored graph generation, broad graph-template experimentation, new tracker providers, and unrelated UI/refactor charters.
 
@@ -412,3 +412,72 @@ A feature’s delivery metric is evidence-led: it advances only for a completed,
   kind: "note"
   summary: "Phase 1 completion matrix and QA proof map are implemented and the existing coverage checker is green, but the required new T1/T2/T3 journeys and non-legacy coverage-matrix migration remain open; no release milestone is yet complete."
   affects: ["release-0-9-product-completion"]
+- time: "2026-08-28T04:05:31.069Z"
+  kind: "decision"
+  summary: "Remove a wiki link to a proposed decision from confirmed release truth while preserving the provider-neutral capability-parity requirement."
+  source: "Knowledge link integrity repair, 2026-08-27"
+- time: "2026-08-29T14:02:43.156Z"
+  kind: "decision"
+  summary: "The product owner clarified the cross-module contract: Knowledge, Artifacts, Schedules, and Workflows each have independent global defaults and project overrides, backed by shared storage-resolution infrastructure. Status returned to proposed for review."
+  source: "Product-owner clarification, 2026-08-29."
+  affects: ["artifacts","schedules","workflows","project-knowledge-context-management"]
+- time: "2026-08-29T14:02:53.325Z"
+  kind: "note"
+  summary: "The product owner explicitly corrected and confirmed the cross-module storage policy for Knowledge, Artifacts, Schedules, and Workflows. New status: confirmed."
+- time: "2026-08-29T18:55:39.282Z"
+  kind: "decision"
+  summary: "The Workflow charter now has verified browser lifecycle evidence and a controlled real-provider AI declaration/fan-out proof; the release matrix must no longer call the entire product journey unproven. Status returned to proposed for review."
+  source: "[[workflows]] evidence, verified 2026-08-29; controlled isolated Sonnet 5 low-effort run run_mteqm9v7_1c6a9cc6."
+  affects: ["workflows","e2e-qa-coverage"]
+- time: "2026-08-29T18:55:46.056Z"
+  kind: "evidence"
+  summary: "The Workflow release row now has a controlled real-provider proof in addition to focused T1 browser coverage: an isolated temporary daemon ran a Claude Sonnet 5 low-effort conductor that used `start_workflow` to declare one `fanOut: 2` research phase. Durable run `run_mteqm9v7_1c6a9cc6` completed with two managed workers. This advances the row from wholly unproven to partially proven; it does not meet the 0.9 completion bar because AI gate/deliver, provider-failure recovery, normal external-daemon proof, storage/settings, and sharing/import remain open."
+  source: "2026-08-29 Workflow controlled provider proof"
+  affects: ["workflows","e2e-qa-coverage"]
+- time: "2026-08-29T18:56:29.553Z"
+  kind: "note"
+  summary: "The release-row correction accurately reflects the confirmed Workflow evidence while retaining all remaining completion gates. The owner authorized confirmation of truthful verified facts. New status: confirmed."
+- time: "2026-08-29T20:20:42.261Z"
+  kind: "evidence"
+  summary: "Wave 2A passed the AI Workflow provider-failure reliability proof with deterministic mocks only: post-declaration provider failure is durable, actionable in Runs, and proven through an external client-to-daemon WebSocket plus browser UI journey. This is not a paid-provider certification or a general recovery/retry implementation."
+  source: "Wave 2A targeted verification, 2026-08-29"
+  affects: ["workflows"]
+- time: "2026-08-29T22:49:12.564Z"
+  kind: "evidence"
+  summary: "Wave 4B evidence: saved Graph Workflow Schedule adapter verified. It resolves only the selected project’s definitions directory, rejects legacy/global, starter, missing, host/project-provenance-mismatched, unavailable, unsupported, and failed-start targets with repairable history; it launches the ordinary graph Workflow path with schedule source and audit fingerprint/linkage. Targeted server/app typechecks, lint, and six focused Vitest files (151 tests) passed. This is narrow adapter evidence only, not a release-wide completion claim."
+  source: "Wave 4B source and targeted executable verification, 2026-08-29"
+  affects: ["workflows","schedules"]
+- time: "2026-08-29T22:54:07.103Z"
+  kind: "decision"
+  summary: "Reconciled the release matrix with verified Waves 2A, 3A, 4A, and 4B evidence. The rows now distinguish the proven saved-Graph Schedule slice and project-store Graph sharing from remaining storage, target, routing, and provider work. Status returned to proposed for review."
+  source: "Cross-wave integration audit and targeted verification, 2026-08-29"
+  affects: ["workflows","schedules","e2e-qa-coverage"]
+- time: "2026-08-29T22:54:30.524Z"
+  kind: "note"
+  summary: "The product owner previously authorized confirmation of verified Workflow facts. This reconciliation records only source-audited and targeted-test-backed Wave 2A/3A/4A/4B outcomes and leaves remaining work explicit. New status: confirmed."
+- time: "2026-08-29T22:55:02.751Z"
+  kind: "evidence"
+  summary: "Wave 4B final verification correction, 2026-08-29: the completed saved-Graph Workflow Schedule adapter pass ran 7 focused Vitest files with 158 tests, superseding the earlier provisional 151-test count in the Wave 4B evidence. Targeted format/lint and app typecheck passed. Server typecheck remains blocked by unrelated dirty `packages/server/src/server/session.ts:11543` (`Logger` missing), which this slice did not modify."
+  source: "Wave 4B final agent report, 2026-08-29"
+  affects: ["workflows","schedules","release-0-9-product-completion"]
+- time: "2026-08-29T23:07:44.519Z"
+  kind: "evidence"
+  summary: "## WAVE 5B — verified Workflow provider/runtime matrix\n\nThe new [[workflow-provider-proof-matrix]] documentation record has been reconciled with the current profile and adapter capability model.\n\nVerified rows only:\n\n| Release assertion | Evidence | Verdict |\n| --- | --- | --- |\n| Profile-backed role resolution, managed worker spawn, human gate, cancellation, no-plan error, and daemon-restart recovery | Focused deterministic server tests passed on 2026-08-29 | Proven mechanics |\n| Claude Graph authority | Focused adapter tests plus previously recorded controlled Sonnet fan-out proof | Representative live path proven |\n| Codex Graph authority | Focused adapter tests plus previously recorded controlled Luna attended-gate proof | Representative live path proven; `none` access is refused |\n| Native OpenAI-compatible/local authority | Focused adapter tests passed | Mechanically supported; controlled local Workflow declaration remains unproven |\n| ACP, Pi, OpenCode, and OMP Workflow runtimes | Capability inspection | Explicitly capability-limited or unproven; no provider-native fallback |\n\nNo paid-provider command ran during this wave. The broad provider/runtime requirement in the [[workflows]] release row remains partial until the local controlled Workflow fixture and named ACP/native runtime proofs exist. An attempted isolated Chromium rerun stalled before test execution, so it did not upgrade the existing history/Visualizer evidence."
+  source: "WAVE 5B Workflow provider/runtime proof matrix, 2026-08-29"
+  affects: ["workflows","e2e-qa-coverage"]
+- time: "2026-08-29T23:18:17.907Z"
+  kind: "decision"
+  summary: "Final Artifact 0.9 audit corrected the release matrix to distinguish the verified browser preview-security proof from the still-unproven lifecycle journey and controlled generation evidence. Status returned to proposed for review."
+  source: "Artifact 0.9 final release audit, 2026-08-29"
+  affects: ["artifacts","e2e-qa-coverage"]
+- time: "2026-08-29T23:18:48.696Z"
+  kind: "note"
+  summary: "User explicitly requested this final verified release audit. The release matrix correction only distinguishes existing Artifact preview-security proof from still-open lifecycle proof. New status: confirmed."
+- time: "2026-08-30T01:18:05.541Z"
+  kind: "evidence"
+  summary: "Workflow storage advanced with targeted evidence only: independent gated Host/Project settings, stable project-scope provenance, durable pre-launch run snapshots, pinned follow-up writes, legacy-source visibility, and remote-host remediation copy are implemented and tested. Project-scoped template/definition writers, cross-store aggregation, verified transfer receipts, and corruption repair remain incomplete. The 0.9 release remains in build and is not complete."
+  source: "Workflow storage vertical slice, 2026-08-29"
+  affects: ["workflows","schedules","artifacts"]
+- time: "2026-08-30T02:36:07.680Z"
+  kind: "evidence"
+  summary: "2026-08-29: Partial Workflow storage evidence added, not release closure: independent Workflow settings, project-stamped graph/template/run writers, durable verified transfer receipts, collision/source-retention recovery, and targeted protocol/server/app checks are now in place. End-user aggregate browsing and repair/export proof remain open, so neither Workflows nor 0.9 is complete."

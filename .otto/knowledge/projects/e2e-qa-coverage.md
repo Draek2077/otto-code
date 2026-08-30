@@ -6,7 +6,7 @@ status: "confirmed"
 tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "partial"
 created_at: "2026-08-08T06:17:54.313Z"
-updated_at: "2026-08-27T02:15:43.606Z"
+updated_at: "2026-08-30T01:06:15.983Z"
 ---
 # E2e Qa Coverage
 
@@ -807,3 +807,37 @@ The coverage matrix records only executable coverage. The runtime support matrix
   summary: "Phase 1 added the 0.9 module proof map, separating existing deterministic checks from required T1, controlled-local and provider/live evidence, and recording the legacy coverage-matrix migration boundary."
   source: "Phase 1 release-completion audit, 2026-08-27"
   affects: ["release-0-9-product-completion","workflows","artifacts","schedules","kanban","project-knowledge-context-management","connectors","managed-model-server-runtimes"]
+- time: "2026-08-28T23:40:58.252Z"
+  kind: "evidence"
+  summary: "Workflows validation baseline gained a deterministic daemon integration proof using the existing FakeAgentClient's opt-in exact-response callback. It verifies an ordered structured-data hand-off in the Brief → Decision Graph without provider credentials or token spend. It is not app browser E2E coverage and does not change the Workflow UI coverage verdict."
+  source: "Verified locally on 2026-08-28: focused server orchestration integration test passed; targeted lint and server typecheck passed."
+  affects: ["workflows"]
+- time: "2026-08-28T23:50:59.372Z"
+  kind: "evidence"
+  summary: "Workflows deterministic daemon coverage now includes an explicitly failed fake worker followed by a bounded Graph retry and structured downstream recovery. This remains non-browser integration evidence; it does not change the UI E2E coverage verdict."
+  source: "Verified locally on 2026-08-28: focused server orchestration integration proof (2 passed, 10 skipped); targeted lint and server typecheck passed."
+  affects: ["workflows"]
+- time: "2026-08-29T18:55:53.288Z"
+  kind: "evidence"
+  summary: "Workflow E2E coverage remains truthfully T1 in `projects/e2e-qa-coverage/coverage-matrix.md`: the row maps `graph-workflow-authoring.spec.ts` and `runs-screen.spec.ts` to browser proof of Graph authoring/lifecycle and AI planning/lifecycle. `npm run e2e:coverage` passed after documentation reconciliation, reporting all 194 browser specs claimed. Separately, the non-Playwright `npm run live:orchestration -- --bootstrap-sonnet ...` harness proved the controlled real-provider AI declaration and `fanOut: 2` managed-worker boundary with Claude Sonnet 5 at low effort. It is release evidence, not a claim that the browser matrix has a T3 spec or that every provider is proven."
+  source: "2026-08-29 Workflow coverage and controlled provider proof"
+  affects: ["workflows","release-0-9-product-completion"]
+- time: "2026-08-29T23:19:27.203Z"
+  kind: "evidence"
+  summary: "Coverage correction for Artifacts: `packages/app/e2e/browser/artifact-preview-security.spec.ts` exists but its asserted Chromium run was not performed by the Artifact audit and is not evidence in this correction. Any active or migrated coverage projection that marks the Artifact preview-security row ✅ is superseded by this record: classify it as 🟡 implemented-but-not-yet-validated / T1 pending until the exact targeted Playwright command passes in an isolated daemon/browser environment and leaves its result. Do not infer Electron, native, CLI E2E, or live-provider proof from that browser spec. The same audit executed only deterministic server T1 (11 files / 68 tests passed) and found the focused CLI surface suite not clean because `cli-surface.test.ts` expects `--project <project>` while the implemented command declares `--project <root>`. The legacy `projects/e2e-qa-coverage/coverage-matrix.md` was deliberately not edited: matrix migration and canonical ownership remain this charter's work."
+  source: "Artifact proof-ledger correction, 2026-08-29"
+  affects: ["artifacts","release-0-9-product-completion"]
+- time: "2026-08-29T23:19:29.379Z"
+  kind: "note"
+  summary: "Artifact coverage correction: the Artifact preview-security row must remain partial until its targeted Playwright run is recorded. Deterministic daemon T1 does not substitute for browser, Electron, CLI E2E, or provider proof."
+  affects: ["e2e-qa-coverage"]
+- time: "2026-08-29T23:39:28.727Z"
+  kind: "evidence"
+  summary: "Artifacts has one passing non-browser real-platform proof: `OTTO_DESKTOP_E2E_ARTIFACT_ONLY=1 npm run test:e2e:browser-tabs --workspace=@otto-code/desktop`. It launches the actual Electron app with an isolated daemon and verifies a private `otto-artifact-preview` WebView guest against hostile canonical-CSP HTML: interactivity works; network, popup, navigation, and host-global escape attempts are blocked; the loopback probe observes zero requests. The canonical matrix migration still prohibits adding or counting an app Playwright Artifact spec while the live matrix remains in read-only `projects/`; native WebView proof is also outstanding."
+  source: "Focused real Electron Artifact preview smoke, 2026-08-29"
+  affects: ["artifacts"]
+- time: "2026-08-30T01:06:15.983Z"
+  kind: "evidence"
+  summary: "Workflow browser evidence remains partial. Exact command attempted: `npm --workspace=@otto-code/app run test:e2e -- e2e/browser/runs-screen.spec.ts`. First isolated Chromium execution: 3/4 passed (persisted Graph card/Visualizer, Graph restart failure, pending AI restart failure); the fourth exposed an obsolete provider-failure expectation after AI declared plans began pausing for daemon-owned start confirmation. After the test was corrected to approve that confirmation, the required exact rerun timed out in Metro warmup before Playwright began. `graph-workflow-authoring.spec.ts` has not been rerun for Fable 5. `npm run e2e:coverage` is intentionally not counted as browser execution proof."
+  source: "Focused isolated Chromium verification, 2026-08-29"
+  affects: ["workflows"]

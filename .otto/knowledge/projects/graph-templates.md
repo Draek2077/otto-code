@@ -3,12 +3,11 @@ id: "graph-templates"
 kind: "project"
 title: "Graph Templates"
 status: "confirmed"
-tags: ["project-charter", "legacy-projects-migration"]
+tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "charter"
 created_at: "2026-08-08T06:17:55.142Z"
-updated_at: "2026-08-16T13:40:35.666Z"
+updated_at: "2026-08-28T23:26:01.484Z"
 ---
-
 # Graph Templates
 
 <!-- compiled_truth -->
@@ -118,7 +117,7 @@ extended across runs. A pattern to document, not a system to build.
 Two facts that shape rollout, not blockers: the whole graph surface is **dev-only** today
 (`useOrchestrationGraphsFeature` requires `isDev`), so templates cannot reach users until that
 gate lifts; and scheduled orchestrations already work _indirectly_ - a scheduled conductor
-agent carries `start_run` - so a direct schedule→graph binding is a UX improvement, not a
+agent carries `start_workflow` - so a direct schedule→graph binding is a UX improvement, not a
 dependency.
 
 ## Correctness holes (full-set review, 2026-07-25)
@@ -303,6 +302,31 @@ Three conclusions the tally forces:
   these for my project" becomes a prompt - with the shared validation gate and the designer
   keeping the human able to read what they are about to run.
 
+## Editor capability-to-product audit — 2026-08-28
+
+The existing Drawflow designer is a substantial **agent-node Graph editor**, not yet a complete Graph-Workflow authoring product.
+
+### Source-backed inventory
+
+- **Authorable now:** Orchestrator root + agent nodes; directed wires; Graph inputs; roles, prompts, model override, autonomous flag, loops, workspace access, output fields, retries, time limits, Otto tool-group narrowing, read-only query tools, prompt-template bindings, JSONata edge conditions, and carried output fields.
+- **Persistence now:** saved Graphs are daemon-owned; draft Graph runs persist; unsaved canvas edits are session-memory only. The canvas explicitly round-trips fields it cannot edit, which prevents destructive saves.
+- **Execution now:** a validated Graph is snapshotted with its selected cast and prompt templates, then creates a durable Graph run with node states, outputs, skips, caps and cancellation. Daemon restart changes an in-flight run to failed with its recovery reason.
+- **Product boundary now:** the feature requires both the orchestrationGraphs server capability and client isDev; authoring is web/Electron only. The released product cannot claim this journey.
+- **Prompt-material boundary:** the server store/render APIs and starter EJS records exist, and node cards can select them. The app does not invoke save/delete prompt-template APIs, so users cannot manage prompt templates or snippets in Otto.
+- **Proof now:** focused graph-document, engine, renderer, store and session tests exist. The Workflows browser test seeds a legacy phase run and does not prove a Graph authoring or execution journey.
+
+### Gaps that block the first real Graph
+
+1. First-class **Gate** and deterministic **Check** nodes, including exact data and authority contracts, editor controls, validation, visualizer treatment, cancellation and recovery.
+2. An actionable validation model that identifies the responsible Graph input, node, or wire, rather than reporting only an aggregate toast.
+3. Deliberate unsaved/draft/save/version/conflict semantics, including what survives an app restart and what immutable Graph revision a project Workflow run references.
+4. A capability-aware library and production entry/upgrade state; the development-only gate stays until the full journey is proven.
+5. A prompt-template authoring lifecycle: create/edit/preview/validate/delete, variable binding assistance, failure visibility, and an explicit trusted-local EJS boundary.
+6. A T1 author → save → reopen → validate → run → inspect → cancel/restart suite and controlled T2/live proof of a single useful starter Graph.
+7. Measurement prerequisites before catalog expansion: per-node accounting, deterministic checks, and the golden-Graph comparison harness.
+
+The next editor implementation should therefore be **control-node and validation work for one Plan → Execute → Verify → Gate → Deliver Graph**, not broad visual polish or a large template catalog. That one Graph is the integration test for the editor, engine, visualizer, safety model, and evidence strategy.
+
 ## Timeline
 
 - time: "2026-08-08T06:17:55.142Z"
@@ -317,3 +341,16 @@ Three conclusions the tally forces:
 - time: "2026-08-16T13:40:35.666Z"
   kind: "decision"
   summary: "Retiring archdocs/: the single \"Decisions in archdocs/pages/12... §Decided, not built\" pointer (top status line) now resolves to the five Otto Knowledge records. All other lines of the charter and the use-cases catalog are byte-identical to the restored original."
+- time: "2026-08-28T13:34:43.931Z"
+  kind: "decision"
+  summary: "User requested the Graph editor's current authoring, execution, persistence, template, and proof gaps be made explicit before expanding its template catalog. Status returned to proposed for review."
+  source: "Source audit on 2026-08-28: packages/app/src/orchestration-graph/{orchestration-graph-panel.web.tsx,graph-canvas.ts,graph-draft-store.ts}; packages/app/src/comp"
+  affects: ["workflows","e2e-qa-coverage","agent-orchestration"]
+- time: "2026-08-28T23:09:27.719Z"
+  kind: "evidence"
+  summary: "Added the `Brief → Decision` built-in Graph as the minimal evaluation asset: one required question, a researcher structured output, and explicit field hand-off to a writer decision. Its deterministic real-daemon integration proof validates engine execution and durable run persistence. It is a kernel asset, not evidence that the template-authoring product, control nodes, or broader template library are complete."
+  source: "Verified locally on 2026-08-28: packages/server/src/server/orchestration/starter-graphs.ts and packages/server/src/server/orchestration/run-orchestration.integr"
+  affects: ["workflows"]
+- time: "2026-08-28T23:26:01.484Z"
+  kind: "note"
+  summary: "The owner explicitly authorized confirmation after reviewing the source-backed editor/template audit and verified Wave 1 Graph kernel evidence on 2026-08-28. New status: confirmed."

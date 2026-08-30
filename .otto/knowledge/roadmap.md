@@ -2,7 +2,7 @@
 slug: "roadmap"
 title: "Roadmap"
 role: "milestones"
-updated: "2026-08-08T06:37:19.539Z"
+updated: "2026-08-28T04:05:34.967Z"
 ---
 
 # Roadmap
@@ -16,7 +16,7 @@ counts and completion metrics without maintaining a second registry.
 
 ## Strategic direction
 
-1. Preserve [[provider-neutral-capability-parity-defines-done]] as new frontier-harness capabilities land.
+1. Preserve provider-neutral capability parity as new frontier-harness capabilities land.
 2. Keep agent work observable and reviewable: context, accounting, timelines, Visualizer, browser proof, and durable knowledge.
 3. Build reusable agentic coding architectures on the stable IDE-grade platform.
 4. Maintain compatibility with upstream where it remains practical, and record deliberate divergence.
