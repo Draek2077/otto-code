@@ -7,7 +7,7 @@ import { JudgeVerdictSchema } from "./judge-verdict.js";
 // See projects/agent-orchestration/agent-orchestration.md. This is Otto's
 // provider-agnostic answer to a harness "Workflow": the conductor (an
 // orchestrator-role agent) DECLARES the shape (typed phases, assignments, the
-// loop target) via `start_run`, and the daemon runtime drives control flow -
+// loop target) via `start_workflow`, and the daemon runtime drives control flow -
 // fan-out, gather-barrier, gate, loop - in code, so orchestrating is cheaper
 // than hand-tracking N agent ids across async notifications.
 //
@@ -66,6 +66,7 @@ export const RUN_PHASE_STATUSES = [
   "done",
   "failed",
   "skipped",
+  "canceled", // stopped by the user (run cancel or gate rejection), not by an error
 ] as const;
 export type RunPhaseStatus = (typeof RUN_PHASE_STATUSES)[number];
 
@@ -96,10 +97,10 @@ export function isTerminalRunStatus(value: string): boolean {
 }
 /** Terminal phase statuses - the phase will not change again on its own. */
 export function isTerminalPhaseStatus(value: string): boolean {
-  return value === "done" || value === "failed" || value === "skipped";
+  return value === "done" || value === "failed" || value === "skipped" || value === "canceled";
 }
 
-// ── Declaration schema (the `start_run` input) ──────────────────────────────
+// ── Declaration schema (the `start_workflow` input) ─────────────────────────
 // What the conductor DECLARES. Kept minimal and schema-validated so a bad plan
 // is rejected at the tool boundary. `role` overrides the phase-type default;
 // `fanOut` spawns N parallel candidates; `judge` attaches a verify sub-step so a
@@ -152,6 +153,34 @@ export const RunPlanSchema = z
 
 export type RunPlan = z.infer<typeof RunPlanSchema>;
 
+/**
+ * A Workflow with this many known agents needs an explicit user confirmation
+ * before it starts. This is an agent-count boundary, not a price estimate:
+ * providers do not expose one reliable comparable cost signal.
+ */
+export const WORKFLOW_START_CONFIRMATION_AGENT_THRESHOLD = 4;
+
+/**
+ * The known initial shape of a Workflow start. It intentionally excludes
+ * retries and loop top-ups: those are bounded by the daemon's hard cap but
+ * cannot truthfully be promised before execution.
+ */
+export interface WorkflowStartShape {
+  plannedAgentCount: number;
+  fanOutPhaseCount: number;
+  phaseCount: number;
+}
+
+/** Count the children a declared AI plan asks the daemon to start initially. */
+export function describeRunPlanStart(plan: RunPlan): WorkflowStartShape {
+  const workerPhases = plan.phases.filter((phase) => phase.type !== "gate");
+  return {
+    plannedAgentCount: workerPhases.reduce((total, phase) => total + (phase.fanOut ?? 1), 0),
+    fanOutPhaseCount: workerPhases.filter((phase) => (phase.fanOut ?? 1) > 1).length,
+    phaseCount: plan.phases.length,
+  };
+}
+
 // ── Projection schema (the Run the daemon persists + pushes to clients) ─────
 // One spawned candidate for a phase: the observable child agent plus, when the
 // phase judged it, that candidate's verdict.
@@ -164,6 +193,9 @@ export const RunPhaseCandidateSchema = z
     // The candidate's final message (synthesis input); may be large - clients
     // truncate for display.
     summary: z.string().optional(),
+    // A durable terminal error when this candidate could not produce a result.
+    // Optional so persisted runs from older daemons continue to parse.
+    error: z.string().optional(),
     // Validated output fields, when the node declared them (GraphNode.output).
     // Values only - anything large belongs in a file the next node reads.
     outputFields: z.record(z.string(), z.unknown()).optional(),
@@ -210,28 +242,119 @@ export type RunPhase = z.infer<typeof RunPhaseSchema>;
 // mean an upstream node was itself skipped or failed. Plain string on the wire.
 export const GRAPH_SKIP_REASONS = [
   "condition",
+  "port",
   "upstream-skipped",
   "upstream-failed",
   "canceled",
 ] as const;
 export type GraphSkipReason = (typeof GRAPH_SKIP_REASONS)[number];
 
-export const RunSchema = z
+// The exact Graph document captured when a Graph Run is drafted or started.
+// This must remain declared before RunSchema: the protocol's generated
+// validators load schemas eagerly. Graph documents evolve independently, so
+// their nested fields stay open here; the graph was already validated against
+// OrchestrationGraphSchema before the daemon persisted this snapshot.
+export const RunGraphSnapshotSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().optional(),
+    inputs: z.array(z.unknown()).optional(),
+    nodes: z.array(z.unknown()),
+    edges: z.array(z.unknown()).optional(),
+    builtIn: z.boolean().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .passthrough();
+
+export type RunGraphSnapshot = z.infer<typeof RunGraphSnapshotSchema>;
+
+// New Workflow records carry this only when created through the category store.
+// Optional means legacy daemon-global records remain readable and visible.
+// COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
+export const WorkflowStorageProvenanceSchema = z
+  .object({
+    schemaVersion: z.number().int().min(1),
+    projectRoot: z.string().min(1).optional(),
+    projectId: z.string().min(1).optional(),
+    projectKey: z.string().min(1).optional(),
+    location: z.enum(["repository", "host"]),
+    storeKey: z.string().min(1),
+    hostId: z.string().min(1).optional(),
+    hostName: z.string().min(1).optional(),
+    source: z.enum(["project-store", "legacy-host-library"]),
+  })
+  .passthrough();
+
+/** Selects only the destination for future project-owned Workflow writes. */
+export const ProjectWorkflowStoreSetRequestSchema = z.object({
+  type: z.literal("project.workflow.store.set.request"),
+  projectId: z.string(),
+  // Null inherits the independent host-wide Workflow default.
+  location: z.enum(["repository", "host"]).nullable(),
+  requestId: z.string(),
+});
+
+export const ProjectWorkflowStoreSetResponseSchema = z.object({
+  type: z.literal("project.workflow.store.set.response"),
+  payload: z.object({
+    requestId: z.string(),
+    projectId: z.string(),
+    accepted: z.boolean(),
+    error: z.string().nullable(),
+  }),
+});
+
+export type WorkflowStorageProvenance = z.infer<typeof WorkflowStorageProvenanceSchema>;
+
+/** The durable Schedule fire that launched this Workflow, when applicable. */
+export const WorkflowScheduleSourceSchema = z
+  .object({
+    scheduleId: z.string().min(1),
+    scheduleRunId: z.string().min(1),
+  })
+  .passthrough();
+export type WorkflowScheduleSource = z.infer<typeof WorkflowScheduleSourceSchema>;
+
+/**
+ * A daemon-owned start boundary, separate from an ordinary declared gate.
+ * `model-plan-declared` pauses before any child agent starts; `agent-threshold`
+ * is used by the Graph start review. The client presents the known shape and
+ * sends an explicit decision back to the daemon.
+ */
+export const WorkflowStartConfirmationSchema = z
+  .object({
+    reason: z.string().min(1),
+    plannedAgentCount: z.number().int().min(0),
+    fanOutPhaseCount: z.number().int().min(0),
+    phaseCount: z.number().int().min(0),
+    agentCap: z.number().int().min(1),
+    threshold: z.number().int().min(1),
+  })
+  .passthrough();
+
+export type WorkflowStartConfirmation = z.infer<typeof WorkflowStartConfirmationSchema>;
+
+export const WorkflowSchema = z
   .object({
     id: z.string().min(1),
     title: z.string().min(1),
     // User-authored description from the New Orchestration dialog (what this
     // orchestration is for). Distinct from `summary`, which is AI-generated
-    // after the run settles. Absent on conductor-declared (start_run) runs.
+    // after the run settles. Absent on conductor-declared (start_workflow) runs.
     description: z.string().optional(),
     status: z.string().min(1),
     // Which engine drives this orchestration: absent/"phases" = the conductor
     // -declared phase plan; "graph" = a user-authored deterministic graph
     // (projects/orchestration-graphs). Open vocabulary, plain string on the wire.
     kind: z.string().optional(),
-    // Graph runs only: the executed graph template and the fill-in values the
-    // user supplied for its declared inputs.
+    // Graph runs only: the graph template id, its exact source document, and
+    // the fill-in values the user supplied for inputs. A draft may be re-saved;
+    // an execution keeps this source document as immutable history. Optional so
+    // older persisted runs and clients continue to parse.
     graphId: z.string().optional(),
+    graphSnapshot: RunGraphSnapshotSchema.optional(),
     graphInputs: z.record(z.string(), z.string()).optional(),
     // Immutable requirements block (see RunPlan.requirements).
     requirements: z.array(z.string().min(1)).optional(),
@@ -253,6 +376,14 @@ export const RunSchema = z
     // or runs without the run-summary feature.
     summary: z.string().optional(),
     summaryStatus: z.string().optional(),
+    // A pending cost/agent confirmation before an AI-declared plan starts.
+    // This is not a Graph/phase gate and never changes the plan's autopilot or
+    // permission mode.
+    startConfirmation: WorkflowStartConfirmationSchema.optional(),
+    workflowStorage: WorkflowStorageProvenanceSchema.optional(),
+    // A Schedule may start a saved definition, but it must not erase the
+    // source identity that explains why this durable run exists.
+    scheduleSource: WorkflowScheduleSourceSchema.optional(),
     // Total child agents this run spawned (makers + judgers) - a complexity
     // signal surfaced in the Runs display. Grows as the run executes.
     agentCount: z.number().int().min(0).optional(),
@@ -261,7 +392,12 @@ export const RunSchema = z
   })
   .passthrough();
 
-export type Run = z.infer<typeof RunSchema>;
+export type Workflow = z.infer<typeof WorkflowSchema>;
+
+// COMPAT(runDomainType): renamed to Workflow in v0.9.0; remove after
+// 2027-02-28 once downstream extensions have moved to the Workflow API.
+export const RunSchema = WorkflowSchema;
+export type Run = Workflow;
 
 // Summary generation lifecycle (plain-string on the wire; see RunSchema.summaryStatus).
 export const RUN_SUMMARY_STATUSES = ["pending", "ready", "failed"] as const;
@@ -311,6 +447,7 @@ export const PromptTemplateSchema = z
     builtIn: z.boolean().optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
+    workflowStorage: WorkflowStorageProvenanceSchema.optional(),
   })
   .passthrough();
 
@@ -329,8 +466,10 @@ export const NodePromptTemplateRefSchema = z
 export type NodePromptTemplateRef = z.infer<typeof NodePromptTemplateRefSchema>;
 
 // Node kinds (open vocabulary): "orchestrator" - the single root that hosts
-// the orchestration chat and anchors the Visualizer; "agent" - a worker node.
-export const GRAPH_NODE_KINDS = ["orchestrator", "agent"] as const;
+// the orchestration chat and anchors the Visualizer; "agent" - a worker node;
+// "gate" - an attended human approval boundary; "check" - a deterministic
+// JSONata assertion over upstream output. Gates and checks make no model call.
+export const GRAPH_NODE_KINDS = ["orchestrator", "agent", "gate", "check"] as const;
 export type GraphNodeKind = (typeof GRAPH_NODE_KINDS)[number];
 
 // Loop annotation - exactly one of `times` (fixed repeat) or `until` (bounded
@@ -433,6 +572,27 @@ export const GraphNodeRetrySchema = z
 
 export type GraphNodeRetry = z.infer<typeof GraphNodeRetrySchema>;
 
+// A deterministic assertion over the named upstream material that reached a
+// Check node. JSONata keeps user-authored graph data out of JavaScript `eval`.
+// `message` is the actionable failure text shown on the durable Run.
+export const GraphNodeCheckSchema = z
+  .object({
+    expression: z.string().min(1),
+    message: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+export type GraphNodeCheck = z.infer<typeof GraphNodeCheckSchema>;
+
+/**
+ * A Check settles on exactly one named control-flow output. These are open
+ * wire strings on GraphEdge so a newer client can still parse on an older
+ * daemon, but the shared validator rejects an unsupported Check port before a
+ * run begins.
+ */
+export const GRAPH_CHECK_OUTPUT_PORTS = ["pass", "fail"] as const;
+export type GraphCheckOutputPort = (typeof GRAPH_CHECK_OUTPUT_PORTS)[number];
+
 export const GraphNodeSchema = z
   .object({
     id: z.string().min(1),
@@ -482,6 +642,9 @@ export const GraphNodeSchema = z
     // node including its loop, and every attempt is charged to the run's agent
     // cap - a retry is never a private allowance.
     retry: GraphNodeRetrySchema.optional(),
+    // Check nodes only: a deterministic pass/fail assertion over the named
+    // upstream output material. It never dispatches an agent.
+    check: GraphNodeCheckSchema.optional(),
     // Wall-clock ceiling for one attempt of this node. On expiry the agent is
     // really cancelled (not merely stopped being awaited) and the node fails,
     // which its retry policy may then catch.
@@ -542,8 +705,31 @@ export const GraphEdgeSchema = z
 
 export type GraphEdge = z.infer<typeof GraphEdgeSchema>;
 
+// ── Graph document compatibility ────────────────────────────────────────────
+//
+// Graphs were originally daemon-local records, so their persisted shape has no
+// document version. Keep that legacy shape executable, but give caller-supplied
+// documents a stable compatibility boundary before import/export exists. The
+// schema remains additive and parser-safe; version interpretation happens here,
+// after parsing, rather than in a wire-schema transform.
+export const GRAPH_DOCUMENT_FORMAT = "otto.workflow.graph";
+export const GRAPH_DOCUMENT_FORMAT_VERSION = 1;
+
+export interface GraphValidationDiagnostic {
+  code: string;
+  severity: "error" | "warning";
+  path: string;
+  message: string;
+  recovery: string;
+}
+
 export const OrchestrationGraphSchema = z
   .object({
+    // A missing format/version is a legacy daemon-local Graph. New portable
+    // documents write both fields; their semantics are checked explicitly by
+    // `validateGraphDocument` below.
+    format: z.string().min(1).optional(),
+    formatVersion: z.number().int().min(1).optional(),
     id: z.string().min(1),
     name: z.string().min(1),
     description: z.string().optional(),
@@ -552,12 +738,118 @@ export const OrchestrationGraphSchema = z
     edges: z.array(GraphEdgeSchema).optional(),
     // Bundled starter graphs; copy-on-edit, never deleted in place.
     builtIn: z.boolean().optional(),
+    // Capability declarations are reserved for portable documents. They are
+    // intentionally open strings so a newer exporter still parses on an older
+    // peer; execution compatibility is a daemon-side preflight concern.
+    requires: z.array(z.string().min(1)).optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
+    workflowStorage: WorkflowStorageProvenanceSchema.optional(),
   })
   .passthrough();
 
 export type OrchestrationGraph = z.infer<typeof OrchestrationGraphSchema>;
+
+// A portable Graph package is intentionally data-only. Its source descriptor is
+// display/audit provenance supplied by the exporter, never an authority grant:
+// the destination daemon independently validates the Graph and only persists it
+// after the caller confirms the review response.
+export const WorkflowGraphShareLocationSchema = z
+  .object({
+    storeKey: z.string().min(1),
+    location: z.enum(["repository", "host"]),
+    hostName: z.string().min(1).optional(),
+    source: z.enum(["project-store", "legacy-host-library"]),
+  })
+  .passthrough();
+
+export const WorkflowGraphExportSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    graph: OrchestrationGraphSchema,
+    source: WorkflowGraphShareLocationSchema,
+    exportedAt: z.string().min(1),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .passthrough();
+
+export type WorkflowGraphExport = z.infer<typeof WorkflowGraphExportSchema>;
+
+export const WorkflowGraphImportResultSchema = z
+  .object({
+    status: z.enum(["review_required", "imported", "failed"]),
+    graph: OrchestrationGraphSchema.optional(),
+    source: WorkflowGraphShareLocationSchema.optional(),
+    destination: WorkflowGraphShareLocationSchema.optional(),
+    contentHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    remediation: z.string().min(1),
+  })
+  .passthrough();
+
+export type WorkflowGraphImportResult = z.infer<typeof WorkflowGraphImportResultSchema>;
+
+/**
+ * Validate the portable-document wrapper without changing a Graph's content.
+ * A caller can use this in a local, read-only validation path; it never
+ * resolves templates, evaluates expressions, or consults a daemon.
+ */
+export function validateGraphDocument(graph: OrchestrationGraph): GraphValidationDiagnostic[] {
+  const diagnostics: GraphValidationDiagnostic[] = [];
+  // `passthrough()` preserved arbitrary fields before this contract existed.
+  // Treat a pre-existing unrelated `format` key as legacy unless its companion
+  // version, or our exact portable format marker, says it is a document header.
+  const declaresPortableFormat =
+    graph.formatVersion !== undefined || graph.format === GRAPH_DOCUMENT_FORMAT;
+  if (!declaresPortableFormat) {
+    diagnostics.push({
+      code: "GRAPH_DOCUMENT_LEGACY_UNVERSIONED",
+      severity: "warning",
+      path: "",
+      message: "This Graph has no portable document format version.",
+      recovery: `Export it as ${GRAPH_DOCUMENT_FORMAT} v${GRAPH_DOCUMENT_FORMAT_VERSION} before sharing it.`,
+    });
+    return diagnostics;
+  }
+  if (graph.format !== GRAPH_DOCUMENT_FORMAT) {
+    diagnostics.push({
+      code: "GRAPH_DOCUMENT_FORMAT_UNSUPPORTED",
+      severity: "error",
+      path: "/format",
+      message: `Graph format "${graph.format ?? "(missing)"}" is not supported.`,
+      recovery: `Use format "${GRAPH_DOCUMENT_FORMAT}".`,
+    });
+  }
+  if (graph.formatVersion === undefined) {
+    diagnostics.push({
+      code: "GRAPH_DOCUMENT_VERSION_MISSING",
+      severity: "error",
+      path: "/formatVersion",
+      message: "A portable Graph document needs formatVersion.",
+      recovery: `Use formatVersion ${GRAPH_DOCUMENT_FORMAT_VERSION}.`,
+    });
+  } else if (graph.formatVersion > GRAPH_DOCUMENT_FORMAT_VERSION) {
+    diagnostics.push({
+      code: "GRAPH_DOCUMENT_VERSION_UNSUPPORTED",
+      severity: "error",
+      path: "/formatVersion",
+      message: `Graph document version ${graph.formatVersion} is newer than this Otto host supports.`,
+      recovery: "Update Otto, or export the Graph in a supported format version.",
+    });
+  }
+  return diagnostics;
+}
+
+// A Graph id becomes a file name in every Graph store (`{id}.json`) and, since
+// Graph packages can be imported from another host, it is untrusted input.
+// Reject anything that is not one plain path segment so an id can never leave
+// its store directory or shadow another store's file.
+const SAFE_GRAPH_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+export function isSafeGraphId(id: string): boolean {
+  return SAFE_GRAPH_ID.test(id) && id !== "." && id !== "..";
+}
 
 // ── Graph structural validation ──────────────────────────────────────────────
 // Shared by the daemon (hard gate before execute) and the designer (live
@@ -566,6 +858,16 @@ export type OrchestrationGraph = z.infer<typeof OrchestrationGraphSchema>;
 export function validateOrchestrationGraph(graph: OrchestrationGraph): string[] {
   const nodeIds = new Set<string>();
   const problems: string[] = [];
+  if (!isSafeGraphId(graph.id)) {
+    problems.push(
+      `Graph id "${graph.id}" must be a single file-name segment (letters, digits, "-", "_", ".").`,
+    );
+  }
+  for (const diagnostic of validateGraphDocument(graph)) {
+    if (diagnostic.severity === "error") {
+      problems.push(diagnostic.message);
+    }
+  }
   for (const node of graph.nodes) {
     if (nodeIds.has(node.id)) problems.push(`Duplicate node id "${node.id}".`);
     nodeIds.add(node.id);
@@ -577,7 +879,13 @@ export function validateOrchestrationGraph(graph: OrchestrationGraph): string[] 
     problems.push("The graph has more than one Orchestrator node.");
   }
   problems.push(...validateGraphEdges(graph, nodeIds));
-  const declaredInputs = new Set((graph.inputs ?? []).map((i) => i.key));
+  const declaredInputs = new Set<string>();
+  for (const input of graph.inputs ?? []) {
+    if (declaredInputs.has(input.key)) {
+      problems.push(`Duplicate Graph input key "${input.key}".`);
+    }
+    declaredInputs.add(input.key);
+  }
   for (const node of graph.nodes) {
     problems.push(...validateGraphNode(node, declaredInputs));
   }
@@ -594,6 +902,16 @@ function validateGraphEdges(graph: OrchestrationGraph, nodeIds: ReadonlySet<stri
     if (!nodeIds.has(edge.from)) problems.push(`Edge from unknown node "${edge.from}".`);
     if (!nodeIds.has(edge.to)) problems.push(`Edge to unknown node "${edge.to}".`);
     if (edge.from === edge.to) problems.push(`Node "${edge.from}" connects to itself.`);
+    const source = graph.nodes.find((node) => node.id === edge.from);
+    if (
+      source?.kind === "check" &&
+      edge.fromPort !== undefined &&
+      !GRAPH_CHECK_OUTPUT_PORTS.includes(edge.fromPort as GraphCheckOutputPort)
+    ) {
+      problems.push(
+        `Check "${source.title}" has edge port "${edge.fromPort}"; use "pass" or "fail".`,
+      );
+    }
     // Edges INTO the orchestrator are passive answer-delivery, not execution
     // dependencies - excluding them here keeps "root kicks off A, A delivers
     // back to root" from reading as a cycle.
@@ -658,7 +976,9 @@ const GRAPH_INPUT_REF = /\{\{\s*inputs\.([A-Za-z0-9_-]+)\s*\}\}/g;
 
 function validateGraphNode(node: GraphNode, declaredInputs: ReadonlySet<string>): string[] {
   const isRoot = node.kind === "orchestrator";
-  if (!isRoot && node.kind !== "agent") return []; // unknown kinds pass through
+  const isGate = node.kind === "gate";
+  const isCheck = node.kind === "check";
+  if (!isRoot && node.kind !== "agent" && !isGate && !isCheck) return []; // unknown kinds pass through
   const problems: string[] = [];
   // Autonomous nodes may feed results onward via edges; what they must not
   // do is orchestrate deterministic children - which edges don't express, so
@@ -666,9 +986,10 @@ function validateGraphNode(node: GraphNode, declaredInputs: ReadonlySet<string>)
   if (node.autonomous && isRoot) {
     problems.push("The Orchestrator node can't be autonomous.");
   }
-  if (!isRoot && !node.prompt?.trim() && !node.promptFromInput) {
+  if (!isRoot && !isGate && !isCheck && !node.prompt?.trim() && !node.promptFromInput) {
     problems.push(`Node "${node.title}" has no prompt and no prompt input.`);
   }
+  problems.push(...validateGraphNodeCheck(node, isCheck));
   if (node.promptFromInput && !declaredInputs.has(node.promptFromInput)) {
     problems.push(
       `Node "${node.title}" reads input "${node.promptFromInput}", which isn't declared.`,
@@ -684,6 +1005,12 @@ function validateGraphNode(node: GraphNode, declaredInputs: ReadonlySet<string>)
   problems.push(...validateGraphNodeLoop(node));
   problems.push(...validateGraphNodeOutput(node));
   return problems;
+}
+
+function validateGraphNodeCheck(node: GraphNode, isCheck: boolean): string[] {
+  return isCheck && !node.check?.expression.trim()
+    ? [`Check "${node.title}" needs a JSONata expression.`]
+    : [];
 }
 
 function validateGraphNodeOutput(node: GraphNode): string[] {
@@ -882,6 +1209,73 @@ export const RunsGraphsChangedNotificationSchema = z.object({
   }),
 });
 
+// Graph sharing is deliberately separate from save/run. Export is explicit;
+// import first returns a review and needs a second confirmed request before a
+// destination store is touched. New names use the dotted RPC contract.
+export const WorkflowsGraphsListRequestSchema = z.object({
+  type: z.literal("workflows.graphs.list.request"),
+  cwd: z.string().min(1),
+  requestId: z.string(),
+});
+
+export const WorkflowsGraphsListResponseSchema = z.object({
+  type: z.literal("workflows.graphs.list.response"),
+  payload: z.object({
+    graphs: z.array(OrchestrationGraphSchema),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+/** Project-scoped Graph writes. Legacy runs.graphs.* remains the visible library. */
+export const WorkflowsGraphSaveRequestSchema = z.object({
+  type: z.literal("workflows.graph.save.request"),
+  cwd: z.string().min(1),
+  graph: OrchestrationGraphSchema,
+  requestId: z.string(),
+});
+
+export const WorkflowsGraphSaveResponseSchema = z.object({
+  type: z.literal("workflows.graph.save.response"),
+  payload: z.object({
+    graph: OrchestrationGraphSchema.optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const WorkflowsGraphExportRequestSchema = z.object({
+  type: z.literal("workflows.graph.export.request"),
+  graphId: z.string().min(1),
+  requestId: z.string(),
+});
+
+export const WorkflowsGraphExportResponseSchema = z.object({
+  type: z.literal("workflows.graph.export.response"),
+  payload: z.object({
+    export: WorkflowGraphExportSchema.optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const WorkflowsGraphImportRequestSchema = z.object({
+  type: z.literal("workflows.graph.import.request"),
+  cwd: z.string().min(1),
+  export: WorkflowGraphExportSchema,
+  confirmed: z.boolean(),
+  requestId: z.string(),
+});
+
+export const WorkflowsGraphImportResponseSchema = z.object({
+  type: z.literal("workflows.graph.import.response"),
+  payload: z.object({
+    result: WorkflowGraphImportResultSchema.optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
 // ── Prompt templates ────────────────────────────────────────────────────────
 // Host-level reusable prompts and snippets a graph node can bind to. Same shape
 // as the graph trio above, for the same reason: one store, list/save/delete,
@@ -936,15 +1330,88 @@ export const RunsTemplatesChangedNotificationSchema = z.object({
   }),
 });
 
-// Start (or draft) a user-initiated orchestration from the New Orchestration
-// dialog. `flavor` is an open vocabulary: "ai" (prompt-and-go - the daemon
-// spawns an orchestrator agent that declares its own plan via start_run) or
-// "graph" (deterministic - the daemon executes `graphId` with `graphInputs`).
-// `draft: true` creates the record without executing (the designer flow);
-// `runId` executes an existing draft in place - or, with `draft: true`, re-saves
-// that draft in place (Edit Orchestration).
-export const RunsStartRequestSchema = z.object({
-  type: z.literal("runs.start.request"),
+export const WorkflowsTemplatesListRequestSchema = z.object({
+  type: z.literal("workflows.templates.list.request"),
+  cwd: z.string().min(1),
+  requestId: z.string(),
+});
+
+export const WorkflowsTemplatesListResponseSchema = z.object({
+  type: z.literal("workflows.templates.list.response"),
+  payload: z.object({
+    templates: z.array(PromptTemplateSchema),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const WorkflowsTemplateSaveRequestSchema = z.object({
+  type: z.literal("workflows.template.save.request"),
+  cwd: z.string().min(1),
+  template: PromptTemplateSchema,
+  requestId: z.string(),
+});
+
+export const WorkflowsTemplateSaveResponseSchema = z.object({
+  type: z.literal("workflows.template.save.response"),
+  payload: z.object({
+    template: PromptTemplateSchema.optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+// Transfer addresses records by stable id plus the current project scope. The
+// caller never receives a daemon file path, and a receipt is written before a
+// destination record so an interrupted attempt stays explainable.
+export const WorkflowTransferReceiptSchema = z.object({
+  schemaVersion: z.literal(1),
+  receiptId: z.string().min(1),
+  recordKind: z.enum(["graph", "template", "run"]),
+  recordId: z.string().min(1),
+  mode: z.enum(["copy", "move"]),
+  source: z.object({
+    source: z.enum(["legacy-host-library", "repository", "host"]),
+    storeKey: z.string().min(1),
+  }),
+  destination: z.object({
+    location: z.enum(["repository", "host"]),
+    storeKey: z.string().min(1),
+  }),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  status: z.enum(["prepared", "verified", "moved", "source-retained", "failed"]),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  recovery: z.string().optional(),
+});
+
+export const WorkflowsStorageTransferRequestSchema = z.object({
+  type: z.literal("workflows.storage.transfer.request"),
+  cwd: z.string().min(1),
+  recordKind: z.enum(["graph", "template", "run"]),
+  recordId: z.string().min(1),
+  source: z.enum(["legacy-host-library", "repository", "host"]),
+  destination: z.enum(["repository", "host"]),
+  mode: z.enum(["copy", "move"]),
+  requestId: z.string(),
+});
+
+export const WorkflowsStorageTransferResponseSchema = z.object({
+  type: z.literal("workflows.storage.transfer.response"),
+  payload: z.object({
+    receipt: WorkflowTransferReceiptSchema.optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+// Start (or draft) a user-initiated Workflow. `flavor` is an open vocabulary:
+// "ai" (prompt-and-go - the daemon spawns an orchestrator agent that declares
+// its own plan via start_workflow) or "graph" (deterministic - the daemon
+// executes `graphId` with `graphInputs`). `draft: true` creates the record
+// without executing (the designer flow); `runId` executes an existing draft in
+// place - or, with `draft: true`, re-saves that draft in place.
+const WorkflowStartRequestFieldsSchema = z.object({
   flavor: z.string(),
   cwd: z.string(),
   workspaceId: z.string().optional(),
@@ -959,21 +1426,65 @@ export const RunsStartRequestSchema = z.object({
   prompt: z.string().optional(),
   graphId: z.string().optional(),
   graphInputs: z.record(z.string(), z.string()).optional(),
+  // A daemon-issued, request-bound token is required after Graph review. It
+  // cannot be replaced by a client-side "confirmed" assertion.
+  startConfirmationToken: z.string().min(1).optional(),
   draft: z.boolean().optional(),
   runId: z.string().optional(),
   requestId: z.string(),
 });
 
+const WorkflowStartResponsePayloadSchema = z.object({
+  runId: z.string().optional(),
+  // The root/orchestrator agent whose chat the client navigates to, and the
+  // workspace the daemon resolved it into (the dialog only knows a project
+  // target's cwd).
+  agentId: z.string().optional(),
+  workspaceId: z.string().optional(),
+  // Returned without starting anything when the daemon requires an explicit
+  // Graph-start confirmation. The caller renders this factual shape, then
+  // resubmits the daemon-issued token with the unchanged launch request.
+  confirmation: WorkflowStartConfirmationSchema.optional(),
+  confirmationToken: z.string().min(1).optional(),
+  error: z.string().optional(),
+  requestId: z.string(),
+});
+
+/** The canonical Workflow launch RPC. */
+export const WorkflowsStartRequestSchema = WorkflowStartRequestFieldsSchema.extend({
+  type: z.literal("workflows.start.request"),
+});
+
+export const WorkflowsStartResponseSchema = z.object({
+  type: z.literal("workflows.start.response"),
+  payload: WorkflowStartResponsePayloadSchema,
+});
+
+// COMPAT(runsStartRpc): renamed to workflows.start in v0.9.0; accept and
+// answer the legacy pair through 2027-02-28 so separately shipped apps and
+// daemons retain the established Workflow-launch behavior.
+export const RunsStartRequestSchema = WorkflowStartRequestFieldsSchema.extend({
+  type: z.literal("runs.start.request"),
+});
+
 export const RunsStartResponseSchema = z.object({
   type: z.literal("runs.start.response"),
+  payload: WorkflowStartResponsePayloadSchema,
+});
+
+/** Respond to an AI Workflow's daemon-owned start confirmation. */
+export const WorkflowsStartConfirmationRespondRequestSchema = z.object({
+  type: z.literal("workflows.start_confirmation.respond.request"),
+  runId: z.string().min(1),
+  approved: z.boolean(),
+  requestId: z.string(),
+});
+
+export const WorkflowsStartConfirmationRespondResponseSchema = z.object({
+  type: z.literal("workflows.start_confirmation.respond.response"),
   payload: z.object({
-    runId: z.string().optional(),
-    // The root/orchestrator agent whose chat the client navigates to, and the
-    // workspace the daemon resolved it into (the dialog only knows a project
-    // target's cwd).
-    agentId: z.string().optional(),
-    workspaceId: z.string().optional(),
-    error: z.string().optional(),
+    runId: z.string(),
+    accepted: z.boolean(),
     requestId: z.string(),
   }),
 });
@@ -985,6 +1496,10 @@ export type RunsGraphsSaveResponse = z.infer<typeof RunsGraphsSaveResponseSchema
 export type RunsGraphsDeleteRequest = z.infer<typeof RunsGraphsDeleteRequestSchema>;
 export type RunsGraphsDeleteResponse = z.infer<typeof RunsGraphsDeleteResponseSchema>;
 export type RunsGraphsChangedNotification = z.infer<typeof RunsGraphsChangedNotificationSchema>;
+export type WorkflowsGraphsListRequest = z.infer<typeof WorkflowsGraphsListRequestSchema>;
+export type WorkflowsGraphsListResponse = z.infer<typeof WorkflowsGraphsListResponseSchema>;
+export type WorkflowsGraphSaveRequest = z.infer<typeof WorkflowsGraphSaveRequestSchema>;
+export type WorkflowsGraphSaveResponse = z.infer<typeof WorkflowsGraphSaveResponseSchema>;
 export type RunsTemplatesListRequest = z.infer<typeof RunsTemplatesListRequestSchema>;
 export type RunsTemplatesListResponse = z.infer<typeof RunsTemplatesListResponseSchema>;
 export type RunsTemplatesSaveRequest = z.infer<typeof RunsTemplatesSaveRequestSchema>;
@@ -994,6 +1509,24 @@ export type RunsTemplatesDeleteResponse = z.infer<typeof RunsTemplatesDeleteResp
 export type RunsTemplatesChangedNotification = z.infer<
   typeof RunsTemplatesChangedNotificationSchema
 >;
+export type WorkflowsTemplatesListRequest = z.infer<typeof WorkflowsTemplatesListRequestSchema>;
+export type WorkflowsTemplatesListResponse = z.infer<typeof WorkflowsTemplatesListResponseSchema>;
+export type WorkflowsTemplateSaveRequest = z.infer<typeof WorkflowsTemplateSaveRequestSchema>;
+export type WorkflowsTemplateSaveResponse = z.infer<typeof WorkflowsTemplateSaveResponseSchema>;
+export type WorkflowTransferReceipt = z.infer<typeof WorkflowTransferReceiptSchema>;
+export type WorkflowsStorageTransferRequest = z.infer<typeof WorkflowsStorageTransferRequestSchema>;
+export type WorkflowsStorageTransferResponse = z.infer<
+  typeof WorkflowsStorageTransferResponseSchema
+>;
+export type WorkflowsStartRequest = z.infer<typeof WorkflowsStartRequestSchema>;
+export type WorkflowsStartResponse = z.infer<typeof WorkflowsStartResponseSchema>;
+export type WorkflowsStartConfirmationRespondRequest = z.infer<
+  typeof WorkflowsStartConfirmationRespondRequestSchema
+>;
+export type WorkflowsStartConfirmationRespondResponse = z.infer<
+  typeof WorkflowsStartConfirmationRespondResponseSchema
+>;
+// COMPAT(runsStartRpc): legacy exported types retire with the wire pair after 2027-02-28.
 export type RunsStartRequest = z.infer<typeof RunsStartRequestSchema>;
 export type RunsStartResponse = z.infer<typeof RunsStartResponseSchema>;
 

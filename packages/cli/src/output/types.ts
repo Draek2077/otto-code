@@ -71,6 +71,19 @@ export type AnyCommandResult<T> = T extends unknown ? SingleResult<T> | ListResu
 export type CommandResult<T> = SingleResult<T> | ListResult<T>;
 
 /** Structured error for command failures */
+export interface CommandDiagnostic {
+  /** Stable category for filtering and recovery automation. */
+  code: string;
+  /** Whether this diagnostic prevents the requested operation. */
+  severity: "error" | "warning";
+  /** JSON Pointer or another source location, when available. */
+  path: string;
+  /** Human-readable explanation. */
+  message: string;
+  /** Concrete next action the caller can take. */
+  recovery: string;
+}
+
 export interface CommandError {
   /** Machine-readable error code */
   code: string;
@@ -78,4 +91,6 @@ export interface CommandError {
   message: string;
   /** Additional context */
   details?: unknown;
+  /** Stable, source-located diagnostics for validation failures. */
+  diagnostics?: CommandDiagnostic[];
 }

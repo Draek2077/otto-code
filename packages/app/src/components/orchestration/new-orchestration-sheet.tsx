@@ -12,7 +12,11 @@ import { StyleSheet } from "react-native-unistyles";
 import { ChevronDown, Folder, Psychology, Schema } from "@/components/icons/material-icons";
 import { GitBranch } from "@/components/icons/lucide";
 import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
-import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
+import {
+  WORKFLOW_START_CONFIRMATION_AGENT_THRESHOLD,
+  type OrchestrationGraph,
+  type WorkflowStartConfirmation,
+} from "@otto-code/protocol/orchestration";
 import {
   AdaptiveModalSheet,
   AdaptiveTextInput,
@@ -35,9 +39,9 @@ import { formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { useAgentFormState, type FormInitialValues } from "@/hooks/use-agent-form-state";
 import { useProjects } from "@/hooks/use-projects";
 import {
-  useOrchestrationGraphs,
-  useSaveOrchestrationGraph,
-  useStartOrchestration,
+  useProjectWorkflowGraphs,
+  useSaveProjectWorkflowGraph,
+  useStartWorkflow,
   type StartOrchestrationInput,
 } from "@/hooks/use-orchestration-graphs";
 import { openOrchestrationGraphTab } from "@/orchestration-graph/open-orchestration-graph-tab";
@@ -49,6 +53,7 @@ import {
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
   buildOrchestrationWorkspaceTargets,
+  PROJECT_ROOT_WORKSPACE_ID,
   resolveProjectKeyForWorkspaceCwd,
   resolveSelectedWorkspaceTarget,
   type OrchestrationWorkspaceTarget,
@@ -57,6 +62,7 @@ import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { shortenPath } from "@/utils/shorten-path";
 import { normalizeWorkspacePath } from "@/utils/workspace-identity";
 import { toErrorMessage } from "@/utils/error-messages";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import type { ProjectSummary } from "@/utils/projects";
 
 // The New Orchestration dialog (projects/orchestration-graphs) - the same form
@@ -229,11 +235,24 @@ function resolveEffectiveCwd(input: {
   return input.workspaceCwd ?? (input.workingDir.trim() || input.projectCwd || "");
 }
 
+function resolveOrchestrationWorkspaceId(input: {
+  target: OrchestrationWorkspaceTarget | null;
+  workspaces:
+    | ReadonlyMap<string, { id: string; workspaceDirectory: string; projectRootPath: string }>
+    | undefined;
+  cwd: string;
+}): string | null {
+  if (input.target?.id && input.target.id !== PROJECT_ROOT_WORKSPACE_ID) {
+    return input.target.id;
+  }
+  return input.workspaces ? resolveWorkspaceIdForCwd(input.workspaces, input.cwd) : null;
+}
+
 /**
  * The workspace the designer tab should open in for a project target: the
  * workspace whose directory (or project root) matches the target cwd. Needed
  * only by the "Create & design" flow - executing flows get the workspace back
- * from the daemon in runs.start.response.
+ * from the daemon in workflows.start.response.
  */
 function resolveWorkspaceIdForCwd(
   workspaces: ReadonlyMap<
@@ -294,8 +313,14 @@ function canSubmitOrchestrationForm(input: {
   graphId: string;
   selectedGraph: OrchestrationGraph | null;
   requiredInputsMissing: boolean;
+  hostSupportsConfirmation: boolean;
 }): boolean {
-  if (input.isSubmitting || !input.hasSeat || !input.hasProject) {
+  if (
+    input.isSubmitting ||
+    !input.hasSeat ||
+    !input.hasProject ||
+    !input.hostSupportsConfirmation
+  ) {
     return false;
   }
   if (input.nameTrimmed.length === 0 || input.descriptionTrimmed.length === 0) {
@@ -493,6 +518,13 @@ function OpenNewOrchestrationSheet({
     prefillServerId: prefill?.serverId,
   });
   const graphsServerId = mutationServerId || null;
+  // COMPAT(workflowStartConfirmation): added in v0.9.0, remove after
+  // 2027-02-28. A Workflow start has no partial legacy path: an old host must
+  // be updated before this dialog can launch work.
+  const supportsWorkflowStartConfirmation = useSessionStore(
+    (state) =>
+      state.sessions[mutationServerId]?.serverInfo?.features?.workflowStartConfirmation === true,
+  );
 
   const applyPersonality = useCallback(
     (values: PersonalityFormValues) => {
@@ -629,14 +661,18 @@ function OpenNewOrchestrationSheet({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const graphsQuery = useOrchestrationGraphs(graphsServerId);
+  const graphsQuery = useProjectWorkflowGraphs({
+    serverId: graphsServerId,
+    cwd: effectiveCwd,
+    supported: supportsWorkflowStartConfirmation,
+  });
   const graphs = useMemo(() => graphsQuery.data ?? [], [graphsQuery.data]);
   const selectedGraph = useMemo(
     () => graphs.find((graph) => graph.id === graphId) ?? null,
     [graphs, graphId],
   );
-  const saveGraph = useSaveOrchestrationGraph(graphsServerId);
-  const startOrchestration = useStartOrchestration(graphsServerId);
+  const saveGraph = useSaveProjectWorkflowGraph({ serverId: graphsServerId, cwd: effectiveCwd });
+  const startWorkflow = useStartWorkflow(graphsServerId);
 
   // Designer Run… flow: seed Name/Description from the prefilled graph once it
   // loads (editable before running).
@@ -701,6 +737,7 @@ function OpenNewOrchestrationSheet({
     graphId,
     selectedGraph,
     requiredInputsMissing,
+    hostSupportsConfirmation: supportsWorkflowStartConfirmation,
   });
 
   const handleSubmit = useCallback(
@@ -723,6 +760,11 @@ function OpenNewOrchestrationSheet({
           graphId,
           graphInputs,
           selectedGraph,
+          workspaceId: resolveOrchestrationWorkspaceId({
+            target: selectedWorkspaceTarget,
+            workspaces: workspacesForServer,
+            cwd: effectiveCwd,
+          }),
           prefillRunId: prefill?.runId,
           seatFields: buildSeatFields({
             selectedProfileId,
@@ -731,7 +773,7 @@ function OpenNewOrchestrationSheet({
             selectedThinkingOptionId,
           }),
           workspaces: workspacesForServer,
-          start: startOrchestration.mutateAsync,
+          start: startWorkflow.mutateAsync,
           saveGraph: saveGraph.mutateAsync,
           onClose,
         });
@@ -752,13 +794,14 @@ function OpenNewOrchestrationSheet({
       graphId,
       graphInputs,
       selectedGraph,
+      selectedWorkspaceTarget,
       prefill?.runId,
       selectedProfileId,
       selectedProvider,
       selectedModel,
       selectedThinkingOptionId,
       workspacesForServer,
-      startOrchestration.mutateAsync,
+      startWorkflow.mutateAsync,
       saveGraph.mutateAsync,
       onClose,
     ],
@@ -812,6 +855,11 @@ function OpenNewOrchestrationSheet({
       {/* A draft is always a graph orchestration - editing one can't change
           that, so the flavor switch is a create-time control only. */}
       <FlavorField hidden={isEditingDraft} value={flavor} onChange={setFlavor} />
+
+      <WorkflowStartUnavailableHint
+        supported={supportsWorkflowStartConfirmation}
+        serverId={mutationServerId}
+      />
 
       <View style={styles.field}>
         <Text style={styles.label}>Name</Text>
@@ -933,6 +981,19 @@ function OpenNewOrchestrationSheet({
   );
 }
 
+function WorkflowStartUnavailableHint({
+  supported,
+  serverId,
+}: {
+  supported: boolean;
+  serverId: string | null;
+}): ReactElement | null {
+  if (!serverId || supported) {
+    return null;
+  }
+  return <Text style={styles.hint}>Update the host to start Workflows with confirmation.</Text>;
+}
+
 /** AI vs Graph. Hidden while editing a draft - a draft is always a graph
  * orchestration, so the flavor switch is a create-time control only. */
 function FlavorField({
@@ -1031,21 +1092,20 @@ async function submitOrchestrationForm(input: {
   graphId: string;
   graphInputs: Record<string, string>;
   selectedGraph: OrchestrationGraph | null;
+  /** A concrete host workspace is required for any spawned orchestration agent. */
+  workspaceId: string | null;
   prefillRunId: string | undefined;
   seatFields: Partial<StartOrchestrationInput>;
   workspaces:
     | ReadonlyMap<string, { id: string; workspaceDirectory: string; projectRootPath: string }>
     | undefined;
-  start: (request: StartOrchestrationInput) => Promise<{
-    runId?: string;
-    agentId?: string;
-    workspaceId?: string;
-  }>;
+  start: (request: StartOrchestrationInput) => Promise<WorkflowStartResult>;
   saveGraph: (graph: OrchestrationGraph) => Promise<OrchestrationGraph>;
   onClose: () => void;
 }): Promise<void> {
   const common = {
     cwd: input.cwd || input.target.cwd,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
     title: input.name,
     description: input.description,
     ...input.seatFields,
@@ -1110,15 +1170,58 @@ async function submitOrchestrationForm(input: {
     return;
   }
 
-  const result = await input.start({
+  const request: StartOrchestrationInput = {
     flavor: "graph",
     ...common,
     graphId: input.graphId,
     graphInputs: answers,
     ...(input.prefillRunId ? { runId: input.prefillRunId } : {}),
-  });
+  };
+  const result = await startGraphWorkflowWithConfirmation(input.start, request);
+  if (!result) {
+    return;
+  }
   input.onClose();
   navigateToOrchestratorChat(input.target.serverId, result);
+}
+
+interface WorkflowStartResult {
+  runId?: string;
+  agentId?: string;
+  workspaceId?: string;
+  confirmation?: WorkflowStartConfirmation;
+  confirmationToken?: string;
+}
+
+/** The Graph's known agent shape is reviewed before its root chat starts. */
+async function startGraphWorkflowWithConfirmation(
+  start: (request: StartOrchestrationInput) => Promise<WorkflowStartResult>,
+  request: StartOrchestrationInput,
+): Promise<WorkflowStartResult | null> {
+  const initial = await start(request);
+  if (!initial.confirmation) {
+    return initial;
+  }
+  const confirmed = await confirmDialog({
+    title: "Confirm workflow start",
+    message: formatGraphStartConfirmation(initial.confirmation),
+    confirmLabel: "Start workflow",
+  });
+  if (!confirmed) {
+    return null;
+  }
+  if (!initial.confirmationToken) {
+    throw new Error("The host did not provide confirmation for this Workflow start.");
+  }
+  return start({ ...request, startConfirmationToken: initial.confirmationToken });
+}
+
+export function formatGraphStartConfirmation(confirmation: WorkflowStartConfirmation): string {
+  const fanOut =
+    confirmation.fanOutPhaseCount > 0
+      ? ` ${confirmation.fanOutPhaseCount} planned fan-out point${confirmation.fanOutPhaseCount === 1 ? " is" : "s are"} included.`
+      : "";
+  return `This Graph will start ${confirmation.plannedAgentCount} agents across ${confirmation.phaseCount} nodes.${fanOut} The daemon limits worker agents to ${confirmation.agentCap}. Start it?`;
 }
 
 function navigateToOrchestratorChat(
@@ -1161,6 +1264,9 @@ function GraphFlavorFields({
       <View style={styles.field}>
         <Text style={styles.label}>Graph</Text>
         <GraphField graphs={graphs} value={graphId} onSelect={onGraphChange} />
+        {selectedGraph ? (
+          <Text style={styles.hint}>{describeGraphStartShape(selectedGraph)}</Text>
+        ) : null}
         {graphId !== NEW_GRAPH_VALUE && selectedGraph && canOpenDesigner ? (
           <Button size="sm" variant="outline" style={styles.inlineButton} onPress={onOpenDesigner}>
             Open in designer
@@ -1182,6 +1288,18 @@ function GraphFlavorFields({
       ))}
     </>
   );
+}
+
+function describeGraphStartShape(graph: OrchestrationGraph): string {
+  const plannedAgentCount = graph.nodes.filter((node) => node.kind === "agent").length + 1;
+  const fanOutCount = graph.nodes.filter(
+    (node) => (graph.edges ?? []).filter((edge) => edge.from === node.id).length > 1,
+  ).length;
+  const fanOut =
+    fanOutCount > 0
+      ? ` ${fanOutCount} planned fan-out branch${fanOutCount === 1 ? " is" : "es are"} included.`
+      : "";
+  return `${plannedAgentCount} planned agent${plannedAgentCount === 1 ? "" : "s"}.${fanOut} The daemon asks for confirmation at ${WORKFLOW_START_CONFIRMATION_AGENT_THRESHOLD} agents.`;
 }
 
 // One answer field per declared graph input.

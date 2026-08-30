@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { AgentManager } from "../agent-manager.js";
 import type { AgentStreamEvent, AgentTimelineItem } from "../agent-sdk-types.js";
+import type { OttoToolCatalog } from "../tools/types.js";
 import {
   MOCK_LOAD_TEST_DEFAULT_MODEL_ID,
   MockLoadTestAgentClient,
@@ -111,6 +112,81 @@ describe("MockLoadTestAgentClient", () => {
         intervalMs: 40,
       },
     });
+  });
+
+  test("executes the explicit synthetic attended Workflow-gate scenario through Otto tools", async () => {
+    const executeTool = vi.fn(async () => ({
+      content: [],
+      structuredContent: { runId: "run_gate", status: "paused" },
+    }));
+    const catalog = {
+      tools: new Map(),
+      getTool: () => undefined,
+      executeTool,
+    } satisfies OttoToolCatalog;
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession(
+      { provider: "mock", cwd: process.cwd(), model: "ten-second-stream" },
+      { ottoTools: catalog },
+    );
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await expect(session.run("Emit a synthetic attended AI Workflow gate.")).resolves.toMatchObject(
+      {
+        finalText: "Mock attended Workflow gate paused.",
+      },
+    );
+    expect(executeTool).toHaveBeenCalledWith(
+      "start_workflow",
+      expect.objectContaining({
+        phases: [expect.objectContaining({ id: "approval", type: "gate" })],
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "timeline",
+        item: expect.objectContaining({
+          type: "tool_call",
+          name: "start_workflow",
+          status: "completed",
+        }),
+      }),
+    );
+  });
+
+  test("executes the synthetic AI Workflow provider-failure scenario through Otto tools", async () => {
+    const executeTool = vi.fn(async () => ({
+      content: [],
+      structuredContent: { runId: "run_failure", status: "failed" },
+    }));
+    const catalog = {
+      tools: new Map(),
+      getTool: () => undefined,
+      executeTool,
+    } satisfies OttoToolCatalog;
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession(
+      { provider: "mock", cwd: process.cwd(), model: "ten-second-stream" },
+      { ottoTools: catalog },
+    );
+
+    await expect(
+      session.run("Emit a synthetic AI Workflow provider failure."),
+    ).resolves.toMatchObject({
+      finalText: "Mock AI Workflow provider failure recorded.",
+    });
+    expect(executeTool).toHaveBeenCalledWith(
+      "start_workflow",
+      expect.objectContaining({
+        phases: [
+          expect.objectContaining({
+            id: "provider-failure",
+            task: "Emit a synthetic turn failure.",
+          }),
+        ],
+      }),
+    );
   });
 
   test("rejects the configured number of prompts before starting a retry", async () => {

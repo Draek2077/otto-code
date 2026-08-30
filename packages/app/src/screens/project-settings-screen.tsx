@@ -59,6 +59,8 @@ import {
 } from "@/utils/projects";
 import { ProjectKanbanSection } from "./project-settings-kanban-section";
 import { ProjectKnowledgeSection } from "./project-settings-knowledge-section";
+import { ProjectArtifactsSection } from "./project-settings-artifacts-section";
+import { ProjectWorkflowsSection } from "./project-settings-workflows-section";
 import {
   combineProjectFormSaveStates,
   type ProjectFormSaveState,
@@ -399,6 +401,16 @@ function ProjectSettingsBody({
       />
 
       <ProjectKnowledgeSection
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+        client={client}
+      />
+      <ProjectArtifactsSection
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+        client={client}
+      />
+      <ProjectWorkflowsSection
         serverId={selectedHost.serverId}
         projectId={selectedHost.projectId}
         client={client}

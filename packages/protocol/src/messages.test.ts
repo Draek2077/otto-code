@@ -70,6 +70,42 @@ describe("Brain runtime log verbosity capability", () => {
   });
 });
 
+describe("Workflow start confirmation capability", () => {
+  test("remains unavailable rather than synthesized for an older daemon", () => {
+    const legacy = ServerInfoStatusPayloadSchema.parse({
+      status: "server_info",
+      serverId: "server",
+      features: { workflowStartRpc: true },
+    });
+    expect(legacy.features?.workflowStartConfirmation).toBeUndefined();
+
+    const capable = ServerInfoStatusPayloadSchema.parse({
+      status: "server_info",
+      serverId: "server",
+      features: { workflowStartConfirmation: true },
+    });
+    expect(capable.features?.workflowStartConfirmation).toBe(true);
+  });
+});
+
+describe("Graph Check output-port capability", () => {
+  test("remains absent on older hosts and additive on capable hosts", () => {
+    const legacy = ServerInfoStatusPayloadSchema.parse({
+      status: "server_info",
+      serverId: "server",
+      features: { orchestrationGraphs: true },
+    });
+    expect(legacy.features?.graphCheckOutputPorts).toBeUndefined();
+
+    const capable = ServerInfoStatusPayloadSchema.parse({
+      status: "server_info",
+      serverId: "server",
+      features: { orchestrationGraphs: true, graphCheckOutputPorts: true },
+    });
+    expect(capable.features?.graphCheckOutputPorts).toBe(true);
+  });
+});
+
 function workspaceDescriptor(overrides: Record<string, unknown> = {}) {
   return {
     id: "ws-1",

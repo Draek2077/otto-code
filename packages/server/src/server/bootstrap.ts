@@ -158,6 +158,7 @@ import { ProfileMemoryStore } from "./agent/profile-memory/profile-memory-store.
 import { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
 import { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
 import { ProjectKnowledgeStoreResolver } from "./agent/project-knowledge/project-knowledge-store-resolver.js";
+import { ArchitecturalViewsService } from "./architectural-views/architectural-views-service.js";
 import { areEquivalentPaths } from "../utils/path.js";
 import { loadInstructionFiles } from "./agent/context-management/instruction-files.js";
 import { resolveProjectRootForCwd } from "./agent/context-management/context-management-service.js";
@@ -170,6 +171,9 @@ import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import { createOttoToolCatalog, type OttoToolHostDependencies } from "./agent/tools/otto-tools.js";
 import { ArtifactService } from "./artifact/artifact-service.js";
+import { ArtifactStoreRegistry } from "./artifact/artifact-store-registry.js";
+import { ArtifactStoreResolver } from "./artifact/artifact-store-resolver.js";
+import { CategoryStorageResolver } from "./category-storage/category-storage-resolver.js";
 import { DevServerManager } from "./preview/dev-server-manager.js";
 import { BrainManager } from "./brain/brain-manager.js";
 import { BrainOpsManager } from "./brain/brain-ops-manager.js";
@@ -185,13 +189,21 @@ import {
 } from "./workspace-registry.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { ScheduleService } from "./schedule/service.js";
-import { RunService } from "./orchestration/run-service.js";
-import { RunStore } from "./orchestration/run-store.js";
+import { createWorkflowScheduleTargetRunner } from "./schedule/workflow-target.js";
+import { WorkflowService, toWireRun } from "./orchestration/run-service.js";
+import { WorkflowRunStore } from "./orchestration/workflow-run-store.js";
 import { buildRunSummaryPrompt } from "./orchestration/run-engine.js";
 import { GraphStore } from "./orchestration/graph-store.js";
+import { GraphSharingService } from "./orchestration/graph-sharing-service.js";
+import { WorkflowLibraryService } from "./orchestration/workflow-library-service.js";
 import { seedStarterGraphs } from "./orchestration/starter-graphs.js";
 import { NodeOutputStore } from "./orchestration/node-output.js";
 import { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
+import { startUserOrchestration } from "./orchestration/user-orchestration.js";
+import {
+  WORKFLOW_HOST_STORE_ROOT_DIRECTORY,
+  WorkflowStoreRegistry,
+} from "./orchestration/workflow-store-registry.js";
 import { seedStarterPromptTemplates } from "./orchestration/starter-prompt-templates.js";
 import { createAgentStructuredTextGeneration } from "./session/checkout/git-metadata-generator.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
@@ -898,6 +910,22 @@ function buildInitialAgentTeams(config: OttoDaemonConfig): MutableDaemonConfig["
   };
 }
 
+function buildInitialProjectStorageConfig(
+  persistedConfig: PersistedConfig,
+): Pick<MutableDaemonConfig, "projectKnowledge" | "projectArtifacts" | "projectWorkflows"> {
+  return {
+    projectKnowledge: persistedConfig.daemon?.projectKnowledge ?? {
+      defaultStoreLocation: "repository",
+    },
+    projectArtifacts: persistedConfig.daemon?.projectArtifacts ?? {
+      defaultStoreLocation: "repository",
+    },
+    projectWorkflows: persistedConfig.daemon?.projectWorkflows ?? {
+      defaultStoreLocation: "repository",
+    },
+  };
+}
+
 function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
   const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
     Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
@@ -968,12 +996,9 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     // Connector registry round-trips config.json ⇄ mutable config; absent on
     // disk reads as "no connectors configured yet".
     connectors: persistedConfig.daemon?.connectors ?? [],
-    // Host default for where a project's Knowledge store lives. Absent on disk
-    // reads as the repository location, which is what every existing install
-    // already does.
-    projectKnowledge: persistedConfig.daemon?.projectKnowledge ?? {
-      defaultStoreLocation: "repository",
-    },
+    // Each durable category has an independent default. Existing hosts retain
+    // the historical repository location until a user explicitly changes it.
+    ...buildInitialProjectStorageConfig(persistedConfig),
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -1419,6 +1444,70 @@ export async function createOttoDaemon(
     resolveStore: (cwd) => projectKnowledgeStores.resolveForCwd(cwd),
     logger,
   });
+  const architecturalViews = new ArchitecturalViewsService({
+    resolveStore: (cwd) => projectKnowledgeStores.resolveForCwd(cwd),
+  });
+  const artifactStoreRegistry = new ArtifactStoreRegistry({
+    resolver: new ArtifactStoreResolver({
+      ottoHome: config.ottoHome,
+      findProjectByRoot: async (rootPath) =>
+        (await projectRegistry.list()).find(
+          (project) => !project.archivedAt && areEquivalentPaths(project.rootPath, rootPath),
+        ) ?? null,
+      persistDirectoryName: async ({ projectId, directoryName }) => {
+        await projectRegistry.update(projectId, (record) => ({
+          ...record,
+          artifactDirectoryName: directoryName,
+          updatedAt: new Date().toISOString(),
+        }));
+      },
+      defaultLocation: () =>
+        daemonConfigStore.get().projectArtifacts?.defaultStoreLocation ?? "repository",
+      logger,
+    }),
+    resolveProjectRoot: (cwd) => projectKnowledgeStores.projectRoot(cwd),
+    listProjectRoots: async () =>
+      (await projectRegistry.list())
+        .filter((project) => !project.archivedAt)
+        .map((project) => project.rootPath),
+    legacyArtifactsDirectory: path.join(config.ottoHome, ".otto", "artifacts"),
+  });
+  const workflowStoreRegistry = new WorkflowStoreRegistry({
+    resolver: new CategoryStorageResolver({
+      category: "workflows",
+      repositoryDirectory: "workflows",
+      hostRootDirectory: WORKFLOW_HOST_STORE_ROOT_DIRECTORY,
+      ottoHome: config.ottoHome,
+      hostId: serverId,
+      hostName: getHostname(),
+      findProjectByRoot: async (rootPath) =>
+        (await projectRegistry.list()).find(
+          (project) => !project.archivedAt && areEquivalentPaths(project.rootPath, rootPath),
+        ) ?? null,
+      projectLocation: (project) => project.workflowLocation,
+      projectDirectoryName: (project) => project.workflowDirectoryName,
+      persistDirectoryName: async ({ projectId, directoryName }) => {
+        await projectRegistry.update(projectId, (record) => ({
+          ...record,
+          workflowDirectoryName: directoryName,
+          updatedAt: new Date().toISOString(),
+        }));
+      },
+      defaultLocation: () =>
+        daemonConfigStore.get().projectWorkflows?.defaultStoreLocation ?? "repository",
+      logger,
+    }),
+    resolveProjectRoot: (cwd) => projectKnowledgeStores.projectRoot(cwd),
+    listProjectRoots: async () =>
+      (await projectRegistry.list())
+        .filter((project) => !project.archivedAt)
+        .map((project) => project.rootPath),
+    legacy: {
+      runsDirectory: path.join(config.ottoHome, "runs"),
+      definitionsDirectory: path.join(config.ottoHome, "orchestration-graphs"),
+      templatesDirectory: path.join(config.ottoHome, "prompt-templates"),
+    },
+  });
 
   const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
   const providerSnapshotManager = new ProviderSnapshotManager({
@@ -1632,13 +1721,11 @@ export async function createOttoDaemon(
   activityStatsStore.onDidChange(() => {
     emitExternalSessionMessage({ type: "activity_stats_changed" });
   });
-  // Daemon-global artifact service backing the create_artifact agent tool.
-  // Client-initiated artifact RPCs go through each session's own service
-  // instance; both share the same file-backed store under $OTTO_HOME. Status
-  // notifications broadcast to every client so artifacts created by agents
-  // show up live everywhere.
+  // One daemon-owned artifact service backs both create_artifact and every
+  // client session. It owns ready-file watchers and generation state for every
+  // registered store; status notifications broadcast to every client.
   const toolArtifactService = new ArtifactService({
-    projectCwd: config.ottoHome,
+    storeRegistry: artifactStoreRegistry,
     logger,
     agentManager,
     providerSnapshotManager,
@@ -1649,6 +1736,15 @@ export async function createOttoDaemon(
       });
     },
     onActivity: recordActivity,
+  });
+  // Reconcile before clients can fetch the library so a crashed generation is
+  // always recoverable, then keep its ready-file watchers daemon-owned for the
+  // lifetime of this daemon.
+  await toolArtifactService.reconcileInterruptedGenerations().catch((error) => {
+    logger.error({ err: error }, "Failed to reconcile interrupted artifact generations");
+  });
+  await toolArtifactService.watchReadyArtifacts().catch((error) => {
+    logger.error({ err: error }, "Failed to start ready artifact file watchers");
   });
   const workspaceAutoName = new WorkspaceAutoName({
     agentManager,
@@ -1959,16 +2055,6 @@ export async function createOttoDaemon(
     readAgentTeams: () => daemonConfigStore.get().agentTeams,
     onActivity: recordActivity,
   });
-  await scheduleService.start();
-  agentManager.setAgentArchivedCallback(async (agentId) => {
-    try {
-      await scheduleService.completeForAgent(agentId);
-    } catch (error) {
-      logger.warn({ err: error, agentId }, "Failed to complete schedules for archived agent");
-    }
-  });
-  logger.info({ elapsed: elapsed() }, "Schedule service initialized");
-
   // Orchestration runtime - owns multi-agent Runs and drives the engine. Run
   // updates broadcast to every connected client so the UI can watch live.
   // A terminal run is summarized by a Writer (same one-shot, internal-agent path
@@ -1987,10 +2073,14 @@ export async function createOttoDaemon(
     getFocusedSelection: () => undefined,
   });
   const runSummarySchema = z.object({ summary: z.string().min(1) });
-  const runService = new RunService({
-    store: new RunStore(path.join(config.ottoHome, "runs")),
+  const runService = new WorkflowService({
+    store: new WorkflowRunStore(workflowStoreRegistry, path.join(config.ottoHome, "runs")),
     logger,
     onActivity: recordActivity,
+    storageResolver: {
+      provenanceForCwd: async (cwd) =>
+        workflowStoreRegistry.provenanceFor(await workflowStoreRegistry.resolveForCwd(cwd)),
+    },
     summarize: async (run) => {
       const result = await runSummaryGeneration.generate({
         cwd: run.cwd ?? config.ottoHome,
@@ -2004,7 +2094,10 @@ export async function createOttoDaemon(
   });
   await runService.init();
   runService.onChange((run) => {
-    emitExternalSessionMessage({ type: "runs.updated.notification", payload: { run } });
+    emitExternalSessionMessage({
+      type: "runs.updated.notification",
+      payload: { run: toWireRun(run) },
+    });
   });
   runService.onRemove((runIds) => {
     emitExternalSessionMessage({ type: "runs.cleared.notification", payload: { runIds } });
@@ -2013,6 +2106,17 @@ export async function createOttoDaemon(
   // Orchestration graph templates (projects/orchestration-graphs) - host-level,
   // like personalities/teams. Starter graphs seed once; user edits win forever.
   const graphStore = new GraphStore(path.join(config.ottoHome, "orchestration-graphs"));
+  const workflowLibraryService = new WorkflowLibraryService(workflowStoreRegistry, {
+    graphsDirectory: path.join(config.ottoHome, "orchestration-graphs"),
+    templatesDirectory: path.join(config.ottoHome, "prompt-templates"),
+    runsDirectory: path.join(config.ottoHome, "runs"),
+  });
+  const graphSharingService = new GraphSharingService(
+    graphStore,
+    workflowStoreRegistry,
+    undefined,
+    workflowLibraryService,
+  );
   // Where a graph node's submit_output call lands on its way to the engine.
   // One per daemon, shared by the tool catalog (writes) and the orchestration
   // spawn port (reads); see orchestration/node-output.ts.
@@ -2033,6 +2137,40 @@ export async function createOttoDaemon(
     });
   });
   logger.info({ elapsed: elapsed() }, "Orchestration graph store initialized");
+  scheduleService.setWorkflowRunner(
+    createWorkflowScheduleTargetRunner({
+      createGraphStore: (directory) => new GraphStore(directory),
+      workflowStoreRegistry,
+      orchestration: {
+        runService,
+        graphStore,
+        agentManager,
+        createAgentDeps: createAgentCommandDependencies,
+        logger,
+        getPersonalityRoster: () => daemonConfigStore.get().agentProfiles ?? [],
+        getAgentTeams: () => daemonConfigStore.get().agentTeams,
+        listProviderEntries: (cwd) => providerSnapshotManager.listProviders({ cwd, wait: true }),
+        nodeOutputStore,
+        promptTemplateStore,
+      },
+      start: startUserOrchestration,
+    }),
+  );
+  await scheduleService.start();
+  agentManager.setAgentArchivedCallback(async (agentId) => {
+    // An AI Workflow whose planning chat is archived before it declared a
+    // plan can never be activated; make that a durable, inspectable failure.
+    await runService.failPendingAiRunForConductor(
+      agentId,
+      "The orchestrator chat was archived before it declared a workflow plan.",
+    );
+    try {
+      await scheduleService.completeForAgent(agentId);
+    } catch (error) {
+      logger.warn({ err: error, agentId }, "Failed to complete schedules for archived agent");
+    }
+  });
+  logger.info({ elapsed: elapsed() }, "Schedule service initialized");
   logger.info({ elapsed: elapsed() }, "Loading persisted agent registry");
   const persistedRecords = await agentStorage.list();
   logger.info(
@@ -2058,6 +2196,13 @@ export async function createOttoDaemon(
     readAgentTeams: () => daemonConfigStore.get().agentTeams,
     personalityMemory,
     projectKnowledge,
+    architecturalViews,
+    openArchitecturalView: ({ agentId, workspaceId, viewId }) => {
+      emitExternalSessionMessage({
+        type: "architectural-views.open.notification",
+        payload: { agentId, workspaceId, viewId },
+      });
+    },
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
@@ -2500,6 +2645,9 @@ export async function createOttoDaemon(
             wsServer.setPersonalityMemoryService(personalityMemory);
             wsServer.setProjectKnowledgeService(projectKnowledge);
             wsServer.setProjectKnowledgeStoreResolver(projectKnowledgeStores);
+            wsServer.setArtifactService(toolArtifactService);
+            wsServer.setWorkflowStoreRegistry(workflowStoreRegistry);
+            wsServer.setGraphSharingService(graphSharingService);
             wsServer.setNodeOutputStore(nodeOutputStore);
             wsServer.setPromptTemplateStore(promptTemplateStore);
             // Late-wired like the stores above: hands the brain manager to the

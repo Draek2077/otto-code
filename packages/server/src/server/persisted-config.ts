@@ -12,7 +12,9 @@ import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.j
 import { ConnectorConfigSchema, OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
 import {
   AgentProfileSchema,
+  MutableProjectArtifactsConfigSchema,
   MutableProjectKnowledgeConfigSchema,
+  MutableProjectWorkflowsConfigSchema,
   TerminalProfileSchema,
 } from "@otto-code/protocol/messages";
 import { OttoServicePortAllocationSchema } from "@otto-code/protocol/otto-config-schema";
@@ -542,6 +544,10 @@ export const PersistedConfigSchema = z
         // the whole point of the host location is to keep a working tree clean,
         // so the preference cannot itself live in the repo.
         projectKnowledge: MutableProjectKnowledgeConfigSchema.optional(),
+        // Artifacts has its own host default. It is intentionally not nested
+        // under projectKnowledge because the user may choose differently.
+        projectArtifacts: MutableProjectArtifactsConfigSchema.optional(),
+        projectWorkflows: MutableProjectWorkflowsConfigSchema.optional(),
       })
       .strict()
       .transform(({ allowedHosts, ...daemon }) => {

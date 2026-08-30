@@ -79,9 +79,9 @@ export function carryUneditedNodeFields(node: GraphNode): Partial<GraphNode> {
   ) as Partial<GraphNode>;
 }
 
-/** Edges are keyed from→to, so redrawing a wire keeps whatever it carried. */
-export function graphEdgeKey(from: string, to: string): string {
-  return `${from} ${to}`;
+/** Edges are keyed by endpoints and named ports, so branch wires do not collide. */
+export function graphEdgeKey(from: string, to: string, fromPort?: string, toPort?: string): string {
+  return `${from} ${fromPort ?? "output"} ${to} ${toPort ?? "input"}`;
 }
 
 export function carryUneditedEdgeFields(edge: GraphEdge): Partial<GraphEdge> {

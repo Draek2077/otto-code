@@ -104,7 +104,7 @@ const SAFE_SCENARIOS: readonly Scenario[] = [
     prompt:
       "The parser documentation is out of scope. Create a deferred follow-up for adding it, but do not start a separate chat and do not edit files. Use the appropriate Otto tool now.",
     expected: ["suggest_task"],
-    forbidden: ["create_chat", "start_orchestration"],
+    forbidden: ["create_chat", "start_workflow"],
     maxExpectedCalls: 1,
   },
   {
@@ -117,7 +117,7 @@ const SAFE_SCENARIOS: readonly Scenario[] = [
       "create_chat",
       "create_schedule",
       "create_heartbeat",
-      "start_orchestration",
+      "start_workflow",
     ],
   },
   {
@@ -125,14 +125,14 @@ const SAFE_SCENARIOS: readonly Scenario[] = [
     prompt:
       "Before choosing someone for a code review, show me the available personality profiles for researcher or judger work. Do not start a chat.",
     expected: ["list_agent_profiles"],
-    forbidden: ["create_chat", "start_orchestration"],
+    forbidden: ["create_chat", "start_workflow"],
   },
   {
     id: "independent-chat",
     prompt:
       "Start an independent Otto chat for a future parser investigation. Do not make it a deferred task and do not begin implementation.",
     expected: ["create_chat"],
-    forbidden: ["suggest_task", "start_orchestration"],
+    forbidden: ["suggest_task", "start_workflow"],
   },
   {
     id: "reminder-not-chat",
@@ -156,7 +156,7 @@ const COSTLY_SCENARIOS: readonly Scenario[] = [
     id: "managed-orchestration",
     prompt:
       "Research the parser boundary, draft a plan, have a reviewer judge it, and pause before implementation for approval. Use managed orchestration rather than one separate chat.",
-    expected: ["start_orchestration"],
+    expected: ["start_workflow"],
     forbidden: ["create_chat"],
     costly: true,
   },
@@ -165,12 +165,12 @@ const COSTLY_SCENARIOS: readonly Scenario[] = [
     prompt:
       "There are already two Otto chats in this workspace named Evaluation Research and Evaluation Execution. Do not create any chats or start an orchestration. First use list_chats to find their exact IDs. Send only Evaluation Research a background prompt asking it to research the parser boundary, then independently find Evaluation Execution and send it the resulting implementation brief. Do not prompt Evaluation Execution yourself. Wait for Evaluation Research to finish, then report that the hand-off was requested.",
     expected: ["list_chats", "send_chat_prompt", "wait_for_chats"],
-    forbidden: ["create_chat", "start_orchestration"],
+    forbidden: ["create_chat", "start_workflow"],
     existingChats: [
       {
         title: "Evaluation Research",
         expected: ["list_chats", "send_chat_prompt"],
-        forbidden: ["create_chat", "start_orchestration"],
+        forbidden: ["create_chat", "start_workflow"],
       },
       {
         title: "Evaluation Execution",

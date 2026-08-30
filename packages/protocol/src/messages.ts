@@ -6,6 +6,8 @@ import {
   MutableGitHostingConfigSchema,
   MutableKanbanConfigSchema,
   MutableProjectKnowledgeConfigSchema,
+  MutableProjectArtifactsConfigSchema,
+  MutableProjectWorkflowsConfigSchema,
   MutableAgentPersonalitiesConfigSchema,
   MutableAgentPersonalitiesConfigPatchSchema,
   MutableAgentTeamsConfigSchema,
@@ -310,6 +312,14 @@ import {
   RunsGraphsDeleteRequestSchema,
   RunsGraphsDeleteResponseSchema,
   RunsGraphsChangedNotificationSchema,
+  WorkflowsGraphsListRequestSchema,
+  WorkflowsGraphsListResponseSchema,
+  WorkflowsGraphSaveRequestSchema,
+  WorkflowsGraphSaveResponseSchema,
+  WorkflowsGraphExportRequestSchema,
+  WorkflowsGraphExportResponseSchema,
+  WorkflowsGraphImportRequestSchema,
+  WorkflowsGraphImportResponseSchema,
   RunsTemplatesListRequestSchema,
   RunsTemplatesListResponseSchema,
   RunsTemplatesSaveRequestSchema,
@@ -317,8 +327,20 @@ import {
   RunsTemplatesDeleteRequestSchema,
   RunsTemplatesDeleteResponseSchema,
   RunsTemplatesChangedNotificationSchema,
+  WorkflowsTemplatesListRequestSchema,
+  WorkflowsTemplatesListResponseSchema,
+  WorkflowsTemplateSaveRequestSchema,
+  WorkflowsTemplateSaveResponseSchema,
+  WorkflowsStorageTransferRequestSchema,
+  WorkflowsStorageTransferResponseSchema,
+  WorkflowsStartRequestSchema,
   RunsStartRequestSchema,
+  WorkflowsStartResponseSchema,
   RunsStartResponseSchema,
+  WorkflowsStartConfirmationRespondRequestSchema,
+  WorkflowsStartConfirmationRespondResponseSchema,
+  ProjectWorkflowStoreSetRequestSchema,
+  ProjectWorkflowStoreSetResponseSchema,
 } from "./orchestration.js";
 import {
   MeetingsTranscriptsListRequestSchema,
@@ -415,7 +437,10 @@ import {
   BrainSweepResponseSchema,
 } from "./brain.js";
 import { TerminalActivitySchema } from "./terminal-activity.js";
-import { ArtifactMetadataSchema } from "./artifacts/types.js";
+import {
+  ArtifactMetadataSchema,
+  ProjectArtifactStoreLocationValueSchema,
+} from "./artifacts/types.js";
 import {
   ArtifactListRequestSchema,
   ArtifactCreateRequestSchema,
@@ -425,6 +450,11 @@ import {
   ArtifactDeleteRequestSchema,
   ArtifactStarRequestSchema,
   ArtifactGetContentRequestSchema,
+  ArtifactRepairRequestSchema,
+  ArtifactDataGetRequestSchema,
+  ArtifactDataUpdateRequestSchema,
+  ArtifactStoreMoveRequestSchema,
+  ProjectArtifactStoreSetRequestSchema,
   ArtifactListResponseSchema,
   ArtifactCreateResponseSchema,
   ArtifactUpdateResponseSchema,
@@ -433,10 +463,34 @@ import {
   ArtifactDeleteResponseSchema,
   ArtifactStarResponseSchema,
   ArtifactGetContentResponseSchema,
+  ArtifactRepairResponseSchema,
+  ArtifactDataGetResponseSchema,
+  ArtifactDataUpdateResponseSchema,
+  ArtifactStoreMoveResponseSchema,
+  ProjectArtifactStoreSetResponseSchema,
   ArtifactCreatedNotificationSchema,
   ArtifactUpdatedNotificationSchema,
   ArtifactDeletedNotificationSchema,
 } from "./artifacts/rpc-schemas.js";
+import {
+  ArchitecturalViewsDeliverRequestSchema,
+  ArchitecturalViewsDeliverResponseSchema,
+  ArchitecturalViewsGetContentRequestSchema,
+  ArchitecturalViewsGetContentResponseSchema,
+  ArchitecturalViewsListRequestSchema,
+  ArchitecturalViewsListResponseSchema,
+  ArchitecturalViewsDraftCreateRequestSchema,
+  ArchitecturalViewsDraftCreateResponseSchema,
+  ArchitecturalViewsDraftUpdateRequestSchema,
+  ArchitecturalViewsDraftUpdateResponseSchema,
+  ArchitecturalViewsDraftPublishRequestSchema,
+  ArchitecturalViewsDraftPublishResponseSchema,
+  ArchitecturalViewsDraftDiscardRequestSchema,
+  ArchitecturalViewsDraftDiscardResponseSchema,
+  ArchitecturalViewsDraftGetContentRequestSchema,
+  ArchitecturalViewsDraftGetContentResponseSchema,
+  ArchitecturalViewsOpenNotificationSchema,
+} from "./architectural-views/rpc-schemas.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "./agent-title-limits.js";
@@ -830,6 +884,12 @@ export const MutableDaemonConfigSchema = z
     // defaulted, matching `kanban`: absent reads as the historical repository
     // location, which is exactly what an old daemon does.
     projectKnowledge: MutableProjectKnowledgeConfigSchema.optional(),
+    // Artifacts has its own location default. It shares the storage platform
+    // with Knowledge, but never inherits Knowledge's selected location.
+    // COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
+    projectArtifacts: MutableProjectArtifactsConfigSchema.optional(),
+    // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
+    projectWorkflows: MutableProjectWorkflowsConfigSchema.optional(),
     agentProfiles: z.array(AgentProfileSchema).optional(),
   })
   .passthrough();
@@ -873,6 +933,10 @@ export const MutableDaemonConfigPatchSchema = z
     // Gated by server_info features.projectKnowledgeStoreLocation; patches
     // deep-merge.
     projectKnowledge: MutableProjectKnowledgeConfigSchema.partial().optional(),
+    // COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
+    projectArtifacts: MutableProjectArtifactsConfigSchema.partial().optional(),
+    // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
+    projectWorkflows: MutableProjectWorkflowsConfigSchema.partial().optional(),
     // Gated by server_info features.agentPersonalities. A patch replaces the
     // full roster (read-modify-write the array), matching how terminalProfiles
     // and metadataGeneration.providers patch.
@@ -2378,6 +2442,8 @@ export const CreateAgentRequestMessageSchema = z.object({
   agentProfile: z.string().optional(),
   env: z.record(z.string(), z.string()).optional(),
   workspaceId: z.string().optional(),
+  // COMPAT(architecturalViewDraftAuthoring): added in v0.9.0, remove after 2027-02-28.
+  architecturalViewDraft: z.object({ viewId: z.string(), draftId: z.string() }).optional(),
   // Optional caller context lets managed CLI invocations use the same daemon-owned
   // workspace and parentage policy as agent-scoped MCP creation.
   callerAgentId: z.string().optional(),
@@ -4371,10 +4437,20 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RunsGraphsListRequestSchema,
   RunsGraphsSaveRequestSchema,
   RunsGraphsDeleteRequestSchema,
+  WorkflowsGraphsListRequestSchema,
+  WorkflowsGraphSaveRequestSchema,
+  WorkflowsGraphExportRequestSchema,
+  WorkflowsGraphImportRequestSchema,
   RunsTemplatesListRequestSchema,
   RunsTemplatesSaveRequestSchema,
   RunsTemplatesDeleteRequestSchema,
+  WorkflowsTemplatesListRequestSchema,
+  WorkflowsTemplateSaveRequestSchema,
+  WorkflowsStorageTransferRequestSchema,
+  WorkflowsStartRequestSchema,
   RunsStartRequestSchema,
+  WorkflowsStartConfirmationRespondRequestSchema,
+  ProjectWorkflowStoreSetRequestSchema,
   CheckoutMergeRequestSchema,
   CheckoutMergeFromBaseRequestSchema,
   CheckoutPullRequestSchema,
@@ -4525,6 +4601,19 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ArtifactDeleteRequestSchema,
   ArtifactStarRequestSchema,
   ArtifactGetContentRequestSchema,
+  ArtifactRepairRequestSchema,
+  ArtifactDataGetRequestSchema,
+  ArtifactDataUpdateRequestSchema,
+  ArtifactStoreMoveRequestSchema,
+  ProjectArtifactStoreSetRequestSchema,
+  ArchitecturalViewsDeliverRequestSchema,
+  ArchitecturalViewsListRequestSchema,
+  ArchitecturalViewsGetContentRequestSchema,
+  ArchitecturalViewsDraftCreateRequestSchema,
+  ArchitecturalViewsDraftUpdateRequestSchema,
+  ArchitecturalViewsDraftPublishRequestSchema,
+  ArchitecturalViewsDraftDiscardRequestSchema,
+  ArchitecturalViewsDraftGetContentRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -4856,6 +4945,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentContextUsage: z.boolean().optional(),
         // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
         artifacts: z.boolean().optional(),
+        // COMPAT(architecturalViews): added in v0.9.0, remove after 2027-02-28.
+        architecturalViews: z.boolean().optional(),
         // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
         observedSubagents: z.boolean().optional(),
         // COMPAT(backgroundShellTasks): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
@@ -4928,6 +5019,29 @@ export const ServerInfoStatusPayloadSchema = z
         // host-local instead of in the repository: the project.knowledge.store.*
         // RPCs, the per-project override, and the host default setting.
         projectKnowledgeStoreLocation: z.boolean().optional(),
+        // COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
+        // The host supports the independent Artifacts storage default and
+        // per-project overrides.
+        artifactStoreLocation: z.boolean().optional(),
+        // COMPAT(artifactRepair): added in v0.9.0, remove after 2027-02-28.
+        // The host monitors externally edited artifacts and can restore a
+        // retained last-known-good output through artifact.repair.request.
+        artifactRepair: z.boolean().optional(),
+        // COMPAT(artifactDataUpdate): added in v0.9.0, remove after 2027-02-28.
+        artifactDataUpdate: z.boolean().optional(),
+        // COMPAT(artifactStoreMove): added in v0.9.0, remove after 2027-02-28.
+        // The host can explicitly transfer a settled artifact between its
+        // repository and host-local stores without changing write preferences.
+        artifactStoreMove: z.boolean().optional(),
+        // COMPAT(artifactProvenance): added in v0.9.0, remove after 2027-02-28.
+        // The host persists and exposes an Artifact's latest durable source.
+        artifactProvenance: z.boolean().optional(),
+        // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
+        // An additive shared resolver with a declared supported-category set.
+        categoryStorageResolver: z
+          .object({ categories: z.array(z.string().min(1)) })
+          .passthrough()
+          .optional(),
         // Script discovery - the daemon scans a workspace for the Scripts its
         // project files already declare (package.json scripts, and later
         // Makefile targets, .NET launch profiles) and serves them from
@@ -5052,8 +5166,24 @@ export const ServerInfoStatusPayloadSchema = z
         // The daemon accepts `runs.start` with `draft: true` AND a `runId`,
         // re-saving that draft in place instead of minting a second one.
         runsDraftEdit: z.boolean().optional(),
+        // COMPAT(workflowStartRpc): added in v0.9.0, remove after 2027-02-28.
+        // A new client uses workflows.start when this is true; an older daemon
+        // continues to receive the established runs.start pair.
+        workflowStartRpc: z.boolean().optional(),
+        // COMPAT(workflowStartConfirmation): added in v0.9.0, remove after
+        // 2027-02-28. A new client refuses the start surface rather than
+        // claiming it can enforce agent-count confirmation on an older host.
+        workflowStartConfirmation: z.boolean().optional(),
         // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         orchestrationGraphs: z.boolean().optional(),
+        // COMPAT(graphCheckOutputPorts): added in v0.9.0, remove after 2027-02-28.
+        // A client must not offer Check recovery routing to a host that still
+        // treats a false Check as an unconditional terminal failure.
+        graphCheckOutputPorts: z.boolean().optional(),
+        // COMPAT(scheduleWorkflowTargets): added in v0.9.0, remove after 2027-02-28.
+        // The Schedule editor may select saved Workflow definitions only when
+        // the host performs the project/definition resolution and audit.
+        scheduleWorkflowTargets: z.boolean().optional(),
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.
         // Set when the daemon will serve single-file read/write/watch for paths
         // outside every known workspace (bounded only by OS filesystem
@@ -5799,6 +5929,10 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the optional
   // gate when floor >= v0.8.18.
   projectKnowledgeLocation: ProjectKnowledgeStoreLocationValueSchema.nullable().optional(),
+  // COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
+  projectArtifactLocation: ProjectArtifactStoreLocationValueSchema.nullable().optional(),
+  // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
+  projectWorkflowLocation: z.enum(["repository", "host"]).nullable().optional(),
   // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
   projectCustomIconRevision: z.string().nullable().optional(),
   projectRootPath: z.string(),
@@ -8447,11 +8581,21 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   RunsGraphsSaveResponseSchema,
   RunsGraphsDeleteResponseSchema,
   RunsGraphsChangedNotificationSchema,
+  WorkflowsGraphsListResponseSchema,
+  WorkflowsGraphSaveResponseSchema,
+  WorkflowsGraphExportResponseSchema,
+  WorkflowsGraphImportResponseSchema,
   RunsTemplatesListResponseSchema,
   RunsTemplatesSaveResponseSchema,
   RunsTemplatesDeleteResponseSchema,
   RunsTemplatesChangedNotificationSchema,
+  WorkflowsTemplatesListResponseSchema,
+  WorkflowsTemplateSaveResponseSchema,
+  WorkflowsStorageTransferResponseSchema,
+  WorkflowsStartResponseSchema,
   RunsStartResponseSchema,
+  WorkflowsStartConfirmationRespondResponseSchema,
+  ProjectWorkflowStoreSetResponseSchema,
   CheckoutMergeResponseSchema,
   CheckoutMergeFromBaseResponseSchema,
   CheckoutPullResponseSchema,
@@ -8620,9 +8764,23 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ArtifactDeleteResponseSchema,
   ArtifactStarResponseSchema,
   ArtifactGetContentResponseSchema,
+  ArtifactRepairResponseSchema,
+  ArtifactDataGetResponseSchema,
+  ArtifactDataUpdateResponseSchema,
+  ArtifactStoreMoveResponseSchema,
+  ProjectArtifactStoreSetResponseSchema,
   ArtifactCreatedNotificationSchema,
   ArtifactUpdatedNotificationSchema,
   ArtifactDeletedNotificationSchema,
+  ArchitecturalViewsDeliverResponseSchema,
+  ArchitecturalViewsListResponseSchema,
+  ArchitecturalViewsGetContentResponseSchema,
+  ArchitecturalViewsDraftCreateResponseSchema,
+  ArchitecturalViewsDraftUpdateResponseSchema,
+  ArchitecturalViewsDraftPublishResponseSchema,
+  ArchitecturalViewsDraftDiscardResponseSchema,
+  ArchitecturalViewsDraftGetContentResponseSchema,
+  ArchitecturalViewsOpenNotificationSchema,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
@@ -9306,6 +9464,10 @@ export {
   MutableKanbanConfigSchema,
   ProjectKnowledgeStoreLocationSchema,
   MutableProjectKnowledgeConfigSchema,
+  ProjectArtifactStoreLocationSchema,
+  MutableProjectArtifactsConfigSchema,
+  ProjectWorkflowStoreLocationSchema,
+  MutableProjectWorkflowsConfigSchema,
   MutableAgentPersonalitiesConfigSchema,
   MutableAgentPersonalitiesConfigPatchSchema,
   MutableAgentTeamsConfigSchema,
@@ -9328,5 +9490,7 @@ export type {
   MutableGitHostingConfig,
   MutableKanbanConfig,
   MutableProjectKnowledgeConfig,
+  MutableProjectArtifactsConfig,
+  MutableProjectWorkflowsConfig,
   MutableBrainConfig,
 } from "./daemon-config.js";

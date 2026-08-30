@@ -46,6 +46,7 @@ interface FakePortOptions {
   ) => Record<string, unknown> | undefined;
   /** Agents that never settle - the shape a per-node time limit exists for. */
   hangAgentIds?: Set<string>;
+  gateDecision?: { approved: boolean; note?: string };
 }
 
 function makePort(options?: FakePortOptions) {
@@ -91,6 +92,7 @@ function makePort(options?: FakePortOptions) {
     cancelAgent: async ({ agentId }) => {
       canceled.push(agentId);
     },
+    awaitGate: async () => options?.gateDecision ?? { approved: true },
     notifyOrchestrator: async ({ text }) => {
       notifications.push(text);
     },
@@ -126,15 +128,36 @@ describe("substituteGraphInputs", () => {
 
 describe("buildRunFromGraph", () => {
   test("projects worker nodes into phases with edge-derived dependsOn", () => {
-    const run = buildRun(makeGraph(), { goal: "ship it" });
+    const graph = makeGraph();
+    const run = buildRun(graph, { goal: "ship it" });
     expect(run.kind).toBe("graph");
     expect(run.graphId).toBe("g1");
+    expect(run.graphSnapshot).toEqual(graph);
+    graph.nodes[1]!.title = "Changed after run start";
+    expect(run.graphSnapshot?.nodes[1]).toMatchObject({ title: "A" });
     expect(run.phases.map((phase) => phase.id)).toEqual(["a", "b"]);
     // Root edges are ordering-only: phase "a" has no dependsOn.
     expect(run.phases[0]?.dependsOn).toBeUndefined();
     expect(run.phases[1]?.dependsOn).toEqual(["a"]);
     // Inputs substitute into the projected task.
     expect(run.phases[0]?.task).toBe("Do ship it");
+  });
+
+  test("retains a Schedule source on the durable Workflow run", () => {
+    const run = buildRunFromGraph({
+      graph: makeGraph(),
+      graphInputs: {},
+      id: "run1",
+      title: "Test run",
+      now: NOW,
+      conductorAgentId: "orchestrator-agent",
+      scheduleSource: { scheduleId: "schedule-a", scheduleRunId: "schedule-run-a" },
+    });
+
+    expect(run.scheduleSource).toEqual({
+      scheduleId: "schedule-a",
+      scheduleRunId: "schedule-run-a",
+    });
   });
 
   test("rejects an invalid graph before any spawn", () => {
@@ -144,6 +167,116 @@ describe("buildRunFromGraph", () => {
 });
 
 describe("executeGraphRun", () => {
+  test("routes Check outcomes only through their declared pass or fail ports", async () => {
+    const graph = makeGraph({
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        {
+          id: "verify",
+          kind: "check",
+          title: "Verify result",
+          check: { expression: "false", message: "Repair is required." },
+        },
+        { id: "pass", kind: "agent", title: "Ship", role: "coder", prompt: "Ship it" },
+        { id: "fail", kind: "agent", title: "Repair", role: "coder", prompt: "Repair it" },
+      ],
+      edges: [
+        { from: "root", to: "verify" },
+        { from: "verify", to: "pass", fromPort: "pass" },
+        { from: "verify", to: "fail", fromPort: "fail" },
+      ],
+    });
+    const run = buildRun(graph);
+    const { port, spawns } = makePort();
+
+    const terminal = await executeGraphRun({
+      run,
+      graph,
+      graphInputs: {},
+      caps: DEFAULT_RUN_CAPS,
+      signal: new AbortController().signal,
+      port,
+    });
+
+    expect(terminal.status).toBe("done");
+    expect(spawns.map((spawn) => spawn.nodeId)).toEqual(["fail"]);
+    expect(terminal.phases.find((phase) => phase.id === "verify")).toMatchObject({
+      status: "failed",
+      notes: "Repair is required.",
+    });
+    expect(terminal.phases.find((phase) => phase.id === "pass")).toMatchObject({
+      status: "skipped",
+      skipReason: "port",
+    });
+    expect(terminal.phases.find((phase) => phase.id === "fail")?.status).toBe("done");
+  });
+
+  test("keeps a false Check terminal when no fail port is declared", async () => {
+    const graph = makeGraph({
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        { id: "verify", kind: "check", title: "Verify", check: { expression: "false" } },
+        { id: "pass", kind: "agent", title: "Ship", role: "coder", prompt: "Ship it" },
+      ],
+      edges: [
+        { from: "root", to: "verify" },
+        { from: "verify", to: "pass", fromPort: "pass" },
+      ],
+    });
+    const run = buildRun(graph);
+    const { port, spawns } = makePort();
+
+    const terminal = await executeGraphRun({
+      run,
+      graph,
+      graphInputs: {},
+      caps: DEFAULT_RUN_CAPS,
+      signal: new AbortController().signal,
+      port,
+    });
+
+    expect(terminal.status).toBe("failed");
+    expect(spawns).toHaveLength(0);
+    expect(terminal.phases.find((phase) => phase.id === "pass")).toMatchObject({
+      status: "skipped",
+      skipReason: "upstream-failed",
+    });
+  });
+
+  test("routes a passing Check only through its declared pass port", async () => {
+    const graph = makeGraph({
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        { id: "verify", kind: "check", title: "Verify", check: { expression: "true" } },
+        { id: "pass", kind: "agent", title: "Ship", role: "coder", prompt: "Ship it" },
+        { id: "fail", kind: "agent", title: "Repair", role: "coder", prompt: "Repair it" },
+      ],
+      edges: [
+        { from: "root", to: "verify" },
+        { from: "verify", to: "pass", fromPort: "pass" },
+        { from: "verify", to: "fail", fromPort: "fail" },
+      ],
+    });
+    const run = buildRun(graph);
+    const { port, spawns } = makePort();
+
+    const terminal = await executeGraphRun({
+      run,
+      graph,
+      graphInputs: {},
+      caps: DEFAULT_RUN_CAPS,
+      signal: new AbortController().signal,
+      port,
+    });
+
+    expect(terminal.status).toBe("done");
+    expect(spawns.map((spawn) => spawn.nodeId)).toEqual(["pass"]);
+    expect(terminal.phases.find((phase) => phase.id === "fail")).toMatchObject({
+      status: "skipped",
+      skipReason: "port",
+    });
+  });
+
   test("runs nodes in dependency order, feeding upstream output downstream", async () => {
     const graph = makeGraph();
     const run = buildRun(graph, { goal: "ship it" });
@@ -167,6 +300,196 @@ describe("executeGraphRun", () => {
     expect(notifications.at(-1)).toContain("Every node has settled");
     expect(terminal.phases.every((phase) => phase.status === "done")).toBe(true);
     expect(terminal.agentCount).toBe(2);
+  });
+
+  test("pauses at an attended Graph gate without spawning an agent for it", async () => {
+    const graph = makeGraph({
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        { id: "a", kind: "agent", title: "Prepare", role: "researcher", prompt: "Prepare it" },
+        { id: "review", kind: "gate", title: "Review change", prompt: "Approve this change?" },
+        { id: "b", kind: "agent", title: "Apply", role: "coder", prompt: "Apply it" },
+      ],
+      edges: [
+        { from: "root", to: "a" },
+        { from: "a", to: "review" },
+        { from: "review", to: "b" },
+      ],
+    });
+    const run = buildRun(graph);
+    const { port, spawns } = makePort({ gateDecision: { approved: true, note: "ship it" } });
+    const terminal = await executeGraphRun({
+      run,
+      graph,
+      graphInputs: {},
+      caps: DEFAULT_RUN_CAPS,
+      signal: new AbortController().signal,
+      port,
+    });
+
+    expect(terminal.status).toBe("done");
+    expect(terminal.phases.find((phase) => phase.id === "review")).toMatchObject({
+      type: "gate",
+      status: "done",
+      notes: "ship it",
+    });
+    expect(spawns.map((spawn) => spawn.nodeId)).toEqual(["a", "b"]);
+  });
+
+  test("cancels a Graph when its attended gate is rejected", async () => {
+    const graph = makeGraph({
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        { id: "review", kind: "gate", title: "Review change" },
+        { id: "b", kind: "agent", title: "Apply", role: "coder", prompt: "Apply it" },
+      ],
+      edges: [
+        { from: "root", to: "review" },
+        { from: "review", to: "b" },
+      ],
+    });
+    const run = buildRun(graph);
+    const { port, spawns } = makePort({ gateDecision: { approved: false, note: "Do not ship." } });
+    const terminal = await executeGraphRun({
+      run,
+      graph,
+      graphInputs: {},
+      caps: DEFAULT_RUN_CAPS,
+      signal: new AbortController().signal,
+      port,
+    });
+
+    expect(terminal.status).toBe("canceled");
+    expect(terminal.error).toBe('Rejected at gate "Review change": Do not ship.');
+    expect(terminal.phases.find((phase) => phase.id === "review")).toMatchObject({
+      type: "gate",
+      status: "canceled",
+      notes: "Do not ship.",
+    });
+    expect(terminal.phases.find((phase) => phase.id === "b")?.status).toBe("skipped");
+    expect(spawns).toEqual([]);
+  });
+
+  test("runs a deterministic Check from named upstream fields without spawning an agent", async () => {
+    const graph = makeGraph({
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        {
+          id: "prepare",
+          kind: "agent",
+          title: "Prepare",
+          role: "researcher",
+          prompt: "Prepare it",
+          output: { fields: [{ key: "ready", type: "boolean" }] },
+        },
+        {
+          id: "verify",
+          kind: "check",
+          title: "Ready for delivery",
+          check: {
+            expression: "upstream.prepare.fields.ready = true",
+            message: "Preparation was not ready.",
+          },
+        },
+        { id: "deliver", kind: "agent", title: "Deliver", role: "writer", prompt: "Deliver it" },
+      ],
+      edges: [
+        { from: "root", to: "prepare" },
+        { from: "prepare", to: "verify" },
+        { from: "verify", to: "deliver" },
+      ],
+    });
+    const run = buildRun(graph);
+    const { port, spawns } = makePort({
+      submittedOutput: (input) => (input.nodeId === "prepare" ? { ready: true } : undefined),
+    });
+    const terminal = await executeGraphRun({
+      run,
+      graph,
+      graphInputs: {},
+      caps: DEFAULT_RUN_CAPS,
+      signal: new AbortController().signal,
+      port,
+    });
+
+    expect(terminal.status).toBe("done");
+    expect(terminal.phases.find((phase) => phase.id === "verify")).toMatchObject({
+      type: "check",
+      status: "done",
+      notes: "Check passed: upstream.prepare.fields.ready = true",
+    });
+    expect(spawns.map((spawn) => spawn.nodeId)).toEqual(["prepare", "deliver"]);
+    expect(terminal.agentCount).toBe(2);
+  });
+
+  test("fails the durable Graph Run and skips downstream work when a Check is false", async () => {
+    const graph = makeGraph({
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        {
+          id: "prepare",
+          kind: "agent",
+          title: "Prepare",
+          role: "researcher",
+          prompt: "Prepare it",
+          output: { fields: [{ key: "ready", type: "boolean" }] },
+        },
+        {
+          id: "verify",
+          kind: "check",
+          title: "Ready for delivery",
+          check: {
+            expression: "upstream.prepare.fields.ready = true",
+            message: "Preparation was not ready.",
+          },
+        },
+        { id: "deliver", kind: "agent", title: "Deliver", role: "writer", prompt: "Deliver it" },
+      ],
+      edges: [
+        { from: "root", to: "prepare" },
+        { from: "prepare", to: "verify" },
+        { from: "verify", to: "deliver" },
+      ],
+    });
+    const run = buildRun(graph);
+    const { port, spawns } = makePort({
+      submittedOutput: (input) => (input.nodeId === "prepare" ? { ready: false } : undefined),
+    });
+    const terminal = await executeGraphRun({
+      run,
+      graph,
+      graphInputs: {},
+      caps: DEFAULT_RUN_CAPS,
+      signal: new AbortController().signal,
+      port,
+    });
+
+    expect(terminal).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("Preparation was not ready."),
+    });
+    expect(terminal.phases.find((phase) => phase.id === "verify")).toMatchObject({
+      type: "check",
+      status: "failed",
+      notes: "Preparation was not ready.",
+    });
+    expect(terminal.phases.find((phase) => phase.id === "deliver")).toMatchObject({
+      status: "skipped",
+      skipReason: "upstream-failed",
+    });
+    expect(spawns.map((spawn) => spawn.nodeId)).toEqual(["prepare"]);
+    expect(terminal.agentCount).toBe(1);
+  });
+
+  test("rejects a Check whose JSONata expression cannot parse before execution", () => {
+    const graph = makeGraph({
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        { id: "verify", kind: "check", title: "Invalid", check: { expression: "(" } },
+      ],
+      edges: [{ from: "root", to: "verify" }],
+    });
+    expect(() => buildRun(graph)).toThrow(/invalid expression/i);
   });
 
   test("a failed node fails the run and skips its downstream nodes", async () => {

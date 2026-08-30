@@ -212,7 +212,12 @@ import type {
   AgentProvider,
   AgentSessionConfig,
 } from "@otto-code/protocol/agent-types";
-import type { OrchestrationGraph, PromptTemplate, Run } from "@otto-code/protocol/orchestration";
+import type {
+  OrchestrationGraph,
+  PromptTemplate,
+  Run,
+  WorkflowStartConfirmation,
+} from "@otto-code/protocol/orchestration";
 import type {
   BrainCatalogModel,
   BrainDiskUsage,
@@ -487,6 +492,7 @@ export interface CreateAgentRequestOptions extends AgentConfigOverrides {
   personality?: CreateAgentRequestMessage["personality"];
   env?: CreateAgentRequestMessage["env"];
   workspaceId?: string;
+  architecturalViewDraft?: { viewId: string; draftId: string };
   /**
    * Caller agent making this request. The daemon resolves the caller's own
    * workspace and parentage from it, so a managed CLI run nests under its
@@ -955,6 +961,54 @@ type ArtifactGetContentPayload = Extract<
   SessionOutboundMessage,
   { type: "artifact.get-content.response" }
 >["payload"];
+type ArtifactRepairPayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.repair.response" }
+>["payload"];
+type ArtifactDataGetPayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.data.get.response" }
+>["payload"];
+type ArtifactDataUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.data.update.response" }
+>["payload"];
+type ArtifactStoreMovePayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.store.move.response" }
+>["payload"];
+type ArchitecturalViewsDeliverPayload = Extract<
+  SessionOutboundMessage,
+  { type: "architectural-views.deliver.response" }
+>["payload"];
+type ArchitecturalViewsListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "architectural-views.list.response" }
+>["payload"];
+type ArchitecturalViewsGetContentPayload = Extract<
+  SessionOutboundMessage,
+  { type: "architectural-views.get-content.response" }
+>["payload"];
+type ArchitecturalViewsDraftCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "architectural-views.draft.create.response" }
+>["payload"];
+type ArchitecturalViewsDraftUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "architectural-views.draft.update.response" }
+>["payload"];
+type ArchitecturalViewsDraftPublishPayload = Extract<
+  SessionOutboundMessage,
+  { type: "architectural-views.draft.publish.response" }
+>["payload"];
+type ArchitecturalViewsDraftDiscardPayload = Extract<
+  SessionOutboundMessage,
+  { type: "architectural-views.draft.discard.response" }
+>["payload"];
+type ArchitecturalViewsDraftGetContentPayload = Extract<
+  SessionOutboundMessage,
+  { type: "architectural-views.draft.get-content.response" }
+>["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"];
 
@@ -1135,6 +1189,11 @@ export interface CreateScheduleOptions {
           systemPrompt?: string;
           mcpServers?: AgentSessionConfig["mcpServers"];
         };
+      }
+    | {
+        type: "workflow";
+        definitionId: string;
+        projectRoot: string;
       };
   maxRuns?: number;
   expiresAt?: string;
@@ -1543,6 +1602,62 @@ type ProjectGithubClonePayload = Extract<
 // A repo clone can take minutes on a large history, so it gets its own budget
 // rather than the default request timeout.
 const PROJECT_GITHUB_CLONE_TIMEOUT_MS = 5 * 60 * 1000;
+
+export interface StartWorkflowInput {
+  flavor: "ai" | "graph";
+  cwd: string;
+  workspaceId?: string;
+  title?: string;
+  description?: string;
+  orchestratorPersonalityId?: string;
+  orchestratorProvider?: string;
+  orchestratorModel?: string;
+  orchestratorThinkingOptionId?: string;
+  prompt?: string;
+  graphId?: string;
+  graphInputs?: Record<string, string>;
+  startConfirmationToken?: string;
+  draft?: boolean;
+  runId?: string;
+}
+
+export interface WorkflowStartResult {
+  runId?: string;
+  agentId?: string;
+  workspaceId?: string;
+  confirmation?: WorkflowStartConfirmation;
+  confirmationToken?: string;
+}
+
+function buildWorkflowStartRequest(input: StartWorkflowInput) {
+  return {
+    flavor: input.flavor,
+    cwd: input.cwd,
+    ...(input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {}),
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.orchestratorPersonalityId !== undefined
+      ? { orchestratorPersonalityId: input.orchestratorPersonalityId }
+      : {}),
+    ...(input.orchestratorProvider !== undefined
+      ? { orchestratorProvider: input.orchestratorProvider }
+      : {}),
+    ...(input.orchestratorModel !== undefined
+      ? { orchestratorModel: input.orchestratorModel }
+      : {}),
+    ...(input.orchestratorThinkingOptionId !== undefined
+      ? { orchestratorThinkingOptionId: input.orchestratorThinkingOptionId }
+      : {}),
+    ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
+    ...(input.graphId !== undefined ? { graphId: input.graphId } : {}),
+    ...(input.graphInputs !== undefined ? { graphInputs: input.graphInputs } : {}),
+    ...(input.startConfirmationToken !== undefined
+      ? { startConfirmationToken: input.startConfirmationToken }
+      : {}),
+    ...(input.draft !== undefined ? { draft: input.draft } : {}),
+    ...(input.runId !== undefined ? { runId: input.runId } : {}),
+  };
+}
 
 export class DaemonClient {
   private transport: DaemonTransport | null = null;
@@ -2956,6 +3071,9 @@ export class DaemonClient {
       ...(options.personality ? { personality: options.personality } : {}),
       ...(options.env ? { env: options.env } : {}),
       ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
+      ...(options.architecturalViewDraft
+        ? { architecturalViewDraft: options.architecturalViewDraft }
+        : {}),
       ...(options.callerAgentId !== undefined ? { callerAgentId: options.callerAgentId } : {}),
       ...(options.initialPrompt ? { initialPrompt: options.initialPrompt } : {}),
       ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
@@ -3291,6 +3409,33 @@ export class DaemonClient {
     return payload.graphs;
   }
 
+  /** List saved Workflow Graphs for one project, never the legacy host library. */
+  async listProjectWorkflowGraphs(cwd: string): Promise<OrchestrationGraph[]> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"workflows.graphs.list.response">({
+        message: { type: "workflows.graphs.list.request", cwd },
+      });
+    if (payload.error !== undefined) {
+      throw new Error(payload.error);
+    }
+    return payload.graphs;
+  }
+
+  /** Persist a Graph in the selected project Workflow store. */
+  async saveProjectWorkflowGraph(
+    cwd: string,
+    graph: OrchestrationGraph,
+  ): Promise<OrchestrationGraph> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"workflows.graph.save.response">({
+        message: { type: "workflows.graph.save.request", cwd, graph },
+      });
+    if (payload.error !== undefined || payload.graph === undefined) {
+      throw new Error(payload.error ?? "Project Workflow Graph save rejected");
+    }
+    return payload.graph;
+  }
+
   /** Orchestration: upsert a graph template. Returns the persisted graph. */
   async saveOrchestrationGraph(graph: OrchestrationGraph): Promise<OrchestrationGraph> {
     const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.graphs.save.response">({
@@ -3314,6 +3459,30 @@ export class DaemonClient {
     return payload.deleted;
   }
 
+  async exportWorkflowGraph(
+    graphId: string,
+  ): Promise<import("@otto-code/protocol/orchestration").WorkflowGraphExport> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"workflows.graph.export.response">({
+        message: { type: "workflows.graph.export.request", graphId },
+      });
+    if (!payload.export) throw new Error(payload.error ?? "Graph export rejected");
+    return payload.export;
+  }
+
+  async importWorkflowGraph(input: {
+    cwd: string;
+    export: import("@otto-code/protocol/orchestration").WorkflowGraphExport;
+    confirmed: boolean;
+  }): Promise<import("@otto-code/protocol/orchestration").WorkflowGraphImportResult> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"workflows.graph.import.response">({
+        message: { type: "workflows.graph.import.request", ...input },
+      });
+    if (!payload.result) throw new Error(payload.error ?? "Graph import rejected");
+    return payload.result;
+  }
+
   /** Orchestration: list the host's reusable prompt templates and snippets. */
   async listPromptTemplates(): Promise<PromptTemplate[]> {
     const payload =
@@ -3321,6 +3490,47 @@ export class DaemonClient {
         message: { type: "runs.templates.list.request" },
       });
     return payload.templates;
+  }
+
+  async listProjectWorkflowTemplates(cwd: string): Promise<PromptTemplate[]> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"workflows.templates.list.response">({
+        message: { type: "workflows.templates.list.request", cwd },
+      });
+    if (payload.error !== undefined) throw new Error(payload.error);
+    return payload.templates;
+  }
+
+  async saveProjectWorkflowTemplate(
+    cwd: string,
+    template: PromptTemplate,
+  ): Promise<PromptTemplate> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"workflows.template.save.response">({
+        message: { type: "workflows.template.save.request", cwd, template },
+      });
+    if (payload.error !== undefined || payload.template === undefined) {
+      throw new Error(payload.error ?? "Project Workflow template save rejected");
+    }
+    return payload.template;
+  }
+
+  async transferProjectWorkflowRecord(input: {
+    cwd: string;
+    recordKind: "graph" | "template" | "run";
+    recordId: string;
+    source: "legacy-host-library" | "repository" | "host";
+    destination: "repository" | "host";
+    mode: "copy" | "move";
+  }): Promise<import("@otto-code/protocol/orchestration").WorkflowTransferReceipt> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"workflows.storage.transfer.response">({
+        message: { type: "workflows.storage.transfer.request", ...input },
+      });
+    if (payload.error !== undefined || payload.receipt === undefined) {
+      throw new Error(payload.error ?? "Project Workflow transfer rejected");
+    }
+    return payload.receipt;
   }
 
   /** Orchestration: upsert a prompt template. Returns the persisted template. */
@@ -3348,52 +3558,21 @@ export class DaemonClient {
   }
 
   /**
-   * Orchestration: start (or draft) a user-initiated orchestration. Returns the
-   * run id (graph flavor) and the orchestrator chat's agent id to navigate to.
+   * Workflow: start (or draft) a user-initiated Workflow. Returns the workflow
+   * id (graph flavor) and the orchestrator chat's agent id to navigate to.
    */
-  async startOrchestration(input: {
-    flavor: "ai" | "graph";
-    cwd: string;
-    workspaceId?: string;
-    title?: string;
-    description?: string;
-    orchestratorPersonalityId?: string;
-    orchestratorProvider?: string;
-    orchestratorModel?: string;
-    orchestratorThinkingOptionId?: string;
-    prompt?: string;
-    graphId?: string;
-    graphInputs?: Record<string, string>;
-    draft?: boolean;
-    runId?: string;
-  }): Promise<{ runId?: string; agentId?: string; workspaceId?: string }> {
-    const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.start.response">({
-      message: {
-        type: "runs.start.request",
-        flavor: input.flavor,
-        cwd: input.cwd,
-        ...(input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {}),
-        ...(input.title !== undefined ? { title: input.title } : {}),
-        ...(input.description !== undefined ? { description: input.description } : {}),
-        ...(input.orchestratorPersonalityId !== undefined
-          ? { orchestratorPersonalityId: input.orchestratorPersonalityId }
-          : {}),
-        ...(input.orchestratorProvider !== undefined
-          ? { orchestratorProvider: input.orchestratorProvider }
-          : {}),
-        ...(input.orchestratorModel !== undefined
-          ? { orchestratorModel: input.orchestratorModel }
-          : {}),
-        ...(input.orchestratorThinkingOptionId !== undefined
-          ? { orchestratorThinkingOptionId: input.orchestratorThinkingOptionId }
-          : {}),
-        ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
-        ...(input.graphId !== undefined ? { graphId: input.graphId } : {}),
-        ...(input.graphInputs !== undefined ? { graphInputs: input.graphInputs } : {}),
-        ...(input.draft !== undefined ? { draft: input.draft } : {}),
-        ...(input.runId !== undefined ? { runId: input.runId } : {}),
-      },
-    });
+  async startWorkflow(input: StartWorkflowInput): Promise<WorkflowStartResult> {
+    const request = buildWorkflowStartRequest(input);
+    // COMPAT(runsStartRpc): retain the established request against older
+    // daemons until the legacy pair retires after 2027-02-28.
+    const payload =
+      this.lastServerInfoMessage?.features?.workflowStartRpc === true
+        ? await this.sendNamespacedCorrelatedSessionRequest<"workflows.start.response">({
+            message: { type: "workflows.start.request", ...request },
+          })
+        : await this.sendNamespacedCorrelatedSessionRequest<"runs.start.response">({
+            message: { type: "runs.start.request", ...request },
+          });
     if (payload.error !== undefined) {
       throw new Error(payload.error);
     }
@@ -3401,7 +3580,25 @@ export class DaemonClient {
       ...(payload.runId !== undefined ? { runId: payload.runId } : {}),
       ...(payload.agentId !== undefined ? { agentId: payload.agentId } : {}),
       ...(payload.workspaceId !== undefined ? { workspaceId: payload.workspaceId } : {}),
+      ...(payload.confirmation !== undefined ? { confirmation: payload.confirmation } : {}),
+      ...(payload.confirmationToken !== undefined
+        ? { confirmationToken: payload.confirmationToken }
+        : {}),
     };
+  }
+
+  /** Answer a daemon-owned AI Workflow start confirmation. */
+  async respondToWorkflowStartConfirmation(input: {
+    runId: string;
+    approved: boolean;
+  }): Promise<boolean> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"workflows.start_confirmation.respond.response">(
+        {
+          message: { type: "workflows.start_confirmation.respond.request", ...input },
+        },
+      );
+    return payload.accepted;
   }
 
   async updateAgent(
@@ -8846,6 +9043,41 @@ export class DaemonClient {
     });
   }
 
+  async setProjectArtifactStoreLocation(input: {
+    projectId: string;
+    location: "repository" | "host" | null;
+    requestId?: string;
+  }): Promise<void> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "project.artifact.store.set.request",
+        projectId: input.projectId,
+        location: input.location,
+      },
+      responseType: "project.artifact.store.set.response",
+    });
+    if (!payload.accepted) throw new Error(payload.error ?? "Artifact storage update rejected");
+  }
+
+  /** Requires server_info.features.categoryStorageResolver for Workflows. */
+  async setProjectWorkflowStoreLocation(input: {
+    projectId: string;
+    location: "repository" | "host" | null;
+    requestId?: string;
+  }): Promise<void> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"project.workflow.store.set.response">({
+        requestId: input.requestId,
+        message: {
+          type: "project.workflow.store.set.request",
+          projectId: input.projectId,
+          location: input.location,
+        },
+      });
+    if (!payload.accepted) throw new Error(payload.error ?? "Workflow storage update rejected");
+  }
+
   async artifactCreate(options: {
     name: string;
     description: string;
@@ -8975,6 +9207,224 @@ export class DaemonClient {
         artifactId: options.artifactId,
       },
       responseType: "artifact.get-content.response",
+    });
+  }
+
+  async artifactRepair(options: {
+    artifactId: string;
+    requestId?: string;
+  }): Promise<ArtifactRepairPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.repair.request",
+        artifactId: options.artifactId,
+      },
+      responseType: "artifact.repair.response",
+    });
+  }
+
+  async artifactGetData(options: {
+    artifactId: string;
+    requestId?: string;
+  }): Promise<ArtifactDataGetPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.data.get.request",
+        artifactId: options.artifactId,
+      },
+      responseType: "artifact.data.get.response",
+    });
+  }
+
+  async artifactUpdateData(options: {
+    artifactId: string;
+    data: unknown;
+    requestId?: string;
+  }): Promise<ArtifactDataUpdatePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.data.update.request",
+        artifactId: options.artifactId,
+        data: options.data,
+      },
+      responseType: "artifact.data.update.response",
+    });
+  }
+
+  async artifactMoveStore(options: {
+    artifactId: string;
+    destination: "repository" | "host";
+    requestId?: string;
+  }): Promise<ArtifactStoreMovePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.store.move.request",
+        artifactId: options.artifactId,
+        destination: options.destination,
+      },
+      responseType: "artifact.store.move.response",
+    });
+  }
+
+  async deliverArchitecturalView(options: {
+    workspaceId: string;
+    viewId: string;
+    title: string;
+    knowledgeReferences: Array<{ kind: "root" | "record"; id: string }>;
+    sourcePath: string;
+    quality?: "standard" | "showcase";
+    requestId?: string;
+  }): Promise<ArchitecturalViewsDeliverPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "architectural-views.deliver.request",
+        workspaceId: options.workspaceId,
+        viewId: options.viewId,
+        title: options.title,
+        knowledgeReferences: options.knowledgeReferences,
+        sourcePath: options.sourcePath,
+        ...(options.quality ? { quality: options.quality } : {}),
+      },
+      responseType: "architectural-views.deliver.response",
+    });
+  }
+
+  async listArchitecturalViews(options: {
+    workspaceId: string;
+    knowledgeReference?: { kind: "root" | "record"; id: string };
+    requestId?: string;
+  }): Promise<ArchitecturalViewsListPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "architectural-views.list.request",
+        workspaceId: options.workspaceId,
+        ...(options.knowledgeReference ? { knowledgeReference: options.knowledgeReference } : {}),
+      },
+      responseType: "architectural-views.list.response",
+    });
+  }
+
+  async getArchitecturalViewContent(options: {
+    workspaceId: string;
+    viewId: string;
+    requestId?: string;
+  }): Promise<ArchitecturalViewsGetContentPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "architectural-views.get-content.request",
+        workspaceId: options.workspaceId,
+        viewId: options.viewId,
+      },
+      responseType: "architectural-views.get-content.response",
+    });
+  }
+
+  async createArchitecturalViewDraft(options: {
+    workspaceId: string;
+    viewId: string;
+    draftId: string;
+    title: string;
+    knowledgeReferences: Array<{ kind: "root" | "record"; id: string }>;
+    sourcePath?: string;
+    quality?: "standard" | "showcase";
+    requestId?: string;
+  }): Promise<ArchitecturalViewsDraftCreatePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "architectural-views.draft.create.request",
+        workspaceId: options.workspaceId,
+        viewId: options.viewId,
+        draftId: options.draftId,
+        title: options.title,
+        knowledgeReferences: options.knowledgeReferences,
+        ...(options.sourcePath ? { sourcePath: options.sourcePath } : {}),
+        ...(options.quality ? { quality: options.quality } : {}),
+      },
+      responseType: "architectural-views.draft.create.response",
+    });
+  }
+
+  async publishArchitecturalViewDraft(options: {
+    workspaceId: string;
+    viewId: string;
+    draftId: string;
+    requestId?: string;
+  }): Promise<ArchitecturalViewsDraftPublishPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "architectural-views.draft.publish.request",
+        workspaceId: options.workspaceId,
+        viewId: options.viewId,
+        draftId: options.draftId,
+      },
+      responseType: "architectural-views.draft.publish.response",
+    });
+  }
+
+  async updateArchitecturalViewDraft(options: {
+    workspaceId: string;
+    viewId: string;
+    draftId: string;
+    sourcePath: string;
+    quality?: "standard" | "showcase";
+    requestId?: string;
+  }): Promise<ArchitecturalViewsDraftUpdatePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "architectural-views.draft.update.request",
+        workspaceId: options.workspaceId,
+        viewId: options.viewId,
+        draftId: options.draftId,
+        sourcePath: options.sourcePath,
+        ...(options.quality ? { quality: options.quality } : {}),
+      },
+      responseType: "architectural-views.draft.update.response",
+    });
+  }
+
+  async discardArchitecturalViewDraft(options: {
+    workspaceId: string;
+    viewId: string;
+    draftId: string;
+    requestId?: string;
+  }): Promise<ArchitecturalViewsDraftDiscardPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "architectural-views.draft.discard.request",
+        workspaceId: options.workspaceId,
+        viewId: options.viewId,
+        draftId: options.draftId,
+      },
+      responseType: "architectural-views.draft.discard.response",
+    });
+  }
+
+  async getArchitecturalViewDraftContent(options: {
+    workspaceId: string;
+    viewId: string;
+    draftId: string;
+    requestId?: string;
+  }): Promise<ArchitecturalViewsDraftGetContentPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "architectural-views.draft.get-content.request",
+        workspaceId: options.workspaceId,
+        viewId: options.viewId,
+        draftId: options.draftId,
+      },
+      responseType: "architectural-views.draft.get-content.response",
     });
   }
 

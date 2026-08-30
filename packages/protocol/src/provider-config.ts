@@ -228,7 +228,7 @@ const OTTO_TOOL_GROUP_RULES: readonly OttoToolGroupRule[] = [
   { group: "artifacts", contains: ["artifact"] },
   { group: "widgets", names: ["show_widget", "widget_contract"] },
   { group: "workspace", contains: ["worktree", "workspace"] },
-  { group: "orchestration", contains: ["orchestration"] },
+  { group: "orchestration", contains: ["orchestration", "workflow"] },
   { group: "knowledge", contains: ["project_"] },
   { group: "memory", contains: ["lesson"] },
   { group: "permissions", contains: ["permission"] },

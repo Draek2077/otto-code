@@ -7,7 +7,7 @@ import { summarizeRunOutput, type OrchestrationLogger } from "./run-engine.js";
 // exactly one hand-back for the whole run while leaving graph orchestration's
 // per-node callback contract alone.
 export interface StartRunLifecyclePort {
-  /** True while the conductor's original start_run tool call can return normally. */
+  /** True while the conductor's original start_workflow tool call can return normally. */
   conductorHasInFlightTurn(): boolean;
   /** Queue one aggregate terminal report to a conductor whose original turn is gone. */
   notifyConductor(text: string): Promise<void>;
@@ -36,7 +36,7 @@ export function formatStartRunCompletionNotification(run: Run): string {
 }
 
 /**
- * Attach the lifecycle unique to AI-declared `start_run` plans.
+ * Attach the lifecycle unique to AI-declared `start_workflow` plans.
  *
  * The normal path returns the tool result into the conductor's still-live turn,
  * so sending another prompt would create a duplicate follow-up. If that turn
@@ -68,7 +68,7 @@ export function attachStartRunLifecycle(input: {
               agentId: [...input.workerAgentIds][index],
               runId: input.runId,
             },
-            "Could not archive completed start_run worker",
+            "Could not archive completed Workflow worker",
           );
         }
       }
@@ -81,7 +81,7 @@ export function attachStartRunLifecycle(input: {
       } catch (error) {
         input.port.logger.error(
           { err: error, runId: input.runId, conductorAgentId: input.conductorAgentId },
-          "Could not notify start_run conductor of completion",
+          "Could not notify Workflow conductor of completion",
         );
       }
       return undefined;
@@ -90,7 +90,7 @@ export function attachStartRunLifecycle(input: {
       // RunService's settled promise is specified to resolve, but retain a
       // guardrail here so a future contract change cannot cause an unhandled
       // rejection in the tool host.
-      input.port.logger.error({ err: error, runId: input.runId }, "start_run lifecycle failed");
+      input.port.logger.error({ err: error, runId: input.runId }, "Workflow lifecycle failed");
       return undefined;
     });
 }

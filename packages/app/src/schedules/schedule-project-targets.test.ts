@@ -52,6 +52,7 @@ describe("buildScheduleProjectTargets", () => {
       cwd: "/tmp/alpha",
       projectName: "Alpha on Host 1",
       projectViewKey: "proj",
+      projectId: "project-1",
       projectKey: "remote:example.com/acme/project",
     });
   });

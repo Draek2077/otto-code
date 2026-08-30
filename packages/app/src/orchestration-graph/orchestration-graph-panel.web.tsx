@@ -14,7 +14,7 @@ import {
   type OrchestrationGraph,
 } from "@otto-code/protocol/orchestration";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
-import { DataObject, Plus, PlayFilled, Save } from "@/components/icons/material-icons";
+import { CheckCircle, DataObject, Plus, PlayFilled, Save } from "@/components/icons/material-icons";
 import {
   NewOrchestrationSheet,
   type NewOrchestrationPrefill,
@@ -26,9 +26,10 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import {
-  useOrchestrationGraphs,
+  useGraphCheckOutputPortsFeature,
+  useProjectWorkflowGraphs,
   usePromptTemplates,
-  useSaveOrchestrationGraph,
+  useSaveProjectWorkflowGraph,
 } from "@/hooks/use-orchestration-graphs";
 import { usePaneContext } from "@/panels/pane-context";
 import { useSessionStore } from "@/stores/session-store";
@@ -58,15 +59,27 @@ function OrchestrationGraphPanelInner({
   const graphTarget = target.kind === "orchestrationGraph" ? target : null;
   const graphId = graphTarget?.graphId ?? "";
   const draftRunId = graphTarget?.runId;
+  const workspaceCwd = useSessionStore(
+    (state) => state.sessions[serverId]?.workspaces.get(workspaceId)?.workspaceDirectory ?? "",
+  );
 
-  const graphsQuery = useOrchestrationGraphs(serverId);
+  const graphsQuery = useProjectWorkflowGraphs({
+    serverId,
+    cwd: workspaceCwd,
+    supported: Boolean(serverId && workspaceCwd),
+  });
   const graph = useMemo(
     () => (graphsQuery.data ?? []).find((candidate) => candidate.id === graphId) ?? null,
     [graphsQuery.data, graphId],
   );
-  const saveGraph = useSaveOrchestrationGraph(serverId);
+  const saveGraph = useSaveProjectWorkflowGraph({ serverId, cwd: workspaceCwd });
+  const supportsCheckOutputPorts = useGraphCheckOutputPortsFeature(serverId);
   const templatesQuery = usePromptTemplates(serverId);
   const templates = templatesQuery.data;
+  const graphRequiresCheckOutputPorts = useMemo(
+    () => (graph ? graphUsesExplicitCheckPorts(graph) : false),
+    [graph],
+  );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<GraphCanvasHandle | null>(null);
@@ -79,16 +92,34 @@ function OrchestrationGraphPanelInner({
   const [inputsSheetOpen, setInputsSheetOpen] = useState(false);
   const [runPrefill, setRunPrefill] = useState<NewOrchestrationPrefill | null>(null);
   const [loadedGraphId, setLoadedGraphId] = useState<string | null>(null);
+  const [validationProblems, setValidationProblems] = useState<string[]>([]);
 
   // Bumped by every edit. `dirty` alone can't drive the draft mirror below -
   // it flips true once and then stops changing, so only the first edit would
   // ever be captured.
   const [revision, setRevision] = useState(0);
 
+  const graphRef = useRef<OrchestrationGraph | null>(null);
+  const inputsRef = useRef<GraphInput[]>([]);
+  graphRef.current = graph;
+  inputsRef.current = inputs ?? graph?.inputs ?? [];
+
+  const refreshValidation = useCallback(() => {
+    const source = graphRef.current;
+    const handle = handleRef.current;
+    if (!source || !handle) {
+      return;
+    }
+    setValidationProblems(
+      validateOrchestrationGraph(handle.exportGraph({ ...source, inputs: inputsRef.current })),
+    );
+  }, []);
+
   const handleCanvasChange = useCallback(() => {
     setDirty(true);
     setRevision((previous) => previous + 1);
-  }, []);
+    refreshValidation();
+  }, [refreshValidation]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -98,13 +129,14 @@ function OrchestrationGraphPanelInner({
     const handle = createGraphCanvas(container, {
       theme: themeRef.current,
       onChange: handleCanvasChange,
+      checkOutputPorts: supportsCheckOutputPorts,
     });
     handleRef.current = handle;
     return () => {
       handleRef.current = null;
       handle.destroy();
     };
-  }, [handleCanvasChange]);
+  }, [handleCanvasChange, supportsCheckOutputPorts]);
 
   useEffect(() => {
     handleRef.current?.setTheme(canvasTheme);
@@ -123,6 +155,7 @@ function OrchestrationGraphPanelInner({
     handleRef.current.loadGraph(source);
     setInputs(source.inputs ?? []);
     setDirty(draft?.dirty === true);
+    setValidationProblems(validateOrchestrationGraph(source));
     setLoadedGraphId(graph.id);
   }, [graph, loadedGraphId, serverId]);
 
@@ -177,6 +210,7 @@ function OrchestrationGraphPanelInner({
     // thing to save. They only gate Run. The toast stays a one-word verdict;
     // the detail of what's wrong belongs in the toolbar warnings, not here.
     const problems = validateOrchestrationGraph(saved);
+    setValidationProblems(problems);
     const warnings = reviewOrchestrationGraph(saved);
     if (problems.length > 0 || warnings.length > 0) {
       toast.show("Saved - With Issues");
@@ -185,12 +219,6 @@ function OrchestrationGraphPanelInner({
     }
     return saved;
   }, [buildCurrentGraph, saveGraph, serverId, toast]);
-
-  // The dialog thinks in project targets (cwd), so hand it this workspace's
-  // directory to resolve the target from.
-  const workspaceCwd = useSessionStore(
-    (state) => state.sessions[serverId]?.workspaces.get(workspaceId)?.workspaceDirectory ?? "",
-  );
 
   // Run never executes from here: it saves, then hands you back to the New
   // Orchestration dialog with this graph selected, to fill in its answers and
@@ -202,10 +230,15 @@ function OrchestrationGraphPanelInner({
     }
     const problems = validateOrchestrationGraph(saved);
     if (problems.length > 0) {
+      setValidationProblems(problems);
       toast.show(`Not ready to run · ${describeProblems(problems)}`, {
         variant: "error",
         durationMs: 4200,
       });
+      return;
+    }
+    if (!supportsCheckOutputPorts && graphUsesExplicitCheckPorts(saved)) {
+      toast.error("Update the host to run this graph's Check pass and fail branches.");
       return;
     }
     setRunPrefill({
@@ -214,22 +247,32 @@ function OrchestrationGraphPanelInner({
       graphId: saved.id,
       ...(draftRunId ? { runId: draftRunId } : {}),
     });
-  }, [save, serverId, workspaceCwd, draftRunId, toast]);
+  }, [save, serverId, workspaceCwd, draftRunId, supportsCheckOutputPorts, toast]);
 
   const addAgent = useCallback(() => {
     handleRef.current?.addAgentNode();
+  }, []);
+  const addGate = useCallback(() => {
+    handleRef.current?.addGateNode();
+  }, []);
+  const addCheck = useCallback(() => {
+    handleRef.current?.addCheckNode();
   }, []);
 
   const openInputsSheet = useCallback(() => setInputsSheetOpen(true), []);
   const closeInputsSheet = useCallback(() => setInputsSheetOpen(false), []);
   const closeRunSheet = useCallback(() => setRunPrefill(null), []);
-  const handleInputsChange = useCallback((next: GraphInput[]) => {
-    setInputs(next);
-    setDirty(true);
-    // Node cards surface the declared inputs (prompt hint + the
-    // prompt-from-input select) - keep them in sync live.
-    handleRef.current?.setDeclaredInputs(next.map((input) => input.key));
-  }, []);
+  const handleInputsChange = useCallback(
+    (next: GraphInput[]) => {
+      setInputs(next);
+      setDirty(true);
+      // Node cards surface the declared inputs (prompt hint + the
+      // prompt-from-input select) - keep them in sync live.
+      handleRef.current?.setDeclaredInputs(next.map((input) => input.key));
+      refreshValidation();
+    },
+    [refreshValidation],
+  );
 
   if (!graphTarget) {
     return <View style={styles.container} />;
@@ -250,6 +293,18 @@ function OrchestrationGraphPanelInner({
             testID="graph-add-agent"
           />
           <GraphToolbarButton
+            renderIcon={renderGateIcon}
+            label="Add approval gate"
+            onPress={addGate}
+            testID="graph-add-gate"
+          />
+          <GraphToolbarButton
+            renderIcon={renderCheckIcon}
+            label="Add deterministic check"
+            onPress={addCheck}
+            testID="graph-add-check"
+          />
+          <GraphToolbarButton
             renderIcon={renderInputsIcon}
             label="Graph inputs"
             onPress={openInputsSheet}
@@ -260,17 +315,27 @@ function OrchestrationGraphPanelInner({
             label="Save graph"
             onPress={save}
             testID="graph-save"
-            disabled={!dirty || saveGraph.isPending}
+            disabled={
+              !dirty ||
+              saveGraph.isPending ||
+              (!supportsCheckOutputPorts && graphRequiresCheckOutputPorts)
+            }
           />
           <GraphToolbarButton
             renderIcon={renderRunIcon}
-            label="Save and set up the orchestration"
+            label="Save and start new workflow"
             onPress={runGraph}
             testID="graph-run"
+            disabled={!supportsCheckOutputPorts && graphRequiresCheckOutputPorts}
           />
         </View>
       </View>
       <View style={styles.canvasWrap}>
+        <GraphValidationSummary
+          problems={validationProblems}
+          supportsCheckOutputPorts={supportsCheckOutputPorts}
+          requiresCheckOutputPorts={graphRequiresCheckOutputPorts}
+        />
         <CanvasEmptyState isLoading={graphsQuery.isLoading} hasGraph={graph !== null} />
         <div ref={containerRef} style={CANVAS_HOST_STYLE} />
       </View>
@@ -288,6 +353,50 @@ function OrchestrationGraphPanelInner({
   );
 }
 
+function GraphValidationSummary({
+  problems,
+  supportsCheckOutputPorts,
+  requiresCheckOutputPorts,
+}: {
+  problems: readonly string[];
+  supportsCheckOutputPorts: boolean;
+  requiresCheckOutputPorts: boolean;
+}): ReactElement | null {
+  if (problems.length === 0 && (supportsCheckOutputPorts || !requiresCheckOutputPorts)) {
+    return null;
+  }
+  return (
+    <View
+      style={problems.length > 0 ? styles.validationError : styles.validationNotice}
+      testID="graph-validation"
+    >
+      <Text style={styles.validationTitle}>
+        {problems.length > 0
+          ? `${problems.length} issue${problems.length === 1 ? "" : "s"} to fix before running`
+          : "This graph's Check pass/fail routing requires a host update"}
+      </Text>
+      {problems.map((problem) => (
+        <Text key={problem} style={styles.validationProblem}>
+          {problem}
+        </Text>
+      ))}
+      {!supportsCheckOutputPorts ? (
+        <Text style={styles.validationProblem}>
+          Update the host before saving or running this graph.
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** A persisted explicit Check port is a new-host contract, never a legacy edge. */
+function graphUsesExplicitCheckPorts(graph: OrchestrationGraph): boolean {
+  const nodeKinds = new Map(graph.nodes.map((node) => [node.id, node.kind]));
+  return (graph.edges ?? []).some(
+    (edge) => nodeKinds.get(edge.from) === "check" && edge.fromPort !== undefined,
+  );
+}
+
 /** "2 issues before it can run - <the first one>". */
 function describeProblems(problems: readonly string[]): string {
   const count = `${problems.length} issue${problems.length === 1 ? "" : "s"} before it can run`;
@@ -298,11 +407,18 @@ const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted 
 const accentIconColor = (theme: Theme) => ({ color: theme.colors.primary });
 
 const ThemedPlus = withUnistyles(Plus);
+const ThemedCheckCircle = withUnistyles(CheckCircle);
 const ThemedDataObject = withUnistyles(DataObject);
 const ThemedSave = withUnistyles(Save);
 const ThemedPlay = withUnistyles(PlayFilled);
 
 const renderAddIcon = (size: number) => <ThemedPlus size={size} uniProps={mutedIconColor} />;
+const renderGateIcon = (size: number) => (
+  <ThemedCheckCircle size={size} uniProps={mutedIconColor} />
+);
+const renderCheckIcon = (size: number) => (
+  <ThemedCheckCircle size={size} uniProps={accentIconColor} />
+);
 const renderInputsIcon = (size: number) => (
   <ThemedDataObject size={size} uniProps={mutedIconColor} />
 );
@@ -602,6 +718,41 @@ const styles = StyleSheet.create((theme) => ({
   canvasWrap: {
     flex: 1,
     overflow: "hidden",
+  },
+  validationError: {
+    position: "absolute",
+    top: theme.spacing[3],
+    left: theme.spacing[3],
+    zIndex: 2,
+    maxWidth: 460,
+    gap: theme.spacing[1],
+    padding: theme.spacing[3],
+    borderWidth: 1,
+    borderColor: theme.colors.statusDanger,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.statusDangerSurface,
+  },
+  validationNotice: {
+    position: "absolute",
+    top: theme.spacing[3],
+    left: theme.spacing[3],
+    zIndex: 2,
+    maxWidth: 460,
+    gap: theme.spacing[1],
+    padding: theme.spacing[3],
+    borderWidth: 1,
+    borderColor: theme.colors.statusWarning,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.statusWarningSurface,
+  },
+  validationTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: "600",
+  },
+  validationProblem: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
   },
   loading: {
     ...StyleSheet.absoluteFillObject,

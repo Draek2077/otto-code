@@ -82,8 +82,8 @@ describe("ottoToolGroupForName", () => {
   });
 
   test("routes the categories split out of the agents catch-all", () => {
-    expect(ottoToolGroupForName("start_orchestration")).toBe("orchestration");
-    expect(ottoToolGroupForName("get_orchestration_status")).toBe("orchestration");
+    expect(ottoToolGroupForName("start_workflow")).toBe("orchestration");
+    expect(ottoToolGroupForName("get_workflow_status")).toBe("orchestration");
     expect(ottoToolGroupForName("record_project_charter")).toBe("knowledge");
     expect(ottoToolGroupForName("query_project_knowledge")).toBe("knowledge");
     expect(ottoToolGroupForName("migrate_legacy_project_findings")).toBe("knowledge");

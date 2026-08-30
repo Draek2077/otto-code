@@ -1,6 +1,7 @@
 import {
   type GraphEdge,
   type GraphNode,
+  type GraphNodeCheck,
   type GraphOutputField,
   type GraphQueryTool,
   type GraphSkipReason,
@@ -9,6 +10,7 @@ import {
   type Run,
   type RunPhase,
   type RunPhaseCandidate,
+  type WorkflowScheduleSource,
   validateOrchestrationGraph,
 } from "@otto-code/protocol/orchestration";
 import { judgeVerdictPassed } from "@otto-code/protocol/judge-verdict";
@@ -17,6 +19,7 @@ import {
   type OrchestrationLogger,
   type RunEngineAwaitResult,
   type RunEngineCaps,
+  type RunEngineGateDecision,
   type RunEngineSpawnResult,
   RunEngineError,
   buildJudgeTask,
@@ -24,9 +27,11 @@ import {
 } from "./run-engine.js";
 import { buildOutputInstruction, extractOutputFieldsFromProse } from "./node-output.js";
 import {
+  evaluateGraphCheck,
   resolveEdgeCondition,
   selectCarriedFields,
   validateEdgeConditions,
+  validateGraphChecks,
 } from "./edge-conditions.js";
 
 // The deterministic-graph engine (projects/orchestration-graphs): executes a
@@ -85,6 +90,12 @@ export interface GraphEnginePort {
    * not an error.
    */
   cancelAgent(input: { agentId: string }): Promise<void>;
+  /** Await an attended Graph gate through the daemon's durable run controls. */
+  awaitGate(input: {
+    runId: string;
+    phaseId: string;
+    signal: AbortSignal;
+  }): Promise<RunEngineGateDecision>;
   /** Deliver a labeled node completion (or the final wrap-up) to the orchestrator's chat. */
   notifyOrchestrator(input: { text: string }): Promise<void>;
   emit(run: Run): void | Promise<void>;
@@ -129,14 +140,9 @@ export function buildRunFromGraph(input: {
   workspaceId?: string;
   teamId?: string;
   teamName?: string;
+  scheduleSource?: WorkflowScheduleSource;
 }): Run {
-  // Structural problems first, then expression syntax - the latter needs the
-  // JSONata parser, which is daemon-only (the designer's shared validator must
-  // stay dependency-free for the client bundle).
-  const problems = [
-    ...validateOrchestrationGraph(input.graph),
-    ...validateEdgeConditions(input.graph.edges ?? []),
-  ];
+  const problems = validateGraphForExecution(input.graph);
   if (problems.length > 0) {
     throw new RunEngineError(`Graph is not executable: ${problems.join(" ")}`);
   }
@@ -148,6 +154,10 @@ export function buildRunFromGraph(input: {
     status: input.status ?? "pending",
     kind: "graph",
     graphId: input.graph.id,
+    // A Run must retain what it actually executed, rather than pointing only
+    // at the mutable saved Graph. Drafts may be re-saved; once started this
+    // object is only carried forward by Run updates.
+    graphSnapshot: structuredClone(input.graph),
     graphInputs: input.graphInputs,
     phases,
     ...(input.conductorAgentId ? { conductorAgentId: input.conductorAgentId } : {}),
@@ -155,14 +165,29 @@ export function buildRunFromGraph(input: {
     ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
     ...(input.teamId ? { teamId: input.teamId } : {}),
     ...(input.teamName ? { teamName: input.teamName } : {}),
+    ...(input.scheduleSource ? { scheduleSource: input.scheduleSource } : {}),
     agentCount: 0,
     createdAt: input.now,
     updatedAt: input.now,
   };
 }
 
-// Project worker nodes into RunPhases (type "graph-node") with edge-derived
-// dependsOn; root edges are ordering-only and excluded.
+/**
+ * The daemon's complete hard gate for a Graph launch. The client deliberately
+ * checks only structural concerns because JSONata stays out of its bundle; all
+ * daemon launch paths must run this before an orchestrator or worker is born.
+ */
+export function validateGraphForExecution(graph: OrchestrationGraph): string[] {
+  return [
+    ...validateOrchestrationGraph(graph),
+    ...validateEdgeConditions(graph.edges ?? []),
+    ...validateGraphChecks(graph.nodes),
+  ];
+}
+
+// Project Graph nodes into RunPhases with edge-derived dependsOn. Gates and
+// Checks have their own phase type and make no provider call; root edges are
+// ordering-only and excluded.
 function buildGraphPhases(
   graph: OrchestrationGraph,
   graphInputs: Record<string, string>,
@@ -176,7 +201,7 @@ function buildGraphPhases(
       .map((edge) => edge.from);
     const phase: RunPhase = {
       id: node.id,
-      type: "graph-node",
+      type: graphPhaseType(node),
       title: node.title,
       task: buildNodeBasePrompt(node, graphInputs) || node.title,
       status: "pending",
@@ -206,6 +231,12 @@ function buildNodeBasePrompt(node: GraphNode, inputs: Record<string, string>): s
   return parts.join("\n\n");
 }
 
+function graphPhaseType(node: GraphNode): string {
+  if (node.kind === "gate") return "gate";
+  if (node.kind === "check") return "check";
+  return "graph-node";
+}
+
 // A node settles three ways, not two. `skipped` is control flow routing around
 // the node - an ordinary outcome that must never read as an error, and never as
 // silence: every skip carries a reason so the run can say why part of the graph
@@ -213,7 +244,13 @@ function buildNodeBasePrompt(node: GraphNode, inputs: Record<string, string>): s
 // deliberate; threading it through joins and the wrap-up afterwards is strictly
 // harder.
 type NodeResult =
-  | { status: "done"; output: string | null; fields: Record<string, unknown> | null }
+  | {
+      status: "done";
+      output: string | null;
+      fields: Record<string, unknown> | null;
+      /** The named output that actually settled. Ordinary nodes use "output". */
+      port: string;
+    }
   | { status: "failed" }
   | { status: "skipped"; reason: GraphSkipReason };
 
@@ -227,6 +264,7 @@ interface UpstreamMaterial {
 
 const SKIP_SENTENCES: Record<GraphSkipReason, string> = {
   condition: "A condition on an incoming edge routed around this node.",
+  port: "An upstream output port routed around this node.",
   "upstream-skipped": "An upstream node was skipped.",
   "upstream-failed": "An upstream node failed.",
   canceled: "Run canceled.",
@@ -271,6 +309,10 @@ interface GraphRunContext {
   agentsSpawned: number;
   /** First hard failure message (names the node), if any. */
   failure: string | null;
+  /** A human explicitly rejected an attended gate. */
+  gateRejected: boolean;
+  /** Which gate, and the reviewer's note if any - the run's terminal reason. */
+  gateRejectionReason: string | null;
   /** Final output per completed node, for the deliverables wrap-up. */
   outputsById: Map<string, string>;
 }
@@ -299,6 +341,8 @@ export async function executeGraphRun(input: {
     semaphore: new Semaphore(input.caps.maxConcurrency),
     agentsSpawned: 0,
     failure: null,
+    gateRejected: false,
+    gateRejectionReason: null,
     outputsById: new Map(),
   };
   const { run, port } = ctx;
@@ -343,6 +387,9 @@ export async function executeGraphRun(input: {
   if (ctx.signal.aborted) {
     run.status = "canceled";
     run.error = run.error ?? "Orchestration canceled.";
+  } else if (ctx.gateRejected) {
+    run.status = "canceled";
+    run.error = ctx.gateRejectionReason ?? "Rejected at a gate.";
   } else if (ctx.failure) {
     run.status = "failed";
     run.error = ctx.failure;
@@ -423,6 +470,12 @@ async function executeNode(
   const upstreamMaterial = gate.material;
 
   try {
+    if (node.kind === "gate") {
+      return await executeGraphGate(ctx, node, phase);
+    }
+    if (node.kind === "check") {
+      return await executeGraphCheck(ctx, node, phase, upstreamMaterial);
+    }
     const dispatched = await dispatchNode(ctx, node, phase, upstreamMaterial);
     if (dispatched.output !== null) {
       ctx.outputsById.set(node.id, dispatched.output);
@@ -437,9 +490,16 @@ async function executeNode(
       ctx,
       `Node "${node.title}" finished.\n\n${truncateForChat(dispatched.output ?? "(no output)")}`,
     );
-    return { status: "done", output: dispatched.output, fields: dispatched.fields };
+    return { status: "done", output: dispatched.output, fields: dispatched.fields, port: "output" };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // A worker interrupted by a run cancel (or a gate rejection's cascade) did
+    // not fail; the user stopped it. Keep that distinction on the phase so the
+    // library and visualizer never show a cancel as an error.
+    if (ctx.signal.aborted) {
+      await markCanceled(ctx, phase, message);
+      return { status: "failed" };
+    }
     ctx.failure = ctx.failure ?? `Node "${node.title}" failed: ${message}`;
     if (phase) {
       phase.status = "failed";
@@ -451,6 +511,118 @@ async function executeNode(
     await safeNotify(ctx, `Node "${node.title}" FAILED: ${truncateForChat(message)}`);
     return { status: "failed" };
   }
+}
+
+async function markCanceled(
+  ctx: GraphRunContext,
+  phase: RunPhase | undefined,
+  message: string,
+): Promise<void> {
+  if (!phase) return;
+  phase.status = "canceled";
+  phase.notes = message;
+  phase.completedAt = ctx.port.now();
+  ctx.run.updatedAt = ctx.port.now();
+  await ctx.port.emit(ctx.run);
+}
+
+/** A Check is deterministic control flow, never a disguised review agent. */
+async function executeGraphCheck(
+  ctx: GraphRunContext,
+  node: GraphNode,
+  phase: RunPhase | undefined,
+  material: UpstreamMaterial[],
+): Promise<NodeResult> {
+  const check = node.check as GraphNodeCheck | undefined;
+  const expression = check?.expression;
+  if (!phase || !expression) {
+    throw new RunEngineError(`Check "${node.title}" has no expression or run phase.`, node.id);
+  }
+  const upstream = Object.fromEntries(
+    material.map((item) => [item.nodeId, { output: item.output, fields: item.fields }]),
+  );
+  const result = await evaluateGraphCheck(expression, { upstream });
+  if ("error" in result) {
+    return failNode(ctx, node, phase, result.error);
+  }
+  if (!result.passed) {
+    const message = check?.message ?? `Check "${node.title}" did not pass: ${expression}`;
+    phase.status = "failed";
+    phase.notes = message;
+    phase.completedAt = ctx.port.now();
+    ctx.run.updatedAt = ctx.port.now();
+    await ctx.port.emit(ctx.run);
+    await safeNotify(ctx, `Check "${node.title}" failed.`);
+    // Legacy Check graphs had no fail output, so false remained terminal. A
+    // declared fail edge makes failure a durable control-flow outcome instead.
+    if (!hasCheckOutputEdge(ctx.graph, node.id, "fail")) {
+      ctx.failure = ctx.failure ?? `Node "${node.title}" failed: ${message}`;
+      return { status: "failed" };
+    }
+    return { status: "done", output: null, fields: null, port: "fail" };
+  }
+  phase.status = "done";
+  phase.notes = `Check passed: ${expression}`;
+  phase.completedAt = ctx.port.now();
+  ctx.run.updatedAt = ctx.port.now();
+  await ctx.port.emit(ctx.run);
+  await safeNotify(ctx, `Check "${node.title}" passed.`);
+  return { status: "done", output: null, fields: null, port: "pass" };
+}
+
+/**
+ * An attended Graph gate is a real run pause, not an instruction to an agent.
+ * Approval releases downstream work; rejection terminates the run and lets
+ * normal dependency handling project downstream nodes as skipped.
+ */
+async function executeGraphGate(
+  ctx: GraphRunContext,
+  node: GraphNode,
+  phase: RunPhase | undefined,
+): Promise<NodeResult> {
+  if (!phase) {
+    throw new RunEngineError(`Gate "${node.title}" has no run phase.`, node.id);
+  }
+  phase.status = "blocked";
+  phase.notes = substituteGraphInputs(node.prompt?.trim() || "Awaiting approval.", ctx.inputs);
+  ctx.run.status = "paused";
+  ctx.run.updatedAt = ctx.port.now();
+  await ctx.port.emit(ctx.run);
+  await safeNotify(ctx, `Gate "${node.title}" is awaiting approval.`);
+
+  const decision = await ctx.port.awaitGate({
+    runId: ctx.run.id,
+    phaseId: phase.id,
+    signal: ctx.signal,
+  });
+  if (decision.approved) {
+    phase.status = "done";
+    phase.completedAt = ctx.port.now();
+    if (decision.note) {
+      phase.notes = decision.note;
+    }
+    ctx.run.status = "running";
+    ctx.run.updatedAt = ctx.port.now();
+    await ctx.port.emit(ctx.run);
+    await safeNotify(ctx, `Gate "${node.title}" approved.`);
+    return { status: "done", output: null, fields: null, port: "output" };
+  }
+
+  // A rejection is the user's decision, not an error, so the phase is
+  // canceled rather than failed. Only the terminal branch of executeGraphRun
+  // sets the run status: siblings may still be settling, and a run must not
+  // read as canceled while workers are visibly finishing.
+  phase.status = "canceled";
+  phase.completedAt = ctx.port.now();
+  phase.notes = decision.note ?? "Rejected at gate.";
+  ctx.gateRejected = true;
+  ctx.gateRejectionReason = decision.note
+    ? `Rejected at gate "${node.title}": ${decision.note}`
+    : `Rejected at gate "${node.title}".`;
+  ctx.run.updatedAt = ctx.port.now();
+  await ctx.port.emit(ctx.run);
+  await safeNotify(ctx, `Gate "${node.title}" rejected.`);
+  return { status: "failed" };
 }
 
 async function failNode(
@@ -469,6 +641,14 @@ async function failNode(
   }
   await safeNotify(ctx, `Node "${node.title}" FAILED: ${truncateForChat(message)}`);
   return { status: "failed" };
+}
+
+function hasCheckOutputEdge(
+  graph: OrchestrationGraph,
+  nodeId: string,
+  port: "pass" | "fail",
+): boolean {
+  return (graph.edges ?? []).some((edge) => edge.from === nodeId && edge.fromPort === port);
 }
 
 interface SettledUpstream {
@@ -502,9 +682,14 @@ async function resolveIncomingEdges(
   }
   const material: UpstreamMaterial[] = [];
   let vetoedBy: string | null = null;
+  let routedAwayBy: string | null = null;
   for (const upstream of settled) {
     if (upstream.result.status !== "done") {
       continue; // skipped upstream: contributes nothing, vetoes nothing.
+    }
+    if (!edgeAcceptsSettledPort(upstream.edge, upstream.node, upstream.result.port)) {
+      routedAwayBy = routedAwayBy ?? upstream.node.title;
+      continue;
     }
     const resolution = await resolveEdgeCondition(upstream.edge, {
       fields: upstream.result.fields,
@@ -532,6 +717,13 @@ async function resolveIncomingEdges(
     };
   }
   if (material.length === 0) {
+    if (routedAwayBy) {
+      return {
+        status: "skip",
+        reason: "port",
+        detail: `The output port from "${routedAwayBy}" chose another branch.`,
+      };
+    }
     return {
       status: "skip",
       reason: "upstream-skipped",
@@ -539,6 +731,13 @@ async function resolveIncomingEdges(
     };
   }
   return { status: "run", material };
+}
+
+function edgeAcceptsSettledPort(edge: GraphEdge, node: GraphNode, settledPort: string): boolean {
+  // Missing Check ports are the legacy one-way continuation and therefore
+  // mean pass. All newly drawn Check wires write the port explicitly.
+  const expected = edge.fromPort ?? (node.kind === "check" ? "pass" : "output");
+  return expected === settledPort;
 }
 
 // Record a skip on the projection: the machine-readable reason for clients and

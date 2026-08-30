@@ -29,9 +29,9 @@ export const OTTO_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
   },
   {
     group: "orchestration",
-    label: "Orchestration",
+    label: "Workflows",
     description:
-      "Let an agent declare a multi-chat plan and run it (start_orchestration, get_orchestration_status). Off means agents can still spawn chats one at a time, but not fan out under a daemon-managed graph.",
+      "Let an agent declare and run a multi-chat Workflow (start_workflow, get_workflow_status). Off means agents can still spawn chats one at a time, but not fan out under a daemon-managed Workflow.",
   },
   {
     group: "tasks",

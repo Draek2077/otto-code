@@ -57,11 +57,11 @@ describe("composeRoleFocusDirective", () => {
   test("the orchestrator gets the conductor method directive", () => {
     const directive = composeRoleFocusDirective(["orchestrator"]);
     expect(directive).toContain("sole conductor");
-    expect(directive).toContain("start_orchestration");
+    expect(directive).toContain("start_workflow");
     expect(directive).toContain("Choose tools because the task needs their specific capability");
     expect(directive).toContain("Use create_chat only");
     expect(directive).toContain("Use suggest_task only");
-    expect(directive).not.toContain("Prefer start_orchestration");
+    expect(directive).not.toContain("Prefer start_workflow");
   });
 
   test("a non-orchestrator coordinator gets the lighter delegate nudge", () => {
@@ -69,7 +69,7 @@ describe("composeRoleFocusDirective", () => {
     expect(directive).toContain("coordinator");
     expect(directive).toContain("do the work directly");
     expect(directive).toContain("hand off genuinely multi-chat work to the team's orchestrator");
-    expect(directive).not.toContain("start_orchestration");
+    expect(directive).not.toContain("start_workflow");
   });
 
   test("focused personalities are told to stay on task", () => {

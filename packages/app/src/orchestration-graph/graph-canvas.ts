@@ -1,6 +1,7 @@
 import type {
   GraphEdge,
   GraphNode,
+  GraphNodeCheck,
   GraphQueryTool,
   OrchestrationGraph,
   PromptTemplate,
@@ -45,10 +46,14 @@ import {
 
 interface CanvasNodeInfo {
   nodeId: string;
-  kind: "orchestrator" | "agent";
+  kind: "orchestrator" | "agent" | "gate" | "check";
   title: string;
   role: string;
   prompt: string;
+  /** Check expression, evaluated deterministically against named upstream output. */
+  checkExpression: string;
+  /** Optional failure sentence written to the durable Run. */
+  checkMessage: string;
   promptFromInput: string;
   autonomous: boolean;
   loopMode: "none" | "times" | "until";
@@ -91,6 +96,8 @@ export interface GraphCanvasHandle {
   /** Read the canvas back into a graph document (name/inputs come from `base`). */
   exportGraph(base: OrchestrationGraph): OrchestrationGraph;
   addAgentNode(): void;
+  addGateNode(): void;
+  addCheckNode(): void;
   /** Refresh the declared-input affordances inside every node card. */
   setDeclaredInputs(keys: readonly string[]): void;
   /** Refresh the bindable prompt templates inside every node card. */
@@ -108,6 +115,8 @@ export interface CreateGraphCanvasOptions {
   theme: GraphCanvasTheme;
   /** Fired on any user edit - node fields, moves, wires, deletes. */
   onChange(): void;
+  /** Enables the declared Check pass/fail port contract on capable hosts. */
+  checkOutputPorts: boolean;
 }
 
 export function createGraphCanvas(
@@ -477,12 +486,18 @@ export function createGraphCanvas(
     edgeInspector.classList.add("og-hidden");
   };
 
-  const openEdgeInspector = (from: string, to: string, fromTitle: string, toTitle: string) => {
-    selectedEdgeKey = graphEdgeKey(from, to);
+  const openEdgeInspector = (
+    from: string,
+    to: string,
+    fromTitle: string,
+    toTitle: string,
+    fromPort?: string,
+  ) => {
+    selectedEdgeKey = graphEdgeKey(from, to, fromPort);
     const carried = carriedEdgeFields.get(selectedEdgeKey) ?? {};
     const title = edgeInspector.querySelector<HTMLElement>("[data-og-edge-title]");
     if (title) {
-      title.textContent = `${fromTitle} → ${toTitle}`;
+      title.textContent = `${fromTitle}${fromPort ? ` · ${fromPort}` : ""} → ${toTitle}`;
     }
     const whenInput = inspectorInput("when");
     if (whenInput) {
@@ -538,14 +553,24 @@ export function createGraphCanvas(
   edgeInspector.addEventListener("pointerdown", (event) => event.stopPropagation());
 
   ed.on("connectionSelected", (payload) => {
-    const selection = payload as { output_id?: string; input_id?: string };
+    const selection = payload as {
+      output_id?: string;
+      input_id?: string;
+      output_class?: string;
+    };
     const from = infoByDfid.get(String(selection.output_id));
     const to = infoByDfid.get(String(selection.input_id));
     if (!from || !to) {
       closeEdgeInspector();
       return;
     }
-    openEdgeInspector(from.nodeId, to.nodeId, from.title || "Upstream", to.title || "Downstream");
+    openEdgeInspector(
+      from.nodeId,
+      to.nodeId,
+      from.title || "Upstream",
+      to.title || "Downstream",
+      graphPortForDrawflowOutput(from.kind, selection.output_class),
+    );
   });
   ed.on("connectionUnselected", closeEdgeInspector);
   ed.on("nodeSelected", closeEdgeInspector);
@@ -555,17 +580,16 @@ export function createGraphCanvas(
     const info = buildNodeInfo(node);
     // The root has an OUTPUT only: it is the entry point, fed automatically by
     // the orchestration's own prompt, so there is nothing to wire into it.
+    const outputCount = info.kind === "check" && options.checkOutputPorts ? 2 : 1;
     const dfid = ed.addNode(
       info.kind,
       isRoot ? 0 : 1,
-      1,
+      outputCount,
       position.x,
       position.y,
-      isRoot ? "og-root" : "og-agent",
+      graphNodeClass(info.kind),
       {},
-      isRoot
-        ? buildRootNodeHtml(info)
-        : buildAgentNodeHtml(info, declaredInputKeys, promptTemplates),
+      buildGraphNodeHtml(info, declaredInputKeys, promptTemplates, options.checkOutputPorts),
     );
     infoByDfid.set(String(dfid), info);
     if (isRoot) {
@@ -574,7 +598,7 @@ export function createGraphCanvas(
       rootPosition = position;
     }
     const nodeEl = ed.container.querySelector<HTMLElement>(`#node-${dfid}`);
-    if (nodeEl && !isRoot) {
+    if (nodeEl && info.kind === "agent") {
       updateLoopVisibility(nodeEl, info.loopMode);
       updateToolGroupVisibility(nodeEl, info.toolGroupsMode);
       updateTemplateVisibility(nodeEl, info.templateId);
@@ -596,7 +620,16 @@ export function createGraphCanvas(
         for (const edge of graph.edges ?? []) {
           const carried = carryUneditedEdgeFields(edge);
           if (Object.keys(carried).length > 0) {
-            carriedEdgeFields.set(graphEdgeKey(edge.from, edge.to), carried);
+            const source = graph.nodes.find((node) => node.id === edge.from);
+            carriedEdgeFields.set(
+              graphEdgeKey(
+                edge.from,
+                edge.to,
+                edge.fromPort ?? (source?.kind === "check" ? "pass" : undefined),
+                edge.toPort,
+              ),
+              carried,
+            );
           }
         }
         const dfidByNodeId = new Map<string, number>();
@@ -620,7 +653,16 @@ export function createGraphCanvas(
           const from = dfidByNodeId.get(edge.from);
           const to = dfidByNodeId.get(edge.to);
           if (from !== undefined && to !== undefined && from !== to) {
-            ed.addConnection(from, to, "output_1", "input_1");
+            const source = nodes.find((node) => node.id === edge.from);
+            if (!canRenderGraphEdge(options.checkOutputPorts, source?.kind, edge.fromPort)) {
+              continue;
+            }
+            ed.addConnection(
+              from,
+              to,
+              drawflowOutputForGraphPort(source?.kind, edge.fromPort),
+              "input_1",
+            );
           }
         }
         refreshConnectedPorts();
@@ -653,13 +695,21 @@ export function createGraphCanvas(
         if (!from) {
           continue;
         }
-        for (const output of Object.values(record.outputs ?? {})) {
+        const source = infoByDfid.get(dfid);
+        for (const [outputName, output] of Object.entries(record.outputs ?? {})) {
           for (const connection of output.connections ?? []) {
             const to = nodeIdByDfid.get(String(connection.node));
             if (to && to !== from) {
               // Re-attach whatever this edge carried (condition, fields, ports,
               // label) - the canvas draws wires, it doesn't own their meaning.
-              edges.push({ ...carriedEdgeFields.get(graphEdgeKey(from, to)), from, to });
+              const fromPort = graphPortForDrawflowOutput(source?.kind, outputName);
+              const carried = carriedEdgeFields.get(graphEdgeKey(from, to, fromPort));
+              edges.push({
+                ...carried,
+                from,
+                to,
+                ...(source?.kind === "check" ? { fromPort } : {}),
+              });
             }
           }
         }
@@ -684,10 +734,42 @@ export function createGraphCanvas(
       notifyChange();
     },
 
+    addGateNode() {
+      const existing = new Set([...infoByDfid.values()].map((info) => info.nodeId));
+      const nodeId = newGraphNodeId(existing);
+      const offset = infoByDfid.size;
+      addNode(
+        {
+          id: nodeId,
+          kind: "gate",
+          title: "Approval gate",
+          prompt: "Review the preceding work and approve before execution continues.",
+        } satisfies GraphNode,
+        { x: 420 + (offset % 3) * 60, y: 80 + (offset % 5) * 60 },
+      );
+      notifyChange();
+    },
+
+    addCheckNode() {
+      const existing = new Set([...infoByDfid.values()].map((info) => info.nodeId));
+      const nodeId = newGraphNodeId(existing);
+      const offset = infoByDfid.size;
+      addNode(
+        {
+          id: nodeId,
+          kind: "check",
+          title: "Check output",
+          check: { expression: "true", message: "The deterministic check did not pass." },
+        } satisfies GraphNode,
+        { x: 420 + (offset % 3) * 60, y: 80 + (offset % 5) * 60 },
+      );
+      notifyChange();
+    },
+
     setDeclaredInputs(keys) {
       declaredInputKeys = [...keys];
       for (const [dfid, info] of infoByDfid) {
-        if (info.kind === "orchestrator") {
+        if (info.kind !== "agent") {
           continue;
         }
         const nodeEl = ed.container.querySelector<HTMLElement>(`#node-${dfid}`);
@@ -711,7 +793,7 @@ export function createGraphCanvas(
     setPromptTemplates(templates) {
       promptTemplates = [...templates];
       for (const [dfid, info] of infoByDfid) {
-        if (info.kind === "orchestrator") {
+        if (info.kind !== "agent") {
           continue;
         }
         const select = ed.container.querySelector<HTMLSelectElement>(
@@ -747,12 +829,15 @@ export function createGraphCanvas(
 /** Project a graph node onto the editable state one card holds. */
 function buildNodeInfo(node: GraphNode): CanvasNodeInfo {
   const loop = readLoopSettings(node);
+  const check = node.check as GraphNodeCheck | undefined;
   return {
     nodeId: node.id,
-    kind: node.kind === "orchestrator" ? "orchestrator" : "agent",
+    kind: canvasNodeKind(node),
     title: node.title,
     role: node.role ?? "researcher",
     prompt: node.prompt ?? "",
+    checkExpression: check?.expression ?? "",
+    checkMessage: check?.message ?? "",
     promptFromInput: node.promptFromInput ?? "",
     autonomous: node.autonomous === true,
     loopMode: loop.mode,
@@ -773,6 +858,73 @@ function buildNodeInfo(node: GraphNode): CanvasNodeInfo {
     templateVariables: formatTemplateVariables(node.promptTemplate?.variables),
     carried: carryUneditedNodeFields(node),
   };
+}
+
+function canvasNodeKind(node: GraphNode): CanvasNodeInfo["kind"] {
+  if (node.kind === "orchestrator") {
+    return "orchestrator";
+  }
+  if (node.kind === "gate") {
+    return "gate";
+  }
+  if (node.kind === "check") {
+    return "check";
+  }
+  return "agent";
+}
+
+function graphNodeClass(kind: CanvasNodeInfo["kind"]): string {
+  if (kind === "orchestrator") {
+    return "og-root";
+  }
+  if (kind === "gate") {
+    return "og-gate";
+  }
+  if (kind === "check") {
+    return "og-check";
+  }
+  return "og-agent";
+}
+
+function graphPortForDrawflowOutput(
+  kind: CanvasNodeInfo["kind"] | undefined,
+  outputName: string | undefined,
+): string | undefined {
+  if (kind !== "check") {
+    return undefined;
+  }
+  return outputName === "output_2" ? "fail" : "pass";
+}
+
+function drawflowOutputForGraphPort(kind: GraphNode["kind"] | undefined, port?: string): string {
+  return kind === "check" && port === "fail" ? "output_2" : "output_1";
+}
+
+/** Never redraw an unsupported Check branch as legacy output_1 routing. */
+function canRenderGraphEdge(
+  checkOutputPorts: boolean,
+  kind: GraphNode["kind"] | undefined,
+  fromPort: string | undefined,
+): boolean {
+  return checkOutputPorts || kind !== "check" || fromPort === undefined;
+}
+
+function buildGraphNodeHtml(
+  info: CanvasNodeInfo,
+  declaredInputs: readonly string[],
+  templates: readonly PromptTemplate[],
+  checkOutputPorts: boolean,
+): string {
+  if (info.kind === "orchestrator") {
+    return buildRootNodeHtml(info);
+  }
+  if (info.kind === "gate") {
+    return buildGateNodeHtml(info);
+  }
+  if (info.kind === "check") {
+    return buildCheckNodeHtml(info, checkOutputPorts);
+  }
+  return buildAgentNodeHtml(info, declaredInputs, templates);
 }
 
 function readLoopSettings(node: GraphNode): {
@@ -817,6 +969,12 @@ const FIELD_SETTERS: Record<string, (info: CanvasNodeInfo, value: string | boole
   },
   prompt: (info, value) => {
     info.prompt = String(value);
+  },
+  checkExpression: (info, value) => {
+    info.checkExpression = String(value);
+  },
+  checkMessage: (info, value) => {
+    info.checkMessage = String(value);
   },
   promptFromInput: (info, value) => {
     info.promptFromInput = String(value);
@@ -893,14 +1051,8 @@ function buildGraphNode(
   nodeId: string,
   position: { x: number; y: number },
 ): GraphNode {
-  if (info.kind === "orchestrator") {
-    return {
-      ...info.carried,
-      id: nodeId,
-      kind: "orchestrator",
-      title: info.title.trim() || "Orchestrator",
-      position,
-    };
+  if (info.kind !== "agent") {
+    return buildControlGraphNode(info, nodeId, position);
   }
   const loop = buildLoopFromInfo(info);
   const outputFields = parseOutputFields(info.outputFields);
@@ -937,6 +1089,43 @@ function buildGraphNode(
           },
         }
       : {}),
+    position,
+  };
+}
+
+function buildControlGraphNode(
+  info: CanvasNodeInfo,
+  nodeId: string,
+  position: { x: number; y: number },
+): GraphNode {
+  if (info.kind === "orchestrator") {
+    return {
+      ...info.carried,
+      id: nodeId,
+      kind: "orchestrator",
+      title: info.title.trim() || "Orchestrator",
+      position,
+    };
+  }
+  if (info.kind === "gate") {
+    return {
+      ...info.carried,
+      id: nodeId,
+      kind: "gate",
+      title: info.title.trim() || "Approval gate",
+      ...(info.prompt.trim() ? { prompt: info.prompt } : {}),
+      position,
+    };
+  }
+  return {
+    ...info.carried,
+    id: nodeId,
+    kind: "check",
+    title: info.title.trim() || "Check output",
+    check: {
+      expression: info.checkExpression.trim() || "true",
+      ...(info.checkMessage.trim() ? { message: info.checkMessage.trim() } : {}),
+    },
     position,
   };
 }
@@ -1064,6 +1253,48 @@ function buildRootNodeHtml(info: CanvasNodeInfo): string {
     `<input class="og-name" data-og-field="title" value="${escapeHtml(info.title)}" placeholder="Name…" /></div>` +
     `<div class="og-ports-row og-ports-row-out"><span class="og-port-label og-port-label-out">Kickoff</span></div>` +
     `<div class="og-root-note">Hosts the orchestration chat and takes the orchestration's own prompt automatically. Its output kicks the graph off; whatever nothing else consumes comes back as the final answer.</div>` +
+    `</div>`
+  );
+}
+
+/** A human boundary: it pauses the daemon run and never consumes a model seat. */
+function buildGateNodeHtml(info: CanvasNodeInfo): string {
+  return (
+    `<div class="og-node og-node-gate">` +
+    `<div class="og-title">` +
+    `<span class="og-type og-type-gate">Gate<span class="og-sep"> ·</span></span>` +
+    `<input class="og-name" data-og-field="title" value="${escapeHtml(info.title)}" placeholder="Name…" />` +
+    DELETE_BUTTON_HTML +
+    `</div>` +
+    `<div class="og-ports-row"><span class="og-port-label og-port-label-in">In</span>` +
+    `<span class="og-port-label og-port-label-out">Approved</span></div>` +
+    `<div class="og-body">` +
+    `<label class="og-label">Review prompt</label>` +
+    `<textarea class="og-prompt" data-og-field="prompt" rows="3" placeholder="What must the human approve?">${escapeHtml(info.prompt)}</textarea>` +
+    `<div class="og-inputs-hint">The run pauses here. Approve releases downstream work; Reject cancels the run. This node never starts an agent.</div>` +
+    `</div>` +
+    `</div>`
+  );
+}
+
+/** A deterministic assertion, evaluated by the daemon without an agent seat. */
+function buildCheckNodeHtml(info: CanvasNodeInfo, checkOutputPorts: boolean): string {
+  return (
+    `<div class="og-node og-node-check">` +
+    `<div class="og-title">` +
+    `<span class="og-type og-type-check">Check<span class="og-sep"> ·</span></span>` +
+    `<input class="og-name" data-og-field="title" value="${escapeHtml(info.title)}" placeholder="Name…" />` +
+    DELETE_BUTTON_HTML +
+    `</div>` +
+    `<div class="og-ports-row"><span class="og-port-label og-port-label-in">In</span>` +
+    `<span class="og-port-label og-port-label-out">${checkOutputPorts ? "Pass / Fail" : "Pass"}</span></div>` +
+    `<div class="og-body">` +
+    `<label class="og-label">JSONata assertion</label>` +
+    `<textarea class="og-prompt" data-og-field="checkExpression" rows="3" placeholder="upstream.review.fields.ready = true">${escapeHtml(info.checkExpression)}</textarea>` +
+    `<div class="og-inputs-hint">Read an incoming node as <code>upstream.nodeId.fields.field</code> or <code>upstream.nodeId.output</code>. ${checkOutputPorts ? "Wire Pass or Fail explicitly; a false Check takes only Fail wires." : "A false result fails the run."} This node never starts an agent.</div>` +
+    `<label class="og-label">Failure message <span class="og-hint">(optional)</span></label>` +
+    `<input class="og-input" data-og-field="checkMessage" value="${escapeHtml(info.checkMessage)}" placeholder="What must be fixed before continuing?" />` +
+    `</div>` +
     `</div>`
   );
 }
@@ -1213,6 +1444,8 @@ function buildCanvasCss(theme: GraphCanvasTheme): string {
 /* the node card (Forge .of-node) */
 .og-canvas .og-node{position:relative;background:${theme.surface};border:1.5px solid ${theme.border};width:100%;border-radius:10px;box-shadow:0 3px 10px rgba(0,0,0,0.28);font-size:12px;color:${theme.foreground};overflow:hidden;}
 .og-canvas .og-node-root{border-left:3px solid ${theme.accent};}
+.og-canvas .og-node-gate{border-left:3px solid ${theme.warning};}
+.og-canvas .og-node-check{border-left:3px solid ${theme.accent};}
 .og-canvas .og-node-root::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;border-radius:8px;background:radial-gradient(130px 110px at 0% 20px, ${accentSoft}, transparent 72%);}
 .og-canvas .og-node-root > .og-title{position:relative;z-index:3;}
 
@@ -1220,6 +1453,8 @@ function buildCanvasCss(theme: GraphCanvasTheme): string {
 .og-canvas .og-title{box-sizing:border-box;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;font-weight:650;letter-spacing:0.01em;background:${theme.surfaceRaised};border-bottom:1px solid ${theme.border};white-space:nowrap;}
 .og-canvas .og-type{flex:0 0 auto;color:${theme.foregroundMuted};font-size:11px;}
 .og-canvas .og-type-root{color:${theme.accent};}
+.og-canvas .og-type-gate{color:${theme.warning};}
+.og-canvas .og-type-check{color:${theme.accent};}
 .og-canvas .og-sep{color:${theme.foregroundMuted};opacity:0.6;}
 .og-canvas .og-name{flex:1 1 auto;min-width:40px;width:40px;background:transparent;border:none;padding:2px 4px;margin:0;font:inherit;font-weight:650;font-size:12px;color:${theme.foreground};border-radius:6px;outline:none;}
 .og-canvas .og-name::placeholder{color:${theme.foregroundMuted};font-weight:500;font-style:italic;}
@@ -1233,6 +1468,10 @@ function buildCanvasCss(theme: GraphCanvasTheme): string {
 /* port labels row - sits beside the dots so In/Out (Answers/Kickoff) read at a glance */
 .og-canvas .og-ports-row{display:flex;justify-content:space-between;padding:5px 10px 0;font-size:10px;color:${theme.foregroundMuted};letter-spacing:0.04em;text-transform:uppercase;}
 .og-canvas .og-ports-row-out{justify-content:flex-end;}
+.og-canvas .drawflow-node.og-check .outputs .output{overflow:visible;}
+.og-canvas .drawflow-node.og-check .outputs .output_1::after,.og-canvas .drawflow-node.og-check .outputs .output_2::after{position:absolute;right:17px;top:1px;font-size:9px;font-family:${theme.fontFamilyUi};font-weight:650;letter-spacing:0.04em;text-transform:uppercase;color:${theme.foregroundMuted};pointer-events:none;}
+.og-canvas .drawflow-node.og-check .outputs .output_1::after{content:"pass";}
+.og-canvas .drawflow-node.og-check .outputs .output_2::after{content:"fail";color:${theme.danger};}
 
 /* body */
 .og-canvas .og-body{padding:8px 10px 10px;display:flex;flex-direction:column;gap:6px;}

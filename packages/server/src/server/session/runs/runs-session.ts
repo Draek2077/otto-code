@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type pino from "pino";
 import type { AgentManager } from "../../agent/agent-manager.js";
 import type { AgentStorage } from "../../agent/agent-storage.js";
@@ -6,9 +7,11 @@ import type { ProviderSnapshotManager } from "../../agent/provider-snapshot-mana
 import type { DaemonConfigStore } from "../../daemon-config-store.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import type { GraphStore } from "../../orchestration/graph-store.js";
+import type { GraphSharingService } from "../../orchestration/graph-sharing-service.js";
 import type { NodeOutputStore } from "../../orchestration/node-output.js";
 import type { PromptTemplateStore } from "../../orchestration/prompt-template-store.js";
-import type { RunService } from "../../orchestration/run-service.js";
+import { graphHash } from "../../orchestration/graph-identity.js";
+import { type WorkflowService, toWireRun } from "../../orchestration/run-service.js";
 import {
   startUserOrchestration,
   type StartUserOrchestrationInput,
@@ -30,8 +33,9 @@ export interface RunsSessionHost {
 
 export interface RunsSessionOptions {
   host: RunsSessionHost;
-  runService: RunService | null | undefined;
+  runService: WorkflowService | null | undefined;
   graphStore: GraphStore | null | undefined;
+  graphSharingService?: GraphSharingService | null;
   nodeOutputStore: NodeOutputStore | null | undefined;
   promptTemplateStore: PromptTemplateStore | null | undefined;
   agentManager: AgentManager;
@@ -48,8 +52,11 @@ export interface RunsSessionOptions {
 // Map the wire message onto the orchestration input, dropping absent optionals
 // (exactOptionalPropertyTypes). Module-level so the RPC handler stays under
 // the complexity ceiling.
-function buildStartUserOrchestrationInput(
-  msg: Extract<SessionInboundMessage, { type: "runs.start.request" }>,
+function buildStartUserWorkflowInput(
+  msg: Extract<
+    SessionInboundMessage,
+    { type: "runs.start.request" } | { type: "workflows.start.request" }
+  >,
 ): StartUserOrchestrationInput {
   return {
     flavor: msg.flavor,
@@ -76,6 +83,58 @@ function buildStartUserOrchestrationInput(
 }
 
 /**
+ * The daemon binds a Graph review to the exact launch request. This is kept
+ * session-local: reconnecting simply requires a fresh factual review.
+ */
+const MAX_PENDING_START_CONFIRMATIONS = 16;
+
+function workflowStartFingerprint(
+  input: StartUserOrchestrationInput,
+  reviewedGraphHash: string | null,
+): string {
+  return JSON.stringify({
+    // The confirmation acknowledges the agent count of a specific Graph
+    // document, so an edit between review and start must invalidate it.
+    reviewedGraphHash,
+    flavor: input.flavor,
+    cwd: input.cwd,
+    workspaceId: input.workspaceId,
+    title: input.title,
+    description: input.description,
+    orchestratorPersonalityId: input.orchestratorPersonalityId,
+    orchestratorProvider: input.orchestratorProvider,
+    orchestratorModel: input.orchestratorModel,
+    orchestratorThinkingOptionId: input.orchestratorThinkingOptionId,
+    prompt: input.prompt,
+    graphId: input.graphId,
+    graphInputs: input.graphInputs
+      ? Object.fromEntries(
+          Object.entries(input.graphInputs).sort(([left], [right]) => left.localeCompare(right)),
+        )
+      : undefined,
+    draft: input.draft,
+    runId: input.runId,
+  });
+}
+
+function isProjectWorkflowLibraryRequest(
+  msg: SessionInboundMessage,
+): msg is Extract<
+  SessionInboundMessage,
+  | { type: "workflows.graph.save.request" }
+  | { type: "workflows.templates.list.request" }
+  | { type: "workflows.template.save.request" }
+  | { type: "workflows.storage.transfer.request" }
+> {
+  return (
+    msg.type === "workflows.graph.save.request" ||
+    msg.type === "workflows.templates.list.request" ||
+    msg.type === "workflows.template.save.request" ||
+    msg.type === "workflows.storage.transfer.request"
+  );
+}
+
+/**
  * The Otto orchestration-runs session domain: run snapshot and control, graph
  * and prompt-template storage, and starting a user orchestration. Extracted
  * from `session.ts` so the dispatcher dispatches and the domain owns its own
@@ -84,8 +143,9 @@ function buildStartUserOrchestrationInput(
  */
 export class RunsSession {
   private readonly host: RunsSessionHost;
-  private readonly runService: RunService | null | undefined;
+  private readonly runService: WorkflowService | null | undefined;
   private readonly graphStore: GraphStore | null | undefined;
+  private readonly graphSharingService: GraphSharingService | null;
   private readonly nodeOutputStore: NodeOutputStore | null | undefined;
   private readonly promptTemplateStore: PromptTemplateStore | null | undefined;
   private readonly agentManager: AgentManager;
@@ -97,11 +157,13 @@ export class RunsSession {
   private readonly ottoHome: string;
   private readonly worktreesRoot: string | undefined;
   private readonly logger: pino.Logger;
+  private readonly pendingStartConfirmationTokens = new Map<string, string>();
 
   constructor(options: RunsSessionOptions) {
     this.host = options.host;
     this.runService = options.runService;
     this.graphStore = options.graphStore;
+    this.graphSharingService = options.graphSharingService ?? null;
     this.nodeOutputStore = options.nodeOutputStore;
     this.promptTemplateStore = options.promptTemplateStore;
     this.agentManager = options.agentManager;
@@ -116,6 +178,7 @@ export class RunsSession {
   }
 
   dispatch(msg: SessionInboundMessage): Promise<void> | undefined {
+    if (isProjectWorkflowLibraryRequest(msg)) return this.dispatchProjectWorkflowLibrary(msg);
     switch (msg.type) {
       case "runs.get_snapshot.request": {
         this.handleRunsGetSnapshotRequest(msg);
@@ -139,6 +202,12 @@ export class RunsSession {
         return this.handleRunsGraphsSaveRequest(msg);
       case "runs.graphs.delete.request":
         return this.handleRunsGraphsDeleteRequest(msg);
+      case "workflows.graphs.list.request":
+        return this.handleWorkflowsGraphsListRequest(msg);
+      case "workflows.graph.export.request":
+        return this.handleWorkflowsGraphExportRequest(msg);
+      case "workflows.graph.import.request":
+        return this.handleWorkflowsGraphImportRequest(msg);
       case "runs.templates.list.request":
         return this.handleRunsTemplatesListRequest(msg);
       case "runs.templates.save.request":
@@ -146,16 +215,41 @@ export class RunsSession {
       case "runs.templates.delete.request":
         return this.handleRunsTemplatesDeleteRequest(msg);
       case "runs.start.request":
-        return this.handleRunsStartRequest(msg);
+      case "workflows.start.request":
+        return this.handleStartWorkflowRequest(msg);
+      case "workflows.start_confirmation.respond.request":
+        this.handleStartConfirmationRespondRequest(msg);
+        return undefined;
       default:
         return undefined;
+    }
+  }
+
+  private dispatchProjectWorkflowLibrary(
+    msg: Extract<
+      SessionInboundMessage,
+      | { type: "workflows.graph.save.request" }
+      | { type: "workflows.templates.list.request" }
+      | { type: "workflows.template.save.request" }
+      | { type: "workflows.storage.transfer.request" }
+    >,
+  ): Promise<void> {
+    switch (msg.type) {
+      case "workflows.graph.save.request":
+        return this.handleWorkflowsGraphSaveRequest(msg);
+      case "workflows.templates.list.request":
+        return this.handleWorkflowsTemplatesListRequest(msg);
+      case "workflows.template.save.request":
+        return this.handleWorkflowsTemplateSaveRequest(msg);
+      case "workflows.storage.transfer.request":
+        return this.handleWorkflowsStorageTransferRequest(msg);
     }
   }
 
   private handleRunsGetSnapshotRequest(
     msg: Extract<SessionInboundMessage, { type: "runs.get_snapshot.request" }>,
   ): void {
-    const runs = this.runService?.listRuns() ?? [];
+    const runs = (this.runService?.listRuns() ?? []).map(toWireRun);
     this.host.emit({
       type: "runs.get_snapshot.response",
       payload: { runs, requestId: msg.requestId },
@@ -166,12 +260,28 @@ export class RunsSession {
     msg: Extract<SessionInboundMessage, { type: "runs.gate_respond.request" }>,
   ): void {
     const accepted =
-      this.runService?.respondToGate(msg.runId, {
-        approved: msg.approved,
-        ...(msg.note !== undefined ? { note: msg.note } : {}),
+      this.runService?.respondToGate({
+        runId: msg.runId,
+        phaseId: msg.phaseId,
+        decision: {
+          approved: msg.approved,
+          ...(msg.note !== undefined ? { note: msg.note } : {}),
+        },
       }) ?? false;
     this.host.emit({
       type: "runs.gate_respond.response",
+      payload: { runId: msg.runId, accepted, requestId: msg.requestId },
+    });
+  }
+
+  private handleStartConfirmationRespondRequest(
+    msg: Extract<SessionInboundMessage, { type: "workflows.start_confirmation.respond.request" }>,
+  ): void {
+    const accepted =
+      this.runService?.respondToStartConfirmation({ runId: msg.runId, approved: msg.approved }) ??
+      false;
+    this.host.emit({
+      type: "workflows.start_confirmation.respond.response",
       payload: { runId: msg.runId, accepted, requestId: msg.requestId },
     });
   }
@@ -285,6 +395,105 @@ export class RunsSession {
     }
   }
 
+  private async handleWorkflowsGraphExportRequest(
+    msg: Extract<SessionInboundMessage, { type: "workflows.graph.export.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.graphSharingService)
+        throw new Error("Graph sharing is not available on this daemon.");
+      this.host.emit({
+        type: "workflows.graph.export.response",
+        payload: {
+          export: await this.graphSharingService.exportGraph(msg.graphId),
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "workflows.graph.export.response",
+        payload: {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleWorkflowsGraphsListRequest(
+    msg: Extract<SessionInboundMessage, { type: "workflows.graphs.list.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.graphSharingService)
+        throw new Error("Project Workflow storage is not available on this daemon.");
+      this.host.emit({
+        type: "workflows.graphs.list.response",
+        payload: {
+          graphs: await this.graphSharingService.listProjectGraphs(msg.cwd),
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "workflows.graphs.list.response",
+        payload: {
+          graphs: [],
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleWorkflowsGraphSaveRequest(
+    msg: Extract<SessionInboundMessage, { type: "workflows.graph.save.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.graphSharingService)
+        throw new Error("Project Workflow storage is not available on this daemon.");
+      this.host.emit({
+        type: "workflows.graph.save.response",
+        payload: {
+          graph: await this.graphSharingService.saveProjectGraph(msg.cwd, msg.graph),
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "workflows.graph.save.response",
+        payload: {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleWorkflowsGraphImportRequest(
+    msg: Extract<SessionInboundMessage, { type: "workflows.graph.import.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.graphSharingService)
+        throw new Error("Graph sharing is not available on this daemon.");
+      const result = await this.graphSharingService.importGraph({
+        cwd: msg.cwd,
+        exported: msg.export,
+        confirmed: msg.confirmed,
+      });
+      this.host.emit({
+        type: "workflows.graph.import.response",
+        payload: { result, requestId: msg.requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "workflows.graph.import.response",
+        payload: {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
   // ── Prompt templates (projects/orchestration-graphs) ──────────────────────
 
   private async handleRunsTemplatesListRequest(
@@ -357,17 +566,104 @@ export class RunsSession {
     }
   }
 
-  private async handleRunsStartRequest(
-    msg: Extract<SessionInboundMessage, { type: "runs.start.request" }>,
+  private async handleWorkflowsTemplatesListRequest(
+    msg: Extract<SessionInboundMessage, { type: "workflows.templates.list.request" }>,
   ): Promise<void> {
+    try {
+      if (!this.graphSharingService)
+        throw new Error("Project Workflow storage is not available on this daemon.");
+      this.host.emit({
+        type: "workflows.templates.list.response",
+        payload: {
+          templates: await this.graphSharingService.listProjectTemplates(msg.cwd),
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "workflows.templates.list.response",
+        payload: {
+          templates: [],
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleWorkflowsTemplateSaveRequest(
+    msg: Extract<SessionInboundMessage, { type: "workflows.template.save.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.graphSharingService)
+        throw new Error("Project Workflow storage is not available on this daemon.");
+      this.host.emit({
+        type: "workflows.template.save.response",
+        payload: {
+          template: await this.graphSharingService.saveProjectTemplate(msg.cwd, msg.template),
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "workflows.template.save.response",
+        payload: {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleWorkflowsStorageTransferRequest(
+    msg: Extract<SessionInboundMessage, { type: "workflows.storage.transfer.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.graphSharingService)
+        throw new Error("Project Workflow storage is not available on this daemon.");
+      this.host.emit({
+        type: "workflows.storage.transfer.response",
+        payload: {
+          receipt: await this.graphSharingService.transferProjectRecord(msg),
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "workflows.storage.transfer.response",
+        payload: {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleStartWorkflowRequest(
+    msg: Extract<
+      SessionInboundMessage,
+      { type: "runs.start.request" } | { type: "workflows.start.request" }
+    >,
+  ): Promise<void> {
+    // COMPAT(runsStartRpc): mirror the request namespace through 2027-02-28 so
+    // an old client receives the exact response it knows how to parse.
+    const responseType =
+      msg.type === "workflows.start.request" ? "workflows.start.response" : "runs.start.response";
     try {
       if (!this.runService || !this.graphStore) {
         throw new Error("Orchestrations are not available on this daemon.");
       }
+      const workflowInput = buildStartUserWorkflowInput(msg);
+      const { graphStore, promptTemplateStore } = await this.resolveLaunchStores(workflowInput);
+      const fingerprint = await this.redeemStartConfirmation(
+        workflowInput,
+        graphStore,
+        msg.startConfirmationToken,
+      );
       const result = await startUserOrchestration(
         {
           runService: this.runService,
-          graphStore: this.graphStore,
+          graphStore,
           agentManager: this.agentManager,
           createAgentDeps: {
             agentManager: this.agentManager,
@@ -386,9 +682,9 @@ export class RunsSession {
           listProviderEntries: (cwd) =>
             this.providerSnapshotManager.listProviders({ cwd, wait: true }),
           ...(this.nodeOutputStore ? { nodeOutputStore: this.nodeOutputStore } : {}),
-          ...(this.promptTemplateStore ? { promptTemplateStore: this.promptTemplateStore } : {}),
+          ...(promptTemplateStore ? { promptTemplateStore } : {}),
         },
-        buildStartUserOrchestrationInput(msg),
+        workflowInput,
       );
       // Surface the new orchestrator chat to every client immediately (same
       // forwarding the suggested-task spawn path does), and report the
@@ -402,23 +698,85 @@ export class RunsSession {
         }
       }
       this.host.emit({
-        type: "runs.start.response",
+        type: responseType,
         payload: {
           ...(result.runId ? { runId: result.runId } : {}),
           ...(result.agentId ? { agentId: result.agentId } : {}),
           ...(workspaceId ? { workspaceId } : {}),
+          ...(result.confirmation ? { confirmation: result.confirmation } : {}),
+          ...(result.confirmation
+            ? { confirmationToken: this.issueStartConfirmationToken(fingerprint) }
+            : {}),
           requestId: msg.requestId,
         },
       });
     } catch (error) {
-      this.logger.error({ err: error }, "runs.start failed");
+      this.logger.error({ err: error }, "workflows.start failed");
       this.host.emit({
-        type: "runs.start.response",
+        type: responseType,
         payload: {
           error: error instanceof Error ? error.message : String(error),
           requestId: msg.requestId,
         },
       });
     }
+  }
+
+  private async resolveLaunchStores(input: StartUserOrchestrationInput): Promise<{
+    graphStore: GraphStore;
+    promptTemplateStore: PromptTemplateStore | null | undefined;
+  }> {
+    const graphStore = this.graphStore;
+    if (!graphStore) throw new Error("Orchestrations are not available on this daemon.");
+    if (input.flavor !== "graph" || !this.graphSharingService) {
+      return { graphStore, promptTemplateStore: this.promptTemplateStore };
+    }
+    return {
+      graphStore: await this.graphSharingService.projectGraphStore(input.cwd),
+      promptTemplateStore: await this.graphSharingService.projectTemplateStore(input.cwd),
+    };
+  }
+
+  /**
+   * Compute the fingerprint of this exact launch (including the reviewed Graph
+   * document) and, when the client presents a confirmation token, require it
+   * to match before the launch may skip its start review.
+   */
+  private async redeemStartConfirmation(
+    workflowInput: StartUserOrchestrationInput,
+    graphStore: GraphStore,
+    token: string | undefined,
+  ): Promise<string> {
+    const reviewedGraph = workflowInput.graphId
+      ? await graphStore.get(workflowInput.graphId)
+      : null;
+    const fingerprint = workflowStartFingerprint(
+      workflowInput,
+      reviewedGraph ? graphHash(reviewedGraph) : null,
+    );
+    if (token === undefined) {
+      return fingerprint;
+    }
+    if (this.pendingStartConfirmationTokens.get(token) !== fingerprint) {
+      throw new Error(
+        "This Workflow start confirmation is no longer valid. Review the Graph again.",
+      );
+    }
+    this.pendingStartConfirmationTokens.delete(token);
+    workflowInput.startConfirmationSatisfied = true;
+    return fingerprint;
+  }
+
+  private issueStartConfirmationToken(fingerprint: string): string {
+    const token = randomUUID();
+    this.pendingStartConfirmationTokens.set(token, fingerprint);
+    // A client that keeps reviewing without confirming must not grow this map
+    // for the life of the session; only the newest reviews stay redeemable.
+    while (this.pendingStartConfirmationTokens.size > MAX_PENDING_START_CONFIRMATIONS) {
+      const oldest = this.pendingStartConfirmationTokens.keys().next().value;
+      if (oldest === undefined) break;
+      this.pendingStartConfirmationTokens.delete(oldest);
+    }
+    return token;
   }
 }

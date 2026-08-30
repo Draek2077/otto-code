@@ -53,6 +53,10 @@ const CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
+  // The deterministic mock recognizes one explicit synthetic native-tool
+  // scenario. It exists to exercise daemon-owned Workflow tool lifecycles in
+  // browser E2E without contacting a provider.
+  supportsNativeOttoTools: true,
   supportsRewindConversation: true,
   supportsRewindFiles: true,
   supportsRewindBoth: true,
@@ -196,6 +200,14 @@ interface MockQuestionPromptQuestion {
 
 interface MockQuestionPromptRequest {
   questions: MockQuestionPromptQuestion[];
+}
+
+interface MockWorkflowGateScenario {
+  phaseTitle: string;
+}
+
+interface MockWorkflowFailureScenario {
+  phaseTitle: string;
 }
 
 // Script for a one-shot synthetic turn (see emitSyntheticTurn): optional
@@ -546,6 +558,33 @@ function parseMockNamedToolCallPrompt(prompt: AgentPromptInput): { name: string 
   return match?.[1] ? { name: match[1] } : null;
 }
 
+/**
+ * Test-only native Otto-tool scenario. The real provider adapters own their
+ * own tool loops; this explicit prompt grammar lets the mock drive the same
+ * catalog once so browser E2E can prove an attended AI Workflow gate for free.
+ */
+function parseMockWorkflowGateScenario(prompt: AgentPromptInput): MockWorkflowGateScenario | null {
+  if (
+    !/emit\s+(?:a\s+)?synthetic\s+attended\s+(?:ai\s+)?workflow\s+gate/i.test(promptToText(prompt))
+  ) {
+    return null;
+  }
+  return { phaseTitle: "Review the AI plan" };
+}
+
+function parseMockWorkflowFailureScenario(
+  prompt: AgentPromptInput,
+): MockWorkflowFailureScenario | null {
+  if (
+    !/emit\s+(?:a\s+)?synthetic\s+(?:ai\s+)?workflow\s+provider\s+failure/i.test(
+      promptToText(prompt),
+    )
+  ) {
+    return null;
+  }
+  return { phaseTitle: "Synthetic provider failure" };
+}
+
 function buildRepeatedPayload(bytes: number, prefix: string): string {
   const line = `${prefix} ${"x".repeat(96)}\n`;
   let output = "";
@@ -801,12 +840,13 @@ export class MockLoadTestAgentClient implements AgentClient {
 
   async createSession(
     config: AgentSessionConfig,
-    _launchContext?: AgentLaunchContext,
+    launchContext?: AgentLaunchContext,
   ): Promise<AgentSession> {
     return new MockLoadTestAgentSession({
       config,
       sessionId: randomUUID(),
       logger: this.logger,
+      launchContext,
     });
   }
 
@@ -825,6 +865,7 @@ export class MockLoadTestAgentClient implements AgentClient {
       },
       sessionId: handle.sessionId,
       logger: this.logger,
+      launchContext: _launchContext,
     });
   }
 
@@ -896,9 +937,15 @@ export class MockLoadTestAgentSession implements AgentSession {
   private readonly streamingAssistantResponse: string | null;
   private readonly streamingAssistantIntervalMs: number;
   private readonly rewindError: string | null;
+  private readonly ottoTools: AgentLaunchContext["ottoTools"];
   private remainingPromptRejections: number;
 
-  constructor(options: { config: AgentSessionConfig; sessionId: string; logger?: Logger }) {
+  constructor(options: {
+    config: AgentSessionConfig;
+    sessionId: string;
+    logger?: Logger;
+    launchContext?: AgentLaunchContext;
+  }) {
     this.id = options.sessionId;
     this.logger = options.logger;
     this.modeId = options.config.modeId ?? MOCK_LOAD_TEST_MODE_ID;
@@ -923,6 +970,7 @@ export class MockLoadTestAgentSession implements AgentSession {
       typeof options.config.featureValues?.mockRewindError === "string"
         ? options.config.featureValues.mockRewindError
         : null;
+    this.ottoTools = options.launchContext?.ottoTools;
     const requestedPromptRejections = options.config.featureValues?.mockPromptRejections;
     this.remainingPromptRejections =
       typeof requestedPromptRejections === "number" &&
@@ -1003,6 +1051,8 @@ export class MockLoadTestAgentSession implements AgentSession {
     const rateLimit = parseMockRateLimitPrompt(prompt);
     const assistantMarkdown = parseMockAssistantMarkdownPrompt(prompt);
     const namedToolCall = parseMockNamedToolCallPrompt(prompt);
+    const workflowGate = parseMockWorkflowGateScenario(prompt);
+    const workflowFailure = parseMockWorkflowFailureScenario(prompt);
     const settledAssistantImageMarkdown = parseSettledAssistantImageMarkdown(prompt);
     const scheduleTurn = () => {
       if (shouldEmitTurnFailure(prompt)) {
@@ -1059,6 +1109,10 @@ export class MockLoadTestAgentSession implements AgentSession {
           assistantText: "Synthetic tool call emitted.",
           finalText: "Synthetic tool call complete",
         });
+      } else if (workflowGate) {
+        this.scheduleWorkflowGateTurn(turn, workflowGate);
+      } else if (workflowFailure) {
+        this.scheduleWorkflowFailureTurn(turn, workflowFailure);
       } else if (largePayload) {
         this.scheduleLargePayloadTurn(turn, largePayload);
       } else if (stress) {
@@ -1392,6 +1446,179 @@ export class MockLoadTestAgentSession implements AgentSession {
       this.emitSyntheticTurn(turn, script);
     }, 0);
     turn.timer.unref?.();
+  }
+
+  private scheduleWorkflowGateTurn(turn: ActiveTurn, scenario: MockWorkflowGateScenario): void {
+    turn.timer = setTimeout(() => {
+      void this.emitWorkflowGateTurn(turn, scenario);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
+  private scheduleWorkflowFailureTurn(
+    turn: ActiveTurn,
+    scenario: MockWorkflowFailureScenario,
+  ): void {
+    turn.timer = setTimeout(() => {
+      void this.emitWorkflowFailureTurn(turn, scenario);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
+  private async emitWorkflowFailureTurn(
+    turn: ActiveTurn,
+    scenario: MockWorkflowFailureScenario,
+  ): Promise<void> {
+    if (this.activeTurn !== turn) {
+      return;
+    }
+    this.clearTurnTimer(turn);
+    this.emitTurnStarted(turn);
+    const catalog = this.ottoTools;
+    if (!catalog) {
+      this.finishTurnWithText(turn, "Mock Workflow provider-failure scenario could not start.");
+      return;
+    }
+
+    const callId = `${turn.turnId}:workflow-provider-failure`;
+    const input = {
+      title: "Synthetic AI Workflow provider failure",
+      phases: [
+        {
+          id: "provider-failure",
+          type: "research",
+          title: scenario.phaseTitle,
+          task: "Emit a synthetic turn failure.",
+        },
+      ],
+    };
+    this.emitTimeline(
+      turn.turnId,
+      createToolCall({
+        callId,
+        name: "start_workflow",
+        status: "running",
+        detail: { type: "unknown", input, output: null },
+      }),
+    );
+    try {
+      const result = await catalog.executeTool("start_workflow", input);
+      if (this.activeTurn !== turn) {
+        return;
+      }
+      const output = result.structuredContent ?? result.content;
+      this.emitTimeline(
+        turn.turnId,
+        createToolCall({
+          callId,
+          name: "start_workflow",
+          status: "completed",
+          detail: { type: "unknown", input, output },
+        }),
+      );
+      this.emitTimeline(turn.turnId, {
+        type: "assistant_message",
+        text: "The declared AI Workflow recorded its provider failure in Workflows.",
+        messageId: turn.assistantMessageId,
+      });
+      this.finishTurnWithText(turn, "Mock AI Workflow provider failure recorded.");
+    } catch (error) {
+      if (this.activeTurn !== turn) {
+        return;
+      }
+      this.emit({
+        type: "turn_failed",
+        provider: this.provider,
+        turnId: turn.turnId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.activeTurn = null;
+      turn.resolve({ sessionId: this.id, finalText: "", timeline: [], canceled: false });
+    }
+  }
+
+  private async emitWorkflowGateTurn(
+    turn: ActiveTurn,
+    scenario: MockWorkflowGateScenario,
+  ): Promise<void> {
+    if (this.activeTurn !== turn) {
+      return;
+    }
+    this.clearTurnTimer(turn);
+    this.emitTurnStarted(turn);
+    const catalog = this.ottoTools;
+    if (!catalog) {
+      this.emitTimeline(turn.turnId, {
+        type: "assistant_message",
+        text: "The mock native-tool scenario needs Otto tools enabled on this host.",
+        messageId: turn.assistantMessageId,
+      });
+      this.finishTurnWithText(turn, "Mock attended Workflow gate could not start.");
+      return;
+    }
+
+    const callId = `${turn.turnId}:workflow-gate`;
+    const input = {
+      title: "Synthetic attended Workflow gate",
+      phases: [
+        {
+          id: "approval",
+          type: "gate",
+          title: scenario.phaseTitle,
+          task: "Wait for the Workflow owner to approve or reject this AI plan.",
+        },
+      ],
+    };
+    this.emitTimeline(
+      turn.turnId,
+      createToolCall({
+        callId,
+        name: "start_workflow",
+        status: "running",
+        detail: { type: "unknown", input, output: null },
+      }),
+    );
+    try {
+      const result = await catalog.executeTool("start_workflow", input);
+      if (this.activeTurn !== turn) {
+        return;
+      }
+      const output = result.structuredContent ?? result.content;
+      this.emitTimeline(
+        turn.turnId,
+        createToolCall({
+          callId,
+          name: "start_workflow",
+          status: "completed",
+          detail: { type: "unknown", input, output },
+        }),
+      );
+      this.emitTimeline(turn.turnId, {
+        type: "assistant_message",
+        text: result.isError
+          ? "The attended AI Workflow gate could not start."
+          : "The AI Workflow is awaiting approval in Workflows.",
+        messageId: turn.assistantMessageId,
+      });
+      this.finishTurnWithText(
+        turn,
+        result.isError
+          ? "Mock attended Workflow gate failed."
+          : "Mock attended Workflow gate paused.",
+      );
+    } catch (error) {
+      if (this.activeTurn !== turn) {
+        return;
+      }
+      this.emit({
+        type: "turn_failed",
+        provider: this.provider,
+        turnId: turn.turnId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.activeTurn = null;
+      turn.resolve({ sessionId: this.id, finalText: "", timeline: [], canceled: false });
+    }
   }
 
   // One-shot scripted turn: timeline items, an optional assistant message, then

@@ -78,6 +78,9 @@ function resolveTarget(input: ResolveScheduleInput): ScheduleTargetResolution {
     }
     return { label: "Agent unavailable", provider: null };
   }
+  if (schedule.target.type === "workflow") {
+    return { label: "Saved Workflow", provider: null };
+  }
   return {
     label: describeScheduleCwd({ serverId, cwd: schedule.target.config.cwd, projectNameByCwd }),
     provider: schedule.target.config.provider,
@@ -90,6 +93,9 @@ function resolveCwd(input: ResolveScheduleInput): string | null {
   const { schedule, serverId, agentsByKey } = input;
   if (schedule.target.type === "agent") {
     return agentsByKey.get(agentKey(serverId, schedule.target.agentId))?.cwd ?? null;
+  }
+  if (schedule.target.type === "workflow") {
+    return schedule.target.projectRoot;
   }
   return schedule.target.config.cwd;
 }

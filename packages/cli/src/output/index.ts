@@ -46,6 +46,7 @@ export type {
   SingleResult,
   ListResult,
   AnyCommandResult,
+  CommandDiagnostic,
   CommandError,
 } from "./types.js";
 

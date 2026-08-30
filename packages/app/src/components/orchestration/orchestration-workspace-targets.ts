@@ -25,7 +25,7 @@ export interface OrchestrationWorkspaceTarget {
 interface BuildInput {
   workspaces: ReadonlyMap<string, WorkspaceDescriptor> | undefined;
   /** The selected project, or null while none is chosen. */
-  project: { projectKey: string; cwd: string } | null;
+  project: { projectId: string; cwd: string } | null;
 }
 
 export function buildOrchestrationWorkspaceTargets(
@@ -39,7 +39,7 @@ export function buildOrchestrationWorkspaceTargets(
   const targets: OrchestrationWorkspaceTarget[] = [];
   let hasRootEntry = false;
   for (const workspace of input.workspaces?.values() ?? []) {
-    if (workspace.projectId !== input.project.projectKey || workspace.archivingAt) {
+    if (workspace.projectId !== input.project.projectId || workspace.archivingAt) {
       continue;
     }
     const cwd = workspace.workspaceDirectory.trim();

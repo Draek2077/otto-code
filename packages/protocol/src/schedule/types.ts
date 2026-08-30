@@ -66,6 +66,15 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
       mcpServers: z.record(z.string(), z.unknown()).optional(),
     }),
   }),
+  // A schedule names a durable saved Workflow definition, never a Workflow run
+  // and never a reconstructed prompt. `projectRoot` is the authority boundary:
+  // the daemon resolves the selected project's Workflow store immediately
+  // before launch and refuses a definition from any other project or host.
+  z.object({
+    type: z.literal("workflow"),
+    definitionId: z.string().trim().min(1),
+    projectRoot: z.string().trim().min(1),
+  }),
 ]);
 export type ScheduleTarget = z.infer<typeof ScheduleTargetSchema>;
 
@@ -80,6 +89,19 @@ export const ScheduleRunSchema = z.object({
   // future Workflow/artifact target adapters one compatibility-safe audit slot.
   // Optional because persisted runs before v0.9 do not carry it.
   target: ScheduleTargetSchema.optional(),
+  // Immutable result of resolving a saved Workflow target at fire time. The
+  // definition can change later; this record is the audit of what actually
+  // launched. Optional keeps historical agent schedule runs readable.
+  workflow: z
+    .object({
+      definitionId: z.string().min(1),
+      title: z.string().min(1),
+      kind: z.string().min(1),
+      projectRoot: z.string().min(1),
+      fingerprint: z.string().min(1),
+      runId: z.string().min(1),
+    })
+    .optional(),
   agentId: z.guid().nullable(),
   workspaceId: z.string().nullable().optional(),
   // Who actually executed this run - the resolved personality (if any),
@@ -163,4 +185,12 @@ export interface UpdateScheduleInput {
 export interface ScheduleExecutionResult {
   agentId: string | null;
   output: string | null;
+  workflow?: {
+    definitionId: string;
+    title: string;
+    kind: string;
+    projectRoot: string;
+    fingerprint: string;
+    runId: string;
+  };
 }

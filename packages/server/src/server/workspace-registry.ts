@@ -73,6 +73,38 @@ const PersistedProjectRecordSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? null),
+  // Artifact storage is deliberately independent from Knowledge. Null means
+  // inherit the Artifacts host default; it never means inherit Knowledge.
+  // COMPAT(artifactStoreLocation): added in v0.9.0, remove optional after 2027-02-28.
+  artifactLocation: z
+    .enum(["repository", "host"])
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  // Persisted host directory identity, separate from Knowledge's. A project
+  // can legitimately keep Knowledge and Artifacts in different locations.
+  // COMPAT(artifactStoreLocation): added in v0.9.0, remove optional after 2027-02-28.
+  artifactDirectoryName: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  // Workflow storage is category-owned: null means inherit the Workflow host
+  // default, never the selected Knowledge or Artifact location.
+  // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
+  workflowLocation: z
+    .enum(["repository", "host"])
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  // Stable host-local identity for this category. Persisting it prevents a
+  // renamed project from resolving to a new empty Workflow library.
+  // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
+  workflowDirectoryName: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
   // Identifies the project's stored custom icon; null means automatic.
   customIconRevision: z
     .string()

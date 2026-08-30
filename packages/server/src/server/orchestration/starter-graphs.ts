@@ -15,6 +15,72 @@ const SEED_TIMESTAMP = "2026-07-20T00:00:00.000Z";
 
 export const STARTER_GRAPHS: OrchestrationGraph[] = [
   {
+    id: "starter-brief-to-decision",
+    name: "Brief → Decision",
+    description:
+      "The smallest complete Graph Workflow: research one question, hand a structured brief to a second agent, then deliver a decision.",
+    inputs: [
+      {
+        key: "question",
+        label: "Question",
+        description: "The decision or recommendation you need.",
+        multiline: true,
+        required: true,
+      },
+    ],
+    nodes: [
+      {
+        id: "root",
+        kind: "orchestrator",
+        title: "Orchestrator",
+        position: { x: 40, y: 220 },
+      },
+      {
+        id: "brief",
+        kind: "agent",
+        title: "Research brief",
+        role: "researcher",
+        prompt:
+          "Research this question and identify the facts, constraints, and trade-offs needed to decide it. Do not make the final decision.\n\nQuestion:\n{{inputs.question}}",
+        output: {
+          fields: [
+            {
+              key: "brief",
+              type: "string",
+              description: "A concise evidence-backed brief for the decision maker.",
+            },
+          ],
+        },
+        position: { x: 380, y: 220 },
+      },
+      {
+        id: "decision",
+        kind: "agent",
+        title: "Decision",
+        role: "writer",
+        prompt:
+          "Use the research brief above to make one clear recommendation. State the decision, why it follows from the brief, and the most important caveat.",
+        output: {
+          fields: [
+            {
+              key: "decision",
+              type: "string",
+              description: "The final recommendation with its rationale and caveat.",
+            },
+          ],
+        },
+        position: { x: 760, y: 220 },
+      },
+    ],
+    edges: [
+      { from: "root", to: "brief" },
+      { from: "brief", to: "decision", fields: ["brief"] },
+    ],
+    builtIn: true,
+    createdAt: SEED_TIMESTAMP,
+    updatedAt: SEED_TIMESTAMP,
+  },
+  {
     id: "starter-research-build-verify",
     name: "Research → Plan → Build → Verify",
     description:

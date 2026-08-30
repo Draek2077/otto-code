@@ -29,7 +29,7 @@ export function isDelegatedAgent(agent: AgentLabelSource): boolean {
 // otto-tool catalog reads the policy label to enforce the tool binary:
 // "deterministic" - the daemon does all linking; the node gets NO orchestration
 // tools (spawning/steering agents, runs), NO preview/dev-server tools, and NO
-// browser tools. "autonomous" - full otto toolset EXCEPT start_run
+// browser tools. "autonomous" - full otto toolset EXCEPT start_workflow
 // (orchestrations never nest orchestrations).
 export const ORCHESTRATION_POLICY_LABEL = "otto.orchestration-policy";
 
@@ -46,6 +46,45 @@ export function getOrchestrationPolicyFromLabels(
 // First-class run attribution for orchestration children (parentage rides
 // PARENT_AGENT_ID_LABEL; this ties the child to the run record itself).
 export const ORCHESTRATION_RUN_ID_LABEL = "otto.orchestration-run-id";
+
+/**
+ * Returns the durable orchestration run a daemon-stamped agent belongs to.
+ * Labels are untrusted at this boundary, so malformed or blank values never
+ * acquire run authority.
+ */
+export function getOrchestrationRunIdFromLabels(
+  labels: Record<string, unknown> | null | undefined,
+): string | null {
+  const value = labels?.[ORCHESTRATION_RUN_ID_LABEL];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+// First-class provenance for an internal agent spawned by a Schedule run.
+// Both values are required: an artifact must never claim a Schedule source
+// when a malformed label would leave it unable to identify the exact run.
+export const SCHEDULE_ID_LABEL = "otto.schedule-id";
+export const SCHEDULE_RUN_ID_LABEL = "otto.schedule-run";
+
+export interface ScheduleRunSource {
+  scheduleId: string;
+  runId: string;
+}
+
+export function getScheduleRunSourceFromLabels(
+  labels: Record<string, unknown> | null | undefined,
+): ScheduleRunSource | null {
+  const scheduleId = labels?.[SCHEDULE_ID_LABEL];
+  const runId = labels?.[SCHEDULE_RUN_ID_LABEL];
+  if (
+    typeof scheduleId !== "string" ||
+    scheduleId.trim().length === 0 ||
+    typeof runId !== "string" ||
+    runId.trim().length === 0
+  ) {
+    return null;
+  }
+  return { scheduleId: scheduleId.trim(), runId: runId.trim() };
+}
 
 // The node's declared output fields, JSON-encoded, stamped on the spawned
 // agent. The otto-tool catalog reads it to register that agent's submit_output

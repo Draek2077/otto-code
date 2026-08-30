@@ -204,6 +204,42 @@ export const DEFAULT_MUTABLE_PROJECT_KNOWLEDGE_CONFIG: MutableProjectKnowledgeCo
   defaultStoreLocation: "repository",
 };
 
+// Host-wide default for a project's Artifact store. This intentionally does
+// not reuse `projectKnowledge`: each durable category has an independent
+// location choice, even though their resolver and migration safety rules are
+// shared.
+// COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
+export const ProjectArtifactStoreLocationSchema = z.enum(["repository", "host"]);
+
+export const MutableProjectArtifactsConfigSchema = z
+  .object({
+    defaultStoreLocation: ProjectArtifactStoreLocationSchema.default("repository"),
+  })
+  .passthrough();
+
+export type MutableProjectArtifactsConfig = z.infer<typeof MutableProjectArtifactsConfigSchema>;
+
+export const DEFAULT_MUTABLE_PROJECT_ARTIFACTS_CONFIG: MutableProjectArtifactsConfig = {
+  defaultStoreLocation: "repository",
+};
+
+// Host-wide default for a project's Workflow library. Workflows deliberately
+// own this choice rather than inheriting Knowledge or Artifacts.
+// COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
+export const ProjectWorkflowStoreLocationSchema = z.enum(["repository", "host"]);
+
+export const MutableProjectWorkflowsConfigSchema = z
+  .object({
+    defaultStoreLocation: ProjectWorkflowStoreLocationSchema.default("repository"),
+  })
+  .passthrough();
+
+export type MutableProjectWorkflowsConfig = z.infer<typeof MutableProjectWorkflowsConfigSchema>;
+
+export const DEFAULT_MUTABLE_PROJECT_WORKFLOWS_CONFIG: MutableProjectWorkflowsConfig = {
+  defaultStoreLocation: "repository",
+};
+
 export const MutableAgentPersonalitiesConfigSchema = z
   .object({
     personalities: z.array(AgentPersonalitySchema).default([]),

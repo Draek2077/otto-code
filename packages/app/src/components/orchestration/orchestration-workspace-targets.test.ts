@@ -45,7 +45,7 @@ describe("buildOrchestrationWorkspaceTargets", () => {
           workspaceDirectory: "/repos/b",
         }),
       ]),
-      project: { projectKey: "project-a", cwd: "/repos/a" },
+      project: { projectId: "project-a", cwd: "/repos/a" },
     });
 
     expect(targets.map((target) => target.id)).toEqual(["ws-root", "ws-feature"]);
@@ -64,7 +64,7 @@ describe("buildOrchestrationWorkspaceTargets", () => {
           name: "feature",
         }),
       ]),
-      project: { projectKey: "project-a", cwd: "/repos/a" },
+      project: { projectId: "project-a", cwd: "/repos/a" },
     });
 
     expect(targets[0]).toMatchObject({ id: PROJECT_ROOT_WORKSPACE_ID, cwd: "/repos/a" });
@@ -81,7 +81,7 @@ describe("buildOrchestrationWorkspaceTargets", () => {
           archivingAt: "2026-07-22T00:00:00.000Z",
         }),
       ]),
-      project: { projectKey: "project-a", cwd: "/repos/a" },
+      project: { projectId: "project-a", cwd: "/repos/a" },
     });
 
     expect(targets.map((target) => target.id)).toEqual(["ws-root"]);
@@ -92,7 +92,7 @@ describe("resolveSelectedWorkspaceTarget", () => {
   it("matches on the normalized path", () => {
     const targets = buildOrchestrationWorkspaceTargets({
       workspaces: workspaces([workspace({ id: "ws-root" })]),
-      project: { projectKey: "project-a", cwd: "/repos/a" },
+      project: { projectId: "project-a", cwd: "/repos/a" },
     });
 
     expect(resolveSelectedWorkspaceTarget(targets, "/repos/a/")?.id).toBe("ws-root");

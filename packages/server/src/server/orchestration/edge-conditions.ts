@@ -1,6 +1,6 @@
 import jsonata from "jsonata";
 
-import type { GraphEdge } from "@otto-code/protocol/orchestration";
+import type { GraphEdge, GraphNode, GraphNodeCheck } from "@otto-code/protocol/orchestration";
 
 // Conditional edges (projects/orchestration-graphs, Stage 2).
 //
@@ -20,6 +20,10 @@ import type { GraphEdge } from "@otto-code/protocol/orchestration";
 export interface EdgeConditionContext {
   fields: Record<string, unknown> | null;
   output: string | null;
+}
+
+export interface GraphCheckContext {
+  upstream: Record<string, { output: string; fields: Record<string, unknown> | null }>;
 }
 
 export type EdgeResolution =
@@ -53,6 +57,25 @@ export async function resolveEdgeCondition(
       edge,
       message: `Condition "${edge.when.expression}" could not be evaluated: ${message}`,
     };
+  }
+}
+
+/**
+ * Evaluate a Check node's deterministic assertion. Its only scope is
+ * `upstream.<nodeId>`, which provides both the source prose (`output`) and
+ * carried structured fields (`fields`). A false assertion is an expected
+ * workflow failure; only an invalid/throwing expression is an evaluation error.
+ */
+export async function evaluateGraphCheck(
+  expression: string,
+  context: GraphCheckContext,
+): Promise<{ passed: true } | { passed: false } | { error: string }> {
+  try {
+    const value = await jsonata(expression).evaluate(context);
+    return isTruthy(value) ? { passed: true } : { passed: false };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { error: `Check "${expression}" could not be evaluated: ${message}` };
   }
 }
 
@@ -114,6 +137,24 @@ export function validateEdgeConditions(edges: readonly GraphEdge[]): string[] {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       problems.push(`The condition on the edge ${edge.from} → ${edge.to} is invalid: ${message}`);
+    }
+  }
+  return problems;
+}
+
+/** Check JSONata syntax daemon-side, beside edge-condition syntax. */
+export function validateGraphChecks(nodes: readonly GraphNode[]): string[] {
+  const problems: string[] = [];
+  for (const node of nodes) {
+    const check = node.check as GraphNodeCheck | undefined;
+    if (node.kind !== "check" || !check?.expression.trim()) {
+      continue;
+    }
+    try {
+      jsonata(check.expression);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      problems.push(`The Check "${node.title}" has an invalid expression: ${message}`);
     }
   }
   return problems;

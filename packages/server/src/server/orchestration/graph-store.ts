@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   type OrchestrationGraph,
   OrchestrationGraphSchema,
+  isSafeGraphId,
 } from "@otto-code/protocol/orchestration";
 
 import { writeJsonFileAtomic } from "../atomic-file.js";
@@ -40,7 +41,12 @@ export class GraphStore {
     }
   }
 
+  // Ids reach this store from the designer, the CLI, and imported Graph
+  // packages. The last is untrusted, so never let an id become a path.
   private filePath(id: string): string {
+    if (!isSafeGraphId(id)) {
+      throw new Error(`Graph id "${id}" is not a valid store file name.`);
+    }
     return join(this.dir, `${id}.json`);
   }
 

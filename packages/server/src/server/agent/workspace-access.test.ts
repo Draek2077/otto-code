@@ -179,6 +179,25 @@ describe("codexSandboxModeForAccess", () => {
 });
 
 describe("capabilitiesEnforceAccess", () => {
+  test("refuses restricted Graph nodes for ACP, Pi, OpenCode, and OMP adapters", () => {
+    // These are the authority-relevant capability projections of the adapters:
+    // ACP/OpenCode carry Otto through MCP, Pi does so only when its extension
+    // advertises it, and OMP receives native Otto tools. None advertises an
+    // enforceable workspace ceiling, so the Workflow spawn gate must reject
+    // read and none instead of silently running with write access.
+    const adapters = [
+      { name: "ACP", capabilities: { supportsMcpServers: true } },
+      { name: "Pi with pi-mcp-adapter", capabilities: { supportsMcpServers: true } },
+      { name: "OpenCode", capabilities: { supportsMcpServers: true } },
+      { name: "OMP", capabilities: { supportsNativeOttoTools: true } },
+    ];
+    for (const adapter of adapters) {
+      expect(capabilitiesEnforceAccess(adapter.capabilities, "write"), adapter.name).toBe(true);
+      expect(capabilitiesEnforceAccess(adapter.capabilities, "read"), adapter.name).toBe(false);
+      expect(capabilitiesEnforceAccess(adapter.capabilities, "none"), adapter.name).toBe(false);
+    }
+  });
+
   test("write needs no capability at all - it is today's behaviour", () => {
     expect(capabilitiesEnforceAccess(undefined, "write")).toBe(true);
     expect(capabilitiesEnforceAccess(null, "write")).toBe(true);

@@ -45,6 +45,16 @@ describe("ScheduleTargetSchema", () => {
 
     expect(ScheduleTargetSchema.parse(stored)).toEqual(stored);
   });
+
+  test("accepts a saved Workflow by stable project-scoped identity only", () => {
+    expect(
+      ScheduleTargetSchema.parse({
+        type: "workflow",
+        definitionId: "graph-1",
+        projectRoot: "/repo",
+      }),
+    ).toEqual({ type: "workflow", definitionId: "graph-1", projectRoot: "/repo" });
+  });
 });
 
 describe("ScheduleRunSchema", () => {
@@ -79,5 +89,29 @@ describe("ScheduleRunSchema", () => {
     ).toMatchObject({
       target: { type: "new-agent", config: { provider: "codex", cwd: "/repo" } },
     });
+  });
+
+  test("preserves immutable Workflow linkage without changing historical runs", () => {
+    expect(
+      ScheduleRunSchema.parse({
+        id: "run-1",
+        scheduledFor: "2026-01-01T00:00:00.000Z",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        endedAt: "2026-01-01T00:00:01.000Z",
+        status: "succeeded",
+        target: { type: "workflow", definitionId: "graph-1", projectRoot: "/repo" },
+        workflow: {
+          definitionId: "graph-1",
+          title: "Nightly",
+          kind: "graph",
+          projectRoot: "/repo",
+          fingerprint: "a".repeat(64),
+          runId: "workflow-run-1",
+        },
+        agentId: null,
+        output: "Started",
+        error: null,
+      }),
+    ).toMatchObject({ workflow: { runId: "workflow-run-1", fingerprint: "a".repeat(64) } });
   });
 });

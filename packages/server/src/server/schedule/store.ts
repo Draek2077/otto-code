@@ -58,6 +58,14 @@ function targetIdentity(target: ScheduleTarget): unknown {
     };
   }
 
+  if (target.type === "workflow") {
+    return {
+      type: target.type,
+      definitionId: target.definitionId,
+      projectRoot: target.projectRoot,
+    };
+  }
+
   return {
     type: target.type,
     config: target.config,

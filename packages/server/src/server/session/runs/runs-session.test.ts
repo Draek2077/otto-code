@@ -26,6 +26,20 @@ const cases: Array<[SessionInboundMessage, string]> = [
     { type: "runs.graphs.delete.request", requestId: "r", graphId: "g1" },
     "runs.graphs.delete.response",
   ],
+  [
+    { type: "workflows.graph.export.request", requestId: "r", graphId: "g1" },
+    "workflows.graph.export.response",
+  ],
+  [
+    {
+      type: "workflows.graph.import.request",
+      requestId: "r",
+      cwd: "/project",
+      confirmed: false,
+      export: {},
+    } as unknown as SessionInboundMessage,
+    "workflows.graph.import.response",
+  ],
   [{ type: "runs.templates.list.request", requestId: "r" }, "runs.templates.list.response"],
   [
     {
@@ -43,6 +57,19 @@ const cases: Array<[SessionInboundMessage, string]> = [
     { type: "runs.start.request", requestId: "r", flavor: "autonomous", cwd: "/w" },
     "runs.start.response",
   ],
+  [
+    { type: "workflows.start.request", requestId: "r", flavor: "ai", cwd: "/w" },
+    "workflows.start.response",
+  ],
+  [
+    {
+      type: "workflows.start_confirmation.respond.request",
+      requestId: "r",
+      runId: "run",
+      approved: true,
+    },
+    "workflows.start_confirmation.respond.response",
+  ],
 ];
 
 function buildSession(overrides: Partial<RunsSessionOptions> = {}) {
@@ -50,6 +77,7 @@ function buildSession(overrides: Partial<RunsSessionOptions> = {}) {
   const runService = {
     listRuns: vi.fn(() => []),
     respondToGate: vi.fn(() => true),
+    respondToStartConfirmation: vi.fn(() => true),
     cancelRun: vi.fn(() => true),
     clearFinishedRuns: vi.fn(async () => []),
     deleteRun: vi.fn(async () => ({ deleted: true })),
@@ -95,10 +123,13 @@ function buildSession(overrides: Partial<RunsSessionOptions> = {}) {
 
 describe("RunsSession", () => {
   it.each(cases)("answers %j with the matching response", async (msg, responseType) => {
-    // runs.start is exercised on a host without orchestration: the domain must still
-    // answer, with the error in the payload, rather than throw out of the dispatcher.
+    // Both launch names are exercised on a host without orchestration: the
+    // domain must still answer, with the error in the payload, rather than
+    // throw out of the dispatcher.
     const { session, emitted } = buildSession(
-      msg.type === "runs.start.request" ? { runService: null, graphStore: null } : {},
+      msg.type === "runs.start.request" || msg.type === "workflows.start.request"
+        ? { runService: null, graphStore: null }
+        : {},
     );
     const handled = session.dispatch(msg);
     await handled;
@@ -118,6 +149,25 @@ describe("RunsSession", () => {
         deleted: false,
         error: "Built-in starter graphs can't be deleted.",
         requestId: "r",
+      },
+    });
+  });
+
+  it("rejects a Graph confirmation token the daemon did not issue", async () => {
+    const { session, emitted } = buildSession();
+    await session.dispatch({
+      type: "workflows.start.request",
+      requestId: "reviewed_graph",
+      flavor: "graph",
+      cwd: "/w",
+      graphId: "g1",
+      startConfirmationToken: "forged",
+    });
+    expect(emitted[0]).toMatchObject({
+      type: "workflows.start.response",
+      payload: {
+        requestId: "reviewed_graph",
+        error: "This Workflow start confirmation is no longer valid. Review the Graph again.",
       },
     });
   });

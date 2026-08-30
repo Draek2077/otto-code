@@ -38,6 +38,18 @@ describe("schedule RPC schemas", () => {
     });
   });
 
+  it("accepts a project-scoped saved Workflow target", () => {
+    expect(
+      ScheduleCreateRequestSchema.parse({
+        type: "schedule/create",
+        requestId: "request-1",
+        prompt: "Start saved Workflow",
+        cadence: { type: "every", everyMs: 60_000 },
+        target: { type: "workflow", definitionId: "graph-1", projectRoot: "/repo" },
+      }).target,
+    ).toEqual({ type: "workflow", definitionId: "graph-1", projectRoot: "/repo" });
+  });
+
   it("round-trips new-agent run options on update requests", () => {
     expect(
       ScheduleUpdateRequestSchema.parse({

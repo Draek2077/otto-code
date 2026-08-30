@@ -86,6 +86,7 @@ import { TerminalCompatibilitySection } from "@/screens/settings/terminal-compat
 import { CodeIntelligenceSection } from "./code-intelligence-section";
 import { StorageSection } from "./storage-section";
 import { restartDaemonFromSettings } from "./daemon-restart";
+import { supportsWorkflowStorage } from "@/workflows/storage-presentation";
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedArrowDown = withUnistyles(ArrowDown);
@@ -472,6 +473,8 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
               <GitFetchCard serverId={serverId} />
               <HideMergeIntoBaseActionCard serverId={serverId} />
               <ProjectKnowledgeStoreLocationCard serverId={serverId} />
+              <ProjectArtifactStoreLocationCard serverId={serverId} />
+              <ProjectWorkflowStoreLocationCard serverId={serverId} />
             </View>
           </SettingsSection>
           {isDeveloperMode ? (
@@ -1299,6 +1302,105 @@ function ProjectKnowledgeStoreLocationCard({ serverId }: { serverId: string }) {
         onValueChange={handleValueChange}
         accessibilityLabel="Store project Knowledge on this host"
         testID="host-page-project-knowledge-store-switch"
+      />
+    </View>
+  );
+}
+
+/**
+ * The independent host default for project Artifacts. Existing repository and
+ * host-local stores stay discoverable, so this selects future writes without
+ * moving or hiding an artifact.
+ */
+function ProjectArtifactStoreLocationCard({ serverId }: { serverId: string }) {
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  // COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
+  const isSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.artifactStoreLocation === true,
+  );
+
+  const handleValueChange = useCallback(
+    (next: boolean) => {
+      void patchConfig({
+        projectArtifacts: { defaultStoreLocation: next ? "host" : "repository" },
+      }).catch((error) => {
+        console.error("[HostPage] Failed to update the Artifact store default", error);
+        Alert.alert(
+          "Unable to update Artifact storage",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    },
+    [patchConfig],
+  );
+
+  if (!isConnected || !isSupported) return null;
+
+  return (
+    <View
+      style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}
+      testID="host-page-project-artifact-store-card"
+    >
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Store project Artifacts on this host</Text>
+        <Text style={settingsStyles.rowHint}>
+          Keep future Artifacts with this daemon instead of in the project&apos;s .otto folder.
+          Existing Artifacts remain available wherever they were created.
+        </Text>
+      </View>
+      <Switch
+        value={config?.projectArtifacts?.defaultStoreLocation === "host"}
+        onValueChange={handleValueChange}
+        accessibilityLabel="Store project Artifacts on this host"
+        testID="host-page-project-artifact-store-switch"
+      />
+    </View>
+  );
+}
+
+/** The Workflow default is independent from Knowledge, Artifacts, and Schedules. */
+function ProjectWorkflowStoreLocationCard({ serverId }: { serverId: string }) {
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const isSupported = useSessionStore((state) =>
+    supportsWorkflowStorage({
+      categoryStorageResolver:
+        state.sessions[serverId]?.serverInfo?.features?.categoryStorageResolver,
+    }),
+  );
+  const handleValueChange = useCallback(
+    (next: boolean) => {
+      void patchConfig({
+        projectWorkflows: { defaultStoreLocation: next ? "host" : "repository" },
+      }).catch((error) => {
+        console.error("[HostPage] Failed to update the Workflow store default", error);
+        Alert.alert(
+          "Unable to update Workflow storage",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    },
+    [patchConfig],
+  );
+  if (!isConnected || !isSupported) return null;
+  return (
+    <View
+      style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}
+      testID="host-page-project-workflow-store-card"
+    >
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Store project Workflows on this host</Text>
+        <Text style={settingsStyles.rowHint}>
+          Choose where new Workflow definitions, templates, and run snapshots are written. Existing
+          Workflow material stays available in its original location.
+        </Text>
+      </View>
+      <Switch
+        value={config?.projectWorkflows?.defaultStoreLocation === "host"}
+        onValueChange={handleValueChange}
+        accessibilityLabel="Store project Workflows on this host"
+        testID="host-page-project-workflow-store-switch"
       />
     </View>
   );

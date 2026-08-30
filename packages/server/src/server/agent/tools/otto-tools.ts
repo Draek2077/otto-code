@@ -28,9 +28,11 @@ import {
 import type { AgentProfile } from "@otto-code/protocol/messages";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {
+  getOrchestrationRunIdFromLabels,
   getOrchestrationPolicyFromLabels,
   getOutputFieldsFromLabels,
   getQueryToolsFromLabels,
+  getScheduleRunSourceFromLabels,
   getToolGroupsFromLabels,
 } from "@otto-code/protocol/agent-labels";
 import {
@@ -77,7 +79,7 @@ import {
   validateNodeOutput,
 } from "../../orchestration/node-output.js";
 import { executeQueryTool, queryToolName } from "../../orchestration/node-query-tools.js";
-import type { RunService, RunSpawnPort } from "../../orchestration/run-service.js";
+import type { RunSpawnPort, WorkflowService } from "../../orchestration/run-service.js";
 import { resolveTeamRoleMember } from "../../orchestration/resolve-team-role.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js";
 import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../../path-utils.js";
@@ -140,6 +142,7 @@ import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
 import { registerPreviewTools } from "../../preview/preview-tools.js";
 import type { DevServerManager } from "../../preview/dev-server-manager.js";
 import type { ArtifactService } from "../../artifact/artifact-service.js";
+import type { ArchitecturalViewsService } from "../../architectural-views/architectural-views-service.js";
 import type { ActivityIncrementFn } from "../../activity-stats/activity-stats-store.js";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import { StoredArtifactSchema } from "@otto-code/protocol/artifacts/types";
@@ -161,11 +164,11 @@ export interface OttoToolHostDependencies {
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
   /**
-   * Daemon-owned orchestration runtime. Enables the start_orchestration /
-   * get_orchestration_status / wait_for_chats tools so an orchestrator chat can declare a multi-chat
+   * Daemon-owned orchestration runtime. Enables the start_workflow /
+   * get_workflow_status / wait_for_chats tools so an orchestrator chat can declare a multi-chat
    * plan the daemon executes. Absent on hosts that don't wire orchestration.
    */
-  runService?: RunService | null;
+  runService?: WorkflowService | null;
   providerSnapshotManager: ProviderSnapshotManager;
   /**
    * Reads the live Agent Personalities roster from the daemon config. Enables
@@ -245,6 +248,10 @@ export interface OttoToolHostDependencies {
    * create_artifact tool. Absent on hosts that don't wire artifacts.
    */
   artifactService?: ArtifactService | null;
+  /** Knowledge-packaged visual documents, available only through their bound authoring chat. */
+  architecturalViews?: ArchitecturalViewsService | null;
+  /** Routes an explicit agent request to open a published view in its workspace. */
+  openArchitecturalView?: (input: { agentId: string; workspaceId: string; viewId: string }) => void;
   /** Broadcasts artifact.created.notification to every connected client. */
   emitArtifactCreated?: (artifact: ArtifactMetadata) => void;
   /** Broadcasts artifact.updated.notification to every connected client. */
@@ -1083,6 +1090,15 @@ function deriveArtifactName(description: string): string {
   return `${clipped.trimEnd()}…`;
 }
 
+function sourceForArtifactCaller(caller: { id: string; labels?: Record<string, unknown> } | null) {
+  if (!caller) return {};
+  const scheduleSource = getScheduleRunSourceFromLabels(caller.labels);
+  if (scheduleSource) {
+    return { source: { kind: "schedule" as const, ...scheduleSource } };
+  }
+  return { source: { kind: "chat" as const, agentId: caller.id } };
+}
+
 /**
  * Resolve the projectId to stamp on a created artifact. Artifacts store the
  * project's canonical *root path* (matching what the client's create sheet
@@ -1146,7 +1162,7 @@ function resolveOrchestrationPolicy(
 // everything allowed. "deterministic" - the daemon does all linking, so the
 // node loses every orchestration-shaped tool (the agents + schedules groups)
 // plus preview and browser control. "autonomous" - full toolset EXCEPT
-// start_orchestration: orchestrations never nest.
+// start_workflow: Workflows never nest.
 function buildOrchestrationPolicyGate(
   policy: "deterministic" | "autonomous" | null,
 ): (name: string) => boolean {
@@ -1154,7 +1170,7 @@ function buildOrchestrationPolicyGate(
     if (!policy) {
       return true;
     }
-    if (name === "start_orchestration") {
+    if (name === "start_workflow") {
       return false;
     }
     if (policy === "autonomous") {
@@ -1310,6 +1326,127 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       return tool.handler(await parseToolInput(tool, input), context);
     },
   });
+
+  if (options.architecturalViews && callerAgentId) {
+    const architecturalViews = options.architecturalViews;
+    const authoringCwd = (): string => {
+      const cwd = agentManager.getAgent(callerAgentId)?.config.cwd;
+      if (!cwd) throw new Error("Architectural View tools require an active authoring chat.");
+      return cwd;
+    };
+    const requireBoundDraft = async (viewId: string, draftId: string) => {
+      const content = await architecturalViews.getDraftContent(authoringCwd(), viewId, draftId);
+      if (!content) throw new Error("Architectural View draft not found.");
+      if (content.draft.authoringAgentId !== callerAgentId) {
+        throw new Error(
+          "This chat is not the bound authoring chat for that Architectural View draft.",
+        );
+      }
+      return content.draft;
+    };
+    const draftInput = z.object({ viewId: z.string().min(1), draftId: z.string().min(1) });
+    const draftOutput = {
+      viewId: z.string(),
+      draftId: z.string(),
+      title: z.string(),
+      updatedAt: z.string(),
+    };
+
+    registerTool(
+      "read_architectural_view_draft",
+      {
+        title: "Read Architectural View draft",
+        description:
+          "Read the typed JSON specification for the staged Architectural View bound to this authoring chat. Use it before editing; it is the canonical editable source, not the rendered HTML.",
+        inputSchema: draftInput,
+        outputSchema: { ...draftOutput, specification: z.json() },
+      },
+      async ({ viewId, draftId }) => {
+        await requireBoundDraft(viewId, draftId);
+        const result = await architecturalViews.getDraftSpecification({
+          cwd: authoringCwd(),
+          viewId,
+          draftId,
+        });
+        if (!result) throw new Error("Architectural View draft not found.");
+        return {
+          content: [],
+          structuredContent: ensureValidJson({
+            viewId,
+            draftId,
+            title: result.draft.title,
+            updatedAt: result.draft.updatedAt,
+            specification: result.specification,
+          }),
+        };
+      },
+    );
+    registerTool(
+      "update_architectural_view_draft",
+      {
+        title: "Update Architectural View draft",
+        description:
+          "Replace the bound staged Architectural View's complete typed JSON specification and refresh its last-known-good preview. The published view is never changed by this tool. If validation fails, the previous preview remains available.",
+        inputSchema: draftInput.extend({ specification: z.json() }),
+        outputSchema: draftOutput,
+      },
+      async ({ viewId, draftId, specification }) => {
+        await requireBoundDraft(viewId, draftId);
+        const draft = await architecturalViews.updateDraftSpecification({
+          cwd: authoringCwd(),
+          viewId,
+          draftId,
+          specification,
+        });
+        return {
+          content: [],
+          structuredContent: ensureValidJson({
+            viewId,
+            draftId,
+            title: draft.title,
+            updatedAt: draft.updatedAt,
+          }),
+        };
+      },
+    );
+  }
+
+  if (options.architecturalViews && callerAgentId && options.openArchitecturalView) {
+    const architecturalViews = options.architecturalViews;
+    registerTool(
+      "show_architectural_view",
+      {
+        title: "Show Architectural View",
+        description:
+          "Open one published Architectural View in this chat's workspace. Use this when the user asks to see a diagram; it opens the interactive visual instead of pasting HTML into the conversation.",
+        inputSchema: { viewId: z.string().min(1) },
+        outputSchema: {
+          viewId: z.string(),
+          title: z.string(),
+          sourceStatus: z.enum(["current", "stale", "unknown"]),
+        },
+      },
+      async ({ viewId }) => {
+        const agent = agentManager.getAgent(callerAgentId);
+        const cwd = agent?.config.cwd;
+        const workspaceId = agent?.workspaceId;
+        if (!cwd || !workspaceId) {
+          throw new Error("Architectural Views can only open from a workspace-bound chat.");
+        }
+        const content = await architecturalViews.getContent(cwd, viewId);
+        if (!content) throw new Error("Architectural View not found.");
+        options.openArchitecturalView?.({ agentId: callerAgentId, workspaceId, viewId });
+        return {
+          content: [],
+          structuredContent: ensureValidJson({
+            viewId,
+            title: content.view.title,
+            sourceStatus: content.view.sourceStatus,
+          }),
+        };
+      },
+    );
+  }
 
   const buildCronScheduleCadence = (input: {
     cron: string | undefined;
@@ -4201,6 +4338,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         ...(model ? { model } : {}),
         ...(resolvedThinkingOptionId ? { thinkingOptionId: resolvedThinkingOptionId } : {}),
         ...(modeId ? { modeId } : {}),
+        ...sourceForArtifactCaller(callerAgent),
         ...inheritedIdentity,
       });
       options.emitArtifactCreated?.(artifact);
@@ -4277,7 +4415,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         throw new Error("Artifact service is not available on this daemon");
       }
       const record = await artifactService.inspect(artifactId);
-      const data = await artifactService.getData(artifactId);
+      // Data rides along only when the HTML is readable. An artifact that
+      // needs repair or is mid-generation has no trustworthy data block, and
+      // failing the whole inspect would hide the very record (repairAvailable,
+      // status) that tells the agent what to do next.
+      const data =
+        record.status === "ready" && !record.repairAvailable
+          ? await artifactService.getData(artifactId)
+          : null;
       return {
         content: [],
         structuredContent: ensureValidJson({ ...record, data }),
@@ -5890,11 +6035,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     };
 
     registerTool(
-      "start_orchestration",
+      "start_workflow",
       {
-        title: "Start orchestration",
+        title: "Start Workflow",
         description:
-          "Use when active work needs a declared multi-chat plan with daemon-managed fan-out, gathering, judging, loops, or approval gates. The daemon executes typed phases (research/plan/implement/design/verify/gate/deliver), fans out candidates, judges them, loops until enough pass, and pauses at gates for approval. Each phase dispatches to the active team's agent profile for its role and fails clearly if the team lacks one. Waits until the orchestration completes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Do not use for a discrete task that can be completed directly or by one dedicated chat.",
+          "Use when active work needs a declared multi-chat Workflow with daemon-managed fan-out, gathering, judging, loops, or approval gates. The daemon executes typed phases (research/plan/implement/design/verify/gate/deliver), fans out candidates, judges them, loops until enough pass, and pauses at gates for approval. Each phase dispatches to the active team's agent profile for its role and fails clearly if the team lacks one. Waits until the Workflow completes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Do not use for a discrete task that can be completed directly or by one dedicated chat.",
         inputSchema: RunPlanSchema,
         outputSchema: {
           runId: z.string(),
@@ -5909,6 +6054,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       async (plan: unknown) => {
         const parsedPlan = RunPlanSchema.parse(plan);
         const conductor = resolveCallerAgent();
+        const pendingAiRunId = getOrchestrationRunIdFromLabels(conductor?.labels);
         const cwd = resolveScopedCwd(undefined);
         const workspaceId = conductor?.workspaceId;
         const runWorkerAgentIds = new Set<string>();
@@ -5941,7 +6087,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               const result = await agentManager.waitForAgentFullySettled(agentId, { signal });
               const finalMessage =
                 result.lastMessage ?? (await agentManager.getLastAssistantMessage(agentId));
-              return { finalMessage: finalMessage ?? null, failed: result.status === "error" };
+              const failure =
+                result.status === "error" ? agentManager.getAgent(agentId)?.lastError : undefined;
+              return {
+                finalMessage: finalMessage ?? null,
+                failed: result.status === "error",
+                ...(failure ? { error: failure } : {}),
+              };
             } catch {
               return { finalMessage: null, failed: true };
             }
@@ -5960,13 +6112,18 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
 
         // Record the active team on the run so the Runs display can filter by it.
         const activeTeam = getActiveAgentTeam(readAgentTeams?.());
-        const { run, settled } = activeRunService.startRun({
+        const { run, settled } = activeRunService.startWorkflow({
           plan: parsedPlan,
           spawnPort,
+          ...(pendingAiRunId ? { runId: pendingAiRunId } : {}),
           ...(callerAgentId ? { conductorAgentId: callerAgentId } : {}),
           cwd,
           ...(workspaceId ? { workspaceId } : {}),
           ...(activeTeam ? { teamId: activeTeam.id, teamName: activeTeam.name } : {}),
+          // The plan is model-initiated. The daemon preserves it, exposes its
+          // real fan-out shape, and waits for the owner before spawning any
+          // child. This is separate from declared attended gates.
+          requireStartConfirmation: true,
         });
         // An orchestration plan gathers its chats inside the daemon, rather than
         // letting every worker notify the conductor. Restore one aggregate
@@ -6021,7 +6178,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             ...(result ? { result } : {}),
             ...(outcome.status === "paused"
               ? {
-                  note: "A gate is awaiting approval. Approve or reject it in the Runs screen, then the run continues.",
+                  note: outcome.startConfirmation
+                    ? "The declared plan is awaiting start confirmation. Approve or reject it in the Workflows screen before any child agents start."
+                    : "A gate is awaiting approval. Approve or reject it in the Workflows screen, then the run continues.",
                 }
               : {}),
             ...(outcome.error ? { error: outcome.error } : {}),
@@ -6031,11 +6190,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     );
 
     registerTool(
-      "get_orchestration_status",
+      "get_workflow_status",
       {
-        title: "Get orchestration status",
+        title: "Get Workflow status",
         description:
-          "Return the current projection of an orchestration - its phases, statuses, and structured judge verdicts.",
+          "Return the current projection of a Workflow - its phases, statuses, and structured judge verdicts.",
         inputSchema: {
           runId: z.string(),
         },

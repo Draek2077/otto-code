@@ -1,10 +1,11 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { Run } from "@otto-code/protocol/orchestration";
 import type { SeedDaemonClient } from "./seed-client";
 
 /**
  * Deterministic seeding for orchestration Runs. There is no client RPC that
- * creates a run (runs are born from the conductor-only `start_run` tool), but
+ * creates a run (runs are born from the conductor-only `start_workflow` tool), but
  * the daemon persists each run as `$OTTO_HOME/runs/{runId}.json` and the
  * RunService reloads that directory on startup (see
  * packages/server/src/server/orchestration/run-store.ts / run-service.ts
@@ -21,6 +22,7 @@ export interface SeededRunPhase {
   task: string;
   status: string;
   candidates?: Array<{ agentId: string }>;
+  notes?: string;
   startedAt?: string;
   completedAt?: string;
 }
@@ -29,6 +31,10 @@ export interface SeededRun {
   id: string;
   title: string;
   status: string;
+  error?: string;
+  /** `graph` makes the Workflows library render the declared-Graph shape. */
+  kind?: "ai" | "graph";
+  graphId?: string;
   phases: SeededRunPhase[];
   cwd?: string;
   workspaceId?: string;
@@ -65,7 +71,8 @@ export async function removeSeededRunFile(runId: string): Promise<void> {
  * cast through this.
  */
 export interface RunsSeedClient {
-  getRunsSnapshot(): Promise<Array<{ id: string; status: string; title: string }>>;
+  getRunsSnapshot(): Promise<Run[]>;
+  cancelRun(runId: string): Promise<boolean>;
   clearFinishedRuns(): Promise<string[]>;
 }
 

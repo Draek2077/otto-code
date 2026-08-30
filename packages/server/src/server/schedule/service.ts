@@ -18,6 +18,7 @@ import {
   TEAM_SCHEDULER_PERSONALITY_SENTINEL,
   type AgentTeamsConfigView,
 } from "@otto-code/protocol/agent-teams";
+import { SCHEDULE_ID_LABEL, SCHEDULE_RUN_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import { curateAgentActivity } from "../agent/activity-curator.js";
 import { ensureAgentLoaded } from "../agent/agent-loading.js";
 import { formatSystemNotificationPrompt } from "../agent/agent-prompt.js";
@@ -74,6 +75,19 @@ export class ScheduleTargetGoneError extends Error {
     this.name = "ScheduleTargetGoneError";
   }
 }
+
+/** A saved Workflow cannot be launched on this host until the user repairs it. */
+export class ScheduleWorkflowTargetError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ScheduleWorkflowTargetError";
+  }
+}
+
+export type ScheduleWorkflowRunner = (input: {
+  schedule: StoredSchedule;
+  runId: string;
+}) => Promise<ScheduleExecutionResult>;
 
 function trimOptionalName(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -377,6 +391,8 @@ export interface ScheduleServiceOptions {
   revealWorkspace: (workspaceId: string) => Promise<void>;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
+  /** Installed after Workflow services initialize; absent hosts fail closed. */
+  workflowRunner?: ScheduleWorkflowRunner;
   onActivity?: ActivityIncrementFn;
 }
 
@@ -402,6 +418,7 @@ export class ScheduleService {
     schedule: StoredSchedule,
     runId: string,
   ) => Promise<ScheduleExecutionResult>;
+  private workflowRunner: ScheduleWorkflowRunner | null;
   private readonly runningScheduleIds = new Set<string>();
   private readonly onActivity: ActivityIncrementFn | undefined;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -421,7 +438,12 @@ export class ScheduleService {
     this.readAgentTeams = options.readAgentTeams ?? null;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
+    this.workflowRunner = options.workflowRunner ?? null;
     this.onActivity = options.onActivity;
+  }
+
+  setWorkflowRunner(runner: ScheduleWorkflowRunner): void {
+    this.workflowRunner = runner;
   }
 
   async start(): Promise<void> {
@@ -975,8 +997,10 @@ export class ScheduleService {
         status: "succeeded",
         agentId: result.agentId,
         output: result.output,
+        workflow: result.workflow,
         error: null,
         targetGone: false,
+        targetRepair: false,
         manual,
       });
     } catch (error) {
@@ -986,8 +1010,10 @@ export class ScheduleService {
         status: "failed",
         agentId: null,
         output: null,
+        workflow: undefined,
         error: error instanceof Error ? error.message : String(error),
         targetGone: error instanceof ScheduleTargetGoneError,
+        targetRepair: error instanceof ScheduleWorkflowTargetError,
         manual,
       });
     } finally {
@@ -1013,8 +1039,10 @@ export class ScheduleService {
     status: "succeeded" | "failed";
     agentId: string | null;
     output: string | null;
+    workflow: ScheduleExecutionResult["workflow"] | undefined;
     error: string | null;
     targetGone: boolean;
+    targetRepair: boolean;
     manual: boolean;
   }): Promise<void> {
     const updatedSchedule = await this.store.update(params.scheduleId, (schedule) => {
@@ -1028,6 +1056,7 @@ export class ScheduleService {
               agentId: params.agentId ?? run.agentId,
               output: truncateRunOutput(params.output),
               error: params.error,
+              ...(params.workflow ? { workflow: params.workflow } : {}),
             }
           : run,
       );
@@ -1044,6 +1073,11 @@ export class ScheduleService {
         // The target is permanently gone; retrying only burns the schedule down to
         // its expiry, so complete it now regardless of manual/scheduled origin.
         updated = completeSchedule(updated, now);
+      } else if (params.targetRepair) {
+        // A Workflow definition may be restored or deliberately reselected;
+        // preserve both the schedule and its failed run, then stop automatic
+        // retries until the owner reviews that repair boundary.
+        updated = { ...updated, status: "paused", pausedAt: now.toISOString(), nextRunAt: null };
       } else if (updated.status === "completed") {
         // Completed concurrently (e.g. the target agent was archived mid-run);
         // record the run outcome but leave the schedule terminal - don't advance.
@@ -1135,6 +1169,15 @@ export class ScheduleService {
     schedule: StoredSchedule,
     runId: string,
   ): Promise<ScheduleExecutionResult> {
+    if (schedule.target.type === "workflow") {
+      if (!this.workflowRunner) {
+        throw new ScheduleWorkflowTargetError(
+          "Saved Workflow schedules are not supported by this host. Update or reconnect to the host that owns the Workflow.",
+        );
+      }
+      return this.workflowRunner({ schedule, runId });
+    }
+
     if (schedule.target.type === "agent") {
       const wrappedPrompt = formatSystemNotificationPrompt(buildScheduleFireBody(schedule, runId));
       const record = await this.agentStorage.get(schedule.target.agentId);
@@ -1221,8 +1264,8 @@ export class ScheduleService {
         workspaceId: workspace.workspaceId,
         title: resolveScheduleAgentTitle(config, schedule.prompt),
         labels: {
-          "otto.schedule-id": schedule.id,
-          "otto.schedule-run": runId,
+          [SCHEDULE_ID_LABEL]: schedule.id,
+          [SCHEDULE_RUN_ID_LABEL]: runId,
         },
         mode: spawn.mode,
         thinking: spawn.thinking,

@@ -13,11 +13,13 @@ import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import type { ScheduleService } from "./schedule/service.js";
-import type { RunService } from "./orchestration/run-service.js";
+import type { WorkflowService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
+import type { GraphSharingService } from "./orchestration/graph-sharing-service.js";
 import type { NodeOutputStore } from "./orchestration/node-output.js";
 import type { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
 import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
+import type { ArtifactService } from "./artifact/artifact-service.js";
 import type { ProjectKnowledgeStoreResolver } from "./agent/project-knowledge/project-knowledge-store-resolver.js";
 import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
@@ -352,6 +354,10 @@ function createNoopProjectRegistry(): ProjectRegistry {
       kanban: null,
       knowledgeLocation: null,
       knowledgeDirectoryName: null,
+      artifactLocation: null,
+      artifactDirectoryName: null,
+      workflowLocation: null,
+      workflowDirectoryName: null,
       customIconRevision: null,
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
@@ -575,9 +581,9 @@ interface RequiredWebSocketServices {
 // Normalizes the optional orchestration pair (projects/orchestration-graphs)
 // outside the constructor to keep it under the complexity ceiling.
 function resolveOrchestrationServices(
-  runService: RunService | null | undefined,
+  runService: WorkflowService | null | undefined,
   graphStore: GraphStore | null | undefined,
-): { runService: RunService | null; graphStore: GraphStore | null } {
+): { runService: WorkflowService | null; graphStore: GraphStore | null } {
   return { runService: runService ?? null, graphStore: graphStore ?? null };
 }
 
@@ -613,8 +619,9 @@ export class VoiceAssistantWebSocketServer {
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly scheduleService: ScheduleService;
-  private readonly runService: RunService | null;
+  private readonly runService: WorkflowService | null;
   private readonly graphStore: GraphStore | null;
+  private graphSharingService: GraphSharingService | null = null;
   // Late-wired (setNodeOutputStore) rather than another constructor
   // positional: it is one in-memory side channel for graph runs, and every
   // session reads the same instance.
@@ -657,6 +664,10 @@ export class VoiceAssistantWebSocketServer {
   private personalityMemoryService: ProfileMemoryService | null = null;
   private projectKnowledgeService: ProjectKnowledgeService | null = null;
   private projectKnowledgeStoreResolver: ProjectKnowledgeStoreResolver | null = null;
+  private artifactService: ArtifactService | null = null;
+  private workflowStoreRegistry: {
+    discoverForProjectRoot: (projectRoot: string) => Promise<unknown>;
+  } | null = null;
   private terminalManager!: TerminalManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
   private scriptRuntimeStore!: WorkspaceScriptRuntimeStore | null;
@@ -745,7 +756,7 @@ export class VoiceAssistantWebSocketServer {
     browserToolsBroker?: BrowserToolsBroker | null,
     previewDevServers?: DevServerManager | null,
     gitHostingResolver?: GitHostingResolver | null,
-    runService?: RunService | null,
+    runService?: WorkflowService | null,
     onActivity?: ActivityIncrementFn,
     getActivityRollups?: () => Promise<ActivityRollups>,
     agentAutoTitle?: AgentAutoTitle | null,
@@ -965,6 +976,11 @@ export class VoiceAssistantWebSocketServer {
     this.projectKnowledgeService = service;
   }
 
+  /** The single daemon-owned artifact service every client session shares. */
+  public setArtifactService(service: ArtifactService | null): void {
+    this.artifactService = service;
+  }
+
   /**
    * Provide the store resolver. Its presence is what advertises
    * `features.projectKnowledgeStoreLocation`: without it a client cannot be
@@ -972,6 +988,17 @@ export class VoiceAssistantWebSocketServer {
    */
   public setProjectKnowledgeStoreResolver(resolver: ProjectKnowledgeStoreResolver | null): void {
     this.projectKnowledgeStoreResolver = resolver;
+  }
+
+  /** Wires the shared category resolver before advertising Workflow storage. */
+  public setWorkflowStoreRegistry(
+    registry: { discoverForProjectRoot: (projectRoot: string) => Promise<unknown> } | null,
+  ): void {
+    this.workflowStoreRegistry = registry;
+  }
+
+  public setGraphSharingService(service: GraphSharingService | null): void {
+    this.graphSharingService = service;
   }
 
   public setNodeOutputStore(store: NodeOutputStore | null): void {
@@ -1711,6 +1738,7 @@ export class VoiceAssistantWebSocketServer {
       scheduleService: this.scheduleService,
       runService: this.runService,
       graphStore: this.graphStore,
+      graphSharingService: this.graphSharingService,
       nodeOutputStore: this.nodeOutputStore,
       promptTemplateStore: this.promptTemplateStore,
       checkoutDiffManager: this.checkoutDiffManager,
@@ -1785,6 +1813,7 @@ export class VoiceAssistantWebSocketServer {
       personalityMemory: this.personalityMemoryService,
       projectKnowledge: this.projectKnowledgeService,
       projectKnowledgeStores: this.projectKnowledgeStoreResolver,
+      artifactService: this.artifactService,
       serverId: this.serverId,
       daemonVersion: this.daemonVersion,
       daemonRuntimeConfig: this.daemonRuntimeConfig,
@@ -2002,6 +2031,8 @@ export class VoiceAssistantWebSocketServer {
         cumulativeUsage: true,
         // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
         artifacts: true,
+        // COMPAT(architecturalViews): added in v0.9.0, remove after 2027-02-28.
+        architecturalViews: this.projectKnowledgeStoreResolver !== null,
         // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
         observedSubagents: true,
         // COMPAT(retainedTranscripts): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
@@ -2086,8 +2117,20 @@ export class VoiceAssistantWebSocketServer {
         runsDelete: this.runService !== null,
         // COMPAT(runsDraftEdit): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         runsDraftEdit: this.runService !== null,
+        // COMPAT(workflowStartRpc): added in v0.9.0, remove after 2027-02-28.
+        workflowStartRpc: this.runService !== null,
+        // COMPAT(workflowStartConfirmation): added in v0.9.0, remove after
+        // 2027-02-28 once every supported client carries the confirmation UI.
+        workflowStartConfirmation: this.runService !== null,
         // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         orchestrationGraphs: this.runService !== null && this.graphStore !== null,
+        // COMPAT(graphCheckOutputPorts): added in v0.9.0, remove after 2027-02-28.
+        graphCheckOutputPorts: this.runService !== null && this.graphStore !== null,
+        // COMPAT(scheduleWorkflowTargets): added in v0.9.0, remove after 2027-02-28.
+        scheduleWorkflowTargets:
+          this.runService !== null &&
+          this.graphStore !== null &&
+          this.workflowStoreRegistry !== null,
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         suggestedTasks: true,
         // COMPAT(steerQueue): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
@@ -2122,6 +2165,20 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate
         // when floor >= v0.8.18.
         projectKnowledgeStoreLocation: this.projectKnowledgeStoreResolver !== null,
+        // COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
+        artifactStoreLocation: true,
+        // COMPAT(artifactRepair): added in v0.9.0, remove after 2027-02-28.
+        artifactRepair: true,
+        // COMPAT(artifactDataUpdate): added in v0.9.0, remove after 2027-02-28.
+        artifactDataUpdate: true,
+        // COMPAT(artifactStoreMove): added in v0.9.0, remove after 2027-02-28.
+        artifactStoreMove: true,
+        // COMPAT(artifactProvenance): added in v0.9.0, remove after 2027-02-28.
+        artifactProvenance: true,
+        // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
+        categoryStorageResolver: this.workflowStoreRegistry
+          ? { categories: ["workflows"] }
+          : undefined,
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.
         fileOutsideWorkspace: true,
         // COMPAT(promptSuggestions): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.

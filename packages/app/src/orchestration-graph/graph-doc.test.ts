@@ -171,4 +171,13 @@ describe("carrying properties the designer cannot edit", () => {
     expect(graphEdgeKey("a", "b")).toBe(graphEdgeKey("a", "b"));
     expect(graphEdgeKey("a", "b")).not.toBe(graphEdgeKey("b", "a"));
   });
+
+  test("Check pass and fail wires to the same node remain distinct", () => {
+    expect(graphEdgeKey("check", "repair", "pass")).not.toBe(
+      graphEdgeKey("check", "repair", "fail"),
+    );
+    expect(carryUneditedEdgeFields({ from: "check", to: "repair", fromPort: "fail" })).toEqual({
+      fromPort: "fail",
+    });
+  });
 });

@@ -307,6 +307,8 @@ export interface ProjectDescriptor {
    * the same as "no override" rather than as an error.
    */
   projectKnowledgeLocation?: ProjectKnowledgeStoreLocationValue | null;
+  projectArtifactLocation?: "repository" | "host" | null;
+  projectWorkflowLocation?: "repository" | "host" | null;
   projectRootPath: string;
   projectKind: WorkspaceDescriptorPayload["projectKind"];
 }
@@ -324,6 +326,8 @@ export function normalizeProjectDescriptor(
     // daemons that predate the field.
     projectKanban: payload.projectKanban ?? null,
     projectKnowledgeLocation: payload.projectKnowledgeLocation ?? null,
+    projectArtifactLocation: payload.projectArtifactLocation ?? null,
+    projectWorkflowLocation: payload.projectWorkflowLocation ?? null,
     projectRootPath: payload.projectRootPath,
     projectKind: payload.projectKind,
   };

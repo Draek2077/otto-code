@@ -212,6 +212,33 @@ describe("executeRun - linear + roles", () => {
     expect(result.phases[0]?.notes).toContain("This team has no researcher");
     expect(fake.spawns).toHaveLength(0); // never spawned
   });
+
+  test("fails an unjudged phase when its provider worker errors and records recovery guidance", async () => {
+    const fake = makeFake({
+      respond: () => ({ message: "", failed: true }),
+    });
+    const result = await run(
+      {
+        title: "Provider failure",
+        phases: [{ id: "research", type: "research", title: "Research", task: "research" }],
+      },
+      fake,
+    );
+    expect(result).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("start a new Workflow"),
+      phases: [
+        expect.objectContaining({
+          status: "failed",
+          candidates: [
+            expect.objectContaining({
+              error: "The assigned agent failed before producing output.",
+            }),
+          ],
+        }),
+      ],
+    });
+  });
 });
 
 describe("executeRun - gates", () => {
@@ -248,7 +275,7 @@ describe("executeRun - gates", () => {
       fake,
     );
     expect(result.status).toBe("canceled");
-    expect(result.phases[0]?.status).toBe("failed");
+    expect(result.phases[0]?.status).toBe("canceled");
     expect(result.phases[1]?.status).toBe("pending"); // never reached
   });
 

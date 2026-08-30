@@ -66,7 +66,11 @@ export type CameraConfig = Partial<{
   autoFitMaxScale: number
 }>
 type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean; panels: PanelsConfig; render: RenderConfig; camera: CameraConfig; soundVolume: number; hudHidden: boolean; hudBottomHidden: boolean; hudCompact: boolean }>) => void
-type SessionCallback = (type: 'list' | 'started' | 'ended' | 'updated' | 'reset', data: SessionInfo[] | SessionInfo | string | { sessionId: string; label: string }) => void
+// OTTO PATCH (OTTO-PATCHES.md): `autoSelect` rides along with 'started'. The
+// host sets it false for a chat that started in the background (a queued task,
+// a schedule, an orchestration child), which must register in the session list
+// without pulling the canvas off whatever the user is looking at.
+type SessionCallback = (type: 'list' | 'started' | 'ended' | 'updated' | 'reset', data: SessionInfo[] | SessionInfo | string | { sessionId: string; label: string }, autoSelect?: boolean) => void
 /** OTTO PATCH (OTTO-PATCHES.md): host -> page session commands, driven by the
  * Otto toolbar's chats dropdown (select a chat / close a chat). The page runs
  * the same selectSession / removeSession it used for its own HUD tabs. */
@@ -161,7 +165,8 @@ class VSCodeBridge {
 
       case 'session-started':
         for (const cb of this.sessionListeners) {
-          cb('started', data.session)
+          // OTTO PATCH (OTTO-PATCHES.md): `select: false` = register only.
+          cb('started', data.session, data.select !== false)
         }
         break
 

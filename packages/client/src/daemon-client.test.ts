@@ -745,6 +745,53 @@ test("dedupes in-flight checkout status requests per agentId", async () => {
   });
 });
 
+test("uses workflows.start when supported and keeps runs.start for an older daemon", async () => {
+  const supportedTransport = createMockTransport();
+  const supportedClient = new DaemonClient({
+    url: "ws://test",
+    clientId: "workflow_start_supported",
+    reconnect: { enabled: false },
+    transportFactory: () => supportedTransport.transport,
+  });
+  const legacyTransport = createMockTransport();
+  const legacyClient = new DaemonClient({
+    url: "ws://test",
+    clientId: "workflow_start_legacy",
+    reconnect: { enabled: false },
+    transportFactory: () => legacyTransport.transport,
+  });
+  clients.push(supportedClient, legacyClient);
+
+  const supportedConnect = supportedClient.connect();
+  supportedTransport.triggerOpen({ features: { workflowStartRpc: true } });
+  await supportedConnect;
+  const legacyConnect = legacyClient.connect();
+  legacyTransport.triggerOpen();
+  await legacyConnect;
+
+  const supportedStart = supportedClient.startWorkflow({ flavor: "ai", cwd: "/project" });
+  const supportedRequest = parseSentFrame(supportedTransport.sent[0]);
+  expect(supportedRequest.type).toBe("workflows.start.request");
+  supportedTransport.triggerMessage(
+    wrapSessionMessage({
+      type: "workflows.start.response",
+      payload: { requestId: supportedRequest.requestId, runId: "workflow_new" },
+    }),
+  );
+  await expect(supportedStart).resolves.toEqual({ runId: "workflow_new" });
+
+  const legacyStart = legacyClient.startWorkflow({ flavor: "ai", cwd: "/project" });
+  const legacyRequest = parseSentFrame(legacyTransport.sent[0]);
+  expect(legacyRequest.type).toBe("runs.start.request");
+  legacyTransport.triggerMessage(
+    wrapSessionMessage({
+      type: "runs.start.response",
+      payload: { requestId: legacyRequest.requestId, runId: "workflow_legacy" },
+    }),
+  );
+  await expect(legacyStart).resolves.toEqual({ runId: "workflow_legacy" });
+});
+
 test("passes password as HTTP bearer header and WebSocket subprotocol", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();
@@ -3377,6 +3424,259 @@ test("requires non-empty clientId for direct connections", () => {
     });
     void _client;
   }).toThrow("Daemon client requires a non-empty clientId");
+});
+
+test("sets a project Artifact storage override through the correlated RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const pending = client.setProjectArtifactStoreLocation({
+    projectId: "project-artifact-store",
+    location: "host",
+    requestId: "artifact-store-1",
+  });
+
+  expect(parseSentFrame(mock.sent[0])).toEqual({
+    type: "project.artifact.store.set.request",
+    projectId: "project-artifact-store",
+    location: "host",
+    requestId: "artifact-store-1",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "project.artifact.store.set.response",
+      payload: {
+        requestId: "artifact-store-1",
+        projectId: "project-artifact-store",
+        accepted: true,
+        error: null,
+      },
+    }),
+  );
+
+  await expect(pending).resolves.toBeUndefined();
+});
+
+test("surfaces a rejected project Artifact storage override", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const pending = client.setProjectArtifactStoreLocation({
+    projectId: "missing-project",
+    location: null,
+    requestId: "artifact-store-missing-1",
+  });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "project.artifact.store.set.response",
+      payload: {
+        requestId: "artifact-store-missing-1",
+        projectId: "missing-project",
+        accepted: false,
+        error: "Project not found.",
+      },
+    }),
+  );
+
+  await expect(pending).rejects.toThrow("Project not found.");
+});
+
+test("sends and correlates an Artifact repair request", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const pending = client.artifactRepair({
+    artifactId: "artifact-repair-1",
+    requestId: "repair-1",
+  });
+  expect(parseSentFrame(mock.sent[0])).toEqual({
+    type: "artifact.repair.request",
+    artifactId: "artifact-repair-1",
+    requestId: "repair-1",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "artifact.repair.response",
+      payload: {
+        artifact: {
+          id: "artifact-repair-1",
+          name: "Repaired artifact",
+          description: "test",
+          projectId: "/project",
+          filePath: "/project/.otto/artifacts/artifact-repair-1.html",
+          kind: "html",
+          starred: false,
+          status: "ready",
+          createdAt: "2026-08-29T00:00:00.000Z",
+          updatedAt: "2026-08-29T00:00:00.000Z",
+          generationAgentId: null,
+          generationProvider: "mock",
+          generationModel: null,
+          repairAvailable: false,
+          errorMessage: null,
+        },
+        success: true,
+        requestId: "repair-1",
+      },
+    }),
+  );
+  await expect(pending).resolves.toMatchObject({ success: true, requestId: "repair-1" });
+});
+
+test("sends and correlates an Artifact data-only update request", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const pending = client.artifactUpdateData({
+    artifactId: "artifact-data-1",
+    data: { count: 2 },
+    requestId: "artifact-data-update-1",
+  });
+  expect(parseSentFrame(mock.sent[0])).toEqual({
+    type: "artifact.data.update.request",
+    artifactId: "artifact-data-1",
+    data: { count: 2 },
+    requestId: "artifact-data-update-1",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "artifact.data.update.response",
+      payload: {
+        artifact: {
+          id: "artifact-data-1",
+          name: "Data artifact",
+          description: "test",
+          projectId: "/project",
+          filePath: "/project/.otto/artifacts/artifact-data-1.html",
+          kind: "html",
+          starred: false,
+          status: "ready",
+          createdAt: "2026-08-29T00:00:00.000Z",
+          updatedAt: "2026-08-29T00:01:00.000Z",
+          generationAgentId: null,
+          generationProvider: "mock",
+          generationModel: null,
+          repairAvailable: false,
+          errorMessage: null,
+        },
+        success: true,
+        requestId: "artifact-data-update-1",
+      },
+    }),
+  );
+  await expect(pending).resolves.toMatchObject({
+    success: true,
+    requestId: "artifact-data-update-1",
+  });
+});
+
+test("sends and correlates an Artifact store move request", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const pending = client.artifactMoveStore({
+    artifactId: "artifact-move-1",
+    destination: "host",
+    requestId: "artifact-move-1",
+  });
+  expect(parseSentFrame(mock.sent[0])).toEqual({
+    type: "artifact.store.move.request",
+    artifactId: "artifact-move-1",
+    destination: "host",
+    requestId: "artifact-move-1",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "artifact.store.move.response",
+      payload: {
+        artifact: {
+          id: "artifact-move-1",
+          name: "Moved artifact",
+          description: "test",
+          projectId: "/project",
+          filePath: "/otto-home/project-artifacts/project-1/artifact-move-1.html",
+          kind: "html",
+          starred: false,
+          status: "ready",
+          createdAt: "2026-08-29T00:00:00.000Z",
+          updatedAt: "2026-08-29T00:01:00.000Z",
+          generationAgentId: null,
+          generationProvider: "mock",
+          generationModel: null,
+          storageLocation: "host",
+          repairAvailable: false,
+          errorMessage: null,
+        },
+        success: true,
+        requestId: "artifact-move-1",
+      },
+    }),
+  );
+  await expect(pending).resolves.toMatchObject({ success: true, requestId: "artifact-move-1" });
 });
 
 test("logs configured runtime generation in connection transition events", async () => {

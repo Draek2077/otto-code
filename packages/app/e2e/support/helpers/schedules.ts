@@ -18,6 +18,19 @@ export interface ScheduleRunRecord {
   workspaceId?: string | null;
   output: string | null;
   error: string | null;
+  target?: {
+    type: string;
+    definitionId?: string;
+    projectRoot?: string;
+  };
+  workflow?: {
+    definitionId: string;
+    title: string;
+    kind: string;
+    projectRoot: string;
+    fingerprint: string;
+    runId: string;
+  };
   startedAt: string;
   endedAt: string | null;
 }

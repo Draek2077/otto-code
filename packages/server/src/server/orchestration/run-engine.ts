@@ -67,6 +67,8 @@ export interface RunEngineAwaitResult {
   finalMessage: string | null;
   /** True when the child ended in an error/failed state. */
   failed: boolean;
+  /** Durable diagnostic for a failed child, when the provider supplied one. */
+  error?: string;
   /**
    * What the child submitted through submit_output, when its node declared
    * output fields (graph runs only). Already validated against the node's
@@ -420,12 +422,17 @@ async function runGatePhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<bo
     await port.emit(run);
     return false;
   }
+  // The user's decision, not an error: the phase is canceled and the run
+  // carries the reason so the library never shows a bare "canceled".
   setPhase(ctx, phase, {
-    status: "failed",
+    status: "canceled",
     completedAt: port.now(),
     notes: decision.note ?? "Rejected at gate.",
   });
   run.status = "canceled";
+  run.error = decision.note
+    ? `Rejected at gate "${phase.title}": ${decision.note}`
+    : `Rejected at gate "${phase.title}".`;
   run.updatedAt = port.now();
   await port.emit(run);
   return true;
@@ -468,7 +475,7 @@ function computeRoundNeed(
 }
 
 function candidatePassed(candidate: RunPhaseCandidate): boolean {
-  return candidate.verdict ? judgeVerdictPassed(candidate.verdict) : true;
+  return !candidate.error && (candidate.verdict ? judgeVerdictPassed(candidate.verdict) : true);
 }
 
 // The loop stops once the bar is met or a cap trips.
@@ -493,17 +500,30 @@ async function finalizePhase(
   input: { judged: boolean; candidates: RunPhaseCandidate[]; passers: number },
 ): Promise<void> {
   const { run, port } = ctx;
-  const succeeded = input.judged ? input.passers > 0 : input.candidates.length > 0;
+  // A spawned candidate is not a passing candidate. In particular, an
+  // unjudged phase must not report success when every provider turn failed.
+  const succeeded = input.passers > 0;
+  const candidateError = input.candidates.find((candidate) => candidate.error)?.error;
+  const recovery =
+    "Review the failed phase, correct the underlying provider or configuration issue, then start a new Workflow.";
+  let notes: string | undefined;
+  if (input.judged) {
+    notes = `${input.passers}/${input.candidates.length} candidate(s) passed.`;
+  } else if (candidateError) {
+    notes = `${candidateError} ${recovery}`;
+  }
   setPhase(ctx, phase, {
     status: succeeded ? "done" : "failed",
     completedAt: port.now(),
-    ...(input.judged
-      ? { notes: `${input.passers}/${input.candidates.length} candidate(s) passed.` }
-      : {}),
+    ...(notes ? { notes } : {}),
   });
   if (!succeeded) {
     run.status = "failed";
-    run.error = run.error ?? `Phase "${phase.id}" produced no passing candidate.`;
+    run.error =
+      run.error ??
+      (candidateError
+        ? `Phase "${phase.id}" failed: ${candidateError} ${recovery}`
+        : `Phase "${phase.id}" produced no passing candidate. ${recovery}`);
   }
   await port.emit(run);
 }
@@ -676,6 +696,13 @@ async function runWorkerPhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<
     }
   }
 
+  // Cancellation is a distinct terminal outcome. The canceled child's failed
+  // await result is expected after the cascade and must not overwrite it with
+  // a provider-failure diagnosis before executeRun finalizes cancellation.
+  if (ctx.signal.aborted) {
+    return;
+  }
+
   await finalizePhase(ctx, phase, {
     judged: isVerifyPhase || Boolean(judgeSpec),
     candidates,
@@ -716,6 +743,9 @@ async function runCandidateRound(
       agentId: spawn.agentId,
       ...(spawn.personalityId ? { personalityId: spawn.personalityId } : {}),
       ...(result.finalMessage ? { summary: result.finalMessage } : {}),
+      ...(result.failed
+        ? { error: result.error ?? "The assigned agent failed before producing output." }
+        : {}),
     };
 
     if (opts.isVerifyPhase) {

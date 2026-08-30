@@ -435,7 +435,22 @@ export function buildPersistedDaemonSection(
       persisted.daemon?.projectKnowledge !== undefined)
       ? { projectKnowledge: mutable.projectKnowledge }
       : {}),
+    ...persistProjectArtifactsConfig(persisted, mutable),
   } as PersistedConfig["daemon"];
+}
+
+function persistProjectArtifactsConfig(
+  persisted: PersistedConfig,
+  mutable: MutableDaemonConfig,
+): Pick<NonNullable<PersistedConfig["daemon"]>, "projectArtifacts"> | Record<never, never> {
+  const artifacts = mutable.projectArtifacts;
+  if (!artifacts) return {};
+  if (
+    artifacts.defaultStoreLocation === "repository" &&
+    persisted.daemon?.projectArtifacts === undefined
+  )
+    return {};
+  return { projectArtifacts: artifacts };
 }
 
 // The local AI host (otto-brain) editable projection, persisted under

@@ -12,7 +12,8 @@ import {
 import {
   type OrchestrationGraph,
   type PromptTemplate,
-  validateOrchestrationGraph,
+  type WorkflowStartConfirmation,
+  type WorkflowScheduleSource,
 } from "@otto-code/protocol/orchestration";
 
 import type { AgentManager } from "../agent/agent-manager.js";
@@ -29,7 +30,7 @@ import {
   createAgentCommand,
   formatProviderModel,
 } from "../agent/create-agent/create.js";
-import type { GraphEngineSpawnInput } from "./graph-engine.js";
+import { type GraphEngineSpawnInput, validateGraphForExecution } from "./graph-engine.js";
 import type { GraphStore } from "./graph-store.js";
 import {
   type WorkspaceAccess,
@@ -41,18 +42,18 @@ import type { NodeOutputStore } from "./node-output.js";
 import type { PromptTemplateStore } from "./prompt-template-store.js";
 import { renderPromptTemplate, resolveTemplateVariables } from "./prompt-render.js";
 import { resolveTeamRoleMember } from "./resolve-team-role.js";
-import type { GraphSpawnPort, RunService } from "./run-service.js";
+import type { GraphSpawnPort, WorkflowService } from "./run-service.js";
 
 // User-initiated orchestrations (projects/orchestration-graphs): the daemon
 // wiring behind the New Orchestration dialog's `runs.start` RPC. Two flavors:
 //
-// - "ai": prompt-and-go - spawn an orchestrator agent whose first turn is the
-//   user's prompt plus a nudge to declare its own plan via start_run. The Run
-//   record appears when the agent calls the tool; the dialog just needs the
-//   chat to navigate to.
-// - "graph": deterministic - spawn the orchestrator (root node, hosts the
-//   chat), then hand the graph to RunService.startGraphRun with a spawn port
-//   that creates every child agent itself. Participants never wire themselves
+// - "ai": prompt-and-go - persist the Workflow first, then spawn its bound
+//   orchestrator agent. The agent later activates that same record with a
+//   declared phase plan via start_workflow.
+// - "graph": deterministic - persist the immutable graph snapshot, then spawn
+//   the orchestrator (root node, hosts the chat) and hand the graph to
+//   WorkflowService.startGraphRun with a spawn port that creates every child
+//   agent itself. Participants never wire themselves
 //   together: children are stamped with the orchestration policy label the
 //   otto-tool catalog enforces (deterministic ⇒ no orchestration/preview/
 //   browser tools; autonomous ⇒ everything except start_run).
@@ -62,7 +63,7 @@ import type { GraphSpawnPort, RunService } from "./run-service.js";
 // beyond that - a missing seat is a loud error.
 
 export interface UserOrchestrationDependencies {
-  runService: RunService;
+  runService: WorkflowService;
   graphStore: GraphStore;
   agentManager: AgentManager;
   createAgentDeps: CreateAgentCommandDependencies;
@@ -93,13 +94,17 @@ export interface StartUserOrchestrationInput {
   prompt?: string;
   graphId?: string;
   graphInputs?: Record<string, string>;
+  /** Internal session proof that the user accepted this exact Graph review. */
+  startConfirmationSatisfied?: boolean;
   draft?: boolean;
   runId?: string;
+  scheduleSource?: WorkflowScheduleSource;
 }
 
 export interface StartUserOrchestrationResult {
   runId?: string;
   agentId?: string;
+  confirmation?: WorkflowStartConfirmation;
 }
 
 export async function startUserOrchestration(
@@ -124,22 +129,51 @@ async function startAiOrchestration(
     throw new Error("An AI orchestration needs a prompt.");
   }
   const seat = await resolveOrchestratorSeat(deps, input);
+  const title = input.title?.trim() || "Orchestration";
   const description = input.description?.trim();
+  const team = getActiveAgentTeam(deps.getAgentTeams());
+  const run = await deps.runService.createAiRun({
+    title,
+    ...(description ? { description } : {}),
+    cwd: input.cwd,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(team ? { teamId: team.id, teamName: team.name } : {}),
+  });
   const kickoff =
     `${prompt}\n\n` +
     (description ? `Context (what this orchestration is for): ${description}\n\n` : "") +
-    `Orchestrate this: declare a multi-agent plan with the start_run tool and let the ` +
-    `daemon execute it, then relay the results. Use Otto tools only - never spawn ` +
-    `provider-native subagents or workflows for orchestration.`;
-  const agentId = await spawnOrchestrationAgent(deps, {
-    seat,
-    title: input.title?.trim() || "Orchestration",
-    prompt: kickoff,
-    cwd: input.cwd,
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    detached: true,
-  });
-  return { agentId };
+    `Run this as an AI Workflow: declare a multi-agent plan with the start_workflow tool and let ` +
+    `the daemon execute it, then relay the results. Use Otto tools only - never spawn ` +
+    `provider-native subagents or workflows for this Workflow.`;
+  try {
+    const agentId = await spawnOrchestrationAgent(deps, {
+      seat,
+      title,
+      prompt: kickoff,
+      cwd: input.cwd,
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      labels: { [ORCHESTRATION_RUN_ID_LABEL]: run.id },
+      detached: true,
+    });
+    await deps.runService.bindAiRunConductor({
+      runId: run.id,
+      conductorAgentId: agentId,
+      cancelConductor: async () => {
+        await deps.agentManager.cancelAgentRun(agentId);
+      },
+    });
+    // The record stays "planning" for as long as its chat is alive: a model
+    // that asks a clarifying question first must still be able to declare its
+    // plan on a later turn. The daemon's agent-archived hook (bootstrap.ts)
+    // fails the record if the chat is archived or deleted without a plan.
+    return { runId: run.id, agentId };
+  } catch (error) {
+    await deps.runService.failPendingAiRun(
+      run.id,
+      `Could not start the orchestrator: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw error;
+  }
 }
 
 async function startGraphOrchestration(
@@ -153,6 +187,9 @@ async function startGraphOrchestration(
   if (!graph) {
     throw new Error(`Graph ${input.graphId} not found`);
   }
+  // The Graph is fully known before its root agent starts. Keep this daemon
+  // check next to launch: a client may render the same review, but it cannot
+  // lower the threshold or skip the confirmation by altering UI state.
   const title = input.title?.trim() || graph.name;
   const description = input.description?.trim();
   const descriptionField = description ? { description } : {};
@@ -163,6 +200,7 @@ async function startGraphOrchestration(
   const agentTeamsView = deps.getAgentTeams();
   const team = getActiveAgentTeam(agentTeamsView);
   const teamFields = team ? { teamId: team.id, teamName: team.name } : {};
+  const scheduleSourceField = optionalScheduleSource(input.scheduleSource);
 
   if (input.draft) {
     const run = await deps.runService.createDraftGraphRun({
@@ -173,6 +211,7 @@ async function startGraphOrchestration(
       cwd: input.cwd,
       ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       ...teamFields,
+      ...scheduleSourceField,
       // With a runId this re-saves that draft in place (Edit Orchestration);
       // without one it mints a new draft (the designer flow).
       ...(input.runId ? { runId: input.runId } : {}),
@@ -180,20 +219,44 @@ async function startGraphOrchestration(
     return { runId: run.id };
   }
 
-  const problems = validateOrchestrationGraph(graph);
+  const startReview = reviewGraphStartConfirmation(deps, graph, input);
+  if (startReview) {
+    return startReview;
+  }
+
+  // Validate parser-backed conditions and Checks before resolving a seat or
+  // spawning the root chat. An invalid saved draft is recoverable authoring
+  // work, never a partially launched Workflow.
+  const problems = validateGraphForExecution(graph);
   if (problems.length > 0) {
     throw new Error(`Graph is not executable: ${problems.join(" ")}`);
   }
 
   const graphInputs = input.graphInputs ?? {};
   const seat = await resolveOrchestratorSeat(deps, input);
-  const orchestratorAgentId = await spawnOrchestrationAgent(deps, {
-    seat,
+  // The root chat is already real work. Make the graph, inputs, workspace and
+  // frozen team recoverable before it receives a first turn.
+  const prepared = await deps.runService.prepareGraphRun({
+    graph,
+    graphInputs,
     title,
-    prompt: buildOrchestratorKickoff(graph, graphInputs, title, description),
+    ...descriptionField,
     cwd: input.cwd,
     ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    detached: true,
+    ...teamFields,
+    ...scheduleSourceField,
+    ...(input.runId ? { runId: input.runId } : {}),
+  });
+  const orchestratorAgentId = await spawnPreparedGraphOrchestrator({
+    deps,
+    runId: prepared.id,
+    seat,
+    graph,
+    graphInputs,
+    title,
+    description,
+    cwd: input.cwd,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
   });
 
   // Children stamp the run id for first-class attribution; the id isn't known
@@ -224,10 +287,26 @@ async function startGraphOrchestration(
     cwd: input.cwd,
     ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
     ...teamFields,
-    ...(input.runId ? { runId: input.runId } : {}),
+    ...scheduleSourceField,
+    runId: prepared.id,
   });
   runIdRef.current = run.id;
   return { runId: run.id, agentId: orchestratorAgentId };
+}
+
+function reviewGraphStartConfirmation(
+  deps: UserOrchestrationDependencies,
+  graph: OrchestrationGraph,
+  input: StartUserOrchestrationInput,
+): StartUserOrchestrationResult | null {
+  const confirmation = deps.runService.reviewGraphStart(graph);
+  return confirmation && !input.startConfirmationSatisfied ? { confirmation } : null;
+}
+
+function optionalScheduleSource(
+  scheduleSource: StartUserOrchestrationInput["scheduleSource"],
+): Pick<StartUserOrchestrationInput, "scheduleSource"> {
+  return scheduleSource ? { scheduleSource } : {};
 }
 
 // ── Orchestrator seat ────────────────────────────────────────────────────────
@@ -235,6 +314,40 @@ async function startGraphOrchestration(
 type OrchestratorSeat =
   | { kind: "personality"; personality: AgentProfile }
   | { kind: "model"; providerModel: string; thinkingOptionId?: string };
+
+async function spawnPreparedGraphOrchestrator(input: {
+  deps: UserOrchestrationDependencies;
+  runId: string;
+  seat: OrchestratorSeat;
+  graph: OrchestrationGraph;
+  graphInputs: Record<string, string>;
+  title: string;
+  description?: string;
+  cwd: string;
+  workspaceId?: string;
+}): Promise<string> {
+  try {
+    return await spawnOrchestrationAgent(input.deps, {
+      seat: input.seat,
+      title: input.title,
+      prompt: buildOrchestratorKickoff(
+        input.graph,
+        input.graphInputs,
+        input.title,
+        input.description,
+      ),
+      cwd: input.cwd,
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      detached: true,
+    });
+  } catch (error) {
+    await input.deps.runService.failPendingGraphRun(
+      input.runId,
+      `Could not start the Graph orchestrator: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw error;
+  }
+}
 
 async function resolveOrchestratorSeat(
   deps: UserOrchestrationDependencies,
@@ -529,9 +642,12 @@ function buildGraphSpawnPort(
         // Taken (not read) - one submission belongs to one settle, and leaving
         // it behind would let a later iteration inherit an earlier answer.
         const submittedOutput = deps.nodeOutputStore?.take(agentId) ?? null;
+        const failure =
+          result.status === "error" ? deps.agentManager.getAgent(agentId)?.lastError : undefined;
         return {
           finalMessage: finalMessage ?? null,
           failed: result.status === "error",
+          ...(failure ? { error: failure } : {}),
           submittedOutput,
         };
       } catch {

@@ -7,6 +7,26 @@ here (rather than a fork-wide diff) are the exception, logged one entry per
 patch, oldest first. Each entry should be small enough to re-apply by hand
 after a `git subtree pull` if the upstream diff conflicts with it.
 
+## 2026-08-29 — background session starts do not steal selection
+
+`session-started` auto-selected the incoming session unconditionally. In Otto a
+chat can start without the user going anywhere near it (a queued task, a
+schedule, an orchestration child), so a burst of task starts flicked the canvas
+through each new chat and back again while the user sat on one tab.
+
+- `web/lib/vscode-bridge.ts` — `SessionCallback` takes a third `autoSelect`
+  argument, forwarded from the host message's new optional `select` field
+  (`data.select !== false`). Every other caller ignores it.
+- `web/hooks/use-vscode-bridge.ts` — the `'started'` handler still registers the
+  session (list entry, status, buffers) but only takes the selection when
+  `autoSelect` is true, or when nothing is selected yet (an empty canvas beats
+  showing nothing).
+
+Otto-side counterpart: `packages/app/src/visualizer/use-visualizer-event-adapter.ts`
+`pushSessionStarted` sets `select: false` on every start queued outside the
+hydration window, and on draft sessions always; the host drives selection from
+the focused chat tab (`visualizer-surface.tsx`). Needs `npm run build:visualizer`.
+
 ## 2026-08-27 — cursor-anchored wheel zoom
 
 The render layer reserved zoom for Ctrl/Command-wheel and interpreted an

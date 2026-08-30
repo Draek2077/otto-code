@@ -259,7 +259,7 @@ export function useVSCodeBridge(): BridgeHookResult {
     // Note: these handlers only update session list + selection state.
     // Event flushing is handled by the consumer (index.tsx effect) to avoid
     // races between auto-flush here and save/restore logic there.
-    const unsubSession = bridge.onSession((type, data) => {
+    const unsubSession = bridge.onSession((type, data, autoSelect = true) => {
       if (type === 'reset') {
         // Panel was reopened — clear all stale state
         setSessions([])
@@ -309,6 +309,13 @@ export function useVSCodeBridge(): BridgeHookResult {
           }
           return [...prev, session]
         })
+        // OTTO PATCH (OTTO-PATCHES.md): a session the host flagged
+        // `select: false` started in the background — the user did not switch
+        // to it, so neither does the canvas. It is still registered above, so
+        // it shows in the session list and its events keep buffering. The one
+        // exception is an empty canvas (nothing selected yet), where showing
+        // the new chat beats showing nothing.
+        const mayAutoSelect = autoSelect || selectedSessionIdRef.current === null
         // OTTO PATCH (OTTO-PATCHES.md): only arm the switch-pending gate when
         // the selection actually CHANGES. The flag's only clearer is the
         // selection-change useLayoutEffect in index.tsx — arming it for an
@@ -316,7 +323,7 @@ export function useVSCodeBridge(): BridgeHookResult {
         // session-state echo) left it set forever, silently diverting every
         // later live event for that chat into the background-activity
         // bucket: the canvas froze mid-chat until the tab was reopened.
-        if (selectedSessionIdRef.current !== ALL_ACTIVE_CHATS_SESSION_ID && selectedSessionIdRef.current !== session.id) {
+        if (mayAutoSelect && selectedSessionIdRef.current !== ALL_ACTIVE_CHATS_SESSION_ID && selectedSessionIdRef.current !== session.id) {
           // Auto-select newly started session.
           // Set switch-pending flag to prevent the animation frame from processing
           // events in the wrong simulation state before useLayoutEffect swaps it.

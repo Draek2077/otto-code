@@ -39,7 +39,6 @@ import { ExecutorRow, ProjectNameLine } from "@/components/project-row";
 import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
-import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
 import {
   buildProjectNameByCwd,
   buildScheduleProjectTargets,
@@ -64,44 +63,21 @@ import {
 } from "@/hooks/use-runs";
 import { openVisualizerTab } from "@/visualizer/open-visualizer-tab";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
+import { useRespondToWorkflowStartConfirmation } from "@/hooks/use-orchestration-graphs";
+import {
+  describeWorkflowStorageRemediation,
+  describeWorkflowStorageSource,
+} from "@/workflows/storage-presentation";
+import {
+  applyRunFilters,
+  describeRunTerminalPresentation,
+  phaseStatusVariant,
+  runStatusLabel,
+  runStatusVariant,
+  type RunStatusFilter,
+} from "./runs-screen-presentation";
 
 // ── Pure presentation helpers ───────────────────────────────────────────────
-
-type BadgeVariant = "success" | "warning" | "error";
-
-export function runStatusVariant(status: string): BadgeVariant {
-  if (status === "done") {
-    return "success";
-  }
-  if (status === "failed" || status === "canceled") {
-    return "error";
-  }
-  // pending, running, paused - still in flight or waiting on a human.
-  return "warning";
-}
-
-/** Label for the run-level status pill - "Completed"/"Failed" read clearer
- * there than the raw status; per-phase badges keep the raw "Done" etc. */
-export function runStatusLabel(status: string): string {
-  if (status === "done") {
-    return "Completed";
-  }
-  if (status === "canceled") {
-    return "Failed";
-  }
-  return status;
-}
-
-export function phaseStatusVariant(status: string): BadgeVariant {
-  if (status === "done") {
-    return "success";
-  }
-  if (status === "failed") {
-    return "error";
-  }
-  // pending, running, blocked, skipped.
-  return "warning";
-}
 
 /** The gate phase a paused run is currently waiting on, if any. */
 export function findBlockedGatePhase(run: Run): RunPhase | null {
@@ -132,7 +108,13 @@ const plural = (n: number, one: string): string => `${n} ${n === 1 ? one : `${on
  * phase count a plan run reports - everything else counts phases.
  */
 export function describeRunShape(run: Run): string {
-  return run.kind === "graph" ? "Graph" : plural(run.phases.length, "phase");
+  if (run.kind === "graph") {
+    return "Graph";
+  }
+  if (run.kind === "ai") {
+    return "AI Workflow";
+  }
+  return plural(run.phases.length, "phase");
 }
 
 /**
@@ -160,6 +142,20 @@ export function describeRunComplexity(run: Run): string[] {
     chips.push(plural(gates, "gate"));
   }
   return chips;
+}
+
+/** Factual launch posture only: no provider rate-card estimate is invented. */
+export function formatRunStartConfirmation(
+  confirmation: NonNullable<Run["startConfirmation"]>,
+): string {
+  const agentLabel = confirmation.plannedAgentCount === 1 ? "agent" : "agents";
+  const fanOut =
+    confirmation.fanOutPhaseCount > 0
+      ? ` ${confirmation.fanOutPhaseCount} fan-out phase${confirmation.fanOutPhaseCount === 1 ? " is" : "s are"} included.`
+      : "";
+  return confirmation.reason === "model-plan-declared"
+    ? `The AI Workflow declared a plan that will start ${confirmation.plannedAgentCount} ${agentLabel}.${fanOut} The daemon cap is ${confirmation.agentCap}.`
+    : `This Workflow will start ${confirmation.plannedAgentCount} ${agentLabel}.${fanOut} The daemon cap is ${confirmation.agentCap}.`;
 }
 
 /**
@@ -191,18 +187,6 @@ export function describeRunLocation(input: {
     cwd: input.cwd,
     projectNameByCwd: input.projectNameByCwd,
   });
-}
-
-/** A one-line reason a run/phase didn't succeed, for the failure banner. */
-export function describeRunFailure(run: Run): string | null {
-  if (run.status === "failed") {
-    const failedPhase = run.phases.find((p) => p.status === "failed");
-    return run.error ?? failedPhase?.notes ?? "The run failed.";
-  }
-  if (run.status === "canceled") {
-    return run.error ?? "The run was canceled.";
-  }
-  return null;
 }
 
 /** "Jan 15, 2026, 3:45 PM" for the footer meta line, or null when the date is unknown. */
@@ -269,43 +253,14 @@ export function sumRunTokens(
 
 // ── Filtering ────────────────────────────────────────────────────────────────
 
-export type RunStatusFilter = "all" | "draft" | "active" | "failed" | "completed";
-
 const STATUS_FILTER_OPTIONS: SegmentedControlOption<RunStatusFilter>[] = [
   { value: "all", label: "All", testID: "runs-filter-all" },
   { value: "draft", label: "Draft", testID: "runs-filter-draft" },
   { value: "active", label: "Active", testID: "runs-filter-active" },
   { value: "failed", label: "Failed", testID: "runs-filter-failed" },
+  { value: "canceled", label: "Canceled", testID: "runs-filter-canceled" },
   { value: "completed", label: "Completed", testID: "runs-filter-completed" },
 ];
-
-export function matchesStatusFilter(run: Run, filter: RunStatusFilter): boolean {
-  if (filter === "draft") {
-    return run.status === "draft";
-  }
-  if (filter === "active") {
-    return run.status === "running" || run.status === "pending" || run.status === "paused";
-  }
-  if (filter === "failed") {
-    return run.status === "failed" || run.status === "canceled";
-  }
-  if (filter === "completed") {
-    return run.status === "done";
-  }
-  return true;
-}
-
-export function applyRunFilters(
-  runs: readonly RunWithHost[],
-  filter: { status: RunStatusFilter; cwd: string | undefined },
-): RunWithHost[] {
-  return runs.filter(
-    (run) =>
-      matchesStatusFilter(run, filter.status) &&
-      (filter.cwd === undefined ||
-        (run.cwd !== undefined && artifactBelongsToWorkspace(run.cwd, filter.cwd))),
-  );
-}
 
 // ── Screen ──────────────────────────────────────────────────────────────────
 
@@ -443,7 +398,9 @@ function RunsScreenContent(): ReactElement {
     () =>
       isDev &&
       hosts.some(
-        (host) => sessions[host.serverId]?.serverInfo?.features?.orchestrationGraphs === true,
+        (host) =>
+          sessions[host.serverId]?.serverInfo?.features?.orchestrationGraphs === true &&
+          sessions[host.serverId]?.serverInfo?.features?.workflowStartConfirmation === true,
       ),
     [hosts, sessions],
   );
@@ -522,6 +479,9 @@ function resolveEmptyFilterText(status: RunStatusFilter): string {
   }
   if (status === "failed") {
     return "No failed workflows";
+  }
+  if (status === "canceled") {
+    return "No canceled workflows";
   }
   if (status === "completed") {
     return "No completed workflows";
@@ -761,6 +721,7 @@ function RunCard({
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
 
   const gateMutation = useRespondToRunGate(serverId);
+  const startConfirmationMutation = useRespondToWorkflowStartConfirmation(serverId);
   const cancelMutation = useCancelRun(serverId);
   const deleteMutation = useDeleteRun(serverId);
   const agentsById = useSessionStore((state) => state.sessions[serverId]?.agents);
@@ -776,6 +737,7 @@ function RunCard({
   const gatePhase = findBlockedGatePhase(run);
   const isActive = !isTerminalRunStatus(run.status);
   const gatePhaseId = gatePhase?.id;
+  const startConfirmation = run.startConfirmation;
 
   const approveGate = useCallback(() => {
     if (gatePhaseId) {
@@ -787,6 +749,20 @@ function RunCard({
       gateMutation.mutate({ runId: run.id, phaseId: gatePhaseId, approved: false });
     }
   }, [gateMutation, run.id, gatePhaseId]);
+  const respondToStartConfirmation = useCallback(
+    (approved: boolean) => {
+      startConfirmationMutation.mutate({ runId: run.id, approved });
+    },
+    [startConfirmationMutation, run.id],
+  );
+  const rejectStartConfirmation = useCallback(
+    () => respondToStartConfirmation(false),
+    [respondToStartConfirmation],
+  );
+  const approveStartConfirmation = useCallback(
+    () => respondToStartConfirmation(true),
+    [respondToStartConfirmation],
+  );
 
   const runTitle = run.title;
   const cancelRun = useCallback(() => {
@@ -825,12 +801,15 @@ function RunCard({
   const canVisualize = Boolean(workspaceId) && visualizerEnabled;
   const handleVisualize = useCallback(() => {
     if (workspaceId) {
-      openVisualizerTab({ serverId, workspaceId, runId });
+      // Workflows is an app-wide screen, so the run's workspace is not the one
+      // on screen. Opening the tab without carrying the user there leaves the
+      // action looking like it did nothing.
+      openVisualizerTab({ serverId, workspaceId, runId, navigate: true });
     }
   }, [serverId, workspaceId, runId]);
 
   const complexity = describeRunComplexity(run);
-  const failure = describeRunFailure(run);
+  const terminalPresentation = describeRunTerminalPresentation(run);
   const conductor = run.conductorAgentId ? agentsById?.get(run.conductorAgentId) : undefined;
   const location = describeRunLocation({
     serverId,
@@ -840,16 +819,18 @@ function RunCard({
     projectNameByCwd,
   });
   const totalTokens = sumRunTokens(run, agentsById);
-  const isErrorCard = run.status === "failed" || run.status === "canceled";
+  const terminalCardStyle = terminalPresentation
+    ? CARD_STYLE_BY_TERMINAL_TONE[terminalPresentation.tone]
+    : null;
 
   const cardStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [
       styles.card,
-      isErrorCard && styles.cardError,
+      terminalCardStyle,
       isHovered && !isCompact && styles.cardHovered,
       pressed && canVisualize && styles.cardPressed,
     ],
-    [isErrorCard, isHovered, isCompact, canVisualize],
+    [terminalCardStyle, isHovered, isCompact, canVisualize],
   );
 
   return (
@@ -862,7 +843,9 @@ function RunCard({
         style={cardStyle}
         onPress={canVisualize ? handleVisualize : undefined}
         accessibilityRole={canVisualize ? "button" : undefined}
-        accessibilityLabel={canVisualize ? `Visualize ${run.title}` : undefined}
+        accessibilityLabel={
+          canVisualize ? `Visualize ${run.title}, ${runStatusLabel(run)}` : undefined
+        }
         testID={`run-card-${run.id}`}
       >
         <View style={styles.headerRow}>
@@ -894,6 +877,7 @@ function RunCard({
           model={conductor?.model ?? null}
         />
         <ProjectNameLine projectName={location} />
+        <WorkflowStorageRemediation provenance={run.workflowStorage} connectedHostId={serverId} />
 
         {/* Empty detail blocks are omitted, not rendered empty - an empty View
             still consumes one of the card's row gaps, which is what pushed the
@@ -908,9 +892,11 @@ function RunCard({
           </View>
         ) : null}
 
-        {failure ? (
-          <View style={styles.failureBanner}>
-            <Text style={styles.failureText}>{failure}</Text>
+        {terminalPresentation ? (
+          <View style={BANNER_STYLE_BY_TERMINAL_TONE[terminalPresentation.tone]}>
+            <Text style={BANNER_TEXT_STYLE_BY_TERMINAL_TONE[terminalPresentation.tone]}>
+              {terminalPresentation.reason}
+            </Text>
           </View>
         ) : null}
 
@@ -924,6 +910,7 @@ function RunCard({
                 phase.notes &&
                 (phase.status === "failed" ||
                   phase.status === "skipped" ||
+                  phase.status === "canceled" ||
                   phase.status === "blocked");
               return (
                 <View key={phase.id} style={styles.phaseBlock}>
@@ -979,17 +966,77 @@ function RunCard({
           </View>
         ) : null}
 
+        <RunStartConfirmation
+          runId={run.id}
+          confirmation={startConfirmation}
+          pending={startConfirmationMutation.isPending}
+          onReject={rejectStartConfirmation}
+          onApprove={approveStartConfirmation}
+        />
+
         <View style={styles.footerRow}>
           <View style={styles.footerBadges}>
-            <StatusBadge
-              label={runStatusLabel(run.status)}
-              variant={runStatusVariant(run.status)}
-            />
+            <StatusBadge label={runStatusLabel(run)} variant={runStatusVariant(run.status)} />
             <StatusBadge label={describeRunShape(run)} />
+            <StatusBadge label={describeWorkflowStorageSource(run.workflowStorage)} />
           </View>
           <RunFooterMeta run={run} totalTokens={totalTokens} />
         </View>
       </Pressable>
+    </View>
+  );
+}
+
+function WorkflowStorageRemediation({
+  provenance,
+  connectedHostId,
+}: {
+  provenance: Run["workflowStorage"];
+  connectedHostId: string;
+}): ReactElement | null {
+  const remediation = describeWorkflowStorageRemediation({ provenance, connectedHostId });
+  return remediation ? <Text style={styles.phaseNotes}>{remediation}</Text> : null;
+}
+
+function RunStartConfirmation({
+  runId,
+  confirmation,
+  pending,
+  onReject,
+  onApprove,
+}: {
+  runId: string;
+  confirmation: Run["startConfirmation"];
+  pending: boolean;
+  onReject: () => void;
+  onApprove: () => void;
+}): ReactElement | null {
+  if (!confirmation) {
+    return null;
+  }
+  return (
+    <View style={styles.gateRow} testID={`run-start-confirmation-${runId}`}>
+      <Text style={styles.gateLabel}>{formatRunStartConfirmation(confirmation)}</Text>
+      <View style={styles.gateButtons}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pending}
+          onPress={onReject}
+          onPressIn={stopPressInPropagation}
+        >
+          Reject
+        </Button>
+        <Button
+          variant="default"
+          size="sm"
+          disabled={pending}
+          onPress={onApprove}
+          onPressIn={stopPressInPropagation}
+        >
+          Start workflow
+        </Button>
+      </View>
     </View>
   );
 }
@@ -1208,6 +1255,9 @@ const styles = StyleSheet.create((theme) => ({
   cardError: {
     borderColor: theme.colors.palette.red[500],
   },
+  cardCanceled: {
+    borderColor: theme.colors.statusWarning,
+  },
   cardHovered: {
     backgroundColor: theme.colors.surface2,
     borderColor: theme.colors.borderAccent,
@@ -1263,6 +1313,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   failureText: {
     color: theme.colors.palette.red[300],
+    fontSize: theme.fontSize.sm,
+  },
+  canceledBanner: {
+    backgroundColor: theme.colors.statusWarningSurface,
+    borderWidth: 1,
+    borderColor: theme.colors.statusWarning,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing[3],
+  },
+  canceledText: {
+    color: theme.colors.statusWarning,
     fontSize: theme.fontSize.sm,
   },
   summaryBlock: {
@@ -1378,3 +1439,18 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
 }));
+
+const CARD_STYLE_BY_TERMINAL_TONE = {
+  error: styles.cardError,
+  warning: styles.cardCanceled,
+} as const;
+
+const BANNER_STYLE_BY_TERMINAL_TONE = {
+  error: styles.failureBanner,
+  warning: styles.canceledBanner,
+} as const;
+
+const BANNER_TEXT_STYLE_BY_TERMINAL_TONE = {
+  error: styles.failureText,
+  warning: styles.canceledText,
+} as const;

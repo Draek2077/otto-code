@@ -70,6 +70,7 @@ function target(input: {
     serverId: input.serverId,
     serverName: input.serverId === "host-a" ? "Host A" : "Host B",
     projectViewKey: input.projectKey,
+    projectId: `${input.serverId}:id:${input.projectKey}`,
     projectKey: input.projectKey,
     projectName: input.projectName,
     cwd: input.cwd,
@@ -382,6 +383,29 @@ describe("schedule form model", () => {
       showIsolationField: true,
       showArchiveOnFinishField: true,
     });
+  });
+
+  it("selects only a stable saved Workflow identity and clears it when the project changes", () => {
+    const form = open({
+      mode: "create",
+      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS, preferences: {} },
+    });
+
+    form.setTargetKind("workflow");
+    expect(form.getState().canSubmit).toBe(false);
+    form.setProject(buildProjectOptionId("host-a", "project-a"), { label: "Project A" });
+    form.setWorkflowDefinition("graph-a");
+
+    expect(form.getState()).toMatchObject({
+      targetKind: "workflow",
+      workingDir: "/repo/a",
+      selectedWorkflowDefinitionId: "graph-a",
+      canSubmit: true,
+    });
+
+    form.setProject(buildProjectOptionId("host-b", "project-b"), { label: "Project B" });
+    expect(form.getState().selectedWorkflowDefinitionId).toBe("");
+    expect(form.getState().canSubmit).toBe(false);
   });
 
   it("keeps the selected model across same-host project changes", () => {

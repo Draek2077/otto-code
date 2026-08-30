@@ -37,6 +37,7 @@ import { archiveByScope, type ActiveWorkspaceRef } from "../workspace-archive-se
 import {
   ScheduleService,
   ScheduleTargetGoneError,
+  ScheduleWorkflowTargetError,
   pruneScheduleRuns,
   type ScheduleServiceOptions,
 } from "./service.js";
@@ -3604,6 +3605,38 @@ describe("ScheduleService", () => {
     expect(after.nextRunAt).toBeNull();
     expect(after.runs).toHaveLength(1);
     expect(after.runs[0]?.status).toBe("failed");
+  });
+
+  test("pauses a saved Workflow schedule for repair and preserves the failed history record", async () => {
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      workflowRunner: async () => {
+        throw new ScheduleWorkflowTargetError(
+          "Saved Workflow graph-a is missing. Select a replacement.",
+        );
+      },
+    });
+    const created = await service.create({
+      prompt: "Start saved Workflow",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "workflow", definitionId: "graph-a", projectRoot: "/repo/a" },
+    });
+
+    const after = await service.runOnce(created.id);
+
+    expect(after.status).toBe("paused");
+    expect(after.nextRunAt).toBeNull();
+    expect(after.runs).toHaveLength(1);
+    expect(after.runs[0]).toMatchObject({
+      status: "failed",
+      target: { type: "workflow", definitionId: "graph-a", projectRoot: "/repo/a" },
+      error: expect.stringContaining("is missing"),
+    });
   });
 
   test("createOrReplace updates the matching schedule in place instead of duplicating", async () => {

@@ -17,6 +17,7 @@ import {
 import { Session } from "./session.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
+import { createPersistedProjectRecord, type PersistedProjectRecord } from "./workspace-registry.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type { SessionOptions } from "./session.js";
@@ -1124,6 +1125,131 @@ function createProjectRecord(rootPath: string, archivedAt: string | null = null)
     archivedAt,
   };
 }
+
+describe("project Artifact storage RPC", () => {
+  test("persists the project override and emits its accepted response", async () => {
+    const messages: unknown[] = [];
+    let project: PersistedProjectRecord = {
+      ...createPersistedProjectRecord({
+        projectId: "project-artifact-store",
+        rootPath: "/repo/artifact-store",
+        kind: "git",
+        displayName: "Artifact store",
+        createdAt: "2026-08-29T00:00:00.000Z",
+        updatedAt: "2026-08-29T00:00:00.000Z",
+      }),
+      artifactLocation: null,
+      artifactDirectoryName: null,
+    };
+    const update = vi.fn(async (_projectId, updater) => {
+      project = updater(project);
+      return project;
+    });
+    const session = createSessionForTest({
+      messages,
+      projectRegistry: {
+        get: vi.fn(async () => project),
+        update,
+      },
+    });
+
+    await session.handleMessage({
+      type: "project.artifact.store.set.request",
+      projectId: project.projectId,
+      location: "host",
+      requestId: "artifact-store-session-1",
+    });
+
+    expect(update).toHaveBeenCalledOnce();
+    expect(project.artifactLocation).toBe("host");
+    expect(messages).toContainEqual({
+      type: "project.artifact.store.set.response",
+      payload: {
+        requestId: "artifact-store-session-1",
+        projectId: "project-artifact-store",
+        accepted: true,
+        error: null,
+      },
+    });
+  });
+
+  test("reports a recoverable error when the project no longer exists", async () => {
+    const messages: unknown[] = [];
+    const update = vi.fn();
+    const session = createSessionForTest({
+      messages,
+      projectRegistry: {
+        get: vi.fn(async () => null),
+        update,
+      },
+    });
+
+    await session.handleMessage({
+      type: "project.artifact.store.set.request",
+      projectId: "missing-project",
+      location: "repository",
+      requestId: "artifact-store-session-missing-1",
+    });
+
+    expect(update).not.toHaveBeenCalled();
+    expect(messages).toContainEqual({
+      type: "project.artifact.store.set.response",
+      payload: {
+        requestId: "artifact-store-session-missing-1",
+        projectId: "missing-project",
+        accepted: false,
+        error: "Project not found.",
+      },
+    });
+  });
+});
+
+describe("project Workflow storage RPC", () => {
+  test("persists only the independent Workflow override", async () => {
+    const messages: unknown[] = [];
+    let project: PersistedProjectRecord = {
+      ...createPersistedProjectRecord({
+        projectId: "project-workflow-store",
+        rootPath: "/repo/workflow-store",
+        kind: "git",
+        displayName: "Workflow store",
+        createdAt: "2026-08-29T00:00:00.000Z",
+        updatedAt: "2026-08-29T00:00:00.000Z",
+      }),
+      artifactLocation: "repository",
+      workflowLocation: null,
+      workflowDirectoryName: null,
+    };
+    const update = vi.fn(async (_projectId, updater) => {
+      project = updater(project);
+      return project;
+    });
+    const session = createSessionForTest({
+      messages,
+      projectRegistry: { get: vi.fn(async () => project), update },
+    });
+
+    await session.handleMessage({
+      type: "project.workflow.store.set.request",
+      projectId: project.projectId,
+      location: "host",
+      requestId: "workflow-store-session-1",
+    });
+
+    expect(update).toHaveBeenCalledOnce();
+    expect(project.workflowLocation).toBe("host");
+    expect(project.artifactLocation).toBe("repository");
+    expect(messages).toContainEqual({
+      type: "project.workflow.store.set.response",
+      payload: {
+        requestId: "workflow-store-session-1",
+        projectId: "project-workflow-store",
+        accepted: true,
+        error: null,
+      },
+    });
+  });
+});
 
 describe("project config RPC authorization", () => {
   const tempDirs: string[] = [];

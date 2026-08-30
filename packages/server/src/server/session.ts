@@ -244,7 +244,10 @@ import { ProviderCatalogSession } from "./session/provider/provider-catalog-sess
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ArtifactSession } from "./session/artifact/artifact-session.js";
+import { ArchitecturalViewsSession } from "./session/architectural-views/architectural-views-session.js";
 import { ArtifactService } from "./artifact/artifact-service.js";
+import { ArtifactStoreRegistry } from "./artifact/artifact-store-registry.js";
+import { ArtifactStoreResolver } from "./artifact/artifact-store-resolver.js";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
@@ -307,8 +310,9 @@ import type pino from "pino";
 import type { LspService } from "./lsp/service.js";
 import { SolutionService } from "./solution-model/service.js";
 import { ScheduleService } from "./schedule/service.js";
-import type { RunService } from "./orchestration/run-service.js";
+import type { WorkflowService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
+import type { GraphSharingService } from "./orchestration/graph-sharing-service.js";
 import type { NodeOutputStore } from "./orchestration/node-output.js";
 import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
 
@@ -613,11 +617,12 @@ export interface SessionOptions {
   workspaceRegistry: WorkspaceRegistry;
   filesystem?: SessionFileSystem;
   scheduleService: ScheduleService;
-  runService?: RunService | null;
+  runService?: WorkflowService | null;
   // Orchestration graph templates (projects/orchestration-graphs). Optional for
   // the same test-harness reason as runService; features.orchestrationGraphs
   // rides on both being present.
   graphStore?: GraphStore | null;
+  graphSharingService?: GraphSharingService | null;
   // Where graph nodes' submit_output calls land before the engine harvests
   // them (orchestration/node-output.ts). Optional for the same reason.
   nodeOutputStore?: NodeOutputStore | null;
@@ -714,6 +719,13 @@ export interface SessionOptions {
   projectKnowledge?: ProjectKnowledgeService | null;
   /** Resolves which store a project's knowledge lives in. */
   projectKnowledgeStores?: ProjectKnowledgeStoreResolver | null;
+  /**
+   * The daemon-wide artifact service. It owns the ready-file watchers and the
+   * in-flight generation state for every artifact, so client RPCs must go
+   * through it rather than a per-session copy: two services over the same
+   * store see each other's renames as external edits.
+   */
+  artifactService?: ArtifactService | null;
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
@@ -988,6 +1000,7 @@ export class Session {
   private readonly projectConfigSession: ProjectConfigSession;
   private readonly daemonSession: DaemonSession;
   private readonly artifactSession: ArtifactSession;
+  private readonly architecturalViewsSession: ArchitecturalViewsSession;
   private readonly hubExecutionController: HubExecutionController | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
@@ -1015,6 +1028,7 @@ export class Session {
       scheduleService,
       runService,
       graphStore,
+      graphSharingService,
       nodeOutputStore,
       promptTemplateStore,
       checkoutDiffManager,
@@ -1060,6 +1074,7 @@ export class Session {
       personalityMemory,
       projectKnowledge,
       projectKnowledgeStores,
+      artifactService: sharedArtifactService,
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
@@ -1342,24 +1357,33 @@ export class Session {
       logger: this.sessionLogger,
       hubRelationships: options.hubRelationships,
     });
-    const artifactService = new ArtifactService({
-      projectCwd: this.ottoHome,
-      logger: this.sessionLogger,
+    // The daemon hands every session its single ArtifactService (bootstrap
+    // builds it and watches all ready artifacts from it). A session-local
+    // service exists only for hosts that construct a Session without one,
+    // such as unit tests; it is stopped with the session.
+    const artifactService = resolveSessionArtifactService(sharedArtifactService, {
+      ottoHome: this.ottoHome,
+      projectRegistry: this.projectRegistry,
+      workspaceGitService: this.workspaceGitService,
+      daemonConfigStore,
       agentManager: this.agentManager,
       providerSnapshotManager,
-      broadcastArtifactUpdate: (metadata: ArtifactMetadata) => {
-        this.emit({
-          type: "artifact.updated.notification",
-          payload: { artifact: metadata },
-        });
-      },
       onActivity,
+      logger: this.sessionLogger,
+      emit: (msg) => this.emit(msg),
     });
     this.artifactSession = new ArtifactSession({
       host: {
         emit: (msg) => this.emit(msg),
       },
       artifactService,
+      ownsArtifactService: !sharedArtifactService,
+      logger: this.sessionLogger,
+    });
+    this.architecturalViewsSession = new ArchitecturalViewsSession({
+      host: { emit: (msg) => this.emit(msg) },
+      workspaceRegistry,
+      projectKnowledgeStores,
       logger: this.sessionLogger,
     });
     this.hubExecutionController = options.hubExecutionAgents
@@ -1479,6 +1503,7 @@ export class Session {
       },
       runService,
       graphStore,
+      graphSharingService,
       nodeOutputStore,
       promptTemplateStore,
       agentManager: this.agentManager,
@@ -2629,6 +2654,7 @@ export class Session {
       this.dispatchTerminalMessage(msg) ??
       this.dispatchScheduleMessage(msg) ??
       this.dispatchArtifactMessage(msg) ??
+      this.dispatchArchitecturalViewsMessage(msg) ??
       this.runsSession.dispatch(msg) ??
       this.dispatchMiscMessage(msg)
     );
@@ -4831,8 +4857,111 @@ export class Session {
         return this.artifactSession.handleArtifactStarRequest(msg);
       case "artifact.get-content.request":
         return this.artifactSession.handleArtifactGetContentRequest(msg);
+      case "artifact.repair.request":
+        return this.artifactSession.handleArtifactRepairRequest(msg);
+      case "artifact.data.get.request":
+        return this.artifactSession.handleArtifactDataGetRequest(msg);
+      case "artifact.data.update.request":
+        return this.artifactSession.handleArtifactDataUpdateRequest(msg);
+      case "artifact.store.move.request":
+        return this.artifactSession.handleArtifactStoreMoveRequest(msg);
+      case "project.artifact.store.set.request":
+        return this.handleProjectArtifactStoreSetRequest(msg);
+      case "project.workflow.store.set.request":
+        return this.handleProjectWorkflowStoreSetRequest(msg);
       default:
         return undefined;
+    }
+  }
+
+  private dispatchArchitecturalViewsMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "architectural-views.deliver.request":
+        return this.architecturalViewsSession.handleDeliverRequest(msg);
+      case "architectural-views.list.request":
+        return this.architecturalViewsSession.handleListRequest(msg);
+      case "architectural-views.get-content.request":
+        return this.architecturalViewsSession.handleGetContentRequest(msg);
+      case "architectural-views.draft.create.request":
+        return this.architecturalViewsSession.handleDraftCreateRequest(msg);
+      case "architectural-views.draft.update.request":
+        return this.architecturalViewsSession.handleDraftUpdateRequest(msg);
+      case "architectural-views.draft.publish.request":
+        return this.architecturalViewsSession.handleDraftPublishRequest(msg);
+      case "architectural-views.draft.discard.request":
+        return this.architecturalViewsSession.handleDraftDiscardRequest(msg);
+      case "architectural-views.draft.get-content.request":
+        return this.architecturalViewsSession.handleDraftGetContentRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private async handleProjectArtifactStoreSetRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.artifact.store.set.request" }>,
+  ): Promise<void> {
+    try {
+      const project = await this.projectRegistry.get(msg.projectId);
+      if (!project) throw new Error("Project not found.");
+      await this.projectRegistry.update(msg.projectId, (record) => ({
+        ...record,
+        artifactLocation: msg.location,
+        updatedAt: new Date().toISOString(),
+      }));
+      await this.announceProjectUpdate(msg.projectId);
+      this.emit({
+        type: "project.artifact.store.set.response",
+        payload: {
+          requestId: msg.requestId,
+          projectId: msg.projectId,
+          accepted: true,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "project.artifact.store.set.response",
+        payload: {
+          requestId: msg.requestId,
+          projectId: msg.projectId,
+          accepted: false,
+          error: error instanceof Error ? error.message : "Failed to update Artifact storage.",
+        },
+      });
+    }
+  }
+
+  private async handleProjectWorkflowStoreSetRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.workflow.store.set.request" }>,
+  ): Promise<void> {
+    try {
+      const project = await this.projectRegistry.get(msg.projectId);
+      if (!project) throw new Error("Project not found.");
+      await this.projectRegistry.update(msg.projectId, (record) => ({
+        ...record,
+        workflowLocation: msg.location,
+        updatedAt: new Date().toISOString(),
+      }));
+      await this.announceProjectUpdate(msg.projectId);
+      this.emit({
+        type: "project.workflow.store.set.response",
+        payload: {
+          requestId: msg.requestId,
+          projectId: msg.projectId,
+          accepted: true,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "project.workflow.store.set.response",
+        payload: {
+          requestId: msg.requestId,
+          projectId: msg.projectId,
+          accepted: false,
+          error: error instanceof Error ? error.message : "Failed to update Workflow storage.",
+        },
+      });
     }
   }
 
@@ -6670,6 +6799,7 @@ export class Session {
       images,
       attachments,
       env,
+      architecturalViewDraft,
     } = msg;
     this.sessionLogger.info(
       { cwd: config.cwd, provider: config.provider, worktreeName },
@@ -6723,6 +6853,10 @@ export class Session {
         resolvedIntent.config,
         agentProfile ?? legacyProfileRef,
       );
+      resolvedIntent.config = withArchitecturalViewAuthoringBrief(
+        resolvedIntent.config,
+        architecturalViewDraft,
+      );
 
       const { snapshot, liveSnapshot } = await createAgentCommand(
         {
@@ -6758,6 +6892,11 @@ export class Session {
         },
       );
       createdAgentId = snapshot.id;
+      await this.bindArchitecturalViewAuthoringChat({
+        draft: architecturalViewDraft,
+        workspaceId: resolvedIntent.intent.workspaceId,
+        agentId: snapshot.id,
+      });
       await this.agentUpdates.forwardLiveAgent(snapshot);
       if (resolvedIntent.createdDirectoryWorkspace && trimmedPrompt) {
         this.workspaceAutoName.scheduleForDirectory(
@@ -6819,6 +6958,23 @@ export class Session {
         },
       });
     }
+  }
+
+  private async bindArchitecturalViewAuthoringChat(input: {
+    draft: CreateAgentRequestMessage["architecturalViewDraft"];
+    workspaceId: string | undefined;
+    agentId: string;
+  }): Promise<void> {
+    if (!input.draft) return;
+    if (!input.workspaceId) {
+      throw new Error("Architectural View authoring chats require a workspace.");
+    }
+    await this.architecturalViewsSession.bindDraftAuthoringAgent({
+      workspaceId: input.workspaceId,
+      viewId: input.draft.viewId,
+      draftId: input.draft.draftId,
+      agentId: input.agentId,
+    });
   }
 
   private async resolveSessionCreateAgentIntent(input: {
@@ -8479,6 +8635,8 @@ export class Session {
       projectCustomName: project.customName ?? null,
       projectKanban: project.kanban ?? null,
       projectKnowledgeLocation: project.knowledgeLocation ?? null,
+      projectArtifactLocation: project.artifactLocation ?? null,
+      projectWorkflowLocation: project.workflowLocation ?? null,
       projectCustomIconRevision: project.customIconRevision ?? null,
       projectRootPath: project.rootPath,
       projectKind: project.kind,
@@ -11430,4 +11588,85 @@ function normalizeCloneRepository(input: {
 
 function isValidGitHubRepoSegment(value: string): boolean {
   return /^[A-Za-z0-9._-]+$/u.test(value);
+}
+
+/**
+ * A session-scoped ArtifactService for hosts that construct a Session without
+ * the daemon-wide one (unit tests). Production sessions never take this path:
+ * bootstrap shares its single service, which owns every ready-file watcher.
+ */
+function createSessionLocalArtifactService(deps: {
+  ottoHome: string;
+  projectRegistry: ProjectRegistry;
+  workspaceGitService: WorkspaceGitService;
+  daemonConfigStore: DaemonConfigStore;
+  agentManager: AgentManager;
+  providerSnapshotManager: ProviderSnapshotManager;
+  onActivity: SessionOptions["onActivity"];
+  logger: pino.Logger;
+  emit: (msg: SessionOutboundMessage) => void;
+}): ArtifactService {
+  return new ArtifactService({
+    storeRegistry: new ArtifactStoreRegistry({
+      resolver: new ArtifactStoreResolver({
+        ottoHome: deps.ottoHome,
+        findProjectByRoot: async (rootPath) =>
+          (await deps.projectRegistry.list()).find(
+            (project) => !project.archivedAt && areEquivalentPaths(project.rootPath, rootPath),
+          ) ?? null,
+        persistDirectoryName: async ({ projectId, directoryName }) => {
+          await deps.projectRegistry.update(projectId, (record) => ({
+            ...record,
+            artifactDirectoryName: directoryName,
+            updatedAt: new Date().toISOString(),
+          }));
+        },
+        defaultLocation: () =>
+          deps.daemonConfigStore.get().projectArtifacts?.defaultStoreLocation ?? "repository",
+        logger: deps.logger,
+      }),
+      resolveProjectRoot: async (cwd) => {
+        try {
+          return await deps.workspaceGitService.resolveRepoRoot(cwd);
+        } catch {
+          return resolve(cwd);
+        }
+      },
+      listProjectRoots: async () =>
+        (await deps.projectRegistry.list())
+          .filter((project) => !project.archivedAt)
+          .map((project) => project.rootPath),
+      legacyArtifactsDirectory: join(deps.ottoHome, ".otto", "artifacts"),
+    }),
+    logger: deps.logger,
+    agentManager: deps.agentManager,
+    providerSnapshotManager: deps.providerSnapshotManager,
+    broadcastArtifactUpdate: (metadata: ArtifactMetadata) => {
+      deps.emit({
+        type: "artifact.updated.notification",
+        payload: { artifact: metadata },
+      });
+    },
+    onActivity: deps.onActivity,
+  });
+}
+
+function withArchitecturalViewAuthoringBrief(
+  config: AgentSessionConfig,
+  draft: CreateAgentRequestMessage["architecturalViewDraft"],
+): AgentSessionConfig {
+  if (!draft) return config;
+  const brief =
+    `You are the bound authoring chat for Architectural View ${draft.viewId}, draft ${draft.draftId}. ` +
+    "Use read_architectural_view_draft before editing and update_architectural_view_draft to replace its typed JSON. " +
+    "Those tools update only the staged draft; publish remains an explicit user action in the Architectural Views tab.";
+  return { ...config, systemPrompt: [config.systemPrompt, brief].filter(Boolean).join("\n\n") };
+}
+
+/** Prefer the daemon-wide service; fall back to a session-local one only when none was provided. */
+function resolveSessionArtifactService(
+  shared: ArtifactService | null | undefined,
+  deps: Parameters<typeof createSessionLocalArtifactService>[0],
+): ArtifactService {
+  return shared ?? createSessionLocalArtifactService(deps);
 }

@@ -9,7 +9,10 @@ import { createScriptCommand } from "./commands/script/index.js";
 import { createTerminalCommand } from "./commands/terminal/index.js";
 import { createWorktreeCommand } from "./commands/worktree/index.js";
 import { createWorkspaceCommand } from "./commands/workspace/index.js";
+import { createWorkflowCommand } from "./commands/workflow/index.js";
 import { createHeartbeatCommand } from "./commands/heartbeat/index.js";
+import { createArtifactCommand } from "./commands/artifact/index.js";
+import { createArchitecturalViewCommand } from "./commands/architectural-view/index.js";
 // DISABLED(hub): specifier redirected away from "./commands/hub/index.js".
 import { createHubCommand } from "./commands/hub-disabled.js";
 import { createHooksCommand } from "./commands/hooks.js";
@@ -178,6 +181,8 @@ export function createCli(): Command {
   // Schedule commands
   program.addCommand(createScheduleCommand());
   program.addCommand(createHeartbeatCommand());
+  program.addCommand(createArtifactCommand());
+  program.addCommand(createArchitecturalViewCommand());
 
   // Permission commands
   program.addCommand(createPermitCommand());
@@ -190,6 +195,9 @@ export function createCli(): Command {
 
   // Workspace commands
   program.addCommand(createWorkspaceCommand());
+
+  // Workflow commands
+  program.addCommand(createWorkflowCommand());
   // COMPAT(worktreeCli): legacy command alias added before workspace was the product unit.
   // Added in v0.2.0; remove after 2027-01-17.
   program.addCommand(createWorktreeCommand(), { hidden: true });
