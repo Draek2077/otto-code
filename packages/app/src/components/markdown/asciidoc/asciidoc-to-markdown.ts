@@ -854,10 +854,27 @@ export function convertInline(text: string, attributes: Map<string, string>): st
   // A trailing ` +` is an explicit line break.
   result = result.replace(/ \+$/gm, "  ");
 
-  return result.replace(
-    new RegExp(`${PLACEHOLDER_OPEN}(\\d+)${PLACEHOLDER_CLOSE}`, "g"),
-    (_match, index: string) => protectedSpans[Number(index)] ?? "",
-  );
+  // Protected spans nest: `protect` runs over text that earlier passes already
+  // protected, so a code span inside a link label, bold run or image alt is
+  // stored with another span's placeholder still inside it. `String.replace`
+  // never re-scans its own replacement output, so restoring in a single pass
+  // leaves that inner placeholder in the rendered markdown as raw control
+  // characters. Restore until the text stops changing. A span can only ever
+  // reference indices lower than its own, so this terminates; the pass bound is
+  // belt and braces.
+  const placeholder = new RegExp(`${PLACEHOLDER_OPEN}(\\d+)${PLACEHOLDER_CLOSE}`, "g");
+  let restored = result;
+  for (let pass = 0; pass <= protectedSpans.length; pass += 1) {
+    const next = restored.replace(
+      placeholder,
+      (_match, index: string) => protectedSpans[Number(index)] ?? "",
+    );
+    if (next === restored) {
+      break;
+    }
+    restored = next;
+  }
+  return restored;
 }
 
 /** Never more than one blank line in a row - markdown treats runs the same. */
