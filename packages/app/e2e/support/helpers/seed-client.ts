@@ -219,6 +219,8 @@ export async function seedWorkspace(options: {
   repoPrefix: string;
   title?: string;
   port?: number;
+  /** Keep the project when this client's socket closes, for restart proofs. */
+  projectOwnership?: "client" | "host";
   /** Repo fixture options; only applies to git projects (the default). */
   repo?: Parameters<typeof createTempGitRepo>[1];
   /** Set to false to seed a plain non-git directory instead of a git repo. */
@@ -228,7 +230,10 @@ export async function seedWorkspace(options: {
     options.git === false
       ? await createTempDirectory(options.repoPrefix)
       : await createTempGitRepo(options.repoPrefix, options.repo);
-  const client = await connectSeedClient({ port: options.port });
+  const client = await connectSeedClient({
+    port: options.port,
+    ...(options.projectOwnership ? { projectOwnership: options.projectOwnership } : {}),
+  });
   try {
     const created = await client.createWorkspace({
       source: { kind: "directory", path: project.path },

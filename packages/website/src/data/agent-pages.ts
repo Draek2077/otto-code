@@ -20,7 +20,7 @@ export const AGENT_PAGES = [
       "Run Claude Code on your machine, drive it from your phone or desktop. Launch agents, watch them work, review and merge from anywhere.",
     metaTitle: "Claude Code Mobile and Desktop App, Open Source",
     metaDescription:
-      "Open source mobile and desktop app for Claude Code. Run agents on your machine, monitor progress, review diffs, and merge from anywhere. Self-hosted, your code stays local.",
+      "Open source mobile and desktop app for Claude Code. Run agents on your machine, monitor progress, review diffs, and merge from anywhere. Self-hosted, with agents running in your own environment.",
   },
   {
     slug: "codex",
@@ -37,7 +37,7 @@ export const AGENT_PAGES = [
     name: "OpenCode",
     title: "Open source app for OpenCode",
     subtitle:
-      "Run OpenCode on your machine, drive it from your phone or desktop. Open source on both ends, your code stays local.",
+      "Run OpenCode on your machine, drive it from your phone or desktop. Open source on both ends, with agents running in your own environment.",
     metaTitle: "OpenCode Mobile and Desktop App, Open Source",
     metaDescription:
       "Open source mobile and desktop app for OpenCode. Launch agents on your machine, watch them work, ship code from anywhere. Self-hosted.",

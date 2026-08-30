@@ -10,7 +10,7 @@ category: Getting started
 
 Otto follows a client-server architecture, similar to Docker. The daemon runs on your machine and manages your coding agents. Clients (the mobile app, CLI, or web interface) connect to the daemon to monitor and control those agents.
 
-Your code never leaves your machine. Otto is a local-first tool that connects directly to your development environment.
+Otto runs locally by default and connects directly to your development environment. It has no required cloud service or account. Data can leave that environment when you use cloud providers, Git remotes, integrations, or other network-enabled tools you configure.
 
 ## Architecture
 

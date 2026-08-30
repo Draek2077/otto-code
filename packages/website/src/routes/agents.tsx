@@ -9,7 +9,7 @@ export const Route = createFileRoute("/agents")({
   head: () =>
     pageMeta(
       "Supported agents: every coding agent Otto runs",
-      "Run Claude Code, Codex, Copilot, OpenCode, Cursor CLI, Gemini CLI, and dozens more coding agents from your phone. Self-hosted, your code stays on your machine.",
+      "Run Claude Code, Codex, Copilot, OpenCode, Cursor CLI, Gemini CLI, and dozens more coding agents from your phone. Self-hosted, with agents running in your own environment.",
       "/agents",
     ),
   component: AgentsPage,

@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "../..");
+const repositoryRoot = path.resolve(appRoot, "../..");
 const outRoot = path.resolve(appRoot, "demo/.out");
 const DEMO_CONFIG = "playwright.demo.config.ts";
 const ELECTRON_CONFIG = "playwright.demo-electron.config.ts";
@@ -298,6 +299,7 @@ async function confirmAgain() {
 
 function baseEnv() {
   const env = { ...process.env };
+  env.PLAYWRIGHT_BROWSERS_PATH ??= path.join(repositoryRoot, ".tmp", "otto-playwright-browsers");
   // Chrome/Chromium isn't installed by default on Windows dev machines;
   // Edge is. Only set it if the caller hasn't already picked a channel.
   if (process.platform === "win32" && !env.E2E_BROWSER_CHANNEL) {

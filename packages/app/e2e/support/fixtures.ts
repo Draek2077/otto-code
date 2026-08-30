@@ -10,7 +10,7 @@ import {
   removeProjectPickerFixture,
   type ProjectPickerFixture,
 } from "./helpers/project-picker-fixture";
-import { connectSeedClient, type SeedDaemonClient } from "./helpers/seed-client";
+import { connectSeedClient } from "./helpers/seed-client";
 import { createWithWorkspace, type WithWorkspace } from "./helpers/with-workspace";
 
 const EXTRA_HOSTS_KEY = "@otto:e2e-extra-hosts";
@@ -62,7 +62,7 @@ const test = metroTest.extend<
      */
     seedSetupWizardComplete: boolean;
   },
-  { e2eForkProviders: string[]; e2eWorker: void; e2eWorkerClient: SeedDaemonClient }
+  { e2eForkProviders: string[]; e2eWorker: void }
 >({
   seedSetupWizardComplete: [true, { option: true }],
   e2eForkProviders: [[], { scope: "worker", option: true }],
@@ -79,38 +79,40 @@ const test = metroTest.extend<
     },
     { scope: "worker", auto: true },
   ],
-  e2eWorkerClient: [
-    async ({ e2eWorker }, provide) => {
-      void e2eWorker;
-      const client = await connectSeedClient();
-      try {
-        await provide(client);
-      } finally {
-        await client.close().catch(() => undefined);
-      }
-    },
-    { scope: "worker" },
-  ],
   projectOwnership: [
-    async ({ e2eWorkerClient }, provide, testInfo) => {
-      const before = new Set(
-        (await e2eWorkerClient.fetchWorkspaces()).entries.map((workspace) => workspace.projectId),
-      );
+    async ({ e2eWorker }, provide, testInfo) => {
+      // A restart proof deliberately drops every existing daemon socket. Keep
+      // the pre-test snapshot on one client, then reconnect after the test for
+      // leak cleanup so persisted-run specs retain the same guardrail.
+      void e2eWorker;
+      const beforeClient = await connectSeedClient();
+      try {
+        const before = new Set(
+          (await beforeClient.fetchWorkspaces()).entries.map((workspace) => workspace.projectId),
+        );
 
-      await provide();
+        await provide();
 
-      const leaked = [
-        ...new Set(
-          (await e2eWorkerClient.fetchWorkspaces()).entries.map((workspace) => workspace.projectId),
-        ),
-      ].filter((projectId) => !before.has(projectId));
-      for (const projectId of leaked) {
-        await e2eWorkerClient.removeProject(projectId).catch(() => undefined);
-      }
-      if (leaked.length > 0) {
-        const message = `Test leaked daemon project records: ${leaked.join(", ")}`;
-        if (testInfo.status === testInfo.expectedStatus) throw new Error(message);
-        await testInfo.attach("project-leaks", { body: message, contentType: "text/plain" });
+        const afterClient = await connectSeedClient();
+        try {
+          const leaked = [
+            ...new Set(
+              (await afterClient.fetchWorkspaces()).entries.map((workspace) => workspace.projectId),
+            ),
+          ].filter((projectId) => !before.has(projectId));
+          for (const projectId of leaked) {
+            await afterClient.removeProject(projectId).catch(() => undefined);
+          }
+          if (leaked.length > 0) {
+            const message = `Test leaked daemon project records: ${leaked.join(", ")}`;
+            if (testInfo.status === testInfo.expectedStatus) throw new Error(message);
+            await testInfo.attach("project-leaks", { body: message, contentType: "text/plain" });
+          }
+        } finally {
+          await afterClient.close().catch(() => undefined);
+        }
+      } finally {
+        await beforeClient.close().catch(() => undefined);
       }
     },
     { auto: true },

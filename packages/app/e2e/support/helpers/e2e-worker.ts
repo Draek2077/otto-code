@@ -4,6 +4,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { forkOttoHomeMetadata, resolveOttoHomePath } from "./otto-home-fork";
+import { stopRegisteredRestartedTestDaemon } from "./daemon-restart";
 import { startIsolatedHostDaemon } from "./isolated-host-daemon";
 import { injectLocalAiProvider, readLocalAiEnv } from "./local-ai-preflight";
 
@@ -253,6 +254,10 @@ export async function startE2EWorker(
     );
     return {
       close: async () => {
+        // A restart helper cannot update this fixture's original ChildProcess
+        // handle. Reap its detached replacement only after every per-test
+        // cleanup (including the dangling-project safety sweep) has run.
+        await stopRegisteredRestartedTestDaemon();
         await daemon.close();
         await rm(fakeEditorBin, { recursive: true, force: true });
         console.log(`[e2e] Worker ${workerIndex} daemon stopped`);

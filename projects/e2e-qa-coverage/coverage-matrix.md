@@ -308,14 +308,15 @@ invariants have unit coverage. Browser-level management workflows remain explici
 
 ## 12. Schedules & runs
 
-| Behavior                                                                                              | Status | Specs / plan                             | Tier | Pri |
-| ----------------------------------------------------------------------------------------------------- | ------ | ---------------------------------------- | ---- | --- |
-| Schedule edit form model hydration                                                                    | ✅     | `schedules-edit-model-hydration.spec.ts` | T1   | -   |
-| Schedule project targeting                                                                            | ✅     | `schedules-project-target.spec.ts`       | T1   | -   |
-| Schedule create full flow (form → daemon record → card → delete)                                      | ✅     | `schedule-create-flow.spec.ts`           | T1   | -   |
-| Runs screen: run card renders, Visualize opens run-scoped tab                                         | ✅     | `runs-screen.spec.ts`                    | T1   | -   |
-| Hidden schedule runs: healthy stays hidden, content-less failure archived, kept success revealed live | ✅     | `schedule-hidden-runs-promote.spec.ts`   | T1   | -   |
-| Suggested tasks chips (spawn_task → chip → session)                                                   | ❌     | seed chip, click, assert session created | T1   | P2  |
+| Behavior                                                                                                                                      | Status | Specs / plan                                                                                                                                                                    | Tier | Pri |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --- |
+| Schedule edit form model hydration                                                                                                            | ✅     | `schedules-edit-model-hydration.spec.ts`                                                                                                                                        | T1   | -   |
+| Schedule project targeting                                                                                                                    | ✅     | `schedules-project-target.spec.ts`                                                                                                                                              | T1   | -   |
+| Schedule create full flow (form → daemon record → card → delete)                                                                              | ✅     | `schedule-create-flow.spec.ts`                                                                                                                                                  | T1   | -   |
+| Runs screen: persisted Graph card/Visualizer and restart-recovery assertions                                                                  | 🟡     | `runs-screen.spec.ts` — 2026-08-29 isolated Chromium: 3/4 passed; provider-failure assertion updated for start confirmation, rerun timed out in Metro before Playwright started | T1   | P0  |
+| Workflow authoring: Graph nodes, gates, Checks, cancellation/restart, generated visualization; AI planning/cancellation/restart/visualization | 🟡     | `graph-workflow-authoring.spec.ts`, `runs-screen.spec.ts` — rerun the exact focused Chromium commands before claiming Fable 5 browser proof                                     | T1   | P0  |
+| Hidden schedule runs: healthy stays hidden, content-less failure archived, kept success revealed live                                         | ✅     | `schedule-hidden-runs-promote.spec.ts`                                                                                                                                          | T1   | -   |
+| Suggested tasks chips (spawn_task → chip → session)                                                                                           | ❌     | seed chip, click, assert session created                                                                                                                                        | T1   | P2  |
 
 ## 13. Visualizer
 
@@ -330,11 +331,12 @@ invariants have unit coverage. Browser-level management workflows remain explici
 
 ## 14. Artifacts, preview & browser pane
 
-| Behavior                                                         | Status | Specs / plan                                                                   | Tier  | Pri |
-| ---------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------ | ----- | --- |
-| Artifact produced by agent renders in artifact surface           | ❌     | mock-agent emits artifact → pane renders                                       | T1    | P1  |
-| Preview: launch.json dev server starts, tab binds, logs readable | ❌     | daemon-level preview RPCs + web browser-pane fallback; full webview flow is DT | T1/DT | P1  |
-| Browser-tools guardrails (tab binding enforced by daemon)        | ❌     | RPC-level assertions in server E2E (vitest `*.e2e.test.ts`), not Playwright    | -     | P2  |
+| Behavior                                                                                           | Status | Specs / plan                                                                   | Tier  | Pri |
+| -------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------ | ----- | --- |
+| Interactive artifact preview blocks external network, navigation, popups, and host-document access | ✅     | `artifact-preview-security.spec.ts`                                            | T1    | P0  |
+| Artifact produced by agent renders in artifact surface                                             | ❌     | mock-agent emits artifact → pane renders                                       | T1    | P1  |
+| Preview: launch.json dev server starts, tab binds, logs readable                                   | ❌     | daemon-level preview RPCs + web browser-pane fallback; full webview flow is DT | T1/DT | P1  |
+| Browser-tools guardrails (tab binding enforced by daemon)                                          | ❌     | RPC-level assertions in server E2E (vitest `*.e2e.test.ts`), not Playwright    | -     | P2  |
 
 ## 15. Desktop-only (manual / capture harness - not Playwright-web)
 

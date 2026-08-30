@@ -1928,8 +1928,10 @@ function FAQ() {
           use OpenAI speech providers if you configure them.
         </FAQItem>
         <FAQItem question="Does my code leave my machine?">
-          Otto doesn&apos;t send your code anywhere. Agents run locally and talk to their own APIs
-          as they normally would. For remote access, you can use the optional{" "}
+          Otto runs agents on the host you choose. Cloud provider APIs, Git remotes, MCP servers,
+          integrations, and other network-enabled tools can send code or context away from that host
+          according to your configuration. Otto does not require a cloud service or account. For
+          remote access, you can use the optional{" "}
           <a href="/docs/security" className="underline hover:text-white/80">
             end-to-end encrypted relay
           </a>

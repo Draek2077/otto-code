@@ -1,133 +1,213 @@
 #!/usr/bin/env node
 /**
- * Make sure the Playwright browser this repo pins is on disk, and install it if
- * it is not.
+ * Install the browser revision pinned by this checkout's Playwright dependency.
  *
- * Runs as a `pre` hook for `test:browser` and `test:e2e`. The rule it enforces
- * is in docs/testing.md: one browser for every automated test on every
- * platform, pinned by the `playwright` version in package.json and by nothing
- * else.
- *
- * The check is deliberately not "just run `playwright install`". That command
- * takes a global lock under the shared user-level browser cache, so on the
- * common path - the browser is already there - an unconditional install turns a
- * lock left behind by an interrupted run in *another* checkout into a hard
- * failure of this one. So: ask Playwright where the browsers it wants should
- * live, look, and only shell out when something is actually missing.
+ * Browser downloads live in Otto's checkout-local cache. The Playwright CLI's
+ * out-of-process downloader has repeatedly received a complete archive and
+ * then hung before releasing its lock, so this script owns the bounded download
+ * and extraction instead of treating that global implementation detail as test
+ * infrastructure.
  */
 
-import { execSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { execFileSync, execSync } from "node:child_process";
+import { createWriteStream } from "node:fs";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { finished } from "node:stream/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const BROWSER = "chromium";
-
-/**
- * One command string rather than a program plus an argument array.
- *
- * `npx` is a `.cmd` on Windows, which Node refuses to spawn without a shell,
- * and passing an argument array alongside `shell: true` is deprecated because
- * the arguments are concatenated unescaped. A fixed string sidesteps both;
- * nothing here is interpolated from user input.
- */
+const INSTALL_TIMEOUT_MS = 5 * 60_000;
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const browserCache =
+  process.env.PLAYWRIGHT_BROWSERS_PATH ||
+  path.join(repositoryRoot, ".tmp", "otto-playwright-browsers");
+const installLock = path.join(browserCache, ".otto-install-lock");
+const installLockOwner = path.join(installLock, "owner.json");
 const INSTALL_COMMAND = `npx playwright install ${BROWSER}`;
 const DRY_RUN_COMMAND = `${INSTALL_COMMAND} --dry-run`;
 
-/** Generous for a ~180 MB download and unzip; anything past it is a hang. */
-const INSTALL_TIMEOUT_MS = 5 * 60_000;
+function isWithinBrowserCache(installPath) {
+  const relative = path.relative(browserCache, installPath);
+  return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
 
-/**
- * Whether a browser is really installed at `path`.
- *
- * **An existing directory is not proof.** Playwright creates the target
- * directory before it unpacks into it, so a run that is interrupted - or whose
- * detached download child is killed - leaves an *empty* directory behind. A
- * bare `existsSync` reads that as installed, the launch then fails with
- * "Executable doesn't exist", and no amount of re-running the installer fixes
- * it because the installer agrees the directory is there.
- */
-function isInstalled(path) {
+async function isInstalled(installPath) {
   try {
-    return readdirSync(path).length > 0;
+    await readFile(path.join(installPath, "INSTALLATION_COMPLETE"));
+    return true;
   } catch {
     return false;
   }
 }
 
-/**
- * The directories the pinned Playwright expects, straight from Playwright
- * itself. Parsed rather than computed so a revision is never written down in
- * this repo: `--dry-run` reports them whether or not they exist.
- */
-function expectedInstallPaths() {
-  const output = execSync(DRY_RUN_COMMAND, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  const paths = new Set();
+function expectedInstalls() {
+  const output = execSync(DRY_RUN_COMMAND, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browserCache },
+  });
+  const installs = new Map();
+  let installPath = null;
   for (const line of output.split("\n")) {
-    const match = /^\s*Install location:\s*(.+?)\s*$/.exec(line);
-    if (match) {
-      paths.add(match[1]);
+    const installMatch = /^\s*Install location:\s*(.+?)\s*$/.exec(line);
+    if (installMatch) {
+      installPath = installMatch[1];
+      continue;
+    }
+    const urlMatch = /^\s*Download url:\s*(.+?)\s*$/.exec(line);
+    if (installPath && urlMatch && isWithinBrowserCache(installPath)) {
+      installs.set(installPath, urlMatch[1]);
+      installPath = null;
     }
   }
-  return [...paths];
+  return [...installs].map(([pathToInstall, url]) => ({ installPath: pathToInstall, url }));
 }
 
-function main() {
-  let expected;
+function processExists(pid) {
   try {
-    expected = expectedInstallPaths();
+    process.kill(pid, 0);
+    return true;
   } catch (error) {
-    // Playwright itself is unusable. Say so plainly and let the test run
-    // produce its own error rather than guessing at a fix.
-    console.warn(`[browsers] could not ask Playwright what it needs: ${error.message}`);
-    return;
-  }
-
-  const missing = expected.filter((path) => !isInstalled(path));
-  if (expected.length > 0 && missing.length === 0) {
-    return;
-  }
-
-  console.log(`[browsers] installing ${BROWSER} (${missing.length} missing)`);
-  try {
-    execSync(INSTALL_COMMAND, {
-      stdio: "inherit",
-      // A browser install is a download and an unzip measured in tens of
-      // seconds. Past this it is wedged, not slow, and the failure everyone
-      // actually hits is an interrupted run whose detached download child
-      // survived and still holds the shared lock: every later attempt then
-      // waits on that lock forever, looking exactly like a slow download.
-      // Failing loudly here beats hanging a test run indefinitely.
-      timeout: INSTALL_TIMEOUT_MS,
-    });
-  } catch {
-    console.error(
-      [
-        "",
-        `[browsers] could not install ${BROWSER}.`,
-        "",
-        "  An interrupted install leaves two things behind, and both make every",
-        "  later attempt look like a slow download rather than a failure: the",
-        "  shared lock, and an empty browser directory. Killing the installer does",
-        "  not kill its detached download child, so check for that first.",
-        "",
-        "    # Windows",
-        "    Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" |",
-        "      Where-Object { $_.CommandLine -like '*playwright*' } |",
-        "      ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
-        String.raw`    Remove-Item -Recurse -Force "$env:LOCALAPPDATA\ms-playwright\__dirlock"`,
-        "",
-        "    # Linux / macOS",
-        "    pkill -f oopDownloadBrowserMain",
-        "    rm -rf ~/.cache/ms-playwright/__dirlock          # Linux",
-        "    rm -rf ~/Library/Caches/ms-playwright/__dirlock  # macOS",
-        "",
-        "  Then delete any browser directory that is empty and re-run.",
-        "",
-        "  See docs/testing.md, One browser, and which one.",
-        "",
-      ].join("\n"),
-    );
-    process.exit(1);
+    return error.code === "EPERM";
   }
 }
 
-main();
+async function lockOwnerIsAlive() {
+  try {
+    const owner = JSON.parse(await readFile(installLockOwner, "utf8"));
+    return typeof owner.pid === "number" && processExists(owner.pid);
+  } catch {
+    return false;
+  }
+}
+
+async function acquireInstallLock() {
+  await mkdir(browserCache, { recursive: true });
+  const deadline = Date.now() + INSTALL_TIMEOUT_MS;
+  while (true) {
+    try {
+      await mkdir(installLock);
+      await writeFile(
+        installLockOwner,
+        `${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })}\n`,
+      );
+      return;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    if (!(await lockOwnerIsAlive())) {
+      await rm(installLock, { recursive: true, force: true, maxRetries: 3 });
+      continue;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for Otto's Playwright installer lock at ${installLock}.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+async function downloadArchive(url, destination) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS) });
+  if (!response.ok || !response.body) {
+    throw new Error(`Download failed (${response.status} ${response.statusText}) for ${url}`);
+  }
+  const expectedBytes = Number(response.headers.get("content-length"));
+  const output = createWriteStream(destination, { flags: "wx" });
+  let receivedBytes = 0;
+  try {
+    for await (const chunk of response.body) {
+      receivedBytes += chunk.length;
+      if (!output.write(chunk)) await new Promise((resolve) => output.once("drain", resolve));
+      // Some CDN connections keep the response open after exactly the declared
+      // archive length. The archive is complete at that point; stop waiting for
+      // a connection close that may never arrive.
+      if (Number.isFinite(expectedBytes) && receivedBytes >= expectedBytes) break;
+    }
+    output.end();
+    await finished(output);
+  } catch (error) {
+    output.destroy();
+    throw error;
+  } finally {
+    await response.body.cancel().catch(() => undefined);
+  }
+  if (Number.isFinite(expectedBytes) && receivedBytes !== expectedBytes) {
+    throw new Error(`Downloaded ${receivedBytes} bytes, expected ${expectedBytes}, from ${url}`);
+  }
+}
+
+function extractArchive(archive, destination) {
+  if (process.platform === "win32") {
+    // Windows' bsdtar reads a drive-letter path as its legacy remote-archive
+    // syntax (`C:`), so use the native ZIP extractor instead.
+    const literal = (value) => `'${value.replaceAll("'", "''")}'`;
+    execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `Expand-Archive -LiteralPath ${literal(archive)} -DestinationPath ${literal(destination)} -Force`,
+      ],
+      { stdio: "inherit" },
+    );
+    return;
+  }
+  execFileSync("unzip", ["-q", archive, "-d", destination], { stdio: "inherit" });
+}
+
+async function installOne({ installPath, url }) {
+  const parent = path.dirname(installPath);
+  const archive = path.join(
+    tmpdir(),
+    `otto-playwright-${path.basename(installPath)}-${process.pid}.zip`,
+  );
+  const partial = `${installPath}.partial-${process.pid}`;
+  await rm(archive, { force: true });
+  await rm(partial, { recursive: true, force: true, maxRetries: 3 });
+  await mkdir(parent, { recursive: true });
+  try {
+    console.log(`[browsers] downloading ${path.basename(installPath)}`);
+    await downloadArchive(url, archive);
+    await mkdir(partial, { recursive: true });
+    extractArchive(archive, partial);
+    await writeFile(path.join(partial, "INSTALLATION_COMPLETE"), "");
+    await rm(installPath, { recursive: true, force: true, maxRetries: 3 });
+    await rename(partial, installPath);
+  } finally {
+    await rm(archive, { force: true }).catch(() => undefined);
+    await rm(partial, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+  }
+}
+
+async function main() {
+  const expected = expectedInstalls();
+  if (expected.length === 0)
+    throw new Error("Playwright did not report any Chromium install locations.");
+  if (
+    (await Promise.all(expected.map(({ installPath }) => isInstalled(installPath)))).every(Boolean)
+  )
+    return;
+
+  let acquired = false;
+  try {
+    await acquireInstallLock();
+    acquired = true;
+    const missing = [];
+    for (const install of expectedInstalls()) {
+      if (!(await isInstalled(install.installPath))) missing.push(install);
+    }
+    for (const install of missing) await installOne(install);
+  } finally {
+    if (acquired) await rm(installLock, { recursive: true, force: true, maxRetries: 3 });
+  }
+}
+
+try {
+  await main();
+} catch (error) {
+  console.error(`[browsers] ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+}

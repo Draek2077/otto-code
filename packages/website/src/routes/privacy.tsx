@@ -6,7 +6,7 @@ export const Route = createFileRoute("/privacy")({
   head: () =>
     pageMeta(
       "Privacy Policy - Otto",
-      "Privacy policy for Otto, the self-hosted coding agent manager. No tracking, no analytics, no data collection. Your code stays on your machine.",
+      "Privacy policy for Otto, the self-hosted coding agent manager. No tracking, no analytics, and no required cloud service.",
       "/privacy",
     ),
   component: Privacy,
@@ -19,8 +19,8 @@ function Privacy() {
 
       <div className="space-y-6 text-white/70 leading-relaxed">
         <p>
-          Otto is a self-hosted tool for managing coding agents. Your code and data stay on your
-          machine.
+          Otto is a self-hosted tool for managing coding agents. Its daemon and agents run in the
+          environment you choose, with no required cloud service or account.
         </p>
         <p>
           For our security policy and responsibility disclaimer, see the{" "}
@@ -31,8 +31,11 @@ function Privacy() {
         </p>
 
         <section className="space-y-3">
-          <h2 className="text-xl font-medium text-white">What we collect</h2>
-          <p>Nothing. Otto runs on your machine and doesn&apos;t send us any data.</p>
+          <h2 className="text-xl font-medium text-white">Otto service data</h2>
+          <p>
+            Otto does not operate a mandatory hosted backend or collect app telemetry. If you opt
+            into the hosted relay, the relay processing described below applies.
+          </p>
         </section>
 
         <section className="space-y-3">
@@ -56,18 +59,18 @@ function Privacy() {
         <section className="space-y-3">
           <h2 className="text-xl font-medium text-white">Analytics and tracking</h2>
           <p>
-            We don&apos;t use analytics, tracking pixels, cookies, or ads. The app doesn&apos;t
-            phone home.
+            Otto uses no analytics, tracking pixels, cookies, or ads. The app does not phone home.
           </p>
         </section>
 
         <section className="space-y-3">
           <h2 className="text-xl font-medium text-white">Third-party services</h2>
           <p>
-            Otto wraps agent providers like Claude Code, Codex, and OpenCode. Those tools
-            communicate with their own APIs (Anthropic, OpenAI, etc.) using your credentials. Otto
-            doesn&apos;t manage or intercept those API calls.
+            Otto can run agent providers like Claude Code, Codex, and OpenCode. Cloud provider APIs,
+            Git remotes, MCP servers, integrations, and other network-enabled tools you configure
+            may transmit code, prompts, or other data according to their own policies and settings.
           </p>
+          <p>Review and configure those services according to your own privacy requirements.</p>
           <p>
             If you use voice features with cloud providers (OpenAI speech), your voice data is sent
             to those services according to their privacy policies.
@@ -76,7 +79,7 @@ function Privacy() {
 
         <section className="space-y-3">
           <h2 className="text-xl font-medium text-white">We don&apos;t sell your data</h2>
-          <p>We don&apos;t have your data to sell. Otto is self-hosted and local-first.</p>
+          <p>Otto does not sell your data. It is self-hosted and local-first.</p>
         </section>
 
         <section className="space-y-3">

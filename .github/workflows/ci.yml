@@ -305,7 +305,7 @@ jobs:
         run: node scripts/npm-retry.mjs ci
       - name: Install Playwright browsers
         timeout-minutes: 10
-        run: npx playwright install chromium
+        run: npm run browsers:install
 
       - name: Build app dependencies
         run: npm run build:app-deps
@@ -432,7 +432,7 @@ jobs:
         run: node scripts/npm-retry.mjs ci
       - name: Install Playwright browsers
         timeout-minutes: 10
-        run: npx playwright install chromium
+        run: npm run browsers:install
 
       - name: Build app dependencies
         run: npm run build:app-deps
