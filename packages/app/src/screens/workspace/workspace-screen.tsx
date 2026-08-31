@@ -122,11 +122,20 @@ import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-stor
 import {
   collectAllTabs,
   findPaneById,
+  FOCUSED_PANE_PLACEMENT,
   getFocusedBrowserId,
   type WorkspaceLayout,
+  type WorkspaceTabPlacement,
   useWorkspaceLayoutStore,
   useWorkspaceLayoutStoreHydrated,
 } from "@/stores/workspace-layout-store";
+import { useHasPullRequest } from "@/panels/pull-request";
+import {
+  NewTabLauncherProvider,
+  type NewTabLauncher,
+  type WorkspaceTabLaunchDestination,
+} from "@/workspace-tabs/launcher";
+import type { NewTabSelection } from "@/workspace-tabs/new-tab";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
@@ -254,7 +263,10 @@ import {
   buildSettingsHostRoute,
   buildSettingsHostSectionRoute,
 } from "@/utils/host-routes";
-import { useWorkspaceTerminals } from "@/screens/workspace/terminals/use-workspace-terminals";
+import {
+  useWorkspaceTerminals,
+  type TerminalTabDestination,
+} from "@/screens/workspace/terminals/use-workspace-terminals";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import {
   getTerminalProfileIcon,
@@ -2122,6 +2134,18 @@ function WorkspaceScreenGateFrame({ children }: { children: ReactNode }) {
   );
 }
 
+function paneLocalPlacement(paneId: string | null | undefined): WorkspaceTabPlacement {
+  return paneId ? { mode: "pane", paneId } : FOCUSED_PANE_PLACEMENT;
+}
+
+function canDetectPullRequest(
+  isRouteFocused: boolean,
+  isGitCheckout: boolean,
+  isCompact: boolean,
+): boolean {
+  return isRouteFocused && isGitCheckout && !isCompact && supportsDesktopPaneSplits();
+}
+
 function WorkspaceContentProviders({
   children,
   workspaceKey,
@@ -2210,8 +2234,16 @@ function buildWorkspaceTerminalScopeKey(serverId: string, workspaceId: string): 
 
 interface WorkspaceTerminalTabActionsInput {
   persistenceKey: string | null;
-  focusWorkspacePane: (workspaceKey: string, paneId: string) => void;
-  openWorkspaceTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
+  openWorkspaceTabFocused: (
+    workspaceKey: string,
+    target: WorkspaceTabTarget,
+    placement?: WorkspaceTabPlacement,
+  ) => string | null;
+  replaceWorkspaceTabTarget: (
+    workspaceKey: string,
+    tabId: string,
+    target: WorkspaceTabTarget,
+  ) => string | null;
   labels: {
     workspacePathUnavailable: string;
     terminalQueued: string;
@@ -2223,7 +2255,10 @@ interface WorkspaceTerminalTabActionsInput {
 }
 
 interface WorkspaceTerminalTabActions {
-  handleTerminalCreated: (input: { terminalId: string; paneId?: string }) => void;
+  handleTerminalCreated: (input: {
+    terminalId: string;
+    destination: TerminalTabDestination;
+  }) => void;
   handleScriptTerminalSelected: (terminalId: string) => void;
   handleWorkspacePathUnavailable: () => void;
   handleTerminalCreateQueued: () => void;
@@ -2232,29 +2267,41 @@ interface WorkspaceTerminalTabActions {
 
 function useWorkspaceTerminalTabActions({
   persistenceKey,
-  focusWorkspacePane,
   openWorkspaceTabFocused,
+  replaceWorkspaceTabTarget,
   labels,
   toast,
 }: WorkspaceTerminalTabActionsInput): WorkspaceTerminalTabActions {
   const handleTerminalCreated = useCallback(
-    ({ terminalId, paneId }: { terminalId: string; paneId?: string }) => {
+    ({ terminalId, destination }: { terminalId: string; destination: TerminalTabDestination }) => {
       if (!persistenceKey) {
         return;
       }
-      if (paneId) {
-        focusWorkspacePane(persistenceKey, paneId);
+      if (destination.kind === "replace") {
+        replaceWorkspaceTabTarget(persistenceKey, destination.tabId, {
+          kind: "terminal",
+          terminalId,
+        });
+        return;
       }
-      openWorkspaceTabFocused(persistenceKey, { kind: "terminal", terminalId });
+      openWorkspaceTabFocused(
+        persistenceKey,
+        { kind: "terminal", terminalId },
+        paneLocalPlacement(destination.paneId),
+      );
     },
-    [focusWorkspacePane, openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, persistenceKey, replaceWorkspaceTabTarget],
   );
   const handleScriptTerminalSelected = useCallback(
     (terminalId: string) => {
       if (!persistenceKey) {
         return;
       }
-      openWorkspaceTabFocused(persistenceKey, { kind: "terminal", terminalId });
+      openWorkspaceTabFocused(
+        persistenceKey,
+        { kind: "terminal", terminalId },
+        FOCUSED_PANE_PLACEMENT,
+      );
     },
     [openWorkspaceTabFocused, persistenceKey],
   );
@@ -2380,7 +2427,22 @@ function WorkspaceScreenContent({
     normalizedServerId,
     getWorkspaceProjectId(workspaceDescriptor),
   );
-  const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
+  // Upstream's screen-local openers over the store's `openTab`, rather than the
+  // store's Otto-side `openTabFocused` adapter: the placement argument is how a
+  // tab lands in the pane the user acted in, and the adapter has no way to carry
+  // one. Existing two-argument calls behave exactly as they did.
+  const openTab = useWorkspaceLayoutStore((state) => state.openTab);
+  const replaceWorkspaceTabTarget = useWorkspaceLayoutStore((state) => state.replaceTab);
+  const openWorkspaceTabFocused = useCallback(
+    (workspaceKey: string, target: WorkspaceTabTarget, placement?: WorkspaceTabPlacement) =>
+      openTab({ workspaceKey, target, intent: "reveal", placement }),
+    [openTab],
+  );
+  const createWorkspaceTab = useCallback(
+    (workspaceKey: string, target: WorkspaceTabTarget, placement?: WorkspaceTabPlacement) =>
+      openTab({ workspaceKey, target, intent: "new", placement }),
+    [openTab],
+  );
   const openWorkspaceChildTabFocused = useWorkspaceLayoutStore(
     (state) => state.openChildTabFocused,
   );
@@ -2457,8 +2519,8 @@ function WorkspaceScreenContent({
     handleTerminalCreateFailed,
   } = useWorkspaceTerminalTabActions({
     persistenceKey,
-    focusWorkspacePane,
     openWorkspaceTabFocused,
+    replaceWorkspaceTabTarget,
     labels: {
       workspacePathUnavailable: t("workspace.header.toasts.workspacePathUnavailable"),
       terminalQueued: t("workspace.header.toasts.terminalQueued"),
@@ -3537,19 +3599,15 @@ function WorkspaceScreenContent({
 
   const handleCreateTerminal = useCallback(
     (input?: { paneId?: string; profile?: TerminalProfile }) => {
-      // Focus the pane synchronously, at click time, rather than waiting for
-      // the daemon round-trip in createTerminal's onSuccess. Otherwise the
-      // tab lands wherever the layout's focused pane happens to be once the
-      // async create resolves, not the pane the button was clicked in.
-      if (input?.paneId && persistenceKey) {
-        focusWorkspacePane(persistenceKey, input.paneId);
-      }
+      // The pane rides on the destination all the way to the opener, so the tab
+      // lands where the button was clicked no matter which pane the layout
+      // happens to have focused once the async create resolves.
       createTerminal({
         destination: input?.paneId ? { kind: "open", paneId: input.paneId } : { kind: "open" },
         ...(input?.profile ? { profile: input.profile } : {}),
       });
     },
-    [createTerminal, focusWorkspacePane, persistenceKey],
+    [createTerminal],
   );
 
   const handleCreateTerminalWithProfile = useCallback(
@@ -3564,8 +3622,8 @@ function WorkspaceScreenContent({
   // only - the tab is still useful to the human - so it proceeds on "Not now"
   // and can be silenced for good. Agent-driven tab creation
   // (browser-automation/handler.ts) never reaches this and must not warn.
-  const handleCreateBrowserTab = useCallback(
-    (input?: { paneId?: string }) => {
+  const launchBrowserTab = useCallback(
+    (destination: WorkspaceTabLaunchDestination) => {
       if (!persistenceKey || !getIsElectron()) {
         return;
       }
@@ -3579,21 +3637,78 @@ function WorkspaceScreenContent({
         if (!proceed) {
           return;
         }
-        if (input?.paneId) {
-          focusWorkspacePane(persistenceKey, input.paneId);
-        }
         const { browserId } = createWorkspaceBrowser();
-        openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
+        if (destination.kind === "replace") {
+          replaceWorkspaceTabTarget(persistenceKey, destination.tabId, {
+            kind: "browser",
+            browserId,
+          });
+          return;
+        }
+        openWorkspaceTabFocused(
+          persistenceKey,
+          { kind: "browser", browserId },
+          paneLocalPlacement(destination.paneId),
+        );
       })();
     },
     [
       browserToolsConfig,
       browserToolsCopy,
-      focusWorkspacePane,
       openBrowserToolsSettings,
       openWorkspaceTabFocused,
       persistenceKey,
+      replaceWorkspaceTabTarget,
       suppressBrowserToolsWarning,
+    ],
+  );
+
+  const handleCreateBrowserTab = useCallback(
+    (input?: { paneId?: string }) => {
+      launchBrowserTab(input?.paneId ? { kind: "open", paneId: input.paneId } : { kind: "open" });
+    },
+    [launchBrowserTab],
+  );
+
+  // Upstream's single entry point for "the user picked something to open" - the
+  // New tab panel and the tab-row menu both route through it. Each branch hands
+  // off to the handler that already owns that surface, so Otto's Browser-tools
+  // heads-up is not bypassed by launching a browser from here.
+  const launchWorkspaceTab = useCallback(
+    (selection: NewTabSelection, destination: WorkspaceTabLaunchDestination) => {
+      if (!persistenceKey) {
+        return;
+      }
+      const openTarget = (target: WorkspaceTabTarget) => {
+        if (destination.kind === "replace") {
+          replaceWorkspaceTabTarget(persistenceKey, destination.tabId, target);
+        } else {
+          createWorkspaceTab(persistenceKey, target, paneLocalPlacement(destination.paneId));
+        }
+      };
+      if (selection.kind === "target") {
+        openTarget(selection.target);
+        return;
+      }
+      if (selection.kind === "agent") {
+        openTarget({ kind: "draft", draftId: generateDraftId() });
+        return;
+      }
+      if (selection.kind === "terminal") {
+        createTerminal({
+          destination,
+          ...(selection.profile ? { profile: selection.profile } : {}),
+        });
+        return;
+      }
+      launchBrowserTab(destination);
+    },
+    [
+      createTerminal,
+      createWorkspaceTab,
+      launchBrowserTab,
+      persistenceKey,
+      replaceWorkspaceTabTarget,
     ],
   );
 
@@ -4897,6 +5012,27 @@ function WorkspaceScreenContent({
     [createTerminalMutation.isPending, pendingTerminalCreateInput],
   );
   const showCreateBrowserTab = getIsElectron();
+  const hasPullRequest = useHasPullRequest({
+    serverId: normalizedServerId,
+    cwd: workspaceDirectory,
+    enabled: canDetectPullRequest(isRouteFocused, isGitCheckout, isMobile),
+  });
+  const newTabLauncher = useMemo<NewTabLauncher>(
+    () => ({
+      showChanges: isGitCheckout,
+      showPullRequest: hasPullRequest,
+      showBrowser: showCreateBrowserTab,
+      terminalDisabled: createTerminalDisabled,
+      launch: launchWorkspaceTab,
+    }),
+    [
+      createTerminalDisabled,
+      hasPullRequest,
+      isGitCheckout,
+      launchWorkspaceTab,
+      showCreateBrowserTab,
+    ],
+  );
   const focusedPaneIdOrUndefined = useMemo(() => focusedPaneId ?? undefined, [focusedPaneId]);
   // The non-split desktop fallback (shouldRenderDesktopPaneFallback, below)
   // still resolves and persists a per-pane orientation override so the
@@ -5006,18 +5142,20 @@ function WorkspaceScreenContent({
   // rail beside this node rather than above it, so it must render as a child of
   // that row instead of a sibling of the rail.
   const centerContentNode = (
-    <WorkspaceCenterContent
-      serverId={normalizedServerId}
-      workspaceId={normalizedWorkspaceId}
-      isRouteFocused={isRouteFocused}
-      onOpenPipFile={handleOpenWorkspaceFileFromPip}
-    >
-      {isMobile ? (
-        <View style={styles.content}>{content}</View>
-      ) : (
-        <View style={styles.content}>{desktopContent}</View>
-      )}
-    </WorkspaceCenterContent>
+    <NewTabLauncherProvider value={newTabLauncher}>
+      <WorkspaceCenterContent
+        serverId={normalizedServerId}
+        workspaceId={normalizedWorkspaceId}
+        isRouteFocused={isRouteFocused}
+        onOpenPipFile={handleOpenWorkspaceFileFromPip}
+      >
+        {isMobile ? (
+          <View style={styles.content}>{content}</View>
+        ) : (
+          <View style={styles.content}>{desktopContent}</View>
+        )}
+      </WorkspaceCenterContent>
+    </NewTabLauncherProvider>
   );
 
   const workspaceCenterColumn = (

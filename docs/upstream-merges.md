@@ -319,22 +319,24 @@ merge it becomes "merge-touched" and the blanket pass rewrites it into nonsense
 ("Otto is a fork of Otto"). Exclude it explicitly from the rebrand xargs, or
 re-check it afterwards.
 
-### Orphaned at v0.6.1, to re-attach
+### Orphaned at v0.6.1 - all re-attached
 
-`scripts/merge-orphan-guard.mjs --check` reports these Otto modules as having
-lost every call site. Each is intact on disk and reachable from nothing, because
-the file that used to call it was resolved to upstream's side. They are features,
-not dead code.
+`scripts/merge-orphan-guard.mjs --check` reported these Otto modules as having
+lost every call site. Each was intact on disk and reachable from nothing, because
+the file that used to call it was resolved to upstream's side. They were
+features, not dead code. All seven were re-attached: five during the merge's own
+defrag pass, and the last two (`open-git-log-tab.ts`, `running-agent-labels.ts`)
+by the 2026-08-31 post-merge audit below.
 
-| Otto module                                                   | Call site it lost                | What it is                              |
-| ------------------------------------------------------------- | -------------------------------- | --------------------------------------- |
-| `app/src/git/diff-base-switcher.tsx`                          | `git/diff-pane.tsx`              | Fork-point diff base picker             |
-| `app/src/git/open-git-log-tab.ts`                             | `git/diff-pane.tsx`              | Git Log tab entry point                 |
-| `app/src/git/running-agent-labels.ts`                         | `git/diff-pane.tsx`              | Running-agent labels in the diff header |
-| `app/src/hooks/use-non-client-hover.ts`                       | `workspace-desktop-tabs-row.tsx` | Hover in the OS non-client area         |
-| `app/src/screens/workspace/workspace-preview-controller.tsx`  | `workspace-desktop-tabs-row.tsx` | Preview controls in the tab row         |
-| `app/src/screens/workspace/workspace-tab-actions-overflow.ts` | `workspace-desktop-tabs-row.tsx` | Tab overflow actions                    |
-| `server/src/server/otto-daemon-config.ts`                     | `daemon-config-store.ts`         | Otto daemon config helper               |
+| Otto module                                                   | Call site it lost                | Re-attached where                                |
+| ------------------------------------------------------------- | -------------------------------- | ------------------------------------------------ |
+| `app/src/git/diff-base-switcher.tsx`                          | `git/diff-pane.tsx`              | Merge defrag pass                                |
+| `app/src/git/open-git-log-tab.ts`                             | `git/diff-pane.tsx`              | `ChangesOptionsMenu` "View commit log" item      |
+| `app/src/git/running-agent-labels.ts`                         | `git/diff-pane.tsx`              | Per-file revert's agents-running override dialog |
+| `app/src/hooks/use-non-client-hover.ts`                       | `workspace-desktop-tabs-row.tsx` | Merge defrag pass                                |
+| `app/src/screens/workspace/workspace-preview-controller.tsx`  | `workspace-desktop-tabs-row.tsx` | Merge defrag pass                                |
+| `app/src/screens/workspace/workspace-tab-actions-overflow.ts` | `workspace-desktop-tabs-row.tsx` | Merge defrag pass                                |
+| `server/src/server/otto-daemon-config.ts`                     | `daemon-config-store.ts`         | Merge defrag pass                                |
 
 `desktop/src/features/editor-targets.ts` also orphaned, but that one is genuine
 supersession: upstream moved the same feature to `features/editor-targets/ipc.ts`
@@ -352,6 +354,59 @@ them: `screens/settings/appearance/apply-appearance.ts`,
 and `components/explorer-sidebar.tsx` (upstream renamed ours to
 `compact-explorer-sidebar.tsx` and kept it as the compact slide-over; Otto's
 docked sidebar is restored as its own file).
+
+### Post-merge audit, 2026-08-31: what the three-way comparison found
+
+A blob-level audit of the merge (classify every both-sides-changed path by
+whether the result equals OURS, equals THEIRS, or was hand-merged; then check
+the global deletion sets) found half-wired features that typecheck, lint, and
+the unit suites could not see. Fixed:
+
+- **Workspace labels could not be assigned, and every `workspaceLabels.*` string
+  was missing.** The subsystem, sidebar filtering, row chips, and manager modal
+  all merged, but `sidebar-workspace-menu.tsx` kept OURS, so the assign submenu
+  had no trigger. Wired `useWorkspaceLabelMenuPages` into both the kebab and the
+  context menu, and restored 140 dropped i18n keys across all nine locales (the
+  label block, skills settings, panels, window controls, explorer sidebar, git
+  diff actions, and more). The remaining 32 upstream-only keys belong to
+  features deliberately not adopted (their track pills, their steer send option,
+  their model-chooser profile creation, their appearance font sizes).
+- **The Layout settings section existed but was unreachable.** The
+  `openInSidePane` preference is live end to end, `layout-section.tsx` shipped,
+  but the section was removed from `SETTINGS_SECTION_SLUGS` on the belief there
+  was no panel. Restored the slug, sidebar item, render case, and the seven
+  search-catalog rows plus their inventory entries.
+- **`appearanceStyleBoundaryKey` lost Otto's entries.** Taking THEIRS dropped
+  `fontSize.xs` and the eight `syntax.diff*` colors from the remount key, so a
+  theme diff-palette change stopped refreshing styled surfaces. Restored.
+- **Per-file revert lost the agents-running guard.** Upstream's
+  `checkoutDiscardChanges` (unguarded) replaced Otto's `checkoutGitRollback`
+  flow. The diff pane's revert now routes through Otto's rollback when the host
+  supports it, with the override confirmation and running-agent labels, and
+  falls back to discard only for pre-rollback hosts.
+- **The Git Log tab had no opener.** The `gitLog` tab kind, panel, and menus all
+  merged, but nothing called `openGitLogTab`. It now lives in the Changes
+  options menu as "View commit log".
+- **The over-budget file state had no renderer.** The daemon refuses reads above
+  the display budget; the merged e2e asserts a `file-source-too-large` element
+  that only upstream's orphaned `source/view.web.tsx` rendered. Otto's pane now
+  renders the dedicated too-large state; upstream's unwired `source/view.*`
+  split was deleted (its `presentation.ts` budgets are live via
+  `live-file/hook.ts`).
+- **Checkout status updates were not deduplicated.** Ported upstream
+  `373a98c64`: byte-identical `checkout_status_update` payloads per cwd are
+  suppressed.
+- Deleted as dead-on-arrival: `element-selector.electron.ts` (Otto's inline
+  browser pane owns element selection; upstream's extraction had no importer)
+  and `agent-profile-editor.tsx` + `agent-profile-edit-modal.tsx` (Otto removed
+  the modal deliberately in the roster convergence, `c1d21699f`; the merge
+  restored them unreachable).
+
+Method note for next time: `result == OURS` for a both-sides-changed file does
+not by itself mean upstream's change was dropped (Otto may have adopted it
+pre-merge), and a present file does not mean a wired file. The two checks that
+found everything above: does the dropped upstream content exist anywhere in the
+result, and does every feature-bearing module have at least one importer.
 
 The v0.2.5 row also left behind things nobody chose to skip. Large conflicted
 files were resolved wholesale to OURS, which drops upstream hunks silently: no
@@ -497,6 +552,45 @@ Dropped rather than adapted: `migrateAppSettings` had no caller in the merged
 tree either. Revisit if Otto ever adds a third send option; the marker key
 (`SETTINGS_MIGRATIONS_KEY`) is still defined, so the framework can come back
 without a rename.
+
+#### Plugin theme contributions - parsed but not applied
+
+Upstream's `feat(plugins): add theme contributions` (`e1805ef54`) landed its
+plugin-side half: `plugins/themes/` parses contributions, the evaluator collects
+them, `pluginThemeId` sits in settings storage, and `PLUGIN_THEME_*` constants
+sit in `theme.ts`. The application half (their `appearance/provider.tsx` and the
+appearance-section picker) was dropped, deliberately: upstream applies a
+contributed palette by overwriting one registered Unistyles theme, while Otto's
+appearance is a variant system (seven light and eight dark palettes, mirror
+keys, black-scope vars, the accent ladder). Slotting a six-color contributed
+palette into that is a design task, not a conflict resolution. The inert
+plumbing is kept byte-compatible with upstream so future merges stay cheap;
+`plugin-theme.spec.ts` was deleted because it asserts UI that does not exist.
+Revisit when plugin theming earns a design pass against Otto's theme anatomy.
+
+#### Create agent profiles from the model chooser (`e9373c026`, #3533)
+
+The model sheet, agent controls, and combined selector kept OURS, so upstream's
+entry points for creating a profile from the model chooser were dropped, and the
+`useAgentProfileEditor` hook they fed arrived unreachable (now deleted, see the
+audit above). Otto's roster convergence owns profile creation. Revisit only if
+the model picker should grow a create-profile affordance; that would be an Otto
+feature built on Otto's roster, not a port of upstream's modal.
+
+#### Open summarized tool calls in mobile sheets (`32d6b18db`, #3619)
+
+Self-contained upstream change to `tool-calls/detail-level/overview/view.tsx`,
+dropped with the kept-OURS resolution. Otto's tool-call cards own that surface.
+Adopt deliberately if mobile users ask for it.
+
+#### Browser element-selector fixes (`770b87a15`, `7d3212e36`)
+
+Upstream extracted element selection into `element-selector.electron.ts` and
+fixed "selectors unavailable on already-loaded pages" and "annotation editor
+not showing" in that structure. Otto's inline `pane/index.electron.tsx`
+implementation kept OURS, so the extraction arrived orphaned (deleted). If
+either symptom shows up in Otto's browser pane, port the fix into the inline
+implementation rather than resurrecting the extraction.
 
 ### Silent breakage found by the v0.6.1 test pass
 
@@ -654,3 +748,42 @@ states. Otto's scale is a tier larger, its light theme is warm, and its
 interactive states ride the one theme-accent ladder. These were rewritten to
 Otto's values rather than changed in the theme, and Otto's own pure-black test
 (which the merge had replaced) was restored.
+
+### Post-merge audit, 2026-08-31: contexts whose provider half never merged
+
+Typecheck cannot see a React context that nothing mounts, and no unit suite
+renders these trees, so this class only shows up as a runtime throw the first
+time the surface opens. Upstream introduced each of these as a provider plus the
+hook that requires it; the merge took the consumers and left the provider
+unmounted, in most cases because Otto's pre-merge code owned the same state a
+different way and that side won the conflict.
+
+| Context                              | Otto kept instead              | Symptom                                        |
+| ------------------------------------ | ------------------------------ | ---------------------------------------------- |
+| `KeyboardActionDispatcherProvider`   | a module-level dispatcher      | the app threw on `AppContainer`'s first render |
+| `DiffDocumentWorkspaceCacheProvider` | the compact host's mount only  | Changes threw on open in the desktop workspace |
+| `NewTabLauncherProvider`             | prop-drilled tab-row callbacks | any New tab pane threw, including the default  |
+
+The launcher is the instructive one. Upstream replaced the prop-drilled
+`showCreateBrowserTab` / `createTerminalDisabled` / `onCreateX` chain with a
+single `NewTabLauncher` value, and moved tab placement from "focus the pane, then
+open" to a `placement` argument carried on `openTab`. Otto had kept the old
+shape, so `handleTerminalCreated` still destructured `paneId` from a producer
+that had switched to sending `destination`. That typechecks (the extra property
+is simply ignored) and silently dropped both the pane placement and the
+`replace` case, which is how a terminal launched from a New tab left the
+placeholder behind. The repair is upstream's mechanism, not a patch over Otto's:
+the screen now defines upstream's `openWorkspaceTabFocused(key, target, placement)`
+and `createWorkspaceTab` over the store's `openTab`, and Otto's own behaviour
+(the Browser-tools-off heads-up, terminal profiles) rides on top of it.
+
+Two upstream modules in the same subsystem are still orphaned and are worth a
+decision rather than a fix: `screens/workspace/workspace-new-tab-menu.tsx` and
+`screens/workspace/explorer-sidebar.tsx`. Both consume the launcher catalog and
+nothing renders either, because Otto's desktop tab row and docked explorer
+sidebar are its own. If either is ever adopted, mount a `NewTabLauncherProvider`
+around the fallback tab row too, the way upstream does for its issue #3750.
+
+The general check: for every context whose hook throws or asserts, grep for a
+mount outside tests. `useContext` returning null is not a type error, so nothing
+else will tell you.
