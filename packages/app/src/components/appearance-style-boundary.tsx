@@ -15,6 +15,7 @@ export function appearanceStyleBoundaryKey(theme: Theme): string {
   return [
     theme.fontFamily.ui,
     theme.fontFamily.mono,
+    theme.fontSize.xs,
     theme.fontSize.sm,
     theme.fontSize.base,
     theme.fontSize.lg,
@@ -52,6 +53,14 @@ export function appearanceStyleBoundaryKey(theme: Theme): string {
     theme.colors.syntax.meta,
     theme.colors.syntax.heading,
     theme.colors.syntax.link,
+    theme.colors.syntax.diffAdded,
+    theme.colors.syntax.diffRemoved,
+    theme.colors.syntax.diffAddedForeground,
+    theme.colors.syntax.diffRemovedForeground,
+    theme.colors.syntax.diffAddedEmphasis,
+    theme.colors.syntax.diffRemovedEmphasis,
+    theme.colors.syntax.diffFormatting,
+    theme.colors.syntax.diffMoved,
   ].join("\u0000");
 }
 

@@ -87,6 +87,9 @@ export const ru: TranslationResources = {
       fastModeSearchKeywords: "быстрый скорость низкая задержка",
       settingOn: "Вкл",
       settingOff: "Выкл",
+      open: "Открыть {{name}}",
+      openInSidePane: "Открыть {{name}} в боковой панели",
+      openInFocusedPane: "Открыть {{name}} в активной области",
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
@@ -146,6 +149,7 @@ export const ru: TranslationResources = {
       queue: "Очередь",
       send: "Отправлять",
       add: "Добавить контекст",
+      sendAndSteer: "Отправить и направить",
     },
     cancel: {
       cancelingAgent: "Отменяющий агент",
@@ -1028,6 +1032,8 @@ export const ru: TranslationResources = {
         renameTerminal: "Переименование терминала",
         renameAgent: "Переименовать чат",
         copyTerminalId: "Скопировать идентификатор терминала",
+        copyFilePath: "Скопировать путь к файлу",
+        moveToMain: "Переместить на основную панель",
       },
       actions: {
         newAgent: "Новый чат",
@@ -1047,6 +1053,13 @@ export const ru: TranslationResources = {
         previewPickServer: "Какой сервер запустить?",
         previewStopServer: "Остановить {{name}}",
         exitFocusMode: "Выйти из режима фокусировки",
+        newTab: "Новая вкладка",
+        maximizePane: "Развернуть панель",
+        restorePane: "Восстановить панель",
+        closePane: "Закрыть панель",
+        changes: "Изменения",
+        files: "Файлы",
+        pullRequest: "PR",
       },
       explorer: {
         open: "Открыть проводник",
@@ -1110,6 +1123,13 @@ export const ru: TranslationResources = {
           "В {{count}} вкладках есть несохранённые изменения. При закрытии черновики будут удалены.",
       },
       modified: "Несохранённые изменения",
+      explorerSidebar: {
+        open: "Открыть боковую панель",
+        close: "Закрыть боковую панель",
+        toggle: "Переключить боковую панель",
+        changes: "Изменения",
+        files: "Файлы",
+      },
     },
     header: {
       actions: {
@@ -1438,6 +1458,12 @@ export const ru: TranslationResources = {
           loadError: "Не удалось загрузить коммиты",
           empty: "Коммитов пока нет",
         },
+        openDiffTab: "Открыть вкладку «Дифф»",
+        inlineDiff: "Встроенный дифф",
+        collapseAllFiles: "Свернуть все файлы",
+        expandAllFiles: "Развернуть все файлы",
+        seeUncommittedChanges: "Показать незафиксированные изменения",
+        seeCommittedChanges: "Показать зафиксированные изменения",
       },
       commit: {
         type: {
@@ -1612,6 +1638,10 @@ export const ru: TranslationResources = {
         failed: "Не удалось отменить изменения",
       },
     },
+    tree: {
+      showFolderTree: "Показать дерево папок",
+      hideFolderTree: "Скрыть дерево папок",
+    },
   },
   sidebar: {
     display: {
@@ -1621,6 +1651,7 @@ export const ru: TranslationResources = {
         label: "Группировка",
         project: "Проект",
         status: "Статус",
+        labels: "Метки",
       },
       titleSource: {
         label: "Заголовок",
@@ -1635,6 +1666,9 @@ export const ru: TranslationResources = {
         services: "Сервисы",
         diff: "Статистика изменений",
         timestamp: "Последняя активность",
+        branch: "Ветка",
+        project: "Проект",
+        labels: "Метки",
       },
       checks: {
         iconAndText: "Значок и текст",
@@ -1644,6 +1678,10 @@ export const ru: TranslationResources = {
       hostFilter: {
         label: "Хост",
         all: "Все хосты",
+      },
+      projectFilter: {
+        label: "Проект",
+        all: "Все проекты",
       },
     },
     host: {
@@ -1766,6 +1804,12 @@ export const ru: TranslationResources = {
       github: "Создать issue в GitHub",
       whatsNew: "Что нового",
       appName: "Otto",
+    },
+    filterEmpty: {
+      title: "Нет подходящих рабочих пространств",
+      description:
+        "Измените или очистите фильтры боковой панели, чтобы увидеть рабочие пространства.",
+      clear: "Очистить фильтры",
     },
   },
   newProject: {
@@ -2127,6 +2171,12 @@ export const ru: TranslationResources = {
         uninstallFailed: "Невозможно удалить навыки оркестровки.",
         saveSelectionFailed: "Не удалось сохранить выбор навыков оркестровки.",
       },
+    },
+    windowControls: {
+      minimize: "Свернуть окно",
+      maximize: "Развернуть окно",
+      restore: "Восстановить окно",
+      close: "Закрыть окно",
     },
   },
   rootError: {
@@ -2695,6 +2745,8 @@ export const ru: TranslationResources = {
       retry: "Повторить попытку",
       copy: "Копировать",
       copied: "Скопировано",
+      securityWarning:
+        "Обращайтесь с этой ссылкой для сопряжения как с паролем. Любой, у кого она есть, может получить доступ к этому демону.",
     },
   },
   realtimeVoice: {
@@ -3157,6 +3209,7 @@ export const ru: TranslationResources = {
         reloadTitle: "Перезагрузить с диска?",
         reloadMessage: "Локальные изменения будут потеряны.",
       },
+      tooLargeToDisplay: "Этот файл слишком велик для отображения",
     },
     diff: {
       changesLabel: "Изменения",
@@ -3168,6 +3221,18 @@ export const ru: TranslationResources = {
       empty: "Нет изменений",
       loadError: "Не удалось загрузить различия",
       capabilityMissing: "Обновите хост, чтобы просматривать различия коммитов.",
+      diffLabel: "Дифф",
+    },
+    files: {
+      label: "Файлы",
+      subtitle: "Файлы рабочего пространства",
+      tooltip: "Просмотр файлов рабочего пространства",
+    },
+    pullRequest: {
+      label: "PR",
+      subtitle: "Сведения о PR",
+      emptyTitle: "PR пока нет",
+      emptyDescription: "Создайте PR для этой рабочей копии, чтобы увидеть здесь сведения о нём.",
     },
   },
   toolCallDetails: {
@@ -3283,6 +3348,7 @@ export const ru: TranslationResources = {
       diagnostics: "Диагностика",
       about: "О",
       editor: "Редактор",
+      layout: "Layout",
     },
     notifications: {
       title: "Уведомления",
@@ -3706,6 +3772,7 @@ export const ru: TranslationResources = {
         highlightThemeAccessibility: "Выделить тему:{{value}}",
         previewAccessibility:
           "Предварительный просмотр темы синтаксиса и шрифта кода в реальном времени.",
+        previewContent: "Предварительный просмотр содержимого и кода",
       },
       detailLevel: {
         title: "Уровень детализации",
@@ -4236,6 +4303,51 @@ export const ru: TranslationResources = {
           localErrorMessage: "Не удалось удалить подключение localhost",
         },
       },
+      skills: {
+        sectionTitle: "Навыки оркестрации",
+        title: "Навыки оркестрации",
+        description: "Научите агентов координировать работу через CLI",
+        docs: "Навыки",
+        openDocs: "Открыть документацию по навыкам",
+        unavailable: "Подключитесь к этому хосту, чтобы управлять навыками оркестрации",
+        unsupported: "Обновите этот хост, чтобы управлять навыками оркестрации",
+        updateAvailable: "Доступно обновление",
+        updateTitle: "Обновить навыки Paseo?",
+        updateFallback: "Встроенные навыки будут синхронизированы с этим хостом.",
+        uninstallTitle: "Удалить навыки Paseo?",
+        uninstallMessage:
+          "Удаляет все навыки оркестрации Paseo из ~/.agents, ~/.claude и ~/.codex на этом хосте.",
+        choose: "Выбрать навыки",
+        chooseAll: "Все навыки",
+        chooseAllHint: "Устанавливать все встроенные навыки, включая добавленные позже.",
+        chooseList: "Встроенные навыки",
+        chooseEmpty: "На этом хосте нет встроенных навыков.",
+        removeTitle: "Удалить снятые навыки?",
+        removeMessage:
+          "{{skills}} будут удалены из ~/.agents, ~/.claude и ~/.codex на этом хосте. Всё, что вы добавили в эти папки навыков, тоже будет удалено.",
+        saveFailed: "Не удалось сохранить выбор навыков.",
+        statusFailed: "Не удалось проверить состояние навыков оркестрации.",
+        updateFailed: "Не удалось обновить навыки оркестрации.",
+        uninstallFailed: "Не удалось удалить навыки оркестрации.",
+        saveSelectionFailed: "Не удалось сохранить выбор навыков оркестрации.",
+        actions: {
+          install: "Установить",
+          installing: "Установка...",
+          installed: "Установлено",
+          update: "Обновить",
+          working: "Выполняется...",
+          remove: "Удалить",
+          uninstall: "Удалить",
+          save: "Сохранить",
+          saving: "Сохранение...",
+          cancel: "Отмена",
+        },
+        operations: {
+          add: "Добавить навык",
+          update: "Обновить навык",
+          delete: "Удалить навык",
+        },
+      },
     },
     providers: {
       title: "Провайдеры",
@@ -4542,6 +4654,45 @@ export const ru: TranslationResources = {
       vimKeybindings: "Клавиши Vim",
       vimHint: "Применяется к исходным файлам в веб- и настольной версии.",
     },
+    layout: {
+      openInSidePane: {
+        title: "Open location",
+        destinations: {
+          main: "Main panel",
+          side: "On the side",
+        },
+        sources: {
+          explorerFiles: {
+            label: "Selecting a file in Explorer",
+            description: "Open files selected in the Explorer sidebar beside your work",
+          },
+          explorerChanges: {
+            label: "Selecting a change in Explorer",
+            description: "Open diffs selected in the Explorer sidebar beside your work",
+          },
+          chatFiles: {
+            label: "Opening a file from an agent chat",
+            description: "Open file links and tool-call files beside the conversation",
+          },
+          diffFiles: {
+            label: "Opening a file from Changes",
+            description: "Open source files selected from a diff beside it",
+          },
+          subagents: {
+            label: "Opening a subagent",
+            description: "Open subagents beside their parent agent",
+          },
+          pullRequests: {
+            label: "Opening a pull request from Changes",
+            description: "Open pull request details beside Changes",
+          },
+          changesLinks: {
+            label: "Opening Changes from an agent",
+            description: "Open diff stats and review attachments beside the conversation",
+          },
+        },
+      },
+    },
   },
   artifacts: {
     errors: {
@@ -4611,5 +4762,50 @@ export const ru: TranslationResources = {
     cardTitlePlaceholder: "Заголовок карточки",
     cancel: "Отмена",
     moveTo: "Переместить в {{column}}",
+  },
+  workspaceLabels: {
+    title: "Метки",
+    unlabelled: "Без метки",
+    create: "Создать метку",
+    createConfirm: "Создать",
+    creating: "Создание…",
+    name: "Название метки",
+    updateHostUse: "Обновите этот хост, чтобы использовать метки.",
+    errors: {
+      update: "Не удалось обновить метку",
+      load: "Не удалось загрузить метки",
+    },
+    colors: {
+      violet: "Фиолетовый",
+      sky: "Голубой",
+      emerald: "Изумрудный",
+      orange: "Оранжевый",
+      pink: "Розовый",
+      indigo: "Индиго",
+      teal: "Бирюзовый",
+      red: "Красный",
+      amber: "Янтарный",
+      blue: "Синий",
+    },
+    filter: {
+      clear: "Очистить фильтр",
+    },
+    manage: {
+      open: "Управление метками…",
+      title: "Управление метками",
+      search: "Поиск меток",
+      empty: "На этом хосте нет меток.",
+      edit: "Изменить метку",
+      editLabel: "Изменить метку «{{name}}»",
+      name: "Название",
+      color: "Цвет",
+      save: "Сохранить",
+      delete: "Удалить",
+      deleteTitle: "Удалить метку «{{name}}»?",
+      deleteMessage_one: "Метка будет снята с {{count}} рабочего пространства на этом хосте.",
+      deleteMessage_other: "Метка будет снята с {{count}} рабочих пространств на этом хосте.",
+      offline: "Этот хост не в сети.",
+      updateHost: "Обновите этот хост для управления метками.",
+    },
   },
 };

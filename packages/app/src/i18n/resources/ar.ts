@@ -87,6 +87,9 @@ export const ar: TranslationResources = {
       fastModeSearchKeywords: "سريع سرعة زمن انتقال منخفض",
       settingOn: "تشغيل",
       settingOff: "إيقاف",
+      open: "فتح {{name}}",
+      openInSidePane: "فتح {{name}} في اللوحة الجانبية",
+      openInFocusedPane: "فتح {{name}} في الجزء النشط",
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
@@ -146,6 +149,7 @@ export const ar: TranslationResources = {
       queue: "طابور",
       send: "يرسل",
       add: "إضافة سياق",
+      sendAndSteer: "إرسال وتوجيه",
     },
     cancel: {
       cancelingAgent: "وكيل الإلغاء",
@@ -1016,6 +1020,8 @@ export const ar: TranslationResources = {
         renameTerminal: "إعادة تسمية المحطة",
         renameAgent: "إعادة تسمية المحادثة",
         copyTerminalId: "نسخ معرف المحطة",
+        copyFilePath: "Copy file path",
+        moveToMain: "Move to main panel",
       },
       actions: {
         newAgent: "محادثة جديدة",
@@ -1035,6 +1041,13 @@ export const ar: TranslationResources = {
         previewPickServer: "ما الخادم الذي تريد تشغيله؟",
         previewStopServer: "إيقاف {{name}}",
         exitFocusMode: "إنهاء وضع التركيز",
+        newTab: "علامة تبويب جديدة",
+        maximizePane: "تكبير الجزء",
+        restorePane: "استعادة الجزء",
+        closePane: "إغلاق الجزء",
+        changes: "التغييرات",
+        files: "الملفات",
+        pullRequest: "طلب السحب",
       },
       explorer: {
         open: "افتح المستكشف",
@@ -1097,6 +1110,13 @@ export const ar: TranslationResources = {
           "تحتوي {{count}} علامة تبويب على تغييرات غير محفوظة. سيؤدي الإغلاق إلى تجاهل المسودات.",
       },
       modified: "تغييرات غير محفوظة",
+      explorerSidebar: {
+        open: "افتح اللوحة الجانبية",
+        close: "إغلاق اللوحة الجانبية",
+        toggle: "تبديل اللوحة الجانبية",
+        changes: "التغييرات",
+        files: "ملفات",
+      },
     },
     header: {
       actions: {
@@ -1404,6 +1424,12 @@ export const ar: TranslationResources = {
           loadError: "تعذّر تحميل الإيداعات",
           empty: "لا توجد إيداعات بعد",
         },
+        openDiffTab: "فتح علامة تبويب الفرق",
+        inlineDiff: "فرق مضمّن",
+        collapseAllFiles: "طي كافة الملفات",
+        expandAllFiles: "توسيع كافة الملفات",
+        seeUncommittedChanges: "عرض التغييرات غير الملتزم بها",
+        seeCommittedChanges: "عرض التغييرات الملتزم بها",
       },
       commit: {
         type: {
@@ -1578,6 +1604,10 @@ export const ar: TranslationResources = {
         failed: "فشل تجاهل التغييرات",
       },
     },
+    tree: {
+      showFolderTree: "إظهار شجرة المجلدات",
+      hideFolderTree: "إخفاء شجرة المجلدات",
+    },
   },
   sidebar: {
     display: {
@@ -1587,6 +1617,7 @@ export const ar: TranslationResources = {
         label: "التجميع",
         project: "المشروع",
         status: "الحالة",
+        labels: "التسميات",
       },
       titleSource: {
         label: "العنوان",
@@ -1601,6 +1632,9 @@ export const ar: TranslationResources = {
         services: "الخدمات",
         diff: "إحصائيات الفروق",
         timestamp: "آخر نشاط",
+        branch: "الفرع",
+        project: "المشروع",
+        labels: "التسميات",
       },
       checks: {
         iconAndText: "أيقونة ونص",
@@ -1610,6 +1644,10 @@ export const ar: TranslationResources = {
       hostFilter: {
         label: "المضيف",
         all: "كل المضيفين",
+      },
+      projectFilter: {
+        label: "المشروع",
+        all: "كل المشاريع",
       },
     },
     host: {
@@ -1732,6 +1770,11 @@ export const ar: TranslationResources = {
       github: "إنشاء مشكلة على GitHub",
       whatsNew: "ما الجديد",
       appName: "Otto",
+    },
+    filterEmpty: {
+      title: "لا توجد مساحات عمل مطابقة",
+      description: "غيّر عوامل تصفية الشريط الجانبي أو امسحها لعرض مساحات العمل.",
+      clear: "مسح عوامل التصفية",
     },
   },
   newProject: {
@@ -2086,6 +2129,12 @@ export const ar: TranslationResources = {
         uninstallFailed: "غير قادر على إلغاء تثبيت مهارات التنسيق.",
         saveSelectionFailed: "غير قادر على حفظ اختيار مهارات التنسيق.",
       },
+    },
+    windowControls: {
+      minimize: "تصغير النافذة",
+      maximize: "تكبير النافذة",
+      restore: "استعادة النافذة",
+      close: "إغلاق النافذة",
     },
   },
   rootError: {
@@ -2646,6 +2695,8 @@ export const ar: TranslationResources = {
       retry: "أعد المحاولة",
       copy: "ينسخ",
       copied: "منقول",
+      securityWarning:
+        "تعامل مع رابط الاقتران هذا ككلمة مرور. يمكن لأي شخص يملكه الوصول إلى هذا البرنامج الخفي.",
     },
   },
   realtimeVoice: {
@@ -3105,6 +3156,7 @@ export const ar: TranslationResources = {
         reloadTitle: "إعادة التحميل من القرص؟",
         reloadMessage: "ستفقد تغييراتك المحلية.",
       },
+      tooLargeToDisplay: "هذا الملف كبير جدًا بحيث لا يمكن عرضه",
     },
     diff: {
       changesLabel: "التغييرات",
@@ -3116,6 +3168,18 @@ export const ar: TranslationResources = {
       empty: "لا توجد تغييرات",
       loadError: "فشل تحميل الفروقات",
       capabilityMissing: "حدّث المضيف لعرض فروقات الالتزامات.",
+      diffLabel: "الفرق",
+    },
+    files: {
+      label: "الملفات",
+      subtitle: "ملفات مساحة العمل",
+      tooltip: "تصفح ملفات مساحة العمل",
+    },
+    pullRequest: {
+      label: "طلب السحب",
+      subtitle: "تفاصيل طلب السحب",
+      emptyTitle: "لا يوجد طلب سحب بعد",
+      emptyDescription: "أنشئ طلب سحب لنسخة العمل هذه لعرض تفاصيله هنا.",
     },
   },
   toolCallDetails: {
@@ -3231,6 +3295,7 @@ export const ar: TranslationResources = {
       diagnostics: "التشخيص",
       about: "عن",
       editor: "المحرر",
+      layout: "Layout",
     },
     notifications: {
       title: "الإشعارات",
@@ -3649,6 +3714,7 @@ export const ar: TranslationResources = {
         highlightThemeHint: "ألوان التعليمات البرمجية، مستقلة عن سمة التطبيق",
         highlightThemeAccessibility: "تسليط الضوء على الموضوع:{{value}}",
         previewAccessibility: "معاينة مباشرة لموضوع بناء الجملة وخط التعليمات البرمجية",
+        previewContent: "معاينة المحتوى والرمز",
       },
       detailLevel: {
         title: "مستوى التفاصيل",
@@ -4171,6 +4237,50 @@ export const ar: TranslationResources = {
           localErrorMessage: "تعذّرت إزالة اتصال localhost",
         },
       },
+      skills: {
+        sectionTitle: "مهارات التنسيق",
+        title: "مهارات التنسيق",
+        description: "قم بتعليم عملائك كيفية التنسيق من خلال CLI",
+        docs: "Skills",
+        openDocs: "Open skills documentation",
+        unavailable: "Connect to this host to manage orchestration skills",
+        unsupported: "Update this host to manage orchestration skills",
+        statusFailed: "غير قادر على التحقق من حالة مهارات التنسيق.",
+        updateFailed: "غير قادر على تحديث مهارات التنسيق.",
+        uninstallFailed: "غير قادر على إلغاء تثبيت مهارات التنسيق.",
+        saveSelectionFailed: "غير قادر على حفظ اختيار مهارات التنسيق.",
+        updateAvailable: "التحديث متاح",
+        updateTitle: "تحديث مهارات Paseo ؟",
+        updateFallback: "مزامنة المهارات المجمعة لجهازك.",
+        uninstallTitle: "إلغاء تثبيت مهارات Paseo ؟",
+        uninstallMessage: "يزيل جميع مهارات تنسيق Paseo من ~/.agents ، ~/.claude ، ~/.codex.",
+        choose: "اختيار المهارات",
+        chooseAll: "كل المهارات",
+        chooseAllHint: "أبقِ جميع المهارات المرفقة مثبتة، بما فيها ما يُضاف لاحقًا.",
+        chooseList: "المهارات المرفقة",
+        chooseEmpty: "لا تتضمن هذه النسخة أي مهارات.",
+        removeTitle: "إزالة المهارات غير المحددة؟",
+        removeMessage:
+          "سيتم حذف {{skills}} من ~/.agents و~/.claude و~/.codex. كما يُحذف كل ما أضفته داخل مجلدات المهارات تلك.",
+        saveFailed: "تعذر حفظ اختيار المهارات.",
+        actions: {
+          install: "ثَبَّتَ",
+          installing: "جارٍ التثبيت...",
+          installed: "تم التثبيت",
+          update: "تحديث",
+          working: "عمل...",
+          remove: "إزالة",
+          uninstall: "إلغاء التثبيت",
+          save: "حفظ",
+          saving: "جارٍ الحفظ...",
+          cancel: "يلغي",
+        },
+        operations: {
+          add: "أضف مهارة",
+          update: "تحديث المهارة",
+          delete: "حذف المهارة",
+        },
+      },
     },
     providers: {
       title: "مقدمي الخدمات",
@@ -4471,6 +4581,45 @@ export const ar: TranslationResources = {
       vimKeybindings: "اختصارات Vim",
       vimHint: "تنطبق على ملفات المصدر في الويب وسطح المكتب.",
     },
+    layout: {
+      openInSidePane: {
+        title: "Open location",
+        destinations: {
+          main: "Main panel",
+          side: "On the side",
+        },
+        sources: {
+          explorerFiles: {
+            label: "Selecting a file in Explorer",
+            description: "Open files selected in the Explorer sidebar beside your work",
+          },
+          explorerChanges: {
+            label: "Selecting a change in Explorer",
+            description: "Open diffs selected in the Explorer sidebar beside your work",
+          },
+          chatFiles: {
+            label: "Opening a file from an agent chat",
+            description: "Open file links and tool-call files beside the conversation",
+          },
+          diffFiles: {
+            label: "Opening a file from Changes",
+            description: "Open source files selected from a diff beside it",
+          },
+          subagents: {
+            label: "Opening a subagent",
+            description: "Open subagents beside their parent agent",
+          },
+          pullRequests: {
+            label: "Opening a pull request from Changes",
+            description: "Open pull request details beside Changes",
+          },
+          changesLinks: {
+            label: "Opening Changes from an agent",
+            description: "Open diff stats and review attachments beside the conversation",
+          },
+        },
+      },
+    },
   },
   artifacts: {
     errors: {
@@ -4540,5 +4689,50 @@ export const ar: TranslationResources = {
     cardTitlePlaceholder: "عنوان البطاقة",
     cancel: "إلغاء",
     moveTo: "نقل إلى {{column}}",
+  },
+  workspaceLabels: {
+    title: "التسميات",
+    unlabelled: "بلا تسمية",
+    create: "إنشاء تسمية",
+    createConfirm: "إنشاء",
+    creating: "جارٍ الإنشاء…",
+    name: "اسم التسمية",
+    updateHostUse: "حدّث هذا المضيف لاستخدام التسميات.",
+    errors: {
+      update: "تعذّر تحديث التسمية",
+      load: "تعذّر تحميل التسميات",
+    },
+    colors: {
+      violet: "بنفسجي",
+      sky: "سماوي",
+      emerald: "زمردي",
+      orange: "برتقالي",
+      pink: "وردي",
+      indigo: "نيلي",
+      teal: "أزرق مخضر",
+      red: "أحمر",
+      amber: "كهرماني",
+      blue: "أزرق",
+    },
+    filter: {
+      clear: "مسح عامل التصفية",
+    },
+    manage: {
+      open: "إدارة التسميات…",
+      title: "إدارة التسميات",
+      search: "بحث في التسميات",
+      empty: "لا توجد تسميات على هذا المضيف.",
+      edit: "تعديل التسمية",
+      editLabel: "تعديل {{name}}",
+      name: "الاسم",
+      color: "اللون",
+      save: "حفظ",
+      delete: "حذف",
+      deleteTitle: "حذف {{name}}؟",
+      deleteMessage_one: "سيؤدي هذا إلى إزالة التسمية من {{count}} مساحة عمل على هذا المضيف.",
+      deleteMessage_other: "سيؤدي هذا إلى إزالة التسمية من {{count}} مساحات عمل على هذا المضيف.",
+      offline: "هذا المضيف غير متصل.",
+      updateHost: "حدّث هذا المضيف لإدارة التسميات.",
+    },
   },
 };

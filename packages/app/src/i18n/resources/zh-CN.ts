@@ -87,6 +87,9 @@ export const zhCN: TranslationResources = {
       fastModeSearchKeywords: "快速 速度 低延迟",
       settingOn: "开",
       settingOff: "关",
+      open: "打开{{name}}",
+      openInSidePane: "在侧边面板中打开{{name}}",
+      openInFocusedPane: "在当前窗格中打开{{name}}",
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
@@ -144,6 +147,7 @@ export const zhCN: TranslationResources = {
       queue: "排队",
       send: "发送",
       add: "添加上下文",
+      sendAndSteer: "发送并引导",
     },
     cancel: {
       cancelingAgent: "正在取消 Agent",
@@ -1011,6 +1015,8 @@ export const zhCN: TranslationResources = {
         renameTerminal: "重命名 Terminal",
         renameAgent: "重命名对话",
         copyTerminalId: "复制 Terminal ID",
+        copyFilePath: "Copy file path",
+        moveToMain: "移至主面板",
       },
       actions: {
         newAgent: "新建对话",
@@ -1030,6 +1036,13 @@ export const zhCN: TranslationResources = {
         previewPickServer: "启动哪个服务器?",
         previewStopServer: "停止 {{name}}",
         exitFocusMode: "退出专注模式",
+        newTab: "新建标签页",
+        maximizePane: "最大化窗格",
+        restorePane: "还原窗格",
+        closePane: "关闭窗格",
+        changes: "更改",
+        files: "文件",
+        pullRequest: "拉取请求",
       },
       explorer: {
         open: "打开 explorer",
@@ -1089,6 +1102,13 @@ export const zhCN: TranslationResources = {
         bulkUnsaved: "{{count}} 个标签页有未保存的更改。关闭将丢弃这些草稿。",
       },
       modified: "未保存的更改",
+      explorerSidebar: {
+        open: "打开侧边面板",
+        close: "关闭侧边面板",
+        toggle: "切换侧边面板",
+        changes: "变更",
+        files: "文件",
+      },
     },
     header: {
       actions: {
@@ -1391,6 +1411,12 @@ export const zhCN: TranslationResources = {
           loadError: "加载提交失败",
           empty: "暂无提交",
         },
+        openDiffTab: "打开 Diff 标签页",
+        inlineDiff: "内联 Diff",
+        collapseAllFiles: "折叠所有文件",
+        expandAllFiles: "展开所有文件",
+        seeUncommittedChanges: "查看未 commit 的变更",
+        seeCommittedChanges: "查看已 commit 的变更",
       },
       commit: {
         type: {
@@ -1562,6 +1588,10 @@ export const zhCN: TranslationResources = {
         failed: "放弃更改失败",
       },
     },
+    tree: {
+      showFolderTree: "显示文件夹树",
+      hideFolderTree: "隐藏文件夹树",
+    },
   },
   sidebar: {
     display: {
@@ -1571,6 +1601,7 @@ export const zhCN: TranslationResources = {
         label: "分组",
         project: "项目",
         status: "状态",
+        labels: "标签",
       },
       titleSource: {
         label: "标题",
@@ -1585,6 +1616,9 @@ export const zhCN: TranslationResources = {
         services: "服务",
         diff: "差异统计",
         timestamp: "最近活动",
+        branch: "分支",
+        project: "项目",
+        labels: "标签",
       },
       checks: {
         iconAndText: "图标和文字",
@@ -1594,6 +1628,10 @@ export const zhCN: TranslationResources = {
       hostFilter: {
         label: "主机",
         all: "所有主机",
+      },
+      projectFilter: {
+        label: "项目",
+        all: "所有项目",
       },
     },
     host: {
@@ -1713,6 +1751,11 @@ export const zhCN: TranslationResources = {
       github: "创建 GitHub Issue",
       whatsNew: "新功能",
       appName: "Otto",
+    },
+    filterEmpty: {
+      title: "没有匹配的工作区",
+      description: "更改或清除侧边栏筛选以查看工作区。",
+      clear: "清除筛选",
     },
   },
   newProject: {
@@ -2062,6 +2105,12 @@ export const zhCN: TranslationResources = {
         uninstallFailed: "无法卸载编排 skills。",
         saveSelectionFailed: "无法保存编排 skills 的选择。",
       },
+    },
+    windowControls: {
+      minimize: "最小化窗口",
+      maximize: "最大化窗口",
+      restore: "还原窗口",
+      close: "关闭窗口",
     },
   },
   rootError: {
@@ -2617,6 +2666,7 @@ export const zhCN: TranslationResources = {
       retry: "重试",
       copy: "复制",
       copied: "已复制",
+      securityWarning: "请像保管密码一样保管此配对链接。任何获得此链接的人都可以访问此守护进程。",
     },
   },
   realtimeVoice: {
@@ -3069,6 +3119,7 @@ export const zhCN: TranslationResources = {
         reloadTitle: "从磁盘重新加载？",
         reloadMessage: "本地更改将丢失。",
       },
+      tooLargeToDisplay: "此文件过大，无法显示",
     },
     diff: {
       changesLabel: "更改",
@@ -3080,6 +3131,18 @@ export const zhCN: TranslationResources = {
       empty: "没有更改",
       loadError: "加载差异失败",
       capabilityMissing: "请更新主机以查看提交差异。",
+      diffLabel: "Diff",
+    },
+    files: {
+      label: "文件",
+      subtitle: "工作区文件",
+      tooltip: "浏览工作区文件",
+    },
+    pullRequest: {
+      label: "拉取请求",
+      subtitle: "拉取请求详情",
+      emptyTitle: "尚无拉取请求",
+      emptyDescription: "为此检出创建拉取请求后，可在此处查看其详情。",
     },
   },
   toolCallDetails: {
@@ -3195,6 +3258,7 @@ export const zhCN: TranslationResources = {
       diagnostics: "诊断",
       about: "关于",
       editor: "编辑器",
+      layout: "Layout",
     },
     notifications: {
       title: "通知",
@@ -3610,6 +3674,7 @@ export const zhCN: TranslationResources = {
         highlightThemeHint: "代码配色，独立于应用主题",
         highlightThemeAccessibility: "高亮主题：{{value}}",
         previewAccessibility: "语法主题和代码字体的实时预览",
+        previewContent: "内容和代码预览",
       },
       detailLevel: {
         title: "详细程度",
@@ -4124,6 +4189,50 @@ export const zhCN: TranslationResources = {
           localErrorMessage: "无法移除 localhost 连接",
         },
       },
+      skills: {
+        sectionTitle: "编排 skills",
+        title: "编排 skills",
+        description: "教会 Agent 通过 CLI 编排任务",
+        docs: "Skills",
+        openDocs: "Open skills documentation",
+        unavailable: "Connect to this host to manage orchestration skills",
+        unsupported: "Update this host to manage orchestration skills",
+        statusFailed: "无法检查编排 skills 状态。",
+        updateFailed: "无法更新编排 skills。",
+        uninstallFailed: "无法卸载编排 skills。",
+        saveSelectionFailed: "无法保存编排 skills 的选择。",
+        updateAvailable: "有更新可用",
+        updateTitle: "更新 Paseo skills？",
+        updateFallback: "将内置 skills 同步到你的机器。",
+        uninstallTitle: "卸载 Paseo skills？",
+        uninstallMessage: "会从 ~/.agents、~/.claude、~/.codex 移除所有 Paseo 编排 skills。",
+        choose: "选择 skills",
+        chooseAll: "全部 skills",
+        chooseAllHint: "保持安装所有内置 skills，包括以后新增的。",
+        chooseList: "内置 skills",
+        chooseEmpty: "此版本未内置 skills。",
+        removeTitle: "移除取消勾选的 skills？",
+        removeMessage:
+          "将从 ~/.agents、~/.claude、~/.codex 中删除 {{skills}}。你在这些 skill 文件夹里添加的内容也会一并删除。",
+        saveFailed: "无法保存你的 skills 选择。",
+        actions: {
+          install: "安装",
+          installing: "正在安装...",
+          installed: "已安装",
+          update: "更新",
+          working: "处理中...",
+          remove: "移除",
+          uninstall: "卸载",
+          save: "保存",
+          saving: "正在保存...",
+          cancel: "取消",
+        },
+        operations: {
+          add: "添加 skill",
+          update: "更新 skill",
+          delete: "删除 skill",
+        },
+      },
     },
     providers: {
       title: "提供方",
@@ -4420,6 +4529,45 @@ export const zhCN: TranslationResources = {
       vimKeybindings: "Vim 键位",
       vimHint: "适用于网页和桌面端的源文件。",
     },
+    layout: {
+      openInSidePane: {
+        title: "Open location",
+        destinations: {
+          main: "Main panel",
+          side: "On the side",
+        },
+        sources: {
+          explorerFiles: {
+            label: "Selecting a file in Explorer",
+            description: "Open files selected in the Explorer sidebar beside your work",
+          },
+          explorerChanges: {
+            label: "Selecting a change in Explorer",
+            description: "Open diffs selected in the Explorer sidebar beside your work",
+          },
+          chatFiles: {
+            label: "Opening a file from an agent chat",
+            description: "Open file links and tool-call files beside the conversation",
+          },
+          diffFiles: {
+            label: "Opening a file from Changes",
+            description: "Open source files selected from a diff beside it",
+          },
+          subagents: {
+            label: "Opening a subagent",
+            description: "Open subagents beside their parent agent",
+          },
+          pullRequests: {
+            label: "Opening a pull request from Changes",
+            description: "Open pull request details beside Changes",
+          },
+          changesLinks: {
+            label: "Opening Changes from an agent",
+            description: "Open diff stats and review attachments beside the conversation",
+          },
+        },
+      },
+    },
   },
   artifacts: {
     errors: {
@@ -4489,5 +4637,50 @@ export const zhCN: TranslationResources = {
     cardTitlePlaceholder: "卡片标题",
     cancel: "取消",
     moveTo: "移动到 {{column}}",
+  },
+  workspaceLabels: {
+    title: "标签",
+    unlabelled: "无标签",
+    create: "新建标签",
+    createConfirm: "创建",
+    creating: "创建中…",
+    name: "标签名称",
+    updateHostUse: "请更新此主机以使用标签。",
+    errors: {
+      update: "无法更新标签",
+      load: "无法加载标签",
+    },
+    colors: {
+      violet: "紫色",
+      sky: "天蓝色",
+      emerald: "翠绿色",
+      orange: "橙色",
+      pink: "粉色",
+      indigo: "靛蓝色",
+      teal: "青绿色",
+      red: "红色",
+      amber: "琥珀色",
+      blue: "蓝色",
+    },
+    filter: {
+      clear: "清除筛选",
+    },
+    manage: {
+      open: "管理标签…",
+      title: "管理标签",
+      search: "搜索标签",
+      empty: "此主机没有标签。",
+      edit: "编辑标签",
+      editLabel: "编辑{{name}}",
+      name: "名称",
+      color: "颜色",
+      save: "保存",
+      delete: "删除",
+      deleteTitle: "删除{{name}}？",
+      deleteMessage_one: "这会从此主机的{{count}}个工作区中移除该标签。",
+      deleteMessage_other: "这会从此主机的{{count}}个工作区中移除该标签。",
+      offline: "此主机离线。",
+      updateHost: "请更新此主机以管理标签。",
+    },
   },
 };

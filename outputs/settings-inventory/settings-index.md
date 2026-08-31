@@ -4,8 +4,8 @@
 
 ## Summary
 
-- **Total indexed entries:** 405
-- **App surface:** 174
+- **Total indexed entries:** 412
+- **App surface:** 181
 - **Host surface:** 231
 - **Persistence scopes:** App, Desktop, Host, and Project. Surface and persistence scope are intentionally separate because some Host pages contain device-local settings.
 - **Dynamic entries:** A single row documents an unbounded runtime collection, such as one row per installed language server or team member. Finite catalogs and keyboard commands are enumerated individually.
@@ -20,6 +20,7 @@
   - [Editor (11)](#app-editor)
   - [General (14)](#app-general)
   - [Integrations (19)](#app-integrations)
+  - [Layout (7)](#app-layout)
   - [Permissions & notifications (5)](#app-permissions-notifications)
   - [Shortcuts (58)](#app-shortcuts)
   - [Visualizer (14)](#app-visualizer)
@@ -289,6 +290,20 @@
 | Voice cues           | Allows agent personalities to play spoken state cues.                          | App   | Preference | On; Off                  | Off             | User     | Voice playback available    | voiceCuesEnabled         | [agent-voice-cues-row.tsx:72](../../packages/app/src/screens/settings/agent-voice-cues-row.tsx#L72)   |
 | Voice volume         | Sets general synthesized voice playback volume.                                | App   | Preference | 0–100%                   | 100%            | User     | Speech available            | voicePlaybackVolume      | [host-page.tsx:340](../../packages/app/src/screens/settings/host-page.tsx#L340)                       |
 | Wake phrase          | Chooses the phrase that begins hands-free dictation.                           | App   | Preference | Text / supported phrases | Hey Otto        | User     | Hey Otto enabled            | wakeWordPhrase           | [agent-voice-cues-row.tsx:160](../../packages/app/src/screens/settings/agent-voice-cues-row.tsx#L160) |
+
+### App / Layout
+
+#### Open location
+
+| Setting                             | What it does                                                                                         | Scope | Kind       | Choices / actions       | Default    | Audience | Conditions | Persistence                    | Source                                                                                         |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------- | ----- | ---------- | ----------------------- | ---------- | -------- | ---------- | ------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Selecting a file in Explorer        | Chooses whether files selected in the Explorer sidebar open in the main panel or beside your work.   | App   | Preference | Main panel; On the side | Main panel | User     | Desktop    | openInSidePane.explorerFiles   | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
+| Selecting a change in Explorer      | Chooses whether diffs selected in the Explorer sidebar open in the main panel or beside your work.   | App   | Preference | Main panel; On the side | Main panel | User     | Desktop    | openInSidePane.explorerChanges | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
+| Opening a file from an agent chat   | Chooses whether file links and tool-call files open in the main panel or beside the conversation.    | App   | Preference | Main panel; On the side | Main panel | User     | Desktop    | openInSidePane.chatFiles       | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
+| Opening a file from Changes         | Chooses whether source files selected from a diff open in the main panel or beside it.               | App   | Preference | Main panel; On the side | Main panel | User     | Desktop    | openInSidePane.diffFiles       | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
+| Opening a subagent                  | Chooses whether subagents open in the main panel or beside their parent agent.                       | App   | Preference | Main panel; On the side | Main panel | User     | Desktop    | openInSidePane.subagents       | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
+| Opening a pull request from Changes | Chooses whether pull request details open in the main panel or beside Changes.                       | App   | Preference | Main panel; On the side | Main panel | User     | Desktop    | openInSidePane.pullRequests    | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
+| Opening Changes from an agent       | Chooses whether diff stats and review attachments open in the main panel or beside the conversation. | App   | Preference | Main panel; On the side | Main panel | User     | Desktop    | openInSidePane.changesLinks    | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
 
 ### App / Permissions
 

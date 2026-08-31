@@ -879,6 +879,7 @@ function StatusWorkspaceActionSlot({
             onMarkAsRead={onMarkAsRead}
             serverId={workspace.serverId}
             workspaceId={workspace.workspaceId}
+            workspaceLabels={workspace.labels}
             onArchive={onArchive}
             archiveLabel={archiveLabel}
             archiveStatus={archiveStatus}

@@ -37,6 +37,7 @@ import {
   Groups,
   HardDrive,
   Keyboard,
+  PanelRight,
   Stethoscope,
   Info,
   Shield,
@@ -68,6 +69,7 @@ import {
   AppearanceSection,
   ChatAppearanceSection,
 } from "@/screens/settings/appearance/appearance-section";
+import { LayoutSection } from "@/screens/settings/layout/layout-section";
 import { EditorSection } from "@/screens/settings/editor-section";
 import {
   DiffPresentationSection,
@@ -240,6 +242,12 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   { id: "general", labelKey: "settings.sections.general", icon: Settings },
   { id: "chat", labelKey: "settings.sections.chat", icon: Chat },
   { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
+  {
+    id: "layout",
+    labelKey: "settings.sections.layout",
+    icon: PanelRight,
+    desktopOnly: true,
+  },
   // Reuses the (pre-move) Appearance-subsection title key so every locale
   // already has it - the rows themselves moved to visualizer-section.tsx.
   {
@@ -2673,6 +2681,8 @@ export default function SettingsScreen({
           );
         case "appearance":
           return <AppearanceSection />;
+        case "layout":
+          return isDesktopApp ? <LayoutSection /> : null;
         case "visualizer":
           return isDeveloperMode ? <VisualizerSection /> : null;
         case "editor":

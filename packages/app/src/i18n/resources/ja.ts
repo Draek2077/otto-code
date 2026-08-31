@@ -87,6 +87,9 @@ export const ja: TranslationResources = {
       fastModeSearchKeywords: "高速 速度 低遅延",
       settingOn: "オン",
       settingOff: "オフ",
+      open: "{{name}}を開く",
+      openInSidePane: "{{name}}をサイドパネルで開く",
+      openInFocusedPane: "{{name}}をフォーカス中のペインで開く",
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
@@ -149,6 +152,7 @@ export const ja: TranslationResources = {
       queue: "キュー",
       send: "送信",
       add: "コンテキストを追加",
+      sendAndSteer: "送信して指示を追加",
     },
     cancel: {
       cancelingAgent: "エージェントをキャンセル中",
@@ -1032,6 +1036,8 @@ export const ja: TranslationResources = {
         renameTerminal: "ターミナルの名前を変更",
         renameAgent: "チャットの名前を変更",
         copyTerminalId: "ターミナルIDをコピー",
+        copyFilePath: "ファイルパスをコピー",
+        moveToMain: "メインパネルへ移動",
       },
       actions: {
         newAgent: "新しいチャット",
@@ -1051,6 +1057,13 @@ export const ja: TranslationResources = {
         previewPickServer: "どのサーバーを起動しますか?",
         previewStopServer: "{{name}} を停止",
         exitFocusMode: "フォーカスモードを終了",
+        newTab: "新しいタブ",
+        maximizePane: "ペインを最大化",
+        restorePane: "ペインを元に戻す",
+        closePane: "ペインを閉じる",
+        changes: "変更",
+        files: "ファイル",
+        pullRequest: "プルリクエスト",
       },
       explorer: {
         open: "エクスプローラーを開く",
@@ -1111,6 +1124,13 @@ export const ja: TranslationResources = {
         bulkUnsaved: "{{count}} 個のタブに未保存の変更があります。閉じると下書きが破棄されます。",
       },
       modified: "未保存の変更",
+      explorerSidebar: {
+        open: "サイドパネルを開く",
+        close: "サイドパネルを閉じる",
+        toggle: "サイドパネルを切り替え",
+        changes: "変更",
+        files: "ファイル",
+      },
     },
     header: {
       actions: {
@@ -1436,6 +1456,12 @@ export const ja: TranslationResources = {
           loadError: "コミットの読み込みに失敗しました",
           empty: "コミットはまだありません",
         },
+        openDiffTab: "差分タブを開く",
+        inlineDiff: "インライン差分",
+        collapseAllFiles: "すべてのファイルを折りたたむ",
+        expandAllFiles: "すべてのファイルを展開",
+        seeUncommittedChanges: "未コミットの変更を表示",
+        seeCommittedChanges: "コミット済みの変更を表示",
       },
       commit: {
         type: {
@@ -1610,6 +1636,10 @@ export const ja: TranslationResources = {
         failed: "変更の破棄に失敗しました",
       },
     },
+    tree: {
+      showFolderTree: "フォルダツリーを表示",
+      hideFolderTree: "フォルダツリーを非表示",
+    },
   },
   sidebar: {
     display: {
@@ -1619,6 +1649,7 @@ export const ja: TranslationResources = {
         label: "グループ化",
         project: "プロジェクト",
         status: "ステータス",
+        labels: "ラベル",
       },
       titleSource: {
         label: "タイトル",
@@ -1633,6 +1664,9 @@ export const ja: TranslationResources = {
         services: "サービス",
         diff: "差分統計",
         timestamp: "最終アクティビティ",
+        branch: "ブランチ",
+        project: "プロジェクト",
+        labels: "ラベル",
       },
       checks: {
         iconAndText: "アイコンとテキスト",
@@ -1642,6 +1676,10 @@ export const ja: TranslationResources = {
       hostFilter: {
         label: "ホスト",
         all: "すべてのホスト",
+      },
+      projectFilter: {
+        label: "プロジェクト",
+        all: "すべてのプロジェクト",
       },
     },
     host: {
@@ -1764,6 +1802,12 @@ export const ja: TranslationResources = {
       github: "GitHub Issueを作成",
       whatsNew: "新着情報",
       appName: "Otto",
+    },
+    filterEmpty: {
+      title: "一致するワークスペースがありません",
+      description:
+        "ワークスペースを表示するにはサイドバーのフィルターを変更またはクリアしてください。",
+      clear: "フィルターをクリア",
     },
   },
   newProject: {
@@ -2120,6 +2164,12 @@ export const ja: TranslationResources = {
         uninstallFailed: "オーケストレーションスキルをアンインストールできません。",
         saveSelectionFailed: "オーケストレーションスキルの選択を保存できません。",
       },
+    },
+    windowControls: {
+      minimize: "ウィンドウを最小化",
+      maximize: "ウィンドウを最大化",
+      restore: "ウィンドウを元に戻す",
+      close: "ウィンドウを閉じる",
     },
   },
   rootError: {
@@ -2687,6 +2737,8 @@ export const ja: TranslationResources = {
       retry: "再試行",
       copy: "コピー",
       copied: "コピーしました",
+      securityWarning:
+        "このペアリングリンクはパスワードと同様に扱ってください。リンクを知っている人は誰でもこのデーモンにアクセスできます。",
     },
   },
   realtimeVoice: {
@@ -3150,6 +3202,7 @@ export const ja: TranslationResources = {
         reloadTitle: "ディスクから再読み込みしますか？",
         reloadMessage: "ローカルの変更は失われます。",
       },
+      tooLargeToDisplay: "このファイルは大きすぎて表示できません",
     },
     diff: {
       changesLabel: "変更",
@@ -3161,6 +3214,19 @@ export const ja: TranslationResources = {
       empty: "変更はありません",
       loadError: "差分の読み込みに失敗しました",
       capabilityMissing: "コミット差分を表示するにはホストを更新してください。",
+      diffLabel: "差分",
+    },
+    files: {
+      label: "ファイル",
+      subtitle: "ワークスペースのファイル",
+      tooltip: "ワークスペースのファイルを参照",
+    },
+    pullRequest: {
+      label: "プルリクエスト",
+      subtitle: "プルリクエストの詳細",
+      emptyTitle: "プルリクエストはまだありません",
+      emptyDescription:
+        "このチェックアウトのプルリクエストを作成すると、ここに詳細が表示されます。",
     },
   },
   toolCallDetails: {
@@ -3276,6 +3342,7 @@ export const ja: TranslationResources = {
       diagnostics: "診断",
       about: "アプリ情報",
       editor: "エディター",
+      layout: "Layout",
     },
     notifications: {
       title: "通知",
@@ -3695,6 +3762,7 @@ export const ja: TranslationResources = {
         highlightThemeHint: "コード用の色、アプリのテーマとは独立しています",
         highlightThemeAccessibility: "ハイライトテーマ: {{value}}",
         previewAccessibility: "構文ハイライトテーマとコードフォントのライブプレビュー",
+        previewContent: "コンテンツとコードのプレビュー",
       },
       detailLevel: {
         title: "詳細レベル",
@@ -4228,6 +4296,52 @@ export const ja: TranslationResources = {
           localErrorMessage: "localhost接続を削除できません",
         },
       },
+      skills: {
+        sectionTitle: "オーケストレーションスキル",
+        title: "オーケストレーションスキル",
+        description: "エージェントがCLI経由でオーケストレーションできるようにします。",
+        docs: "Skills",
+        openDocs: "Open skills documentation",
+        unavailable: "Connect to this host to manage orchestration skills",
+        unsupported: "Update this host to manage orchestration skills",
+        statusFailed: "オーケストレーションスキルのステータスを確認できません。",
+        updateFailed: "オーケストレーションスキルを更新できません。",
+        uninstallFailed: "オーケストレーションスキルをアンインストールできません。",
+        saveSelectionFailed: "オーケストレーションスキルの選択を保存できません。",
+        updateAvailable: "更新が利用可能",
+        updateTitle: "Paseoスキルを更新しますか？",
+        updateFallback: "バンドルされたスキルをマシンに同期します。",
+        uninstallTitle: "Paseoスキルをアンインストールしますか？",
+        uninstallMessage:
+          "~/.agents、~/.claude、~/.codexからすべてのPaseoオーケストレーションスキルを削除します。",
+        choose: "スキルを選択",
+        chooseAll: "すべてのスキル",
+        chooseAllHint:
+          "後から追加されるものも含め、バンドルされたスキルをすべてインストールしたままにします。",
+        chooseList: "バンドルされたスキル",
+        chooseEmpty: "このビルドにはスキルが含まれていません。",
+        removeTitle: "選択を外したスキルを削除しますか？",
+        removeMessage:
+          "{{skills}} を ~/.agents、~/.claude、~/.codex から削除します。それらのスキルフォルダー内に追加したものもすべて削除されます。",
+        saveFailed: "スキルの選択を保存できませんでした。",
+        actions: {
+          install: "インストール",
+          installing: "インストール中...",
+          installed: "インストール済み",
+          update: "更新",
+          working: "処理中...",
+          remove: "削除",
+          uninstall: "アンインストール",
+          save: "保存",
+          saving: "保存中...",
+          cancel: "キャンセル",
+        },
+        operations: {
+          add: "スキルを追加",
+          update: "スキルを更新",
+          delete: "スキルを削除",
+        },
+      },
     },
     providers: {
       title: "プロバイダー",
@@ -4532,6 +4646,45 @@ export const ja: TranslationResources = {
       vimKeybindings: "Vim キーバインド",
       vimHint: "Web とデスクトップのソースファイルに適用されます。",
     },
+    layout: {
+      openInSidePane: {
+        title: "Open location",
+        destinations: {
+          main: "Main panel",
+          side: "On the side",
+        },
+        sources: {
+          explorerFiles: {
+            label: "Selecting a file in Explorer",
+            description: "Open files selected in the Explorer sidebar beside your work",
+          },
+          explorerChanges: {
+            label: "Selecting a change in Explorer",
+            description: "Open diffs selected in the Explorer sidebar beside your work",
+          },
+          chatFiles: {
+            label: "Opening a file from an agent chat",
+            description: "Open file links and tool-call files beside the conversation",
+          },
+          diffFiles: {
+            label: "Opening a file from Changes",
+            description: "Open source files selected from a diff beside it",
+          },
+          subagents: {
+            label: "Opening a subagent",
+            description: "Open subagents beside their parent agent",
+          },
+          pullRequests: {
+            label: "Opening a pull request from Changes",
+            description: "Open pull request details beside Changes",
+          },
+          changesLinks: {
+            label: "Opening Changes from an agent",
+            description: "Open diff stats and review attachments beside the conversation",
+          },
+        },
+      },
+    },
   },
   artifacts: {
     errors: {
@@ -4602,5 +4755,50 @@ export const ja: TranslationResources = {
     cardTitlePlaceholder: "カードのタイトル",
     cancel: "キャンセル",
     moveTo: "{{column}} に移動",
+  },
+  workspaceLabels: {
+    title: "ラベル",
+    unlabelled: "ラベルなし",
+    create: "ラベルを作成",
+    createConfirm: "作成",
+    creating: "作成中…",
+    name: "ラベル名",
+    updateHostUse: "ラベルを使用するにはホストを更新してください。",
+    errors: {
+      update: "ラベルを更新できません",
+      load: "ラベルを読み込めません",
+    },
+    colors: {
+      violet: "紫",
+      sky: "空色",
+      emerald: "エメラルド",
+      orange: "オレンジ",
+      pink: "ピンク",
+      indigo: "藍",
+      teal: "青緑",
+      red: "赤",
+      amber: "琥珀",
+      blue: "青",
+    },
+    filter: {
+      clear: "フィルターをクリア",
+    },
+    manage: {
+      open: "ラベルを管理…",
+      title: "ラベルを管理",
+      search: "ラベルを検索",
+      empty: "このホストにラベルはありません。",
+      edit: "ラベルを編集",
+      editLabel: "{{name}}を編集",
+      name: "名前",
+      color: "色",
+      save: "保存",
+      delete: "削除",
+      deleteTitle: "{{name}}を削除しますか？",
+      deleteMessage_one: "このホストの{{count}}個のワークスペースからラベルを削除します。",
+      deleteMessage_other: "このホストの{{count}}個のワークスペースからラベルを削除します。",
+      offline: "このホストはオフラインです。",
+      updateHost: "ラベルを管理するにはホストを更新してください。",
+    },
   },
 } as const;

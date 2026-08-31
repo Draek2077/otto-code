@@ -87,6 +87,9 @@ export const ko: TranslationResources = {
       fastModeSearchKeywords: "빠르게 속도 낮은 지연 시간",
       settingOn: "켜짐",
       settingOff: "꺼짐",
+      open: "{{name}} 열기",
+      openInSidePane: "사이드 패널에서 {{name}} 열기",
+      openInFocusedPane: "포커스된 창에서 {{name}} 열기",
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
@@ -146,6 +149,7 @@ export const ko: TranslationResources = {
       queue: "대기열",
       send: "보내기",
       add: "Add context",
+      sendAndSteer: "보내고 지시 추가",
     },
     cancel: {
       cancelingAgent: "에이전트 취소 중",
@@ -1027,6 +1031,8 @@ export const ko: TranslationResources = {
         renameTerminal: "터미널 이름 변경",
         renameAgent: "에이전트 이름 변경",
         copyTerminalId: "터미널 ID 복사",
+        copyFilePath: "파일 경로 복사",
+        moveToMain: "기본 패널로 이동",
       },
       actions: {
         newAgent: "새 에이전트",
@@ -1046,6 +1052,13 @@ export const ko: TranslationResources = {
         previewPickServer: "Start which server?",
         previewStopServer: "Stop {{name}}",
         exitFocusMode: "집중 모드 종료",
+        newTab: "새 탭",
+        maximizePane: "창 최대화",
+        restorePane: "창 복원",
+        closePane: "창 닫기",
+        changes: "변경 사항",
+        files: "파일",
+        pullRequest: "풀 리퀘스트",
       },
       explorer: {
         open: "탐색기 열기",
@@ -1107,6 +1120,13 @@ export const ko: TranslationResources = {
           "{{count}} 탭에 저장되지 않은 변경 사항이 있습니다. 종료하면 해당 초안이 삭제됩니다.",
       },
       modified: "저장되지 않은 변경사항",
+      explorerSidebar: {
+        open: "사이드 패널 열기",
+        close: "사이드 패널 닫기",
+        toggle: "사이드 패널 토글",
+        changes: "변경 사항",
+        files: "파일",
+      },
     },
     header: {
       actions: {
@@ -1427,6 +1447,12 @@ export const ko: TranslationResources = {
           loadError: "커밋을 로드하지 못했습니다.",
           empty: "아직 커밋이 없습니다.",
         },
+        openDiffTab: "Diff 탭 열기",
+        inlineDiff: "인라인 Diff",
+        collapseAllFiles: "모든 파일 축소",
+        expandAllFiles: "모든 파일 확장",
+        seeUncommittedChanges: "커밋되지 않은 변경 사항 보기",
+        seeCommittedChanges: "커밋된 변경 사항 보기",
       },
       commit: {
         type: {
@@ -1601,6 +1627,10 @@ export const ko: TranslationResources = {
         failed: "변경 사항을 버리지 못했습니다",
       },
     },
+    tree: {
+      showFolderTree: "폴더 트리 표시",
+      hideFolderTree: "폴더 트리 숨기기",
+    },
   },
   sidebar: {
     display: {
@@ -1610,6 +1640,7 @@ export const ko: TranslationResources = {
         label: "그룹화",
         project: "프로젝트",
         status: "상태",
+        labels: "레이블",
       },
       titleSource: {
         label: "제목",
@@ -1624,6 +1655,9 @@ export const ko: TranslationResources = {
         services: "서비스",
         diff: "Diff 통계",
         timestamp: "마지막 활동",
+        branch: "브랜치",
+        project: "프로젝트",
+        labels: "레이블",
       },
       checks: {
         iconAndText: "아이콘 및 텍스트",
@@ -1633,6 +1667,10 @@ export const ko: TranslationResources = {
       hostFilter: {
         label: "호스트",
         all: "모든 호스트",
+      },
+      projectFilter: {
+        label: "프로젝트",
+        all: "모든 프로젝트",
       },
     },
     host: {
@@ -1755,6 +1793,11 @@ export const ko: TranslationResources = {
       github: "GitHub 이슈 만들기",
       whatsNew: "새로운 소식",
       appName: "Otto",
+    },
+    filterEmpty: {
+      title: "일치하는 워크스페이스가 없습니다",
+      description: "워크스페이스를 보려면 사이드바 필터를 변경하거나 지우세요.",
+      clear: "필터 지우기",
     },
   },
   newProject: {
@@ -2112,6 +2155,12 @@ export const ko: TranslationResources = {
         uninstallFailed: "오케스트레이션 스킬을 제거할 수 없습니다.",
         saveSelectionFailed: "오케스트레이션 스킬 선택을 저장하지 못했습니다.",
       },
+    },
+    windowControls: {
+      minimize: "창 최소화",
+      maximize: "창 최대화",
+      restore: "창 복원",
+      close: "창 닫기",
     },
   },
   rootError: {
@@ -2674,6 +2723,8 @@ export const ko: TranslationResources = {
       retry: "다시 시도",
       copy: "복사",
       copied: "복사됨",
+      securityWarning:
+        "이 페어링 링크는 비밀번호처럼 취급하세요. 링크를 가진 사람은 누구나 이 데몬에 접근할 수 있습니다.",
     },
   },
   realtimeVoice: {
@@ -3134,6 +3185,7 @@ export const ko: TranslationResources = {
         reloadTitle: "디스크에서 다시 로드하시겠습니까?",
         reloadMessage: "로컬 변경사항이 손실됩니다.",
       },
+      tooLargeToDisplay: "이 파일은 너무 커서 표시할 수 없습니다",
     },
     diff: {
       changesLabel: "변경 사항",
@@ -3145,6 +3197,18 @@ export const ko: TranslationResources = {
       empty: "변경사항 없음",
       loadError: "Diff를 불러오지 못했습니다.",
       capabilityMissing: "커밋 diff를 보려면 호스트를 업데이트하세요.",
+      diffLabel: "Diff",
+    },
+    files: {
+      label: "파일",
+      subtitle: "워크스페이스 파일",
+      tooltip: "워크스페이스 파일 탐색",
+    },
+    pullRequest: {
+      label: "풀 리퀘스트",
+      subtitle: "풀 리퀘스트 세부 정보",
+      emptyTitle: "아직 풀 리퀘스트가 없습니다",
+      emptyDescription: "이 체크아웃에 풀 리퀘스트를 만들면 세부 정보가 여기에 표시됩니다.",
     },
   },
   toolCallDetails: {
@@ -3260,6 +3324,7 @@ export const ko: TranslationResources = {
       diagnostics: "진단",
       about: "정보",
       editor: "편집기",
+      layout: "Layout",
     },
     notifications: {
       title: "알림",
@@ -3679,6 +3744,7 @@ export const ko: TranslationResources = {
         highlightThemeHint: "앱 테마와 독립적인 코드 색상",
         highlightThemeAccessibility: "강조 테마: {{value}}",
         previewAccessibility: "구문 테마와 코드 글꼴의 실시간 미리보기",
+        previewContent: "콘텐츠 및 코드 미리보기",
       },
       detailLevel: {
         title: "세부 수준",
@@ -4208,6 +4274,51 @@ export const ko: TranslationResources = {
           localErrorMessage: "localhost 연결을 제거할 수 없습니다",
         },
       },
+      skills: {
+        sectionTitle: "오케스트레이션 스킬",
+        title: "오케스트레이션 스킬",
+        description: "CLI를 통해 에이전트가 오케스트레이션하도록 가르칩니다",
+        docs: "Skills",
+        openDocs: "Open skills documentation",
+        unavailable: "Connect to this host to manage orchestration skills",
+        unsupported: "Update this host to manage orchestration skills",
+        statusFailed: "오케스트레이션 스킬 상태를 확인할 수 없습니다.",
+        updateFailed: "오케스트레이션 스킬을 업데이트할 수 없습니다.",
+        uninstallFailed: "오케스트레이션 스킬을 제거할 수 없습니다.",
+        saveSelectionFailed: "오케스트레이션 스킬 선택을 저장하지 못했습니다.",
+        updateAvailable: "업데이트 사용 가능",
+        updateTitle: "Paseo 스킬을 업데이트할까요?",
+        updateFallback: "번들된 스킬을 내 컴퓨터에 동기화합니다.",
+        uninstallTitle: "Paseo 스킬을 제거할까요?",
+        uninstallMessage:
+          "~/.agents, ~/.claude, ~/.codex에서 모든 Paseo 오케스트레이션 스킬을 제거합니다.",
+        choose: "스킬 선택",
+        chooseAll: "모든 스킬",
+        chooseAllHint: "나중에 추가되는 항목을 포함하여 모든 번들 스킬을 설치된 상태로 유지합니다.",
+        chooseList: "번들 스킬",
+        chooseEmpty: "이 빌드에는 번들 스킬이 없습니다.",
+        removeTitle: "선택 해제한 스킬을 제거할까요?",
+        removeMessage:
+          "{{skills}}는 ~/.agents, ~/.claude 및 ~/.codex에서 삭제됩니다. 해당 스킬 폴더 안에 추가한 모든 항목도 삭제됩니다.",
+        saveFailed: "선택한 스킬을 저장하지 못했습니다.",
+        actions: {
+          install: "설치",
+          installing: "설치 중...",
+          installed: "설치됨",
+          update: "업데이트",
+          working: "작업 중...",
+          remove: "제거",
+          uninstall: "제거",
+          save: "저장",
+          saving: "저장 중...",
+          cancel: "취소",
+        },
+        operations: {
+          add: "스킬 추가",
+          update: "스킬 업데이트",
+          delete: "스킬 삭제",
+        },
+      },
     },
     providers: {
       title: "프로바이더",
@@ -4508,6 +4619,45 @@ export const ko: TranslationResources = {
       vimKeybindings: "Vim 키 바인딩",
       vimHint: "웹 및 데스크톱의 소스 파일에 적용됩니다.",
     },
+    layout: {
+      openInSidePane: {
+        title: "Open location",
+        destinations: {
+          main: "Main panel",
+          side: "On the side",
+        },
+        sources: {
+          explorerFiles: {
+            label: "Selecting a file in Explorer",
+            description: "Open files selected in the Explorer sidebar beside your work",
+          },
+          explorerChanges: {
+            label: "Selecting a change in Explorer",
+            description: "Open diffs selected in the Explorer sidebar beside your work",
+          },
+          chatFiles: {
+            label: "Opening a file from an agent chat",
+            description: "Open file links and tool-call files beside the conversation",
+          },
+          diffFiles: {
+            label: "Opening a file from Changes",
+            description: "Open source files selected from a diff beside it",
+          },
+          subagents: {
+            label: "Opening a subagent",
+            description: "Open subagents beside their parent agent",
+          },
+          pullRequests: {
+            label: "Opening a pull request from Changes",
+            description: "Open pull request details beside Changes",
+          },
+          changesLinks: {
+            label: "Opening Changes from an agent",
+            description: "Open diff stats and review attachments beside the conversation",
+          },
+        },
+      },
+    },
   },
   artifacts: {
     errors: {
@@ -4577,5 +4727,50 @@ export const ko: TranslationResources = {
     cardTitlePlaceholder: "Card title",
     cancel: "Cancel",
     moveTo: "Move to {{column}}",
+  },
+  workspaceLabels: {
+    title: "레이블",
+    unlabelled: "레이블 없음",
+    create: "레이블 만들기",
+    createConfirm: "만들기",
+    creating: "만드는 중…",
+    name: "레이블 이름",
+    updateHostUse: "레이블을 사용하려면 호스트를 업데이트하세요.",
+    errors: {
+      update: "레이블을 업데이트할 수 없습니다",
+      load: "레이블을 불러올 수 없습니다",
+    },
+    colors: {
+      violet: "보라",
+      sky: "하늘",
+      emerald: "에메랄드",
+      orange: "주황",
+      pink: "분홍",
+      indigo: "남색",
+      teal: "청록",
+      red: "빨강",
+      amber: "호박",
+      blue: "파랑",
+    },
+    filter: {
+      clear: "필터 지우기",
+    },
+    manage: {
+      open: "레이블 관리…",
+      title: "레이블 관리",
+      search: "레이블 검색",
+      empty: "이 호스트에 레이블이 없습니다.",
+      edit: "레이블 편집",
+      editLabel: "{{name}} 편집",
+      name: "이름",
+      color: "색상",
+      save: "저장",
+      delete: "삭제",
+      deleteTitle: "{{name}}을(를) 삭제할까요?",
+      deleteMessage_one: "이 호스트의 워크스페이스 {{count}}개에서 레이블을 제거합니다.",
+      deleteMessage_other: "이 호스트의 워크스페이스 {{count}}개에서 레이블을 제거합니다.",
+      offline: "이 호스트는 오프라인입니다.",
+      updateHost: "레이블을 관리하려면 호스트를 업데이트하세요.",
+    },
   },
 };

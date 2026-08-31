@@ -196,6 +196,10 @@ export class CheckoutSession {
   private readonly worktreesRoot: string | undefined;
   private readonly logger: pino.Logger;
   private readonly diffSubscriptions = new Map<string, () => void>();
+  // Last emitted checkout_status_update per cwd, serialized. Watch ticks often
+  // resolve to an unchanged snapshot; suppressing byte-identical payloads keeps
+  // subscribed clients from re-rendering on a no-op (upstream 373a98c64).
+  private readonly statusUpdateFingerprints = new Map<string, string>();
 
   constructor(options: CheckoutSessionOptions) {
     this.host = options.host;
@@ -459,21 +463,25 @@ export class CheckoutSession {
   ): void {
     try {
       const requestId = `subscription:${cwd}`;
+      const payload = {
+        ...buildCheckoutStatusPayloadFromSnapshot({
+          cwd,
+          requestId,
+          snapshot,
+        }),
+        // The PR poll refreshed no git state; say so on the wire rather than
+        // passing off the last git measurement as a fresh checkout status.
+        prStatusOnly: meta?.prStatusOnly === true,
+        prStatus: asEmittedPrStatusPayload(
+          buildCheckoutPrStatusPayloadFromSnapshot({ cwd, requestId, snapshot }),
+        ),
+      };
+      const fingerprint = JSON.stringify(payload);
+      if (this.statusUpdateFingerprints.get(cwd) === fingerprint) return;
+      this.statusUpdateFingerprints.set(cwd, fingerprint);
       this.host.emit({
         type: "checkout_status_update",
-        payload: {
-          ...buildCheckoutStatusPayloadFromSnapshot({
-            cwd,
-            requestId,
-            snapshot,
-          }),
-          // The PR poll refreshed no git state; say so on the wire rather than
-          // passing off the last git measurement as a fresh checkout status.
-          prStatusOnly: meta?.prStatusOnly === true,
-          prStatus: asEmittedPrStatusPayload(
-            buildCheckoutPrStatusPayloadFromSnapshot({ cwd, requestId, snapshot }),
-          ),
-        },
+        payload,
       });
     } catch (error) {
       this.logger.warn({ err: error, cwd }, "Failed to emit workspace checkout status update");
@@ -1841,6 +1849,7 @@ export class CheckoutSession {
       unsubscribe();
     }
     this.diffSubscriptions.clear();
+    this.statusUpdateFingerprints.clear();
   }
 }
 

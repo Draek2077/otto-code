@@ -19,6 +19,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Tag,
 } from "@/components/icons/material-icons";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { openProjectKnowledgeTab } from "@/project-knowledge/open-project-knowledge-tab";
@@ -33,6 +34,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -50,6 +52,11 @@ import {
   workspaceServiceLabelKey,
   type WorkspaceServiceSummary,
 } from "@/components/sidebar/workspace-meta-row";
+import {
+  useWorkspaceLabelMenuPages,
+  WORKSPACE_LABEL_PAGE_ID,
+  type WorkspaceLabelTarget,
+} from "@/workspace-labels/picker";
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -66,6 +73,7 @@ const ThemedPinOff = withUnistyles(PinOff);
 const ThemedBookOpen = withUnistyles(BookOpen);
 const ThemedContextualToken = withUnistyles(ContextualToken);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
+const ThemedTag = withUnistyles(Tag);
 
 const copyLeadingIcon = <ThemedCopy size="sm" uniProps={foregroundMutedColorMapping} />;
 const renameLeadingIcon = <ThemedPencil size="sm" uniProps={foregroundMutedColorMapping} />;
@@ -79,6 +87,7 @@ const contextLeadingIcon = (
   <ThemedContextualToken size="sm" uniProps={foregroundMutedColorMapping} />
 );
 const knowledgeLeadingIcon = <ThemedBookOpen size="sm" uniProps={foregroundMutedColorMapping} />;
+const labelsLeadingIcon = <ThemedTag size="sm" uniProps={foregroundMutedColorMapping} />;
 const openBaseWorkspaceLeadingIcon = (
   <ThemedFolderOpen size="sm" uniProps={foregroundMutedColorMapping} />
 );
@@ -108,6 +117,7 @@ export interface SidebarWorkspaceMenuProps {
   onOpenBaseCheckout?: () => void;
   serverId?: string;
   workspaceId?: string;
+  workspaceLabels?: readonly string[];
   onArchive: () => void;
   archiveLabel?: string;
   archiveStatus?: "idle" | "pending" | "success";
@@ -250,6 +260,15 @@ function SidebarWorkspaceMenuItems({
           Manage knowledge
         </WorkspaceMenuItem>
       ) : null}
+      {hasManagementActions ? (
+        <DropdownMenuSubTrigger
+          id={WORKSPACE_LABEL_PAGE_ID}
+          leading={labelsLeadingIcon}
+          testID={`sidebar-workspace-menu-labels-${workspaceKey}`}
+        >
+          {t("workspaceLabels.title")}
+        </DropdownMenuSubTrigger>
+      ) : null}
       {hasManagementActions && hasLocationActions ? (
         <WorkspaceMenuSeparator surface={surface} />
       ) : null}
@@ -305,6 +324,7 @@ export function SidebarWorkspaceMenu({
   onOpenBaseCheckout,
   serverId,
   workspaceId,
+  workspaceLabels,
   onArchive,
   archiveLabel,
   archiveStatus,
@@ -317,6 +337,12 @@ export function SidebarWorkspaceMenu({
   onOpenChange,
 }: SidebarWorkspaceMenuProps) {
   const { t } = useTranslation();
+  const workspaceTarget = useMemo<WorkspaceLabelTarget | null>(
+    () =>
+      serverId && workspaceId ? { serverId, workspaceId, labels: workspaceLabels ?? [] } : null,
+    [serverId, workspaceId, workspaceLabels],
+  );
+  const pages = useWorkspaceLabelMenuPages(workspaceTarget);
   return (
     <DropdownMenu compactMode="sheet" open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
@@ -328,7 +354,12 @@ export function SidebarWorkspaceMenu({
       >
         {renderTriggerIcon}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" width={260} sheetTitle={t("sidebar.workspace.actions.menu")}>
+      <DropdownMenuContent
+        align="end"
+        width={260}
+        pages={pages}
+        sheetTitle={t("sidebar.workspace.actions.menu")}
+      >
         <SidebarWorkspaceMenuItems
           surface="dropdown"
           workspaceKey={workspaceKey}
@@ -417,6 +448,13 @@ export function SidebarWorkspaceContextMenu({
       ? t(workspaceServiceLabelKey(serviceSummary), { name: serviceSummary.name })
       : null,
   });
+  const workspaceLabels = workspace.labels;
+  const workspaceTarget = useMemo<WorkspaceLabelTarget | null>(
+    () =>
+      serverId && workspaceId ? { serverId, workspaceId, labels: workspaceLabels ?? [] } : null,
+    [serverId, workspaceId, workspaceLabels],
+  );
+  const pages = useWorkspaceLabelMenuPages(workspaceTarget);
 
   return (
     <ContextMenu open={contextMenuOpen} onOpenChange={onContextMenuOpenChange}>
@@ -431,6 +469,7 @@ export function SidebarWorkspaceContextMenu({
       <ContextMenuContent
         align="start"
         width={260}
+        pages={pages}
         testID={`sidebar-workspace-context-menu-${workspaceKey}`}
       >
         <SidebarWorkspaceMenuItems

@@ -517,6 +517,7 @@ export const SETTINGS_SECTION_SLUGS = [
   "general",
   "chat",
   "appearance",
+  "layout",
   "visualizer",
   "editor",
   "shortcuts",

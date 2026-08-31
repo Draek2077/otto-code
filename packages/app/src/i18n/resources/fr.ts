@@ -89,6 +89,9 @@ export const fr: TranslationResources = {
       fastModeSearchKeywords: "rapide vitesse faible latence",
       settingOn: "Activé",
       settingOff: "Désactivé",
+      open: "Ouvrir {{name}}",
+      openInSidePane: "Ouvrir {{name}} dans le panneau latéral",
+      openInFocusedPane: "Ouvrir {{name}} dans le volet actif",
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
@@ -148,6 +151,7 @@ export const fr: TranslationResources = {
       queue: "File d'attente",
       send: "Envoyer",
       add: "Ajouter du contexte",
+      sendAndSteer: "Envoyer et guider",
     },
     cancel: {
       cancelingAgent: "Agent d'annulation",
@@ -1031,6 +1035,8 @@ export const fr: TranslationResources = {
         renameTerminal: "Renommer le terminal",
         renameAgent: "Renommer la conversation",
         copyTerminalId: "Copier l'identifiant du terminal",
+        copyFilePath: "Copy file path",
+        moveToMain: "Déplacer vers le panneau principal",
       },
       actions: {
         newAgent: "Nouvelle conversation",
@@ -1050,6 +1056,13 @@ export const fr: TranslationResources = {
         previewPickServer: "Démarrer quel serveur ?",
         previewStopServer: "Arrêter {{name}}",
         exitFocusMode: "Quitter le mode concentration",
+        newTab: "Nouvel onglet",
+        maximizePane: "Agrandir le volet",
+        restorePane: "Restaurer le volet",
+        closePane: "Fermer le volet",
+        changes: "Modifications",
+        files: "Fichiers",
+        pullRequest: "Demande de fusion",
       },
       explorer: {
         open: "Ouvrir l'explorateur",
@@ -1113,6 +1126,13 @@ export const fr: TranslationResources = {
           "{{count}} onglet(s) contiennent des modifications non enregistrées. Les fermer supprimera ces brouillons.",
       },
       modified: "Modifications non enregistrées",
+      explorerSidebar: {
+        open: "Ouvrir le panneau latéral",
+        close: "Fermer le panneau latéral",
+        toggle: "Basculer le panneau latéral",
+        changes: "Changements",
+        files: "Fichiers",
+      },
     },
     header: {
       actions: {
@@ -1460,6 +1480,12 @@ export const fr: TranslationResources = {
           loadError: "Échec du chargement des commits",
           empty: "Aucun commit pour le moment",
         },
+        openDiffTab: "Ouvrir l'onglet Diff",
+        inlineDiff: "Diff intégré",
+        collapseAllFiles: "Réduire tous les fichiers",
+        expandAllFiles: "Développer tous les fichiers",
+        seeUncommittedChanges: "Voir les modifications non validées",
+        seeCommittedChanges: "Voir les modifications validées",
       },
       commit: {
         type: {
@@ -1634,6 +1660,10 @@ export const fr: TranslationResources = {
         failed: "Échec de l'abandon des modifications",
       },
     },
+    tree: {
+      showFolderTree: "Afficher l'arborescence des dossiers",
+      hideFolderTree: "Masquer l'arborescence des dossiers",
+    },
   },
   sidebar: {
     display: {
@@ -1643,6 +1673,7 @@ export const fr: TranslationResources = {
         label: "Regroupement",
         project: "Projet",
         status: "Statut",
+        labels: "Libellés",
       },
       titleSource: {
         label: "Titre",
@@ -1657,6 +1688,9 @@ export const fr: TranslationResources = {
         services: "Services",
         diff: "Statistiques de diff",
         timestamp: "Dernière activité",
+        branch: "Branche",
+        project: "Projet",
+        labels: "Libellés",
       },
       checks: {
         iconAndText: "Icône et texte",
@@ -1666,6 +1700,10 @@ export const fr: TranslationResources = {
       hostFilter: {
         label: "Hôte",
         all: "Tous les hôtes",
+      },
+      projectFilter: {
+        label: "Projet",
+        all: "Tous les projets",
       },
     },
     host: {
@@ -1788,6 +1826,12 @@ export const fr: TranslationResources = {
       github: "Créer un ticket GitHub",
       whatsNew: "Nouveautés",
       appName: "Otto",
+    },
+    filterEmpty: {
+      title: "Aucun espace de travail ne correspond",
+      description:
+        "Modifiez ou effacez les filtres de la barre latérale pour afficher les espaces de travail.",
+      clear: "Effacer les filtres",
     },
   },
   newProject: {
@@ -2156,6 +2200,12 @@ export const fr: TranslationResources = {
         saveSelectionFailed:
           "Impossible d'enregistrer la sélection des compétences d'orchestration.",
       },
+    },
+    windowControls: {
+      minimize: "Réduire la fenêtre",
+      maximize: "Agrandir la fenêtre",
+      restore: "Restaurer la fenêtre",
+      close: "Fermer la fenêtre",
     },
   },
   rootError: {
@@ -2725,6 +2775,8 @@ export const fr: TranslationResources = {
       retry: "Réessayer",
       copy: "Copie",
       copied: "Copié",
+      securityWarning:
+        "Traitez ce lien d’association comme un mot de passe. Toute personne qui le possède peut accéder à ce daemon.",
     },
   },
   realtimeVoice: {
@@ -3195,6 +3247,7 @@ export const fr: TranslationResources = {
         reloadTitle: "Recharger depuis le disque ?",
         reloadMessage: "Vos modifications locales seront perdues.",
       },
+      tooLargeToDisplay: "Ce fichier est trop volumineux pour être affiché",
     },
     diff: {
       changesLabel: "Modifications",
@@ -3206,6 +3259,19 @@ export const fr: TranslationResources = {
       empty: "Aucune modification",
       loadError: "Échec du chargement des différences",
       capabilityMissing: "Mettez à jour l'hôte pour voir les différences des commits.",
+      diffLabel: "Diff",
+    },
+    files: {
+      label: "Fichiers",
+      subtitle: "Fichiers de l’espace de travail",
+      tooltip: "Parcourir les fichiers de l’espace de travail",
+    },
+    pullRequest: {
+      label: "Demande de fusion",
+      subtitle: "Détails de la demande de fusion",
+      emptyTitle: "Aucune demande de fusion pour le moment",
+      emptyDescription:
+        "Créez une demande de fusion pour cette copie de travail afin d’afficher ses détails ici.",
     },
   },
   toolCallDetails: {
@@ -3321,6 +3387,7 @@ export const fr: TranslationResources = {
       diagnostics: "Diagnostic",
       about: "À propos",
       editor: "Éditeur",
+      layout: "Layout",
     },
     notifications: {
       title: "Notifications",
@@ -3746,6 +3813,7 @@ export const fr: TranslationResources = {
         highlightThemeHint: "Couleurs du code, indépendamment du thème de l'application",
         highlightThemeAccessibility: "Thème phare:{{value}}",
         previewAccessibility: "Aperçu en direct du thème de syntaxe et de la police de code",
+        previewContent: "Aperçu du contenu et du code",
       },
       detailLevel: {
         title: "Niveau de détail",
@@ -4284,6 +4352,53 @@ export const fr: TranslationResources = {
           localErrorMessage: "Impossible de supprimer la connexion localhost",
         },
       },
+      skills: {
+        sectionTitle: "Compétences en orchestration",
+        title: "Compétences en orchestration",
+        description: "Apprenez à vos agents à orchestrer via leCLI",
+        docs: "Skills",
+        openDocs: "Open skills documentation",
+        unavailable: "Connect to this host to manage orchestration skills",
+        unsupported: "Update this host to manage orchestration skills",
+        statusFailed: "Impossible de vérifier l'état des compétences d'orchestration.",
+        updateFailed: "Impossible de mettre à jour les compétences d'orchestration.",
+        uninstallFailed: "Impossible de désinstaller les compétences d'orchestration.",
+        saveSelectionFailed:
+          "Impossible d'enregistrer la sélection des compétences d'orchestration.",
+        updateAvailable: "Mise à jour disponible",
+        updateTitle: "Mettre à jour les compétencesPaseo?",
+        updateFallback: "Synchronisez les compétences regroupées sur votre machine.",
+        uninstallTitle: "Désinstaller les compétencesPaseo?",
+        uninstallMessage:
+          "Supprime toutes les compétences d'orchestrationPaseode ~/.agents, ~/.claude, ~/.codex.",
+        choose: "Choisir les compétences",
+        chooseAll: "Toutes les compétences",
+        chooseAllHint:
+          "Gardez installées toutes les compétences fournies, y compris celles ajoutées plus tard.",
+        chooseList: "Compétences fournies",
+        chooseEmpty: "Cette version ne fournit aucune compétence.",
+        removeTitle: "Supprimer les compétences décochées ?",
+        removeMessage:
+          "{{skills}} seront supprimées de ~/.agents, ~/.claude et ~/.codex. Tout ce que vous avez ajouté dans ces dossiers de compétences est également supprimé.",
+        saveFailed: "Impossible d'enregistrer votre sélection de compétences.",
+        actions: {
+          install: "Installer",
+          installing: "Installation...",
+          installed: "Installé",
+          update: "Mise à jour",
+          working: "Fonctionnement...",
+          remove: "Supprimer",
+          uninstall: "Désinstaller",
+          save: "Enregistrer",
+          saving: "Enregistrement...",
+          cancel: "Annuler",
+        },
+        operations: {
+          add: "Ajouter une compétence",
+          update: "Mettre à jour la compétence",
+          delete: "Supprimer la compétence",
+        },
+      },
     },
     providers: {
       title: "Fournisseurs",
@@ -4592,6 +4707,45 @@ export const fr: TranslationResources = {
       vimKeybindings: "Raccourcis Vim",
       vimHint: "S’applique aux fichiers source sur le web et le bureau.",
     },
+    layout: {
+      openInSidePane: {
+        title: "Open location",
+        destinations: {
+          main: "Main panel",
+          side: "On the side",
+        },
+        sources: {
+          explorerFiles: {
+            label: "Selecting a file in Explorer",
+            description: "Open files selected in the Explorer sidebar beside your work",
+          },
+          explorerChanges: {
+            label: "Selecting a change in Explorer",
+            description: "Open diffs selected in the Explorer sidebar beside your work",
+          },
+          chatFiles: {
+            label: "Opening a file from an agent chat",
+            description: "Open file links and tool-call files beside the conversation",
+          },
+          diffFiles: {
+            label: "Opening a file from Changes",
+            description: "Open source files selected from a diff beside it",
+          },
+          subagents: {
+            label: "Opening a subagent",
+            description: "Open subagents beside their parent agent",
+          },
+          pullRequests: {
+            label: "Opening a pull request from Changes",
+            description: "Open pull request details beside Changes",
+          },
+          changesLinks: {
+            label: "Opening Changes from an agent",
+            description: "Open diff stats and review attachments beside the conversation",
+          },
+        },
+      },
+    },
   },
   artifacts: {
     errors: {
@@ -4661,5 +4815,50 @@ export const fr: TranslationResources = {
     cardTitlePlaceholder: "Titre de la carte",
     cancel: "Annuler",
     moveTo: "Déplacer vers {{column}}",
+  },
+  workspaceLabels: {
+    title: "Étiquettes",
+    unlabelled: "Sans étiquette",
+    create: "Créer une étiquette",
+    createConfirm: "Créer",
+    creating: "Création…",
+    name: "Nom de l’étiquette",
+    updateHostUse: "Mettez à jour cet hôte pour utiliser les étiquettes.",
+    errors: {
+      update: "Impossible de mettre à jour l’étiquette",
+      load: "Impossible de charger les étiquettes",
+    },
+    colors: {
+      violet: "Violet",
+      sky: "Ciel",
+      emerald: "Émeraude",
+      orange: "Orange",
+      pink: "Rose",
+      indigo: "Indigo",
+      teal: "Sarcelle",
+      red: "Rouge",
+      amber: "Ambre",
+      blue: "Bleu",
+    },
+    filter: {
+      clear: "Effacer le filtre",
+    },
+    manage: {
+      open: "Gérer les étiquettes…",
+      title: "Gérer les étiquettes",
+      search: "Rechercher des étiquettes",
+      empty: "Aucune étiquette sur cet hôte.",
+      edit: "Modifier l’étiquette",
+      editLabel: "Modifier {{name}}",
+      name: "Nom",
+      color: "Couleur",
+      save: "Enregistrer",
+      delete: "Supprimer",
+      deleteTitle: "Supprimer {{name}} ?",
+      deleteMessage_one: "Cela retire l’étiquette de {{count}} espace de travail sur cet hôte.",
+      deleteMessage_other: "Cela retire l’étiquette de {{count}} espaces de travail sur cet hôte.",
+      offline: "Cet hôte est hors ligne.",
+      updateHost: "Mettez à jour cet hôte pour gérer les étiquettes.",
+    },
   },
 };

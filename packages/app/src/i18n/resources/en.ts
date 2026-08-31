@@ -84,6 +84,9 @@ export const en = {
       fastModeSearchKeywords: "fast speed low latency",
       settingOn: "On",
       settingOff: "Off",
+      open: "Open {{name}}",
+      openInSidePane: "Open {{name}} in side pane",
+      openInFocusedPane: "Open {{name}} in focused pane",
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
@@ -143,6 +146,7 @@ export const en = {
       queue: "Queue",
       send: "Send",
       add: "Add context",
+      sendAndSteer: "Send and steer",
     },
     cancel: {
       cancelingAgent: "Canceling agent",
@@ -1023,6 +1027,8 @@ export const en = {
         renameTerminal: "Rename terminal",
         renameAgent: "Rename chat",
         copyTerminalId: "Copy terminal id",
+        copyFilePath: "Copy file path",
+        moveToMain: "Move to main panel",
       },
       actions: {
         newAgent: "New chat",
@@ -1042,6 +1048,13 @@ export const en = {
         previewPickServer: "Start which server?",
         previewStopServer: "Stop {{name}}",
         exitFocusMode: "Exit focus mode",
+        newTab: "New tab",
+        maximizePane: "Maximize pane",
+        restorePane: "Restore pane",
+        closePane: "Close pane",
+        changes: "Changes",
+        files: "Files",
+        pullRequest: "Pull request",
       },
       explorer: {
         open: "Open explorer",
@@ -1104,6 +1117,13 @@ export const en = {
         bulkUnsaved: "{{count}} tab(s) have unsaved changes. Closing will discard those drafts.",
       },
       modified: "Unsaved changes",
+      explorerSidebar: {
+        open: "Open Explorer sidebar",
+        close: "Close Explorer sidebar",
+        toggle: "Toggle Explorer sidebar",
+        changes: "Changes",
+        files: "Files",
+      },
     },
     header: {
       actions: {
@@ -1429,6 +1449,12 @@ export const en = {
           loadError: "Failed to load commits",
           empty: "No commits yet",
         },
+        openDiffTab: "Open Diff tab",
+        inlineDiff: "Inline diff",
+        collapseAllFiles: "Collapse all files",
+        expandAllFiles: "Expand all files",
+        seeUncommittedChanges: "See uncommitted changes",
+        seeCommittedChanges: "See committed changes",
       },
       commit: {
         type: {
@@ -1603,6 +1629,10 @@ export const en = {
         failed: "Failed to discard changes",
       },
     },
+    tree: {
+      showFolderTree: "Show folder tree",
+      hideFolderTree: "Hide folder tree",
+    },
   },
   sidebar: {
     display: {
@@ -1612,6 +1642,7 @@ export const en = {
         label: "Grouping",
         project: "Project",
         status: "Status",
+        labels: "Labels",
       },
       titleSource: {
         label: "Title",
@@ -1626,6 +1657,9 @@ export const en = {
         services: "Services",
         diff: "Diff stats",
         timestamp: "Last activity",
+        branch: "Branch",
+        project: "Project",
+        labels: "Labels",
       },
       checks: {
         iconAndText: "Icon and text",
@@ -1635,6 +1669,10 @@ export const en = {
       hostFilter: {
         label: "Host",
         all: "All hosts",
+      },
+      projectFilter: {
+        label: "Project",
+        all: "All projects",
       },
     },
     host: {
@@ -1757,6 +1795,11 @@ export const en = {
       github: "Create GitHub issue",
       whatsNew: "What's new",
       appName: "Otto",
+    },
+    filterEmpty: {
+      title: "No workspaces match",
+      description: "Change or clear the sidebar filters to see workspaces.",
+      clear: "Clear filters",
     },
   },
   newProject: {
@@ -2112,6 +2155,12 @@ export const en = {
         uninstallFailed: "Unable to uninstall orchestration skills.",
         saveSelectionFailed: "Unable to save the orchestration skills selection.",
       },
+    },
+    windowControls: {
+      minimize: "Minimize window",
+      maximize: "Maximize window",
+      restore: "Restore window",
+      close: "Close window",
     },
   },
   rootError: {
@@ -2675,6 +2724,8 @@ export const en = {
       retry: "Retry",
       copy: "Copy",
       copied: "Copied",
+      securityWarning:
+        "Treat this pairing link like a password. Anyone with it can access this daemon.",
     },
   },
   realtimeVoice: {
@@ -3135,6 +3186,7 @@ export const en = {
         reloadTitle: "Reload from disk?",
         reloadMessage: "Your local changes will be lost.",
       },
+      tooLargeToDisplay: "This file is too large to display",
     },
     diff: {
       changesLabel: "Changes",
@@ -3146,6 +3198,18 @@ export const en = {
       empty: "No changes",
       loadError: "Failed to load diff",
       capabilityMissing: "Update the host to view commit diffs.",
+      diffLabel: "Diff",
+    },
+    files: {
+      label: "Files",
+      subtitle: "Workspace files",
+      tooltip: "Browse workspace files",
+    },
+    pullRequest: {
+      label: "Pull request",
+      subtitle: "Pull request details",
+      emptyTitle: "No pull request yet",
+      emptyDescription: "Create a pull request for this checkout to see its details here.",
     },
   },
   toolCallDetails: {
@@ -3261,6 +3325,7 @@ export const en = {
       diagnostics: "Diagnostics",
       about: "About",
       editor: "Editor",
+      layout: "Layout",
     },
     notifications: {
       title: "Notifications",
@@ -3732,6 +3797,7 @@ export const en = {
         highlightThemeHint: "Colors for code, independent of the app theme",
         highlightThemeAccessibility: "Highlight theme: {{value}}",
         previewAccessibility: "Live preview of the syntax theme and code font",
+        previewContent: "Readable content and code preview",
       },
       detailLevel: {
         title: "Detail level",
@@ -4259,6 +4325,51 @@ export const en = {
           localErrorMessage: "Unable to remove localhost connection",
         },
       },
+      skills: {
+        sectionTitle: "Orchestration skills",
+        title: "Orchestration skills",
+        description: "Teach your agents to orchestrate through the CLI",
+        docs: "Skills",
+        openDocs: "Open skills documentation",
+        unavailable: "Connect to this host to manage orchestration skills",
+        unsupported: "Update this host to manage orchestration skills",
+        statusFailed: "Unable to check orchestration skills status.",
+        updateFailed: "Unable to update orchestration skills.",
+        uninstallFailed: "Unable to uninstall orchestration skills.",
+        saveSelectionFailed: "Unable to save the orchestration skills selection.",
+        updateAvailable: "Update available",
+        updateTitle: "Update Paseo skills?",
+        updateFallback: "Sync bundled skills to this host.",
+        uninstallTitle: "Uninstall Paseo skills?",
+        uninstallMessage:
+          "Removes all Paseo orchestration skills from ~/.agents, ~/.claude, ~/.codex on this host.",
+        choose: "Choose skills",
+        chooseAll: "All skills",
+        chooseAllHint: "Keep every bundled skill installed, including ones added later.",
+        chooseList: "Bundled skills",
+        chooseEmpty: "This host bundles no skills.",
+        removeTitle: "Remove deselected skills?",
+        removeMessage:
+          "{{skills}} will be deleted from ~/.agents, ~/.claude, and ~/.codex on this host. Anything you added inside those skill folders is deleted too.",
+        saveFailed: "Could not save your skill selection.",
+        actions: {
+          install: "Install",
+          installing: "Installing...",
+          installed: "Installed",
+          update: "Update",
+          working: "Working...",
+          remove: "Remove",
+          uninstall: "Uninstall",
+          save: "Save",
+          saving: "Saving...",
+          cancel: "Cancel",
+        },
+        operations: {
+          add: "Add skill",
+          update: "Update skill",
+          delete: "Delete skill",
+        },
+      },
     },
     providers: {
       title: "Providers",
@@ -4560,6 +4671,45 @@ export const en = {
       vimKeybindings: "Vim keybindings",
       vimHint: "Use Vim motions and modes in source files on web and desktop.",
     },
+    layout: {
+      openInSidePane: {
+        title: "Open location",
+        destinations: {
+          main: "Main panel",
+          side: "On the side",
+        },
+        sources: {
+          explorerFiles: {
+            label: "Selecting a file in Explorer",
+            description: "Open files selected in the Explorer sidebar beside your work",
+          },
+          explorerChanges: {
+            label: "Selecting a change in Explorer",
+            description: "Open diffs selected in the Explorer sidebar beside your work",
+          },
+          chatFiles: {
+            label: "Opening a file from an agent chat",
+            description: "Open file links and tool-call files beside the conversation",
+          },
+          diffFiles: {
+            label: "Opening a file from Changes",
+            description: "Open source files selected from a diff beside it",
+          },
+          subagents: {
+            label: "Opening a subagent",
+            description: "Open subagents beside their parent agent",
+          },
+          pullRequests: {
+            label: "Opening a pull request from Changes",
+            description: "Open pull request details beside Changes",
+          },
+          changesLinks: {
+            label: "Opening Changes from an agent",
+            description: "Open diff stats and review attachments beside the conversation",
+          },
+        },
+      },
+    },
   },
   artifacts: {
     errors: {
@@ -4629,6 +4779,51 @@ export const en = {
     cardTitlePlaceholder: "Card title",
     cancel: "Cancel",
     moveTo: "Move to {{column}}",
+  },
+  workspaceLabels: {
+    title: "Labels",
+    unlabelled: "Unlabelled",
+    create: "Create label",
+    createConfirm: "Create",
+    creating: "Creating…",
+    name: "Label name",
+    updateHostUse: "Update this host to use labels.",
+    errors: {
+      update: "Unable to update label",
+      load: "Unable to load labels",
+    },
+    colors: {
+      violet: "Violet",
+      sky: "Sky",
+      emerald: "Emerald",
+      orange: "Orange",
+      pink: "Pink",
+      indigo: "Indigo",
+      teal: "Teal",
+      red: "Red",
+      amber: "Amber",
+      blue: "Blue",
+    },
+    filter: {
+      clear: "Clear filter",
+    },
+    manage: {
+      open: "Manage labels…",
+      title: "Manage labels",
+      search: "Search labels",
+      empty: "No labels on this host.",
+      edit: "Edit label",
+      editLabel: "Edit {{name}}",
+      name: "Name",
+      color: "Color",
+      save: "Save",
+      delete: "Delete",
+      deleteTitle: "Delete {{name}}?",
+      deleteMessage_one: "This removes the label from {{count}} workspace on this host.",
+      deleteMessage_other: "This removes the label from {{count}} workspaces on this host.",
+      offline: "This host is offline.",
+      updateHost: "Update this host to manage labels.",
+    },
   },
 } as const;
 

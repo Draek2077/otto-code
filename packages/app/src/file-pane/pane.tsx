@@ -491,7 +491,12 @@ export function FilePane({
   const canTogglePreviewMode = isRenderable && !location.lineStart;
   const lineCount =
     preview?.kind === "text" ? (preview.content ?? "").split("\n").length : undefined;
-  const errorMessage = getFileErrorMessage(liveFile.error, t("panels.file.failedToLoad"));
+  const rawErrorMessage = getFileErrorMessage(liveFile.error, t("panels.file.failedToLoad"));
+  // The daemon refuses reads above the display budget with this fixed wire
+  // string; surface it as the dedicated too-large state rather than a generic
+  // read failure, because there is nothing a retry can do about the size.
+  const errorIsTooLarge = rawErrorMessage?.includes("too large to display") ?? false;
+  const errorMessage = errorIsTooLarge ? t("panels.file.tooLargeToDisplay") : rawErrorMessage;
 
   return (
     <FilePanePresentation
@@ -510,6 +515,7 @@ export function FilePane({
       editable={editable}
       disconnectedMessage={t("workspace.terminal.hostDisconnected")}
       errorMessage={errorMessage}
+      errorIsTooLarge={errorIsTooLarge}
       isLoading={liveFile.isFetching}
       isMobile={isMobile}
       location={location}
@@ -557,6 +563,7 @@ function FilePanePresentation({
   editable,
   disconnectedMessage,
   errorMessage,
+  errorIsTooLarge,
   isLoading,
   isMobile,
   location,
@@ -578,6 +585,7 @@ function FilePanePresentation({
   editable: boolean;
   disconnectedMessage: string;
   errorMessage: string | null;
+  errorIsTooLarge: boolean;
   isLoading: boolean;
   isMobile: boolean;
   location: WorkspaceFileLocation;
@@ -613,6 +621,16 @@ function FilePanePresentation({
         location={location}
         navigationRevision={navigationRevision}
       />
+    );
+  }
+
+  if (errorMessage && errorIsTooLarge) {
+    return (
+      <View style={styles.container} testID="workspace-file-pane">
+        <View style={styles.centerState} testID="file-source-too-large">
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        </View>
+      </View>
     );
   }
 

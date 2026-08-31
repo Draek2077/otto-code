@@ -87,6 +87,9 @@ export const ptBR: TranslationResources = {
       fastModeSearchKeywords: "rápido velocidade baixa latência",
       settingOn: "Ligado",
       settingOff: "Desligado",
+      open: "Abrir {{name}}",
+      openInSidePane: "Abrir {{name}} no painel lateral",
+      openInFocusedPane: "Abrir {{name}} no painel em foco",
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
@@ -146,6 +149,7 @@ export const ptBR: TranslationResources = {
       queue: "Fila",
       send: "Enviar",
       add: "Adicionar contexto",
+      sendAndSteer: "Enviar e orientar",
     },
     cancel: {
       cancelingAgent: "Cancelando agente",
@@ -1029,6 +1033,8 @@ export const ptBR: TranslationResources = {
         renameTerminal: "Renomear terminal",
         renameAgent: "Renomear chat",
         copyTerminalId: "Copiar ID do terminal",
+        copyFilePath: "Copiar caminho do arquivo",
+        moveToMain: "Mover para o painel principal",
       },
       actions: {
         newAgent: "Novo chat",
@@ -1048,6 +1054,13 @@ export const ptBR: TranslationResources = {
         previewPickServer: "Iniciar qual servidor?",
         previewStopServer: "Parar {{name}}",
         exitFocusMode: "Sair do modo de foco",
+        newTab: "Nova aba",
+        maximizePane: "Maximizar painel",
+        restorePane: "Restaurar painel",
+        closePane: "Fechar painel",
+        changes: "Alterações",
+        files: "Arquivos",
+        pullRequest: "Pull request",
       },
       explorer: {
         open: "Abrir explorador",
@@ -1110,6 +1123,13 @@ export const ptBR: TranslationResources = {
           "{{count}} aba(s) têm alterações não salvas. Fechar descartará esses rascunhos.",
       },
       modified: "Alterações não salvas",
+      explorerSidebar: {
+        open: "Abrir painel lateral",
+        close: "Fechar painel lateral",
+        toggle: "Alternar painel lateral",
+        changes: "Alterações",
+        files: "Arquivos",
+      },
     },
     header: {
       actions: {
@@ -1443,6 +1463,12 @@ export const ptBR: TranslationResources = {
           loadError: "Falha ao carregar commits",
           empty: "Ainda não há commits",
         },
+        openDiffTab: "Abrir a aba Diff",
+        inlineDiff: "Diff embutido",
+        collapseAllFiles: "Recolher todos os arquivos",
+        expandAllFiles: "Expandir todos os arquivos",
+        seeUncommittedChanges: "Ver alterações sem commit",
+        seeCommittedChanges: "Ver alterações com commit",
       },
       commit: {
         type: {
@@ -1617,6 +1643,10 @@ export const ptBR: TranslationResources = {
         failed: "Falha ao descartar alterações",
       },
     },
+    tree: {
+      showFolderTree: "Mostrar árvore de pastas",
+      hideFolderTree: "Ocultar árvore de pastas",
+    },
   },
   sidebar: {
     display: {
@@ -1626,6 +1656,7 @@ export const ptBR: TranslationResources = {
         label: "Agrupamento",
         project: "Projeto",
         status: "Status",
+        labels: "Etiquetas",
       },
       titleSource: {
         label: "Título",
@@ -1640,6 +1671,9 @@ export const ptBR: TranslationResources = {
         services: "Serviços",
         diff: "Estatísticas de diff",
         timestamp: "Última atividade",
+        branch: "Branch",
+        project: "Projeto",
+        labels: "Etiquetas",
       },
       checks: {
         iconAndText: "Ícone e texto",
@@ -1649,6 +1683,10 @@ export const ptBR: TranslationResources = {
       hostFilter: {
         label: "Host",
         all: "Todos os hosts",
+      },
+      projectFilter: {
+        label: "Projeto",
+        all: "Todos os projetos",
       },
     },
     host: {
@@ -1771,6 +1809,11 @@ export const ptBR: TranslationResources = {
       github: "Criar issue no GitHub",
       whatsNew: "Novidades",
       appName: "Otto",
+    },
+    filterEmpty: {
+      title: "Nenhum espaço de trabalho corresponde",
+      description: "Altere ou limpe os filtros da barra lateral para ver espaços de trabalho.",
+      clear: "Limpar filtros",
     },
   },
   newProject: {
@@ -2130,6 +2173,12 @@ export const ptBR: TranslationResources = {
         uninstallFailed: "Não foi possível desinstalar as skills de orquestração.",
         saveSelectionFailed: "Não foi possível salvar a seleção de skills de orquestração.",
       },
+    },
+    windowControls: {
+      minimize: "Minimizar janela",
+      maximize: "Maximizar janela",
+      restore: "Restaurar janela",
+      close: "Fechar janela",
     },
   },
   rootError: {
@@ -2697,6 +2746,8 @@ export const ptBR: TranslationResources = {
       retry: "Tentar novamente",
       copy: "Copiar",
       copied: "Copiado",
+      securityWarning:
+        "Trate este link de pareamento como uma senha. Qualquer pessoa com o link pode acessar este daemon.",
     },
   },
   realtimeVoice: {
@@ -3163,6 +3214,7 @@ export const ptBR: TranslationResources = {
         reloadTitle: "Recarregar do disco?",
         reloadMessage: "Suas alterações locais serão perdidas.",
       },
+      tooLargeToDisplay: "Este arquivo é grande demais para exibir",
     },
     diff: {
       changesLabel: "Alterações",
@@ -3174,6 +3226,18 @@ export const ptBR: TranslationResources = {
       empty: "Nenhuma alteração",
       loadError: "Falha ao carregar diff",
       capabilityMissing: "Atualize o host para ver diffs de commits.",
+      diffLabel: "Diff",
+    },
+    files: {
+      label: "Arquivos",
+      subtitle: "Arquivos do espaço de trabalho",
+      tooltip: "Explorar arquivos do espaço de trabalho",
+    },
+    pullRequest: {
+      label: "Pull request",
+      subtitle: "Detalhes do pull request",
+      emptyTitle: "Ainda não há pull request",
+      emptyDescription: "Crie um pull request para este checkout para ver os detalhes aqui.",
     },
   },
   toolCallDetails: {
@@ -3289,6 +3353,7 @@ export const ptBR: TranslationResources = {
       diagnostics: "Diagnósticos",
       about: "Sobre",
       editor: "Editor",
+      layout: "Layout",
     },
     notifications: {
       title: "Notificações",
@@ -3711,6 +3776,7 @@ export const ptBR: TranslationResources = {
         highlightThemeHint: "Cores para código, independentes do tema do app",
         highlightThemeAccessibility: "Tema de destaque: {{value}}",
         previewAccessibility: "Prévia ao vivo do tema de sintaxe e da fonte de código",
+        previewContent: "Prévia de conteúdo e código",
       },
       detailLevel: {
         title: "Nível de detalhe",
@@ -4245,6 +4311,52 @@ export const ptBR: TranslationResources = {
           localErrorMessage: "Não foi possível remover a conexão localhost",
         },
       },
+      skills: {
+        sectionTitle: "Skills de orquestração",
+        title: "Skills de orquestração",
+        description: "Ensine seus agentes a orquestrar pela CLI",
+        docs: "Skills",
+        openDocs: "Open skills documentation",
+        unavailable: "Connect to this host to manage orchestration skills",
+        unsupported: "Update this host to manage orchestration skills",
+        statusFailed: "Não foi possível verificar o status das skills de orquestração.",
+        updateFailed: "Não foi possível atualizar as skills de orquestração.",
+        uninstallFailed: "Não foi possível desinstalar as skills de orquestração.",
+        saveSelectionFailed: "Não foi possível salvar a seleção de skills de orquestração.",
+        updateAvailable: "Atualização disponível",
+        updateTitle: "Atualizar Paseo skills?",
+        updateFallback: "Sincronize as skills incluídas com sua máquina.",
+        uninstallTitle: "Desinstalar Paseo skills?",
+        uninstallMessage:
+          "Remove todas as skills de orquestração do Paseo de ~/.agents, ~/.claude e ~/.codex.",
+        choose: "Escolher skills",
+        chooseAll: "Todas as skills",
+        chooseAllHint:
+          "Mantenha instaladas todas as skills incluídas, inclusive as adicionadas depois.",
+        chooseList: "Skills incluídas",
+        chooseEmpty: "Esta versão não inclui skills.",
+        removeTitle: "Remover as skills desmarcadas?",
+        removeMessage:
+          "{{skills}} serão excluídas de ~/.agents, ~/.claude e ~/.codex. Tudo o que você adicionou dentro dessas pastas de skills também é excluído.",
+        saveFailed: "Não foi possível salvar sua seleção de skills.",
+        actions: {
+          install: "Instalar",
+          installing: "Instalando...",
+          installed: "Instalado",
+          update: "Atualizar",
+          working: "Trabalhando...",
+          remove: "Remover",
+          uninstall: "Desinstalar",
+          save: "Salvar",
+          saving: "Salvando...",
+          cancel: "Cancelar",
+        },
+        operations: {
+          add: "Adicionar skill",
+          update: "Atualizar skill",
+          delete: "Excluir skill",
+        },
+      },
     },
     providers: {
       title: "Provedores",
@@ -4549,6 +4661,45 @@ export const ptBR: TranslationResources = {
       vimKeybindings: "Atalhos do Vim",
       vimHint: "Aplica-se a arquivos-fonte na web e no desktop.",
     },
+    layout: {
+      openInSidePane: {
+        title: "Open location",
+        destinations: {
+          main: "Main panel",
+          side: "On the side",
+        },
+        sources: {
+          explorerFiles: {
+            label: "Selecting a file in Explorer",
+            description: "Open files selected in the Explorer sidebar beside your work",
+          },
+          explorerChanges: {
+            label: "Selecting a change in Explorer",
+            description: "Open diffs selected in the Explorer sidebar beside your work",
+          },
+          chatFiles: {
+            label: "Opening a file from an agent chat",
+            description: "Open file links and tool-call files beside the conversation",
+          },
+          diffFiles: {
+            label: "Opening a file from Changes",
+            description: "Open source files selected from a diff beside it",
+          },
+          subagents: {
+            label: "Opening a subagent",
+            description: "Open subagents beside their parent agent",
+          },
+          pullRequests: {
+            label: "Opening a pull request from Changes",
+            description: "Open pull request details beside Changes",
+          },
+          changesLinks: {
+            label: "Opening Changes from an agent",
+            description: "Open diff stats and review attachments beside the conversation",
+          },
+        },
+      },
+    },
   },
   artifacts: {
     errors: {
@@ -4618,5 +4769,50 @@ export const ptBR: TranslationResources = {
     cardTitlePlaceholder: "Título do cartão",
     cancel: "Cancelar",
     moveTo: "Mover para {{column}}",
+  },
+  workspaceLabels: {
+    title: "Etiquetas",
+    unlabelled: "Sem etiqueta",
+    create: "Criar etiqueta",
+    createConfirm: "Criar",
+    creating: "Criando…",
+    name: "Nome da etiqueta",
+    updateHostUse: "Atualize este host para usar etiquetas.",
+    errors: {
+      update: "Não foi possível atualizar a etiqueta",
+      load: "Não foi possível carregar as etiquetas",
+    },
+    colors: {
+      violet: "Violeta",
+      sky: "Azul-céu",
+      emerald: "Esmeralda",
+      orange: "Laranja",
+      pink: "Rosa",
+      indigo: "Índigo",
+      teal: "Verde-azulado",
+      red: "Vermelho",
+      amber: "Âmbar",
+      blue: "Azul",
+    },
+    filter: {
+      clear: "Limpar filtro",
+    },
+    manage: {
+      open: "Gerenciar etiquetas…",
+      title: "Gerenciar etiquetas",
+      search: "Buscar etiquetas",
+      empty: "Não há etiquetas neste host.",
+      edit: "Editar etiqueta",
+      editLabel: "Editar {{name}}",
+      name: "Nome",
+      color: "Cor",
+      save: "Salvar",
+      delete: "Excluir",
+      deleteTitle: "Excluir {{name}}?",
+      deleteMessage_one: "Isso remove a etiqueta de {{count}} workspace neste host.",
+      deleteMessage_other: "Isso remove a etiqueta de {{count}} workspaces neste host.",
+      offline: "Este host está offline.",
+      updateHost: "Atualize este host para gerenciar etiquetas.",
+    },
   },
 };

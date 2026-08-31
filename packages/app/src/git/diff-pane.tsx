@@ -27,11 +27,13 @@ import {
   MoreHorizontal,
   Pilcrow,
   RotateCw,
+  SquareTerminal,
   WrapText,
 } from "lucide-react-native";
 import { type ParsedDiffFile } from "@/git/use-diff-query";
 import type { ChangesState } from "@/panels/changes/state";
 import { defaultChangesState } from "@/panels/changes/state";
+import { openGitLogTab } from "@/git/open-git-log-tab";
 import { DiffDocument, type WorkingDiffMode } from "@/git/diff-document";
 import { FileHeader } from "@/git/file-header";
 import {
@@ -70,7 +72,8 @@ import { GIT_ACTION_ICONS } from "@/git/action-icons";
 import { buildForgeSignInCommand, getForgePresentation, type Forge } from "@/git/forge";
 import { parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
 import type { ForgeAuthState } from "@otto-code/protocol/messages";
-import { useCheckoutGitActionsStore } from "@/git/actions-store";
+import { CheckoutGitRollbackFailedError, useCheckoutGitActionsStore } from "@/git/actions-store";
+import { resolveRunningAgentLabels } from "@/git/running-agent-labels";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -145,6 +148,14 @@ function useDiscardChangesAction({
   const { t } = useTranslation();
   const toast = useToast();
   const discardChanges = useCheckoutGitActionsStore((state) => state.discardChanges);
+  const rollbackPaths = useCheckoutGitActionsStore((state) => state.rollbackPaths);
+  const agentsById = useSessionStore((s) => s.sessions[serverId]?.agents);
+  // Prefer Otto's rollback RPC: the daemon refuses while agents are still
+  // writing to the workspace and the user must confirm the override, which
+  // upstream's discard path has no equivalent for.
+  const rollbackSupported = useSessionStore(
+    (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutGitRollback === true,
+  );
   // COMPAT(checkoutDiscardChanges): added in v0.3.0, remove gate after 2027-02-08.
   const discardSupported = useSessionStore(
     (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutDiscardChanges === true,
@@ -161,19 +172,62 @@ function useDiscardChangesAction({
       if (!confirmed) {
         return;
       }
-      try {
-        await discardChanges({
-          serverId,
-          cwd,
-          paths: oldPath ? [path, oldPath] : [path],
-        });
-      } catch (cause) {
-        toast.error(
-          cause instanceof Error ? cause.message : t("workspace.fileActions.confirmRevert.failed"),
-        );
+      if (!rollbackSupported) {
+        try {
+          await discardChanges({
+            serverId,
+            cwd,
+            paths: oldPath ? [path, oldPath] : [path],
+          });
+        } catch (cause) {
+          toast.error(
+            cause instanceof Error
+              ? cause.message
+              : t("workspace.fileActions.confirmRevert.failed"),
+          );
+        }
+        return;
       }
+      const attempt = async (allowWithRunningAgents: boolean): Promise<void> => {
+        try {
+          await rollbackPaths({
+            serverId,
+            cwd,
+            paths: oldPath ? [path, oldPath] : [path],
+            ...(allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
+          });
+        } catch (error) {
+          if (error instanceof CheckoutGitRollbackFailedError) {
+            if (error.rollbackError.kind === "agents_running") {
+              const agents = resolveRunningAgentLabels(
+                error.rollbackError.agents,
+                agentsById,
+                t("workspace.git.rollback.unnamedAgent"),
+              );
+              const overrideConfirmed = await confirmDialog({
+                title: t("workspace.git.rollback.agentsRunningTitle"),
+                message: t("workspace.git.rollback.agentsRunningMessage", { agents }),
+                confirmLabel: t("workspace.git.rollback.agentsRunningConfirm"),
+                destructive: true,
+              });
+              if (overrideConfirmed) {
+                await attempt(true);
+              }
+              return;
+            }
+            const message =
+              error.rollbackError.kind === "git_failed"
+                ? error.rollbackError.detail
+                : t("workspace.git.rollback.failed");
+            toast.error(message);
+            return;
+          }
+          toast.error(error instanceof Error ? error.message : t("workspace.git.rollback.failed"));
+        }
+      };
+      await attempt(false);
     },
-    [cwd, discardChanges, serverId, t, toast],
+    [agentsById, cwd, discardChanges, rollbackPaths, rollbackSupported, serverId, t, toast],
   );
   const handleDiscardPath = useCallback(
     (path: string, oldPath?: string) => {
@@ -181,7 +235,9 @@ function useDiscardChangesAction({
     },
     [discardPath],
   );
-  return discardSupported && diffMode === "uncommitted" ? handleDiscardPath : undefined;
+  return (discardSupported || rollbackSupported) && diffMode === "uncommitted"
+    ? handleDiscardPath
+    : undefined;
 }
 
 interface ChangesSurfaceProps {
@@ -236,6 +292,10 @@ const DIFF_OPTIONS_EXPAND_ICON = (
 );
 const DIFF_OPTIONS_CHANGES_TAB_ICON = (
   <ThemedMaximize size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+const ThemedSquareTerminal = withUnistyles(SquareTerminal);
+const DIFF_OPTIONS_GIT_LOG_ICON = (
+  <ThemedSquareTerminal size={14} uniProps={foregroundMutedIconColorMapping} />
 );
 
 interface DiffLayoutToggleProps {
@@ -384,6 +444,7 @@ type ChangesToolbarMode =
       onOpenDiff: () => void;
       inlineDiff: ChangesToolbarInlineDiffToggle | null;
       refresh: ChangesToolbarRefreshAction | null;
+      onOpenGitLog: (() => void) | null;
     }
   | {
       kind: "diff";
@@ -396,6 +457,7 @@ type ChangesToolbarMode =
       refresh: ChangesToolbarRefreshAction | null;
       treeToggle: { visible: boolean; onToggle: () => void } | null;
       inlineDiff: ChangesToolbarInlineDiffToggle | null;
+      onOpenGitLog: (() => void) | null;
     };
 
 function buildChangesToolbarMode(input: {
@@ -419,6 +481,7 @@ function buildChangesToolbarMode(input: {
   onToggleHideWhitespace: () => void;
   onToggleWrapLines: () => void;
   onToggleTree: () => void;
+  onOpenGitLog: (() => void) | null;
 }): ChangesToolbarMode {
   const refresh = input.refreshSupported
     ? { isRefreshing: input.isRefreshing, onRefresh: input.onRefresh }
@@ -429,6 +492,7 @@ function buildChangesToolbarMode(input: {
       onOpenDiff: input.onOpenDiff,
       inlineDiff: input.inlineDiff,
       refresh,
+      onOpenGitLog: input.onOpenGitLog,
     };
   }
   const options: ChangesToolbarDiffOptions = {
@@ -459,6 +523,7 @@ function buildChangesToolbarMode(input: {
         ? { visible: input.treeVisible, onToggle: input.onToggleTree }
         : null,
     inlineDiff: input.inlineDiff,
+    onOpenGitLog: input.onOpenGitLog,
   };
 }
 
@@ -927,9 +992,24 @@ type ChangesOptionsMenuMode = Extract<ChangesToolbarMode, { kind: "tree" | "comb
 function ChangesOptionsMenu({ mode, compact }: { mode: ChangesOptionsMenuMode; compact: boolean }) {
   const { t } = useTranslation();
   const optionsLabel = t("workspace.git.diff.options");
+  const gitLogItem = mode.onOpenGitLog ? (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        leading={DIFF_OPTIONS_GIT_LOG_ICON}
+        testID="changes-open-git-log"
+        onSelect={mode.onOpenGitLog}
+      >
+        {t("workspace.git.commit.viewLog")}
+      </DropdownMenuItem>
+    </>
+  ) : null;
   const content =
     mode.kind === "tree" ? (
-      <ChangesTreeOptions onOpenDiff={mode.onOpenDiff} inlineDiff={mode.inlineDiff} />
+      <>
+        <ChangesTreeOptions onOpenDiff={mode.onOpenDiff} inlineDiff={mode.inlineDiff} />
+        {gitLogItem}
+      </>
     ) : (
       <>
         <ChangesDiffOptions options={mode.options} />
@@ -939,6 +1019,7 @@ function ChangesOptionsMenu({ mode, compact }: { mode: ChangesOptionsMenuMode; c
             <ChangesInlineDiffOption toggle={mode.inlineDiff} />
           </>
         ) : null}
+        {gitLogItem}
       </>
     );
 
@@ -1924,6 +2005,17 @@ export function ChangesSurface({
     () => computeCommittedDiffDescription(branchLabel, baseRefLabel),
     [baseRefLabel, branchLabel],
   );
+  // Git-operation log tab (commit/pull/push output). One tab per operation per
+  // workspace; reopening focuses the existing tab.
+  const handleOpenGitLog = useMemo(
+    () =>
+      workspaceId
+        ? () => {
+            openGitLogTab({ serverId, workspaceId, operation: "commit" });
+          }
+        : null,
+    [serverId, workspaceId],
+  );
   const emptyMessage = computeEmptyMessage(preferences.hideWhitespace, diffMode, baseRefLabel, {
     hiddenWhitespace: t("workspace.git.diff.emptyHiddenWhitespace"),
     uncommitted: t("workspace.git.diff.emptyUncommitted"),
@@ -2002,6 +2094,7 @@ export function ChangesSurface({
         onToggleHideWhitespace: handleToggleHideWhitespace,
         onToggleWrapLines: handleToggleWrapLines,
         onToggleTree: handleToggleDesktopTree,
+        onOpenGitLog: handleOpenGitLog,
       }),
     [
       allFilesCollapsed,
@@ -2010,6 +2103,7 @@ export function ChangesSurface({
       handleCollapseAllFiles,
       handleExpandAllFiles,
       handleOpenDiff,
+      handleOpenGitLog,
       handleToggleInlineDiff,
       handleRefresh,
       handleToggleDesktopTree,
