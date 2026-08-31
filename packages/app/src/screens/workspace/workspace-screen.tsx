@@ -232,6 +232,7 @@ import {
 import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
 import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
 import { WorkspaceFocusProvider } from "@/workspace/focus";
+import { DiffDocumentWorkspaceCacheProvider } from "@/git/diff-document/workspace-cache";
 import { shouldSeedEmptyWorkspaceDraft } from "@/screens/workspace/workspace-empty-draft-seed";
 import {
   buildBulkCloseConfirmationMessage,
@@ -2118,6 +2119,20 @@ function WorkspaceScreenGateFrame({ children }: { children: ReactNode }) {
       <ScreenHeader left={GATED_WORKSPACE_HEADER_LEFT} />
       <View style={styles.centerContent}>{children}</View>
     </>
+  );
+}
+
+function WorkspaceContentProviders({
+  children,
+  workspaceKey,
+}: {
+  children: ReactNode;
+  workspaceKey: string | null;
+}) {
+  return (
+    <WorkspaceFocusProvider workspaceKey={workspaceKey}>
+      <DiffDocumentWorkspaceCacheProvider>{children}</DiffDocumentWorkspaceCacheProvider>
+    </WorkspaceFocusProvider>
   );
 }
 
@@ -5156,7 +5171,7 @@ function WorkspaceScreenContent({
 
   return (
     gatedWorkspaceScreen ?? (
-      <WorkspaceFocusProvider workspaceKey={persistenceKey}>
+      <WorkspaceContentProviders key={persistenceKey} workspaceKey={persistenceKey}>
         <RenderProfile id="WorkspaceScreenContent">
           <View style={containerStyle}>
             <WorkspaceDocumentTitleEffectSlot
@@ -5199,7 +5214,7 @@ function WorkspaceScreenContent({
             <MoveChatToWorkspaceHost />
           </View>
         </RenderProfile>
-      </WorkspaceFocusProvider>
+      </WorkspaceContentProviders>
     )
   );
 }
