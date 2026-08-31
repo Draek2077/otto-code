@@ -7,6 +7,9 @@ import {
 } from "@/screens/workspace/workspace-pane-content";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
+import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
+import { useAppSettings } from "@/hooks/use-settings";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import { RenderProfile } from "@/utils/render-profiler";
 
@@ -107,11 +110,19 @@ export function WorkspacePanelHost({
     tabIds,
   });
   const stableTabs = useStableTabs(tabs);
+  // How many of this pane's tabs stay mounted behind the frontmost one. Otto's
+  // setting wins; unset resolves per device. See mounted-tab-retention.ts.
+  const { settings } = useAppSettings();
+  const isCompactFormFactor = useIsCompactFormFactor();
+  const mountedTabLimit = resolveMountedTabLimit({
+    setting: settings.mountedTabLimit,
+    isCompact: isCompactFormFactor,
+  });
   const { mountedTabIds } = useMountedTabSet({
     activeTabId,
     allTabIds: tabIds,
     retainedTabIds,
-    cap: 3,
+    cap: mountedTabLimit,
   });
   const mountedIds = useMemo(
     () => tabIds.filter((tabId) => mountedTabIds.has(tabId)),

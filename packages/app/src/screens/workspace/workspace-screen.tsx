@@ -5062,6 +5062,27 @@ function WorkspaceScreenContent({
       `${WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX}:${normalizedServerId}:${normalizedWorkspaceId}`,
     [normalizedServerId, normalizedWorkspaceId],
   );
+  const selectWorkspaceTabInPane = useWorkspaceLayoutStore((state) => state.selectTabInPane);
+  // The Explorer dock selects its tab without moving workspace focus; main
+  // panes route through navigateToTabId, which focuses.
+  const handleSelectTabInPane = useCallback(
+    (paneId: string, tabId: string) => {
+      if (persistenceKey) {
+        selectWorkspaceTabInPane(persistenceKey, paneId, tabId);
+      }
+    },
+    [persistenceKey, selectWorkspaceTabInPane],
+  );
+  const handleCreateNewTab = useCallback(
+    (input?: { paneId?: string }) => {
+      if (!persistenceKey) {
+        return;
+      }
+      createWorkspaceTab(persistenceKey, { kind: "new_tab" }, paneLocalPlacement(input?.paneId));
+    },
+    [createWorkspaceTab, persistenceKey],
+  );
+  const exitFocusMode = usePanelStore((state) => state.exitFocusMode);
   const desktopSplitContent = useMemo(() => {
     if (!canRenderDesktopPaneSplits || !workspaceLayout || !persistenceKey) {
       return null;
@@ -5088,10 +5109,14 @@ function WorkspaceScreenContent({
         onCloseTabsToLeft={handleCloseTabsToLeftInPane}
         onCloseTabsToRight={handleCloseTabsToRightInPane}
         onCloseOtherTabs={handleCloseOtherTabsInPane}
+        onCreateNewTab={handleCreateNewTab}
         onCreateDraftTab={handleCreateDraftTab}
         onCreateTerminalTab={handleCreateTerminal}
         onCreateBrowserTab={handleCreateBrowserTab}
         showCreateBrowserTab={showCreateBrowserTab}
+        onSelectTabInPane={handleSelectTabInPane}
+        focusModeEnabled={isFocusModeEnabled}
+        onExitFocusMode={exitFocusMode}
         buildPaneContentModel={buildDesktopPaneContentModel}
         onFocusPane={handleFocusPane}
         onSplitPane={handleSplitPane}
@@ -5126,6 +5151,10 @@ function WorkspaceScreenContent({
     handleCreateDraftTab,
     handleCreateTerminal,
     handleCreateBrowserTab,
+    handleCreateNewTab,
+    handleSelectTabInPane,
+    isFocusModeEnabled,
+    exitFocusMode,
     showCreateBrowserTab,
     buildDesktopPaneContentModel,
     handleFocusPane,
