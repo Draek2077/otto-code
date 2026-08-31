@@ -5,7 +5,11 @@ import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { registerDevRunnerShutdownSignals, resolveChildKillTarget } from "./dev-runner-config.mjs";
+import {
+  createElectronSpawnOptions,
+  registerDevRunnerShutdownSignals,
+  resolveChildKillTarget,
+} from "./dev-runner-config.mjs";
 
 import { resolveDevElectronArgs } from "./dev-runner-args.mjs";
 
