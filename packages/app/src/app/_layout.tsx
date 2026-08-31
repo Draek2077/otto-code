@@ -112,10 +112,10 @@ import { useStableEvent } from "@/hooks/use-stable-event";
 import { useOpenAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelsProvider } from "@/mobile-panels/provider";
 import { I18nProvider } from "@/i18n/provider";
-import { createKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
-
-// Upstream turned the dispatcher into a factory; Otto uses one app-wide instance.
-const keyboardActionDispatcher = createKeyboardActionDispatcher();
+import {
+  KeyboardActionDispatcherProvider,
+  useKeyboardActionDispatcher,
+} from "@/keyboard/keyboard-action-dispatcher-context";
 import { polyfillCrypto } from "@/polyfills/crypto";
 import { polyfillNavigator } from "@/polyfills/navigator";
 import { queryClient } from "@/data/query-client";
@@ -551,6 +551,7 @@ const THEME_CYCLE_ORDER: ThemeCycleStep[] = [
 const WINDOW_SIDEBAR_TOGGLE_HORIZONTAL_PADDING = 12;
 
 function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppContainerProps) {
+  const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const daemons = useHosts();
   const { settings, updateSettings } = useAppSettings();
   const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
@@ -604,7 +605,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
           scope: "sidebar",
         }),
     });
-  }, [closeDesktopAgentList, closeDesktopFileExplorer, openDesktopAgentList]);
+  }, [
+    closeDesktopAgentList,
+    closeDesktopFileExplorer,
+    keyboardActionDispatcher,
+    openDesktopAgentList,
+  ]);
   // TODO: stop matching pathname here as a branch. `chromeEnabled` should not
   // conflate workspace/project-specific chrome (sidebar, mobile gesture) with
   // global concerns like keyboard shortcuts. Split those out so settings (and
@@ -1440,15 +1446,17 @@ function SheetPortalProviders({ children }: { children: ReactNode }) {
 
 function RootProviders({ children }: { children: ReactNode }) {
   return (
-    <SafeAreaProvider>
-      <WindowChromeProvider>
-        <KeyboardProvider>
-          <KeyboardShiftProvider>
-            <SheetPortalProviders>{children}</SheetPortalProviders>
-          </KeyboardShiftProvider>
-        </KeyboardProvider>
-      </WindowChromeProvider>
-    </SafeAreaProvider>
+    <KeyboardActionDispatcherProvider>
+      <SafeAreaProvider>
+        <WindowChromeProvider>
+          <KeyboardProvider>
+            <KeyboardShiftProvider>
+              <SheetPortalProviders>{children}</SheetPortalProviders>
+            </KeyboardShiftProvider>
+          </KeyboardProvider>
+        </WindowChromeProvider>
+      </SafeAreaProvider>
+    </KeyboardActionDispatcherProvider>
   );
 }
 
