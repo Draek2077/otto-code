@@ -73,6 +73,10 @@ export type WorkspaceTabTarget =
   // A git operation's log pane ("Git Commit"/"Git Pull"/"Git Push"). One per
   // operation per workspace; `operation` is the wire operation id.
   | { kind: "gitLog"; operation: string }
+  // Project-wide text search, hosted like Files/Changes in the Explorer or a
+  // main pane. One per workspace - the query lives in the pane's own state, so
+  // the kind is the whole identity.
+  | { kind: "project_search" }
   // The Visualizer tab - a live node-graph of agent orchestration. One per
   // workspace when `runId` is absent (the page's own session tabs cover
   // per-agent switching). An orchestration Run's "Visualize" action opens a

@@ -3233,6 +3233,11 @@ export const ptBR: TranslationResources = {
       subtitle: "Arquivos do espaço de trabalho",
       tooltip: "Explorar arquivos do espaço de trabalho",
     },
+    search: {
+      label: "Pesquisar",
+      subtitle: "Pesquisa do projeto",
+      tooltip: "Pesquise nos arquivos do workspace",
+    },
     pullRequest: {
       label: "Pull request",
       subtitle: "Detalhes do pull request",

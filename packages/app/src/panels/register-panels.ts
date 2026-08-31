@@ -18,6 +18,7 @@ import { fileHistoryPanelRegistration } from "@/panels/file-history-panel";
 import { gitLogPanelRegistration } from "@/panels/git-log-panel";
 import { orchestrationGraphPanelRegistration } from "@/panels/workflow-graph-panel-registration";
 import { filesPanelRegistration } from "@/panels/files-panel";
+import { projectSearchPanelRegistration } from "@/panels/project-search-panel";
 import { registerPanel } from "@/panels/panel-registry";
 import { refinePanelRegistration } from "@/panels/refine-panel";
 import { setupPanelRegistration } from "@/panels/setup-panel";
@@ -61,6 +62,7 @@ export function ensurePanelsRegistered(): void {
   // (`workspace-tabs/identity.ts`) accepts both. A panel registered here
   // without its branch there is a tab nothing can open.
   registerPanel(filesPanelRegistration);
+  registerPanel(projectSearchPanelRegistration);
   registerPanel(pullRequestPanelRegistration);
   registerPanel(commitDiffPanelRegistration);
   registerPanel(workingDiffPanelRegistration);

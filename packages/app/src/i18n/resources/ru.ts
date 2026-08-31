@@ -3228,6 +3228,11 @@ export const ru: TranslationResources = {
       subtitle: "Файлы рабочего пространства",
       tooltip: "Просмотр файлов рабочего пространства",
     },
+    search: {
+      label: "Поиск",
+      subtitle: "Поиск по проекту",
+      tooltip: "Поиск по файлам рабочего пространства",
+    },
     pullRequest: {
       label: "PR",
       subtitle: "Сведения о PR",

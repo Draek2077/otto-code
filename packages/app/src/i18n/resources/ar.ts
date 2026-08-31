@@ -3175,6 +3175,11 @@ export const ar: TranslationResources = {
       subtitle: "ملفات مساحة العمل",
       tooltip: "تصفح ملفات مساحة العمل",
     },
+    search: {
+      label: "بحث",
+      subtitle: "بحث في المشروع",
+      tooltip: "ابحث في ملفات مساحة العمل",
+    },
     pullRequest: {
       label: "طلب السحب",
       subtitle: "تفاصيل طلب السحب",

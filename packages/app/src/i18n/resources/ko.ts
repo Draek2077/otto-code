@@ -3204,6 +3204,11 @@ export const ko: TranslationResources = {
       subtitle: "워크스페이스 파일",
       tooltip: "워크스페이스 파일 탐색",
     },
+    search: {
+      label: "검색",
+      subtitle: "프로젝트 검색",
+      tooltip: "워크스페이스 파일 전체 검색",
+    },
     pullRequest: {
       label: "풀 리퀘스트",
       subtitle: "풀 리퀘스트 세부 정보",

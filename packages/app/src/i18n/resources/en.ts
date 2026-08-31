@@ -3205,6 +3205,11 @@ export const en = {
       subtitle: "Workspace files",
       tooltip: "Browse workspace files",
     },
+    search: {
+      label: "Search",
+      subtitle: "Project search",
+      tooltip: "Search across workspace files",
+    },
     pullRequest: {
       label: "Pull request",
       subtitle: "Pull request details",

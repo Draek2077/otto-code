@@ -3138,6 +3138,11 @@ export const zhCN: TranslationResources = {
       subtitle: "工作区文件",
       tooltip: "浏览工作区文件",
     },
+    search: {
+      label: "搜索",
+      subtitle: "项目搜索",
+      tooltip: "跨工作区文件搜索",
+    },
     pullRequest: {
       label: "拉取请求",
       subtitle: "拉取请求详情",

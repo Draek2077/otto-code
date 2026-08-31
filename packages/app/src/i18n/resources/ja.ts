@@ -3221,6 +3221,11 @@ export const ja: TranslationResources = {
       subtitle: "ワークスペースのファイル",
       tooltip: "ワークスペースのファイルを参照",
     },
+    search: {
+      label: "検索",
+      subtitle: "プロジェクト検索",
+      tooltip: "ワークスペースのファイルを横断検索",
+    },
     pullRequest: {
       label: "プルリクエスト",
       subtitle: "プルリクエストの詳細",

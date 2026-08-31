@@ -30,6 +30,8 @@ import {
   resolveTerminalProfiles,
 } from "@otto-code/protocol/terminal-profiles";
 import { getBuiltInLaunchOrder, type BuiltInLaunchItemId } from "./internal/catalog";
+import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 
 export type WorkspaceTabLaunchPurpose = "primary" | "supporting";
 
@@ -81,6 +83,7 @@ const BUILT_IN_SELECTIONS: Record<BuiltInLaunchItemId, NewTabSelection> = {
   changes: { kind: "target", target: { kind: "changes_tree" } },
   diff: { kind: "target", target: { kind: "working_diff" } },
   files: { kind: "target", target: { kind: "files" } },
+  search: { kind: "target", target: { kind: "project_search" } },
   browser: { kind: "browser" },
   pullRequest: { kind: "target", target: { kind: "pull_request" } },
 };
@@ -103,6 +106,9 @@ export function useWorkspaceTabLaunchCatalog(input: {
   invariant(launcher, "NewTabLauncherProvider is required");
   const { config } = useDaemonConfig(serverId);
   const plugins = useInstalledPlugins();
+  const isDeveloperMode = useIsDeveloperMode();
+  const hasProjectSearch = useProjectSearchFeature(serverId);
+  const showProjectSearch = isDeveloperMode && hasProjectSearch;
   ensurePanelsRegistered();
 
   const launchSelection = useCallback(
@@ -119,6 +125,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
     const changesPresentation = getLaunchPresentation("changes_tree");
     const diffPresentation = getLaunchPresentation("working_diff");
     const filesPresentation = getLaunchPresentation("files");
+    const searchPresentation = getLaunchPresentation("project_search");
     const pullRequestPresentation = getLaunchPresentation("pull_request");
     const builtIns: Record<BuiltInLaunchItemId, WorkspaceTabLaunchItem & { hidden?: boolean }> = {
       agent: {
@@ -166,6 +173,17 @@ export function useWorkspaceTabLaunchCatalog(input: {
         disabled: false,
         panelKind: "files",
         launch: launchSelection(BUILT_IN_SELECTIONS.files),
+      },
+      search: {
+        id: "search",
+        label: searchPresentation.label(t),
+        Icon: searchPresentation.icon,
+        disabled: false,
+        panelKind: "project_search",
+        // Same gate as Otto's Explorer search view: a Developer-mode surface
+        // that needs the host's projectSearch capability.
+        hidden: !showProjectSearch,
+        launch: launchSelection(BUILT_IN_SELECTIONS.search),
       },
       browser: {
         id: "browser",
@@ -248,6 +266,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
     purpose,
     host,
     serverId,
+    showProjectSearch,
     t,
   ]);
 }

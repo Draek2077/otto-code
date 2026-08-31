@@ -3251,6 +3251,11 @@ export const es: TranslationResources = {
       subtitle: "Archivos del espacio de trabajo",
       tooltip: "Explorar archivos del espacio de trabajo",
     },
+    search: {
+      label: "Buscar",
+      subtitle: "Búsqueda del proyecto",
+      tooltip: "Busca en los archivos del espacio de trabajo",
+    },
     pullRequest: {
       label: "Solicitud de extracción",
       subtitle: "Detalles de la solicitud de extracción",

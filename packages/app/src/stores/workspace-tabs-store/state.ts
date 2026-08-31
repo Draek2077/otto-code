@@ -702,6 +702,7 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
     return normalizeWorkspaceTabTarget({ kind: "contextManagement" });
   }
   if (kind === "projectKnowledge") return normalizeWorkspaceTabTarget({ kind: "projectKnowledge" });
+  if (kind === "project_search") return normalizeWorkspaceTabTarget({ kind: "project_search" });
   const field = kind ? SIMPLE_STRING_FIELD_BY_KIND[kind] : undefined;
   if (kind && field && typeof raw[field] === "string") {
     return normalizeWorkspaceTabTarget({ kind, [field]: raw[field] } as WorkspaceTabTarget);

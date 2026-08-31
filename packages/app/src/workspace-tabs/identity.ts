@@ -104,6 +104,9 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "contextManagement") {
     return { kind: "contextManagement" };
   }
+  if (value.kind === "project_search") {
+    return { kind: "project_search" };
+  }
   if (value.kind === "projectKnowledge") {
     const selection = normalizeProjectKnowledgeTabSelection(value.selection);
     return selection ? { kind: "projectKnowledge", selection } : { kind: "projectKnowledge" };
@@ -541,6 +544,7 @@ const SIMPLE_TAB_ID_BUILDERS: {
   gitLog: (target) => `gitlog_${target.operation}`,
   contextManagement: () => "context-management",
   projectKnowledge: () => "project-knowledge",
+  project_search: () => "project_search",
   // One per workspace, so the kind is the whole identity. Without these they
   // all fall through to the file builder and collide on a single id, which
   // silently drops every one after the first.

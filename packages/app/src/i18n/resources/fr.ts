@@ -3266,6 +3266,11 @@ export const fr: TranslationResources = {
       subtitle: "Fichiers de l’espace de travail",
       tooltip: "Parcourir les fichiers de l’espace de travail",
     },
+    search: {
+      label: "Recherche",
+      subtitle: "Recherche du projet",
+      tooltip: "Rechercher dans les fichiers de l'espace de travail",
+    },
     pullRequest: {
       label: "Demande de fusion",
       subtitle: "Détails de la demande de fusion",
