@@ -390,17 +390,21 @@ the unit suites could not see. Fixed:
 - **The over-budget file state had no renderer.** The daemon refuses reads above
   the display budget; the merged e2e asserts a `file-source-too-large` element
   that only upstream's orphaned `source/view.web.tsx` rendered. Otto's pane now
-  renders the dedicated too-large state; upstream's unwired `source/view.*`
-  split was deleted (its `presentation.ts` budgets are live via
+  renders the dedicated too-large state; upstream's `source/view.*` split stays
+  on disk unwired (its `presentation.ts` budgets are live via
   `live-file/hook.ts`).
 - **Checkout status updates were not deduplicated.** Ported upstream
   `373a98c64`: byte-identical `checkout_status_update` payloads per cwd are
   suppressed.
-- Deleted as dead-on-arrival: `element-selector.electron.ts` (Otto's inline
-  browser pane owns element selection; upstream's extraction had no importer)
-  and `agent-profile-editor.tsx` + `agent-profile-edit-modal.tsx` (Otto removed
-  the modal deliberately in the roster convergence, `c1d21699f`; the merge
-  restored them unreachable).
+- Left on disk unwired, per the standing no-deleting-upstream-files rule below:
+  `element-selector.electron.ts` (Otto's inline browser pane owns element
+  selection; upstream's extraction has no importer) and
+  `agent-profile-editor.tsx` + `agent-profile-edit-modal.tsx` (Otto removed the
+  modal deliberately in the roster convergence, `c1d21699f`; the merge restored
+  them unreachable, and the barrel no longer exports `useAgentProfileEditor`).
+  An earlier pass of this audit deleted these five upstream files plus
+  `plugin-theme.spec.ts`; all were restored byte-identical once the rule was
+  stated.
 
 Method note for next time: `result == OURS` for a both-sides-changed file does
 not by itself mean upstream's change was dropped (Otto may have adopted it
@@ -428,6 +432,16 @@ Two mechanical sweeps catch what slips through, and both belong in step 5:
 ### Standing decisions
 
 These carry across merges. Revisit only when the stated trigger fires.
+
+- **Upstream files are never deleted.** Even when a merge lands an upstream
+  module orphaned, or Otto declines the feature it implements, the file stays on
+  disk byte-identical to upstream with no importers - the same shape the Hub
+  exclusion uses. Deleting it converts every future upstream edit into a
+  modify/delete conflict and makes later adoption an archaeology job. Switch
+  things off at the import specifier or in test/run configuration, never with
+  `git rm`. Deleting Otto's own code is fine only when it was bad code or an
+  adopted upstream feature replaced it; record which in this ledger.
+  **No revisit trigger.**
 
 - **Hub (`a414f8ea8`) - permanent exclusion. Never incorporate.**
 
@@ -565,8 +579,10 @@ appearance is a variant system (seven light and eight dark palettes, mirror
 keys, black-scope vars, the accent ladder). Slotting a six-color contributed
 palette into that is a design task, not a conflict resolution. The inert
 plumbing is kept byte-compatible with upstream so future merges stay cheap;
-`plugin-theme.spec.ts` was deleted because it asserts UI that does not exist.
-Revisit when plugin theming earns a design pass against Otto's theme anatomy.
+`plugin-theme.spec.ts` asserts UI that does not exist, so it is excluded from
+the Playwright browser project via `testIgnore` while staying byte-identical to
+upstream. Revisit when plugin theming earns a design pass against Otto's theme
+anatomy.
 
 #### Create agent profiles from the model chooser (`e9373c026`, #3533)
 
@@ -588,9 +604,9 @@ Adopt deliberately if mobile users ask for it.
 Upstream extracted element selection into `element-selector.electron.ts` and
 fixed "selectors unavailable on already-loaded pages" and "annotation editor
 not showing" in that structure. Otto's inline `pane/index.electron.tsx`
-implementation kept OURS, so the extraction arrived orphaned (deleted). If
-either symptom shows up in Otto's browser pane, port the fix into the inline
-implementation rather than resurrecting the extraction.
+implementation kept OURS, so the extraction arrived orphaned and stays on disk
+unwired. If either symptom shows up in Otto's browser pane, port the fix into
+the inline implementation.
 
 ### Silent breakage found by the v0.6.1 test pass
 

@@ -74,7 +74,10 @@ export default defineConfig({
     {
       name: "browser",
       outputDir: projectOutputDir("browser"),
-      testIgnore: ["**/*.real.spec.ts", "**/*.local.spec.ts"],
+      // plugin-theme.spec.ts asserts upstream's contributed-theme UI, which Otto
+      // has deliberately not adopted (see docs/upstream-merges.md, plugin theme
+      // contributions). The spec stays byte-identical to upstream and excluded.
+      testIgnore: ["**/*.real.spec.ts", "**/*.local.spec.ts", "**/plugin-theme.spec.ts"],
       // E2E_BROWSER_CHANNEL lets local runs drive an installed browser (e.g.
       // "msedge" on Windows) instead of Playwright's downloaded chromium.
       use: { ...devices["Desktop Chrome"], channel: process.env.E2E_BROWSER_CHANNEL },
