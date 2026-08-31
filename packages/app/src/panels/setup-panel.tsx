@@ -11,7 +11,7 @@ import { Pressable, type PressableStateCallbackType, ScrollView, Text, View } fr
 import invariant from "tiny-invariant";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import type { Theme } from "@/styles/theme";
@@ -395,11 +395,10 @@ function SetupCommandRow({
   );
 }
 
-export const setupPanelRegistration: PanelRegistration<"setup"> = {
-  kind: "setup",
+export const setupPanelRegistration = definePanel("setup", {
   component: SetupPanel,
   useDescriptor: useSetupPanelDescriptor,
-};
+});
 
 function SetupCommandChevron({ showDetail }: { showDetail: boolean }) {
   const chevronStyle = useMemo(
@@ -490,7 +489,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   waitingText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
   },
   emptyContainer: {
@@ -499,7 +498,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   emptyText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
   },
   commandList: {
@@ -535,11 +534,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   commandText: {
     flex: 1,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
   },
   commandDuration: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
   },
@@ -565,7 +564,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
   },
   emptyLogText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
     fontStyle: "italic",
   },
@@ -574,7 +573,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.palette.red[100],
   },
   errorText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.palette.red[800],
   },
 }));

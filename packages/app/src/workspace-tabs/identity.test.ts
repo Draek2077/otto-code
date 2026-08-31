@@ -228,9 +228,9 @@ describe("refine tab identity", () => {
 
 describe("normalizeWorkspaceTabTarget provider subagents", () => {
   // The panel, the tab menu entry and the persistence key builder all shipped
-  // with the Paseo v0.2.5 merge, but this normalizer never learned the kind, so
+  // with the Otto v0.2.5 merge, but this normalizer never learned the kind, so
   // every target it produced was dropped and the tab could not be opened or
-  // restored. See projects/paseo-v025-merge/audit-findings.md.
+  // restored. See projects/otto-v025-merge/audit-findings.md.
   it("keeps a provider subagent target addressed by its parent and subagent pair", () => {
     expect(
       normalizeWorkspaceTabTarget({
@@ -262,12 +262,17 @@ describe("normalizeWorkspaceTabTarget provider subagents", () => {
     ).toBeNull();
   });
 
-  // DEFERRED(paseoDiffTab): these two kinds are inherited from Paseo's tab model
+  // DEFERRED(ottoDiffTab): these two kinds are inherited from Otto's tab model
   // but have no panel registered here, so dropping them is deliberate. If a
   // panel is ever adopted, this expectation is the thing that should fail first.
-  it("still drops the diff tab kinds Otto never adopted a panel for", () => {
-    expect(normalizeWorkspaceTabTarget({ kind: "working_diff" })).toBeNull();
-    expect(normalizeWorkspaceTabTarget({ kind: "commit_diff", sha: "abc1234" })).toBeNull();
+  it("normalizes the diff tab kinds now that both render through Changes", () => {
+    expect(normalizeWorkspaceTabTarget({ kind: "working_diff" })).toEqual({ kind: "working_diff" });
+    expect(normalizeWorkspaceTabTarget({ kind: "commit_diff", sha: "abc1234" })).toEqual({
+      kind: "commit_diff",
+      sha: "abc1234",
+    });
+    // A commit diff without its sha still has nothing to resolve.
+    expect(normalizeWorkspaceTabTarget({ kind: "commit_diff", sha: "  " })).toBeNull();
   });
 });
 
@@ -313,5 +318,44 @@ describe("Project Knowledge tab selection", () => {
     expect(workspaceTabTargetsEqual(architecture, record)).toBe(false);
     expect(buildDeterministicWorkspaceTabId(architecture)).toBe("project-knowledge");
     expect(buildDeterministicWorkspaceTabId(record)).toBe("project-knowledge");
+  });
+});
+
+describe("plugin panel tab identity", () => {
+  it("normalizes exact workspace and agent context", () => {
+    expect(
+      normalizeWorkspaceTabTarget({
+        kind: "plugin",
+        pluginId: " review ",
+        panelId: " details ",
+        context: "agent",
+        agentId: " agent-1 ",
+      }),
+    ).toEqual({
+      kind: "plugin",
+      pluginId: "review",
+      panelId: "details",
+      context: "agent",
+      agentId: "agent-1",
+    });
+  });
+
+  it("gives workspace and agent instances distinct stable ids", () => {
+    const workspace = buildDeterministicWorkspaceTabId({
+      kind: "plugin",
+      pluginId: "review",
+      panelId: "details",
+      context: "workspace",
+    });
+    const agent = buildDeterministicWorkspaceTabId({
+      kind: "plugin",
+      pluginId: "review",
+      panelId: "details",
+      context: "agent",
+      agentId: "agent-1",
+    });
+
+    expect(workspace).toBe("plugin_workspace_6_review_7_details");
+    expect(agent).toBe("plugin_agent_6_review_7_details_7_agent-1");
   });
 });

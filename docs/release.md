@@ -125,6 +125,20 @@ The Docker workflow builds images from the checked-out source tree on pull reque
 
 **Releases are always patch.** "Release otto", "release stable", "ship stable", and similar always mean a patch bump from the previous stable. Never bump minor or major to trigger a build, ever - minor and major bumps are reserved for genuinely larger product cuts and require an explicit user instruction with the word "minor" or "major". If you find yourself reaching for `release:minor` to retrigger a failed build, you are doing the wrong thing - push a retry tag instead (see "Fixing a failed release build" below).
 
+```bash
+OTTO_VERSION=$(node -p "require('./package.json').version")
+for package in highlight relay protocol client plugin server cli; do
+  npm dist-tag add "@otto-code/$package@$OTTO_VERSION" beta
+done
+```
+
+Verify both npm tags now resolve to `OTTO_VERSION` before considering the
+stable release complete.
+
+The Docker workflow builds images from the checked-out source tree on pull requests and on `main` as non-publishing checks. Stable `vX.Y.Z` tag pushes publish `ghcr.io/Draek2077/otto-code:X.Y.Z` and `ghcr.io/Draek2077/otto-code:latest`; beta `vX.Y.Z-beta.N` tag pushes publish only `ghcr.io/Draek2077/otto-code:X.Y.Z-beta.N` and never move `latest`.
+
+The production relay is the Elixir service in [Draek2077/otto-code-relay](https://github.com/Draek2077/otto-code-relay), with its own deployment process. Otto releases and pushes to this repository do not deploy it. The Cloudflare relay code and workflow in this repository are legacy and are not used in production.
+
 **Stable means stable.** If the user says "stable" or "ship stable", do not ask whether they want a beta first. They picked stable; treat it as a direct stable release. Only run the beta flow when the user explicitly says "beta".
 
 ## Manual step-by-step

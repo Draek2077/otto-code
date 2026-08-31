@@ -12,6 +12,7 @@ on:
       - "packages/app/**"
       - "packages/expo-two-way-audio/**"
       - "packages/highlight/**"
+      - "packages/plugin/**"
       - "packages/protocol/**"
       - "packages/client/**"
       - "packages/server/**"
@@ -54,7 +55,7 @@ jobs:
 
           export OTTO_HOME
           OTTO_HOME="$(mktemp -d)"
-          export OTTO_LISTEN=127.0.0.1:6767
+          export OTTO_LISTEN=127.0.0.1:6868
 
           WRAPPER_LOG="$OTTO_HOME/otto-server-wrapper.log"
 
@@ -75,7 +76,7 @@ jobs:
             if STATUS_JSON="$(./result/bin/otto daemon status --json)" \
               && jq -e '.connectedDaemon == "reachable"' <<<"$STATUS_JSON" >/dev/null; then
               echo "$STATUS_JSON"
-              curl --fail --silent --show-error http://127.0.0.1:6767/ >"$OTTO_HOME/web-ui.html"
+              curl --fail --silent --show-error http://127.0.0.1:6868/ >"$OTTO_HOME/web-ui.html"
               [[ -s "$OTTO_HOME/web-ui.html" ]]
               exit 0
             fi
@@ -123,8 +124,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          app="result-desktop/Applications/Paseo.app"
-          test -x "$app/Contents/MacOS/Paseo"
-          test -L result-desktop/bin/paseo-desktop
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "sh.paseo.desktop"
+          app="result-desktop/Applications/Otto.app"
+          test -x "$app/Contents/MacOS/Otto"
+          test -L result-desktop/bin/otto-desktop
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "ai.ottocode.desktop"
           find "$app" -name Info.plist -print0 | xargs -0 -n 1 plutil -lint

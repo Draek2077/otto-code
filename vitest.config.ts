@@ -61,6 +61,7 @@ export default defineConfig({
     env: {
       PASEO_GIT_MAX_PROCESSES_PER_SECOND: "10000",
     },
-    exclude: [...configDefaults.exclude, "**/.claude/**", "**/.dev/**"],
+    // `.tmp` is scratch per AGENTS.md and can hold stale copies of the repo.
+    exclude: [...configDefaults.exclude, "**/.claude/**", "**/.dev/**", "**/.tmp/**"],
   },
 });

@@ -26,6 +26,7 @@ import {
   terracottaColors,
 } from "./theme-palettes";
 import type { ThemeVariantName } from "./theme-palettes";
+export { buildDarkSemanticColors, buildLightSemanticColors } from "./theme-palettes";
 // PROVENANCE: Otto's theme set is authored locally in this fork and is NOT
 // inherited from upstream Paseo. `light`/`dark` predate the fork, but the theme
 // variants (`zinc`/`midnight`/`claude`/`ghostty`, added in 2f77674c5, plus
@@ -58,11 +59,16 @@ export const SPACING = {
   32: 128,
 } as const;
 
+// Otto's scale runs a step larger than upstream's at every rung - a deliberate
+// look-and-feel choice. `content` is upstream's addition (readable body copy
+// gets its own size, separate from `base` chrome text), adopted here on Otto's
+// scale rather than at their 15.
 export const FONT_SIZE = {
   xs: 12,
   code: 12,
   sm: 14,
   base: 16,
+  content: 17,
   lg: 18,
   xl: 20,
   "2xl": 22,
@@ -232,7 +238,7 @@ const commonTheme: CommonTheme = {
   layout: { chatMaxWidth: resolveChatMaxWidth("default") },
 };
 
-function buildDarkTheme(semanticColors: ReturnType<typeof buildDarkSemanticColors>) {
+export function buildDarkTheme(semanticColors: ReturnType<typeof buildDarkSemanticColors>) {
   return {
     colorScheme: "dark" as const,
     colors: {
@@ -245,7 +251,7 @@ function buildDarkTheme(semanticColors: ReturnType<typeof buildDarkSemanticColor
   } as const;
 }
 
-function buildLightTheme(semanticColors: ReturnType<typeof buildLightSemanticColors>) {
+export function buildLightTheme(semanticColors: ReturnType<typeof buildLightSemanticColors>) {
   return {
     colorScheme: "light" as const,
     colors: {
@@ -269,6 +275,8 @@ export const darkPureBlackTheme = buildDarkTheme(pureBlackDarkColors);
 export const darkObsidianTheme = buildDarkTheme(obsidianDarkColors);
 
 export const daylightTheme = buildLightTheme(daylightColors);
+// Upstream calls the default light theme `lightTheme`; Otto's is Daylight.
+export const lightTheme = daylightTheme;
 export const pastelTheme = buildLightTheme(sherbetColors);
 export const meadowTheme = buildLightTheme(meadowColors);
 export const terracottaTheme = buildLightTheme(terracottaColors);
@@ -288,10 +296,35 @@ export const blackTheme: typeof darkTheme = {
 
 // Unistyles registers only the adaptive light/dark mirrors plus the scoped
 // black chat surface. Named palette variants repaint these keys at runtime.
+// Upstream's plugin theming: a plugin may contribute a palette, which is
+// registered as its own pair of Unistyles themes and selected through the
+// `plugin` preference. Otto keeps its own theme roster (see the provenance note
+// above) and hosts upstream's mechanism on top of it - the plugin themes start
+// as Otto's light/dark and are overwritten at runtime when a plugin supplies
+// one, so nothing here changes Otto's look until a plugin is active.
+export const PLUGIN_THEME_PREFERENCE = "plugin";
+export const PLUGIN_THEME_NAMES = {
+  light: "pluginLight",
+  dark: "pluginDark",
+} as const;
+
 export const REGISTERED_THEMES = {
   light: daylightTheme,
   dark: darkTheme,
   black: blackTheme,
+  [PLUGIN_THEME_NAMES.light]: daylightTheme,
+  [PLUGIN_THEME_NAMES.dark]: darkTheme,
+} as const;
+
+// Otto's preference names already match their Unistyles keys, so this is an
+// identity map. It exists because upstream's plugin code resolves preferences
+// through it rather than assuming the two namespaces line up.
+export const THEME_TO_UNISTYLES = {
+  light: "light",
+  dark: "dark",
+  black: "black",
+  [PLUGIN_THEME_NAMES.light]: PLUGIN_THEME_NAMES.light,
+  [PLUGIN_THEME_NAMES.dark]: PLUGIN_THEME_NAMES.dark,
 } as const;
 
 // Keep compatibility with existing code

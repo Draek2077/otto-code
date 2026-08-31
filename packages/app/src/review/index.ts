@@ -36,18 +36,23 @@ export {
 } from "./delete-dialogs";
 
 export {
-  getInlineReviewThreadHeight,
   getInlineReviewThreadState,
-  getInlineReviewThreadViewportStyle,
   getSplitInlineReviewThreadState,
+  isInlineReviewEditorForTarget,
+  type InlineReviewActions,
+  type InlineReviewEditorState,
+} from "./geometry";
+
+export { INLINE_REVIEW_EDITOR_HEIGHT } from "./geometry";
+
+export {
+  getInlineReviewThreadHeight,
+  getInlineReviewThreadViewportStyle,
   groupInlineReviewCommentsByTarget,
+  InlineReviewAddButton,
   InlineReviewEditor,
   InlineReviewGutterCell,
   InlineReviewThread,
-  INLINE_REVIEW_EDITOR_HEIGHT,
-  isInlineReviewEditorForTarget,
   SMALL_ACTION_HIT_SLOP,
   useInlineReviewController,
-  type InlineReviewActions,
-  type InlineReviewEditorState,
 } from "./surface";

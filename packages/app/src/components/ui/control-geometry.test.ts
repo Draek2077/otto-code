@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buttonControlHeight,
   createControlGeometry,
   getControlInteractionPhase,
 } from "@/components/ui/control-geometry";
@@ -20,6 +21,8 @@ const theme = {
     borderAccent: "#2F3534",
     borderInteractiveHover: "rgba(32, 116, 74, 0.45)",
   },
+  // Otto's scale (see styles/theme.ts), which the assertions below are written
+  // against - a control's field text is its theme's `sm`, not a literal.
   fontSize: {
     xs: 12,
     sm: 14,
@@ -143,6 +146,9 @@ describe("control geometry", () => {
     expect(geometry.buttonXs.minHeight).toBe(28);
     expect(geometry.buttonSm.minHeight).toBe(32);
     expect(geometry.buttonMd.minHeight).toBe(44);
+    expect(geometry.buttonXs.minHeight).toBe(buttonControlHeight.xs);
+    expect(geometry.buttonSm.minHeight).toBe(buttonControlHeight.sm);
+    expect(geometry.buttonMd.minHeight).toBe(buttonControlHeight.md);
 
     // xs and sm share their label size with the matching button tier. md does
     // not: a segmented md is a 44px track heading a panel, and it takes the
@@ -158,5 +164,16 @@ describe("control geometry", () => {
     expect(geometry.segmentedSegmentXs.paddingHorizontal).toBe(8);
     expect(geometry.segmentedSegmentSm.paddingHorizontal).toBe(8);
     expect(geometry.segmentedSegmentMd.paddingHorizontal).toBe(8);
+    // Segments sit inside a track, so they run one padding step tighter than a
+    // standalone button of the same size — the gap between segments reads as the padding.
+    expect(geometry.segmentedSegmentXs.paddingHorizontal).toBeLessThan(
+      geometry.buttonXs.paddingHorizontal,
+    );
+    expect(geometry.segmentedSegmentSm.paddingHorizontal).toBeLessThan(
+      geometry.buttonSm.paddingHorizontal,
+    );
+    expect(geometry.segmentedSegmentMd.paddingHorizontal).toBeLessThan(
+      geometry.buttonMd.paddingHorizontal,
+    );
   });
 });

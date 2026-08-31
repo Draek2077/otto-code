@@ -29,6 +29,9 @@ export function normalizeWorkspaceTabTarget(
       ...(architecturalViewDraft ? { architecturalViewDraft } : {}),
     };
   }
+  if (value.kind === "new_tab") {
+    return { kind: "new_tab" };
+  }
   if (value.kind === "agent") {
     const agentId = trimNonEmpty(value.agentId);
     return agentId ? { kind: "agent", agentId } : null;
@@ -115,14 +118,54 @@ export function normalizeWorkspaceTabTarget(
       ? { kind: "orchestrationGraph", graphId, runId }
       : { kind: "orchestrationGraph", graphId };
   }
-  // DEFERRED(paseoDiffTab): `working_diff` and `commit_diff` are in the target
-  // union because Otto inherits Paseo's tab model wholesale, but neither has a
-  // registered panel here - we kept our own Changes view instead of adopting
-  // their diff tabs. Normalizing them would hand the store a target that opens
-  // an empty pane, so they deliberately fall through to null. This is NOT the
-  // same bug as `provider_subagent` above, which does have a panel and was only
-  // missing this branch. Adopt the panels first, then add the branches.
+  // These three are identified by their kind alone - one per workspace, no id
+  // to carry - and each has a registered panel.
+  if (value.kind === "files" || value.kind === "changes_tree" || value.kind === "pull_request") {
+    return { kind: value.kind };
+  }
+  if (value.kind === "plugin") {
+    return normalizePluginTabTarget(value);
+  }
+  // Both diff kinds now have panels (`panels/diff-panel.tsx` renders them
+  // through Otto's own Changes view), so they normalize like any other target.
+  if (value.kind === "working_diff") {
+    return normalizeWorkingDiffTabTarget(value);
+  }
+  if (value.kind === "commit_diff") {
+    const sha = trimNonEmpty(value.sha);
+    return sha ? { kind: "commit_diff", sha } : null;
+  }
   return null;
+}
+
+/**
+ * The working diff keeps the file it was asked to focus, so reopening the tab
+ * lands on that file rather than the top of the change set.
+ */
+function normalizeWorkingDiffTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "working_diff" }>,
+): WorkspaceTabTarget | null {
+  const focusPath = trimNonEmpty(value.focusPath)?.replace(/\\/g, "/") ?? null;
+  const focusRequestId = normalizePositiveInteger(value.focusRequestId);
+  return {
+    kind: "working_diff" as const,
+    ...(focusPath ? { focusPath } : {}),
+    ...(focusRequestId ? { focusRequestId } : {}),
+  };
+}
+
+/** A plugin panel is identified by the plugin, the panel, and what it is bound to. */
+function normalizePluginTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "plugin" }>,
+): WorkspaceTabTarget | null {
+  const pluginId = trimNonEmpty(value.pluginId);
+  const panelId = trimNonEmpty(value.panelId);
+  if (!pluginId || !panelId) return null;
+  if (value.context === "workspace") {
+    return { kind: "plugin", pluginId, panelId, context: "workspace" };
+  }
+  const agentId = trimNonEmpty(value.agentId);
+  return agentId ? { kind: "plugin", pluginId, panelId, context: "agent", agentId } : null;
 }
 
 /**
@@ -498,10 +541,22 @@ const SIMPLE_TAB_ID_BUILDERS: {
   gitLog: (target) => `gitlog_${target.operation}`,
   contextManagement: () => "context-management",
   projectKnowledge: () => "project-knowledge",
+  // One per workspace, so the kind is the whole identity. Without these they
+  // all fall through to the file builder and collide on a single id, which
+  // silently drops every one after the first.
+  files: () => "files",
+  changes_tree: () => "changes_tree",
+  pull_request: () => "pull_request",
+  plugin: (target) => {
+    const identity = `${target.pluginId.length}_${target.pluginId}_${target.panelId.length}_${target.panelId}`;
+    return target.context === "workspace"
+      ? `plugin_workspace_${identity}`
+      : `plugin_agent_${identity}_${target.agentId.length}_${target.agentId}`;
+  },
   orchestrationGraph: (target) => `orchestration-graph_${target.graphId}`,
   provider_subagent: (target) => `provider-subagent_${target.parentAgentId}_${target.subagentId}`,
-  commit_diff: (target) => `commit-diff_${target.sha}`,
-  working_diff: () => "working-diff",
+  commit_diff: (target) => `commit_diff_${target.sha}`,
+  working_diff: () => "working_diff",
   visualizer: (target) => (target.runId ? `visualizer_run_${target.runId}` : "visualizer"),
 };
 

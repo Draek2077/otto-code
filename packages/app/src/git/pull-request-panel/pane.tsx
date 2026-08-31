@@ -836,7 +836,7 @@ function CheckRow({
             {isAddingLogsToChat ? "Adding..." : "Add to chat"}
           </Button>
         ) : null}
-        {check.duration && <Text style={sectionKitStyles.checkDuration}>{check.duration}</Text>}
+        {check.timing && <Text style={sectionKitStyles.checkDuration}>{check.timing}</Text>}
       </View>
     </Pressable>
   );

@@ -253,13 +253,9 @@ import {
   buildSettingsHostRoute,
   buildSettingsHostSectionRoute,
 } from "@/utils/host-routes";
-import {
-  useWorkspaceTerminals,
-  type TerminalProfileInput,
-} from "@/screens/workspace/terminals/use-workspace-terminals";
+import { useWorkspaceTerminals } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import {
-  resolveTerminalProfileLaunch,
   getTerminalProfileIcon,
   resolveTerminalProfiles,
 } from "@otto-code/protocol/terminal-profiles";
@@ -295,6 +291,9 @@ import {
   WorkspaceCenterContent,
   WorkspaceFallbackTabs,
 } from "./workspace-otto-controls";
+import { type TerminalProfile } from "@otto-code/protocol/messages";
+import { openPreferredWorkspacePreview } from "@/workspace-tabs/open-beside";
+import { type PaneHost } from "@/panels/panel-manifest";
 
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
@@ -1185,7 +1184,7 @@ interface WorkspaceHeaderMenuProps {
   menuSettingsIcon: ReactElement;
   onCreateDraftTab: () => void;
   onCreateTerminal: () => void;
-  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
   onCreateBrowser: () => void;
   onOpenImportSheet: () => void;
   onCopyWorkspacePath: () => void;
@@ -1197,7 +1196,7 @@ interface WorkspaceHeaderMenuProps {
 interface HeaderMenuProfileItemProps {
   profile: { id: string; name: string; command: string; args?: string[]; icon?: string };
   disabled: boolean;
-  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
 }
 
 function HeaderMenuProfileItem({
@@ -1206,7 +1205,8 @@ function HeaderMenuProfileItem({
   onCreateTerminalWithProfile,
 }: HeaderMenuProfileItemProps) {
   const handleSelect = useCallback(() => {
-    onCreateTerminalWithProfile(resolveTerminalProfileLaunch(profile, ""));
+    // The stored profile travels; the create path resolves the launch itself.
+    onCreateTerminalWithProfile(profile);
   }, [onCreateTerminalWithProfile, profile]);
 
   const icon = getTerminalProfileIcon(profile);
@@ -1654,7 +1654,7 @@ interface WorkspaceHeaderTitleBarProps {
   menuSettingsIcon: ReactElement;
   onCreateDraftTab: () => void;
   onCreateTerminal: () => void;
-  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
   onCreateBrowser: () => void;
   onOpenImportSheet: () => void;
   onCopyWorkspacePath: () => void;
@@ -2370,6 +2370,8 @@ function WorkspaceScreenContent({
     (state) => state.openChildTabFocused,
   );
   const focusWorkspacePane = useWorkspaceLayoutStore((state) => state.focusPane);
+  const setWorkspaceTabState = useWorkspaceLayoutStore((state) => state.setTabState);
+  const openInSidePanePreferences = useSettings((settings) => settings.openInSidePane);
   const findKnowledgeFileSelection = useCallback(
     async (path: string, knowledgeWorkspaceId: string) => {
       const repositorySelection = findRepositoryKnowledgeFileSelection(path);
@@ -2975,6 +2977,10 @@ function WorkspaceScreenContent({
         terminalsHydrated: terminalsQuery.isSuccess,
         knownTerminalIds,
         standaloneTerminalIds,
+        // A terminal being created has no id yet, so reconciliation must be
+        // told it is coming or it prunes the tab that is about to hold it.
+        hasActivePendingTerminalCreate:
+          createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
         hasActivePendingDraftCreate: hasActivePendingDraftCreateInWorkspace,
       }),
     );
@@ -2992,6 +2998,8 @@ function WorkspaceScreenContent({
     terminalsQuery.isSuccess,
     uiTabs,
     reconcileAgentVisibility,
+    createTerminalMutation.isPending,
+    pendingTerminalCreateInput,
   ]);
 
   const activeTabId = focusedPaneTabState.activeTabId;
@@ -3513,7 +3521,7 @@ function WorkspaceScreenContent({
   );
 
   const handleCreateTerminal = useCallback(
-    (input?: { paneId?: string; profile?: TerminalProfileInput }) => {
+    (input?: { paneId?: string; profile?: TerminalProfile }) => {
       // Focus the pane synchronously, at click time, rather than waiting for
       // the daemon round-trip in createTerminal's onSuccess. Otherwise the
       // tab lands wherever the layout's focused pane happens to be once the
@@ -3521,14 +3529,17 @@ function WorkspaceScreenContent({
       if (input?.paneId && persistenceKey) {
         focusWorkspacePane(persistenceKey, input.paneId);
       }
-      createTerminal(input);
+      createTerminal({
+        destination: input?.paneId ? { kind: "open", paneId: input.paneId } : { kind: "open" },
+        ...(input?.profile ? { profile: input.profile } : {}),
+      });
     },
     [createTerminal, focusWorkspacePane, persistenceKey],
   );
 
   const handleCreateTerminalWithProfile = useCallback(
-    (profile: TerminalProfileInput) => {
-      createTerminal({ profile });
+    (profile: TerminalProfile) => {
+      createTerminal({ profile, destination: { kind: "open" } });
     },
     [createTerminal],
   );
@@ -4426,11 +4437,13 @@ function WorkspaceScreenContent({
       tab: WorkspaceTabDescriptor;
       paneId?: string | null;
       focusPaneBeforeOpen?: boolean;
+      host?: PaneHost;
     }) =>
       buildWorkspacePaneContentModel({
         tab: input.tab,
         normalizedServerId,
         normalizedWorkspaceId,
+        host: input.host ?? "main",
         onOpenTab: (target) => {
           if (!persistenceKey) {
             return;
@@ -4441,6 +4454,30 @@ function WorkspaceScreenContent({
           const tabId = openWorkspaceChildTabFocused(persistenceKey, target, input.tab.tabId);
           if (tabId) {
             navigateToTabId(tabId);
+          }
+        },
+        onOpenPreferredTarget: (target, source) => {
+          if (!persistenceKey) {
+            return;
+          }
+          const tabId = openPreferredWorkspacePreview({
+            isCompact: isMobile,
+            workspaceKey: persistenceKey,
+            serverId: normalizedServerId,
+            workspaceId: normalizedWorkspaceId,
+            explorerSidebarPaneId: null,
+            lastMainPaneId: input.paneId ?? null,
+            target,
+            source,
+            preferences: openInSidePanePreferences,
+          });
+          if (tabId) {
+            navigateToTabId(tabId);
+          }
+        },
+        onSetCurrentTabState: (state) => {
+          if (persistenceKey) {
+            setWorkspaceTabState(persistenceKey, input.tab.tabId, state);
           }
         },
         onCloseCurrentTab: () => {
@@ -4472,9 +4509,12 @@ function WorkspaceScreenContent({
       normalizedServerId,
       normalizedWorkspaceId,
       openImportSheet,
+      isMobile,
+      openInSidePanePreferences,
       openWorkspaceChildTabFocused,
       persistenceKey,
       retargetWorkspaceTab,
+      setWorkspaceTabState,
     ],
   );
   const focusedPaneId = useMemo(

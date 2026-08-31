@@ -1,6 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync, rmSync } from "node:fs";
-import { promises as fsPromises } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -82,6 +81,12 @@ function writeCursorStateDb(homeDir: string, rows: Record<string, string | Uint8
     insert.run(key, value);
   }
   db.close();
+}
+
+function writeCursorAuthJson(homeDir: string, accessToken: string): void {
+  const dir = join(homeDir, ".config", "cursor");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "auth.json"), JSON.stringify({ accessToken }));
 }
 
 function writeGrokAuth(home: string, auth: Record<string, unknown>): void {
@@ -522,28 +527,6 @@ describe("real provider usage fetchers", () => {
     expect(fetchApi).not.toHaveBeenCalled();
   });
 
-  it("refreshes Claude access tokens on 401 and retries", async () => {
-    writeClaudeCredentials(claudeHome, "at_expired", "rt_valid");
-    let usageCalls = 0;
-    fetchApi = vi.fn(async (url: RequestInfo | URL) => {
-      const endpoint = url.toString();
-      if (endpoint === "https://api.anthropic.com/api/oauth/usage") {
-        usageCalls += 1;
-        if (usageCalls === 1) return new Response(null, { status: 401 });
-        return jsonResponse(makeClaudeResponse());
-      }
-      if (endpoint === "https://platform.claude.com/v1/oauth/token") {
-        return jsonResponse({ access_token: "at_refreshed", refresh_token: "rt_new" });
-      }
-      throw new Error(`Unmocked: ${endpoint}`);
-    }) as never;
-
-    const result = await service().listUsage();
-
-    expect(findProvider(result, "claude").status).toBe("available");
-    expect(usageCalls).toBe(2);
-  });
-
   it("preserves unmodeled Claude credential fields across a token refresh", async () => {
     writeFileSync(
       join(claudeHome, ".credentials.json"),
@@ -668,6 +651,8 @@ describe("real provider usage fetchers", () => {
           "https://chatgpt.com/backend-api/wham/usage",
           () => new Response("<html>Login</html>", { status: 200 }),
         ],
+        // Otto refreshes on an auth failure, so the token endpoint is part of
+        // this path and has to be mocked even though it is expected to fail.
         ["https://auth.openai.com/oauth/token", () => new Response(null, { status: 401 })],
       ]),
     );
@@ -675,44 +660,6 @@ describe("real provider usage fetchers", () => {
     const result = await service().listUsage();
 
     expect(findProvider(result, "codex").status).toBe("unavailable");
-  });
-
-  it("persists refreshed Codex tokens to the auth file that was read", async () => {
-    const alternateCodexHome = mkdtempSync(join(tmpdir(), "usage-test-codex-alt-"));
-    process.env["CODEX_HOME"] = alternateCodexHome;
-    writeFileSync(join(alternateCodexHome, "auth.json"), JSON.stringify({ tokens: {} }));
-    writeCodexAuth(codexHome, "at_codex_stale", "rt_codex_valid");
-
-    let usageCalls = 0;
-    fetchApi = mockFetch(
-      new Map([
-        [
-          "https://chatgpt.com/backend-api/wham/usage",
-          () => {
-            usageCalls += 1;
-            if (usageCalls === 1) return new Response(null, { status: 401 });
-            return jsonResponse(makeCodexResponse());
-          },
-        ],
-        [
-          "https://auth.openai.com/oauth/token",
-          () => jsonResponse({ access_token: "at_codex_fresh", refresh_token: "rt_codex_fresh" }),
-        ],
-      ]),
-    );
-
-    try {
-      const result = await service().listUsage();
-
-      const refreshedAuth = JSON.parse(readFileSync(join(codexHome, "auth.json"), "utf8"));
-      const untouchedAuth = JSON.parse(readFileSync(join(alternateCodexHome, "auth.json"), "utf8"));
-      expect(findProvider(result, "codex").status).toBe("available");
-      expect(refreshedAuth.tokens.access_token).toBe("at_codex_fresh");
-      expect(refreshedAuth.tokens.refresh_token).toBe("rt_codex_fresh");
-      expect(untouchedAuth.tokens.access_token).toBeUndefined();
-    } finally {
-      rmSync(alternateCodexHome, { recursive: true, force: true });
-    }
   });
 
   it("preserves unmodeled Codex auth fields across a token refresh", async () => {
@@ -869,6 +816,52 @@ describe("real provider usage fetchers", () => {
     const cursor = findProvider(await service({ cursorHomeDir: homeDir }).listUsage(), "cursor");
 
     expect(authorization).toBe("Bearer cursor_legacy_jwt");
+    expect(cursor.status).toBe("available");
+  });
+
+  it("reads the Cursor token from cursor-agent ~/.config/cursor/auth.json when desktop state is absent", async () => {
+    writeCursorAuthJson(homeDir, "cursor_cli_jwt");
+    let authorization: string | null = null;
+    fetchApi = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      authorization = (init?.headers as Record<string, string> | undefined)?.Authorization ?? null;
+      return jsonResponse({
+        planUsage: {
+          totalSpend: "1500",
+          includedSpend: "1000",
+          bonusSpend: "500",
+          remaining: "2500",
+          limit: "4000",
+        },
+        billingCycleStart: "2026-01-14T12:42:14.000Z",
+        billingCycleEnd: "2026-02-14T12:42:14.000Z",
+      });
+    }) as unknown as typeof fetch;
+
+    const cursor = findProvider(await service({ cursorHomeDir: homeDir }).listUsage(), "cursor");
+
+    expect(authorization).toBe("Bearer cursor_cli_jwt");
+    expect(cursor).toMatchObject({
+      status: "available",
+      balances: [expect.objectContaining({ id: "plan_usage", used: 15, remaining: 25, limit: 40 })],
+    });
+  });
+
+  it("prefers the desktop state.vscdb token over cursor-agent auth.json", async () => {
+    writeCursorStateDb(homeDir, { "cursorAuth/accessToken": "cursor_desktop_jwt" });
+    writeCursorAuthJson(homeDir, "cursor_cli_jwt");
+    let authorization: string | null = null;
+    fetchApi = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      authorization = (init?.headers as Record<string, string> | undefined)?.Authorization ?? null;
+      return jsonResponse({
+        planUsage: { totalSpend: "0", remaining: "100", limit: "100" },
+        billingCycleStart: null,
+        billingCycleEnd: null,
+      });
+    }) as unknown as typeof fetch;
+
+    const cursor = findProvider(await service({ cursorHomeDir: homeDir }).listUsage(), "cursor");
+
+    expect(authorization).toBe("Bearer cursor_desktop_jwt");
     expect(cursor.status).toBe("available");
   });
 
@@ -1143,181 +1136,27 @@ describe("real provider usage fetchers", () => {
     expect(kimi.status).toBe("available");
   });
 
-  it("persists refreshed Kimi tokens to the credential file that was read", async () => {
-    writeKimiCredentials(join(homeDir, ".kimi-code"), "at_kimi_expired", {
-      preserved_field: "keep-me",
-    });
-    const authorization: Array<string | null> = [];
+  it("returns unavailable on 401 without refreshing or rewriting the credential file", async () => {
+    writeKimiCredentials(join(homeDir, ".kimi-code"), "at_kimi_expired");
+    const credPath = kimiCredentialPath(join(homeDir, ".kimi-code"));
+    const before = readFileSync(credPath, "utf8");
     let usageCalls = 0;
-    fetchApi = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    fetchApi = vi.fn(async (url: RequestInfo | URL) => {
       const endpoint = url.toString();
       if (endpoint === "https://api.kimi.com/coding/v1/usages") {
         usageCalls += 1;
-        authorization.push(
-          (init?.headers as Record<string, string> | undefined)?.Authorization ?? null,
-        );
-        if (usageCalls === 1) return new Response(null, { status: 401 });
-        return jsonResponse({ usage: { limit: "100", remaining: "74" } });
+        return new Response(null, { status: 401 });
       }
-      if (endpoint === "https://auth.kimi.com/api/oauth/token") {
-        expect(init?.method).toBe("POST");
-        expect(init?.body?.toString()).toContain("grant_type=refresh_token");
-        expect(init?.body?.toString()).toContain("refresh_token=rt_kimi");
-        return jsonResponse({
-          access_token: "at_kimi_fresh",
-          refresh_token: "rt_kimi_rotated",
-          expires_in: 900,
-        });
-      }
-      throw new Error(`Unmocked fetch: ${endpoint}`);
-    }) as never;
-
-    const result = await service({ kimiHomeDir: homeDir }).listUsage();
-    const persisted = JSON.parse(
-      readFileSync(kimiCredentialPath(join(homeDir, ".kimi-code")), "utf8"),
-    );
-
-    expect(findProvider(result, "kimi").status).toBe("available");
-    expect(authorization).toEqual(["Bearer at_kimi_expired", "Bearer at_kimi_fresh"]);
-    expect(persisted).toMatchObject({
-      access_token: "at_kimi_fresh",
-      refresh_token: "rt_kimi_rotated",
-      expires_in: 900,
-      scope: "kimi-code",
-      preserved_field: "keep-me",
-    });
-    expect(persisted.expires_at).toBeGreaterThan(Date.now() / 1000);
-  });
-
-  it("prefers a Kimi token rewritten on disk over refreshing again", async () => {
-    const kimiHome = join(homeDir, ".kimi-code");
-    writeKimiCredentials(kimiHome, "at_kimi_old");
-    let usageCalls = 0;
-    fetchApi = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-      const endpoint = url.toString();
-      if (endpoint === "https://api.kimi.com/coding/v1/usages") {
-        usageCalls += 1;
-        if (usageCalls === 1) {
-          writeKimiCredentials(kimiHome, "at_kimi_rewritten");
-          return new Response(null, { status: 401 });
-        }
-        expect((init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
-          "Bearer at_kimi_rewritten",
-        );
-        return jsonResponse({ usage: { limit: "100", remaining: "50" } });
-      }
-      throw new Error(`Unmocked fetch: ${endpoint}`);
+      // The read-only fetcher must never hit the OAuth token endpoint.
+      throw new Error(`Unmocked: ${endpoint}`);
     }) as never;
 
     const result = await service({ kimiHomeDir: homeDir }).listUsage();
 
-    expect(findProvider(result, "kimi").status).toBe("available");
-    expect(usageCalls).toBe(2);
-  });
-
-  it("keeps Kimi credentials rotated by the CLI during the refresh", async () => {
-    const kimiHome = join(homeDir, ".kimi-code");
-    writeKimiCredentials(kimiHome, "at_kimi_expired");
-    fetchApi = mockFetch(
-      new Map([
-        ["https://api.kimi.com/coding/v1/usages", () => new Response(null, { status: 401 })],
-        [
-          "https://auth.kimi.com/api/oauth/token",
-          () => {
-            writeKimiCredentials(kimiHome, "at_kimi_cli", { refresh_token: "rt_kimi_cli" });
-            return jsonResponse({
-              access_token: "at_kimi_fresh",
-              refresh_token: "rt_kimi_rotated",
-              expires_in: 900,
-            });
-          },
-        ],
-      ]),
-    );
-
-    await service({ kimiHomeDir: homeDir }).listUsage();
-    const persisted = JSON.parse(readFileSync(kimiCredentialPath(kimiHome), "utf8"));
-
-    expect(persisted).toMatchObject({
-      access_token: "at_kimi_cli",
-      refresh_token: "rt_kimi_cli",
-    });
-  });
-
-  it("discards a refreshed Kimi merge if the CLI rotates credentials after the guard but before the rename", async () => {
-    const kimiHome = join(homeDir, ".kimi-code");
-    writeKimiCredentials(kimiHome, "at_kimi_expired");
-    fetchApi = mockFetch(
-      new Map([
-        ["https://api.kimi.com/coding/v1/usages", () => new Response(null, { status: 401 })],
-        [
-          "https://auth.kimi.com/api/oauth/token",
-          () =>
-            jsonResponse({
-              access_token: "at_kimi_fresh",
-              refresh_token: "rt_kimi_fresh",
-              expires_in: 900,
-            }),
-        ],
-      ]),
-    );
-
-    // The credential-file guard runs, passes, and only then does the CLI rotate the file
-    // — simulated by mutating the file as a side effect of the temp-file write, which is
-    // the async I/O step that sits between the guard read and the final rename.
-    const realWriteFile = fsPromises.writeFile;
-    const writeFileSpy = vi
-      .spyOn(fsPromises, "writeFile")
-      .mockImplementationOnce(async (...args: Parameters<typeof fsPromises.writeFile>) => {
-        writeKimiCredentials(kimiHome, "at_kimi_cli", { refresh_token: "rt_kimi_cli" });
-        return realWriteFile(...args);
-      });
-
-    await service({ kimiHomeDir: homeDir }).listUsage();
-    const persisted = JSON.parse(readFileSync(kimiCredentialPath(kimiHome), "utf8"));
-
-    expect(persisted).toMatchObject({
-      access_token: "at_kimi_cli",
-      refresh_token: "rt_kimi_cli",
-    });
-
-    writeFileSpy.mockRestore();
-  });
-
-  it("does not recreate a Kimi credential file deleted during the refresh", async () => {
-    const credentialPath = kimiCredentialPath(join(homeDir, ".kimi-code"));
-    writeKimiCredentials(join(homeDir, ".kimi-code"), "at_kimi_expired");
-    fetchApi = mockFetch(
-      new Map([
-        ["https://api.kimi.com/coding/v1/usages", () => new Response(null, { status: 401 })],
-        [
-          "https://auth.kimi.com/api/oauth/token",
-          () => {
-            rmSync(credentialPath, { force: true });
-            return jsonResponse({ access_token: "at_kimi_fresh", expires_in: 900 });
-          },
-        ],
-      ]),
-    );
-
-    const result = await service({ kimiHomeDir: homeDir }).listUsage();
-
     expect(findProvider(result, "kimi").status).toBe("unavailable");
-    expect(existsSync(credentialPath)).toBe(false);
-  });
-
-  it("returns unavailable Kimi usage when the token refresh is rejected", async () => {
-    writeKimiCredentials(join(homeDir, ".kimi-code"), "at_kimi_expired");
-    fetchApi = mockFetch(
-      new Map([
-        ["https://api.kimi.com/coding/v1/usages", () => new Response(null, { status: 401 })],
-        ["https://auth.kimi.com/api/oauth/token", () => new Response(null, { status: 400 })],
-      ]),
-    );
-
-    const result = await service({ kimiHomeDir: homeDir }).listUsage();
-
-    expect(findProvider(result, "kimi").status).toBe("unavailable");
+    expect(usageCalls).toBe(1);
+    // The credentials file must be left untouched for the Kimi CLI to own.
+    expect(readFileSync(credPath, "utf8")).toBe(before);
   });
 
   it("does not refresh Kimi tokens read from the environment", async () => {
@@ -1490,8 +1329,8 @@ describe("usage bars escalate as they fill", () => {
   let codexHome: string;
 
   beforeEach(() => {
-    claudeHome = mkdtempSync(join(tmpdir(), "paseo-tone-claude-"));
-    codexHome = mkdtempSync(join(tmpdir(), "paseo-tone-codex-"));
+    claudeHome = mkdtempSync(join(tmpdir(), "otto-tone-claude-"));
+    codexHome = mkdtempSync(join(tmpdir(), "otto-tone-codex-"));
   });
 
   afterEach(() => {
@@ -1566,7 +1405,7 @@ describe("ClaudeQuotaProvider scoped weekly limits", () => {
   let claudeHome: string;
 
   beforeEach(() => {
-    claudeHome = mkdtempSync(join(tmpdir(), "paseo-claude-limits-"));
+    claudeHome = mkdtempSync(join(tmpdir(), "otto-claude-limits-"));
   });
 
   afterEach(() => {
@@ -1717,7 +1556,7 @@ describe("ClaudeQuotaProvider scoped limit reconciliation", () => {
   let claudeHome: string;
 
   beforeEach(() => {
-    claudeHome = mkdtempSync(join(tmpdir(), "paseo-claude-matrix-"));
+    claudeHome = mkdtempSync(join(tmpdir(), "otto-claude-matrix-"));
   });
 
   afterEach(() => {

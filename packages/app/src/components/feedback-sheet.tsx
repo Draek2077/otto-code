@@ -178,7 +178,6 @@ export function FeedbackSheet({ visible, onClose }: FeedbackSheetProps): ReactEl
                 accessibilityLabel="Feedback message"
                 initialValue={message}
                 resetKey={`feedback-message-${fieldResetKey}`}
-                value={message}
                 onChangeText={setMessage}
                 placeholder={MESSAGE_PLACEHOLDERS[kind]}
                 style={styles.multilineInput}
@@ -199,7 +198,6 @@ export function FeedbackSheet({ visible, onClose }: FeedbackSheetProps): ReactEl
               accessibilityLabel="Contact"
               initialValue={contact}
               resetKey={`feedback-contact-${fieldResetKey}`}
-              value={contact}
               onChangeText={setContact}
               placeholder="email or handle"
               style={styles.input}

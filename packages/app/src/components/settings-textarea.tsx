@@ -30,6 +30,7 @@ export function SettingsTextArea({
       testID={testID}
       accessibilityLabel={accessibilityLabel}
       value={value}
+      multiline
       onChangeText={onChangeText}
       placeholder={placeholder}
       placeholderTextColor={theme.colors.foregroundMuted}
@@ -49,7 +50,7 @@ export function SettingsTextAreaCard(props: SettingsTextAreaProps) {
 const styles = StyleSheet.create((theme) => ({
   input: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     paddingVertical: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],
     minHeight: 96,

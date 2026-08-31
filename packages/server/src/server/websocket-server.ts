@@ -54,12 +54,18 @@ import { asUint8Array, decodeBinaryFrame } from "@otto-code/protocol/binary-fram
 import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
 import type { HostnamesConfig } from "./hostnames.js";
 import { isHostnameAllowed } from "./hostnames.js";
-import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
+import {
+  Session,
+  type SessionLifecycleIntent,
+  type SessionOptions,
+  type SessionRuntimeMetrics,
+} from "./session.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { attachMutableProviderConfigOwner } from "./agent/mutable-provider-config-owner.js";
 import type {
   ActivityIncrementFn,
   ActivityRollups,
@@ -133,6 +139,8 @@ import { LspService } from "./lsp/service.js";
 import { SolutionService } from "./solution-model/service.js";
 import { killAllSharedDotnetProcesses } from "./dotnet-process-registry.js";
 import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
+import { DirectorySyncService } from "./directory-sync/index.js";
+import type { WorkspaceLabelService } from "./workspace-labels/index.js";
 import {
   APPLICATION_SOCKET_LEASE_CHECK_INTERVAL_MS,
   ApplicationSocketLease,
@@ -173,10 +181,13 @@ interface WebSocketConnectionIdentity {
 }
 
 interface WebSocketServerConfig {
-  allowedOrigins: Set<string>;
+  allowedOrigins?: Set<string>;
   hostnames?: HostnamesConfig;
+  getAllowedOrigins?: () => Set<string>;
+  getHostnames?: () => HostnamesConfig | undefined;
   daemonStatusRpc?: boolean;
   relayConfig?: boolean;
+  startPaused?: boolean;
 }
 
 type WebSocketRuntimeMetrics = SessionRuntimeMetrics &
@@ -481,7 +492,7 @@ export interface WebSocketLike {
   once: (event: "close" | "error", listener: (...args: unknown[]) => void) => void;
 }
 
-interface TrustedSessionConnection {
+interface TrustedSessionConnectionBase {
   kind: "trusted";
   session: Session;
   clientId: string;
@@ -489,8 +500,19 @@ interface TrustedSessionConnection {
   clientCapabilities: Record<string, unknown> | null;
   connectionLogger: pino.Logger;
   sockets: Set<WebSocketLike>;
+}
+
+interface ReconnectableSessionConnection extends TrustedSessionConnectionBase {
+  lifecycle: "reconnectable";
   externalDisconnectCleanupTimeout: ReturnType<typeof setTimeout> | null;
 }
+
+interface PluginSessionConnection extends TrustedSessionConnectionBase {
+  lifecycle: "ephemeral-plugin";
+  pluginId: string;
+}
+
+type TrustedSessionConnection = ReconnectableSessionConnection | PluginSessionConnection;
 
 interface HubConnection {
   kind: "hub";
@@ -610,7 +632,9 @@ export class VoiceAssistantWebSocketServer {
   private readonly pendingConnections: Map<WebSocketLike, PendingConnection> = new Map();
   private readonly sessions: Map<WebSocketLike, SessionConnection> = new Map();
   private readonly socketIdentities: Map<WebSocketLike, WebSocketConnectionIdentity> = new Map();
-  private readonly externalSessionsByKey: Map<string, TrustedSessionConnection> = new Map();
+  private readonly externalSessionsByKey: Map<string, ReconnectableSessionConnection> = new Map();
+  private readonly pluginSocketIds = new WeakMap<WebSocketLike, string>();
+  private readonly pluginSocketCleanup = new WeakMap<WebSocketLike, () => void>();
   private readonly serverId: string;
   private readonly daemonVersion: string;
   private readonly daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
@@ -618,6 +642,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
+  private readonly workspaceLabelService: WorkspaceLabelService | null;
   private readonly scheduleService: ScheduleService;
   private readonly runService: WorkflowService | null;
   private readonly graphStore: GraphStore | null;
@@ -709,9 +734,12 @@ export class VoiceAssistantWebSocketServer {
     | ((query: UsageLogPageQuery) => Promise<UsageLogPage>)
     | undefined;
   private readonly resetActivityStats: (() => Promise<void>) | undefined;
-  private acceptingConnections = true;
+  private connectionLifecycle: "starting" | "accepting" | "stopping" = "accepting";
   private readonly advertiseDaemonStatusRpc: boolean;
   private readonly advertiseRelayConfig: boolean;
+  private readonly directorySync = new DirectorySyncService();
+  private readonly pluginRuntime: SessionOptions["pluginRuntime"];
+  private readonly orchestrationSkills: SessionOptions["orchestrationSkills"];
 
   constructor(
     server: HTTPServer,
@@ -771,21 +799,30 @@ export class VoiceAssistantWebSocketServer {
     integrationBrowserAuthorization?: IntegrationBrowserAuthorizationService | null,
     zoomTeamChatAuthorization?: ZoomTeamChatManagedAuthorizationBroker | null,
     workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
+    pluginRuntime?: SessionOptions["pluginRuntime"],
+    orchestrationSkills?: SessionOptions["orchestrationSkills"],
+    workspaceLabelService?: WorkspaceLabelService,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
     this.advertiseDaemonStatusRpc = wsConfig.daemonStatusRpc !== false;
     this.advertiseRelayConfig = wsConfig.relayConfig !== false;
+    this.connectionLifecycle = wsConfig.startPaused === true ? "starting" : "accepting";
     this.serverId = serverId;
     this.daemonVersion = requireDaemonVersion(daemonVersion);
     this.daemonRuntimeConfig = daemonRuntimeConfig;
     this.browserToolsBroker = orNull(browserToolsBroker);
     this.previewDevServers = orNull(previewDevServers);
     this.hubRelationships = orNull(hubRelationships);
+    this.browserToolsBroker = orNull(browserToolsBroker);
+    this.hubRelationships = orNull(hubRelationships);
+    this.pluginRuntime = pluginRuntime;
+    this.orchestrationSkills = orchestrationSkills;
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
+    this.workspaceLabelService = orNull(workspaceLabelService);
     const requiredServices = requireWebSocketServices({
       scheduleService,
       checkoutDiffManager,
@@ -800,10 +837,10 @@ export class VoiceAssistantWebSocketServer {
     this.resetActivityStats = resetActivityStats;
     this.checkoutDiffManager = requiredServices.checkoutDiffManager;
     this.github = github ?? createGitHubService();
-    this.gitHostingResolver = gitHostingResolver ?? null;
+    this.gitHostingResolver = orNull(gitHostingResolver);
     this.workspaceGitService = workspaceGitService ?? createFallbackWorkspaceGitService();
     this.workspaceAutoName = workspaceAutoName;
-    this.agentAutoTitle = agentAutoTitle ?? null;
+    this.agentAutoTitle = orNull(agentAutoTitle);
     this.downloadTokenStore = downloadTokenStore;
     // Daemon-scoped on purpose: language servers are expensive processes keyed by
     // workspace, so every client session shares one pool rather than spawning its own.
@@ -850,7 +887,7 @@ export class VoiceAssistantWebSocketServer {
     this.daemonConfigStore = daemonConfigStore;
     this.connectorOAuthBroker = orNull(connectorOAuthBroker);
     this.communicationsService = communicationsService ?? new CommunicationsService();
-    this.integrationAuthorization = integrationAuthorization ?? null;
+    this.integrationAuthorization = orNull(integrationAuthorization);
     this.integrationAuthorizationCatalog =
       integrationAuthorizationCatalog ?? new IntegrationAuthorizationCatalog();
     this.integrationBrowserAuthorization = orNull(integrationBrowserAuthorization);
@@ -880,42 +917,18 @@ export class VoiceAssistantWebSocketServer {
       this.speech?.onReadinessChange((snapshot) => {
         this.publishSpeechReadiness(snapshot);
       }) ?? null;
-    this.unsubscribeDaemonConfigChange = this.daemonConfigStore.onChange((config, details) => {
-      const nextAgentManagerState = this.providerSnapshotManager.applyMutableProviderConfig(
-        config.providers,
-        details.removedProviderIds,
-      );
-      this.agentManager.updateProviderRegistry(nextAgentManagerState);
-      this.providerSnapshotManager.setModelTierOverrides(config.modelTierOverrides);
-      this.providerSnapshotManager.setModelVisibilityOverrides(config.modelVisibilityOverrides);
-      // Rebuild the registry so the openai-compat client picks up connector
-      // enable/disable and per-tool edits on the next spawn, without a restart.
-      this.agentManager.updateProviderRegistry(
-        this.providerSnapshotManager.setConnectors(config.connectors),
-      );
-      // Applied, not merely recorded: turning code intelligence off has to stop the
-      // servers that are already running, or the switch is decoration.
-      void this.lspService.applySettings(config.lsp).catch((err: unknown) => {
-        this.logger.warn({ err }, "Failed to apply language-server settings");
-      });
-      // Same rule, and it matters more here: turning the switch off has to stop the sidecar and
-      // drop the cached model now. A feature that keeps a process alive after being disabled is
-      // not disabled.
-      void this.solutionService
-        .applySettings(config.dotnetSolutionManagement)
-        .catch((err: unknown) => {
-          this.logger.warn({ err }, "Failed to apply solution-management settings");
-        });
-      // Same rule for the local AI host: writing the `brain` block through to the
-      // brain's config.json and reconciling the running child (start/stop/switch
-      // model) is what makes the switch real rather than decorative.
-      if (this.brainManager) {
-        void this.brainManager.applySettings(config.brain).catch((err: unknown) => {
-          this.logger.warn({ err }, "Failed to apply brain settings");
-        });
-      }
+    const unsubscribeProviderConfig = attachMutableProviderConfigOwner({
+      store: this.daemonConfigStore,
+      providerSnapshotManager: this.providerSnapshotManager,
+      updateProviderRegistry: (state) => this.agentManager.updateProviderRegistry(state),
+    });
+    const unsubscribeChange = this.daemonConfigStore.onChange((config) => {
       this.broadcastDaemonConfigChanged(config);
     });
+    this.unsubscribeDaemonConfigChange = () => {
+      unsubscribeProviderConfig();
+      unsubscribeChange();
+    };
 
     const pushLogger = this.logger.child({ module: "push" });
     this.pushNotifications = createPushNotifications({
@@ -1110,14 +1123,18 @@ export class VoiceAssistantWebSocketServer {
     wsConfig: WebSocketServerConfig,
     auth: DaemonAuthConfig | undefined,
   ): WebSocketServer {
-    const { allowedOrigins, hostnames } = wsConfig;
     const password = auth?.password;
     const wss = new WebSocketServer({
       server,
       path: "/ws",
       handleProtocols: (protocols) => selectWebSocketProtocol(protocols, password),
       verifyClient: ({ req }, callback) => {
-        this.verifyWsUpgrade(req, allowedOrigins, hostnames, callback);
+        this.verifyWsUpgrade(
+          req,
+          wsConfig.getAllowedOrigins?.() ?? wsConfig.allowedOrigins ?? new Set(),
+          wsConfig.getHostnames?.() ?? wsConfig.hostnames,
+          callback,
+        );
       },
     });
     wss.on("connection", (ws, request) => {
@@ -1193,8 +1210,8 @@ export class VoiceAssistantWebSocketServer {
     hostnames: HostnamesConfig | undefined,
     callback: (res: boolean, code?: number, message?: string) => void,
   ): void {
-    if (!this.acceptingConnections) {
-      callback(false, 503, "Server shutting down");
+    if (this.connectionLifecycle !== "accepting") {
+      callback(false, 503, "Server not ready");
       return;
     }
 
@@ -1265,7 +1282,11 @@ export class VoiceAssistantWebSocketServer {
   }
 
   public publishProjectUpdate(update: ProjectUpdate): void {
-    for (const session of this.listTrustedSessions()) session.emitProjectUpdate(update);
+    for (const session of this.listTrustedSessions()) {
+      void session
+        .emitProjectUpdate(update)
+        .catch((error) => this.logger.warn({ err: error }, "Failed to publish project update"));
+    }
   }
 
   public publishSpeechReadiness(readiness: SpeechReadinessSnapshot | null): void {
@@ -1291,6 +1312,29 @@ export class VoiceAssistantWebSocketServer {
     await this.attachSocket(ws, undefined, metadata);
   }
 
+  public async attachPluginSocket(
+    pluginId: string,
+    ws: WebSocketLike,
+  ): Promise<{ closed: Promise<void> }> {
+    if (this.connectionLifecycle === "stopping") {
+      throw new Error(`Cannot attach plugin session while shutting down: ${pluginId}`);
+    }
+    let resolve: () => void = () => undefined;
+    const closed = new Promise<void>((finish) => {
+      resolve = finish;
+    });
+    this.pluginSocketIds.set(ws, pluginId);
+    this.pluginSocketCleanup.set(ws, resolve);
+    try {
+      await this.attachSocket(ws, undefined, undefined, true);
+    } catch (error) {
+      this.pluginSocketIds.delete(ws);
+      this.finishPluginSocketCleanup(ws);
+      throw error;
+    }
+    return { closed };
+  }
+
   public async attachHubSocket(
     ws: WebSocketLike,
     options: {
@@ -1299,7 +1343,7 @@ export class VoiceAssistantWebSocketServer {
       agents: HubExecutionAgents;
     },
   ): Promise<void> {
-    if (!this.acceptingConnections) {
+    if (this.connectionLifecycle !== "accepting") {
       ws.close(WS_CLOSE_SERVER_SHUTDOWN, "Server shutting down");
       return;
     }
@@ -1330,7 +1374,13 @@ export class VoiceAssistantWebSocketServer {
   }
 
   public prepareForShutdown(): void {
-    this.acceptingConnections = false;
+    this.connectionLifecycle = "stopping";
+  }
+
+  public beginAcceptingConnections(): void {
+    if (this.connectionLifecycle === "starting") {
+      this.connectionLifecycle = "accepting";
+    }
   }
 
   public async close(): Promise<void> {
@@ -1373,7 +1423,11 @@ export class VoiceAssistantWebSocketServer {
 
     const cleanupPromises: Promise<void>[] = [];
     for (const connection of uniqueConnections) {
-      if (connection.kind === "trusted" && connection.externalDisconnectCleanupTimeout) {
+      if (
+        connection.kind === "trusted" &&
+        connection.lifecycle === "reconnectable" &&
+        connection.externalDisconnectCleanupTimeout
+      ) {
         clearTimeout(connection.externalDisconnectCleanupTimeout);
         connection.externalDisconnectCleanupTimeout = null;
       }
@@ -1571,8 +1625,12 @@ export class VoiceAssistantWebSocketServer {
     ws: WebSocketLike,
     request?: unknown,
     metadata?: ExternalSocketMetadata,
+    allowDuringStartup = false,
   ): Promise<void> {
-    if (!this.acceptingConnections) {
+    if (
+      this.connectionLifecycle === "stopping" ||
+      (this.connectionLifecycle === "starting" && !allowDuringStartup)
+    ) {
       try {
         ws.close(WS_CLOSE_SERVER_SHUTDOWN, "Server shutting down");
       } catch {
@@ -1629,8 +1687,9 @@ export class VoiceAssistantWebSocketServer {
     appVersion: string | null;
     clientCapabilities: Record<string, unknown> | null;
     connectionLogger: pino.Logger;
+    lifecycle: { kind: "reconnectable" } | { kind: "ephemeral-plugin"; pluginId: string };
   }): TrustedSessionConnection {
-    const { ws, clientId, appVersion, clientCapabilities, connectionLogger } = params;
+    const { ws, clientId, appVersion, clientCapabilities, connectionLogger, lifecycle } = params;
     let connection: TrustedSessionConnection | null = null;
 
     const session = this.createSocketSession({
@@ -1690,7 +1749,7 @@ export class VoiceAssistantWebSocketServer {
       hubRelationships: this.hubRelationships ?? undefined,
     });
 
-    connection = {
+    const base: TrustedSessionConnectionBase = {
       kind: "trusted",
       session,
       clientId,
@@ -1698,8 +1757,11 @@ export class VoiceAssistantWebSocketServer {
       clientCapabilities,
       connectionLogger,
       sockets: new Set([ws]),
-      externalDisconnectCleanupTimeout: null,
     };
+    connection =
+      lifecycle.kind === "ephemeral-plugin"
+        ? { ...base, lifecycle: "ephemeral-plugin", pluginId: lifecycle.pluginId }
+        : { ...base, lifecycle: "reconnectable", externalDisconnectCleanupTimeout: null };
     session.updateClientCapabilities(clientCapabilities, ws);
     return connection;
   }
@@ -1735,6 +1797,8 @@ export class VoiceAssistantWebSocketServer {
       agentStorage: this.agentStorage,
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
+      workspaceLabelService: this.workspaceLabelService ?? undefined,
+      directorySync: this.directorySync,
       scheduleService: this.scheduleService,
       runService: this.runService,
       graphStore: this.graphStore,
@@ -1754,6 +1818,8 @@ export class VoiceAssistantWebSocketServer {
       integrationAuthorizationCatalog: this.integrationAuthorizationCatalog,
       integrationBrowserAuthorization: this.integrationBrowserAuthorization,
       zoomTeamChatAuthorization: this.zoomTeamChatAuthorization,
+      pluginRuntime: this.pluginRuntime,
+      orchestrationSkills: this.orchestrationSkills,
       mcpBaseUrl: this.mcpBaseUrl,
       stt: () => this.speech?.resolveStt() ?? null,
       sttLanguage: this.speech?.resolveSttLanguage() ?? "en",
@@ -1870,48 +1936,26 @@ export class VoiceAssistantWebSocketServer {
       return;
     }
 
+    const pluginId = this.pluginSocketIds.get(ws);
+    const expectedPluginClientId = pluginId ? `plugin:${pluginId}` : null;
+    if (
+      (expectedPluginClientId !== null && clientId !== expectedPluginClientId) ||
+      (expectedPluginClientId === null && clientId.startsWith("plugin:"))
+    ) {
+      this.clearPendingConnection(ws);
+      pending.connectionLogger.warn({ clientId }, "Rejected reserved plugin clientId");
+      ws.close(WS_CLOSE_INVALID_HELLO, "Invalid plugin clientId");
+      return;
+    }
+
     this.clearPendingConnection(ws);
     pending.identity.clientId = clientId;
     if (message.appVersion) {
       pending.identity.appVersion = message.appVersion;
     }
-    const existing = this.externalSessionsByKey.get(clientId);
+    const existing = pluginId ? undefined : this.externalSessionsByKey.get(clientId);
     if (existing) {
-      this.incrementRuntimeCounter("helloResumed");
-      if (existing.externalDisconnectCleanupTimeout) {
-        clearTimeout(existing.externalDisconnectCleanupTimeout);
-        existing.externalDisconnectCleanupTimeout = null;
-      }
-      const newAppVersion = message.appVersion ?? null;
-      if (newAppVersion && newAppVersion !== existing.appVersion) {
-        existing.appVersion = newAppVersion;
-        existing.session.updateAppVersion(newAppVersion);
-      }
-      const newClientCapabilities = message.capabilities ?? null;
-      // COMPAT(selectiveAgentTimeline): added in v0.1.106. Every capable resumed
-      // hello resets membership before server_info so stale retained-session
-      // state cannot leak. Remove after 2027-01-12.
-      existing.session.updateClientCapabilities(newClientCapabilities, ws);
-      if (
-        JSON.stringify(existing.clientCapabilities ?? null) !==
-        JSON.stringify(newClientCapabilities ?? null)
-      ) {
-        existing.clientCapabilities = newClientCapabilities;
-        this.syncBrowserToolsClientRegistration(existing);
-      }
-      existing.sockets.add(ws);
-      this.sessions.set(ws, existing);
-      pending.identity.sessionId = existing.session.getSessionId();
-      this.syncBrowserToolsClientRegistration(existing);
-      this.sendToClient(ws, this.createServerInfoMessage());
-      pending.connectionLogger.info(
-        {
-          ...toConnectionLogFields(pending.identity),
-          resumed: true,
-          totalSessions: this.sessions.size,
-        },
-        "Client connected via hello",
-      );
+      this.resumeSession({ ws, message, pending, existing });
       return;
     }
 
@@ -1923,9 +1967,12 @@ export class VoiceAssistantWebSocketServer {
       appVersion: message.appVersion ?? null,
       clientCapabilities: message.capabilities ?? null,
       connectionLogger,
+      lifecycle: pluginId ? { kind: "ephemeral-plugin", pluginId } : { kind: "reconnectable" },
     });
     this.sessions.set(ws, connection);
-    this.externalSessionsByKey.set(clientId, connection);
+    if (connection.lifecycle === "reconnectable") {
+      this.externalSessionsByKey.set(clientId, connection);
+    }
     pending.identity.sessionId = connection.session.getSessionId();
     this.syncBrowserToolsClientRegistration(connection);
     this.sendToClient(ws, this.createServerInfoMessage());
@@ -1933,6 +1980,50 @@ export class VoiceAssistantWebSocketServer {
       {
         ...toConnectionLogFields(pending.identity),
         resumed: false,
+        totalSessions: this.sessions.size,
+      },
+      "Client connected via hello",
+    );
+  }
+
+  private resumeSession(params: {
+    ws: WebSocketLike;
+    message: WSHelloMessage;
+    pending: PendingConnection;
+    existing: ReconnectableSessionConnection;
+  }): void {
+    const { ws, message, pending, existing } = params;
+    this.incrementRuntimeCounter("helloResumed");
+    if (existing.externalDisconnectCleanupTimeout) {
+      clearTimeout(existing.externalDisconnectCleanupTimeout);
+      existing.externalDisconnectCleanupTimeout = null;
+    }
+    const newAppVersion = message.appVersion ?? null;
+    if (newAppVersion && newAppVersion !== existing.appVersion) {
+      existing.appVersion = newAppVersion;
+      existing.session.updateAppVersion(newAppVersion);
+    }
+    const newClientCapabilities = message.capabilities ?? null;
+    // COMPAT(selectiveAgentTimeline): added in v0.1.106. Every capable resumed
+    // hello resets membership before server_info so stale retained-session
+    // state cannot leak. Remove after 2027-01-12.
+    existing.session.updateClientCapabilities(newClientCapabilities, ws);
+    if (
+      JSON.stringify(existing.clientCapabilities ?? null) !==
+      JSON.stringify(newClientCapabilities ?? null)
+    ) {
+      existing.clientCapabilities = newClientCapabilities;
+      this.syncBrowserToolsClientRegistration(existing);
+    }
+    existing.sockets.add(ws);
+    this.sessions.set(ws, existing);
+    pending.identity.sessionId = existing.session.getSessionId();
+    this.syncBrowserToolsClientRegistration(existing);
+    this.sendToClient(ws, this.createServerInfoMessage());
+    pending.connectionLogger.info(
+      {
+        ...toConnectionLogFields(pending.identity),
+        resumed: true,
         totalSessions: this.sessions.size,
       },
       "Client connected via hello",
@@ -1951,6 +2042,10 @@ export class VoiceAssistantWebSocketServer {
       desktopManaged: this.daemonRuntimeConfig?.desktopManaged === true,
       ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
       features: {
+        // COMPAT(directorySync): added in v0.3.x, remove gate after 2027-02-12.
+        directorySync: true,
+        // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
+        ...(this.workspaceLabelService ? { workspaceLabels: true } : {}),
         // COMPAT(providersSnapshot): keep optional until all clients rely on snapshot flow.
         providersSnapshot: true,
         // COMPAT(providersSnapshotCwd): added in v0.3.2, remove gate after 2027-02-10.
@@ -1969,10 +2064,20 @@ export class VoiceAssistantWebSocketServer {
         forgeSearch: true,
         // COMPAT(daemonStatusRpc): added in v0.1.76, remove gate after 2026-11-18.
         ...(this.advertiseDaemonStatusRpc ? { daemonStatusRpc: true } : {}),
+        // COMPAT(daemonConfigReload): added in v0.4.0, remove gate after 2027-02-14.
+        daemonConfigReload: true,
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         ...(this.advertiseRelayConfig ? { relayConfig: true } : {}),
         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.
         pushTokenRevocation: true,
+        // COMPAT(plugins): added in v0.3.0, remove gate after 2027-08-07.
+        plugins: true,
+        pluginManagement: true,
+        pluginLogs: true,
+        // COMPAT(pluginThemes): added in v0.5.0, remove gate after 2027-08-20.
+        pluginThemes: true,
+        // COMPAT(skillManagement): added in v0.4.0, remove gate after 2027-08-16.
+        skillManagement: true,
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": true,
         // COMPAT(terminalCompatibilityDiagnostic): added in v0.8.9, remove gate after 2027-02-12.
@@ -2467,6 +2572,7 @@ export class VoiceAssistantWebSocketServer {
         "Pending client disconnected",
       );
       this.socketIdentities.delete(ws);
+      this.finishPluginSocketCleanup(ws);
       return;
     }
 
@@ -2483,6 +2589,7 @@ export class VoiceAssistantWebSocketServer {
         );
         this.socketIdentities.delete(ws);
       }
+      this.finishPluginSocketCleanup(ws);
       return;
     }
 
@@ -2495,6 +2602,7 @@ export class VoiceAssistantWebSocketServer {
         "Hub session disconnected",
       );
       connection.session.cleanup();
+      this.finishPluginSocketCleanup(ws);
       return;
     }
     connection.sockets.delete(ws);
@@ -2503,6 +2611,12 @@ export class VoiceAssistantWebSocketServer {
 
     if (connection.sockets.size === 0) {
       this.unregisterBrowserToolsClient(connection.clientId);
+      if (connection.lifecycle === "ephemeral-plugin") {
+        this.pluginSocketIds.delete(ws);
+        await this.cleanupConnection(connection, "Plugin session disconnected");
+        this.finishPluginSocketCleanup(ws);
+        return;
+      }
       this.incrementRuntimeCounter("sessionDisconnectedWaitingReconnect");
       if (connection.externalDisconnectCleanupTimeout) {
         clearTimeout(connection.externalDisconnectCleanupTimeout);
@@ -2543,6 +2657,14 @@ export class VoiceAssistantWebSocketServer {
     }
 
     await this.cleanupConnection(connection, "Client disconnected");
+    this.finishPluginSocketCleanup(ws);
+  }
+
+  private finishPluginSocketCleanup(ws: WebSocketLike): void {
+    const resolve = this.pluginSocketCleanup.get(ws);
+    if (!resolve) return;
+    this.pluginSocketCleanup.delete(ws);
+    resolve();
   }
 
   /**
@@ -2568,7 +2690,7 @@ export class VoiceAssistantWebSocketServer {
     logMessage: string,
   ): Promise<void> {
     this.incrementRuntimeCounter("sessionCleanup");
-    if (connection.externalDisconnectCleanupTimeout) {
+    if (connection.lifecycle === "reconnectable" && connection.externalDisconnectCleanupTimeout) {
       clearTimeout(connection.externalDisconnectCleanupTimeout);
       connection.externalDisconnectCleanupTimeout = null;
     }
@@ -2578,10 +2700,11 @@ export class VoiceAssistantWebSocketServer {
       this.socketIdentities.delete(socket);
     }
     connection.sockets.clear();
-    this.releaseActiveWorkspaceIfUnattended();
-    const existing = this.externalSessionsByKey.get(connection.clientId);
-    if (existing === connection) {
-      this.externalSessionsByKey.delete(connection.clientId);
+    if (connection.lifecycle === "reconnectable") {
+      const existing = this.externalSessionsByKey.get(connection.clientId);
+      if (existing === connection) {
+        this.externalSessionsByKey.delete(connection.clientId);
+      }
     }
     this.unregisterBrowserToolsClient(connection.clientId);
 
@@ -2785,7 +2908,10 @@ export class VoiceAssistantWebSocketServer {
     ws: WebSocketLike,
     data: Buffer | ArrayBuffer | Buffer[] | string,
   ): void {
-    if (!this.acceptingConnections) {
+    if (
+      this.connectionLifecycle === "stopping" ||
+      (this.connectionLifecycle === "starting" && !this.pluginSocketIds.has(ws))
+    ) {
       return;
     }
 

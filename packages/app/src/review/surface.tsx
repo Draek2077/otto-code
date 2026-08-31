@@ -24,6 +24,12 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useWorkspaceFocusRestoration } from "@/workspace/focus";
 import { useReviewDraftComments, useReviewDraftStore, type ReviewDraftComment } from "./store";
 import { buildReviewableDiffTargetKey, type ReviewableDiffTarget } from "@/utils/diff-layout";
+import {
+  INLINE_REVIEW_EDITOR_HEIGHT,
+  isInlineReviewEditorForTarget,
+  type InlineReviewActions,
+  type InlineReviewEditorState,
+} from "./geometry";
 
 type PressableState = PressableStateCallbackType & { hovered?: boolean };
 type WebTextInputRef = TextInput & {
@@ -48,8 +54,6 @@ function getWebTextInputElement(input: TextInput | null): HTMLElement | null {
   return element instanceof HTMLElement ? element : null;
 }
 
-export const INLINE_REVIEW_COMMENT_HEIGHT = 72;
-export const INLINE_REVIEW_EDITOR_HEIGHT = 132;
 const INLINE_REVIEW_GAP = 6;
 export const SMALL_ACTION_HIT_SLOP = 8;
 const GUTTER_ACTION_ICON_SIZE = 22;
@@ -64,22 +68,6 @@ const accentForegroundIconColorMapping = (theme: Theme) => ({
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedTrash2 = withUnistyles(Trash2);
-
-export interface InlineReviewEditorState {
-  target: ReviewableDiffTarget;
-  commentId: string | null;
-  body: string;
-}
-
-export interface InlineReviewActions {
-  commentsByTarget: ReadonlyMap<string, ReviewDraftComment[]>;
-  editor: InlineReviewEditorState | null;
-  onStartComment: (target: ReviewableDiffTarget) => void;
-  onEditComment: (target: ReviewableDiffTarget, comment: ReviewDraftComment) => void;
-  onCancelEditor: () => void;
-  onSaveEditor: (body: string) => void;
-  onDeleteComment: (id: string) => void;
-}
 
 export function groupInlineReviewCommentsByTarget(
   comments: readonly ReviewDraftComment[],
@@ -181,84 +169,11 @@ export function useInlineReviewController(input: { reviewDraftKey: string }): In
   );
 }
 
-export function isInlineReviewEditorForTarget(
-  editor: InlineReviewEditorState | null,
-  target: ReviewableDiffTarget | null | undefined,
-): boolean {
-  return Boolean(
-    editor &&
-    target &&
-    buildReviewableDiffTargetKey(editor.target) === buildReviewableDiffTargetKey(target),
-  );
-}
-
-export function getInlineReviewThreadState(input: {
-  reviewTarget: ReviewableDiffTarget | null | undefined;
-  reviewActions?: InlineReviewActions;
-}): {
-  comments: ReviewDraftComment[];
-  hasEditor: boolean;
-  editingCommentId: string | null;
-  height: number;
-} | null {
-  const { reviewTarget, reviewActions } = input;
-  if (!reviewTarget || !reviewActions) {
-    return null;
-  }
-
-  const comments = reviewActions.commentsByTarget.get(reviewTarget.key) ?? [];
-  const editorForTarget = isInlineReviewEditorForTarget(reviewActions.editor, reviewTarget)
-    ? reviewActions.editor
-    : null;
-  const hasEditor = editorForTarget !== null;
-  const editingCommentId = editorForTarget?.commentId ?? null;
-  const editingExisting =
-    editingCommentId !== null && comments.some((comment) => comment.id === editingCommentId);
-
-  const visibleCommentCount = editingExisting ? comments.length - 1 : comments.length;
-  const editorCount = hasEditor ? 1 : 0;
-  const visibleBlockCount = visibleCommentCount + editorCount;
-  if (visibleBlockCount === 0) {
-    return null;
-  }
-
-  const height =
-    visibleCommentCount * INLINE_REVIEW_COMMENT_HEIGHT +
-    editorCount * INLINE_REVIEW_EDITOR_HEIGHT +
-    Math.max(0, visibleBlockCount - 1) * INLINE_REVIEW_GAP;
-
-  return { comments, hasEditor, editingCommentId, height };
-}
-
 export function getInlineReviewThreadHeight(
   reservedHeight: number,
   measuredContentHeight: number,
 ): number {
   return Math.max(reservedHeight, measuredContentHeight);
-}
-
-export function getSplitInlineReviewThreadState(input: {
-  left: ReviewableDiffTarget | null | undefined;
-  right: ReviewableDiffTarget | null | undefined;
-  reviewActions?: InlineReviewActions;
-}): {
-  left: ReturnType<typeof getInlineReviewThreadState>;
-  right: ReturnType<typeof getInlineReviewThreadState>;
-  height: number;
-} | null {
-  const left = getInlineReviewThreadState({
-    reviewTarget: input.left,
-    reviewActions: input.reviewActions,
-  });
-  const right = getInlineReviewThreadState({
-    reviewTarget: input.right,
-    reviewActions: input.reviewActions,
-  });
-  const height = Math.max(left?.height ?? 0, right?.height ?? 0);
-  if (height === 0) {
-    return null;
-  }
-  return { left, right, height };
 }
 
 export function InlineReviewGutterCell({
@@ -734,6 +649,18 @@ const styles = StyleSheet.create((theme) => ({
     zIndex: 10,
     elevation: 10,
   },
+  // The gutter's add-comment affordance: a filled square that sits above the
+  // diff row it belongs to.
+  gutterActionVisual: {
+    width: 22,
+    height: 22,
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.accent,
+    zIndex: 10,
+    elevation: 10,
+  },
   placeholderColor: {
     color: theme.colors.foregroundMuted,
   },
@@ -830,3 +757,24 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
 }));
+
+export function InlineReviewAddButton({
+  onPress,
+  style,
+}: {
+  onPress: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t("review.comment.add")}
+      hitSlop={SMALL_ACTION_HIT_SLOP}
+      onPress={onPress}
+      style={[styles.gutterActionVisual, style]}
+    >
+      <ThemedPlus size={16} uniProps={accentForegroundIconColorMapping} />
+    </Pressable>
+  );
+}

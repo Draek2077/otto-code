@@ -4,7 +4,12 @@ import { Animated, Easing, Platform, Text, ToastAndroid, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import {
+  useIsCompactFormFactor,
+  HEADER_INNER_HEIGHT,
+  HEADER_INNER_HEIGHT_MOBILE,
+  HEADER_TOP_PADDING_MOBILE,
+} from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { AlertTriangle, CheckCircle2 } from "@/components/icons/material-icons";
 import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
@@ -13,11 +18,6 @@ import {
   selectIsFileExplorerOpen,
   usePanelStore,
 } from "@/stores/panel-store";
-import {
-  HEADER_INNER_HEIGHT,
-  HEADER_INNER_HEIGHT_MOBILE,
-  HEADER_TOP_PADDING_MOBILE,
-} from "@/constants/layout";
 
 export type ToastVariant = "default" | "success" | "error";
 
@@ -377,7 +377,7 @@ const styles = StyleSheet.create((theme) => ({
   message: {
     flexShrink: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
   },
   messageError: {

@@ -26,6 +26,7 @@ import { currentPageId, isSubPageOpen } from "./menu-navigation";
 import { AnchoredSurface, MenuOverlay } from "./menu-overlay";
 import { getMenuSheetBottomPadding } from "./menu-sheet-layout";
 import type { Alignment, Placement } from "./menu-anchor";
+import type { KeyboardFocusScope } from "@/keyboard/actions";
 
 // `backgroundStyle` and `handleIndicatorStyle` are style-shaped props the Babel plugin does not
 // track, so the sheet is wrapped rather than reading the theme through a hook.
@@ -49,6 +50,15 @@ export interface MenuPageDefinition {
   id: string;
   title: string;
   content: ReactNode;
+  /**
+   * Whether the pointer opens and closes this page on its own. Default true.
+   *
+   * A page that takes typed input sets this false: hover intent would open it on a pointer that
+   * was only passing through, and then dismiss it — draft and all — the moment the hands moved
+   * to the keyboard and the mouse drifted off the flyout. While such a page is open, the whole
+   * surface stops closing on hover, since its parent leads back to the same dismissal.
+   */
+  hoverIntent?: boolean;
 }
 
 interface MenuSurfaceContextValue {
@@ -92,6 +102,8 @@ export interface MenuSurfaceProps {
   onScroll?: ScrollViewProps["onScroll"];
   onContentSizeChange?: ScrollViewProps["onContentSizeChange"];
   testID?: string;
+  /** Limits ordinary app shortcuts to the time this menu owns keyboard focus. */
+  keyboardFocusScope?: KeyboardFocusScope;
 }
 
 /**
@@ -179,6 +191,7 @@ function MenuPopoverSurface({
   onScroll,
   onContentSizeChange,
   testID,
+  keyboardFocusScope,
 }: MenuSurfaceProps): ReactElement | null {
   const menu = useMenuContext("MenuSurface");
   const { value: surfaceValue, getAnchor } = useSubAnchors();
@@ -197,9 +210,26 @@ function MenuPopoverSurface({
     [menu.path, pages],
   );
 
+  // `hoverIntent: false` takes a page off the pointer entirely — it is not opened by resting on
+  // its trigger, and while it is open nothing on this surface closes on a pointer leaving it.
+  const hoverValue = useMemo<MenuSurfaceContextValue>(() => {
+    const locked = openPages.some(({ page }) => page.hoverIntent === false);
+    return {
+      ...surfaceValue,
+      hoverOpen: (sub) => {
+        if (pages.find((page) => page.id === sub.id)?.hoverIntent === false) return;
+        surfaceValue.hoverOpen(sub);
+      },
+      hoverClose: (depth) => {
+        if (locked) return;
+        surfaceValue.hoverClose(depth);
+      },
+    };
+  }, [openPages, pages, surfaceValue]);
+
   return (
-    <MenuSurfaceContext.Provider value={surfaceValue}>
-      <MenuOverlay visible={menu.open} onClose={handleClose}>
+    <MenuSurfaceContext.Provider value={hoverValue}>
+      <MenuOverlay visible={menu.open} onClose={handleClose} restoreFocusRef={menu.triggerRef}>
         <>
           <AnchoredSurface
             open={menu.open}
@@ -221,6 +251,7 @@ function MenuPopoverSurface({
             onScroll={onScroll}
             onContentSizeChange={onContentSizeChange}
             testID={testID}
+            keyboardFocusScope={keyboardFocusScope}
           >
             <MenuPage depth={0}>{children}</MenuPage>
           </AnchoredSurface>
@@ -303,6 +334,7 @@ function MenuSheetSurface({
   onScroll,
   onContentSizeChange,
   testID,
+  keyboardFocusScope,
 }: MenuSurfaceProps): ReactElement | null {
   const menu = useMenuContext("MenuSurface");
   const { value: surfaceValue } = useSubAnchors();
@@ -316,6 +348,10 @@ function MenuSheetSurface({
       }),
     }),
     [safeAreaInsets.bottom],
+  );
+  const sheetDataSet = useMemo(
+    () => (keyboardFocusScope ? { keyboardScope: keyboardFocusScope } : undefined),
+    [keyboardFocusScope],
   );
 
   const handleClose = useCallback(() => menu.setOpen(false), [menu]);
@@ -364,12 +400,18 @@ function MenuSheetSurface({
       onDismiss={handleSheetDismiss}
       backdropComponent={renderBackdrop}
       enablePanDownToClose
-      keyboardBehavior="extend"
+      // `interactive` rather than `extend`, which is what every other sheet in the app uses.
+      // `extend` grows the sheet to its largest snap point, and with `enableDynamicSizing` that
+      // point is the content's own height — so a short page does not grow, the keyboard comes up
+      // over it, and the field you are typing into is behind the keys. `interactive` moves the
+      // sheet up instead, which is the only thing a content-sized sheet can usefully do.
+      keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
     >
       {!openPage && stickyHeader ? stickyHeader : null}
       <BottomSheetScrollView
         ref={scrollViewRef}
+        dataSet={sheetDataSet}
         contentContainerStyle={sheetScrollContentStyle}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

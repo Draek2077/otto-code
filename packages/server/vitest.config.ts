@@ -27,6 +27,9 @@ export default defineConfig({
       "**/dist/**",
       "**/.claude/**",
       "**/.dev/**",
+      // Scratch work per AGENTS.md, which can hold whole stale copies of the
+      // repo. Collecting from there runs tests against last week's source.
+      "**/.tmp/**",
       // DISABLED(hub): these three boot a real daemon through `createOttoDaemon`,
       // whose Hub wiring now resolves to the inert stand-ins in
       // `src/server/hub-disabled.ts`, so they can no longer pass. Excluding them

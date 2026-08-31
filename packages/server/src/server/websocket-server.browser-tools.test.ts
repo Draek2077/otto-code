@@ -283,6 +283,7 @@ function createVoiceAssistantWebSocketServer(params: {
     }),
   };
   const daemonConfigStore = {
+    onApply: () => () => {},
     onChange: () => () => {},
     // The constructor reads config to seed the LSP pool and the .NET solution service. Both are
     // unrelated to browser tools, but an unstubbed `get` throws before the server is built, so

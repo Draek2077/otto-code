@@ -1928,6 +1928,9 @@ export class HostRuntimeStore {
     }
   }
 
+  recordUserActivity(): void {
+    this.replicaCache.recordUserActivity();
+  }
   syncHosts(
     hosts: HostProfile[],
     options?: {

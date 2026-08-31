@@ -39,7 +39,7 @@ import { useToast } from "@/contexts/toast-context";
 import { useCloseFileExplorerGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
-import { GitDiffPane } from "@/git/diff-pane";
+import { ChangesSurface } from "@/git/diff-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
 import { SidebarSeamShadow } from "./sidebar-seam-shadow";
 import { ProjectSearchPane } from "./project-search-pane";
@@ -749,11 +749,12 @@ function ExplorerSidebarContent({
       {/* Content based on active tab */}
       <View style={styles.contentArea} testID="explorer-content-area">
         {resolvedTab === "changes" && (
-          <GitDiffPane
+          <ChangesSurface
             serverId={serverId}
             workspaceId={workspaceId}
             cwd={workspaceRoot}
             enabled={isOpen}
+            modeScope="docked-explorer"
             onOpenFile={onOpenFile}
           />
         )}

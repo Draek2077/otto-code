@@ -24,6 +24,7 @@ RUN set -eux; \
     npm pack --workspace=@otto-code/protocol --pack-destination /tmp/otto-packs; \
     npm pack --workspace=@otto-code/client --pack-destination /tmp/otto-packs; \
     npm pack --workspace=@otto-code/brain --pack-destination /tmp/otto-packs; \
+    npm pack --workspace=@otto-code/plugin --pack-destination /tmp/otto-packs; \
     npm pack --workspace=@otto-code/server --pack-destination /tmp/otto-packs; \
     npm pack --workspace=@otto-code/cli --pack-destination /tmp/otto-packs
 

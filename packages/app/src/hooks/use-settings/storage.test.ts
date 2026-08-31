@@ -56,8 +56,8 @@ describe("loadAppSettingsFromStorage", () => {
 
     expect(result).toEqual(DEFAULT_CLIENT_SETTINGS);
     expect(DEFAULT_CLIENT_SETTINGS.language).toBe("system");
-    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(
-      JSON.stringify(DEFAULT_CLIENT_SETTINGS),
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toEqual(
+      DEFAULT_CLIENT_SETTINGS,
     );
   });
 
@@ -90,10 +90,15 @@ describe("loadAppSettingsFromStorage", () => {
     });
 
     const result = await loadAppSettingsFromStorage(deps);
+    // The stored values win where they are valid; everything else falls back to
+    // DEFAULT_SIDEBAR_ROW_ITEMS, including the rows Otto adds over upstream.
     expect(result.sidebarRowItems).toEqual({
+      branch: false,
+      project: false,
       host: false,
       changeRequest: true,
       services: false,
+      labels: true,
     });
     expect(result.sidebarChecksDisplay).toBe("icon");
   });

@@ -43,7 +43,8 @@ export type CheckoutGitAsyncActionId =
   | "merge-branch"
   | "merge-from-base"
   | "archive-worktree"
-  | "switch-branch";
+  | "switch-branch"
+  | "discard-changes";
 
 type CheckoutKey = string;
 type StatusMap = Partial<Record<CheckoutGitAsyncActionId, CheckoutGitActionStatus>>;
@@ -276,6 +277,7 @@ export function isLocalWorktreeArchivePending(input: { serverId: string; cwd: st
 }
 
 interface CheckoutGitActionsStoreState {
+  discardChanges: (params: { serverId: string; cwd: string; paths: string[] }) => Promise<void>;
   statusByCheckout: Record<CheckoutKey, StatusMap>;
 
   getStatus: (params: {
@@ -392,6 +394,22 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     return get().statusByCheckout[key]?.[actionId] ?? "idle";
   },
 
+  discardChanges: async ({ serverId, cwd, paths }) => {
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "discard-changes",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutDiscardChanges(cwd, { paths });
+        if (!payload.success) {
+          throw new Error(
+            payload.error?.message ?? i18n.t("workspace.fileActions.confirmRevert.failed"),
+          );
+        }
+      },
+    });
+  },
   commit: async ({ serverId, cwd }) => {
     await runCheckoutAction({
       serverId,

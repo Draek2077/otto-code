@@ -1,4 +1,4 @@
-export type { HighlightStyle, HighlightToken } from "./types.js";
+export type { DiffBackgroundColors, HighlightStyle, HighlightToken } from "./types.js";
 export {
   getLanguageForFile,
   getParserForFile,

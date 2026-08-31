@@ -360,7 +360,13 @@ function findSplitRightTarget(workspaceKey: string): string | null {
     useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey] ?? createDefaultLayout(),
   );
   const focusedPaneId = layout.focusedPaneId;
-  const focusedPaneHadTabs = (findPaneById(layout.root, focusedPaneId)?.tabIds.length ?? 0) > 0;
+  // A pane holding only the New tab placeholder is empty for this purpose: the
+  // default layout seeds one, and counting it would split every fresh workspace
+  // rather than letting the preview take the pane that is already there.
+  const focusedPaneTabIds = new Set(findPaneById(layout.root, focusedPaneId)?.tabIds ?? []);
+  const focusedPaneHadTabs = collectAllTabs(layout.root).some(
+    (tab) => focusedPaneTabIds.has(tab.tabId) && tab.target.kind !== "new_tab",
+  );
   return focusedPaneId && focusedPaneHadTabs ? focusedPaneId : null;
 }
 

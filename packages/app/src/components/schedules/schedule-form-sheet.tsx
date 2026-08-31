@@ -33,7 +33,6 @@ import { createControlGeometry, type FieldControlSize } from "@/components/ui/co
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { NumberStepperField } from "@/components/ui/number-stepper-field";
 import { Switch } from "@/components/ui/switch";
-import { TextAreaScrollFrame } from "@/components/ui/text-area";
 import { getProviderIcon } from "@/components/provider-icons";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { CadenceEditor } from "@/components/schedules/cadence-editor";
@@ -709,8 +708,6 @@ function ScheduleFormFields({
           size={controlSize}
           testID="schedule-name-input"
           accessibilityLabel="Schedule name"
-          initialValue={state.name}
-          value={state.name}
           onChangeText={model.setName}
           placeholder="Optional"
           autoCapitalize="none"
@@ -719,21 +716,17 @@ function ScheduleFormFields({
       </Field>
 
       <Field label="Prompt">
-        <TextAreaScrollFrame>
-          <FormTextInput
-            size={controlSize}
-            testID="schedule-prompt-input"
-            accessibilityLabel="Prompt"
-            initialValue={state.prompt}
-            value={state.prompt}
-            onChangeText={model.setPrompt}
-            placeholder="What should the agent do each run?"
-            style={styles.multilineInput}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
-        </TextAreaScrollFrame>
+        <FormTextInput
+          size={controlSize}
+          testID="schedule-prompt-input"
+          accessibilityLabel="Prompt"
+          onChangeText={model.setPrompt}
+          placeholder="What should the agent do each run?"
+          style={styles.multilineInput}
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+        />
       </Field>
 
       <ScheduleTargetFields
@@ -1425,7 +1418,7 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foreground,
     },
     readonlyTextSm: {
-      fontSize: theme.fontSize.sm,
+      fontSize: theme.fontSize.base,
     },
     readonlyTextMd: {
       fontSize: theme.fontSize.base,
@@ -1446,7 +1439,7 @@ const styles = StyleSheet.create((theme) => {
     },
     submitError: {
       color: theme.colors.palette.red[300],
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.sm,
     },
     providerIcon: {
       color: theme.colors.foregroundMuted,

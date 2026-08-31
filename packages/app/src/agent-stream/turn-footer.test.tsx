@@ -6,7 +6,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => ({
-  Platform: { OS: "web" },
+  // `select` and not just `OS`: the theme resolves its default font stack
+  // through Platform.select at module scope, so a mock without it throws while
+  // this file's imports are still being evaluated.
+  Platform: {
+    OS: "web",
+    select: <T,>(spec: { web?: T; default?: T }) => spec.web ?? spec.default,
+  },
   View: ({ children, testID }: { children?: React.ReactNode; testID?: string }) => (
     <div data-testid={testID}>{children}</div>
   ),

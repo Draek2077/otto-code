@@ -4,6 +4,11 @@ import { createJSONStorage, type StateStorage } from "zustand/middleware";
 import { mountBrowserAutomationHandler } from "./handler";
 import type { DesktopHostBridge } from "@/desktop/host";
 import { useBrowserStore } from "@/desktop/browser/store";
+import {
+  collectAllPanes,
+  EXPLORER_SIDEBAR_PANE_ID,
+  findPaneById,
+} from "@/stores/workspace-layout-actions";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
@@ -316,9 +321,11 @@ describe("mountBrowserAutomationHandler", () => {
     if (!workspaceKey) {
       throw new Error("Expected workspace key");
     }
-    const previousFocusedTabId = useWorkspaceLayoutStore
-      .getState()
-      .openTabFocused(workspaceKey, { kind: "draft", draftId: "human-draft" });
+    const previousFocusedTabId = useWorkspaceLayoutStore.getState().openTab({
+      workspaceKey: workspaceKey,
+      target: { kind: "draft", draftId: "human-draft" },
+      intent: "reveal",
+    });
     browser.mount({ serverId: "server-1" });
 
     browser.receive(browserNewTabRequest());
@@ -332,11 +339,15 @@ describe("mountBrowserAutomationHandler", () => {
         target: { kind: "browser", browserId: result.browserId },
       }),
     ]);
-    expect(layout?.root).toEqual(
-      expect.objectContaining({
-        kind: "pane",
-        pane: expect.objectContaining({ focusedTabId: previousFocusedTabId }),
-      }),
+    // Workspaces keep a stable hidden explorer companion pane at the root
+    // (see "retain workspace explorer pane"), so the root is a group and the
+    // draft/browser tabs land in the "main" pane, not at the root directly.
+    if (!layout) {
+      throw new Error("Expected workspace layout");
+    }
+    expect(layout.root.kind).toBe("group");
+    expect(findPaneById(layout.root, "main")).toEqual(
+      expect.objectContaining({ focusedTabId: previousFocusedTabId }),
     );
     expect(openedTabs[0]?.tabId).not.toBe(previousFocusedTabId);
     expect(browser.browser.activeWorkspaceBrowsers).toEqual([]);
@@ -398,7 +409,13 @@ describe("mountBrowserAutomationHandler", () => {
     await flushAsyncWork();
 
     const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
-    expect(layout?.root).toEqual(expect.objectContaining({ kind: "pane" }));
+    // The default tree already holds the hidden Explorer sidebar alongside main,
+    // so "no split happened" is one visible pane rather than a pane at the root.
+    const visiblePanes = collectAllPanes(layout!.root).filter(
+      (pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID,
+    );
+
+    expect(visiblePanes).toHaveLength(1);
   });
 
   test("new_tab with preview metadata creates the tab as a ready preview tab", async () => {
@@ -631,12 +648,10 @@ describe("mountBrowserAutomationHandler", () => {
     });
     const openedTab = workspaceBrowserTabs(workspaceKey, result.browserId)[0];
     const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
-    expect(layout?.root).toEqual(
-      expect.objectContaining({
-        kind: "pane",
-        pane: expect.objectContaining({ focusedTabId: openedTab?.tabId }),
-      }),
-    );
+    // The default tree carries the hidden Explorer sidebar, so the root is a
+    // group; what matters is that the tab is the focused one in its own pane.
+    const focusedPane = findPaneById(layout!.root, layout!.focusedPaneId);
+    expect(focusedPane?.focusedTabId).toBe(openedTab?.tabId);
     expect(openedTab?.tabId).not.toBe(previousFocusedTabId);
   });
 

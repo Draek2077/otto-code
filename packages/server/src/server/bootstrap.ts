@@ -12,7 +12,7 @@ import { FileBackedIntegrationAuthorizationRegistry } from "./integration-author
 import { IntegrationAuthorizationService } from "./integration-authorization/integration-authorization-service.js";
 import { createServer as createHTTPServer, type IncomingMessage, type ServerResponse } from "http";
 import { constants, existsSync, unlinkSync } from "fs";
-import { open } from "fs/promises";
+import { open, rm } from "fs/promises";
 import { randomUUID } from "node:crypto";
 import { homedir, hostname as getHostname } from "node:os";
 import path from "node:path";
@@ -143,6 +143,7 @@ import {
 import { revealScheduleRunWorkspace } from "./schedule-workspace-reveal.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
 import { createOttoWorktreeWorkflow } from "./worktree-session.js";
+import { createWorkspaceLabelService } from "./workspace-labels/index.js";
 import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
@@ -209,6 +210,12 @@ import { createAgentStructuredTextGeneration } from "./session/checkout/git-meta
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { ConnectorOAuthBroker, type ConnectorAuthStore } from "./connectors/connector-oauth.js";
 import { setConnectorAuthStore } from "./connectors/connector-auth-store.js";
+import { createOrchestrationSkills } from "./orchestration-skills/index.js";
+import {
+  DEFAULT_APP_BASE_URL,
+  resolveConfigFromPersisted,
+  type CliConfigOverrides,
+} from "./config.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
 import { DaemonConfigOttoToolGroupsPolicy } from "./agent/tools/tool-groups-policy.js";
@@ -245,6 +252,8 @@ import type {
   AgentProfile,
   FirstAgentContext,
   TerminalProfile,
+  AgentSkillSelection,
+  PluginSource,
 } from "@otto-code/protocol/messages";
 import type {
   AgentProviderRuntimeSettingsMap,
@@ -313,6 +322,7 @@ import {
 } from "./hub-disabled.js";
 import { DirectHubRelationshipRemote, type HubRelationshipRemote } from "./hub-disabled.js";
 import { DaemonExecutions } from "./hub-disabled.js";
+import { PluginService } from "./plugins/index.js";
 
 const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
 const REDACTED_LOG_VALUE = "[redacted]";
@@ -516,6 +526,9 @@ export interface OttoDaemonConfig {
   appendSystemPrompt?: string;
   terminalProfiles?: TerminalProfile[];
   agentProfiles?: AgentProfile[];
+  skillSelection?: AgentSkillSelection;
+  pluginsEnabled?: boolean;
+  plugins?: Record<string, PluginSource>;
   staticDir: string;
   mcpDebug: boolean;
   isDev?: boolean;
@@ -570,6 +583,13 @@ export interface OttoDaemonConfig {
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
   pushNotificationSender?: PushNotificationSender;
   managedProcesses?: ManagedProcessRegistry;
+  configReload?: {
+    env: NodeJS.ProcessEnv;
+    cli?: CliConfigOverrides;
+    overrideControlledPaths: string[];
+    relayEnabledFallback: boolean;
+    startupPersisted: PersistedConfig;
+  };
 }
 
 export interface OttoDaemon {
@@ -763,8 +783,34 @@ function createInitialMutableSpeechConfig(
 }
 
 // undefined mcpToolGroups = all groups enabled; only carry an explicit allowlist.
+/**
+ * The launch policy that `reload()` can apply live.
+ *
+ * Each of these reads back out through `PERSISTED_TO_MUTABLE_PATH`, so a field
+ * left off the mutable config makes an edit to it report as "not applied"
+ * rather than being applied or flagged restart-required.
+ */
+function buildInitialReloadableLaunchPolicy(
+  config: OttoDaemonConfig,
+): Pick<MutableDaemonConfig, "cors" | "trustedProxies" | "git" | "app"> &
+  Partial<Pick<MutableDaemonConfig, "hostnames" | "catalogRefreshTimeoutMs">> {
+  return {
+    ...(config.hostnames !== undefined ? { hostnames: config.hostnames } : {}),
+    cors: { allowedOrigins: config.corsAllowedOrigins },
+    trustedProxies: config.trustedProxies ?? ["loopback"],
+    git: config.git ?? resolveGitProcessPolicy({ env: process.env }),
+    app: { baseUrl: config.appBaseUrl ?? DEFAULT_APP_BASE_URL },
+    ...(config.providerCatalogRefreshTimeoutMs !== undefined
+      ? { catalogRefreshTimeoutMs: config.providerCatalogRefreshTimeoutMs }
+      : {}),
+  };
+}
+
 function buildInitialMcpSection(config: OttoDaemonConfig): MutableDaemonConfig["mcp"] {
   return {
+    // Reloadable, so it has to be on the mutable config for `reload()` to see
+    // an edit to it as applied rather than restart-required.
+    enabled: config.mcpEnabled ?? true,
     injectIntoAgents: config.mcpInjectIntoAgents ?? true,
     ...(config.mcpToolGroups !== undefined ? { toolGroups: config.mcpToolGroups } : {}),
   };
@@ -927,15 +973,7 @@ function buildInitialProjectStorageConfig(
 }
 
 function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
-  const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
-    Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
-      // Carry the full override so clients can inspect and edit custom
-      // provider config (extends, env, models). The provider config schema is
-      // passthrough, and persistence re-validates via ProviderOverrideSchema.
-      const providerConfig: MutableDaemonConfig["providers"][string] = { ...override };
-      return [providerId, providerConfig];
-    }),
-  );
+  const providers = config.providerOverrides ?? {};
 
   // Per-project git hosting credentials round-trip config.json ⇄ mutable
   // config the same way the speech OpenAI key does.
@@ -945,6 +983,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
   const initialConfig: MutableDaemonConfig = {
     relay: { enabled: config.relayEnabled ?? true },
     mcp: buildInitialMcpSection(config),
+    ...buildInitialReloadableLaunchPolicy(config),
     browserTools: { enabled: config.browserToolsEnabled ?? false },
     // On by default and safe: nothing spawns until a code-intelligence action needs
     // a language in a workspace, so an unused language costs nothing.
@@ -999,6 +1038,9 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     // Each durable category has an independent default. Existing hosts retain
     // the historical repository location until a user explicitly changes it.
     ...buildInitialProjectStorageConfig(persistedConfig),
+    pluginsEnabled: config.pluginsEnabled ?? false,
+    plugins: config.plugins ?? {},
+    skills: { selection: config.skillSelection },
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -1015,15 +1057,34 @@ export async function createOttoDaemon(
 ): Promise<OttoDaemon> {
   configureGitProcessPolicy(config.git ?? resolveGitProcessPolicy({ env: process.env }));
   const logger = rootLogger.child({ module: "bootstrap" });
+  const obsoleteTimelineDirectory = path.join(config.ottoHome, "agent-timelines");
+  await rm(obsoleteTimelineDirectory, { recursive: true, force: true }).catch((error) => {
+    logger.warn(
+      { err: error, path: obsoleteTimelineDirectory },
+      "Failed to remove obsolete agent timeline data",
+    );
+  });
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
   const daemonVersion = config.daemonVersion ?? resolveDaemonVersion(import.meta.url);
-  const daemonConfigStore = new DaemonConfigStore(
-    config.ottoHome,
-    createInitialMutableDaemonConfig(config),
-    logger,
-    { relayEnabledMutable: config.relayEnabledMutable ?? true },
-  );
+  const initialMutableConfig = createInitialMutableDaemonConfig(config);
+  const daemonConfigStore = new DaemonConfigStore(config.ottoHome, initialMutableConfig, logger, {
+    relayEnabledMutable: config.relayEnabledMutable ?? true,
+    startupPersisted: config.configReload?.startupPersisted,
+    reloadSource: {
+      resolve: (persisted) => {
+        const reloaded = resolveConfigFromPersisted(config.ottoHome, persisted, {
+          env: config.configReload?.env ?? process.env,
+          cli: config.configReload?.cli,
+          relayEnabledFallback: config.configReload?.relayEnabledFallback,
+        });
+        return {
+          mutable: createInitialMutableDaemonConfig(reloaded),
+          overrideControlledPaths: reloaded.configReload?.overrideControlledPaths ?? [],
+        };
+      },
+    },
+  });
   // Record the first-run seed on disk so the shipped starter team survives a
   // restart AND a subsequent "delete every profile" stays deleted.
   daemonConfigStore.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
@@ -1044,10 +1105,15 @@ export async function createOttoDaemon(
   };
   setConnectorAuthStore(connectorAuthStore);
   const connectorOAuthBroker = new ConnectorOAuthBroker({ store: connectorAuthStore, logger });
+  const orchestrationSkills = createOrchestrationSkills(daemonConfigStore);
+  void orchestrationSkills.autoUpdate().catch((error) => {
+    logger.error({ err: error }, "Failed to maintain orchestration skills at startup");
+  });
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
   const ottoToolGroupsPolicy = new DaemonConfigOttoToolGroupsPolicy(daemonConfigStore);
   const browserToolsBroker = new BrowserToolsBroker({});
   const previewDevServers = new DevServerManager({ logger });
+  const pluginRuntime = new PluginService(logger, daemonConfigStore);
 
   const serverId = getOrCreateServerId(config.ottoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.ottoHome, logger);
@@ -1130,6 +1196,9 @@ export async function createOttoDaemon(
 
   const app = express();
   app.set("trust proxy", resolveExpressTrustProxySetting(config));
+  daemonConfigStore.onFieldChange("trustedProxies", (value) => {
+    app.set("trust proxy", value ?? ["loopback"]);
+  });
   let boundListenTarget: ListenTarget | null = null;
   let workspaceRegistry: FileBackedWorkspaceRegistry | null = null;
   const terminalManager = createConfiguredTerminalManager({
@@ -1146,7 +1215,14 @@ export async function createOttoDaemon(
   });
   const scriptRuntimeStore = new WorkspaceScriptRuntimeStore();
   const workspaceSetupRuntime = new WorkspaceSetupRuntime();
-  const configuredHostnames = config.hostnames ?? config.allowedHosts;
+  let configuredHostnames = config.hostnames ?? config.allowedHosts;
+  let appBaseUrl = config.appBaseUrl ?? "https://app.otto-code.me";
+  daemonConfigStore.onFieldChange("hostnames", (value) => {
+    configuredHostnames = value as HostnamesConfig | undefined;
+  });
+  daemonConfigStore.onFieldChange("app.baseUrl", (value) => {
+    appBaseUrl = typeof value === "string" ? value : "https://app.otto-code.me";
+  });
   let wsServer: VoiceAssistantWebSocketServer | null = null;
   let serviceProxyListenTarget: ListenTarget | null = null;
   const scriptHealthMonitor = new ScriptHealthMonitor({
@@ -1192,8 +1268,7 @@ export async function createOttoDaemon(
   }
 
   // CORS - allow same-origin + configured origins
-  const allowedOrigins = new Set([
-    ...config.corsAllowedOrigins,
+  const fixedAllowedOrigins = [
     // Packaged desktop renderers use the custom otto:// protocol scheme.
     "otto://app",
     // For TCP, add localhost variants
@@ -1204,7 +1279,14 @@ export async function createOttoDaemon(
           `http://127.0.0.1:${listenTarget.port}`,
         ]
       : []),
-  ]);
+  ];
+  const allowedOrigins = new Set([...config.corsAllowedOrigins, ...fixedAllowedOrigins]);
+  daemonConfigStore.onFieldChange("cors.allowedOrigins", (value) => {
+    allowedOrigins.clear();
+    for (const origin of [...((value as string[] | undefined) ?? []), ...fixedAllowedOrigins]) {
+      allowedOrigins.add(origin);
+    }
+  });
 
   app.use((req, res, next) => {
     const origin = req.headers.origin;
@@ -1379,6 +1461,10 @@ export async function createOttoDaemon(
     // Provider credentials may have changed; re-resolve on next use.
     gitHostingResolver.invalidateAll();
   });
+  const workspaceLabelService = createWorkspaceLabelService({
+    ottoHome: config.ottoHome,
+    workspaceRegistry,
+  });
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,
     ottoHome: config.ottoHome,
@@ -1525,6 +1611,17 @@ export async function createOttoDaemon(
     brainEndpoint: () => brainManager.getProviderEndpoint(),
   });
   providerSnapshotManagerRef = providerSnapshotManager;
+  daemonConfigStore.onFieldChange("catalogRefreshTimeoutMs", (value) => {
+    providerSnapshotManager.setRefreshTimeoutMs(typeof value === "number" ? value : undefined);
+  });
+  daemonConfigStore.onFieldChange("git.maxProcessesPerSecond", () => {
+    const git = daemonConfigStore.get().git;
+    if (git) configureGitProcessPolicy(git);
+  });
+  daemonConfigStore.onFieldChange("git.maxProcessConcurrency", () => {
+    const git = daemonConfigStore.get().git;
+    if (git) configureGitProcessPolicy(git);
+  });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
   const retainedTranscriptStore = new RetainedTranscriptStore({
     ottoHome: config.ottoHome,
@@ -1593,6 +1690,7 @@ export async function createOttoDaemon(
     workspaceGitService,
     logger,
   });
+  await workspaceLabelService.initialize();
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
   const teardownArchivedWorkspaceRuntime = (workspaceId: string): void => {
     scriptRuntimeStore.removeForWorkspace(workspaceId);
@@ -2256,9 +2354,9 @@ export async function createOttoDaemon(
   agentManager.setOttoToolCatalogFactory(createAgentToolCatalog);
   agentManager.setOttoToolsEnabled(config.mcpInjectIntoAgents !== false);
 
-  const mcpEnabled = config.mcpEnabled ?? true;
+  let mcpEnabled = config.mcpEnabled ?? true;
   let agentMcpBaseUrl: string | null = null;
-  if (mcpEnabled) {
+  {
     const agentMcpRoute = "/mcp/agents";
 
     const createAgentMcpSession = async (callerAgentId?: string) => {
@@ -2291,6 +2389,10 @@ export async function createOttoDaemon(
       req: express.Request,
       res: express.Response,
     ): Promise<void> => {
+      if (!mcpEnabled) {
+        res.status(404).json({ error: "Agent MCP endpoint disabled" });
+        return;
+      }
       // This route is exempt from the global daemon-password middleware, so it
       // authenticates here using the injected capability token (or a valid
       // daemon password). Without this, a password-protected daemon would be
@@ -2372,9 +2474,7 @@ export async function createOttoDaemon(
     app.post(agentMcpRoute, handleAgentMcpRequest);
     app.get(agentMcpRoute, handleAgentMcpRequest);
     app.delete(agentMcpRoute, handleAgentMcpRequest);
-    logger.info({ route: agentMcpRoute }, "Agent MCP server mounted on main app");
-  } else {
-    logger.info("Agent MCP HTTP endpoint disabled");
+    logger.info({ route: agentMcpRoute, enabled: mcpEnabled }, "Agent MCP route mounted");
   }
 
   const speechService = createSpeechService({
@@ -2437,13 +2537,23 @@ export async function createOttoDaemon(
           mainStarted = true;
           const logAndResolve = async () => {
             boundListenTarget = resolveBoundListenTarget(listenTarget, httpServer);
-            const mcpBaseUrl = mcpEnabled ? createAgentMcpBaseUrl(boundListenTarget) : null;
-            agentMcpBaseUrl = config.mcpInjectIntoAgents === false ? null : mcpBaseUrl;
+            const mcpBaseUrl = createAgentMcpBaseUrl(boundListenTarget);
+            agentMcpBaseUrl =
+              !mcpEnabled || config.mcpInjectIntoAgents === false ? null : mcpBaseUrl;
             agentManager.setMcpBaseUrl(agentMcpBaseUrl);
             agentManager.setOttoToolsEnabled(config.mcpInjectIntoAgents !== false);
+            agentManager.setOttoToolsEnabled(mcpEnabled && config.mcpInjectIntoAgents !== false);
+            daemonConfigStore.onFieldChange("mcp.enabled", (value) => {
+              mcpEnabled = value !== false;
+              const inject = daemonConfigStore.get().mcp.injectIntoAgents !== false;
+              agentManager.setMcpBaseUrl(mcpEnabled && inject ? mcpBaseUrl : null);
+              agentManager.setOttoToolsEnabled(mcpEnabled && inject);
+            });
             daemonConfigStore.onFieldChange("mcp.injectIntoAgents", (value) => {
               agentManager.setMcpBaseUrl(value ? mcpBaseUrl : null);
               agentManager.setOttoToolsEnabled(value !== false);
+              agentManager.setMcpBaseUrl(mcpEnabled && value ? mcpBaseUrl : null);
+              agentManager.setOttoToolsEnabled(mcpEnabled && value !== false);
             });
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
@@ -2539,10 +2649,11 @@ export async function createOttoDaemon(
               daemonConfigStore,
               mcpBaseUrl,
               {
-                allowedOrigins,
-                hostnames: configuredHostnames,
+                getAllowedOrigins: () => allowedOrigins,
+                getHostnames: () => configuredHostnames,
                 daemonStatusRpc: dependencies.serverFeatureOverrides?.daemonStatusRpc,
                 relayConfig: dependencies.serverFeatureOverrides?.relayConfig,
+                startPaused: true,
               },
               workspaceAutoName,
               config.auth,
@@ -2576,7 +2687,9 @@ export async function createOttoDaemon(
               {
                 listen: formatListenTarget(boundListenTarget ?? listenTarget),
                 worktreesRoot: config.worktreesRoot,
-                appBaseUrl: config.appBaseUrl,
+                get appBaseUrl() {
+                  return appBaseUrl;
+                },
                 desktopManaged: config.desktopManaged === true,
                 getRelayConfig: () =>
                   relayRuntime?.getConfig() ?? {
@@ -2619,7 +2732,13 @@ export async function createOttoDaemon(
               integrationBrowserAuthorization,
               zoomTeamChatAuthorization,
               workspaceSetupRuntime,
+              pluginRuntime,
+              orchestrationSkills,
+              workspaceLabelService,
             );
+            pluginRuntime.bindOttoSessionHost(wsServer);
+            await pluginRuntime.start();
+            wsServer.beginAcceptingConnections();
             relayRuntime = createRelayRuntime({
               config: {
                 enabled: relayEnabled,
@@ -2693,6 +2812,7 @@ export async function createOttoDaemon(
       speechService.start();
       scriptHealthMonitor.start();
     } catch (error) {
+      await pluginRuntime.stopAllPlugins().catch(() => undefined);
       await serviceProxy.stopStandalone().catch(() => undefined);
       if (mainStarted) {
         httpServer.closeAllConnections();
@@ -2703,6 +2823,7 @@ export async function createOttoDaemon(
   };
 
   const stop = async () => {
+    await pluginRuntime.stopAllPlugins();
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();
@@ -2732,6 +2853,7 @@ export async function createOttoDaemon(
     github.dispose?.();
     speechService.stop();
     toolArtifactService.stop();
+    await speechService.stop();
     await scheduleService.stop().catch(() => undefined);
     await relayRuntime?.stop().catch(() => undefined);
     if (wsServer) {

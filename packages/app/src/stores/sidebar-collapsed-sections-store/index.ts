@@ -4,15 +4,15 @@ import { persist } from "zustand/middleware";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 import {
   type CollapsedProjectsState,
-  type PersistedCollapsedProjects,
   mergePersistedCollapsedProjects,
+  type PersistedCollapsedProjects,
   PersistedCollapsedProjectsSchema,
   serializeCollapsedProjects,
   setProjectCollapsed,
   setSectionsCollapsed,
   togglePinnedCollapsed,
   toggleProjectCollapsed,
-  toggleStatusGroupCollapsed,
+  toggleWorkspaceGroupCollapsed,
 } from "./state";
 
 interface SidebarCollapsedSectionsState extends CollapsedProjectsState {
@@ -20,10 +20,10 @@ interface SidebarCollapsedSectionsState extends CollapsedProjectsState {
   setProjectCollapsed: (projectKey: string, collapsed: boolean) => void;
   setSectionsCollapsed: (input: {
     projectKeys?: readonly string[];
-    statusGroupKeys?: readonly string[];
+    workspaceGroupKeys?: readonly string[];
     collapsed: boolean;
   }) => void;
-  toggleStatusGroupCollapsed: (statusGroupKey: string) => void;
+  toggleWorkspaceGroupCollapsed: (workspaceGroupKey: string) => void;
   togglePinnedCollapsed: () => void;
 }
 
@@ -31,15 +31,15 @@ export const useSidebarCollapsedSectionsStore = create<SidebarCollapsedSectionsS
   persist<SidebarCollapsedSectionsState, [], [], PersistedCollapsedProjects>(
     (set) => ({
       collapsedProjectKeys: new Set(),
-      collapsedStatusGroupKeys: new Set(),
+      collapsedWorkspaceGroupKeys: new Set(),
       collapsedPinned: false,
       toggleProjectCollapsed: (projectKey) =>
         set((state) => toggleProjectCollapsed(state, projectKey)),
       setProjectCollapsed: (projectKey, collapsed) =>
         set((state) => setProjectCollapsed(state, projectKey, collapsed)),
       setSectionsCollapsed: (input) => set((state) => setSectionsCollapsed(state, input)),
-      toggleStatusGroupCollapsed: (statusGroupKey) =>
-        set((state) => toggleStatusGroupCollapsed(state, statusGroupKey)),
+      toggleWorkspaceGroupCollapsed: (workspaceGroupKey) =>
+        set((state) => toggleWorkspaceGroupCollapsed(state, workspaceGroupKey)),
       togglePinnedCollapsed: () => set((state) => togglePinnedCollapsed(state)),
     }),
     {

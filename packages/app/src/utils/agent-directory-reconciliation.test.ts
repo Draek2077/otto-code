@@ -54,6 +54,8 @@ function replica(id: string, status: Agent["status"]): Agent {
   return {
     ...snapshot(id, status),
     serverId: "server",
+    // The snapshot's turn start is an ISO string; the client Agent holds a Date.
+    activeTurn: null,
     createdAt: new Date("2026-07-12T10:00:00.000Z"),
     updatedAt: new Date("2026-07-12T10:00:00.000Z"),
     lastActivityAt: new Date("2026-07-12T10:00:00.000Z"),

@@ -1,4 +1,5 @@
 import type { TranslationResources } from "./en";
+import { pluginSettings } from "./plugin-settings";
 
 export const ru: TranslationResources = {
   common: {
@@ -1579,6 +1580,7 @@ export const ru: TranslationResources = {
     },
     fileActions: {
       openFile: "Открыть файл",
+      openToSide: "Открыть сбоку",
       editFile: "Изменить файл",
       navigateToFile: "Перейти к файлу",
       navigateToChanges: "Перейти к изменениям",
@@ -3314,6 +3316,7 @@ export const ru: TranslationResources = {
       terminals: "Терминалы",
       host: "Обзор",
     },
+    plugins: pluginSettings.ru,
     metadataGeneration: {
       title: "Создание метаданных",
       description:

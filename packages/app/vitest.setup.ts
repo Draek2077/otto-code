@@ -80,11 +80,13 @@ vi.mock("react-native-unistyles", async () => {
   const stub = await import("./test-stubs/react-native-unistyles");
   return {
     StyleSheet: stub.StyleSheet,
-    useUnistyles: () => ({
-      theme: {},
-      rt: {},
-      breakpoint: undefined,
-    }),
+    // Delegated, not redefined: this used to answer `theme: {}`, so any
+    // component grandfathered onto `useUnistyles` crashed on `theme.colors.*`
+    // inside the test instead of failing an assertion. The stub serves the same
+    // theme `StyleSheet.create` does, and it is deliberately built from
+    // `theme-palettes` - importing the real theme here deadlocks, because it
+    // reaches `@/constants/layout`, which imports this very module.
+    useUnistyles: stub.useUnistyles,
     UnistylesRuntime: {
       setTheme: vi.fn(),
       themeName: "light",

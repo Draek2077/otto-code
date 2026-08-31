@@ -487,7 +487,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.base,
   },
   loadingContainer: {
     flex: 1,
@@ -500,7 +500,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   footerHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   errorsBannerWrap: {
     paddingHorizontal: {
@@ -518,6 +518,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorsBannerText: {
     color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
 }));

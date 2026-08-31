@@ -32,8 +32,8 @@ import {
 } from "@/screens/workspace/workspace-desktop-tabs-row";
 import { WorkspaceDesktopTabsRail } from "@/screens/workspace/workspace-desktop-tabs-rail";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
-import { type TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { type WorkspaceFileOpenRequest } from "@/workspace/file-open";
+import type { TerminalProfile } from "@otto-code/protocol/messages";
 
 // Duplicated from workspace-screen.tsx (keep in sync): a few lines each,
 // and this module must not import the screen.
@@ -382,7 +382,7 @@ export function WorkspaceFallbackTabs({
   onArchiveAgent?: (agentId: string) => void | Promise<void>;
   onDeleteAgent?: (agentId: string) => void | Promise<void>;
   onCreateDraftTab: (input: { paneId?: string }) => void;
-  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
+  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfile }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
   showCreateBrowserTab: boolean;
   disableCreateTerminal: boolean;

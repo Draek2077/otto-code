@@ -6,6 +6,7 @@ import {
   type PrepareWorkspaceTabInput,
   type NavigateToPreparedWorkspaceTabInput,
 } from "./prepare-workspace-tab";
+import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 
 export type {
   PrepareWorkspaceTabInput,
@@ -15,7 +16,12 @@ export type {
 function layoutStoreDeps() {
   const store = useWorkspaceLayoutStore.getState();
   return {
-    openTabFocused: store.openTabFocused,
+    openTab: (input: {
+      workspaceKey: string;
+      target: WorkspaceTabTarget;
+      intent: "reveal";
+      placement?: import("@/stores/workspace-layout-actions").WorkspaceTabPlacement;
+    }) => store.openTab(input),
     pinAgent: store.pinAgent,
   };
 }

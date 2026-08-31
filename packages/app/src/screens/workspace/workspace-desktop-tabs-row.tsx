@@ -104,7 +104,6 @@ import {
   resolveTerminalProfiles,
 } from "@otto-code/protocol/terminal-profiles";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
-import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { ProfileIcon, usePinnedLaunchers, type ResolvedPin } from "@/workspace-pins/launch";
 import { runPinnedTabTarget, type TabTargetHandlers } from "@/workspace-pins/run";
 import { isTargetPinned, type PinnedTabTarget } from "@/workspace-pins/target";
@@ -129,6 +128,8 @@ import {
   WorkspacePreviewController,
   useWorkspacePreviewController,
 } from "./workspace-preview-controller";
+import type { TerminalProfile } from "@otto-code/protocol/messages";
+import { TAB_CONTENT_GAP } from "@/screens/workspace/workspace-tab-layout";
 
 const DROPDOWN_WIDTH = 220;
 // Fixed colors for content on the forced-black chat tab (Black tab background
@@ -249,7 +250,7 @@ export interface WorkspaceTabRowExtrasProps {
   onCreateAgentTab: () => void;
   onCreateTerminal: () => void;
   onCreateBrowser: () => void;
-  onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
+  onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
   onEditProfiles: () => void;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
@@ -1081,7 +1082,7 @@ interface WorkspaceDesktopTabsRowProps {
   onArchiveAgent?: (agentId: string) => Promise<void> | void;
   onDeleteAgent?: (agentId: string) => Promise<void> | void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
-  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
+  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfile }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
   showCreateBrowserTab?: boolean;
   disableCreateTerminal?: boolean;
@@ -1861,8 +1862,10 @@ export function WorkspaceDesktopTabsRow({
       // Mirrors tabsContent's paddingHorizontal so width math stays exact.
       rowPaddingHorizontal: 4,
       tabGap: 0,
+      minTabWidth: TAB_MIN_WIDTH,
       maxTabWidth: TAB_MAX_WIDTH,
       tabIconWidth: TAB_ICON_WIDTH,
+      tabContentGap: TAB_CONTENT_GAP,
       tabHorizontalPadding: TAB_HORIZONTAL_PADDING,
       estimatedCharWidth: TAB_ESTIMATED_CHAR_WIDTH,
       closeButtonWidth: TAB_CLOSE_BUTTON_WIDTH,
@@ -1916,8 +1919,14 @@ export function WorkspaceDesktopTabsRow({
     normalizedServerId,
   });
 
+  // The row estimates label width from character count rather than measuring;
+  // `estimatedCharWidth` is the conversion the rail's sizing already uses.
+  const tabLabelWidths = useMemo(
+    () => tabLabelLengths.map((length) => length * TAB_ESTIMATED_CHAR_WIDTH),
+    [tabLabelLengths],
+  );
   const { layout } = useWorkspaceTabLayout({
-    tabLabelLengths,
+    tabLabelWidths,
     viewportWidthOverride: contentWidth > 0 ? contentWidth : null,
     metrics: layoutMetrics,
   });
@@ -1947,7 +1956,7 @@ export function WorkspaceDesktopTabsRow({
   }, [onCreateTerminalTab, paneId]);
 
   const handleCreateTerminalWithProfile = useCallback(
-    (profile: TerminalProfileInput) => {
+    (profile: TerminalProfile) => {
       onCreateTerminalTab({ paneId, profile });
     },
     [onCreateTerminalTab, paneId],

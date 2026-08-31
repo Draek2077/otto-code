@@ -182,7 +182,45 @@ function buildCloseAfterTestIDSuffix(
   return isVerticalStack(surface, orientation) ? "close-below" : "close-right";
 }
 
+/**
+ * The tabs that can only ever have one instance open, so their close button
+ * needs no identifier to disambiguate it. Split out from the identified kinds
+ * below purely to keep either chain readable.
+ */
+function getSingletonCloseButtonTestId(tab: WorkspaceTabDescriptor): string | null {
+  if (tab.target.kind === "visualizer") {
+    return "workspace-visualizer-close";
+  }
+  if (tab.target.kind === "contextManagement") {
+    return "workspace-context-management-close";
+  }
+  if (tab.target.kind === "projectKnowledge") return "workspace-project-knowledge-close";
+  if (tab.target.kind === "files" || tab.target.kind === "pull_request") {
+    return `workspace-${tab.target.kind}-close`;
+  }
+  return null;
+}
+
+/** The diff-review kinds, whose close ids are derived from what is being diffed. */
+function getDiffCloseButtonTestId(tab: WorkspaceTabDescriptor): string | null {
+  if (tab.target.kind === "commit_diff") {
+    return `workspace-commit-diff-close-${encodeFilePathForPathSegment(tab.target.sha)}`;
+  }
+  if (tab.target.kind === "working_diff" || tab.target.kind === "changes_tree") {
+    return `workspace-working-diff-close-${encodeFilePathForPathSegment(buildDeterministicWorkspaceTabId(tab.target))}`;
+  }
+  return null;
+}
+
 function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
+  const diff = getDiffCloseButtonTestId(tab);
+  if (diff !== null) {
+    return diff;
+  }
+  const singleton = getSingletonCloseButtonTestId(tab);
+  if (singleton !== null) {
+    return singleton;
+  }
   if (tab.target.kind === "agent") {
     return `workspace-agent-close-${tab.target.agentId}`;
   }
@@ -204,13 +242,6 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "gitLog") {
     return `workspace-gitlog-close-${tab.target.operation}`;
   }
-  if (tab.target.kind === "visualizer") {
-    return "workspace-visualizer-close";
-  }
-  if (tab.target.kind === "contextManagement") {
-    return "workspace-context-management-close";
-  }
-  if (tab.target.kind === "projectKnowledge") return "workspace-project-knowledge-close";
   if (tab.target.kind === "orchestrationGraph") {
     return `workspace-orchestration-graph-close-${tab.target.graphId}`;
   }
@@ -220,12 +251,7 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "provider_subagent") {
     return `workspace-provider-subagent-close-${tab.target.subagentId}`;
   }
-  if (tab.target.kind === "commit_diff") {
-    return `workspace-commit-diff-close-${encodeFilePathForPathSegment(tab.target.sha)}`;
-  }
-  if (tab.target.kind === "working_diff") {
-    return `workspace-working-diff-close-${encodeFilePathForPathSegment(buildDeterministicWorkspaceTabId(tab.target))}`;
-  }
+
   if (tab.target.kind === "communicationsRoom") {
     return `workspace-communications-room-close-${tab.target.providerId}-${tab.target.conversationId}`;
   }
@@ -235,7 +261,18 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "architecturalView") {
     return `workspace-architectural-view-close-${tab.target.viewId}`;
   }
-  return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
+  if (tab.target.kind === "plugin") {
+    return `workspace-plugin-close-${encodeFilePathForPathSegment(buildDeterministicWorkspaceTabId(tab.target))}`;
+  }
+  if (tab.target.kind === "new_tab") {
+    return `workspace-new-tab-close-${tab.tabId}`;
+  }
+  if (tab.target.kind === "file") {
+    return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
+  }
+  // Every kind is handled above or by one of the two helpers; this is the guard
+  // for a tab kind added without a close id of its own.
+  return `workspace-tab-close-${tab.tabId}`;
 }
 
 function normalizeComparablePath(path: string): string {
@@ -559,7 +596,7 @@ export function buildWorkspaceTabMenuEntries(
 export function buildWorkspaceDesktopTabActions(
   input: BuildWorkspaceDesktopTabActionsInput,
 ): WorkspaceDesktopTabActions {
-  const contextMenuTestId = `workspace-tab-context-${buildDeterministicWorkspaceTabId(input.tab.target)}`;
+  const contextMenuTestId = `workspace-tab-context-${input.tab.tabId}`;
   return {
     contextMenuTestId,
     menuEntries: buildWorkspaceTabMenuEntries({

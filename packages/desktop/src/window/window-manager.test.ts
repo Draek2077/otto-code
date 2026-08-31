@@ -6,11 +6,8 @@ import {
   DEFAULT_WINDOW_HEIGHT,
   DEFAULT_WINDOW_WIDTH,
   getMainWindowChromeOptions,
-  getTitleBarOverlayOptions,
   readBadgeCount,
-  readWindowControlsOverlayUpdate,
   readWindowTheme,
-  resolveRuntimeTitleBarOverlayOptions,
   resolveWindowBounds,
 } from "./window-manager";
 
@@ -140,14 +137,12 @@ describe("window-manager", () => {
   });
 
   describe("getMainWindowChromeOptions", () => {
-    it("uses frameless hidden title bars with overlay on windows", () => {
+    it("uses renderer-painted controls on windows", () => {
       expect(
         getMainWindowChromeOptions({
-          platform: "win32",
-          theme: "dark",
+          mode: "custom-windows",
         }),
       ).toEqual({
-        titleBarStyle: "hidden",
         frame: false,
         autoHideMenuBar: true,
         titleBarOverlay: {
@@ -158,29 +153,21 @@ describe("window-manager", () => {
       });
     });
 
-    it("uses frameless hidden title bars with overlay on linux", () => {
+    it("uses renderer-painted controls on linux", () => {
       expect(
         getMainWindowChromeOptions({
-          platform: "linux",
-          theme: "light",
+          mode: "custom-linux",
         }),
       ).toEqual({
-        titleBarStyle: "hidden",
         frame: false,
         autoHideMenuBar: true,
-        titleBarOverlay: {
-          color: "#ffffff",
-          symbolColor: "#09090b",
-          height: 29,
-        },
       });
     });
 
     it("keeps the mac traffic-light path separate", () => {
       expect(
         getMainWindowChromeOptions({
-          platform: "darwin",
-          theme: "dark",
+          mode: "native-mac",
         }),
       ).toEqual({
         titleBarStyle: "hidden",

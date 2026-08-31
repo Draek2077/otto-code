@@ -1,4 +1,15 @@
+import type { ExplorerTab } from "@/stores/explorer-tab-memory";
 export const DEFAULT_IOS_KEYBOARD_INSET_MIN_HEIGHT = 120;
+
+export function shouldUseCompactExplorerKeyboardPadding(input: {
+  isGit: boolean;
+  // Otto's explorer has a Search tab as well; the rule is the same for it as
+  // for Files, so this takes the whole ExplorerTab union rather than a subset
+  // that silently excludes one.
+  explorerTab: ExplorerTab;
+}): boolean {
+  return !input.isGit || input.explorerTab !== "changes";
+}
 
 export function resolveKeyboardShift(input: {
   rawKeyboardHeight: number;

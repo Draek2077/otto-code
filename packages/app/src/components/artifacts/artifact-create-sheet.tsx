@@ -704,7 +704,6 @@ function OpenArtifactCreateSheet({
           accessibilityLabel="Artifact name"
           initialValue={name}
           resetKey={`artifact-name-${fieldResetKey}`}
-          value={name}
           onChangeText={setName}
           placeholder="Dashboard prototype"
           style={styles.input}
@@ -721,7 +720,6 @@ function OpenArtifactCreateSheet({
             accessibilityLabel="Prompt"
             initialValue={description}
             resetKey={`artifact-description-${fieldResetKey}`}
-            value={description}
             onChangeText={setDescription}
             placeholder="Describe the HTML artifact you want generated"
             style={styles.multilineInput}

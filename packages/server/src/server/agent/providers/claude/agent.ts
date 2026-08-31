@@ -49,6 +49,11 @@ import {
 } from "../../workspace-access.js";
 import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
+import { ClaudeTaskState } from "./task-state.js";
+import {
+  ClaudeTaskProtocolSource,
+  type ClaudeHookObservationInput,
+} from "./subagents/live-source.js";
 import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-definitions.js";
 import {
   buildBinaryDiagnosticRows,
@@ -111,6 +116,8 @@ import {
   type AgentSession,
   type AgentSessionConfig,
   type AgentSlashCommand,
+  type SteerActiveTurnOptions,
+  type SteerResult,
   type AgentStreamEvent,
   type AgentTimelineItem,
   type AgentUsage,
@@ -145,7 +152,7 @@ import {
   observeReplayWorkflows,
   parseClaudeWorkflowRun,
 } from "./subagents/workflow-replay-source.js";
-import { foldSubagentObservations } from "./subagents/observation.js";
+import { foldSubagentObservations, type SubagentObservation } from "./subagents/observation.js";
 
 const fsPromises = promises;
 const CLAUDE_SETTING_SOURCES: NonNullable<ClaudeOptions["settingSources"]> = [
@@ -406,6 +413,8 @@ const CLAUDE_ROOT_ONLY_COMMANDS = new Set([
 const INTERRUPT_TOOL_USE_PLACEHOLDER = "[Request interrupted by user for tool use]";
 const INTERRUPT_PLACEHOLDER_PATTERN = /^\[Request interrupted by user(?:[^\]]*)\]$/;
 const NO_RESPONSE_REQUESTED_PLACEHOLDER = "No response requested.";
+const STEER_SUPERSEDED_PERMISSION_MESSAGE =
+  "The user answered with a message instead of approving. Their message follows.";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
@@ -2428,6 +2437,17 @@ class ClaudeAgentSession implements AgentSession {
   private query: Query | null = null;
   private childProcess: ChildProcess | null = null;
   private input: AsyncMessageInput<SDKUserMessage> | null = null;
+  /** The exact SDK query/input pair that owns the current foreground turn. */
+  private activeForegroundQuery: Query | null = null;
+  private activeForegroundInput: AsyncMessageInput<SDKUserMessage> | null = null;
+  /**
+   * Steers pushed into the live SDK input that Claude may not have read yet. Interrupting the turn
+   * has to discard them, or the SDK dequeues one and resumes the turn we just stopped. SDK user
+   * UUIDs are provider-private; never let them escape the adapter boundary.
+   */
+  private readonly queuedSteerUuids = new Set<string>();
+  /** Human steers whose text has not reached Claude yet and therefore supersede blocking cards. */
+  private readonly permissionClearingSteerUuids = new Set<string>();
   private claudeSessionId: string | null;
   private persistence: AgentPersistenceHandle | null;
   private currentMode: PermissionMode;
@@ -2441,8 +2461,19 @@ class ClaudeAgentSession implements AgentSession {
   private autonomousTurn: AutonomousTurnState | null = null;
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private readonly timelineAssembler = new TimelineAssembler();
+  private readonly taskState = new ClaudeTaskState();
+  private readonly taskProtocolSource = new ClaudeTaskProtocolSource({
+    getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
+    readWorkflowResult: readClaudeWorkflowResultFile,
+  });
   private readonly sidechainTracker = new ClaudeSidechainTracker({
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
+    // Releases that predate the task protocol announce nothing, so the tracker keeps deriving
+    // identity and status from frames for them. Detecting the capability beats comparing version
+    // strings: it reacts to what this session actually does.
+    isDescriptorOwnedElsewhere: () => this.taskProtocolSource.isActive,
+    needsSyntheticParentToolCard: (toolUseId) =>
+      this.taskProtocolSource.needsSyntheticParentToolCard(toolUseId),
   });
   // Observed-subagent bookkeeping (projects/observed-subagents/observed-subagents.md). Keys are the
   // parent Task tool_use ids seen live this session - history replay never
@@ -2720,6 +2751,8 @@ class ClaudeAgentSession implements AgentSession {
       if (!this.input) {
         throw new Error("Claude session input stream not initialized");
       }
+      this.activeForegroundQuery = this.query;
+      this.activeForegroundInput = this.input;
       this.startQueryPump();
       this.input.push(sdkMessage);
       setTimeout(() => {
@@ -2734,6 +2767,64 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     return { turnId };
+  }
+
+  async steerActiveTurn(
+    prompt: AgentPromptInput,
+    options: SteerActiveTurnOptions,
+  ): Promise<SteerResult> {
+    if (this.resolveSlashCommandInvocation(prompt)) {
+      return { status: "unavailable" };
+    }
+    const activeTurnId = this.activeForegroundTurnId ?? this.autonomousTurn?.id;
+    if (this.compacting || activeTurnId !== options.expectedTurnId) {
+      return { status: "unavailable" };
+    }
+
+    // Capture both ends of the live SDK stream before creating or delivering the message. There
+    // is deliberately no await below: a finished A cannot make this input point at a later B.
+    const query = this.activeForegroundQuery;
+    const input = this.activeForegroundInput;
+    if (!query || !input || this.query !== query || this.input !== input) {
+      return { status: "unavailable" };
+    }
+    const message = this.toSdkUserMessage(prompt);
+    message.priority = "next";
+    if (
+      (this.activeForegroundTurnId ?? this.autonomousTurn?.id) !== options.expectedTurnId ||
+      this.activeForegroundQuery !== query ||
+      this.activeForegroundInput !== input ||
+      this.query !== query ||
+      this.input !== input
+    ) {
+      return { status: "unavailable" };
+    }
+    this.enqueueSteer(input, message, options.clearPendingPermissions === true);
+    return { status: "accepted" };
+  }
+
+  private enqueueSteer(
+    input: AsyncMessageInput<SDKUserMessage>,
+    message: SDKUserMessage,
+    clearPendingPermissions: boolean,
+  ): void {
+    const uuid = message.uuid;
+    if (uuid) this.queuedSteerUuids.add(uuid);
+    if (uuid && clearPendingPermissions) {
+      this.permissionClearingSteerUuids.add(uuid);
+    }
+    try {
+      input.push(message);
+      if (clearPendingPermissions) {
+        this.denyPendingPermissionsSupersededBySteer();
+      }
+    } catch (error) {
+      if (uuid) {
+        this.queuedSteerUuids.delete(uuid);
+        this.permissionClearingSteerUuids.delete(uuid);
+      }
+      throw error;
+    }
   }
 
   subscribe(callback: (event: AgentStreamEvent) => void): () => void {
@@ -3031,6 +3122,83 @@ class ClaudeAgentSession implements AgentSession {
     return Array.from(this.pendingPermissions.values()).map((entry) => entry.request);
   }
 
+  /**
+   * A denied request is the only record the transcript gets. Plans especially:
+   * the pending card is the only place the plan text lives, so losing it means
+   * the user can no longer read what they just declined.
+   */
+  private recordDeniedPermissionTimeline(
+    request: AgentPermissionRequest,
+    response: Extract<AgentPermissionResponse, { behavior: "deny" }>,
+  ): void {
+    if (request.kind === "tool") {
+      this.pushToolCall(
+        mapClaudeFailedToolCall({
+          name: request.name,
+          callId:
+            (typeof request.metadata?.toolUseId === "string" ? request.metadata.toolUseId : null) ??
+            request.id,
+          input: request.input ?? null,
+          output: null,
+          error: { message: response.message ?? "Permission denied" },
+        }),
+      );
+      return;
+    }
+    if (request.kind === "plan") {
+      let planText: string | null = null;
+      if (typeof request.metadata?.planText === "string") {
+        planText = request.metadata.planText;
+      } else if (typeof request.input?.plan === "string") {
+        planText = request.input.plan;
+      }
+      if (!planText) return;
+      this.pushToolCall({
+        type: "tool_call",
+        name: "plan_approval",
+        callId: request.id,
+        status: "completed",
+        error: null,
+        detail: { type: "plan", text: planText },
+        metadata: {
+          approved: false,
+          actionId: response.selectedActionId ?? "reject",
+        },
+      });
+    }
+  }
+
+  private resolveDeniedPermission(
+    request: AgentPermissionRequest,
+    response: Extract<AgentPermissionResponse, { behavior: "deny" }>,
+  ): PermissionResult {
+    this.recordDeniedPermissionTimeline(request, response);
+    this.pushEvent({
+      type: "permission_resolved",
+      provider: "claude",
+      requestId: request.id,
+      resolution: response,
+    });
+    return {
+      behavior: "deny",
+      message: response.message ?? "Permission request denied",
+      interrupt: response.interrupt,
+    };
+  }
+
+  private denyPendingPermissionsSupersededBySteer(): void {
+    for (const [requestId, pending] of this.pendingPermissions) {
+      this.pendingPermissions.delete(requestId);
+      pending.cleanup?.();
+      pending.resolve(
+        this.resolveDeniedPermission(pending.request, {
+          behavior: "deny",
+          message: STEER_SUPERSEDED_PERMISSION_MESSAGE,
+        }),
+      );
+    }
+  }
+
   async respondToPermission(requestId: string, response: AgentPermissionResponse): Promise<void> {
     const pending = this.pendingPermissions.get(requestId);
     if (!pending) {
@@ -3074,26 +3242,8 @@ class ClaudeAgentSession implements AgentSession {
       };
       pending.resolve(result);
     } else {
-      if (pending.request.kind === "tool") {
-        this.pushToolCall(
-          mapClaudeFailedToolCall({
-            name: pending.request.name,
-            callId:
-              (typeof pending.request.metadata?.toolUseId === "string"
-                ? pending.request.metadata.toolUseId
-                : null) ?? pending.request.id,
-            input: pending.request.input ?? null,
-            output: null,
-            error: { message: response.message ?? "Permission denied" },
-          }),
-        );
-      }
-      const result: PermissionResult = {
-        behavior: "deny",
-        message: response.message ?? "Permission request denied",
-        interrupt: response.interrupt,
-      };
-      pending.resolve(result);
+      pending.resolve(this.resolveDeniedPermission(pending.request, response));
+      return;
     }
 
     this.pushEvent({
@@ -3156,6 +3306,8 @@ class ClaudeAgentSession implements AgentSession {
     this.taskTranscriptWatcher.close();
     this.subscribers.clear();
     this.activeForegroundTurnId = null;
+    this.activeForegroundQuery = null;
+    this.activeForegroundInput = null;
     this.autonomousTurn = null;
     this.cancelCurrentTurn = null;
     this.turnState = "idle";
@@ -3285,7 +3437,10 @@ class ClaudeAgentSession implements AgentSession {
     if (!parsed) {
       return null;
     }
-    return parsed.commandName === REWIND_COMMAND_NAME ? parsed : null;
+    return parsed.commandName === REWIND_COMMAND_NAME ||
+      CLAUDE_ROOT_ONLY_COMMANDS.has(parsed.commandName)
+      ? parsed
+      : null;
   }
 
   private parseSlashCommandInput(text: string): SlashCommandInvocation | null {
@@ -3834,6 +3989,7 @@ class ClaudeAgentSession implements AgentSession {
       // promoted to first-class, separately-watchable track rows. See
       // projects/observed-subagents/observed-subagents.md.
       forwardSubagentText: true,
+      hooks: this.buildSubagentEffortHooks(),
       // Periodic AI progress summaries for observed subagents. Gated by the
       // daemon behavior toggle (default on); other providers ignore this.
       agentProgressSummaries: this.resolveAgentProgressSummariesEnabled(),
@@ -4222,6 +4378,8 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.notifySubscribers(event);
     this.activeForegroundTurnId = null;
+    this.activeForegroundQuery = null;
+    this.activeForegroundInput = null;
     this.cancelCurrentTurn = null;
     this.activeTurnHasAssistantText = false;
     this.syncTurnState("foreground turn terminal");
@@ -4237,11 +4395,15 @@ class ClaudeAgentSession implements AgentSession {
     if (terminalSeen) {
       if (this.activeForegroundTurnId) {
         this.activeForegroundTurnId = null;
+        this.activeForegroundQuery = null;
+        this.activeForegroundInput = null;
         this.cancelCurrentTurn = null;
         this.activeTurnHasAssistantText = false;
         this.syncTurnState("foreground turn terminal");
       } else if (this.autonomousTurn) {
         this.autonomousTurn = null;
+        this.activeForegroundQuery = null;
+        this.activeForegroundInput = null;
         this.activeTurnHasAssistantText = false;
         this.syncTurnState("autonomous turn terminal");
       }
@@ -4255,6 +4417,8 @@ class ClaudeAgentSession implements AgentSession {
     this.autonomousTurn = {
       id: this.createTurnId("autonomous"),
     };
+    this.activeForegroundQuery = this.query;
+    this.activeForegroundInput = this.input;
     this.activeTurnHasAssistantText = false;
     this.contextUsage.beginTurn();
     this.beginTurn();
@@ -4267,6 +4431,8 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.notifySubscribers({ type: "turn_completed", provider: "claude" });
     this.autonomousTurn = null;
+    this.activeForegroundQuery = null;
+    this.activeForegroundInput = null;
     this.activeTurnHasAssistantText = false;
     this.syncTurnState("autonomous turn completed");
   }
@@ -4518,13 +4684,26 @@ class ClaudeAgentSession implements AgentSession {
     );
   }
 
+  /**
+   * Claude keeps talking about the request it was told to kill — the notification for the tool it
+   * just stopped, trailing assistant output. That is not new work, so it must not open a turn: the
+   * only message that would close that turn is the result shouldSuppressStaleResult drops, leaving
+   * the agent stuck reporting "running" forever.
+   */
+  private shouldStartAutonomousTurn(message: SDKMessage): boolean {
+    if (this.activeForegroundTurnId || this.pendingInterruptAbort) {
+      return false;
+    }
+    return this.isAssistantishMessage(message);
+  }
+
   private async routeSdkMessageFromPump(message: SDKMessage): Promise<void> {
     if (this.shouldSuppressStaleResult(message)) {
       return;
     }
 
     const isForeground = Boolean(this.activeForegroundTurnId);
-    if (!isForeground && this.isAssistantishMessage(message)) {
+    if (this.shouldStartAutonomousTurn(message)) {
       this.startAutonomousTurn();
     }
     if (!isForeground && !this.autonomousTurn && message.type === "result") {
@@ -4658,6 +4837,8 @@ class ClaudeAgentSession implements AgentSession {
     this.queryRestartNeeded = false;
     this.autonomousTurn = null;
     this.activeForegroundTurnId = null;
+    this.activeForegroundQuery = null;
+    this.activeForegroundInput = null;
     this.syncTurnState("missing resumed conversation");
     return true;
   }
@@ -4677,6 +4858,7 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     this.pendingInterruptAbort = true;
+    await this.discardQueuedSteers(queryToInterrupt);
     try {
       // interrupt_receipt_v1 CLIs resolve interrupt() with the uuids of queued
       // async user messages that survive this interrupt and WILL still run.
@@ -4725,142 +4907,30 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
-  private translateMessageToEvents(
-    message: SDKMessage,
-    options?: {
-      suppressAssistantText?: boolean;
-      suppressReasoning?: boolean;
-    },
-  ): AgentStreamEvent[] {
-    const parentToolUseId = this.readObservedSubagentSidechainParent(message);
-    if (parentToolUseId) {
-      const sidechainEvents = this.sidechainTracker
-        .handleMessage(message, parentToolUseId)
-        .filter(
-          (event) =>
-            !(
-              this.workflowObservedKeys.has(parentToolUseId) &&
-              event.type === "timeline" &&
-              event.item.type === "tool_call" &&
-              event.item.callId === parentToolUseId
-            ),
-        );
-      this.appendObservedSubagentSidechainEvents(message, parentToolUseId, sidechainEvents);
-      return sidechainEvents;
-    }
-
-    const events: AgentStreamEvent[] = [];
-    if (message.type !== "system") {
-      const sessionCapture = this.captureSessionIdFromMessage(message);
-      if (sessionCapture.notice) {
-        events.push({
-          type: "timeline",
-          provider: "claude",
-          item: sessionCapture.notice,
-        });
-      }
-      if (sessionCapture.threadStartedSessionId) {
-        events.push({
-          type: "thread_started",
-          provider: "claude",
-          sessionId: sessionCapture.threadStartedSessionId,
-        });
-      }
-    }
-
-    switch (message.type) {
-      case "system":
-        this.appendSystemMessageEvents(message, events);
-        break;
-      case "user":
-        this.appendUserMessageEvents(message, events);
-        break;
-      case "assistant": {
-        const timelineItems = this.mapBlocksToTimeline(message.message.content, {
-          suppressAssistantText: options?.suppressAssistantText ?? false,
-          suppressReasoning: options?.suppressReasoning ?? false,
-        });
-        for (const item of timelineItems) {
-          events.push({ type: "timeline", item, provider: "claude" });
-        }
-        break;
-      }
-      case "stream_event":
-        this.appendStreamEventEvents(message, events, options);
-        break;
-      case "result":
-        this.appendResultEvents(message, events);
-        break;
-      case "prompt_suggestion": {
-        const suggestion = message.suggestion.trim();
-        if (suggestion) {
-          events.push({ type: "prompt_suggestion", provider: "claude", suggestion });
-        }
-        break;
-      }
-      case "rate_limit_event": {
-        const info = mapClaudeRateLimitInfo(message.rate_limit_info);
-        const key = JSON.stringify(info);
-        if (key !== this.lastRateLimitEventKey) {
-          this.lastRateLimitEventKey = key;
-          events.push({ type: "rate_limit_updated", provider: "claude", info });
-        }
-        break;
-      }
-      default:
-        break;
-    }
-
-    // Task tool_result mapping (handleToolResult) can enqueue an observed
-    // subagent completion; flush it with the events that carried it.
-    if (this.pendingObservedEvents.length > 0) {
-      events.push(...this.pendingObservedEvents);
-      this.pendingObservedEvents = [];
-    }
-
-    return events;
-  }
-
   /**
-   * True when a message's `parent_tool_use_id` names an observable AI run
-   * (a Task/Agent sub-agent or a Workflow) rather than an ordinary tool.
-   *
-   * A non-null parent_tool_use_id is NOT by itself a sub-agent signal. Roughly
-   * 30s into ANY slow tool the CLI emits a heartbeat `tool_progress` whose
-   * tool_use_id is a synthetic "<id>-heartbeat-N" and whose parent_tool_use_id
-   * is the real tool's id:
-   *
-   *   {"type":"tool_progress","tool_use_id":"toolu_01EB…-heartbeat-0",
-   *    "parent_tool_use_id":"toolu_01EB…"}
-   *
-   * Treating that as a sidechain announced an observed sub-agent keyed by the
-   * shell tool, titled with its `description`. The row then had no timeline (a
-   * tool_progress is neither an assistant nor a user message) and no way to
-   * settle (every settle path is gated on a Task/Agent/Workflow tool name), so
-   * every Bash/PowerShell call that ran longer than the heartbeat left a
-   * permanently "running" row with an empty pane.
-   *
-   * An unknown parent stays accepted: a backgrounded Agent whose tool_result
-   * ack already evicted its cache entry still has to reach its observed row.
+   * Interrupt means interrupt: a steer Claude never read dies with the turn instead of resuming it.
+   * A steer already dequeued cannot be recalled, and does not need to be — the interrupt kills it.
    */
-  private readObservedSubagentSidechainParent(message: SDKMessage): string | null {
-    const parentToolUseId = readClaudeParentToolUseId(message);
-    if (!parentToolUseId) {
-      return null;
+  private async discardQueuedSteers(query: Query): Promise<void> {
+    const uuids = [...this.queuedSteerUuids];
+    this.queuedSteerUuids.clear();
+    this.permissionClearingSteerUuids.clear();
+    if (uuids.length === 0) return;
+    // The SDK runtime supports this, but its public Query type has not caught up. Keep the
+    // compatibility escape hatch inside the Claude adapter.
+    const cancelAsyncMessage = (
+      query as Query & {
+        cancelAsyncMessage?: (uuid: string) => Promise<boolean>;
+      }
+    ).cancelAsyncMessage;
+    if (!cancelAsyncMessage) return;
+    for (const uuid of uuids) {
+      try {
+        await cancelAsyncMessage.call(query, uuid);
+      } catch (error) {
+        this.logger.warn({ err: error }, "Failed to discard a queued Claude steer");
+      }
     }
-    if (
-      this.announcedObservedSubagents.has(parentToolUseId) ||
-      this.workflowObservedKeys.has(parentToolUseId)
-    ) {
-      return parentToolUseId;
-    }
-    const cachedTool = this.toolUseCache.get(parentToolUseId);
-    if (!cachedTool) {
-      return parentToolUseId;
-    }
-    const isObservable =
-      isClaudeSubagentToolName(cachedTool.name) || isClaudeWorkflowToolName(cachedTool.name);
-    return isObservable ? parentToolUseId : null;
   }
 
   /**
@@ -5002,6 +5072,282 @@ class ClaudeAgentSession implements AgentSession {
         this.observedParentKeyByToolUseId.set((block as { id: string }).id, sidechainKey);
       }
     }
+  }
+
+  /**
+   * True when a message's `parent_tool_use_id` names an observable AI run
+   * (a Task/Agent sub-agent or a Workflow) rather than an ordinary tool.
+   *
+   * A non-null parent_tool_use_id is NOT by itself a sub-agent signal. Roughly
+   * 30s into ANY slow tool the CLI emits a heartbeat `tool_progress` whose
+   * tool_use_id is a synthetic "<id>-heartbeat-N" and whose parent_tool_use_id
+   * is the real tool's id:
+   *
+   *   {"type":"tool_progress","tool_use_id":"toolu_01EB…-heartbeat-0",
+   *    "parent_tool_use_id":"toolu_01EB…"}
+   *
+   * Treating that as a sidechain announced an observed sub-agent keyed by the
+   * shell tool, titled with its `description`. The row then had no timeline (a
+   * tool_progress is neither an assistant nor a user message) and no way to
+   * settle (every settle path is gated on a Task/Agent/Workflow tool name), so
+   * every Bash/PowerShell call that ran longer than the heartbeat left a
+   * permanently "running" row with an empty pane.
+   *
+   * An unknown parent stays accepted: a backgrounded Agent whose tool_result
+   * ack already evicted its cache entry still has to reach its observed row.
+   */
+  private readObservedSubagentSidechainParent(message: SDKMessage): string | null {
+    const parentToolUseId = readClaudeParentToolUseId(message);
+    if (!parentToolUseId) {
+      return null;
+    }
+    if (
+      this.announcedObservedSubagents.has(parentToolUseId) ||
+      this.workflowObservedKeys.has(parentToolUseId)
+    ) {
+      return parentToolUseId;
+    }
+    const cachedTool = this.toolUseCache.get(parentToolUseId);
+    if (!cachedTool) {
+      return parentToolUseId;
+    }
+    const isObservable =
+      isClaudeSubagentToolName(cachedTool.name) || isClaudeWorkflowToolName(cachedTool.name);
+    return isObservable ? parentToolUseId : null;
+  }
+
+  /**
+   * The Task card in the parent transcript, built from the declaration.
+   *
+   * The sidechain tracker also emits this card, enriched with the child's action log, and the two
+   * collapse on the shared tool-call id. Emitting it at declaration matters because a
+   * backgrounded subagent produces no sidechain frames at all — verified on the wire — so the
+   * tracker never runs for one and its card would otherwise stay an unlabeled "Task".
+   */
+  private buildSubagentToolCallCard(
+    declaration: Extract<SubagentObservation, { kind: "declared" }>,
+  ): AgentStreamEvent | null {
+    const toolCall = mapClaudeRunningToolCall({
+      name: "Task",
+      callId: declaration.id,
+      input: null,
+      output: null,
+    });
+    if (!toolCall) return null;
+    return {
+      type: "timeline",
+      provider: "claude",
+      item: {
+        ...toolCall,
+        detail: {
+          type: "sub_agent",
+          ...(declaration.title ? { subAgentType: declaration.title } : {}),
+          ...(declaration.description ? { description: declaration.description } : {}),
+          log: "",
+          actions: [],
+        },
+      },
+    };
+  }
+
+  /**
+   * Effort is reachable only through hooks.
+   *
+   * It appears nowhere on the message stream — verified by scanning every message type at depth
+   * — and the level Otto requests is not necessarily the level that runs, because a model that
+   * does not support it is silently downgraded. A hook firing inside a subagent reports the
+   * active post-downgrade level alongside the subagent's `agent_id`.
+   *
+   * These are observation-only: they record what they see and always return an empty result, so
+   * they can never alter tool execution or turn control.
+   */
+  private buildSubagentEffortHooks(): NonNullable<ClaudeOptions["hooks"]> {
+    const observe = async (input: unknown): Promise<Record<string, never>> => {
+      try {
+        for (const event of foldSubagentObservations(
+          this.taskProtocolSource.observeHook(input as ClaudeHookObservationInput),
+        )) {
+          this.notifySubscribers({ type: "provider_subagent", provider: "claude", event });
+        }
+      } catch (error) {
+        this.logger.debug({ err: error }, "Failed to read subagent effort from hook");
+      }
+      return {};
+    };
+
+    // SubagentStart carries no effort (documented as absent for lifecycle hooks), so the value
+    // lands on the child's first tool use. SubagentStop covers a child that used no tools.
+    return {
+      PreToolUse: [{ hooks: [observe] }],
+      PostToolUse: [{ hooks: [observe] }],
+      SubagentStop: [{ hooks: [observe] }],
+    };
+  }
+
+  private translateMessageToEvents(
+    message: SDKMessage,
+    options?: {
+      suppressAssistantText?: boolean;
+      suppressReasoning?: boolean;
+    },
+  ): AgentStreamEvent[] {
+    const parentToolUseId = this.readObservedSubagentSidechainParent(message);
+    if (parentToolUseId) {
+      const sidechainEvents = this.translateSidechainFrameToEvents(message, parentToolUseId).filter(
+        (event) =>
+          !(
+            this.workflowObservedKeys.has(parentToolUseId) &&
+            event.type === "timeline" &&
+            event.item.type === "tool_call" &&
+            event.item.callId === parentToolUseId
+          ),
+      );
+      this.appendObservedSubagentSidechainEvents(message, parentToolUseId, sidechainEvents);
+      return sidechainEvents;
+    }
+
+    const events: AgentStreamEvent[] = [];
+    this.appendTaskStateEvent(message, events);
+
+    this.appendSubagentObservationEvents(message, events);
+    this.appendSessionCaptureEvents(message, events);
+
+    this.forgetReadSteer(message);
+
+    switch (message.type) {
+      case "system":
+        this.appendSystemMessageEvents(message, events);
+        break;
+      case "user":
+        this.appendUserMessageEvents(message, events);
+        break;
+      case "assistant": {
+        const timelineItems = this.mapBlocksToTimeline(message.message.content, {
+          suppressAssistantText: options?.suppressAssistantText ?? false,
+          suppressReasoning: options?.suppressReasoning ?? false,
+        });
+        for (const item of timelineItems) {
+          events.push({ type: "timeline", item, provider: "claude" });
+        }
+        break;
+      }
+      case "stream_event":
+        this.appendStreamEventEvents(message, events, options);
+        break;
+      case "result":
+        this.appendResultEvents(message, events);
+        break;
+      case "prompt_suggestion": {
+        const suggestion = message.suggestion.trim();
+        if (suggestion) {
+          events.push({ type: "prompt_suggestion", provider: "claude", suggestion });
+        }
+        break;
+      }
+      case "rate_limit_event": {
+        const info = mapClaudeRateLimitInfo(message.rate_limit_info);
+        const key = JSON.stringify(info);
+        if (key !== this.lastRateLimitEventKey) {
+          this.lastRateLimitEventKey = key;
+          events.push({ type: "rate_limit_updated", provider: "claude", info });
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    // Task tool_result mapping (handleToolResult) can enqueue an observed
+    // subagent completion; flush it with the events that carried it.
+    if (this.pendingObservedEvents.length > 0) {
+      events.push(...this.pendingObservedEvents);
+      this.pendingObservedEvents = [];
+    }
+
+    return events;
+  }
+
+  /**
+   * Subagent identity and lifecycle are announced by Claude Code's task protocol, so they are
+   * read rather than inferred from sidechain frames. `task_started` precedes the child's first
+   * frame, so the descriptor exists before any timeline item lands on it.
+   */
+  private appendSubagentObservationEvents(message: SDKMessage, events: AgentStreamEvent[]): void {
+    const subagentObservations = this.taskProtocolSource.observe(message);
+    for (const event of foldSubagentObservations(subagentObservations)) {
+      events.push({ type: "provider_subagent", provider: "claude", event });
+    }
+    for (const observation of subagentObservations) {
+      if (observation.kind !== "declared") continue;
+      if (!this.taskProtocolSource.needsSyntheticParentToolCard(observation.id)) continue;
+      const card = this.buildSubagentToolCallCard(observation);
+      if (card) events.push(card);
+    }
+  }
+
+  /** A system frame carries no session id, so it is the one message shape skipped here. */
+  private appendSessionCaptureEvents(message: SDKMessage, events: AgentStreamEvent[]): void {
+    if (message.type === "system") return;
+    const sessionCapture = this.captureSessionIdFromMessage(message);
+    if (sessionCapture.notice) {
+      events.push({
+        type: "timeline",
+        provider: "claude",
+        item: sessionCapture.notice,
+      });
+    }
+    if (sessionCapture.threadStartedSessionId) {
+      events.push({
+        type: "thread_started",
+        provider: "claude",
+        sessionId: sessionCapture.threadStartedSessionId,
+      });
+    }
+  }
+
+  /** Once Claude has read a steer there is nothing left to discard on interrupt. */
+  private forgetReadSteer(message: unknown): void {
+    const lifecycle = readClaudeCommandLifecycle(message);
+    if (!lifecycle || lifecycle.state === "queued") return;
+    this.queuedSteerUuids.delete(lifecycle.commandUuid);
+    this.permissionClearingSteerUuids.delete(lifecycle.commandUuid);
+  }
+
+  private appendTaskStateEvent(message: SDKMessage, events: AgentStreamEvent[]): void {
+    const item = this.taskState.observe(message);
+    if (item) events.push({ type: "timeline", provider: "claude", item });
+  }
+
+  /**
+   * Resolve which subagent a sidechain frame belongs to, and turn the frame
+   * into that subagent's provider events. Identity comes from Claude Code's
+   * task protocol when the CLI announces one, and from the parent tool_use id
+   * when it does not.
+   */
+  private translateSidechainFrameToEvents(
+    message: SDKMessage,
+    parentToolUseId: string,
+  ): AgentStreamEvent[] {
+    const canonicalSubagentId = this.taskProtocolSource.resolveSubagentId(parentToolUseId);
+    // Once a CLI announces its tasks it announces all of them, so a frame for one that was never
+    // declared is work the filter already rejected — a workflow child, ambient housekeeping, a
+    // grandchild announced in someone else's session. Attributing it anyway materializes exactly
+    // what the filter prevents: a nameless descriptor stuck running, plus a timeline no surface
+    // can open, both held for the session's lifetime.
+    if (this.taskProtocolSource.announcesTasks && !canonicalSubagentId) {
+      return [];
+    }
+    // The child's own frames are the only place its model appears; the task protocol does not
+    // announce it. Read per frame rather than snapshotting, since a provider can swap models
+    // mid-flight on overload or refusal fallback.
+    const runtimeEvents = foldSubagentObservations(
+      this.taskProtocolSource.observeSidechainFrame(
+        message,
+        canonicalSubagentId ?? parentToolUseId,
+      ),
+    ).map((event): AgentStreamEvent => ({ type: "provider_subagent", provider: "claude", event }));
+    const routedId = canonicalSubagentId ?? parentToolUseId;
+    return [...runtimeEvents, ...this.sidechainTracker.handleMessage(message, routedId)];
   }
 
   /**
@@ -6050,6 +6396,13 @@ class ClaudeAgentSession implements AgentSession {
       provider: "claude",
       request,
     });
+
+    if (this.permissionClearingSteerUuids.size > 0) {
+      return this.resolveDeniedPermission(request, {
+        behavior: "deny",
+        message: STEER_SUPERSEDED_PERMISSION_MESSAGE,
+      });
+    }
 
     return await new Promise<PermissionResult>((resolve, reject) => {
       const cleanupFns: Array<() => void> = [];
@@ -7817,4 +8170,25 @@ function extractClaudeUserText(messageRaw: unknown): string | null {
     }
   }
   return null;
+}
+
+interface ClaudeCommandLifecycle {
+  commandUuid: string;
+  state: "queued" | "started" | "completed";
+}
+
+/** Runtime-only Claude frames are validated here because the SDK's public union omits them. */
+function readClaudeCommandLifecycle(message: unknown): ClaudeCommandLifecycle | null {
+  const record = toObjectRecord(message);
+  if (record?.type !== "command_lifecycle") return null;
+  if (
+    typeof record.command_uuid !== "string" ||
+    !["queued", "started", "completed"].includes(String(record.state))
+  ) {
+    return null;
+  }
+  return {
+    commandUuid: record.command_uuid,
+    state: record.state as ClaudeCommandLifecycle["state"],
+  };
 }

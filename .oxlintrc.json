@@ -101,6 +101,11 @@
           {
             "paths": [
               {
+                "name": "react-native",
+                "importNames": ["TextInput"],
+                "message": "Use EditingTextInput from @/components/ui/text-input. Raw TextInput bypasses editing-surface authority and IME safety."
+              },
+              {
                 "name": "@tanstack/react-query",
                 "importNames": ["useQuery", "useInfiniteQuery", "useQueries"],
                 "message": "App reads must go through useReplicaQuery/useFetchQuery from @/data/query. Grandfathered files may only leave the override burn-down list."
@@ -126,6 +131,11 @@
           "error",
           {
             "paths": [
+              {
+                "name": "react-native",
+                "importNames": ["TextInput"],
+                "message": "Use EditingTextInput from @/components/ui/text-input. Raw TextInput bypasses editing-surface authority and IME safety."
+              },
               {
                 "name": "react-native-unistyles",
                 "importNames": ["useUnistyles"],
@@ -178,6 +188,11 @@
           {
             "paths": [
               {
+                "name": "react-native",
+                "importNames": ["TextInput"],
+                "message": "Use EditingTextInput from @/components/ui/text-input. Raw TextInput bypasses editing-surface authority and IME safety."
+              },
+              {
                 "name": "react-native-unistyles",
                 "importNames": ["useUnistyles"],
                 "message": "useUnistyles is banned by docs/unistyles.md. Grandfathered files may only leave the override burn-down list."
@@ -204,11 +219,12 @@
         "packages/app/src/desktop/browser/pane/index.tsx",
         "packages/app/src/desktop/browser/pane/index.web.tsx",
         "packages/app/src/components/command-center.tsx",
+        "packages/app/src/components/compact-explorer-sidebar.tsx",
         "packages/app/src/components/context-window-meter.tsx",
+        "packages/app/src/components/explorer-sidebar.tsx",
         "packages/app/src/components/dictation-controls.tsx",
         "packages/app/src/components/download-toast.tsx",
         "packages/app/src/components/draggable-list.native.tsx",
-        "packages/app/src/components/explorer-sidebar.tsx",
         "packages/app/src/components/headers/back-header.tsx",
         "packages/app/src/components/headers/menu-header.tsx",
         "packages/app/src/components/headers/screen-header.tsx",
@@ -267,6 +283,11 @@
           {
             "paths": [
               {
+                "name": "react-native",
+                "importNames": ["TextInput"],
+                "message": "Use EditingTextInput from @/components/ui/text-input. Raw TextInput bypasses editing-surface authority and IME safety."
+              },
+              {
                 "name": "@tanstack/react-query",
                 "importNames": ["useQuery", "useInfiniteQuery", "useQueries"],
                 "message": "App reads must go through useReplicaQuery/useFetchQuery from @/data/query. Grandfathered files may only leave the override burn-down list."
@@ -286,6 +307,132 @@
         "packages/app/src/components/project-picker-modal.tsx",
         "packages/app/src/desktop/components/pair-device-section.tsx",
         "packages/app/src/screens/new-workspace-screen.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react-native",
+                "importNames": ["TextInput"],
+                "message": "Use EditingTextInput from @/components/ui/text-input. Raw TextInput bypasses editing-surface authority and IME safety."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    // TextInput burn-down: Otto editing surfaces that predate the EditingTextInput
+    // authority. These are controlled inputs, which EditingTextInput does not model,
+    // so each one is a conversion rather than a rename. They may only shrink out of
+    // this exemption.
+    {
+      "files": [
+        "packages/app/src/chat/message-search-bar.tsx",
+        "packages/app/src/components/file-finder-overlay.tsx",
+        "packages/app/src/components/file-tab-pane.tsx",
+        "packages/app/src/components/project-search-pane.tsx",
+        "packages/app/src/components/ui/search-field.tsx",
+        "packages/app/src/components/ui/text-area.tsx",
+        "packages/app/src/components/ui/text-area.web.tsx",
+        "packages/app/src/components/ui/titlebar-popup-search-field.tsx",
+        "packages/app/src/composer/input/input.tsx",
+        "packages/app/src/context-management/memory-list.tsx",
+        "packages/app/src/editor/go-to-line-dialog.tsx",
+        "packages/app/src/editor/refactor-dialog.tsx",
+        "packages/app/src/editor/rename/rename-symbol-dialog.tsx",
+        "packages/app/src/meetings/meeting-transcript-library.tsx",
+        "packages/app/src/panels/refine-panel.tsx",
+        "packages/app/src/project-knowledge/panel.tsx",
+        "packages/app/src/review/surface.tsx",
+        "packages/app/src/screens/kanban-screen.tsx",
+        "packages/app/src/screens/new-project/new-project-inputs.tsx",
+        "packages/app/src/screens/project-settings-kanban-section.tsx",
+        "packages/app/src/screens/settings-search-overview.tsx",
+        "packages/app/src/screens/settings/agent-personalities-section.tsx",
+        "packages/app/src/screens/settings/agent-teams-section.tsx",
+        "packages/app/src/screens/settings/agent-voice-cues-row.tsx",
+        "packages/app/src/screens/settings/appearance/appearance-section.tsx",
+        "packages/app/src/screens/settings/connectors-add-sheet.tsx",
+        "packages/app/src/screens/settings/editor-section.tsx",
+        "packages/app/src/screens/settings/git-providers-settings-cards.tsx",
+        "packages/app/src/screens/settings/host-brain-models.tsx",
+        "packages/app/src/screens/settings/host-brain-page.tsx",
+        "packages/app/src/screens/settings/speech-settings-cards.tsx",
+        "packages/app/src/screens/setup-wizard/team-step.tsx",
+        "packages/app/src/screens/workspace/workspace-scripts-button.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@tanstack/react-query",
+                "importNames": ["useQuery", "useInfiniteQuery", "useQueries"],
+                "message": "App reads must go through useReplicaQuery/useFetchQuery from @/data/query. Grandfathered files may only leave the override burn-down list."
+              },
+              {
+                "name": "react-native-unistyles",
+                "importNames": ["useUnistyles"],
+                "message": "useUnistyles is banned by docs/unistyles.md. Grandfathered files may only leave the override burn-down list."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    // ...and also in the useQuery burn-down.
+    {
+      "files": ["packages/app/src/screens/project-settings-screen.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react-native-unistyles",
+                "importNames": ["useUnistyles"],
+                "message": "useUnistyles is banned by docs/unistyles.md. Grandfathered files may only leave the override burn-down list."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    // ...and also in the useUnistyles burn-down.
+    {
+      "files": [
+        "packages/app/src/desktop/browser/pane/index.electron.tsx",
+        "packages/app/src/screens/settings-screen.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@tanstack/react-query",
+                "importNames": ["useQuery", "useInfiniteQuery", "useQueries"],
+                "message": "App reads must go through useReplicaQuery/useFetchQuery from @/data/query. Grandfathered files may only leave the override burn-down list."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    // ...and in all three burn-downs.
+    {
+      "files": ["packages/app/src/components/file-explorer-pane.tsx"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/app/src/components/ui/text-input/**/*.{ts,tsx}",
+        "packages/app/src/agent-stream/scroll-keyboard-dismiss/use-scroll-keyboard-dismiss.ts"
       ],
       "rules": {
         "no-restricted-imports": "off"

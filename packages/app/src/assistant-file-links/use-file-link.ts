@@ -21,6 +21,7 @@ export interface UseFileLinkResult {
   resolve: () => Promise<InlinePathTarget | null>;
   onHoverIn: () => void;
   onPress: () => void;
+  /** Middle-click / auxiliary click: opens the link to the side. */
   onAuxPress: () => void;
   open: (source: AssistantFileLinkSource, disposition: OpenFileDisposition) => void;
 }
@@ -151,6 +152,7 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
   });
   const onAuxPress = useStableEvent(() => {
     open(stableSource, "main");
+    open(stableSource, "preferred");
   });
 
   const target = useMemo(() => {

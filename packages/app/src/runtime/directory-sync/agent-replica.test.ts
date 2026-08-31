@@ -51,6 +51,36 @@ function entry(agent: AgentSnapshotPayload): FetchAgentsEntry {
 }
 
 describe("AgentDirectoryReplica", () => {
+  it("preserves an unchanged running agent's turn identity during catch-up", () => {
+    const serverId = "agent-replica-catch-up";
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, null as unknown as DaemonClient);
+    const replica = new AgentDirectoryReplica(serverId, () => undefined);
+    replica.commitSnapshot(
+      [
+        entry({
+          ...payload("running"),
+          status: "running",
+          activeTurn: { turnId: "turn-1", startedAt: "2026-07-17T00:01:00.000Z" },
+        }),
+      ],
+      [],
+    );
+
+    replica.commitChanges([], [], []);
+
+    // Otto holds turn liveness in its own map rather than on the Agent replica
+    // (see `normalizeAgentSnapshot`), so this is where an unchanged running
+    // agent's turn identity has to survive a catch-up.
+    expect(useSessionStore.getState().sessions[serverId]?.agentTurnLiveness.get("agent")).toEqual({
+      phase: "open",
+      turnId: "turn-1",
+      startedAt: new Date("2026-07-17T00:01:00.000Z"),
+      cancellationRequestId: null,
+    });
+    store.clearSession(serverId);
+  });
+
   it("keeps membership authoritative across remove, stale timeline, and re-add", () => {
     const serverId = "agent-replica";
     const store = useSessionStore.getState();

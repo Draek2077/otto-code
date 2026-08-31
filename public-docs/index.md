@@ -56,6 +56,10 @@ The image runs the daemon and serves the bundled web UI. It does not bundle agen
 - [Providers](/docs/providers), what a provider is and how Otto wraps existing CLIs.
 - [Artifacts](/docs/artifacts), create and manage durable project deliverables.
 - [Workflows](/docs/workflows), understand AI and Graph Workflow limits, recovery, and CLI support.
+- [Workspaces](/docs/workspaces), the project, workspace, and session model Otto is built around.
+- [Providers](/docs/providers), what a provider is and how Otto wraps existing CLIs.
+- [Orchestration](/docs/orchestration), let one agent delegate work to other providers and models.
+- [Plugins](/docs/plugins), add trusted local surfaces, sidebar actions, daemon behavior, and composer attachments.
 - [CLI reference](/docs/cli), every command.
 - [Self-hosting the web UI](/docs/web-ui), serve the browser app from your own daemon.
 - [GitHub repo](https://github.com/Draek2077/otto-code)

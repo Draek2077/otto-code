@@ -3,27 +3,6 @@ import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import { normalizeAgentActiveTurn, normalizeAgentSnapshot } from "./agent-snapshots";
 
-// Identity rides through only when a case sets it, so "neither spelling present"
-// stays a real case rather than a defaulted one.
-const IDENTITY_KEYS = [
-  "personalityId",
-  "personalityName",
-  "personalitySpinner",
-  "agentProfileId",
-  "agentProfileName",
-  "agentProfileSpinner",
-] as const;
-
-function pickIdentity(input: Record<string, unknown>): Partial<AgentSnapshotPayload> {
-  const out: Record<string, unknown> = {};
-  for (const key of IDENTITY_KEYS) {
-    if (input[key] !== undefined) {
-      out[key] = input[key];
-    }
-  }
-  return out as Partial<AgentSnapshotPayload>;
-}
-
 function createSnapshot(
   input: Partial<Omit<AgentSnapshotPayload, "labels">> & {
     labels?: Record<string, unknown>;
@@ -164,3 +143,24 @@ describe("normalizeAgentSnapshot agent profile identity", () => {
     expect(agent.personalitySpinner).toBeNull();
   });
 });
+
+function pickIdentity(input: Record<string, unknown>): Partial<AgentSnapshotPayload> {
+  const out: Record<string, unknown> = {};
+  for (const key of IDENTITY_KEYS) {
+    if (input[key] !== undefined) {
+      out[key] = input[key];
+    }
+  }
+  return out as Partial<AgentSnapshotPayload>;
+}
+
+// Identity rides through only when a case sets it, so "neither spelling present"
+// stays a real case rather than a defaulted one.
+const IDENTITY_KEYS = [
+  "personalityId",
+  "personalityName",
+  "personalitySpinner",
+  "agentProfileId",
+  "agentProfileName",
+  "agentProfileSpinner",
+] as const;

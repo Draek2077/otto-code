@@ -57,6 +57,21 @@ export const buttonIconSize: Record<ButtonControlSize, IconSizeToken> = {
   lg: "lg",
 };
 
+// Adopted from upstream, expressed in Otto's control heights rather than theirs.
+// Upstream's components ask for a numeric button height by size token; Otto's
+// ladder is the source of truth for what those numbers are, so their code sizes
+// itself to Otto's geometry instead of importing a second scale.
+export const buttonControlHeight: Record<ButtonControlSize, number> = {
+  xs: TIGHT_CONTROL_HEIGHT,
+  sm: COMPACT_CONTROL_HEIGHT,
+  md: FIELD_CONTROL_HEIGHT,
+  lg: FIELD_CONTROL_HEIGHT,
+};
+
+// Upstream's title-bar control height. Kept as its own constant because header
+// chrome is deliberately tighter than the tight control ladder.
+export const HEADER_CONTROL_HEIGHT = 26;
+
 export const segmentedIconSize: Record<SegmentedControlSize, IconSizeToken> = {
   xs: "xs",
   sm: "sm",
@@ -255,3 +270,14 @@ export function createControlGeometry(theme: Theme) {
     },
   };
 }
+
+/**
+ * The three control heights every button, field, and segmented control is built from.
+ * Exported so a row that hosts one of those controls can size itself from the same
+ * numbers instead of guessing a height the control then outgrows.
+ */
+export const CONTROL_HEIGHTS = {
+  tight: TIGHT_CONTROL_HEIGHT,
+  compact: COMPACT_CONTROL_HEIGHT,
+  field: FIELD_CONTROL_HEIGHT,
+};

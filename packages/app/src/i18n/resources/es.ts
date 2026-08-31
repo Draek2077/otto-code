@@ -1,4 +1,5 @@
 import type { TranslationResources } from "./en";
+import { pluginSettings } from "./plugin-settings";
 
 export const es: TranslationResources = {
   common: {
@@ -1594,6 +1595,7 @@ export const es: TranslationResources = {
     },
     fileActions: {
       openFile: "Abrir archivo",
+      openToSide: "Abrir al lado",
       editFile: "Editar archivo",
       navigateToFile: "Ir al archivo",
       navigateToChanges: "Ir a los cambios",
@@ -3338,6 +3340,7 @@ export const es: TranslationResources = {
       terminals: "Terminales",
       host: "Resumen",
     },
+    plugins: pluginSettings.es,
     metadataGeneration: {
       title: "Generación de metadatos",
       description:

@@ -46,6 +46,7 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   // Prefills the rename input and signals whether a reset is available.
   title: string | null;
   pinnedAt?: string | null;
+  labels?: string[];
   // Checkout branch (null when not a git checkout or detached HEAD).
   currentBranch: string | null;
   branchBaseRef?: string | null;
@@ -179,6 +180,7 @@ export function createSidebarWorkspaceEntry(input: {
     name: input.workspace.name,
     title: input.workspace.title ?? null,
     pinnedAt: input.workspace.pinnedAt,
+    labels: input.workspace.labels ?? EMPTY_WORKSPACE_LABELS,
     currentBranch: normalizeCurrentBranch(input.workspace.gitRuntime?.currentBranch),
     branchBaseRef: input.workspace.gitRuntime?.baseRef ?? null,
     branchAheadCount: input.workspace.gitRuntime?.aheadBehind?.ahead ?? null,
@@ -199,37 +201,7 @@ export function createSidebarWorkspaceEntry(input: {
   };
 }
 
-export interface ProjectStatusSession {
-  workspaces: Map<string, WorkspaceDescriptor>;
-  workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
-}
-
-export function deriveProjectStatusBucket(input: {
-  workspaces: readonly SidebarWorkspacePlacement[];
-  sessions: Record<string, ProjectStatusSession | undefined>;
-  pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
-}): SidebarStateBucket {
-  const buckets: SidebarStateBucket[] = [];
-  for (const placement of input.workspaces) {
-    const session = input.sessions[placement.serverId];
-    if (!session) continue;
-    const workspaceKey = resolveWorkspaceMapKeyByIdentity({
-      workspaces: session.workspaces,
-      workspaceId: placement.workspaceId,
-    });
-    const workspace = workspaceKey ? session.workspaces.get(workspaceKey) : undefined;
-    if (!workspace) continue;
-    buckets.push(
-      deriveEffectiveWorkspaceStatus({
-        serverId: placement.serverId,
-        workspace,
-        pendingCreateAttempts: input.pendingCreateAttempts,
-        workspaceAgentActivity: session.workspaceAgentActivity,
-      }).status,
-    );
-  }
-  return aggregateSidebarStateBuckets(buckets);
-}
+const EMPTY_WORKSPACE_LABELS: string[] = [];
 
 function deriveEffectiveWorkspaceStatus(input: {
   serverId: string;
@@ -606,4 +578,38 @@ export function deriveSidebarLoadingState(input: {
   const isLoading = input.isActive && hasRegisteredHosts && !allHydrated;
   const isInitialLoad = isLoading && !input.hasProjects;
   return { isLoading, isInitialLoad, isRevalidating: false };
+}
+
+// OTTO: project-level status rollup for the sidebar. Upstream groups by
+// workspace only; Otto also shows a bucket per project.
+export interface ProjectStatusSession {
+  workspaces: Map<string, WorkspaceDescriptor>;
+  workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
+}
+
+export function deriveProjectStatusBucket(input: {
+  workspaces: readonly SidebarWorkspacePlacement[];
+  sessions: Record<string, ProjectStatusSession | undefined>;
+  pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
+}): SidebarStateBucket {
+  const buckets: SidebarStateBucket[] = [];
+  for (const placement of input.workspaces) {
+    const session = input.sessions[placement.serverId];
+    if (!session) continue;
+    const workspaceKey = resolveWorkspaceMapKeyByIdentity({
+      workspaces: session.workspaces,
+      workspaceId: placement.workspaceId,
+    });
+    const workspace = workspaceKey ? session.workspaces.get(workspaceKey) : undefined;
+    if (!workspace) continue;
+    buckets.push(
+      deriveEffectiveWorkspaceStatus({
+        serverId: placement.serverId,
+        workspace,
+        pendingCreateAttempts: input.pendingCreateAttempts,
+        workspaceAgentActivity: session.workspaceAgentActivity,
+      }).status,
+    );
+  }
+  return aggregateSidebarStateBuckets(buckets);
 }

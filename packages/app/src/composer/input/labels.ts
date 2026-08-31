@@ -1,15 +1,20 @@
 import type { TFunction } from "i18next";
+import type { SendBehavior } from "@/hooks/use-settings/storage";
 
 export function resolveSubmitAccessibilityLabel(input: {
   submitButtonAccessibilityLabel: string | undefined;
   canPressLoadingButton: boolean;
   defaultActionQueues: boolean;
+  defaultSendBehavior: SendBehavior;
   isAgentRunning: boolean;
   t: TFunction;
 }): string {
   if (input.submitButtonAccessibilityLabel) return input.submitButtonAccessibilityLabel;
   if (input.canPressLoadingButton) return input.t("composer.input.interruptAgent");
   if (input.defaultActionQueues) return input.t("composer.input.queueMessage");
+  // Otto's send-behavior setting is interrupt-or-queue; the queue case is
+  // already answered above by `defaultActionQueues`, so a run in flight here
+  // always means interrupt. (Upstream also offers a `steer` default.)
   if (input.isAgentRunning) return input.t("composer.input.sendAndInterrupt");
   return input.t("composer.input.sendMessage");
 }

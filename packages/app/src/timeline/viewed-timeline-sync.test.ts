@@ -338,10 +338,14 @@ test("a failed catch-up reports once and retries through the explicit retry poli
   const failed = await world.nextFetch("agent-a");
   failed.fail("timeline unavailable");
   const [error, retryCatchUp] = await Promise.all([world.nextError(), world.nextRetry()]);
-  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error");
+  // A failure with a retry already scheduled reads as "retrying", not "error":
+  // that is what suppresses a Retry affordance the user would press pointlessly.
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("retrying");
 
   retryCatchUp();
   const retry = await world.nextFetch("agent-a");
+  // The scheduled retry has fired, so nothing further is queued behind it and
+  // the status falls back to the plain failure until the response lands.
   expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error");
   retry.respond({ hasNewer: false });
   await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("ready"));

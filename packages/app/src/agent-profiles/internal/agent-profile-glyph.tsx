@@ -1,7 +1,6 @@
 import { withUnistyles } from "react-native-unistyles";
 import {
   BookOpen,
-  Bot,
   Boxes,
   Bug,
   Cloud,
@@ -26,6 +25,7 @@ import {
   Server,
   Shield,
   Sparkles,
+  Star,
   Terminal,
   TestTube,
   Wrench,
@@ -43,7 +43,7 @@ import {
 import type { IconSizeProp } from "@/components/icons/icon-size";
 
 /** Drawn when a profile names no icon, and as the "default" cell in the picker grid. */
-const ThemedDefaultIcon = withUnistyles(Bot);
+const ThemedDefaultIcon = withUnistyles(Star);
 
 /**
  * `withUnistyles` has to wrap each icon once at module scope, so the registry

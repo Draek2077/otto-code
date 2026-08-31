@@ -2,6 +2,7 @@ import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { PaneContentToolbar } from "@/components/ui/pane-content-toolbar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { Theme } from "@/styles/theme";
 import { FileConflictAlert, type FileConflictAlertState } from "./conflict-alert";
@@ -39,36 +40,72 @@ export function FilePanelBar({
     { value: "source" as const, label: t("panels.file.editor.source"), testID: "file-mode-source" },
   ];
   return (
-    <View style={styles.chrome} testID="file-panel-bar">
-      <View style={styles.row}>
-        <View style={styles.metadata}>
-          <Text
-            style={styles.whisper}
-            accessibilityLabel={t("panels.file.editor.fileSize", { size: formatFileSize(size) })}
-          >
-            {formatFileSize(size)}
-          </Text>
-          {lineCount !== undefined ? (
+    <View style={styles.chrome}>
+      <PaneContentToolbar testID="file-panel-bar">
+        <View style={styles.row}>
+          <View style={styles.metadata}>
             <Text
               style={styles.whisper}
-              accessibilityLabel={t("panels.file.editor.lines", { count: lineCount })}
+              accessibilityLabel={t("panels.file.editor.fileSize", { size: formatFileSize(size) })}
             >
-              {t("panels.file.editor.lines", { count: lineCount })}
+              {formatFileSize(size)}
             </Text>
-          ) : null}
-        </View>
-        <View
-          style={styles.status}
-          accessibilityLabel={
-            editorStatus
-              ? t("panels.file.editor.editorStatus", { status: editorStatus })
-              : undefined
-          }
-        >
-          {editorStatus === "dirty" ? (
-            <View
-              style={styles.dirtyDot}
-              accessibilityLabel={t("panels.file.editor.unsavedChanges")}
+            {lineCount !== undefined ? (
+              <Text
+                style={styles.whisper}
+                accessibilityLabel={t("panels.file.editor.lines", { count: lineCount })}
+              >
+                {t("panels.file.editor.lines", { count: lineCount })}
+              </Text>
+            ) : null}
+          </View>
+          <View
+            style={styles.status}
+            accessibilityLabel={
+              editorStatus
+                ? t("panels.file.editor.editorStatus", { status: editorStatus })
+                : undefined
+            }
+          >
+            {editorStatus === "dirty" ? (
+              <View
+                style={styles.dirtyDot}
+                accessibilityLabel={t("panels.file.editor.unsavedChanges")}
+              />
+            ) : null}
+            {editorStatus === "saving" ? (
+              <>
+                <ThemedSpinner size={14} uniProps={spinnerMapping} />
+                <Text style={styles.secondary}>{t("panels.file.editor.saving")}</Text>
+              </>
+            ) : null}
+            {editorStatus === "error" ? (
+              <Text style={styles.error}>{t("panels.file.editor.saveFailed")}</Text>
+            ) : null}
+            {vimMode ? (
+              <Text
+                style={styles.vim}
+                accessibilityLabel={t("panels.file.editor.vimMode", { mode: vimMode })}
+              >
+                {vimMode}
+              </Text>
+            ) : null}
+            {cursor ? (
+              <Text
+                style={styles.whisper}
+                accessibilityLabel={t("panels.file.editor.cursor", cursor)}
+              >
+                Ln {cursor.line}, Col {cursor.column}
+              </Text>
+            ) : null}
+          </View>
+          {mode && onModeChange ? (
+            <SegmentedControl
+              size="xs"
+              value={mode}
+              onValueChange={onModeChange}
+              testID="file-preview-mode"
+              options={previewModes}
             />
           ) : null}
           {editorStatus === "saving" ? (
@@ -97,16 +134,7 @@ export function FilePanelBar({
             </Text>
           ) : null}
         </View>
-        {mode && onModeChange ? (
-          <SegmentedControl
-            size="xs"
-            value={mode}
-            onValueChange={onModeChange}
-            testID="file-preview-mode"
-            options={previewModes}
-          />
-        ) : null}
-      </View>
+      </PaneContentToolbar>
       {conflict ? <FileConflictAlert state={conflict} /> : null}
     </View>
   );
@@ -121,16 +149,13 @@ function formatFileSize(size: number): string {
 const styles = StyleSheet.create((theme) => ({
   chrome: {
     flexShrink: 0,
-    backgroundColor: theme.colors.surface1,
   },
   row: {
-    minHeight: 32,
+    height: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[3],
     paddingHorizontal: theme.spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
   },
   metadata: {
     flex: 1,
@@ -140,7 +165,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   secondary: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
-  // COMPAT(foregroundExtraMuted): Paseo has a third text tier
+  // COMPAT(foregroundExtraMuted): Otto has a third text tier
   // (foregroundExtraMuted); Otto's themes stop at muted, and each tint would
   // need its own value. Use muted until that lands. Not date-bound: it clears
   // when the theme grows the tier, and this alias is then a one-line delete.
@@ -161,6 +186,6 @@ const styles = StyleSheet.create((theme) => ({
   vim: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
 }));

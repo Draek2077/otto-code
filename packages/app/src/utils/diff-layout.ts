@@ -58,10 +58,15 @@ export interface SplitDiffDisplayLine {
   tokens?: DiffLine["tokens"];
   lineNumber: number | null;
   reviewTarget: ReviewableDiffTarget | null;
+  hunkIndex: number;
+  lineIndex: number;
+  side: "old" | "new";
 }
 
 export interface UnifiedDiffDisplayLine {
   key: string;
+  hunkIndex: number;
+  lineIndex: number;
   line: DiffLine;
   lineNumber: number | null;
   oldLineNumber: number | null;
@@ -73,6 +78,8 @@ export type SplitDiffRow =
   | {
       kind: "header";
       content: string;
+      hunkIndex: number;
+      lineIndex: number;
     }
   | {
       kind: "pair";
@@ -91,6 +98,9 @@ function toSplitDisplayLine(cell: NumberedDiffCell | null): SplitDiffDisplayLine
     ...(cell.line.tokens ? { tokens: cell.line.tokens } : {}),
     lineNumber: cell.lineNumber,
     reviewTarget: toReviewTarget(cell),
+    hunkIndex: cell.hunkIndex,
+    lineIndex: cell.lineIndex,
+    side: cell.side,
   };
 }
 
@@ -231,6 +241,8 @@ export function buildUnifiedDiffLines(file: ParsedDiffFile): UnifiedDiffDisplayL
   return buildNumberedDiffHunks(file).flatMap((hunk) =>
     hunk.lines.map((numberedLine) => ({
       key: numberedLine.key,
+      hunkIndex: numberedLine.hunkIndex,
+      lineIndex: numberedLine.lineIndex,
       line: numberedLine.line,
       lineNumber: numberedLine.unifiedCell?.lineNumber ?? null,
       oldLineNumber: numberedLine.oldLineNumber,
@@ -244,9 +256,12 @@ export function buildSplitDiffRows(file: ParsedDiffFile): SplitDiffRow[] {
   const rows: SplitDiffRow[] = [];
 
   for (const hunk of buildNumberedDiffHunks(file)) {
+    const headerLine = hunk.lines.find((line) => line.line.type === "header");
     rows.push({
       kind: "header",
       content: hunk.hunkHeader,
+      hunkIndex: hunk.hunkIndex,
+      lineIndex: headerLine?.lineIndex ?? 0,
     });
 
     let pendingRemovals: NumberedDiffCell[] = [];

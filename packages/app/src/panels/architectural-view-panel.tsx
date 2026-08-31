@@ -6,7 +6,7 @@ import { Architecture } from "@/components/icons/material-icons";
 import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 
@@ -97,11 +97,10 @@ function ArchitecturalViewPanel(): ReactElement {
   );
 }
 
-export const architecturalViewPanelRegistration: PanelRegistration<"architecturalView"> = {
-  kind: "architecturalView",
+export const architecturalViewPanelRegistration = definePanel("architecturalView", {
   component: ArchitecturalViewPanel,
   useDescriptor: useArchitecturalViewPanelDescriptor,
-};
+});
 
 function architecturalViewFreshnessLabel(status: "current" | "stale" | "unknown"): string {
   if (status === "stale") return "Source changed since this view was published";

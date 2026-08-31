@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { type LayoutChangeEvent, Pressable, Text, TextInput, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -1967,9 +1967,25 @@ function EditorModeView({
 
   const splitRatio = useFileViewStore((state) => state.splitRatio);
   const setSplitRatio = useFileViewStore((state) => state.setSplitRatio);
-  const splitSizes = useMemo(() => [splitRatio, 1 - splitRatio], [splitRatio]);
+  // Sizes reported mid-drag, held locally so the split follows the pointer
+  // without writing the ratio to the store on every frame.
+  const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
+  const splitSizes = useMemo(
+    () => previewSplitSizes ?? [splitRatio, 1 - splitRatio],
+    [previewSplitSizes, splitRatio],
+  );
+  // The drag works in fractions of the row, so the handle needs its width.
+  const [splitContainerWidth, setSplitContainerWidth] = useState(0);
+  const handleSplitRowLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = event.nativeEvent.layout.width;
+    setSplitContainerWidth((current) => (current === nextWidth ? current : nextWidth));
+  }, []);
+  const handlePreviewResizeSplit = useCallback((_groupId: string, sizes: number[]) => {
+    setPreviewSplitSizes(sizes);
+  }, []);
   const handleResizeSplit = useCallback(
     (_groupId: string, sizes: number[]) => {
+      setPreviewSplitSizes(null);
       const editorShare = sizes[0];
       if (typeof editorShare === "number") {
         setSplitRatio(editorShare);
@@ -2192,7 +2208,7 @@ function EditorModeView({
       <MarkdownToolbarForPath path={path} onRun={handleMarkdownCommand} />
 
       {split ? (
-        <View style={styles.splitRow}>
+        <View style={styles.splitRow} onLayout={handleSplitRowLayout}>
           <View style={editorPaneStyle} testID="file-split-editor">
             {editorNode}
           </View>
@@ -2201,6 +2217,8 @@ function EditorModeView({
             groupId="file-tab-split"
             index={0}
             sizes={splitSizes}
+            containerSize={splitContainerWidth}
+            onPreviewResizeSplit={handlePreviewResizeSplit}
             onResizeSplit={handleResizeSplit}
           />
           <View style={previewPaneStyle} testID="file-split-preview">

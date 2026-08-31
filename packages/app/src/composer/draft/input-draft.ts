@@ -122,6 +122,16 @@ type DraftComposerState = UseAgentFormStateResult & {
 export interface AgentInputDraft {
   text: string;
   setText: (text: string) => void;
+  /** Ordinary typing: debounced, never remounts the input. */
+  editText: (text: string) => void;
+  /**
+   * A programmatic rewrite (dictation refine, a template applied to the draft).
+   * Writes through immediately and bumps {@link textReplacementKey}.
+   */
+  replaceText: (text: string) => void;
+  /** Changes on every {@link replaceText}. Consumers key the text input off it
+   *  so a rewrite remounts rather than fighting the caret. */
+  textReplacementKey: string;
   attachments: UserComposerAttachment[];
   setAttachments: (updater: AttachmentUpdater) => void;
   clear: (lifecycle: "sent" | "abandoned") => void;
@@ -159,6 +169,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   // its parent panel) participate in the input's urgent render path. Drafts
   // remain durable through the checkpoint below and are flushed on teardown.
   const [text, setTextState] = useState("");
+  const [textReplacementRevision, setTextReplacementRevision] = useState(0);
   const textRef = useRef("");
   const textEditedRef = useRef(false);
   const textPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -242,6 +253,23 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
         textPersistTimerRef.current = null;
         flushText(nextText);
       }, 200);
+    },
+    [flushText],
+  );
+
+  const replaceText = useCallback(
+    (nextText: string) => {
+      textEditedRef.current = true;
+      textRef.current = nextText;
+      setTextState(nextText);
+      // A replacement is authoritative: drop the debounce a keystroke may have
+      // left pending so it cannot overwrite the new text a moment later.
+      if (textPersistTimerRef.current !== null) {
+        clearTimeout(textPersistTimerRef.current);
+        textPersistTimerRef.current = null;
+      }
+      flushText(nextText);
+      setTextReplacementRevision((revision) => revision + 1);
     },
     [flushText],
   );
@@ -416,6 +444,9 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   return {
     text,
     setText,
+    editText: setText,
+    replaceText,
+    textReplacementKey: `${draftKey}:${textReplacementRevision}`,
     attachments,
     setAttachments,
     clear,

@@ -358,6 +358,12 @@ export class WorkspaceFilesSession {
           },
         });
       } else {
+        if (request.maxBytes) {
+          const file = await getDownloadableFileInfo({ root: cwd, relativePath: requestedPath });
+          if (file.size > request.maxBytes) {
+            throw new Error("File is too large to display");
+          }
+        }
         if (request.acceptBinary && this.host.hasBinaryChannel()) {
           // Streamed rather than buffered: a large file used to be read whole
           // into memory before its first byte reached the client, which is what

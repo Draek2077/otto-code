@@ -325,6 +325,17 @@ export interface AgentContextCategory {
   isDeferred?: boolean;
 }
 
+export interface AgentSteerOptions extends AgentRunOptions {
+  /** Deny permissions that block this steer. An accepted steer must honor this contract. */
+  clearPendingPermissions?: boolean;
+}
+
+export type SteerResult = { status: "accepted" } | { status: "unavailable" };
+
+export interface SteerActiveTurnOptions extends AgentSteerOptions {
+  expectedTurnId: string;
+}
+
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
@@ -636,7 +647,7 @@ export type AgentStreamEvent =
       provider: AgentProvider;
       update: BackgroundShellTaskUpdate;
     }
-  // Paseo's provider-subagent ingestion: the provider telling us about children
+  // Otto's provider-subagent ingestion: the provider telling us about children
   // it spawned itself, folded into the ProviderSubagentStore by AgentManager.
   | {
       type: "provider_subagent";
@@ -1000,6 +1011,7 @@ export interface AgentSession {
   readonly features?: AgentFeature[];
   run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult>;
   startTurn(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<{ turnId: string }>;
+  steerActiveTurn?(prompt: AgentPromptInput, options: SteerActiveTurnOptions): Promise<SteerResult>;
   subscribe(callback: (event: AgentStreamEvent) => void): () => void;
   streamHistory(): AsyncGenerator<AgentStreamEvent>;
   getRuntimeInfo(): Promise<AgentRuntimeInfo>;
@@ -1012,6 +1024,11 @@ export interface AgentSession {
     response: AgentPermissionResponse,
   ): Promise<AgentPermissionResult | void>;
   describePersistence(): AgentPersistenceHandle | null;
+  /**
+   * Resolve once every foreground turn that predates this call can no longer run or become active.
+   * Calling while already idle is a successful no-op. Reject only when foreground ownership is
+   * still uncertain.
+   */
   interrupt(): Promise<void>;
   /**
    * Stop a provider-managed subagent task by its provider task id (Claude:

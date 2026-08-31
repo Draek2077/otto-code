@@ -119,3 +119,5 @@ export function shouldKeepWorkspaceDeckEntryMounted({
   }
   return workspaceExists;
 }
+
+export const WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 10;

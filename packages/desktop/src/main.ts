@@ -38,6 +38,7 @@ import { createDaemonCommandHandlers, registerDaemonManager } from "./daemon/dae
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
 import {
+  applyDesktopWindowChromeMode,
   registerWindowManager,
   registerPendingWindowReveal,
   clearPendingWindowReveal,
@@ -65,7 +66,9 @@ import {
   ensureNotificationCenterRegistration,
 } from "./features/notifications.js";
 import { registerOpenerHandlers } from "./features/opener.js";
-import { registerEditorTargetHandlers } from "./features/editor-targets.js";
+import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
+import { resolveDesktopWindowChromeMode, windowChromeModeArgument } from "./window/chrome.js";
+import { resolveAppIconPath } from "./features/stamped-icon.js";
 import { setupApplicationMenu } from "./features/menu.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
@@ -151,7 +154,6 @@ import {
   registerGpuFallbackRecovery,
 } from "./gpu-fallback.js";
 import { registerCrashDialog, showStartupErrorDialog } from "./crash-dialog.js";
-import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 import { BrowserKeyboard } from "./features/browser-keyboard/index.js";
 import { createTrustedOttoOriginPolicy, isTrustedMainWindowSender } from "./trusted-main-window.js";
@@ -172,6 +174,11 @@ import {
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "otto";
+const DESKTOP_WINDOW_CHROME_MODE = resolveDesktopWindowChromeMode({
+  platform: process.platform,
+  override: process.env.OTTO_DESKTOP_WINDOW_CONTROLS,
+  isPackaged: app.isPackaged,
+});
 const trustedOttoOriginPolicy = createTrustedOttoOriginPolicy({
   packaged: app.isPackaged,
   developmentUrls: [DEV_SERVER_URL],
@@ -918,12 +925,40 @@ async function shouldStartMinimizedToTrayForWindow(restoreWindowState: boolean):
   return tray.showIcon && tray.startMinimized;
 }
 
-function applyAppIcon(): void {
+function getDevBuildLabel(): string | null {
+  if (app.isPackaged) {
+    return null;
+  }
+  return process.env.EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL?.trim() || null;
+}
+
+let cachedEffectiveIconPath: string | null = null;
+
+async function getEffectiveAppIconPath(): Promise<string | null> {
+  if (cachedEffectiveIconPath !== null) {
+    return cachedEffectiveIconPath;
+  }
+  const baseIconPath = getWindowIconPath();
+  if (app.isPackaged || !baseIconPath) {
+    cachedEffectiveIconPath = baseIconPath;
+    return baseIconPath;
+  }
+  const devLabel = getDevBuildLabel();
+  cachedEffectiveIconPath = await resolveAppIconPath({
+    isPackaged: false,
+    baseIconPath,
+    devLabel,
+    cacheDir: app.getPath("userData"),
+  });
+  return cachedEffectiveIconPath;
+}
+
+async function applyAppIcon(): Promise<void> {
   if (process.platform !== "darwin") {
     return;
   }
 
-  const iconPath = getWindowIconPath();
+  const iconPath = await getEffectiveAppIconPath();
   if (!iconPath) {
     return;
   }
@@ -953,7 +988,7 @@ async function createWindow(
     initialRoute?: string | null;
   } = {},
 ): Promise<BrowserWindow> {
-  const iconPath = getWindowIconPath();
+  const iconPath = await getEffectiveAppIconPath();
   const systemTheme = resolveSystemWindowTheme();
 
   // Only the first window of a session restores and persists saved geometry.
@@ -981,15 +1016,18 @@ async function createWindow(
     ...getMainWindowChromeOptions({
       platform: process.platform,
       theme: systemTheme,
+      mode: DESKTOP_WINDOW_CHROME_MODE,
       restoredOverlay: restoredWindowState?.overlay ?? null,
     }),
     webPreferences: {
       preload: getPreloadPath(),
+      additionalArguments: [windowChromeModeArgument(DESKTOP_WINDOW_CHROME_MODE)],
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
     },
   });
+  applyDesktopWindowChromeMode({ win: mainWindow, mode: DESKTOP_WINDOW_CHROME_MODE });
 
   const webContentsId = mainWindow.webContents.id;
   pendingOpenProjectStore.set(webContentsId, options.pendingOpenProjectPath);
@@ -1539,7 +1577,7 @@ async function bootstrap(): Promise<void> {
     return net.fetch(pathToFileURL(filePath).toString());
   });
 
-  applyAppIcon();
+  await applyAppIcon();
   setupApplicationMenu({
     onNewWindow: () => {
       void createWindow().catch((error) => {
@@ -1649,11 +1687,6 @@ void runDesktopStartup({
   runCliPassthroughIfRequested,
   inheritLoginShellEnv,
   bootstrapGui: bootstrap,
-  autoUpdateInstalledSkills: () => {
-    void autoUpdateInstalledSkills().catch((error) => {
-      log.error("[skills] auto-update failed", error);
-    });
-  },
 }).catch((error) => {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.stderr.write(`${message}\n`);

@@ -18,7 +18,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useAppSettings } from "@/hooks/use-settings";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { buildGitLogKey, useGitLogStore } from "@/git/log-store";
@@ -176,14 +176,13 @@ function GitLogPanel() {
   );
 }
 
-export const gitLogPanelRegistration: PanelRegistration<"gitLog"> = {
-  kind: "gitLog",
+export const gitLogPanelRegistration = definePanel("gitLog", {
   component: GitLogPanel,
   useDescriptor: useGitLogPanelDescriptor,
   confirmClose() {
     return Promise.resolve(true);
   },
-};
+});
 
 const styles = StyleSheet.create((theme) => ({
   scrollHost: {

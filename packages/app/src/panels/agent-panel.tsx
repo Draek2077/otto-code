@@ -50,6 +50,11 @@ import {
 } from "@/attachments/workspace-attachments-store";
 import { isNative, isWeb } from "@/constants/platform";
 import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
+import {
+  resolveComposerTrackControlClearance,
+  resolveComposerTrackTailClearance,
+} from "@/composer/pill-styles";
+import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
 import { shouldSyncAgentTimelineOnFocus } from "@/timeline/timeline-sync-plan";
@@ -81,7 +86,7 @@ import { useRetainedPanelActive } from "@/components/retained-panel";
 import { SidebarCallout } from "@/components/sidebar-callout";
 import { i18n } from "@/i18n/i18next";
 import { resolveAgentTabTitle } from "@/panels/agent-tab-title";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { RenderProfile } from "@/utils/render-profiler";
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
 import {
@@ -535,11 +540,10 @@ export function AgentConversationPanel() {
   );
 }
 
-export const agentPanelRegistration: PanelRegistration<"agent"> = {
-  kind: "agent",
+export const agentPanelRegistration = definePanel("agent", {
   component: AgentConversationPanel,
   useDescriptor: useAgentPanelDescriptor,
-};
+});
 
 export function useDraftPanelDescriptor(
   target: { kind: "draft"; draftId: string },
@@ -1457,6 +1461,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         agent={effectiveAgent}
         routeBottomAnchorRequest={routeBottomAnchorRequest}
         hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
+        hasActiveComposer={!agentState.archivedAt && !isArchivingCurrentAgent}
         toast={toastApi}
         onOpenWorkspaceFile={onOpenWorkspaceFile}
       />
@@ -1574,6 +1579,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hiddenTodoListId,
   routeBottomAnchorRequest,
   hasAppliedAuthoritativeHistory,
+  hasActiveComposer,
   toast,
   onOpenWorkspaceFile,
 }: {
@@ -1587,6 +1593,8 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hiddenTodoListId?: string;
   routeBottomAnchorRequest: RouteBottomAnchorRequest;
   hasAppliedAuthoritativeHistory: boolean;
+  /** False once the chat is archived or archiving, when no track bar renders. */
+  hasActiveComposer: boolean;
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
@@ -1608,6 +1616,29 @@ const AgentStreamSection = memo(function AgentStreamSection({
   // to it), so it retains for as long as it is mounted - not only while active.
   useAgentStreamRetention(serverId, agentId ?? null);
   const isPanelActive = useRetainedPanelActive();
+  // The transcript tail and the floating scroll-to-bottom control both have to
+  // clear the composer's track bar, which a sibling section owns. Reading the
+  // same store signals the tracks render from keeps the two memo boundaries
+  // independent - lifting the track state into the shared parent would re-render
+  // this section on every subagent tick. Tracks that decide their own visibility
+  // (context health, rate limits, followed suggestions) are not counted here.
+  const { workspaceId } = usePaneContext();
+  const isCompactFormFactor = useIsCompactFormFactor();
+  const trackSubagentRows = useSubagentsForParent({ serverId, parentAgentId: agentId ?? "" });
+  const trackBackgroundTaskRows = useBackgroundShellTasksForParent({
+    serverId,
+    parentAgentId: agentId ?? "",
+  });
+  const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId ?? "");
+  const hasVisibleComposerTracks =
+    hasActiveComposer &&
+    (trackSubagentRows.length > 0 || trackBackgroundTaskRows.length > 0 || hasWorkspaceDiffStat);
+  const bottomOverlayTailClearance = hasVisibleComposerTracks
+    ? resolveComposerTrackTailClearance(isCompactFormFactor)
+    : 0;
+  const bottomOverlayControlClearance = hasVisibleComposerTracks
+    ? resolveComposerTrackControlClearance(isCompactFormFactor)
+    : 0;
   useKeyboardActionHandler({
     handlerId: `chat-find:${serverId}:${agentId ?? ""}`,
     actions: ["chat.find"],
@@ -1753,6 +1784,8 @@ const AgentStreamSection = memo(function AgentStreamSection({
       pendingPermissions={pendingPermissions}
       routeBottomAnchorRequest={routeBottomAnchorRequest}
       isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
+      bottomOverlayTailClearance={bottomOverlayTailClearance}
+      bottomOverlayControlClearance={bottomOverlayControlClearance}
       toast={toast}
       pendingMessageSubmissions={pendingMessageSubmissions}
       turnPresentation={turnPresentation}
@@ -2203,6 +2236,7 @@ function ActiveAgentComposer({
             externalKeyboardShift
             isPaneFocused={isPaneFocused}
             value={agentInputDraft.text}
+            textReplacementKey={agentInputDraft.textReplacementKey}
             onChangeText={agentInputDraft.setText}
             attachments={agentInputDraft.attachments}
             attachmentScopeKeys={attachmentScopeKeys}

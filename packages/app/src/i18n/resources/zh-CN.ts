@@ -1,4 +1,5 @@
 import type { TranslationResources } from "./en";
+import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
   common: {
@@ -1529,6 +1530,7 @@ export const zhCN: TranslationResources = {
     },
     fileActions: {
       openFile: "打开文件",
+      openToSide: "在侧边打开",
       editFile: "编辑文件",
       navigateToFile: "导航到文件",
       navigateToChanges: "导航到更改",
@@ -3226,6 +3228,7 @@ export const zhCN: TranslationResources = {
       terminals: "终端",
       host: "概览",
     },
+    plugins: pluginSettings["zh-CN"],
     metadataGeneration: {
       title: "元数据生成",
       description: "选择 Otto 用于工作区标题、分支名称、提交消息和拉取请求草稿的模型",

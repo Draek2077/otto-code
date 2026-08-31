@@ -453,6 +453,78 @@ OTTO_PROFILE_IDLE_WAIT_MS=3000             # idle baseline before switching
 OTTO_PROFILE_DUMP_COMMITS=1                # include per-commit profiler samples
 ```
 
+For warm workspace switching, point the benchmark at an app backed by seeded
+daemon state:
+
+```bash
+OTTO_PROFILE_APP_URL=http://localhost:19010 \
+  npm run profile:workspace-switching --workspace=@otto-code/app
+```
+
+The benchmark first warms `Cmd+1` through `Cmd+7`, then records a rapid seven-workspace
+burst. It separately warms the three-entry workspace deck LRU and records `Cmd+1` through
+`Cmd+3` without waits between keys. Both scenarios report keydown-to-activation latency and
+React commits on the same browser clock. Set `OTTO_PROFILE_WORKSPACE_DIGITS`,
+`OTTO_PROFILE_WORKSPACE_LRU_SIZE`, or `OTTO_PROFILE_WARM_QUIET_MS` to change the shape. Set
+`OTTO_PROFILE_DUMP_COMMITS=1` to include the nested component breakdown for every commit.
+Set `OTTO_PROFILE_RETAINED_REPEATS=5` to repeat the retained-LRU burst for a less noisy sample.
+Set `OTTO_PROFILE_CPU_PATH=/tmp/workspace-switch.cpuprofile` to run a separate retained-LRU
+capture after the latency scenarios and write a raw CDP CPU profile without contaminating their
+timings.
+Set `OTTO_PROFILE_TRACE_PATH=/tmp/workspace-switch.trace.json` to run another separate retained-LRU
+capture and write a Chromium Performance trace with User Timing marks and screenshots. Open the
+trace in the Chrome DevTools Performance panel. Set `OTTO_PROFILE_TRACE_INVALIDATIONS=1` only for a
+focused invalidation capture; React Native's generated stacks make that mode highly intrusive.
+Set `OTTO_PROFILE_TRACE_FOCUS=1` to include focus targets, durations, and JavaScript call stacks in
+the scenario report. This mode wraps `HTMLElement.focus`, so use it only for diagnosis.
+
+For the desktop Explorer sidebar toggle, run the app against the root checkout's daemon and use:
+
+```bash
+npm run profile:explorer-toggle --workspace=@otto-code/app
+```
+
+The harness verifies port `6768`, opens the Otto workspace, creates and warms the Explorer pane,
+records an idle control, then measures settled and 50 ms burst Cmd+E toggles. It reports
+input-to-DOM and input-to-paint latency, React commits, mounts, unmounts, and DOM mutations. Set
+`OTTO_PROFILE_TRACE_PATH=/tmp/explorer-toggle.trace.json` or
+`OTTO_PROFILE_CPU_PATH=/tmp/explorer-toggle.cpuprofile` for separate Chromium captures. Override
+the app URL, daemon port, workspace, or server with the corresponding `OTTO_PROFILE_*` variables.
+
+For sustained composer typing, run the paired composer-versus-textarea benchmark against a seeded
+daemon:
+
+```bash
+OTTO_PROFILE_APP_URL=http://localhost:19010 \
+  npm run profile:composer-typing --workspace=@otto-code/app
+```
+
+The benchmark opens the first workspace, preserves its existing draft, and dispatches 300 printable
+keys at a fixed 16 ms cadence without waiting for each key to paint. It measures renderer
+`keydown` to the next paint opportunity, verifies that every character survived, alternates the
+composer and plain-textarea control across three runs, then restores the original draft. The report
+includes percentiles, frame coalescing, input processing, React work, long tasks, slow samples, and
+Playwright dispatch lateness. Set `OTTO_PROFILE_TYPING_KEYS`, `OTTO_PROFILE_TYPING_CADENCE_MS`,
+`OTTO_PROFILE_TYPING_REPEATS`, or `OTTO_PROFILE_WORKSPACE_DIGIT` to change the scenario. Optional
+`OTTO_PROFILE_CPU_PATH` and `OTTO_PROFILE_TRACE_PATH` captures run separately after the latency
+measurements so profiling overhead does not contaminate them.
+
+Set `OTTO_PROFILE_TYPING_SCENARIO=height-growth` to alternate `Shift+Enter` and printable input.
+That report includes input and composer height changes plus React work grouped into composer,
+stream, and ancestor/root scopes. Ancestor/root timings include descendant work because the Profiler
+boundaries are nested. A printable key after an empty newline should not change either height.
+
+### Preview Windows and Linux window controls on macOS
+
+Desktop development can replace native macOS traffic lights with Otto's custom controls:
+
+```bash
+OTTO_DESKTOP_WINDOW_CONTROLS=windows npm run dev:desktop
+OTTO_DESKTOP_WINDOW_CONTROLS=linux npm run dev:desktop
+```
+
+The override is rejected in packaged builds. Restart the desktop process when changing it.
+
 ### Desktop macOS compositor watchdog
 
 macOS display sleep can leave Chromium's GPU-process display link - the vsync
@@ -502,8 +574,8 @@ the daemon-global Git process limits in `$OTTO_HOME/config.json`:
 }
 ```
 
-Restart the daemon with `otto daemon restart`. If Otto Desktop manages the daemon, fully quit and
-reopen the desktop app. Lower values reduce machine pressure but make Git-backed workspace state and
+Reload the daemon with `otto reload`. Environment-variable overrides still require a restart because
+the launch environment remains authoritative. Lower values reduce machine pressure but make Git-backed workspace state and
 Git RPCs wait longer. See [Git process limits](data-model.md#git-process-limits) for defaults,
 semantics, and environment-variable overrides.
 
@@ -662,6 +734,16 @@ For tighter loops, you can rebuild a single workspace:
 - Changed `packages/server/src/*`, `packages/cli/src/*`, `packages/relay/src/*`, or `packages/highlight/src/*`: `npm run build:server`.
 - Changed app build dependencies: `npm run build:app-deps`.
 
+## Dependency patches
+
+`patches/*.patch` are applied by `scripts/postinstall-patches.mjs` on every install. A patch only
+runs when its package is actually present, so add the package to that script's `patchedPackages`
+list when you introduce a new patch — otherwise the file sits in `patches/` and never applies.
+Regenerate a patch with `npx patch-package <package>` after editing `node_modules/<package>`, and
+patch every build the consumers use: Metro resolves the `react-native` field of a package
+(`src/*.ts` for `react-native-svg`), while Node and Vitest resolve `main`/`module`
+(`lib/commonjs`, `lib/module`). Patching only `lib/` leaves the app bundle unfixed.
+
 ## ACP provider catalog versions
 
 The in-app ACP provider catalog pins package-runner entries (`npx`, `npm exec`,
@@ -691,6 +773,7 @@ imports or executes it. Graph file import and `run --file` wait on the Graph tru
 are described in [workflow-node-capabilities.md](workflow-node-capabilities.md). Graph
 Runs already persist an exact source-document snapshot; a draft's snapshot is replaced only when
 the user re-saves that draft, while an executed Run's snapshot is immutable history.
+Canonical automation uses `otto project create/ls/rename/delete`, `otto workspace create/ls/rename/archive`, `otto heartbeat create/update/delete`, and the full `otto schedule` group. MCP heartbeat automation is intentionally smaller: create and delete only. Detach remains an explicit user lifecycle action rather than an agent tool. `otto run --new-workspace local|worktree` composes workspace creation with agent creation. The old `otto worktree` and `otto run --worktree` forms are hidden compatibility aliases.
 
 ```bash
 npm run cli -- ls -a -g              # List all agents globally

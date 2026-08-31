@@ -31,6 +31,8 @@ interface GitActionsSplitButtonProps {
   // Stretch to fill the available width (content stays centered).
   fill?: boolean;
   tooltipSide?: "top" | "bottom";
+  /** Upstream: compact surfaces render the actions as a menu with no split button. */
+  menuOnly?: boolean;
 }
 
 interface GitActionMenuItemProps {

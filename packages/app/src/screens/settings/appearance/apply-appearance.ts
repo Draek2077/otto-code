@@ -56,6 +56,9 @@ function scaleFontSize(uiSize: number, codeSize: number): Theme["fontSize"] {
     xs: Math.round(FONT_SIZE.xs * r),
     sm: Math.round(FONT_SIZE.sm * r),
     base: Math.round(FONT_SIZE.base * r),
+    // Long-form reading text sits one rung above `base`. Scales with the UI
+    // factor like every other rung; only `code` is on its own axis.
+    content: Math.round(FONT_SIZE.content * r),
     lg: Math.round(FONT_SIZE.lg * r),
     xl: Math.round(FONT_SIZE.xl * r),
     "2xl": Math.round(FONT_SIZE["2xl"] * r),

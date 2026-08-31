@@ -1823,6 +1823,14 @@ describe("HostRuntimeStore", () => {
         lastActivityAt: new Date(stale.updatedAt),
         archivedAt: stale.archivedAt ? new Date(stale.archivedAt) : null,
         attentionTimestamp: stale.attentionTimestamp ? new Date(stale.attentionTimestamp) : null,
+        // The wire carries the turn's start as an ISO string; the client Agent
+        // holds a Date, like every other timestamp on it.
+        activeTurn: stale.activeTurn
+          ? {
+              turnId: stale.activeTurn.turnId,
+              startedAt: stale.activeTurn.startedAt ? new Date(stale.activeTurn.startedAt) : null,
+            }
+          : (stale.activeTurn ?? null),
         parentAgentId: null,
       };
       return new Map([[stale.id, staleAgent]]);

@@ -27,7 +27,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { View, Text } from "react-native";
+import { type LayoutChangeEvent, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
@@ -62,7 +62,6 @@ import {
 } from "@/screens/workspace/workspace-desktop-tabs-row";
 import { WorkspaceDesktopTabsRail } from "@/screens/workspace/workspace-desktop-tabs-rail";
 import { useAppSettings } from "@/hooks/use-settings";
-import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
@@ -78,6 +77,7 @@ import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
 import { RenderProfile } from "@/utils/render-profiler";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import { isNative } from "@/constants/platform";
+import type { TerminalProfile } from "@otto-code/protocol/messages";
 
 interface SplitContainerProps {
   layout: WorkspaceLayout;
@@ -104,7 +104,7 @@ interface SplitContainerProps {
   onCloseTabsToRight: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
-  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
+  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfile }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
   showCreateBrowserTab?: boolean;
   buildPaneContentModel: (input: {
@@ -781,6 +781,33 @@ function SplitNodeView({
     groupId ? state.splitSizesByWorkspace[workspaceKey]?.[groupId] : undefined,
   );
 
+  // The drag math is in fractions of the container, so the handle needs the
+  // container's measured extent along the split axis.
+  const [groupContainerSize, setGroupContainerSize] = useState(0);
+  const handleGroupLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const nextSize =
+        groupDirection === "horizontal"
+          ? event.nativeEvent.layout.width
+          : event.nativeEvent.layout.height;
+      setGroupContainerSize((current) => (current === nextSize ? current : nextSize));
+    },
+    [groupDirection],
+  );
+  // Sizes reported mid-drag. Held locally and cleared on commit, so the split
+  // follows the pointer without writing to the layout store on every frame.
+  const [previewGroupSizes, setPreviewGroupSizes] = useState<number[] | null>(null);
+  const previewResizeSplit = useCallback((_groupId: string, sizes: number[]) => {
+    setPreviewGroupSizes(sizes);
+  }, []);
+  const commitResizeSplit = useCallback(
+    (id: string, sizes: number[]) => {
+      setPreviewGroupSizes(null);
+      onResizeSplit(id, sizes);
+    },
+    [onResizeSplit],
+  );
+
   const groupStyle = useMemo(
     () => [
       styles.group,
@@ -831,10 +858,10 @@ function SplitNodeView({
     );
   }
 
-  const groupSizes = storedGroupSizes ?? node.group.sizes;
+  const groupSizes = previewGroupSizes ?? storedGroupSizes ?? node.group.sizes;
 
   return (
-    <View style={groupStyle}>
+    <View style={groupStyle} onLayout={handleGroupLayout}>
       {node.group.children.map((child, index) => (
         <Fragment key={getNodeKey(child)}>
           <SplitGroupChild flex={groupSizes[index] ?? 1}>
@@ -883,7 +910,9 @@ function SplitNodeView({
               groupId={node.group.id}
               index={index}
               sizes={groupSizes}
-              onResizeSplit={onResizeSplit}
+              containerSize={groupContainerSize}
+              onPreviewResizeSplit={previewResizeSplit}
+              onResizeSplit={commitResizeSplit}
             />
           ) : null}
         </Fragment>

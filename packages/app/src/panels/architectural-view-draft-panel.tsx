@@ -7,10 +7,11 @@ import { ArchitecturalViewHtml } from "@/components/architectural-views/architec
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import type { PanelDescriptor } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
+import { definePanel } from "@/panels/panel-registry";
 
 type ArchitecturalViewDraftTarget = Extract<WorkspaceTabTarget, { kind: "architecturalViewDraft" }>;
 
@@ -185,15 +186,13 @@ function ArchitecturalViewDraftPanel() {
   );
 }
 
-export const architecturalViewDraftPanelRegistration: PanelRegistration<"architecturalViewDraft"> =
-  {
-    kind: "architecturalViewDraft",
-    component: ArchitecturalViewDraftPanel,
-    useDescriptor: useArchitecturalViewDraftPanelDescriptor,
-    // Closing a preview is a detach, never a discard. The daemon retains the
-    // staged document until an explicit publish or discard action.
-    confirmClose: () => Promise.resolve(true),
-  };
+export const architecturalViewDraftPanelRegistration = definePanel("architecturalViewDraft", {
+  component: ArchitecturalViewDraftPanel,
+  useDescriptor: useArchitecturalViewDraftPanelDescriptor,
+  // Closing a preview is a detach, never a discard. The daemon retains the
+  // staged document until an explicit publish or discard action.
+  confirmClose: () => Promise.resolve(true),
+});
 
 const styles = StyleSheet.create((theme) => ({
   container: { flex: 1, backgroundColor: theme.colors.surface0 },

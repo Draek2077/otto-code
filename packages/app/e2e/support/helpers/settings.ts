@@ -79,6 +79,7 @@ type HostSection =
   | "usage"
   | "storage"
   | "terminals"
+  | "plugins"
   | "host";
 
 export async function openSettingsSection(page: Page, section: SettingsSection): Promise<void> {

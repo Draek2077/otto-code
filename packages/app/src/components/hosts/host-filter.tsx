@@ -19,6 +19,13 @@ export interface HostFilterProps {
   hosts: HostProfile[];
   selectedHost: string;
   onSelectHost: (serverId: string) => void;
+  /**
+   * Offer "All hosts". Off for a surface that acts on exactly one host's data — the label
+   * manager edits a single host's catalog, so "all" is not an answer it could carry out.
+   */
+  includeAllHost?: boolean;
+  /** Secondary line under a host's name in the menu - Sessions uses it to say
+   *  what "All hosts" actually spans. */
   optionDescriptions?: Record<string, string>;
   triggerTestID?: string;
   hostOptionTestID?: (serverId: string) => string;
@@ -33,6 +40,7 @@ export function HostFilter({
   hosts,
   selectedHost,
   onSelectHost,
+  includeAllHost = true,
   optionDescriptions,
   triggerTestID,
   hostOptionTestID,
@@ -41,8 +49,8 @@ export function HostFilter({
   const filterAnchorRef = useRef<View>(null);
 
   const selectedHostLabel = useMemo(
-    () => getHostPickerLabel(hosts, selectedHost, { includeAllHost: true }),
-    [hosts, selectedHost],
+    () => getHostPickerLabel(hosts, selectedHost, { includeAllHost }),
+    [hosts, includeAllHost, selectedHost],
   );
 
   const handleFilterOpen = useCallback(() => setIsFilterOpen(true), []);
@@ -64,7 +72,7 @@ export function HostFilter({
       open={isFilterOpen}
       onOpenChange={setIsFilterOpen}
       anchorRef={filterAnchorRef}
-      includeAllHost
+      includeAllHost={includeAllHost}
       optionDescriptions={optionDescriptions}
       searchable={false}
       title="Filter by host"
@@ -115,7 +123,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   filterTriggerText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
   },
 }));

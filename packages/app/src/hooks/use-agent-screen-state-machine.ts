@@ -4,6 +4,7 @@ import type {
   AgentFeature,
   AgentProvider,
 } from "@otto-code/protocol/agent-types";
+import type { ViewedTimelineStatus } from "@/timeline/viewed-timeline-sync";
 
 export interface AgentScreenAgent {
   serverId: string;
@@ -51,7 +52,7 @@ export interface AgentScreenMachineInput {
   isArchivingCurrentAgent: boolean;
   isHistorySyncing: boolean;
   needsAuthoritativeSync: boolean;
-  visibilityCatchUpStatus: "ready" | "pending" | "error" | "missing";
+  visibilityCatchUpStatus: ViewedTimelineStatus;
   continuity: AgentScreenContinuity;
   hasHydratedHistoryBefore: boolean;
 }
@@ -86,7 +87,7 @@ export type AgentScreenReadySyncState =
       status: "catching_up";
       ui: "overlay" | "silent";
     }
-  | { status: "sync_error" }
+  | { status: "sync_error"; isRetrying: boolean }
   | { status: "sync_missing" };
 
 export type AgentScreenViewState =
@@ -178,15 +179,15 @@ function resolveAgentScreenSync(args: {
     return { status: "reconnecting" };
   }
   if (input.missingAgentState.kind === "error") {
-    return { status: "sync_error" };
+    return { status: "sync_error", isRetrying: input.visibilityCatchUpStatus === "retrying" };
   }
   // The host answered, and the answer was that the chat is gone. That is a
   // settled fact, not a failed attempt, so it never presents as a retry.
   if (input.visibilityCatchUpStatus === "missing") {
     return { status: "sync_missing" };
   }
-  if (input.visibilityCatchUpStatus === "error") {
-    return { status: "sync_error" };
+  if (input.visibilityCatchUpStatus === "error" || input.visibilityCatchUpStatus === "retrying") {
+    return { status: "sync_error", isRetrying: input.visibilityCatchUpStatus === "retrying" };
   }
   if (
     input.visibilityCatchUpStatus === "pending" ||

@@ -1,4 +1,4 @@
-import type { AgentProvider } from "@otto-code/protocol/agent-types";
+import type { AgentProvider, JsonValue } from "@otto-code/protocol/agent-types";
 import type { ProjectKnowledgeTabSelection } from "@/project-knowledge/file-target";
 import type { WorkspaceFileTabTarget } from "@/workspace/file-open";
 
@@ -25,6 +25,21 @@ export interface WorkspaceWorkingDiffTabTarget {
   focusRequestId?: number;
 }
 
+export type PluginWorkspaceTabTarget =
+  | {
+      kind: "plugin";
+      pluginId: string;
+      panelId: string;
+      context: "workspace";
+    }
+  | {
+      kind: "plugin";
+      pluginId: string;
+      panelId: string;
+      context: "agent";
+      agentId: string;
+    };
+
 export type WorkspaceTabTarget =
   | {
       kind: "draft";
@@ -32,12 +47,17 @@ export type WorkspaceTabTarget =
       setup?: WorkspaceDraftTabSetup;
       architecturalViewDraft?: { viewId: string; draftId: string };
     }
+  | { kind: "new_tab" }
   | { kind: "agent"; agentId: string }
   | { kind: "provider_subagent"; parentAgentId: string; subagentId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser"; browserId: string }
+  | { kind: "changes_tree" }
+  | { kind: "files" }
+  | { kind: "pull_request" }
   | WorkspaceFileTabTarget
   | WorkspaceWorkingDiffTabTarget
+  | PluginWorkspaceTabTarget
   | { kind: "setup"; workspaceId: string }
   | { kind: "commit_diff"; sha: string }
   | { kind: "artifact"; artifactId: string }
@@ -121,6 +141,7 @@ export interface WorkspaceTab {
   tabId: string;
   target: WorkspaceTabTarget;
   createdAt: number;
+  state?: JsonValue;
 }
 
 export function buildWorkspaceTabPersistenceKey(input: {

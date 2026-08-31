@@ -21,12 +21,16 @@ const patchedPackages = [
     patchPrefix: "react-native-gesture-handler+",
   },
   {
-    nodeModulesPath: "node_modules/react-native-markdown-display",
-    patchPrefix: "react-native-markdown-display+",
-  },
-  {
     nodeModulesPath: "node_modules/react-native-unistyles",
     patchPrefix: "react-native-unistyles+",
+  },
+  {
+    nodeModulesPath: "node_modules/react-native-svg",
+    patchPrefix: "react-native-svg+",
+  },
+  {
+    nodeModulesPath: "node_modules/@mattermost/react-native-paste-input",
+    patchPrefix: "@mattermost+react-native-paste-input+",
   },
   {
     nodeModulesPath: "packages/server/node_modules/@opencode-ai/sdk",

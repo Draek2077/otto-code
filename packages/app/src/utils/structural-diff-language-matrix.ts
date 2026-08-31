@@ -146,4 +146,16 @@ export const STRUCTURAL_DIFF_LANGUAGE_FIXTURES: readonly StructuralLanguageFixtu
     before: "SELECT old_value FROM labels;\n",
     after: "SELECT new_value FROM labels;\n",
   },
+  {
+    id: "nix",
+    extensions: ["nix"],
+    before: '{ label = "old"; }\n',
+    after: '{ label = "new"; }\n',
+  },
+  {
+    id: "svelte",
+    extensions: ["svelte"],
+    before: "<script>\n  let label = 'old';\n</script>\n\n<span>{label}</span>\n",
+    after: "<script>\n  let label = 'new';\n</script>\n\n<span>{label}</span>\n",
+  },
 ];

@@ -66,8 +66,10 @@ import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
 import { ContextMenu, ContextMenuTrigger, useContextMenu } from "@/components/ui/context-menu";
 import { useFileDownload } from "@/hooks/use-file-download";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
-import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
-import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
+import {
+  useFileExplorerActions,
+  buildWorkspaceExplorerStateKey,
+} from "@/hooks/use-file-explorer-actions";
 import {
   resolveExplorerViewMode,
   usePanelStore,
@@ -164,6 +166,7 @@ interface TreeRowItemProps {
   revealTargetName?: string;
   onDownloadEntry: (entry: ExplorerEntry) => void;
   onAddToChat?: (path: string) => void;
+  onOpenFileToSide?: (path: string) => void;
   onNewEntry?: (parentPath: string, kind: "file" | "directory") => void;
   onCollapseDirectory?: (path: string) => void;
   onRenameEntry?: (entry: ExplorerEntry) => void;
@@ -303,6 +306,7 @@ function TreeRowItem({
   revealTargetName,
   onDownloadEntry,
   onAddToChat,
+  onOpenFileToSide,
   onNewEntry,
   onCollapseDirectory,
   onRenameEntry,
@@ -367,6 +371,10 @@ function TreeRowItem({
   const handleAddToChat = useCallback(() => {
     onAddToChat?.(entry.path);
   }, [onAddToChat, entry.path]);
+
+  const handleOpenToSide = useCallback(() => {
+    onOpenFileToSide?.(entry.path);
+  }, [entry.path, onOpenFileToSide]);
 
   const handleNewFile = useCallback(() => {
     onNewEntry?.(entry.path, "file");
@@ -453,6 +461,7 @@ function TreeRowItem({
         revealTargetName={revealTargetName}
         onDownload={handleDownload}
         onAddToChat={onAddToChat ? handleAddToChat : undefined}
+        onOpenToSide={onOpenFileToSide && !isDirectory ? handleOpenToSide : undefined}
         onNewFile={onNewEntry ? handleNewFile : undefined}
         onNewFolder={onNewEntry ? handleNewFolder : undefined}
         onCollapseFolder={isDirectory && isExpanded ? handleCollapseDirectory : undefined}
@@ -472,6 +481,7 @@ interface FileExplorerPaneProps {
   workspaceRoot: string;
   onOpenFile?: (filePath: string, options?: { edit?: boolean }) => void;
   onAddToChat?: (path: string) => void;
+  onOpenFileToSide?: (path: string) => void;
 }
 
 export function FileExplorerPane({
@@ -480,6 +490,7 @@ export function FileExplorerPane({
   workspaceRoot,
   onOpenFile,
   onAddToChat,
+  onOpenFileToSide,
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -1176,6 +1187,7 @@ export function FileExplorerPane({
           revealTargetName={fileManagerTarget?.label}
           onDownloadEntry={handleDownloadEntry}
           onAddToChat={effectiveOnAddToChat}
+          onOpenFileToSide={onOpenFileToSide}
           onNewEntry={fsEntryOpsEnabled ? handleNewEntry : undefined}
           onCollapseDirectory={handleCollapseDirectory}
           onRenameEntry={fsEntryOpsEnabled ? handleRenameEntry : undefined}
@@ -1204,6 +1216,7 @@ export function FileExplorerPane({
       handleRevealEntry,
       handleSelectEntry,
       isDirectoryLoading,
+      onOpenFileToSide,
       canEditFiles,
       fileManagerTarget,
       selectedEntryPath,
@@ -1647,6 +1660,8 @@ function toggleDirectory({
       expanded: !isExpanded,
     }),
   );
+  // Expanding a directory that has never been listed needs its children; the
+  // listing is not recorded as navigation, so it does not move the current path.
   if (!isExpanded && !directories.has(entry.path)) {
     void requestDirectoryListing(entry.path, {
       recordHistory: false,
@@ -1672,6 +1687,7 @@ function TreeRowDispatcher({
   revealTargetName,
   onDownloadEntry,
   onAddToChat,
+  onOpenFileToSide,
   onNewEntry,
   onCollapseDirectory,
   onRenameEntry,
@@ -1694,6 +1710,7 @@ function TreeRowDispatcher({
   revealTargetName?: string;
   onDownloadEntry: (entry: ExplorerEntry) => void;
   onAddToChat?: (path: string) => void;
+  onOpenFileToSide?: (path: string) => void;
   onNewEntry?: (parentPath: string, kind: "file" | "directory") => void;
   onCollapseDirectory?: (path: string) => void;
   onRenameEntry?: (entry: ExplorerEntry) => void;
@@ -1726,6 +1743,7 @@ function TreeRowDispatcher({
       revealTargetName={revealTargetName}
       onDownloadEntry={onDownloadEntry}
       onAddToChat={onAddToChat}
+      onOpenFileToSide={onOpenFileToSide}
       onNewEntry={onNewEntry}
       onCollapseDirectory={onCollapseDirectory}
       onRenameEntry={onRenameEntry}

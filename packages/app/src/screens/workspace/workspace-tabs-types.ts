@@ -5,4 +5,5 @@ export interface WorkspaceTabDescriptor {
   tabId: string;
   kind: WorkspaceTabTarget["kind"];
   target: WorkspaceTabTarget;
+  state?: import("@otto-code/protocol/agent-types").JsonValue;
 }

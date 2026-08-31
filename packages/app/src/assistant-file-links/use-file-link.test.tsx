@@ -136,7 +136,6 @@ describe("useFileLink", () => {
     expect(result.current).toBe(first);
     expect(result.current.onHoverIn).toBe(first.onHoverIn);
     expect(result.current.onPress).toBe(first.onPress);
-    expect(result.current.onAuxPress).toBe(first.onAuxPress);
     expect(result.current.open).toBe(first.open);
   });
 

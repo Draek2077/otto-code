@@ -1039,12 +1039,33 @@ const DIAGNOSTIC_SNAP_POINTS = ["50%", "85%"];
 
 const sheetStyles = StyleSheet.create((theme) => ({
   mutedText: {
+    fontSize: theme.fontSize.base,
+    color: theme.colors.foregroundMuted,
+  },
+  monoHint: {
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.code,
+    color: theme.colors.foregroundMuted,
+    flexShrink: 0,
+  },
+  descriptionInline: {
+    flex: 1,
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   errorText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.destructive,
+  },
+  formInput: {
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.lg,
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+    color: theme.colors.foreground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    fontSize: theme.fontSize.base,
   },
   iconButton: {
     width: 28,
@@ -1122,16 +1143,54 @@ const sheetStyles = StyleSheet.create((theme) => ({
     borderTopColor: theme.colors.border,
   },
   // Text column shrinks as a unit so the trailing control keeps its width.
+  modelTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    flexShrink: 0,
+  },
+  modelRowFiller: {
+    flex: 1,
+  },
   emptyState: {
     paddingVertical: theme.spacing[8],
     alignItems: "center",
     gap: theme.spacing[3],
   },
+  footerContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
+  compactFooterContent: {
+    flex: 1,
+    gap: theme.spacing[2],
+  },
+  footerMeta: {
+    flex: 1,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
+  },
+  compactFooterMeta: {
+    flex: 0,
+  },
+  footerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  compactFooterActions: {
+    gap: theme.spacing[2],
+  },
+  compactFooterButton: {
+    alignSelf: "stretch",
+  },
   formGroup: {
     gap: theme.spacing[3],
   },
   formLabel: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foreground,
   },

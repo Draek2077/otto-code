@@ -14,6 +14,7 @@ import type { ParsedDiffFile } from "@/git/use-diff-query";
 export interface DiffTreeFileNode {
   kind: "file";
   file: ParsedDiffFile;
+  fileIndex: number;
   /** basename, e.g. "diff-pane.tsx" */
   name: string;
 }
@@ -45,6 +46,7 @@ export interface DiffTreeFolderRow {
 export interface DiffTreeFileRow {
   kind: "file";
   file: ParsedDiffFile;
+  fileIndex: number;
   depth: number;
   /** which indent rails keep running below this row - see tree-rail-mask.ts */
   ancestorMask: number;
@@ -90,11 +92,11 @@ export function buildDiffTree(files: ParsedDiffFile[]): DiffTreeDirNode {
     return node;
   }
 
-  for (const file of files) {
+  for (const [fileIndex, file] of files.entries()) {
     const parts = file.path.split("/");
     const name = parts[parts.length - 1];
     const dirPath = parts.slice(0, -1).join("/");
-    ensureDir(dirPath).children.push({ kind: "file", file, name });
+    ensureDir(dirPath).children.push({ kind: "file", file, fileIndex, name });
   }
 
   sortTree(root);
@@ -178,7 +180,13 @@ export function flattenDiffTree(
       // column reads back when the row renders.
       const mask = withTreeRail(parentMask, depth, index !== lastIndex);
       if (child.kind === "file") {
-        rows.push({ kind: "file", file: child.file, depth, ancestorMask: mask });
+        rows.push({
+          kind: "file",
+          file: child.file,
+          fileIndex: child.fileIndex,
+          depth,
+          ancestorMask: mask,
+        });
         return;
       }
       const stats = statsByNode.get(child) ?? EMPTY_DIR_STATS;

@@ -235,3 +235,33 @@ export async function createWorkspace(
 ): ReturnType<typeof createTempGitRepo> {
   return createTempGitRepo(prefix);
 }
+
+export async function expectTabTitleFits(
+  page: Page,
+  title: string,
+  widthRange: { min: number; max: number },
+): Promise<void> {
+  const tab = page
+    .locator('[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])')
+    .filter({ hasText: title })
+    .filter({ visible: true })
+    .last();
+  await expect(tab).toContainText(title);
+  const tabWidth = await tab.evaluate((element) => element.getBoundingClientRect().width);
+  expect(tabWidth).toBeGreaterThanOrEqual(widthRange.min);
+  expect(tabWidth).toBeLessThanOrEqual(widthRange.max);
+  const label = tab.getByText(title, { exact: true });
+  await expect(label).toBeVisible();
+  const labelFits = await label.evaluate((element) => element.scrollWidth <= element.clientWidth);
+  expect(labelFits).toBe(true);
+}
+
+export async function openNewTabMenuWithShortcut(page: Page): Promise<void> {
+  await pressNewTabShortcut(page);
+  await expect(page.getByTestId("workspace-new-tab-panel").filter({ visible: true })).toBeVisible();
+}
+
+export async function pressDirectNewTabShortcut(page: Page, key: string): Promise<void> {
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.press(`${modifier}+Shift+${key}`);
+}

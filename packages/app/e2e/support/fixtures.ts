@@ -34,37 +34,16 @@ const metroTest = base.extend({
   },
 });
 
-const test = metroTest.extend<
-  {
-    ottoE2ESetup: void;
-    projectOwnership: void;
-    danglingProjectSweep: void;
-    outdatedDaemon: OutdatedDaemon;
-    desktopManagedOutdatedDaemon: OutdatedDaemon;
-    relayConfigOutdatedDaemon: OutdatedDaemon;
-    projectPickerFixture: TrackedProjectPickerFixture;
-    withWorkspace: WithWorkspace;
-    /**
-     * Seed `hasCompletedSetupWizard: true` so the first-run wizard can never
-     * intercept a spec that just wants the app.
-     *
-     * A fresh browser context has no settings blob, so the app writes the
-     * fresh-install defaults with the flag `false`, and the index route redirects
-     * "/" -> "/setup" when a host is online at decision time. Specs used to pass
-     * only because they won a race: "/" usually resolved before the seeded host's
-     * WebSocket finished connecting, so the gate saw no host and fell through. On
-     * a loaded CI runner that race flips and every spec that touches the app shell
-     * dies on a "Welcome to Otto" screen - which reads as a broken sidebar or a
-     * missing locator, not as the wizard.
-     *
-     * Opt out with `test.use({ seedSetupWizardComplete: false })` when the wizard
-     * itself is the subject.
-     */
-    seedSetupWizardComplete: boolean;
-  },
+/**
+ * The daemon-only half of the harness: the worker daemon and the project-leak
+ * guard, with nothing that needs a browser page. Specs that drive the daemon
+ * directly over a WebSocket extend this instead of `test` so they neither pay
+ * for the app-shell fixtures nor race the wizard gate.
+ */
+const daemonTest = metroTest.extend<
+  { projectOwnership: void },
   { e2eForkProviders: string[]; e2eWorker: void }
 >({
-  seedSetupWizardComplete: [true, { option: true }],
   e2eForkProviders: [[], { scope: "worker", option: true }],
   e2eWorker: [
     async ({ e2eForkProviders }, provide, workerInfo) => {
@@ -117,6 +96,35 @@ const test = metroTest.extend<
     },
     { auto: true },
   ],
+});
+
+const test = daemonTest.extend<{
+  ottoE2ESetup: void;
+  danglingProjectSweep: void;
+  outdatedDaemon: OutdatedDaemon;
+  desktopManagedOutdatedDaemon: OutdatedDaemon;
+  relayConfigOutdatedDaemon: OutdatedDaemon;
+  projectPickerFixture: TrackedProjectPickerFixture;
+  withWorkspace: WithWorkspace;
+  /**
+   * Seed `hasCompletedSetupWizard: true` so the first-run wizard can never
+   * intercept a spec that just wants the app.
+   *
+   * A fresh browser context has no settings blob, so the app writes the
+   * fresh-install defaults with the flag `false`, and the index route redirects
+   * "/" -> "/setup" when a host is online at decision time. Specs used to pass
+   * only because they won a race: "/" usually resolved before the seeded host's
+   * WebSocket finished connecting, so the gate saw no host and fell through. On
+   * a loaded CI runner that race flips and every spec that touches the app shell
+   * dies on a "Welcome to Otto" screen - which reads as a broken sidebar or a
+   * missing locator, not as the wizard.
+   *
+   * Opt out with `test.use({ seedSetupWizardComplete: false })` when the wizard
+   * itself is the subject.
+   */
+  seedSetupWizardComplete: boolean;
+}>({
+  seedSetupWizardComplete: [true, { option: true }],
   ottoE2ESetup: [
     async ({ page, seedSetupWizardComplete }, provide, testInfo) => {
       const daemonPort = getE2EDaemonPort();
@@ -317,4 +325,4 @@ const test = metroTest.extend<
   },
 });
 
-export { test, metroTest, expect, type Page };
+export { daemonTest, test, metroTest, expect, type Page };

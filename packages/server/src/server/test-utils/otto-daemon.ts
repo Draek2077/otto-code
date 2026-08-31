@@ -47,6 +47,9 @@ interface TestOttoDaemonOptions {
   webUi?: OttoDaemonConfig["webUi"];
   trustedProxies?: OttoDaemonConfig["trustedProxies"];
   agentProfiles?: AgentProfile[];
+  autoArchiveAfterMerge?: boolean;
+  pluginsEnabled?: OttoDaemonConfig["pluginsEnabled"];
+  plugins?: OttoDaemonConfig["plugins"];
 }
 
 export interface TestOttoDaemon {
@@ -196,6 +199,9 @@ async function prepareTestDaemonConfig(
     dictationFinalTimeoutMs: options.dictationFinalTimeoutMs,
     downloadTokenTtlMs: options.downloadTokenTtlMs,
     agentProfiles: options.agentProfiles,
+    autoArchiveAfterMerge: options.autoArchiveAfterMerge,
+    pluginsEnabled: options.pluginsEnabled,
+    plugins: options.plugins,
   };
   return { config, ottoHomeRoot, ottoHome, staticDir };
 }

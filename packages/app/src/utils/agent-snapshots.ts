@@ -2,6 +2,7 @@ import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import type { AgentPermissionRequest } from "@otto-code/protocol/agent-types";
 import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
 import type { ActiveTurnIdentity } from "@/timeline/turn-liveness";
+import { type Agent } from "@/stores/session-store";
 
 export function normalizeAgentActiveTurn(
   snapshot: AgentSnapshotPayload,
@@ -98,5 +99,50 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     attend: snapshot.attend ?? "attended",
     backgrounded: snapshot.backgrounded ?? false,
     ...resolveProfileIdentity(snapshot),
+  };
+}
+
+export function projectAgentSnapshot(agent: Agent): AgentSnapshotPayload {
+  return {
+    id: agent.id,
+    provider: agent.provider,
+    cwd: agent.cwd,
+    ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
+    model: agent.model,
+    ...(agent.features ? { features: agent.features } : {}),
+    thinkingOptionId: agent.thinkingOptionId ?? null,
+    createdAt: agent.createdAt.toISOString(),
+    updatedAt: agent.updatedAt.toISOString(),
+    lastUserMessageAt: agent.lastUserMessageAt?.toISOString() ?? null,
+    status: agent.status,
+    ...projectActiveTurn(agent),
+    capabilities: agent.capabilities,
+    currentModeId: agent.currentModeId,
+    availableModes: agent.availableModes,
+    pendingPermissions: agent.pendingPermissions,
+    persistence: agent.persistence,
+    ...(agent.runtimeInfo ? { runtimeInfo: agent.runtimeInfo } : {}),
+    ...(agent.lastUsage ? { lastUsage: agent.lastUsage } : {}),
+    ...(agent.lastError ? { lastError: agent.lastError } : {}),
+    title: agent.title,
+    labels: agent.labels,
+    requiresAttention: agent.requiresAttention ?? false,
+    attentionReason: agent.attentionReason ?? null,
+    attentionTimestamp: agent.attentionTimestamp?.toISOString() ?? null,
+    archivedAt: agent.archivedAt?.toISOString() ?? null,
+  };
+}
+
+function projectActiveTurn(agent: Agent): Pick<AgentSnapshotPayload, "activeTurn"> {
+  // Absent on a daemon that does not report turn identity: leave the field off
+  // the payload rather than asserting the agent is between turns.
+  if (agent.activeTurn === undefined) return {};
+  if (agent.activeTurn === null) return { activeTurn: null };
+  if (agent.activeTurn.turnId === null) return {};
+  return {
+    activeTurn: {
+      turnId: agent.activeTurn.turnId,
+      startedAt: agent.activeTurn.startedAt?.toISOString() ?? null,
+    },
   };
 }

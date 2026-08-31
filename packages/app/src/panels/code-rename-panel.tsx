@@ -17,7 +17,7 @@ import {
   useCollapsedGroups,
 } from "@/editor/code-results/result-rows";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
@@ -544,14 +544,13 @@ function EditRow({
   );
 }
 
-export const codeRenamePanelRegistration: PanelRegistration<"codeRename"> = {
-  kind: "codeRename",
+export const codeRenamePanelRegistration = definePanel("codeRename", {
   component: CodeRenamePanel,
   useDescriptor: useCodeRenamePanelDescriptor,
   confirmClose() {
     return Promise.resolve(true);
   },
-};
+});
 
 const styles = StyleSheet.create((theme) => ({
   container: {

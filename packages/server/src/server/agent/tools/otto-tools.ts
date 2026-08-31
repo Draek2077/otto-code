@@ -2837,9 +2837,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       // Re-fetch snapshot since the state may have changed
       const currentSnapshot = agentManager.getAgent(agentId);
 
-      const queuedGuidance = dispatch.queued
-        ? "The chat was busy, so your prompt is queued and will run as its next turn. Nothing was interrupted."
-        : null;
+      const queuedGuidance =
+        dispatch.disposition === "queued"
+          ? "The chat was busy, so your prompt is queued and will run as its next turn. Nothing was interrupted."
+          : null;
       const notifyGuidance = shouldNotifyOnFinish
         ? "You will get notified when the prompted chat finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives."
         : null;

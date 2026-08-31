@@ -48,6 +48,7 @@ import {
   useScriptMenuPreferencesStore,
 } from "@/screens/workspace/script-menu-preferences-store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { MENU_ITEM_HEIGHT } from "@/components/ui/menu/menu-geometry";
 import { useToast } from "@/contexts/toast-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useIconSize } from "@/styles/theme";
@@ -59,6 +60,7 @@ import {
 } from "@/utils/workspace-script-links";
 import type { Theme } from "@/styles/theme";
 import { useWorkspaceServiceRoutePreferencesStore } from "@/workspace-service-routes/store";
+import { buttonControlHeight, HEADER_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
 
 type RowActionIcon = "copy" | "open" | "restart" | "start" | "stop" | "terminal";
 
@@ -570,7 +572,6 @@ function ScriptRow({
       accessibilityLabel={t("workspace.scripts.accessibility.script", {
         scriptName: script.scriptName,
       })}
-      style={styles.scriptItem}
     >
       <View style={styles.scriptHeader}>
         <ScriptIcon size={scriptIconSize} uniProps={iconColorMapping} style={styles.scriptIcon} />
@@ -1035,6 +1036,10 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   splitButton: {
+    height: {
+      xs: buttonControlHeight.xs,
+      md: HEADER_CONTROL_HEIGHT,
+    },
     flexDirection: "row",
     alignItems: "stretch",
     borderRadius: theme.borderRadius.md,
@@ -1080,8 +1085,8 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
   },
   splitButtonText: {
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.5,
+    fontSize: theme.fontSize.base,
+    lineHeight: theme.fontSize.base * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
@@ -1176,7 +1181,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
-    minHeight: 24,
+    minHeight: MENU_ITEM_HEIGHT,
   },
   scriptIcon: {
     flexShrink: 0,

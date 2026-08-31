@@ -1,4 +1,5 @@
 import type { TranslationResources } from "./en";
+import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
   common: {
@@ -1568,6 +1569,7 @@ export const ko: TranslationResources = {
     },
     fileActions: {
       openFile: "파일 열기",
+      openToSide: "옆에 열기",
       editFile: "파일 편집",
       navigateToFile: "Navigate to file",
       navigateToChanges: "Navigate to changes",
@@ -3291,6 +3293,7 @@ export const ko: TranslationResources = {
       terminals: "터미널",
       host: "개요",
     },
+    plugins: pluginSettings.ko,
     metadataGeneration: {
       title: "메타데이터 생성",
       description:

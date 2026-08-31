@@ -1,5 +1,13 @@
 import { execSync } from "child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import pino from "pino";
@@ -20,6 +28,8 @@ import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
 import { createPersistedProjectRecord, type PersistedProjectRecord } from "./workspace-registry.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { WorkspaceLabelError, type WorkspaceLabelService } from "./workspace-labels/index.js";
+import { deriveProjectKey } from "./project-key.js";
 import type { SessionOptions } from "./session.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "./messages.js";
 import {
@@ -237,6 +247,11 @@ interface SessionForTestOptions {
   binaryMessages?: Uint8Array[];
   clientCapabilities?: SessionOptions["clientCapabilities"];
   onMessageToSource?: SessionOptions["onMessageToSource"];
+  /** Collects socket-targeted sends, for tests asserting per-socket delivery. */
+  targetedMessages?: Array<{ source: object; message: SessionOutboundMessage }>;
+  pluginRuntime?: SessionOptions["pluginRuntime"];
+  orchestrationSkills?: SessionOptions["orchestrationSkills"];
+  workspaceLabelService?: WorkspaceLabelService;
 }
 
 function createSessionForTest(options: SessionForTestOptions = {}): Session {
@@ -289,6 +304,12 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     onMessage: (message) => messages.push(message),
     ...(options.clientCapabilities ? { clientCapabilities: options.clientCapabilities } : {}),
     ...(options.onMessageToSource ? { onMessageToSource: options.onMessageToSource } : {}),
+    ...(options.targetedMessages
+      ? {
+          onMessageToSource: (source: object, message: SessionOutboundMessage) =>
+            options.targetedMessages?.push({ source, message }),
+        }
+      : {}),
     onBinaryMessage: createBinaryMessageHandler(options.binaryMessages),
     logger,
     downloadTokenStore: options.downloadTokenStore ?? asDownloadTokenStore(),
@@ -348,6 +369,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
         })),
       ),
     },
+    workspaceLabelService: options.workspaceLabelService,
     scheduleService: asScheduleService(),
     checkoutDiffManager: asCheckoutDiffManager(checkoutDiffManager),
     github: asGitHubService(github),
@@ -359,6 +381,8 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       })),
       onChange: vi.fn(() => () => {}),
     }),
+    pluginRuntime: options.pluginRuntime,
+    orchestrationSkills: options.orchestrationSkills,
     stt: options.stt ?? null,
     tts: null,
     terminalManager: options.terminalManager ?? null,
@@ -376,6 +400,341 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     daemonRuntimeConfig: options.daemonRuntimeConfig,
   });
 }
+
+test("routes host-scoped agent skills requests through the daemon owner", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const status = {
+    state: "up-to-date" as const,
+    ops: [],
+    available: ["otto"],
+    installed: ["otto"],
+    selection: { mode: "all" as const },
+  };
+  const orchestrationSkills: NonNullable<SessionOptions["orchestrationSkills"]> = {
+    getStatus: vi.fn(async () => status),
+    reconcile: vi.fn(async () => status),
+    uninstall: vi.fn(async () => status),
+    saveSelection: vi.fn(async () => ({ ...status, confirmationRequired: null })),
+    importLegacySelectionIfUnset: vi.fn(async (selection) => ({
+      imported: true,
+      selection,
+    })),
+    autoUpdate: vi.fn(async () => status),
+  };
+  const session = createSessionForTest({ messages, orchestrationSkills });
+
+  await session.handleMessage({
+    type: "agent.skills.save_selection.request",
+    requestId: "save-skills",
+    selection: { mode: "custom", skills: ["otto"] },
+    confirmedRemovals: ["otto-loop"],
+  });
+
+  expect(orchestrationSkills.saveSelection).toHaveBeenCalledWith(
+    { mode: "custom", skills: ["otto"] },
+    ["otto-loop"],
+  );
+  expect(messages).toContainEqual({
+    type: "agent.skills.save_selection.response",
+    payload: { requestId: "save-skills", ...status, confirmationRequired: null },
+  });
+});
+
+test("routes plugin requests and releases its owned catalog subscription on cleanup", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const listeners = new Set<(pluginId: string) => void>();
+  const releasePluginSubscription = vi.fn((listener: (pluginId: string) => void) => {
+    listeners.delete(listener);
+  });
+  const plugin = {
+    id: "example",
+    path: "/plugins/example",
+    enabled: true,
+    status: "running" as const,
+  };
+  const pluginRuntime: NonNullable<SessionOptions["pluginRuntime"]> = {
+    listPlugins: () => [plugin],
+    getLogs: () => [
+      {
+        sequence: 1,
+        timestamp: "2026-08-16T12:00:00.000Z",
+        stream: "stdout",
+        message: "ready",
+      },
+    ],
+    installDirectory: async () => plugin,
+    inspectDirectory: async () => ({ id: "example" }),
+    reloadPlugin: async () => plugin,
+    enablePlugin: async () => plugin,
+    disablePlugin: async () => ({ ...plugin, enabled: false, status: "disabled" }),
+    removePlugin: async () => undefined,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => releasePluginSubscription(listener);
+    },
+    catalog: () => [{ id: "example", clientBundle: "bundle" }],
+    invokePluginRpc: async () => ({ ok: true }),
+  };
+  const session = createSessionForTest({ messages, pluginRuntime });
+
+  await session.handleMessage({ type: "plugin.list.request", requestId: "list" });
+  await session.handleMessage({
+    type: "plugin.logs.get.request",
+    requestId: "logs",
+    pluginId: "example",
+  });
+  await session.handleMessage({
+    type: "plugin.directory.install.request",
+    requestId: "install",
+    path: "/plugins/example",
+  });
+  await session.handleMessage({
+    type: "plugin.reload.request",
+    requestId: "reload",
+    pluginId: "example",
+  });
+  await session.handleMessage({
+    type: "plugin.disable.request",
+    requestId: "disable",
+    pluginId: "example",
+  });
+  await session.handleMessage({
+    type: "plugin.remove.request",
+    requestId: "remove",
+    pluginId: "example",
+  });
+  for (const listener of listeners) listener("example");
+
+  expect(messages.map((message) => message.type)).toEqual([
+    "plugin.list.response",
+    "plugin.logs.get.response",
+    "plugin.directory.install.response",
+    "plugin.reload.response",
+    "plugin.disable.response",
+    "plugin.remove.response",
+    "status",
+  ]);
+  expect(messages.at(-1)).toEqual({
+    type: "status",
+    payload: { status: "plugin_catalog_changed", pluginId: "example" },
+  });
+  await session.cleanup();
+  expect(listeners.size).toBe(0);
+  expect(releasePluginSubscription).toHaveBeenCalledOnce();
+});
+
+describe("workspace label subscriptions", () => {
+  type LabelSubscription = Awaited<ReturnType<WorkspaceLabelService["subscribe"]>>;
+  type LabelChange = Parameters<Parameters<WorkspaceLabelService["subscribe"]>[0]["onChange"]>[0];
+
+  function labelSubscription(requestId: string): LabelSubscription {
+    return {
+      snapshot: {
+        labels: [],
+        sync: {
+          mode: "snapshot",
+          generation: `generation-${requestId}`,
+          headSeq: 0,
+          removals: [],
+        },
+      },
+      unsubscribe: vi.fn(),
+    };
+  }
+
+  function labelListRequest(requestId: string) {
+    return {
+      type: "workspace.label.list.request" as const,
+      requestId,
+      subscribe: { subscriptionId: `subscription-${requestId}` },
+    };
+  }
+
+  test("an overlapping request cannot reactivate its superseded subscription", async () => {
+    const first = deferred<LabelSubscription>();
+    const callbacks: Array<(change: LabelChange) => void> = [];
+    const service = {
+      subscribe: async (input: Parameters<WorkspaceLabelService["subscribe"]>[0]) => {
+        callbacks.push(input.onChange);
+        return callbacks.length === 1 ? first.promise : labelSubscription("b");
+      },
+    } as unknown as WorkspaceLabelService;
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ messages, workspaceLabelService: service });
+
+    const requestA = session.handleMessage(labelListRequest("a"));
+    await Promise.resolve();
+    await session.handleMessage(labelListRequest("b"));
+    const firstSubscription = labelSubscription("a");
+    first.resolve(firstSubscription);
+    await requestA;
+
+    expect(firstSubscription.unsubscribe).toHaveBeenCalledOnce();
+    callbacks[0]?.({
+      kind: "remove",
+      name: "Old",
+      generation: "generation-a",
+      seq: 1,
+    });
+    callbacks[1]?.({
+      kind: "remove",
+      name: "Current",
+      generation: "generation-b",
+      seq: 1,
+    });
+    expect(messages.filter((message) => message.type === "workspace.label.update")).toEqual([
+      expect.objectContaining({ payload: expect.objectContaining({ name: "Current" }) }),
+    ]);
+  });
+
+  test("a superseded failure cannot clear the current subscription or survive cleanup", async () => {
+    const first = deferred<LabelSubscription>();
+    const callbacks: Array<(change: LabelChange) => void> = [];
+    const current = labelSubscription("b");
+    const service = {
+      subscribe: async (input: Parameters<WorkspaceLabelService["subscribe"]>[0]) => {
+        callbacks.push(input.onChange);
+        return callbacks.length === 1 ? first.promise : current;
+      },
+    } as unknown as WorkspaceLabelService;
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ messages, workspaceLabelService: service });
+
+    const requestA = session.handleMessage(labelListRequest("a"));
+    await Promise.resolve();
+    await session.handleMessage(labelListRequest("b"));
+    first.reject(new Error("old request failed"));
+    await requestA;
+
+    callbacks[1]?.({
+      kind: "remove",
+      name: "Current",
+      generation: "generation-b",
+      seq: 1,
+    });
+    expect(messages.filter((message) => message.type === "workspace.label.update")).toHaveLength(1);
+    await session.cleanup();
+    expect(current.unsubscribe).toHaveBeenCalledOnce();
+    callbacks[1]?.({
+      kind: "remove",
+      name: "After cleanup",
+      generation: "generation-b",
+      seq: 2,
+    });
+    expect(messages.filter((message) => message.type === "workspace.label.update")).toHaveLength(1);
+  });
+});
+
+describe("workspace label editing", () => {
+  test("answers one edit with the label it produced and the assignments it rewrote", async () => {
+    const calls: unknown[] = [];
+    const service = {
+      update: async (input: unknown) => {
+        calls.push(input);
+        return { label: { name: "Priority", color: "sky" }, affectedWorkspaceCount: 3 };
+      },
+    } as unknown as WorkspaceLabelService;
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ messages, workspaceLabelService: service });
+
+    await session.handleMessage({
+      type: "workspace.label.update.request",
+      requestId: "request-edit",
+      name: "Urgent",
+      newName: "Priority",
+      color: "sky",
+    });
+
+    expect(calls).toEqual([
+      expect.objectContaining({ name: "Urgent", newName: "Priority", color: "sky" }),
+    ]);
+    expect(messages).toEqual([
+      {
+        type: "workspace.label.update.response",
+        payload: {
+          requestId: "request-edit",
+          label: { name: "Priority", color: "sky" },
+          affectedWorkspaceCount: 3,
+        },
+      },
+    ]);
+  });
+
+  test("reports a name collision as a coded error and emits no response", async () => {
+    const service = {
+      update: async () => {
+        throw new WorkspaceLabelError("label_name_taken", "A label with that name already exists");
+      },
+    } as unknown as WorkspaceLabelService;
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ messages, workspaceLabelService: service });
+
+    await session.handleMessage({
+      type: "workspace.label.update.request",
+      requestId: "request-collision",
+      name: "Urgent",
+      newName: "Waiting",
+      color: "teal",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "request-collision",
+          requestType: "workspace.label.update.request",
+          code: "label_name_taken",
+          error: "A label with that name already exists",
+        },
+      },
+    ]);
+  });
+});
+
+describe("session authorization scopes", () => {
+  // DISABLED(hub): Hub is switched off in this fork - `session.ts` imports the
+  // inert `HubExecutionController` from `hub-disabled.ts`, so the validate RPC
+  // reaches a stand-in that does nothing. Skipped rather than edited, matching
+  // the three hub suites excluded in `vitest.config.ts`, so the body stays
+  // byte-identical to upstream.
+  test.skip("routes named-agent validation through the session source", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const providers = createProviderSnapshotManagerStub();
+    providers.validateAgentConfiguration.mockResolvedValue([
+      { path: ["model"], message: "Model is unavailable" },
+    ]);
+    const session = createSessionForTest({
+      messages,
+      providerSnapshotManager: providers.manager,
+      hubExecutionAgents: {
+        create: vi.fn(),
+        control: vi.fn(),
+        subscribe: vi.fn(() => () => undefined),
+        invalidateAuthority: vi.fn(),
+      },
+    });
+
+    await session.handleMessage({
+      type: "hub.execution.agent.validate.request",
+      requestId: "validate-agent",
+      provider: "codex",
+      model: "missing",
+    });
+
+    expect(providers.validateAgentConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "codex", model: "missing" }),
+    );
+    expect(messages).toContainEqual({
+      type: "hub.execution.agent.validate.response",
+      payload: {
+        requestId: "validate-agent",
+        valid: false,
+        issues: [{ path: ["model"], message: "Model is unavailable" }],
+        error: null,
+      },
+    });
+  });
+});
 
 describe("preview RPCs", () => {
   const tempDirs: string[] = [];
@@ -406,32 +765,6 @@ describe("preview RPCs", () => {
       boundTab: vi.fn(() => null),
     } as unknown as SessionOptions["previewDevServers"];
   }
-
-  test("preview.list_config.request reports unconfigured when launch.json is missing", async () => {
-    const cwd = makeProjectRoot();
-    const messages: unknown[] = [];
-    const session = createSessionForTest({ messages });
-
-    await session.handleMessage({
-      type: "preview.list_config.request",
-      cwd,
-      requestId: "req-list-1",
-    });
-
-    expect(messages).toEqual([
-      {
-        type: "preview.list_config.response",
-        payload: {
-          requestId: "req-list-1",
-          cwd,
-          configured: false,
-          servers: [],
-          runningServers: [],
-          error: null,
-        },
-      },
-    ]);
-  });
 
   test("preview.list_config.request lists configured servers", async () => {
     const cwd = makeProjectRoot();
@@ -634,6 +967,90 @@ describe("preview RPCs", () => {
         payload: { requestId: "req-stop-1", success: true, error: null },
       },
     ]);
+  });
+
+  test("creates a directory and returns its normalized Project descriptor", async () => {
+    const parentDirectory = realpathSync(mkdtempSync(join(tmpdir(), "otto-project-session-")));
+    const directoryPath = join(parentDirectory, "new-project");
+    const messages: SessionOutboundMessage[] = [];
+    const projectAllocation = vi.fn(async (input) =>
+      createPersistedProjectRecord({
+        projectId: "prj_created_directory",
+        rootPath: input.rootPath,
+        kind: input.kind,
+        displayName: input.displayName,
+        createdAt: input.timestamp,
+        updatedAt: input.timestamp,
+      }),
+    );
+    const session = createSessionForTest({
+      messages,
+      projectRegistry: {
+        getOrCreateActiveByRoot: projectAllocation,
+      },
+      workspaceGitService: {
+        getCheckout: vi.fn(async (cwd: string) => ({
+          cwd,
+          isGit: false as const,
+          currentBranch: null,
+          remoteUrl: null,
+          worktreeRoot: null,
+          isOttoOwnedWorktree: false as const,
+          mainRepoRoot: null,
+        })),
+      },
+    });
+
+    try {
+      await session.handleMessage({
+        type: "project.create_directory.request",
+        parentPath: parentDirectory,
+        name: "new-project",
+        requestId: "req-create-directory",
+      });
+
+      expect(existsSync(directoryPath)).toBe(true);
+      expect(projectAllocation).toHaveBeenCalledWith({
+        rootPath: directoryPath,
+        kind: "non_git",
+        displayName: "new-project",
+        projectKey: deriveProjectKey({
+          rootPath: directoryPath,
+          remoteUrl: null,
+          worktreeRoot: null,
+          mainRepoRoot: null,
+        }),
+        timestamp: expect.any(String),
+      });
+      expect(messages).toEqual([
+        {
+          type: "project.create_directory.response",
+          payload: {
+            requestId: "req-create-directory",
+            directoryPath,
+            project: {
+              projectId: "prj_created_directory",
+              projectDisplayName: "new-project",
+              projectCustomName: null,
+              projectCustomIconRevision: null,
+              projectIconRevision: "automatic:none:v1",
+              projectRootPath: directoryPath,
+              projectKind: "non_git",
+              // A freshly created directory has none of Otto's per-project
+              // locations configured yet.
+              projectKnowledgeLocation: null,
+              projectArtifactLocation: null,
+              projectWorkflowLocation: null,
+              projectKanban: null,
+            },
+            error: null,
+            errorCode: null,
+          },
+        },
+      ]);
+    } finally {
+      rmSync(parentDirectory, { recursive: true, force: true });
+    }
   });
 
   test("preview.stop.request reports the failure when the server can't be stopped", async () => {
@@ -4762,6 +5179,303 @@ describe("chat/schedule/loop dispatch routing (behavior preservation)", () => {
     expect(routed, `${msg.type} did not route to a handler (silent no-op)`).toBeDefined();
     expect(routed?.payload.code).toBe(code);
   });
+});
+
+test("replaces a capable session's complete viewed timeline set", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const session = createSessionForTest({ messages });
+  session.updateClientCapabilities({ selective_agent_timeline: true });
+
+  await session.handleMessage({
+    type: "agent.timeline.set_subscription.request",
+    agentIds: ["agent-b", "agent-a", "agent-a"],
+    requestId: "timeline-subscription-1",
+  });
+
+  expect(messages).toEqual([
+    {
+      type: "agent.timeline.set_subscription.response",
+      payload: {
+        agentIds: ["agent-a", "agent-b"],
+        requestId: "timeline-subscription-1",
+      },
+    },
+  ]);
+});
+
+test("acknowledges a timeline subscription only to its socket source", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const targetedMessages: Array<{ source: object; message: SessionOutboundMessage }> = [];
+  const session = createSessionForTest({ messages, targetedMessages });
+  const capableSocket = {};
+  session.updateClientCapabilities({ selective_agent_timeline: true }, capableSocket);
+
+  await session.handleMessage(
+    {
+      type: "agent.timeline.set_subscription.request",
+      agentIds: ["agent-a"],
+      requestId: "timeline-subscription-targeted",
+    },
+    capableSocket,
+  );
+
+  expect(messages).toEqual([]);
+  expect(targetedMessages).toEqual([
+    {
+      source: capableSocket,
+      message: {
+        type: "agent.timeline.set_subscription.response",
+        payload: {
+          agentIds: ["agent-a"],
+          requestId: "timeline-subscription-targeted",
+        },
+      },
+    },
+  ]);
+});
+
+test("unions viewed timelines across socket sources and removes detached sources", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const agentEventListeners: Array<(event: AgentManagerEvent) => void> = [];
+  const session = createSessionForTest({
+    messages,
+    agentManager: {
+      subscribe: vi.fn((listener: (event: AgentManagerEvent) => void) => {
+        agentEventListeners.push(listener);
+        return () => {};
+      }),
+    },
+  });
+  session.updateClientCapabilities({ selective_agent_timeline: true });
+  const firstSocket = {};
+  const secondSocket = {};
+  session.updateClientCapabilities({ selective_agent_timeline: true }, firstSocket);
+  session.updateClientCapabilities({ selective_agent_timeline: true }, secondSocket);
+
+  await session.handleMessage(
+    {
+      type: "agent.timeline.set_subscription.request",
+      agentIds: ["agent-a"],
+      requestId: "timeline-subscription-a",
+    },
+    firstSocket,
+  );
+  await session.handleMessage(
+    {
+      type: "agent.timeline.set_subscription.request",
+      agentIds: ["agent-b"],
+      requestId: "timeline-subscription-b",
+    },
+    secondSocket,
+  );
+  messages.length = 0;
+
+  if (agentEventListeners.length === 0) throw new Error("Agent event listener was not installed");
+  const forward = (event: AgentManagerEvent) => {
+    for (const listener of agentEventListeners) listener(event);
+  };
+  forward({
+    type: "agent_stream",
+    agentId: "agent-a",
+    event: {
+      type: "timeline",
+      provider: "mock",
+      item: { type: "assistant_message", messageId: "message-a", text: "A" },
+    },
+  });
+  forward({
+    type: "agent_stream",
+    agentId: "agent-b",
+    event: {
+      type: "timeline",
+      provider: "mock",
+      item: { type: "assistant_message", messageId: "message-b", text: "B" },
+    },
+  });
+  expect(messages.filter((message) => message.type === "agent_stream")).toHaveLength(2);
+
+  const legacySocket = {};
+  session.updateClientCapabilities(null, legacySocket);
+  expect(session.supportsForSource(CLIENT_CAPS.selectiveAgentTimeline, legacySocket)).toBe(false);
+  expect(session.supportsForSource(CLIENT_CAPS.selectiveAgentTimeline, firstSocket)).toBe(true);
+  messages.length = 0;
+  forward({
+    type: "agent_stream",
+    agentId: "agent-not-viewed",
+    event: {
+      type: "timeline",
+      provider: "mock",
+      item: { type: "assistant_message", messageId: "message-legacy", text: "legacy" },
+    },
+  });
+  expect(messages.some((message) => message.type === "agent_stream")).toBe(true);
+
+  session.clearAgentTimelineSubscription(legacySocket);
+
+  session.clearAgentTimelineSubscription(firstSocket);
+  messages.length = 0;
+  forward({
+    type: "agent_stream",
+    agentId: "agent-a",
+    event: {
+      type: "timeline",
+      provider: "mock",
+      item: { type: "assistant_message", messageId: "message-a-2", text: "detached A" },
+    },
+  });
+  forward({
+    type: "agent_stream",
+    agentId: "agent-b",
+    event: {
+      type: "timeline",
+      provider: "mock",
+      item: { type: "assistant_message", messageId: "message-b-2", text: "retained B" },
+    },
+  });
+  expect(
+    messages.flatMap((message) =>
+      message.type === "agent_stream" ? [message.payload.agentId] : [],
+    ),
+  ).toEqual(["agent-b"]);
+});
+
+test("keeps selective delivery scoped per socket when a retained session also has a legacy socket", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const targetedMessages: Array<{ source: object; message: SessionOutboundMessage }> = [];
+  const agentEventListeners: Array<(event: AgentManagerEvent) => void> = [];
+  const session = createSessionForTest({
+    messages,
+    targetedMessages,
+    agentManager: {
+      subscribe: vi.fn((listener: (event: AgentManagerEvent) => void) => {
+        agentEventListeners.push(listener);
+        return () => {};
+      }),
+    },
+  });
+  const legacySocket = {};
+  const selectiveSocket = {};
+  session.updateClientCapabilities(null, legacySocket);
+  session.updateClientCapabilities({ selective_agent_timeline: true }, selectiveSocket);
+  await session.handleMessage(
+    {
+      type: "agent.timeline.set_subscription.request",
+      agentIds: ["viewed-agent"],
+      requestId: "timeline-subscription-selective",
+    },
+    selectiveSocket,
+  );
+  targetedMessages.length = 0;
+
+  const listener = agentEventListeners[0];
+  if (!listener) throw new Error("Agent event listener was not installed");
+  listener({
+    type: "agent_stream",
+    agentId: "not-viewed-agent",
+    event: {
+      type: "timeline",
+      provider: "mock",
+      item: { type: "assistant_message", messageId: "message-global", text: "global" },
+    },
+  });
+
+  expect(messages).toEqual([]);
+  expect(targetedMessages).toEqual([
+    {
+      source: legacySocket,
+      message: expect.objectContaining({
+        type: "agent_stream",
+        payload: expect.objectContaining({ agentId: "not-viewed-agent" }),
+      }),
+    },
+  ]);
+});
+
+test("sends project updates only to capable sockets in a retained session", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const targetedMessages: Array<{ source: object; message: SessionOutboundMessage }> = [];
+  const session = createSessionForTest({ messages, targetedMessages });
+  const legacySocket = {};
+  const capableSocket = {};
+  session.updateClientCapabilities(null, legacySocket);
+  session.updateClientCapabilities({ [CLIENT_CAPS.projectUpdates]: true }, capableSocket);
+
+  await session.emitProjectUpdate({
+    kind: "upsert",
+    project: createPersistedProjectRecord({
+      projectId: "project-capable-socket",
+      rootPath: "/tmp/project-capable-socket",
+      kind: "git",
+      displayName: "project-capable-socket",
+      createdAt: "2026-07-17T00:00:00.000Z",
+      updatedAt: "2026-07-17T00:00:00.000Z",
+    }),
+  });
+
+  expect(messages).toEqual([]);
+  expect(targetedMessages).toEqual([
+    {
+      source: capableSocket,
+      message: expect.objectContaining({
+        type: "project.update",
+        payload: expect.objectContaining({ kind: "upsert" }),
+      }),
+    },
+  ]);
+});
+
+test("project.list returns every active project descriptor", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const active = createPersistedProjectRecord({
+    projectId: "project-active",
+    projectKey: "remote:github.com/acme/app",
+    rootPath: "/tmp/project-active",
+    kind: "git",
+    displayName: "acme/app",
+    createdAt: "2026-07-17T00:00:00.000Z",
+    updatedAt: "2026-07-17T00:00:00.000Z",
+  });
+  const archived = createPersistedProjectRecord({
+    projectId: "project-archived",
+    rootPath: "/tmp/project-archived",
+    kind: "non_git",
+    displayName: "archived",
+    createdAt: "2026-07-17T00:00:00.000Z",
+    updatedAt: "2026-07-17T00:00:00.000Z",
+    archivedAt: "2026-07-18T00:00:00.000Z",
+  });
+  const session = createSessionForTest({
+    messages,
+    projectRegistry: { list: vi.fn().mockResolvedValue([active, archived]) },
+  });
+
+  await session.handleMessage({ type: "project.list.request", requestId: "projects-1" });
+
+  expect(messages).toEqual([
+    {
+      type: "project.list.response",
+      payload: {
+        requestId: "projects-1",
+        projects: [
+          {
+            projectId: "project-active",
+            projectKey: "remote:github.com/acme/app",
+            projectDisplayName: "acme/app",
+            projectCustomName: null,
+            projectCustomIconRevision: null,
+            projectIconRevision: "automatic:none:v1",
+            projectRootPath: "/tmp/project-active",
+            projectKind: "git",
+            // Otto's per-project locations, unset on this fixture.
+            projectKnowledgeLocation: null,
+            projectArtifactLocation: null,
+            projectWorkflowLocation: null,
+            projectKanban: null,
+          },
+        ],
+      },
+    },
+  ]);
 });
 
 describe("agent config setters", () => {

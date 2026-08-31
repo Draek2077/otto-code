@@ -17,6 +17,10 @@ import { MessageFooter, LiveElapsed, type AssistantForkTarget } from "@/componen
 import type { TurnFooterHost } from "./layout";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { SPACING } from "@/styles/theme";
+
+// Upstream: room the transcript reserves below the last turn footer.
+export const TURN_FOOTER_BOTTOM_SPACING = SPACING[8];
 
 /** Two glow colors for an agent's personality thinking spinner. */
 export interface PersonalitySpinnerColors {

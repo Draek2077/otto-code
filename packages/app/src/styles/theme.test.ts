@@ -5,7 +5,29 @@ import {
   getNextThemePreference,
   SPACING,
   THEME_OPTIONS,
+  darkTheme,
+  FONT_SIZE,
+  lightTheme,
 } from "./theme";
+
+describe("Typography scale", () => {
+  // Otto's scale, which is a tier larger than upstream's throughout and adds an
+  // `xs` step. Locked here so a token edit is a deliberate one.
+  it("names 16px as the default interface tier", () => {
+    expect(FONT_SIZE).toEqual({
+      xs: 12,
+      code: 12,
+      sm: 14,
+      base: 16,
+      content: 17,
+      lg: 18,
+      xl: 20,
+      "2xl": 22,
+      "3xl": 26,
+      "4xl": 34,
+    });
+  });
+});
 
 describe("Theme catalog", () => {
   it("owns the picker and shortcut order", () => {
@@ -31,7 +53,7 @@ describe("Pure black theme", () => {
     expect(darkPureBlackTheme.colors.terminal.background).toBe("#000000");
   });
 
-  it("uses Paseo's muted green accent", () => {
+  it("uses Otto's muted green accent", () => {
     expect(darkPureBlackTheme.colors.accent).toBe("#20744A");
     expect(darkPureBlackTheme.colors.accentBright).toBe("#7ccba0");
   });
@@ -65,5 +87,31 @@ describe("Theme semantic contracts", () => {
     expect(daylightTheme.colors.foregroundExtraMuted).toMatch(/^#/);
     expect(daylightTheme.colors.statusSuccess).toBe("#15803d");
     expect(darkPureBlackTheme.colors.statusInfo).toBe("#38bdf8");
+  });
+});
+
+describe("Sidebar interaction surfaces", () => {
+  // Otto derives these from the one theme-accent ladder, not the neutral
+  // surface scale, so a hovered row reads as this theme rather than as grey.
+  it.each([lightTheme, darkTheme])("derive from the theme-accent ladder", (theme) => {
+    expect(theme.colors.surfaceSidebarHover).toBe(theme.colors.surfaceInteractiveHover);
+    expect(theme.colors.surfaceSidebarSelected).not.toBe(theme.colors.surfaceSidebarHover);
+    expect(theme.colors.surfaceSidebarHover).not.toBe(theme.colors.surfaceSidebar);
+  });
+});
+
+describe("Built-in light theme", () => {
+  it("preserves its authored aliases and terminal contrast through the semantic builder", () => {
+    // Otto's light theme is warm-tinted rather than upstream's neutral zinc,
+    // so its ink and terminal blacks carry the same warmth as its surfaces.
+    expect(lightTheme.colors).toMatchObject({
+      primary: "#26262b",
+      primaryForeground: "#faf8f4",
+      destructiveForeground: "#ffffff",
+      successForeground: "#ffffff",
+      terminal: {
+        black: "#26262b",
+      },
+    });
   });
 });

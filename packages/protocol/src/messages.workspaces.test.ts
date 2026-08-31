@@ -93,6 +93,59 @@ describe("workspace message schemas", () => {
     expect(activeScoped.scope).toBe("active");
   });
 
+  test("parses optional sequenced directory requests and responses", () => {
+    expect(
+      SessionInboundMessageSchema.parse({
+        type: "project.list.request",
+        requestId: "projects-sync",
+        sync: { generation: "daemon-generation", afterSeq: 7 },
+      }),
+    ).toMatchObject({ sync: { generation: "daemon-generation", afterSeq: 7 } });
+    expect(
+      SessionInboundMessageSchema.parse({
+        type: "fetch_workspaces_request",
+        requestId: "workspaces-sync",
+        sync: { generation: "daemon-generation", afterSeq: 11 },
+      }),
+    ).toMatchObject({ sync: { generation: "daemon-generation", afterSeq: 11 } });
+    expect(
+      SessionInboundMessageSchema.parse({
+        type: "fetch_agents_request",
+        requestId: "agents-sync",
+        scope: "active",
+        sync: { generation: "daemon-generation", afterSeq: 13 },
+      }),
+    ).toMatchObject({ sync: { generation: "daemon-generation", afterSeq: 13 } });
+
+    const response = SessionOutboundMessageSchema.parse({
+      type: "project.list.response",
+      payload: {
+        requestId: "projects-sync",
+        projects: [
+          {
+            projectId: "project-1",
+            projectDisplayName: "Project",
+            projectRootPath: "/repo",
+            projectKind: "git",
+            syncSeq: 12,
+          },
+        ],
+        sync: {
+          generation: "daemon-generation",
+          headSeq: 12,
+          mode: "changes",
+          removals: [{ id: "project-removed", seq: 10 }],
+        },
+      },
+    });
+    expect(response).toMatchObject({
+      payload: {
+        projects: [{ projectId: "project-1", syncSeq: 12 }],
+        sync: { headSeq: 12, removals: [{ id: "project-removed", seq: 10 }] },
+      },
+    });
+  });
+
   test("parses agent_update without project placement", () => {
     const result = SessionOutboundMessageSchema.safeParse({
       type: "agent_update",
@@ -502,13 +555,13 @@ describe("workspace message schemas", () => {
     expect(parsed.payload.workspace.worktreeSlug).toBeUndefined();
   });
 
-  test("preserves a Paseo-owned worktree slug", () => {
+  test("preserves a Otto-owned worktree slug", () => {
     const parsed = WorkspaceDescriptorPayloadSchema.parse({
       id: "owned-worktree",
       projectId: "project",
       projectDisplayName: "repo",
       projectRootPath: "/repo",
-      workspaceDirectory: "/paseo/worktrees/project/feature/packages/app",
+      workspaceDirectory: "/otto/worktrees/project/feature/packages/app",
       worktreeSlug: "feature",
       projectKind: "git",
       workspaceKind: "worktree",
@@ -664,7 +717,7 @@ describe("workspace message schemas", () => {
             type: "service",
             hostname: "web--repo.localhost",
             port: 3000,
-            proxyUrl: "http://web--repo.localhost:6767",
+            proxyUrl: "http://web--repo.localhost:6868",
             lifecycle: "running",
             health: "healthy",
             terminalId: "terminal-1",

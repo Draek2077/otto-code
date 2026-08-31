@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Waypoints } from "@/components/icons/material-icons";
 import { FeatureDisabledPanel } from "@/features/feature-disabled-panel";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 
 // The heavy Visualizer panel - the event adapter, the toolbar, the tri-platform
 // webview embed, and (transitively) the ~1 MB vendored render bundle - lives
@@ -56,14 +56,13 @@ function VisualizerPanelHost() {
   );
 }
 
-export const visualizerPanelRegistration: PanelRegistration<"visualizer"> = {
-  kind: "visualizer",
+export const visualizerPanelRegistration = definePanel("visualizer", {
   component: VisualizerPanelHost,
   useDescriptor: useVisualizerPanelDescriptor,
   confirmClose() {
     return Promise.resolve(true);
   },
-};
+});
 
 const styles = StyleSheet.create((theme) => ({
   fallback: {

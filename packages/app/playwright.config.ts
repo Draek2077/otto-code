@@ -26,6 +26,12 @@ function projectOutputDir(projectName: string): string {
 const htmlReportDir = process.env.E2E_HTML_REPORT_DIR ?? "playwright-report";
 const qaReportDir = process.env.E2E_REPORT_DIR ?? "e2e-report";
 
+function videoMode(): "on" | "on-first-retry" | "retain-on-failure" {
+  if (process.env.E2E_RECORD_VIDEO === "1") return "on";
+  if (process.env.CI) return "on-first-retry";
+  return "retain-on-failure";
+}
+
 export default defineConfig({
   testDir: "./e2e/browser",
   globalSetup: "./e2e/support/global-setup.ts",
@@ -60,9 +66,9 @@ export default defineConfig({
   ],
   use: {
     baseURL,
-    trace: "retain-on-failure",
+    trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
     screenshot: "only-on-failure",
-    video: process.env.E2E_RECORD_VIDEO === "1" ? "on" : "retain-on-failure",
+    video: videoMode(),
   },
   projects: [
     {

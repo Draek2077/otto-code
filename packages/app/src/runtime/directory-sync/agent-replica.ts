@@ -3,7 +3,11 @@ import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
 import { queryClient } from "@/data/query-client";
 import { useSessionStore, type Agent } from "@/stores/session-store";
-import { normalizeAgentActiveTurn, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
+import {
+  normalizeAgentActiveTurn,
+  normalizeAgentSnapshot,
+  projectAgentSnapshot,
+} from "@/utils/agent-snapshots";
 import {
   applyAgentDirectoryDelta,
   type AgentDirectoryDelta,
@@ -14,6 +18,35 @@ import {
 } from "@/utils/agent-directory-sync";
 import { reconcileAgentDirectory } from "@/utils/agent-directory-reconciliation";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
+
+/**
+ * Rebuilds a wire entry for an agent already in the replica, so a catch-up can
+ * reconcile it alongside the entries that did change.
+ *
+ * The turn is re-attached from the liveness map rather than the Agent, because
+ * Otto keeps turn identity there (see `normalizeAgentSnapshot`). Without this
+ * the round trip through `projectAgentSnapshot` drops it, and an unchanged
+ * running agent comes back out of the catch-up with an anonymous open turn.
+ */
+function projectAgentDirectoryEntry(agent: Agent): FetchAgentsEntry | null {
+  if (!agent.projectPlacement) {
+    return null;
+  }
+  const liveness = useSessionStore
+    .getState()
+    .sessions[agent.serverId]?.agentTurnLiveness.get(agent.id);
+  const activeTurn =
+    liveness?.phase === "open" && liveness.turnId
+      ? { turnId: liveness.turnId, startedAt: liveness.startedAt?.toISOString() ?? null }
+      : undefined;
+  return {
+    agent: {
+      ...projectAgentSnapshot(agent),
+      ...(activeTurn ? { activeTurn } : {}),
+    },
+    project: agent.projectPlacement,
+  };
+}
 
 export interface AgentLifecycleToken {
   readonly agentId: string;
@@ -99,6 +132,25 @@ export class AgentDirectoryReplica {
     });
     for (const agentId of reconciled.stoppedRunningAgentIds) this.onStoppedRunning(agentId);
     return agents;
+  }
+
+  commitChanges(
+    entries: FetchAgentsEntry[],
+    removals: readonly { id: string }[],
+    deltas: readonly AgentDirectoryDelta[],
+  ): Map<string, Agent> {
+    const previous = useSessionStore.getState().sessions[this.serverId]?.agents ?? new Map();
+    const merged = new Map<string, FetchAgentsEntry>();
+    for (const agent of previous.values()) {
+      const entry = projectAgentDirectoryEntry(agent);
+      if (entry) merged.set(agent.id, entry);
+    }
+    for (const entry of entries) merged.set(entry.agent.id, entry);
+    const removalsAsDeltas: AgentDirectoryDelta[] = removals.map(({ id }) => ({
+      kind: "remove",
+      agentId: id,
+    }));
+    return this.commitSnapshot(Array.from(merged.values()), [...removalsAsDeltas, ...deltas]);
   }
 
   archive(agentId: string, archivedAt: string): void {

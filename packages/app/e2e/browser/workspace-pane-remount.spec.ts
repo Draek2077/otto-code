@@ -1,5 +1,5 @@
 import { buildHostAgentDetailRoute, buildHostWorkspaceRoute } from "@/utils/host-routes";
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../support/fixtures";
 import { createIdleAgent } from "../support/helpers/archive-tab";
 import { expectComposerVisible } from "../support/helpers/composer";
@@ -35,10 +35,22 @@ async function expectSameRenderedNode(
   );
 }
 
+async function expectNodeConnected(node: Awaited<ReturnType<typeof captureRenderedNode>>) {
+  expect(await node.evaluate((candidate) => candidate.isConnected)).toBe(true);
+}
+
+async function getSettingsShortcut(page: Page) {
+  return page.evaluate(() =>
+    navigator.platform.toLowerCase().includes("mac") ? "Meta+," : "Control+,",
+  );
+}
+
+async function waitForWorkspaceRoute(page: Page, route: string) {
+  await page.waitForURL((url) => url.pathname === route);
+}
+
 test.describe("Workspace pane mounting", () => {
-  test("opening the first split pane keeps the existing agent composer mounted", async ({
-    page,
-  }) => {
+  test("workspace navigation keeps the existing agent composer mounted", async ({ page }) => {
     test.setTimeout(90_000);
     const serverId = getServerId();
 
@@ -98,22 +110,23 @@ test.describe("Workspace pane mounting", () => {
       await page.goto(buildHostAgentDetailRoute(serverId, agent.id, agent.workspaceId));
       await waitForWorkspaceTabsVisible(page);
       const composer = page.getByTestId("message-input-root").filter({ visible: true }).first();
+      // The node as it is before Settings opens. The assertion at the end of
+      // the step is that Settings did not remount it.
       const originalComposer = await captureRenderedNode(composer);
+      await test.step("desktop Settings closes overlays and preserves the composer", async () => {
+        const tab = page.getByTestId(`workspace-tab-agent_${agent.id}`).first();
+        await tab.click({ button: "right" });
+        await page.getByTestId(`workspace-tab-context-agent_${agent.id}-rename`).click();
+        const renameInput = renameModalInput(page, `workspace-tab-rename-modal-agent-${agent.id}`);
+        await expect(renameInput).toBeVisible();
 
-      const tab = page.getByTestId(`workspace-tab-agent_${agent.id}`).first();
-      await tab.click({ button: "right" });
-      await page.getByTestId(`workspace-tab-context-agent_${agent.id}-rename`).click();
-      const renameInput = renameModalInput(page, `workspace-tab-rename-modal-agent-${agent.id}`);
-      await expect(renameInput).toBeVisible();
-
-      const settingsShortcut = await page.evaluate(() =>
-        navigator.platform.toLowerCase().includes("mac") ? "Meta+," : "Control+,",
-      );
-      await page.keyboard.press(settingsShortcut);
-      await expect(page).toHaveURL(/\/settings\/general$/);
-      await expect(renameInput).not.toBeVisible();
-      await clickSettingsBackToWorkspace(page);
-      await expectSameRenderedNode(originalComposer, composer);
+        const settingsShortcut = await getSettingsShortcut(page);
+        await page.keyboard.press(settingsShortcut);
+        await expect(page).toHaveURL(/\/settings\/general$/);
+        await expect(renameInput).not.toBeVisible();
+        await clickSettingsBackToWorkspace(page);
+        await expectSameRenderedNode(originalComposer, composer);
+      });
     } finally {
       await workspace.cleanup();
     }
@@ -140,18 +153,17 @@ test.describe("Workspace pane mounting", () => {
       const composer = page.getByTestId("message-input-root").filter({ visible: true }).first();
       const originalComposer = await captureRenderedNode(composer);
 
-      await openCompactSettings(page, buildHostWorkspaceRoute(serverId, workspace.workspaceId));
+      const workspaceRoute = buildHostWorkspaceRoute(serverId, workspace.workspaceId);
+      await openCompactSettings(page, workspaceRoute);
       await page.goBack();
-      await page.waitForURL(
-        (url) => url.pathname === buildHostWorkspaceRoute(serverId, workspace.workspaceId),
-      );
+      await waitForWorkspaceRoute(page, workspaceRoute);
       await expectSameRenderedNode(originalComposer, composer);
     } finally {
       await workspace.cleanup();
     }
   });
 
-  test("switching away from a terminal tab keeps its emulator mounted", async ({ page }) => {
+  test("workspace navigation keeps the terminal emulator mounted", async ({ page }) => {
     test.setTimeout(90_000);
     const serverId = getServerId();
     const workspace = await seedWorkspace({ repoPrefix: "terminal-pane-retention-" });
@@ -170,39 +182,20 @@ test.describe("Workspace pane mounting", () => {
       const terminalSurface = terminalSurfaceLocator(page);
       const originalTerminal = await captureRenderedNode(terminalSurface);
 
-      await page.getByTestId(`workspace-tab-agent_${agent.id}`).click();
-      await expectComposerVisible(page);
-      expect(await originalTerminal.evaluate((node) => node.isConnected)).toBe(true);
+      await test.step("switching tabs preserves the terminal", async () => {
+        await page.getByTestId(`workspace-tab-agent_${agent.id}`).click();
+        await expectComposerVisible(page);
+        await expectNodeConnected(originalTerminal);
 
-      await clickFirstTerminalTab(page);
-      await expectSameRenderedNode(originalTerminal, terminalSurface);
-    } finally {
-      await workspace.cleanup();
-    }
-  });
-
-  test("opening Settings and returning keeps the terminal emulator mounted", async ({ page }) => {
-    test.setTimeout(90_000);
-    const serverId = getServerId();
-    const workspace = await seedWorkspace({ repoPrefix: "settings-terminal-retention-" });
-
-    try {
-      const agent = await createIdleAgent(workspace.client, {
-        cwd: workspace.repoPath,
-        workspaceId: workspace.workspaceId,
-        title: `settings-terminal-retention-${Date.now()}`,
+        await clickFirstTerminalTab(page);
+        await expectSameRenderedNode(originalTerminal, terminalSurface);
       });
 
-      await page.goto(buildHostAgentDetailRoute(serverId, agent.id, agent.workspaceId));
-      await waitForWorkspaceTabsVisible(page);
-      await clickNewTerminal(page);
-      await expectTerminalSurfaceVisible(page);
-      const terminalSurface = terminalSurfaceLocator(page);
-      const originalTerminal = await captureRenderedNode(terminalSurface);
-
-      await openSettings(page);
-      await clickSettingsBackToWorkspace(page);
-      await expectSameRenderedNode(originalTerminal, terminalSurface);
+      await test.step("opening Settings preserves the terminal", async () => {
+        await openSettings(page);
+        await clickSettingsBackToWorkspace(page);
+        await expectSameRenderedNode(originalTerminal, terminalSurface);
+      });
     } finally {
       await workspace.cleanup();
     }

@@ -21,7 +21,7 @@ import {
 } from "@/editor/code-results/result-rows";
 import { i18n } from "@/i18n/i18next";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useRefineFeature } from "@/refine/use-refine-feature";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import {
@@ -907,15 +907,14 @@ function summarizeReview(round: number, stats: RefineSetStats): string {
   });
 }
 
-export const refinePanelRegistration: PanelRegistration<"refine"> = {
-  kind: "refine",
+export const refinePanelRegistration = definePanel("refine", {
   component: RefinePanel,
   useDescriptor: useRefinePanelDescriptor,
   confirmClose() {
     // Abandoning is free - no file was touched - so closing never asks.
     return Promise.resolve(true);
   },
-};
+});
 
 const styles = StyleSheet.create((theme) => ({
   container: {

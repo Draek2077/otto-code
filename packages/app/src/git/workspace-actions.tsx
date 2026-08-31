@@ -1,6 +1,6 @@
 import { GitActionsSplitButton } from "@/git/actions-split-button";
-import { useGitActions } from "@/git/use-actions";
 import { GIT_ACTION_ICONS } from "@/git/action-icons";
+import { useGitActions } from "@/git/use-actions";
 
 interface WorkspaceActionsProps {
   serverId: string;
@@ -32,4 +32,5 @@ export function WorkspaceActions({
       tooltipSide={tooltipSide}
     />
   );
+  return <GitActionsSplitButton gitActions={gitActions} />;
 }

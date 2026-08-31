@@ -1,6 +1,7 @@
 import { BookOpen } from "@/components/icons/material-icons";
 import { ProjectKnowledgePanel } from "@/project-knowledge/panel";
-import type { PanelDescriptor, PanelRegistration } from "./panel-registry";
+import type { PanelDescriptor } from "./panel-registry";
+import { definePanel } from "@/panels/panel-registry";
 function useProjectKnowledgePanelDescriptor(): PanelDescriptor {
   return {
     label: "Manage knowledge",
@@ -11,9 +12,8 @@ function useProjectKnowledgePanelDescriptor(): PanelDescriptor {
     statusBucket: null,
   };
 }
-export const projectKnowledgePanelRegistration: PanelRegistration<"projectKnowledge"> = {
-  kind: "projectKnowledge",
+export const projectKnowledgePanelRegistration = definePanel("projectKnowledge", {
   component: ProjectKnowledgePanel,
   useDescriptor: useProjectKnowledgePanelDescriptor,
   confirmClose: () => Promise.resolve(true),
-};
+});

@@ -9,6 +9,7 @@ import {
   screen,
   shell,
 } from "electron";
+import type { DesktopWindowChromeMode } from "./chrome.js";
 
 import {
   setupTrustedMainWindowNavigation,
@@ -50,6 +51,11 @@ export function readBadgeCount(input: unknown): number {
 }
 
 export type WindowTheme = "light" | "dark";
+export interface WindowChromeUpdate {
+  backgroundColor?: string;
+  foregroundColor?: string;
+}
+
 export interface WindowControlsOverlayUpdate {
   height?: number;
   backgroundColor?: string;
@@ -126,12 +132,13 @@ export function resolveInitialTitleBarOverlayOptions(
 export function getMainWindowChromeOptions(input: {
   platform: NodeJS.Platform;
   theme: WindowTheme;
+  mode: DesktopWindowChromeMode;
   restoredOverlay?: WindowControlsOverlayColors | null;
 }): Pick<
   Electron.BrowserWindowConstructorOptions,
   "titleBarStyle" | "trafficLightPosition" | "frame" | "titleBarOverlay" | "autoHideMenuBar"
 > {
-  if (input.platform === "darwin") {
+  if (input.mode === "native-mac") {
     return {
       titleBarStyle: "hidden",
       titleBarOverlay: true,
@@ -140,11 +147,19 @@ export function getMainWindowChromeOptions(input: {
   }
 
   return {
-    titleBarStyle: "hidden",
     frame: false,
     titleBarOverlay: resolveInitialTitleBarOverlayOptions(input.theme, input.restoredOverlay),
     autoHideMenuBar: true,
   };
+}
+
+export function applyDesktopWindowChromeMode(input: {
+  win: Pick<BrowserWindow, "setWindowButtonVisibility">;
+  mode: DesktopWindowChromeMode;
+  platform?: NodeJS.Platform;
+}): void {
+  if ((input.platform ?? process.platform) !== "darwin") return;
+  input.win.setWindowButtonVisibility(input.mode === "native-mac");
 }
 
 export const DEFAULT_WINDOW_WIDTH = 1200;
@@ -167,6 +182,14 @@ export function resolveWindowBounds(
   return { width, height };
 }
 
+function readOverlayColor(input: unknown): string | null {
+  if (typeof input !== "string") {
+    return null;
+  }
+
+  return input;
+}
+
 function readFiniteOverlayHeight(input: unknown): number | null {
   if (typeof input !== "number" || !Number.isFinite(input)) {
     return null;
@@ -174,14 +197,6 @@ function readFiniteOverlayHeight(input: unknown): number | null {
 
   const rounded = Math.round(input);
   return rounded >= 1 ? rounded : null;
-}
-
-function readOverlayColor(input: unknown): string | null {
-  if (typeof input !== "string") {
-    return null;
-  }
-
-  return input;
 }
 
 export function readWindowControlsOverlayUpdate(
@@ -319,7 +334,7 @@ export function registerWindowManager(options?: {
       return;
     }
 
-    const nextUpdate = readWindowControlsOverlayUpdate(update);
+    const nextUpdate = readWindowChromeUpdate(update);
     if (!nextUpdate) {
       return;
     }
@@ -331,15 +346,6 @@ export function registerWindowManager(options?: {
     if (process.platform === "darwin") {
       return;
     }
-
-    const current =
-      overlayStateByWindow.get(win) ?? createWindowControlsOverlayState(resolveSystemWindowTheme());
-    const nextState = applyWindowControlsOverlayUpdate({
-      win,
-      current,
-      update: nextUpdate,
-    });
-    overlayStateByWindow.set(win, nextState);
   });
 }
 
@@ -626,4 +632,14 @@ export function buildStandardContextMenuItems(
  */
 export function setupDragDropPrevention(win: BrowserWindow, policy: TrustedOttoOriginPolicy): void {
   setupTrustedMainWindowNavigation(win, policy);
+}
+
+// COMPAT(windowChrome): upstream renamed this read when it moved to its chrome
+// mode. Otto keeps the sized overlay, so their name resolves to ours minus the
+// height. Drop when Otto adopts upstream window chrome wholesale.
+export function readWindowChromeUpdate(input: unknown): WindowChromeUpdate | null {
+  const update = readWindowControlsOverlayUpdate(input);
+  if (!update) return null;
+  const { height: _height, ...rest } = update;
+  return Object.keys(rest).length > 0 ? rest : null;
 }

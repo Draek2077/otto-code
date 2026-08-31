@@ -249,7 +249,7 @@ describe("buildStatusSidebarShortcutModel", () => {
 
     const model = buildStatusSidebarShortcutModel({
       groups: buildStatusGroups(workspaces, new Map([["p1", "Project 1"]])),
-      collapsedStatusGroupKeys: new Set(["needs_input"]),
+      collapsedWorkspaceGroupKeys: new Set(["needs_input"]),
     });
 
     expect(model.shortcutTargets).toEqual([{ serverId: "s1", workspaceId: "running" }]);

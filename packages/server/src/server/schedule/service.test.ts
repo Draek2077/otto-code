@@ -691,7 +691,7 @@ describe("ScheduleService", () => {
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
       createAgent: async (input) => {
         createdInputs.push(input);
-        return createAgentCommand(
+        const out = await createAgentCommand(
           {
             agentManager: manager,
             agentStorage,
@@ -700,6 +700,15 @@ describe("ScheduleService", () => {
           },
           input,
         );
+        console.log(
+          "CREATED",
+          JSON.stringify({
+            inputInitialPrompt: (input as { initialPrompt?: string }).initialPrompt,
+            started: out.initialPromptStarted,
+            lifecycle: out.liveSnapshot?.lifecycle,
+          }),
+        );
+        return out;
       },
       now: () => now,
     });

@@ -1,13 +1,11 @@
-import { resolveTerminalProfileLaunch } from "@otto-code/protocol/terminal-profiles";
 import type { TerminalProfile } from "@otto-code/protocol/messages";
-import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import type { PinnedTabTarget } from "@/workspace-pins/target";
 
 export interface TabTargetHandlers {
   createDraft: () => void;
   createTerminal: () => void;
   createBrowser: () => void;
-  createTerminalWithProfile: (profile: TerminalProfileInput) => void;
+  createTerminalWithProfile: (profile: TerminalProfile) => void;
 }
 
 export function runPinnedTabTarget(
@@ -35,7 +33,8 @@ export function runPinnedTabTarget(
   if (!profile) {
     return;
   }
-  // Nothing to type from a pin, so the prompt is empty and any sentinel arg
-  // drops out.
-  handlers.createTerminalWithProfile(resolveTerminalProfileLaunch(profile, ""));
+  // The stored profile travels, not a resolved launch: the create path resolves
+  // the launch itself, and it needs the profile's id to record which profile
+  // the terminal came from.
+  handlers.createTerminalWithProfile(profile);
 }

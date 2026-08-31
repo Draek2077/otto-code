@@ -16,6 +16,7 @@ export interface MobilePanelSelection {
 
 export interface DesktopSidebarState {
   agentListOpen: boolean;
+  /** Otto keeps a docked explorer sidebar on wide layouts. */
   fileExplorerOpen: boolean;
   focusModeEnabled: boolean;
 }
@@ -86,13 +87,12 @@ export interface PanelVisibilityState {
   isAgentListOpen: boolean;
   isFileExplorerOpen: boolean;
 }
+export const DEFAULT_TREE_RAIL_WIDTH = 260;
+export const MIN_TREE_RAIL_WIDTH = 180;
+export const MAX_TREE_RAIL_WIDTH = 600;
 
 export interface PanelLayoutInput {
   isCompact: boolean;
-}
-
-export interface ExplorerPanelIntent extends PanelLayoutInput {
-  checkout: ExplorerCheckoutContext;
 }
 
 export interface PanelCoreState {
@@ -115,6 +115,10 @@ export function clampSidebarWidth(width: number): number {
 
 export function clampExplorerWidth(width: number): number {
   return clampNumber(width, MIN_EXPLORER_SIDEBAR_WIDTH, MAX_EXPLORER_SIDEBAR_WIDTH);
+}
+
+export function clampTreeRailWidth(width: number): number {
+  return clampNumber(width, MIN_TREE_RAIL_WIDTH, MAX_TREE_RAIL_WIDTH);
 }
 
 export function clampContextSidebarWidth(width: number): number {
@@ -142,11 +146,27 @@ export function selectPanelVisibility(
 }
 
 export function selectIsAgentListOpen(state: PanelCoreState, input: PanelLayoutInput): boolean {
-  return selectPanelVisibility(state, input).isAgentListOpen;
+  return input.isCompact ? state.mobilePanel.target === "agent-list" : state.desktop.agentListOpen;
 }
 
+/**
+ * The overlay explorer exists only on compact layouts. Wider layouts render the
+ * explorer as workspace tabs — see `@/workspace-tabs/explorer-surface`.
+ */
+export function selectIsCompactFileExplorerOpen(state: PanelCoreState): boolean {
+  return state.mobilePanel.target === "file-explorer";
+}
+
+/**
+ * Otto keeps the docked explorer sidebar on wide layouts, which upstream retired
+ * in favour of explorer tabs. The state it reads (`desktop.fileExplorerOpen`) is
+ * still upstream's - this is the layout-aware reader Otto's workspace screen
+ * needs, alongside their compact-only one above.
+ */
 export function selectIsFileExplorerOpen(state: PanelCoreState, input: PanelLayoutInput): boolean {
-  return selectPanelVisibility(state, input).isFileExplorerOpen;
+  return input.isCompact
+    ? state.mobilePanel.target === "file-explorer"
+    : state.desktop.fileExplorerOpen;
 }
 
 export function setMobilePanelTarget(
@@ -171,6 +191,9 @@ function resolveExplorerTabFromCheckout(
   });
 }
 
+// Otto keeps a docked desktop explorer alongside the compact one upstream
+// retired, so opening it is form-factor dependent: compact swaps the mobile
+// panel target, desktop toggles the docked sidebar's own flag.
 export interface OpenFileExplorerPatch {
   mobilePanel?: MobilePanelSelection;
   desktop?: DesktopSidebarState;
@@ -217,10 +240,13 @@ const ExplorerTabSchema = z.enum(["changes", "files", "search", "pr"]);
 const ExplorerViewModeSchema = z.enum(["files", "solution"]);
 const DesktopSidebarStorageSchema = z.strictObject({
   agentListOpen: z.boolean().optional(),
-  fileExplorerOpen: z.boolean().optional(),
   focusModeEnabled: z.boolean().optional(),
   zoomed: z.boolean().optional(),
   focused: z.boolean().optional(),
+  // Accepted only so migration can discard the former docked explorer sidebar.
+  // The schema is strict and a parse failure drops the whole entry, so removing
+  // this key outright would wipe every upgrading user's panel state.
+  fileExplorerOpen: z.boolean().optional(),
 });
 
 export const PanelPersistedStateSchema = z.strictObject({
@@ -237,39 +263,23 @@ export const PanelPersistedStateSchema = z.strictObject({
   explorerViewModeByCheckout: z.record(z.string(), ExplorerViewModeSchema).optional(),
   explorerSolutionByCheckout: z.record(z.string(), z.string()).optional(),
   expandedPathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
+  // Accepted only so migration can discard the former per-file diff expansion state.
   diffExpandedPathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
   diffCollapsedFoldersByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
+  collapsedFilePathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
   sidebarWidth: z.number().optional(),
+  // Accepted only so migration can discard the former docked explorer sidebar width.
   explorerWidth: z.number().optional(),
   contextSidebarWidth: z.number().optional(),
   projectKnowledgeSidebarWidth: z.number().optional(),
   explorerSortOption: z.enum(["name", "modified", "size"]).optional(),
   explorerShowHiddenFiles: z.boolean().optional(),
   explorerFilesSplitRatio: z.number().optional(),
+  treeRailWidth: z.number().optional(),
+  fileTreeVisible: z.boolean().optional(),
 });
 
 type MigratablePanelState = z.infer<typeof PanelPersistedStateSchema>;
-
-function migratePanelV2Explorer(state: MigratablePanelState, isWeb: boolean): void {
-  if (isWeb && typeof state.explorerWidth === "number" && state.explorerWidth === 400) {
-    state.explorerWidth = DEFAULT_EXPLORER_SIDEBAR_WIDTH;
-  }
-  if (typeof state.explorerFilesSplitRatio !== "number") {
-    state.explorerFilesSplitRatio = DEFAULT_EXPLORER_FILES_SPLIT_RATIO;
-  } else {
-    state.explorerFilesSplitRatio = clampExplorerFilesSplitRatio(state.explorerFilesSplitRatio);
-  }
-}
-
-function migratePanelV3Explorer(state: MigratablePanelState, isWeb: boolean): void {
-  if (
-    isWeb &&
-    typeof state.explorerWidth === "number" &&
-    (state.explorerWidth === 400 || state.explorerWidth === 520)
-  ) {
-    state.explorerWidth = DEFAULT_EXPLORER_SIDEBAR_WIDTH;
-  }
-}
 
 function migratePanelExplorerTabByCheckout(state: MigratablePanelState, version: number): void {
   if (
@@ -405,3 +415,28 @@ function normalizeProjectKnowledgeSidebarWidth(width: unknown): number {
 
 export { buildExplorerCheckoutKey, resolveExplorerTabForCheckout };
 export type { ExplorerTab, ExplorerCheckoutContext };
+
+export interface ExplorerPanelIntent extends PanelLayoutInput {
+  checkout: ExplorerCheckoutContext;
+}
+
+function migratePanelV2Explorer(state: MigratablePanelState, isWeb: boolean): void {
+  if (isWeb && typeof state.explorerWidth === "number" && state.explorerWidth === 400) {
+    state.explorerWidth = DEFAULT_EXPLORER_SIDEBAR_WIDTH;
+  }
+  if (typeof state.explorerFilesSplitRatio !== "number") {
+    state.explorerFilesSplitRatio = DEFAULT_EXPLORER_FILES_SPLIT_RATIO;
+  } else {
+    state.explorerFilesSplitRatio = clampExplorerFilesSplitRatio(state.explorerFilesSplitRatio);
+  }
+}
+
+function migratePanelV3Explorer(state: MigratablePanelState, isWeb: boolean): void {
+  if (
+    isWeb &&
+    typeof state.explorerWidth === "number" &&
+    (state.explorerWidth === 400 || state.explorerWidth === 520)
+  ) {
+    state.explorerWidth = DEFAULT_EXPLORER_SIDEBAR_WIDTH;
+  }
+}

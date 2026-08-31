@@ -106,8 +106,32 @@ export function rebindOttoWorktreeChangeRequestHint(
     ...metadata,
     changeRequestLookupTarget: {
       ...target,
+      ...(target.headRef === previousBranch &&
+      !target.headRepositoryOwner &&
+      target.changeRequestNumber === undefined
+        ? { headRef: currentBranch }
+        : {}),
       localBranchName: currentBranch,
     },
+  });
+  return true;
+}
+
+export function pinOttoWorktreeBranchIdentityIfMissing(
+  worktreeRoot: string,
+  branch: string,
+): boolean {
+  const metadata = readOttoWorktreeMetadata(worktreeRoot);
+  if (!metadata || metadata.changeRequestLookupTarget) {
+    return false;
+  }
+  const target = createOttoWorktreeChangeRequestHint({
+    headRef: branch,
+    localBranchName: branch,
+  });
+  writeOttoWorktreeMetadataFile(worktreeRoot, {
+    ...metadata,
+    changeRequestLookupTarget: target,
   });
   return true;
 }

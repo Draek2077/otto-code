@@ -21,7 +21,11 @@ import {
 import { SCHEDULE_ID_LABEL, SCHEDULE_RUN_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import { curateAgentActivity } from "../agent/activity-curator.js";
 import { ensureAgentLoaded } from "../agent/agent-loading.js";
-import { formatSystemNotificationPrompt } from "../agent/agent-prompt.js";
+import {
+  formatSystemNotificationPrompt,
+  startAgentRun,
+  type AgentRunController,
+} from "../agent/agent-prompt.js";
 import { resolveCreateAgentTitles } from "../agent/create-agent-title.js";
 import { type BoundCreateAgentCommand, formatProviderModel } from "../agent/create-agent/create.js";
 import type { PersistedWorkspaceRecord } from "../workspace-registry.js";
@@ -328,20 +332,22 @@ export function pruneScheduleRuns(schedule: StoredSchedule): StoredSchedule {
   };
 }
 
-type ScheduleAgentManager = Pick<
-  AgentManager,
-  | "captureRetainedTranscript"
-  | "closeAgent"
-  | "createAgent"
-  | "deleteRetainedTranscriptsForOwner"
-  | "getAgent"
-  | "getRegisteredProviderIds"
-  | "hasInFlightRun"
-  | "hydrateTimelineFromProvider"
-  | "resumeAgentFromPersistence"
-  | "runAgent"
-  | "waitForAgentEvent"
->;
+type ScheduleAgentManager = AgentRunController &
+  Pick<
+    AgentManager,
+    // Otto's retained-transcript capture and teardown: a schedule run keeps its
+    // transcript after the agent closes (docs/safe-unattended.md).
+    | "captureRetainedTranscript"
+    | "closeAgent"
+    | "deleteRetainedTranscriptsForOwner"
+    | "createAgent"
+    | "getRegisteredProviderIds"
+    | "hydrateTimelineFromProvider"
+    | "resumeAgentFromPersistence"
+    | "runAgent"
+    | "waitForAgentEvent"
+    | "waitForAgentClose"
+  >;
 
 interface ScheduleWorkspaceCreateInput {
   cwd: string;
@@ -1165,6 +1171,66 @@ export class ScheduleService {
     requireSchedule(updatedSchedule, params.scheduleId);
   }
 
+  /**
+   * Fires a schedule whose target is an agent that already exists.
+   *
+   * The agent has to be present, unarchived, and idle: a schedule that lands on
+   * an archived or busy agent fails loudly rather than queueing behind whatever
+   * the user is doing in that chat.
+   */
+  private async executeExistingAgentSchedule(
+    schedule: StoredSchedule,
+    runId: string,
+    agentId: string,
+  ): Promise<ScheduleExecutionResult> {
+    const wrappedPrompt = formatSystemNotificationPrompt(buildScheduleFireBody(schedule, runId));
+    const record = await this.agentStorage.get(agentId);
+    if (!record) {
+      throw new ScheduleTargetGoneError(`Agent ${agentId} no longer exists`);
+    }
+    if (record.archivedAt) {
+      throw new ScheduleTargetGoneError(`Agent ${agentId} is archived`);
+    }
+
+    const agent = await ensureAgentLoaded(agentId, {
+      agentManager: this.agentManager,
+      agentStorage: this.agentStorage,
+      logger: this.logger,
+    });
+    if (this.agentManager.hasInFlightRun(agent.id)) {
+      throw new Error(`Agent ${agent.id} already has an active run`);
+    }
+    // Stamp who actually ran this: the existing agent's personality (if any),
+    // provider, and model. Recorded before the run so a failure still keeps
+    // the executor on the run + lastRun* summary fields.
+    await this.recordRunExecutor({
+      scheduleId: schedule.id,
+      runId,
+      executor: resolveAgentTargetExecutor(record),
+    });
+    await startAgentRun(this.agentManager, agent.id, wrappedPrompt, this.logger, {
+      replaceRunning: true,
+      activeTurnBehavior: "steer",
+    });
+    const waitResult = await this.agentManager.waitForAgentEvent(agent.id, {
+      waitForActive: true,
+    });
+    if (waitResult.permission) {
+      throw new Error(`Scheduled agent ${agent.id} is waiting for permission`);
+    }
+    if (waitResult.status === "error") {
+      throw new Error(waitResult.lastMessage ?? `Scheduled agent ${agent.id} failed`);
+    }
+    return {
+      agentId: agent.id,
+      output: buildRunOutput({
+        output: null,
+        timelineText: "",
+        finalText: waitResult.lastMessage ?? "",
+      }),
+    };
+  }
+
   private async executeSchedule(
     schedule: StoredSchedule,
     runId: string,
@@ -1179,41 +1245,7 @@ export class ScheduleService {
     }
 
     if (schedule.target.type === "agent") {
-      const wrappedPrompt = formatSystemNotificationPrompt(buildScheduleFireBody(schedule, runId));
-      const record = await this.agentStorage.get(schedule.target.agentId);
-      if (!record) {
-        throw new ScheduleTargetGoneError(`Agent ${schedule.target.agentId} no longer exists`);
-      }
-      if (record.archivedAt) {
-        throw new ScheduleTargetGoneError(`Agent ${schedule.target.agentId} is archived`);
-      }
-
-      const agent = await ensureAgentLoaded(schedule.target.agentId, {
-        agentManager: this.agentManager,
-        agentStorage: this.agentStorage,
-        logger: this.logger,
-      });
-      if (this.agentManager.hasInFlightRun(agent.id)) {
-        throw new Error(`Agent ${agent.id} already has an active run`);
-      }
-      // Stamp who actually ran this: the existing agent's personality (if any),
-      // provider, and model. Recorded before the run so a failure still keeps
-      // the executor on the run + lastRun* summary fields.
-      await this.recordRunExecutor({
-        scheduleId: schedule.id,
-        runId,
-        executor: resolveAgentTargetExecutor(record),
-      });
-      const result = await this.agentManager.runAgent(agent.id, wrappedPrompt);
-      const timelineText = curateAgentActivity(result.timeline);
-      return {
-        agentId: agent.id,
-        output: buildRunOutput({
-          output: null,
-          timelineText,
-          finalText: result.finalText,
-        }),
-      };
+      return this.executeExistingAgentSchedule(schedule, runId, schedule.target.agentId);
     }
 
     const config = schedule.target.type === "new-agent" ? schedule.target.config : null;

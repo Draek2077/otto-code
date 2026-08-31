@@ -37,14 +37,26 @@ export function shouldShowWorkspaceSetup(snapshot: WorkspaceSetupSnapshot | null
   return snapshot.error !== null || snapshot.detail.commands.length > 0;
 }
 
+export function shouldSeedWorkspaceSetupTab(snapshot: WorkspaceSetupSnapshot | null): boolean {
+  return snapshot?.status === "failed";
+}
+
 interface WorkspaceSetupStoreState {
   pendingWorkspaceSetup: PendingWorkspaceSetup | null;
   snapshots: Record<string, WorkspaceSetupSnapshot>;
   requestedKeys: Set<string>;
   emptyKeys: Set<string>;
+  /** Failed setups already announced, so each is surfaced exactly once. */
+  surfacedFailedSetupKeys: Set<string>;
   beginWorkspaceSetup: (value: PendingWorkspaceSetup) => void;
   clearWorkspaceSetup: () => void;
   upsertProgress: (input: { serverId: string; payload: WorkspaceSetupProgressPayload }) => void;
+  /**
+   * Take the right to surface a failed setup once. Returns true to the first
+   * caller only, so a failure that is already on screen is not re-announced
+   * every time the workspace re-renders.
+   */
+  claimFailedSetupSurface: (input: { serverId: string; workspaceId: string }) => boolean;
   ensureSetupStatus: (input: {
     serverId: string;
     workspaceId: string;
@@ -80,6 +92,7 @@ export const useWorkspaceSetupStore = create<WorkspaceSetupStoreState>()((set, g
   snapshots: {},
   requestedKeys: new Set(),
   emptyKeys: new Set(),
+  surfacedFailedSetupKeys: new Set(),
   beginWorkspaceSetup: (value) => {
     set({ pendingWorkspaceSetup: value });
   },
@@ -96,8 +109,17 @@ export const useWorkspaceSetupStore = create<WorkspaceSetupStoreState>()((set, g
       const emptyKeys = state.emptyKeys.has(key)
         ? new Set([...state.emptyKeys].filter((candidate) => candidate !== key))
         : state.emptyKeys;
+      // A non-failed push means setup has started over, so the claim on the
+      // previous failure is released and the next one can be surfaced. Without
+      // this the set only ever grows and a workspace announces its first
+      // failure and never another.
+      const surfacedFailedSetupKeys =
+        payload.status !== "failed" && state.surfacedFailedSetupKeys.has(key)
+          ? new Set([...state.surfacedFailedSetupKeys].filter((candidate) => candidate !== key))
+          : state.surfacedFailedSetupKeys;
       return {
         emptyKeys,
+        surfacedFailedSetupKeys,
         snapshots: {
           ...state.snapshots,
           [key]: {
@@ -162,6 +184,22 @@ export const useWorkspaceSetupStore = create<WorkspaceSetupStoreState>()((set, g
       const emptyKeys = withoutServerKeys(state.emptyKeys, serverId);
       return emptyKeys ? { emptyKeys } : state;
     });
+  },
+  claimFailedSetupSurface: ({ serverId, workspaceId }) => {
+    const key = buildWorkspaceSetupKey({ serverId, workspaceId });
+    if (!key) {
+      return false;
+    }
+
+    let claimed = false;
+    set((state) => {
+      if (state.snapshots[key]?.status !== "failed" || state.surfacedFailedSetupKeys.has(key)) {
+        return state;
+      }
+      claimed = true;
+      return { surfacedFailedSetupKeys: new Set(state.surfacedFailedSetupKeys).add(key) };
+    });
+    return claimed;
   },
   removeWorkspace: ({ serverId, workspaceId }) => {
     const key = buildWorkspaceSetupKey({ serverId, workspaceId });

@@ -4,7 +4,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AttachmentMetadata } from "@/attachments/types";
-import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
+import type { createKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
+import {
+  KeyboardActionDispatcherProvider,
+  useKeyboardActionDispatcher,
+} from "@/keyboard/keyboard-action-dispatcher-context";
 import { AttachmentLightbox } from "./attachment-lightbox";
 
 const { theme, imageMetadata, useAttachmentPreviewUrlMock } = vi.hoisted(() => {
@@ -140,9 +144,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/**
+ * The dispatcher comes from context now, so the test has to render inside the
+ * provider and take the instance the provider made: dispatching on a separate
+ * one would reach none of the handlers the component registered.
+ */
+let keyboardActionDispatcher: ReturnType<typeof createKeyboardActionDispatcher>;
+
+function CaptureDispatcher() {
+  keyboardActionDispatcher = useKeyboardActionDispatcher();
+  return null;
+}
+
 function render(element: React.ReactElement) {
   act(() => {
-    root?.render(element);
+    root?.render(
+      <KeyboardActionDispatcherProvider>
+        <CaptureDispatcher />
+        {element}
+      </KeyboardActionDispatcherProvider>,
+    );
   });
 }
 

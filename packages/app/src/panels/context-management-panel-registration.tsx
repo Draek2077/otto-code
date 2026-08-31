@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { ContextualToken } from "@/components/icons/material-icons";
 import { ContextManagementPanel } from "@/context-management/panel";
-import type { PanelDescriptor, PanelRegistration } from "./panel-registry";
+import type { PanelDescriptor } from "./panel-registry";
+import { definePanel } from "@/panels/panel-registry";
 
 function useContextManagementPanelDescriptor(): PanelDescriptor {
   const { t } = useTranslation();
@@ -15,8 +16,7 @@ function useContextManagementPanelDescriptor(): PanelDescriptor {
   };
 }
 
-export const contextManagementPanelRegistration: PanelRegistration<"contextManagement"> = {
-  kind: "contextManagement",
+export const contextManagementPanelRegistration = definePanel("contextManagement", {
   component: ContextManagementPanel,
   useDescriptor: useContextManagementPanelDescriptor,
   // Nothing unsaved lives in this panel itself - the embedded file pane owns
@@ -24,4 +24,4 @@ export const contextManagementPanelRegistration: PanelRegistration<"contextManag
   confirmClose() {
     return Promise.resolve(true);
   },
-};
+});

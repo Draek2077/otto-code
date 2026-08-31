@@ -3,10 +3,10 @@ import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Schema } from "@/components/icons/material-icons";
 import { useOrchestrationGraphs } from "@/hooks/use-workflow-graphs";
-import type {
-  PanelDescriptor,
-  PanelDescriptorContext,
-  PanelRegistration,
+import {
+  definePanel,
+  type PanelDescriptor,
+  type PanelDescriptorContext,
 } from "@/panels/panel-registry";
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 
@@ -50,11 +50,10 @@ function OrchestrationGraphPanelHost() {
   );
 }
 
-export const orchestrationGraphPanelRegistration: PanelRegistration<"orchestrationGraph"> = {
-  kind: "orchestrationGraph",
+export const orchestrationGraphPanelRegistration = definePanel("orchestrationGraph", {
   component: OrchestrationGraphPanelHost,
   useDescriptor: useOrchestrationGraphPanelDescriptor,
-};
+});
 
 const styles = StyleSheet.create((theme) => ({
   fallback: {

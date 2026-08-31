@@ -10,6 +10,7 @@ import {
   ServerInfoStatusPayloadSchema,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
+  WorkspaceProjectDescriptorPayloadSchema,
 } from "./messages.js";
 
 describe("Brain Hugging Face bundle discovery compatibility", () => {
@@ -149,6 +150,28 @@ describe("project icon message security", () => {
     });
 
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("project icon revision compatibility", () => {
+  const project = {
+    projectId: "project-1",
+    projectDisplayName: "Project",
+    projectRootPath: "/repo/project",
+    projectKind: "git" as const,
+  };
+
+  test("accepts an old project snapshot without an effective icon revision", () => {
+    expect(WorkspaceProjectDescriptorPayloadSchema.parse(project)).toEqual(project);
+  });
+
+  test("accepts an effective icon revision on a new project snapshot", () => {
+    expect(
+      WorkspaceProjectDescriptorPayloadSchema.parse({
+        ...project,
+        projectIconRevision: "automatic:none:v1",
+      }),
+    ).toEqual({ ...project, projectIconRevision: "automatic:none:v1" });
   });
 });
 

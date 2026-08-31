@@ -61,7 +61,6 @@ import {
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
 import { RetainedPanelActivity } from "@/components/retained-panel";
-import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
 import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { type SidebarGroupMode } from "@/stores/sidebar-view-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
@@ -91,6 +90,7 @@ import { SidebarActiveWorkspaceTools } from "./sidebar/sidebar-active-workspace-
 import { SidebarSeamShadow } from "./sidebar-seam-shadow";
 import { SidebarResizeHandle } from "./sidebar-resize-handle";
 import { resolveDesktopSidebarWidth } from "./desktop-sidebar-layout";
+import { type SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 
 // How much to shave off the window-controls top spacer: the DESKTOP_* height
 // constants are one-size guesses that read as surplus space above the sidebar
@@ -102,7 +102,7 @@ type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
 interface SidebarSharedProps {
   theme: SidebarTheme;
-  statusGroups: StatusGroup[];
+  workspaceGroups: SidebarWorkspaceGroup[];
   pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
@@ -178,7 +178,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
     isInitialLoad,
     isRevalidating,
     refreshAll,
-    statusGroups,
+    workspaceGroups,
     pinnedGroups,
     collapsedProjectKeys,
     toggleProjectCollapsed,
@@ -320,7 +320,7 @@ export const LeftSidebar = memo(function LeftSidebar() {
 
   const sharedProps = {
     theme,
-    statusGroups,
+    workspaceGroups,
     pinnedGroups,
     projects,
     workspaceEntriesByKey,
@@ -655,7 +655,7 @@ function SidebarFooter({
 
 function MobileSidebar({
   theme,
-  statusGroups,
+  workspaceGroups,
   pinnedGroups,
   projects,
   workspaceEntriesByKey,
@@ -785,7 +785,7 @@ function MobileSidebar({
             onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
-            statusGroups={statusGroups}
+            workspaceGroups={workspaceGroups}
             pinnedGroups={pinnedGroups}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}
@@ -815,7 +815,7 @@ function MobileSidebar({
 
 function DesktopSidebar({
   theme,
-  statusGroups,
+  workspaceGroups,
   pinnedGroups,
   projects,
   workspaceEntriesByKey,
@@ -997,7 +997,7 @@ function DesktopSidebar({
             onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
-            statusGroups={statusGroups}
+            workspaceGroups={workspaceGroups}
             pinnedGroups={pinnedGroups}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}

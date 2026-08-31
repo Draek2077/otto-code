@@ -117,7 +117,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   errorText: {
     color: theme.colors.statusDanger,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     textAlign: "center",
   },
 })) as unknown as Record<string, object>;

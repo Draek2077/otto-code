@@ -73,6 +73,9 @@ function WorkspaceTabPresentationResolverInner({
       kind: tab.kind,
       label: descriptor.label,
       subtitle: descriptor.subtitle,
+      tooltip: descriptor.subtitle
+        ? `${descriptor.label} - ${descriptor.subtitle}`
+        : descriptor.label,
       titleState: descriptor.titleState,
       icon: descriptor.icon,
       statusBucket: descriptor.statusBucket,

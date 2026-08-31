@@ -3,6 +3,27 @@ import { createCompactMarkdownStyles, createMarkdownStyles } from "./markdown-st
 import { darkTheme } from "./theme";
 
 describe("createMarkdownStyles", () => {
+  // Otto sizes chat prose at the interface size, not the document `content`
+  // size: the transcript is a working surface. List markers ride the same step
+  // so a bullet lines up with the text it introduces.
+  it("uses the interface size for conversation prose and list markers", () => {
+    const styles = createMarkdownStyles(darkTheme);
+    const proseLineHeight = Math.round(darkTheme.fontSize.sm * 1.4);
+
+    expect(styles.body).toMatchObject({
+      fontSize: darkTheme.fontSize.sm,
+      lineHeight: proseLineHeight,
+    });
+    expect(styles.bullet_list_icon).toMatchObject({
+      fontSize: darkTheme.fontSize.sm,
+      lineHeight: proseLineHeight,
+    });
+    expect(styles.ordered_list_icon).toMatchObject({
+      fontSize: darkTheme.fontSize.sm,
+      lineHeight: proseLineHeight,
+    });
+  });
+
   it("applies shrink-and-wrap constraints to long markdown text and links", () => {
     const styles = createMarkdownStyles(darkTheme);
 
@@ -105,5 +126,33 @@ describe("createMarkdownStyles", () => {
     expect(styles.th).not.toHaveProperty("borderBottomWidth");
     expect(styles.tableLastRow).toEqual({ borderBottomWidth: 0 });
     expect(styles.tableLastCell).toEqual({ borderRightWidth: 0 });
+  });
+
+  it("scales Markdown headings from content size with safe line heights", () => {
+    const largeContentTheme = {
+      ...darkTheme,
+      fontSize: { ...darkTheme.fontSize, content: 21 },
+    };
+    const styles = createMarkdownStyles(largeContentTheme);
+
+    expect(styles.heading1.lineHeight).toBeGreaterThan(styles.heading1.fontSize);
+    expect(styles.heading2.lineHeight).toBeGreaterThan(styles.heading2.fontSize);
+    expect(styles.heading3.lineHeight).toBeGreaterThan(styles.heading3.fontSize);
+  });
+
+  // Otto's blockquote is a rounded card with an accent rule down its left edge,
+  // and the GitHub alert kinds are the same card with a different accent - so
+  // the radius stays uniform rather than squaring off against the rule.
+  it("draws blockquotes as a rounded card behind an accent rule", () => {
+    const styles = createMarkdownStyles(darkTheme);
+
+    expect(styles.blockquote).toMatchObject({
+      borderLeftWidth: 4,
+      borderRadius: darkTheme.borderRadius.md,
+      paddingHorizontal: darkTheme.spacing[4],
+      paddingVertical: darkTheme.spacing[3],
+    });
+    expect(styles.blockquote).not.toHaveProperty("borderTopLeftRadius");
+    expect(styles.paragraph.marginBottom).toBe(darkTheme.spacing[3]);
   });
 });

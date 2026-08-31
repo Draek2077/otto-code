@@ -14,6 +14,7 @@ import {
   type PressableProps,
   type PressableStateCallbackType,
   type StyleProp,
+  type ViewProps,
   type ViewStyle,
 } from "react-native";
 import { isNative, isWeb } from "@/constants/platform";
@@ -146,6 +147,7 @@ type TriggerStyleProp = StyleProp<ViewStyle> | ((state: MenuTriggerState) => Sty
 
 export function ContextMenuTrigger({
   children,
+  contextOnly = false,
   disabled,
   highlightStyle,
   style,
@@ -166,6 +168,7 @@ export function ContextMenuTrigger({
     longPressDelayMs?: number;
     onContextMenu?: (event: unknown) => void;
     triggerRef?: Ref<View | null>;
+    contextOnly?: boolean;
   }
 >): ReactElement {
   const ctx = useMenuContext("ContextMenuTrigger");
@@ -231,7 +234,7 @@ export function ContextMenuTrigger({
     [onContextMenu, openAtEvent],
   );
 
-  const pressableStyle = useCallback(
+  const resolveDynamicStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => {
       if (typeof style === "function") {
         return style({ pressed, hovered, open: ctx.open });
@@ -240,6 +243,25 @@ export function ContextMenuTrigger({
     },
     [style, ctx.open],
   );
+
+  if (contextOnly) {
+    const contextOnlyStyle =
+      typeof style === "function"
+        ? style({ pressed: false, hovered: false, open: ctx.open })
+        : style;
+    return (
+      <View
+        {...(props as ViewProps)}
+        ref={handleRef}
+        collapsable={false}
+        // @ts-ignore - onContextMenu is web-only and not in RN types.
+        onContextMenu={handleContextMenu}
+        style={contextOnlyStyle}
+      >
+        {children}
+      </View>
+    );
+  }
 
   return (
     <PressHighlight
@@ -251,7 +273,7 @@ export function ContextMenuTrigger({
       onLongPress={handleLongPress}
       // @ts-ignore - onContextMenu is web-only and not in RN types.
       onContextMenu={handleContextMenu}
-      style={pressableStyle}
+      style={typeof style === "function" ? resolveDynamicStyle : style}
       highlightStyle={highlightStyle}
     >
       {children}

@@ -182,3 +182,18 @@ export function splitWebVirtualizedHistory(input: {
     mountedEntries: input.entries.slice(startIndex),
   };
 }
+
+export function shouldAdjustScrollForVirtualRowResize(input: {
+  isHistoryStartPrependActive: boolean;
+  rowStart: number;
+  scrollOffset: number;
+  remainingDistanceFromBottom: number;
+  bottomThreshold: number;
+}): boolean {
+  if (input.isHistoryStartPrependActive) {
+    return false;
+  }
+  return (
+    input.remainingDistanceFromBottom > input.bottomThreshold && input.rowStart < input.scrollOffset
+  );
+}

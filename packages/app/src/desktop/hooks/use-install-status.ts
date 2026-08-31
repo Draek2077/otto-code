@@ -81,21 +81,6 @@ export function useCliInstall(): DesktopInstallHookResult {
   };
 }
 
-export interface SkillsStatusHookResult {
-  status: SkillsSnapshot | null;
-  isLoading: boolean;
-  isWorking: boolean;
-  error: Error | null;
-  refresh: () => Promise<void>;
-  install: () => Promise<void>;
-  update: () => Promise<void>;
-  uninstall: () => Promise<void>;
-  saveSelection: (
-    selection: SkillSelection,
-    confirmedRemovals?: readonly string[],
-  ) => Promise<SkillsSaveResult>;
-}
-
 export function useSkillsStatus(): SkillsStatusHookResult {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -220,4 +205,19 @@ export function useSkillsStatus(): SkillsStatusHookResult {
     uninstall,
     saveSelection,
   };
+}
+
+export interface SkillsStatusHookResult {
+  status: SkillsSnapshot | null;
+  isLoading: boolean;
+  isWorking: boolean;
+  error: Error | null;
+  refresh: () => Promise<void>;
+  install: () => Promise<void>;
+  update: () => Promise<void>;
+  uninstall: () => Promise<void>;
+  saveSelection: (
+    selection: SkillSelection,
+    confirmedRemovals?: readonly string[],
+  ) => Promise<SkillsSaveResult>;
 }

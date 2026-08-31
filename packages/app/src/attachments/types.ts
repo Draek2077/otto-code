@@ -3,6 +3,7 @@ import type {
   ForgeSearchItem,
   UploadedFileAttachment,
 } from "@otto-code/protocol/messages";
+import { type PluginResourceComposerAttachment } from "@/plugins/attachments";
 
 export type AttachmentStorageType = "web-indexeddb" | "desktop-file" | "native-file";
 
@@ -117,6 +118,7 @@ export type UserComposerAttachment =
   | WorkspaceFileComposerAttachment
   // `ForgeSearchItem` carries its own `forge` tag, which is what Otto's
   // separate `provider` field used to record.
+  | PluginResourceComposerAttachment
   | { kind: "forge_issue"; item: ForgeSearchItem }
   | { kind: "forge_change_request"; item: ForgeSearchItem }
   // COMPAT(githubAttachmentKinds): added in v0.1.106, remove after 2026-12-28 once daemon floor >= v0.1.106

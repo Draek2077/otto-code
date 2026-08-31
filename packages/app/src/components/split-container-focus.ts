@@ -5,10 +5,19 @@ export function resolveSplitContainerRoot(input: {
   focusedPaneId: string | null;
   focusModeEnabled: boolean | undefined;
 }): { root: SplitNode; usesFallbackStrip: boolean } {
-  if (!input.focusModeEnabled) return { root: input.root, usesFallbackStrip: false };
-  const focusedPane = input.focusedPaneId ? findPane(input.root, input.focusedPaneId) : null;
-  if (!focusedPane) return { root: input.root, usesFallbackStrip: true };
-  return { root: { kind: "pane", pane: focusedPane }, usesFallbackStrip: false };
+  const isolatedPaneId = input.focusModeEnabled ? input.focusedPaneId : null;
+  if (!isolatedPaneId) return { root: input.root, usesFallbackStrip: false };
+  const isolatedPane = findPane(input.root, isolatedPaneId);
+  if (!isolatedPane || isolatedPane.hidden === true) {
+    return { root: input.root, usesFallbackStrip: Boolean(input.focusModeEnabled) };
+  }
+  return { root: { kind: "pane", pane: isolatedPane }, usesFallbackStrip: false };
+}
+
+/** Whether a split subtree contains the pane currently projected full-size. */
+export function splitNodeContainsPane(node: SplitNode, paneId: string): boolean {
+  if (node.kind === "pane") return node.pane.id === paneId;
+  return node.group.children.some((child) => splitNodeContainsPane(child, paneId));
 }
 
 function findPane(node: SplitNode, paneId: string): SplitPane | null {

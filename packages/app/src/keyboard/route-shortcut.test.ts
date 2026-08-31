@@ -30,6 +30,13 @@ describe("routeKeyboardShortcut - dispatch passthroughs", () => {
     ["agent.interrupt", { id: "agent.interrupt", scope: "global" }],
     ["chat.find", { id: "chat.find", scope: "workspace" }],
     ["workspace.tab.new", { id: "workspace.tab.new", scope: "workspace" }],
+    ["workspace.tab.menu.open", { id: "workspace.tab.menu.open", scope: "workspace" }],
+    ["workspace.tab.target.agent", { id: "workspace.tab.target.agent", scope: "workspace" }],
+    ["workspace.tab.target.browser", { id: "workspace.tab.target.browser", scope: "workspace" }],
+    ["workspace.tab.target.changes", { id: "workspace.tab.target.changes", scope: "workspace" }],
+    ["workspace.tab.target.files", { id: "workspace.tab.target.files", scope: "workspace" }],
+    // Distinct from workspace.tab.new above: this one creates a workspace, so
+    // it dispatches in the sidebar's scope rather than a workspace's.
     ["workspace.new", { id: "workspace.new", scope: "sidebar" }],
     ["workspace.project.pick", { id: "workspace.project.pick", scope: "workspace" }],
     ["workspace.archive", { id: "workspace.archive", scope: "sidebar" }],
@@ -54,6 +61,27 @@ describe("routeKeyboardShortcut - dispatch passthroughs", () => {
     expect(routeKeyboardShortcut({ action, payload: null }, makeCtx())).toEqual({
       kind: "dispatch",
       action: expected,
+    });
+  });
+
+  it("closes desktop settings when Escape routes through agent interrupt", () => {
+    expect(
+      routeKeyboardShortcut(
+        { action: "agent.interrupt", payload: null },
+        makeCtx({ pathname: "/settings/general" }),
+      ),
+    ).toEqual<ShortcutAction>({ kind: "navigate-last-workspace" });
+  });
+
+  it("keeps agent interrupt behavior on compact settings layouts", () => {
+    expect(
+      routeKeyboardShortcut(
+        { action: "agent.interrupt", payload: null },
+        makeCtx({ pathname: "/settings/general", isMobile: true }),
+      ),
+    ).toEqual<ShortcutAction>({
+      kind: "dispatch",
+      action: { id: "agent.interrupt", scope: "global" },
     });
   });
 });

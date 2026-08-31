@@ -191,7 +191,6 @@ function OpenFileNameSheet({
           testID="file-name-input"
           accessibilityLabel={title}
           initialValue={initialValue ?? ""}
-          value={name}
           onChangeText={setName}
           onSubmitEditing={handleSubmitPress}
           placeholder={placeholder}

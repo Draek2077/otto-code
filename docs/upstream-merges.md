@@ -304,6 +304,54 @@ same subsystems from scratch.
 | ---------- | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------- |
 | 2026-07-12 | v0.1.106     | `c05e337cd`  | 0.5.x        | -                                                                               |
 | 2026-08-01 | v0.2.5       | `6fc491e62`  | 0.7.5        | Hub (`a414f8ea8`) - **permanent**; upstream's client-side subagent presentation |
+| 2026-08-21 | v0.4.0       | `b44bb63cf`  | 0.8.12       | Not recorded at the time. Reconstructed from git only; treat as unknown.        |
+| 2026-08-30 | v0.6.1       | `20d7efc46`  | 0.8.19       | Tab-bar workspace pins, and Otto's app-side diff layer - both **to revisit**    |
+
+The 2026-08-21 row is a warning as much as a record. That merge happened and
+nobody wrote down what it left behind, so the only surviving account of it is the
+diff. Fill a row in during the merge, not after.
+
+**The rebrand pass will eat this file if you let it.** Step 2 says to run
+`scripts/rebrand-upstream.pl` over everything the merge touched. This document is
+on the step-3 audit exclusion list because it must keep its Paseo references, but
+an exclusion list does not stop the script - and if you edit this file during a
+merge it becomes "merge-touched" and the blanket pass rewrites it into nonsense
+("Otto is a fork of Otto"). Exclude it explicitly from the rebrand xargs, or
+re-check it afterwards.
+
+### Orphaned at v0.6.1, to re-attach
+
+`scripts/merge-orphan-guard.mjs --check` reports these Otto modules as having
+lost every call site. Each is intact on disk and reachable from nothing, because
+the file that used to call it was resolved to upstream's side. They are features,
+not dead code.
+
+| Otto module                                                   | Call site it lost                | What it is                              |
+| ------------------------------------------------------------- | -------------------------------- | --------------------------------------- |
+| `app/src/git/diff-base-switcher.tsx`                          | `git/diff-pane.tsx`              | Fork-point diff base picker             |
+| `app/src/git/open-git-log-tab.ts`                             | `git/diff-pane.tsx`              | Git Log tab entry point                 |
+| `app/src/git/running-agent-labels.ts`                         | `git/diff-pane.tsx`              | Running-agent labels in the diff header |
+| `app/src/hooks/use-non-client-hover.ts`                       | `workspace-desktop-tabs-row.tsx` | Hover in the OS non-client area         |
+| `app/src/screens/workspace/workspace-preview-controller.tsx`  | `workspace-desktop-tabs-row.tsx` | Preview controls in the tab row         |
+| `app/src/screens/workspace/workspace-tab-actions-overflow.ts` | `workspace-desktop-tabs-row.tsx` | Tab overflow actions                    |
+| `server/src/server/otto-daemon-config.ts`                     | `daemon-config-store.ts`         | Otto daemon config helper               |
+
+`desktop/src/features/editor-targets.ts` also orphaned, but that one is genuine
+supersession: upstream moved the same feature to `features/editor-targets/ipc.ts`
+and it is wired. Nothing to do.
+
+The three `diff-pane.tsx` entries and the three `workspace-desktop-tabs-row.tsx`
+entries share a cause: both files were taken from upstream wholesale because
+upstream rebuilt them (canvas diff rendering, and tab sizing/overflow). That was
+the right call for the mechanism and it cost these six call sites.
+
+Also deleted by rename detection and restored by hand, because Otto still imports
+them: `screens/settings/appearance/apply-appearance.ts`,
+`screens/workspace/workspace-empty-draft-seed.ts`,
+`desktop/components/skill-selection-sheet.tsx`, `composer/input/height-mirror.web.ts`,
+and `components/explorer-sidebar.tsx` (upstream renamed ours to
+`compact-explorer-sidebar.tsx` and kept it as the compact slide-over; Otto's
+docked sidebar is restored as its own file).
 
 The v0.2.5 row also left behind things nobody chose to skip. Large conflicted
 files were resolved wholesale to OURS, which drops upstream hunks silently: no
@@ -433,3 +481,176 @@ These carry across merges. Revisit only when the stated trigger fires.
   own rows, and **do** take their row kind, their panel, and the `${row.kind}_`
   presentation-key prefix that stops the two id spaces colliding. See
   `projects/upstream-subagent-convergence/`.
+
+### Dropped at v0.6.1, to revisit
+
+#### `use-settings/migrations.ts` - the steer-default migration
+
+Upstream added a one-shot migration flipping every existing install's
+`sendBehavior` from `interrupt` to `steer`, alongside a three-option send picker.
+Otto's picker offers two options (`interrupt` and `queue`), and Otto's settings
+`SendBehavior` union has no `steer` member - the steer queue is the `queue`
+option. Running the migration would leave users pinned to a value the settings
+screen cannot display or reselect.
+
+Dropped rather than adapted: `migrateAppSettings` had no caller in the merged
+tree either. Revisit if Otto ever adds a third send option; the marker key
+(`SETTINGS_MIGRATIONS_KEY`) is still defined, so the framework can come back
+without a rename.
+
+### Silent breakage found by the v0.6.1 test pass
+
+Everything below typechecked and linted clean. The conflict resolution had
+produced code that compiled and was wrong, which is the failure mode this
+section exists to make findable next time. Each was found by running a suite,
+not by reading a diff.
+
+**Both sides' turn start survived, so every foreground turn started twice.**
+Upstream extracted the inline `session.startTurn` in `streamAgent`'s forwarder
+into `startPendingForegroundTurn`. The merge kept Otto's inline call _and_ added
+upstream's helper call after it. The second start hit the provider's
+"A foreground turn is already active" guard, so every run failed. This is the
+one to look for first after a merge: an extraction upstream performed leaves the
+original in place, and both halves compile.
+
+**Two `AgentRunState` instances.** The same conflict left Otto's `foregroundRuns`
+and upstream's `runs` both declared, with two call sites settling runs on a
+registry nothing else read. Collapsed onto `foregroundRuns`.
+
+**`onStreamTurnStarted` lost its suppression flags.** The run generator yields
+the accepted `turn_started` itself, so the provider's echo must not also reach
+clients. Otto's copy dropped the `flags` parameter and forwarded both. Note that
+Otto suppresses only `shouldDispatchEvent`, not `shouldNotifyWaiters` as upstream
+does: Otto's run-start waiters key off this event, and suppressing the
+notification hangs them.
+
+**Cancellation stopped sharing the steer lock.** Upstream runs `cancelAgentRun`
+through `runForegroundMutation`, the same tail steer admission uses, so a
+replacement issued mid-steer waits instead of interrupting a turn the steer may
+have just entered. Otto's merged copy called the inner path directly.
+
+**Rewind lost the provider-acknowledgement guard.** A submitted prompt carries
+the client's id until the provider echoes it back under its own; rewinding in
+that window hands the provider an id it has never seen. Restored, along with
+resolving the provider id for the capability call.
+
+**Test files were spliced together mid-declaration.** Three cases: upstream's
+`canonical submitted prompt keeps wire identity while rewind resolves provider
+identity` was fused into Otto's `authoritative timeline includes provider-emitted
+submitted user prompt`; `session.test.ts` lost its whole `describe("preview
+RPCs")` header (and with it `makeProjectRoot`/`fakePreviewDevServers`), leaving
+its tests parented to the authorization describe; and the quota fetcher's Claude
+and Codex 401 tests kept upstream's read-only tails on Otto's refreshing
+implementation. A spliced test file still typechecks whenever the orphaned tail
+references names that happen to exist at file scope.
+
+**Assertions that predate a field.** `readPullRequestLookupTargetFromFacts` gained
+upstream's `headSha`, and the project descriptor carries Otto's four
+per-project locations. Ten and two stale exact-match assertions respectively.
+Prefer `toMatchObject` at these boundaries.
+
+### Repo identity, fixed at v0.6.1
+
+Two `checkout-git` cases failed against HEAD's implementation as well as the
+merged one, so they predated this merge, and both came from `isSameRepo`:
+`parseGitHubRepoFromRemote` returns null for a non-github.com host and is case
+sensitive, so two Enterprise remotes differing only in case read as different
+repositories, and a fork tracking upstream's base branch reported the tracked
+head instead of the local branch.
+
+Repo comparison now goes through a host-agnostic, case-insensitive identity
+(`parseRemoteRepoIdentity`), while `parseGitHubRepoFromRemote` keeps its narrower
+job of naming the fork owner the forge API expects. Tracking a base branch is no
+longer treated as a pull request head - except where the local branch is named
+`<owner>/<headRef>`, which is how a PR worktree checks a contributor's branch out
+and is the one case where the head really is named after the base.
+
+### Persisting config: still whole-config, deliberately
+
+Upstream writes the _patch_ into `config.json`. Otto writes the resolved config,
+and did long before this merge. Two upstream tests encode the narrower contract
+and are skipped with that reason.
+
+Converging was attempted during this merge and reverted. Writing only the paths a
+patch changed is easy to state and wrong in three places Otto's own tests catch:
+a provider removal cancels itself out of the diff, clearing metadata generation
+writes a half section, and a launch-provided secret that a client round-trips
+through the masking sentinel never reaches disk. Getting it right means teaching
+each of the ~15 section builders which keys the patch named, which is its own
+change with its own review.
+
+### Adopted at v0.6.1 with a burn-down
+
+Upstream added a `no-restricted-imports` rule banning raw `TextInput` from
+`react-native` in favour of `EditingTextInput`, and converted its own surfaces.
+Otto has 37 that were never converted. `EditingTextInput` is uncontrolled
+(`initialValue`, no `value`), so each one is a control-model conversion rather
+than a rename, and doing them blind at the tail of a merge would ship 37 subtle
+input bugs.
+
+The rule is adopted; those 37 files are listed in `.oxlintrc.json` as a
+burn-down, in the same shape upstream uses for its own. They may only shrink out
+of that exemption. Convert them against a running app, a few at a time.
+
+### App-side breakage the v0.6.1 test pass found
+
+Same shape as the server list above: all of it typechecked and linted clean.
+
+**Turn timing never derived.** `deriveStreamTurnTiming`'s new-turn branch kept a
+`return` from Otto's older shape after adopting upstream's `startsNewTurn`
+boundary check. Upstream falls through, so the item that opened the turn is
+still processed and `previousItem` advances; with the `return`, `previousItem`
+stayed null and every subsequent item read as another turn start. No completed
+turn ever got a duration or a token count.
+
+**Six tab kinds could not be opened.** `normalizeWorkspaceTabTarget` lost its
+branches for `files`, `changes_tree`, `pull_request`, `plugin`, `working_diff`,
+and `commit_diff`, so every layout silently stripped them - including the
+Explorer sidebar's own default tabs. Two compounding causes: the branches were
+missing, and `SIMPLE_TAB_ID_BUILDERS` had no entry for the id-less kinds, so
+they all collapsed onto one fallback id and deduped each other away. A tab kind
+needs a normalize branch, an id builder, and a registered panel; any one missing
+is silent.
+
+The `DEFERRED(ottoDiffTab)` note that said Otto had not adopted the diff panels
+was stale by the time it was read: this merge brought `panels/diff-panel.tsx`
+in and wired it to Otto's own Changes view. Both diff kinds normalize now.
+
+**Keyboard bindings without their definitions.** The four `workspace.tab.target.*`
+actions existed in the action union, the dispatcher, and the route table, but
+their eight binding entries were gone from `keyboard-shortcuts.ts`, so the
+chords did nothing. Otto's `ShortcutHelp` also requires a `keys` array that
+upstream's entries do not carry; contextual shortcut discovery renders from it.
+
+**A settings section with no screen, and a screen with no copy.** `layout`
+arrived in `SETTINGS_SECTION_SLUGS` without a panel (removed), and the English
+`settings.plugins` block was dropped from `en.ts` while every other locale lost
+its `plugins: pluginSettings.<locale>` wiring, so the Plugins page rendered raw
+key names.
+
+**`theme: {}` in the test setup.** The global `useUnistyles` mock returned an
+empty object, so any component grandfathered onto `useUnistyles` crashed on
+`theme.colors.*` inside the test rather than failing an assertion. It returns
+the real light theme now.
+
+**`openTabFocused` stopped revealing.** It used to reveal-or-create; the merged
+version routes through `openTab` with `intent: "new"`, which always creates. Every
+"open the X tab" entry point goes through it - artifact, context management, git
+log, file history, code references, Visualizer - so asking for any of them twice
+stacked a duplicate.
+
+**Preview split-right split a fresh workspace.** `findSplitRightTarget` counts the
+focused pane's tabs, and the default layout seeds a New tab placeholder, so the
+"nothing to split from" case its own comment describes could never be reached.
+
+**A failed setup could only ever be announced once.** Nothing cleared
+`surfacedFailedSetupKeys`, so after the first failure was surfaced for a
+workspace, a later one was silently swallowed. A non-failed push now releases the
+claim, which is what "until a later setup lifecycle begins" meant.
+
+**Upstream tests asserting upstream's design.** Several theme tests encode
+upstream's type scale, neutral light palette, and surface-derived sidebar
+states. Otto's scale is a tier larger, its light theme is warm, and its
+interactive states ride the one theme-accent ladder. These were rewritten to
+Otto's values rather than changed in the theme, and Otto's own pure-black test
+(which the merge had replaced) was restored.

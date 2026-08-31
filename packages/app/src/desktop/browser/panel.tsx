@@ -4,7 +4,7 @@ import { Globe, Play } from "@/components/icons/material-icons";
 import invariant from "tiny-invariant";
 import { BrowserPane } from "@/desktop/browser/pane";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useBrowserStore } from "@/desktop/browser/store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { withIconSizeToken } from "@/components/icons/icon-size";
@@ -85,8 +85,7 @@ function BrowserPanel() {
   );
 }
 
-export const browserPanelRegistration: PanelRegistration<"browser"> = {
-  kind: "browser",
+export const browserPanelRegistration = definePanel("browser", {
   component: BrowserPanel,
   useDescriptor: useBrowserPanelDescriptor,
-};
+});

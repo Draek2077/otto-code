@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { Pressable, type PressableStateCallbackType, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown } from "@/components/icons/material-icons";
 import { GitBranch } from "@/components/icons/lucide";
@@ -24,7 +24,6 @@ interface BranchSwitcherProps {
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
-
 const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedActivityIndicator = withUnistyles(LoadingSpinner);

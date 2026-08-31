@@ -1,12 +1,16 @@
 import React, { createContext, useContext, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import { View } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { BottomSheetScrollView, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { SheetSurfaceModal } from "@/components/ui/sheet-chrome";
 import { SheetHeaderView } from "@/components/adaptive-modal-sheet";
 import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
-import { useIsolatedBottomSheetVisibility } from "@/components/ui/isolated-bottom-sheet-modal";
+import {
+  IsolatedBottomSheetModal,
+  useIsolatedBottomSheetVisibility,
+  type ContextBridge,
+} from "@/components/ui/isolated-bottom-sheet-modal";
 import type { ToolCallIconComponent } from "@/utils/tool-call-icon";
 import { ToolCallDetailsContent } from "./tool-call-details";
 
@@ -157,3 +161,23 @@ const styles = StyleSheet.create(() => ({
     flexGrow: 1,
   },
 }));
+
+export const ToolCallSheetModal = withUnistyles(IsolatedBottomSheetModal, (theme) => ({
+  backgroundStyle: {
+    backgroundColor: theme.colors.surface2,
+    borderRadius: 16,
+  },
+  handleIndicatorStyle: {
+    backgroundColor: theme.colors.palette.zinc[600],
+  },
+}));
+
+export function useToolCallSheetContextBridge(): ContextBridge {
+  const context = useToolCallSheet();
+  return useCallback(
+    (children) => (
+      <ToolCallSheetContext.Provider value={context}>{children}</ToolCallSheetContext.Provider>
+    ),
+    [context],
+  );
+}

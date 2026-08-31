@@ -686,7 +686,6 @@ function GraphInputRow({
                 correct per mount. */}
             <FormTextInput
               initialValue={row.input.key}
-              value={row.input.key}
               onChangeText={handleKeyChange}
               autoCapitalize="none"
               size="sm"
@@ -697,7 +696,6 @@ function GraphInputRow({
           <Field label="Label">
             <FormTextInput
               initialValue={row.input.label}
-              value={row.input.label}
               onChangeText={handleLabelChange}
               size="sm"
             />

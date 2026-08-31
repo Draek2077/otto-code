@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { type LayoutChangeEvent, ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
@@ -13,7 +13,7 @@ import { isWeb } from "@/constants/platform";
 import { compactFont, compactUp, type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { useFileHistoryLayoutStore } from "@/stores/file-history-layout-store";
@@ -149,8 +149,23 @@ function FileHistoryPanel() {
     [history.entries, target.path],
   );
 
+  // The stack's measured height: the resize handle works in fractions of it.
+  const [containerSize, setContainerSize] = useState(0);
+  const handleStackLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextSize = event.nativeEvent.layout.height;
+    setContainerSize((current) => (current === nextSize ? current : nextSize));
+  }, []);
+  // Sizes reported mid-drag, held locally so the panes follow the pointer
+  // without writing to the persisted layout on every frame.
+  const [previewSizes, setPreviewSizes] = useState<number[] | null>(null);
+  const handlePreviewResize = useCallback((_groupId: string, nextSizes: number[]) => {
+    setPreviewSizes(nextSizes);
+  }, []);
   const handleResize = useCallback(
-    (_groupId: string, nextSizes: number[]) => setSizes(nextSizes),
+    (_groupId: string, nextSizes: number[]) => {
+      setPreviewSizes(null);
+      setSizes(nextSizes);
+    },
     [setSizes],
   );
   const toggleWhitespace = useCallback(() => setIgnoreWhitespace((current) => !current), []);
@@ -160,9 +175,10 @@ function FileHistoryPanel() {
 
   // One share model for every pane: each flexes from a zero basis, so a stored
   // ratio means the same fraction of the stack no matter how tall the pane is.
-  const listPaneStyle = usePaneStyle(styles.listPane, sizes[0]);
-  const diffPaneStyle = usePaneStyle(styles.diffPane, sizes[1]);
-  const detailPaneStyle = usePaneStyle(styles.detailPane, sizes[2]);
+  const effectiveSizes = previewSizes ?? sizes;
+  const listPaneStyle = usePaneStyle(styles.listPane, effectiveSizes[0]);
+  const diffPaneStyle = usePaneStyle(styles.diffPane, effectiveSizes[1]);
+  const detailPaneStyle = usePaneStyle(styles.detailPane, effectiveSizes[2]);
 
   if (!supported) {
     return (
@@ -181,7 +197,7 @@ function FileHistoryPanel() {
         onToggleWhitespace={toggleWhitespace}
         onRefresh={handleRefresh}
       />
-      <View style={styles.stack}>
+      <View style={styles.stack} onLayout={handleStackLayout}>
         <View style={listPaneStyle}>
           <ListPane
             history={history}
@@ -195,6 +211,8 @@ function FileHistoryPanel() {
             groupId={RESIZE_GROUP_ID}
             index={0}
             sizes={sizes}
+            containerSize={containerSize}
+            onPreviewResizeSplit={handlePreviewResize}
             onResizeSplit={handleResize}
           />
         )}
@@ -214,6 +232,8 @@ function FileHistoryPanel() {
             groupId={RESIZE_GROUP_ID}
             index={1}
             sizes={sizes}
+            containerSize={containerSize}
+            onPreviewResizeSplit={handlePreviewResize}
             onResizeSplit={handleResize}
           />
         )}
@@ -435,14 +455,13 @@ function entryToFocus(entry: GitFileHistoryEntry | null): RevisionFocus | null {
   return { sha: entry.sha, shortSha: entry.shortSha, path: entry.path };
 }
 
-export const fileHistoryPanelRegistration: PanelRegistration<"fileHistory"> = {
-  kind: "fileHistory",
+export const fileHistoryPanelRegistration = definePanel("fileHistory", {
   component: FileHistoryPanel,
   useDescriptor: useFileHistoryPanelDescriptor,
   confirmClose() {
     return Promise.resolve(true);
   },
-};
+});
 
 const styles = StyleSheet.create((theme) => ({
   container: {

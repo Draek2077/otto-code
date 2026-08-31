@@ -9,18 +9,18 @@ import {
 } from "react";
 import type { ElementRef, ReactElement, ReactNode } from "react";
 import {
-  View,
-  Text,
-  Pressable,
-  Modal,
-  TextInput,
-  ScrollView,
-  Platform,
-  StatusBar,
-  useWindowDimensions,
   type LayoutChangeEvent,
+  Modal,
+  Platform,
+  Pressable,
   type PressableStateCallbackType,
+  ScrollView,
+  StatusBar,
   type StyleProp,
+  Text,
+  type TextStyle,
+  useWindowDimensions,
+  View,
   type ViewStyle,
 } from "react-native";
 import { createPortal } from "react-dom";
@@ -69,6 +69,7 @@ import {
 } from "@/lib/overlay-root";
 import { buildDesktopFrameStyle } from "./combobox-frame-style";
 import { getCenteredOptionScrollOffset } from "./combobox-scroll";
+import { type EditingTextInputHandle } from "@/components/ui/text-input";
 
 export { buildDesktopFrameStyle } from "./combobox-frame-style";
 
@@ -166,7 +167,6 @@ export interface SearchInputProps {
   onChangeText: (text: string) => void;
   onSubmitEditing?: () => void;
   autoFocus?: boolean;
-  useBottomSheetInput?: boolean;
   resetKey?: string | number;
 }
 
@@ -176,13 +176,12 @@ export function SearchInput({
   onChangeText,
   onSubmitEditing,
   autoFocus = false,
-  useBottomSheetInput = false,
   resetKey,
 }: SearchInputProps): ReactElement {
   const { theme } = useUnistyles();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<EditingTextInputHandle>(null);
   const clearSearch = useCallback(() => {
-    inputRef.current?.clear();
+    inputRef.current?.replaceText("");
     onChangeText("");
   }, [onChangeText]);
 
@@ -198,34 +197,27 @@ export function SearchInput({
   return (
     <View style={styles.searchInputContainer}>
       <Search size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-      {useBottomSheetInput ? (
-        <AdaptiveTextInput
-          ref={inputRef}
-          value={value}
-          // @ts-expect-error - outlineStyle is web-only
-          style={[styles.searchInput, IS_WEB && { outlineStyle: "none" }]}
-          placeholder={placeholder}
-          resetKey={resetKey}
-          onChangeText={onChangeText}
-          autoCapitalize="none"
-          autoCorrect={false}
-          onSubmitEditing={onSubmitEditing}
-        />
-      ) : (
-        <TextInput
-          key={resetKey}
-          ref={inputRef}
-          value={value}
-          // @ts-expect-error - outlineStyle is web-only
-          style={[styles.searchInput, IS_WEB && { outlineStyle: "none" }]}
-          placeholder={placeholder}
-          placeholderTextColor={theme.colors.foregroundMuted}
-          onChangeText={onChangeText}
-          autoCapitalize="none"
-          autoCorrect={false}
-          onSubmitEditing={onSubmitEditing}
-        />
-      )}
+      {/* One input for both cases: AdaptiveTextInput picks the bottom-sheet
+          variant itself on compact native, so the branch that used to exist
+          here only duplicated the field. */}
+      <AdaptiveTextInput
+        ref={inputRef}
+        initialValue={value}
+        // outlineStyle is web-only; the cast is what the RN style type cannot express.
+        style={
+          [
+            styles.searchInput,
+            IS_WEB && ({ outlineStyle: "none" } as object),
+          ] as StyleProp<TextStyle>
+        }
+        placeholder={placeholder}
+        placeholderTextColor={theme.colors.foregroundMuted}
+        resetKey={resetKey}
+        onChangeText={onChangeText}
+        autoCapitalize="none"
+        autoCorrect={false}
+        onSubmitEditing={onSubmitEditing}
+      />
       {value ? <SearchClearButton onPress={clearSearch} /> : null}
     </View>
   );
@@ -1155,7 +1147,6 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
                   onChangeText={props.setSearchQueryWithCallback}
                   onSubmitEditing={props.handleSubmitSearch}
                   autoFocus={false}
-                  useBottomSheetInput
                   resetKey={props.searchResetKey}
                 />
               ) : null}
@@ -1287,7 +1278,6 @@ function DesktopComboboxOptionsBody(props: {
           onChangeText={props.setSearchQueryWithCallback}
           onSubmitEditing={props.handleSubmitSearch}
           autoFocus
-          useBottomSheetInput={false}
         />
       )}
       {props.effectiveOptionsPosition === "above-search" ? (

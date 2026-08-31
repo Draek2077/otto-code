@@ -723,6 +723,7 @@ export interface ThoughtItem {
   kind: "thought";
   id: string;
   timelineCursor?: TimelinePosition;
+  turnId?: string;
   text: string;
   timestamp: Date;
   status: ThoughtStatus;
@@ -758,6 +759,7 @@ export interface ToolCallItem {
   kind: "tool_call";
   id: string;
   timelineCursor?: TimelinePosition;
+  turnId?: string;
   timestamp: Date;
   payload: ToolCallPayload;
 }
@@ -774,6 +776,8 @@ export type ActionGroupMemberItem = ToolCallItem | ThoughtItem;
  * persisted - see agent-stream/action-grouping.ts.
  */
 export interface ActionGroupItem {
+  /** Upstream turn identity: which canonical turn this item belongs to. */
+  turnId?: string;
   kind: "action_group";
   id: string;
   timelineCursor?: TimelinePosition;
@@ -791,6 +795,7 @@ export interface ActivityLogItem {
   kind: "activity_log";
   id: string;
   timelineCursor?: TimelinePosition;
+  turnId?: string;
   timestamp: Date;
   activityType: ActivityLogType;
   message: string;
@@ -802,6 +807,7 @@ export interface CompactionItem {
   kind: "compaction";
   id: string;
   timelineCursor?: TimelinePosition;
+  turnId?: string;
   timestamp: Date;
   status: "loading" | "completed" | "failed";
   trigger?: "auto" | "manual";
@@ -837,6 +843,7 @@ export interface TodoListItem {
   kind: "todo_list";
   id: string;
   timelineCursor?: TimelinePosition;
+  turnId?: string;
   timestamp: Date;
   provider: AgentProvider;
   items: TodoEntry[];
@@ -943,6 +950,7 @@ function appendUserMessage(
   messageId?: string,
   clientMessageId?: string,
   timelineCursor?: TimelinePosition,
+  turnId?: string,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!hasContent) {
@@ -963,6 +971,7 @@ function appendUserMessage(
     messageId,
     clientMessageId,
     timelineCursor,
+    turnId,
     text: chunk,
     timestamp,
   });
@@ -1790,6 +1799,7 @@ function reduceTimelineEvent(
           item.messageId,
           item.clientMessageId,
           timelineCursor,
+          event.turnId,
         ),
       );
     case "assistant_message":
@@ -1879,13 +1889,16 @@ export function reduceStreamUpdate(
   const source = options?.source ?? "live";
   switch (event.type) {
     case "timeline":
-      return reduceTimelineEvent(
-        state,
+      return applyTimelineTurnId(
+        reduceTimelineEvent(
+          state,
+          event,
+          timestamp,
+          source,
+          options?.reservedItemIds,
+          options?.timelineCursor,
+        ),
         event,
-        timestamp,
-        source,
-        options?.reservedItemIds,
-        options?.timelineCursor,
       );
     case "turn_completed": {
       const finalized = finalizeActiveThoughts(state);
@@ -1902,6 +1915,51 @@ export function reduceStreamUpdate(
     default:
       return state;
   }
+}
+
+function applyTimelineTurnId(
+  items: StreamItem[],
+  event: Extract<AgentStreamEventPayload, { type: "timeline" }>,
+): StreamItem[] {
+  const clientMessageId =
+    event.item.type === "user_message" ? event.item.clientMessageId : undefined;
+  if (clientMessageId) {
+    return reconcileCanonicalUserTurnMembership(items, clientMessageId, event.turnId);
+  }
+
+  if (!event.turnId || items.length === 0) return items;
+  const index = items.length - 1;
+  const last = items[index];
+  if (!last || last.turnId === event.turnId) return items;
+  return [
+    ...items.slice(0, index),
+    { ...last, turnId: event.turnId } as StreamItem,
+    ...items.slice(index + 1),
+  ];
+}
+
+function reconcileCanonicalUserTurnMembership(
+  items: StreamItem[],
+  clientMessageId: string,
+  turnId: string | undefined,
+): StreamItem[] {
+  const index = items.findIndex(
+    (item) => item.kind === "user_message" && item.clientMessageId === clientMessageId,
+  );
+  const matched = items[index];
+  if (!matched || matched.kind !== "user_message" || matched.turnId === turnId) {
+    return items;
+  }
+
+  // A canonical user row is authoritative for membership. This replaces a
+  // provisional optimistic turn and clears it for daemons that do not emit IDs.
+  const next = turnId
+    ? { ...matched, turnId }
+    : (() => {
+        const { turnId: _, ...withoutTurnId } = matched;
+        return withoutTurnId;
+      })();
+  return [...items.slice(0, index), next, ...items.slice(index + 1)];
 }
 
 /**
@@ -2231,25 +2289,6 @@ export interface ApplyStreamEventResult {
   changedTail: boolean;
   changedHead: boolean;
   acknowledgedClientMessageIds?: string[];
-}
-
-function reconcileCanonicalUserTurnMembership(
-  items: StreamItem[],
-  clientMessageId: string,
-  turnId: string | undefined,
-): StreamItem[] {
-  const index = items.findIndex(
-    (item) => item.kind === "user_message" && item.clientMessageId === clientMessageId,
-  );
-  const matched = items[index];
-  if (!matched || matched.kind !== "user_message" || matched.turnId === turnId) return items;
-  const next = turnId
-    ? { ...matched, turnId }
-    : (() => {
-        const { turnId: _, ...withoutTurnId } = matched;
-        return withoutTurnId;
-      })();
-  return [...items.slice(0, index), next, ...items.slice(index + 1)];
 }
 
 function deriveAcknowledgedClientMessageIds(

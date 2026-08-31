@@ -111,15 +111,9 @@ function omitProviderOverrides(
   overrides: Record<string, ProviderOverride> | undefined,
   providers: readonly string[],
 ): Record<string, ProviderOverride> | undefined {
-  if (!overrides || providers.length === 0) {
-    return overrides;
-  }
-
+  if (!overrides || providers.length === 0) return overrides;
   const nextOverrides = { ...overrides };
-  for (const provider of providers) {
-    delete nextOverrides[provider];
-  }
-
+  for (const provider of providers) delete nextOverrides[provider];
   return Object.keys(nextOverrides).length > 0 ? nextOverrides : undefined;
 }
 
@@ -197,6 +191,13 @@ interface ProviderSnapshotReadOptions {
 
 interface ApplyMutableProviderConfigOptions {
   removeProviders?: readonly string[];
+  replace?: boolean;
+}
+
+export interface StagedMutableProviderConfig {
+  agentManagerState: AgentManagerProviderState;
+  publish(): void;
+  rollback(): void;
 }
 
 interface ProviderSnapshotProviderOptions {
@@ -279,6 +280,16 @@ interface ProviderLoad {
   promise: Promise<void>;
 }
 
+interface MutableProviderState {
+  baseProviderOverrides: Record<string, ProviderOverride> | undefined;
+  runtimeSettings: AgentProviderRuntimeSettingsMap | undefined;
+  providerOverrides: Record<string, ProviderOverride> | undefined;
+  providerRegistry: Record<AgentProvider, ProviderDefinition>;
+  providerClients: Record<AgentProvider, AgentClient>;
+  snapshots: Map<string, Map<AgentProvider, ProviderSnapshotEntry>>;
+  providerLoads: Map<string, Map<AgentProvider, ProviderLoad>>;
+}
+
 type ProviderCatalogScope = { scope: "global" } | { scope: "workspace"; cwd: string };
 
 interface ProviderSnapshotTarget {
@@ -295,8 +306,8 @@ export class ProviderSnapshotManager {
   private readonly probeFailures = new Map<string, Map<AgentProvider, number>>();
   private readonly events = new EventEmitter();
   private destroyed = false;
-  private readonly refreshTimeoutMs: number;
-  private readonly diagnosticTimeoutMs: number;
+  private refreshTimeoutMs: number;
+  private diagnosticTimeoutMs: number;
   private readonly logger: Logger;
   private readonly workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
   private readonly managedProcesses?: ManagedProcessRegistry;
@@ -311,6 +322,7 @@ export class ProviderSnapshotManager {
   private modelVisibilityOverrides: ModelVisibilityOverrideIndex;
   private connectors: readonly ConnectorConfig[] | undefined;
   private readonly brainEndpoint: BrainProviderEndpointResolver | undefined;
+  private readonly ownedClients = new Set<AgentClient>();
 
   constructor(options: ProviderSnapshotManagerOptions) {
     this.logger = options.logger;
@@ -334,6 +346,7 @@ export class ProviderSnapshotManager {
     );
     this.providerRegistry = this.buildRegistry();
     this.providerClients = { ...this.extraClients } as Record<AgentProvider, AgentClient>;
+    for (const client of Object.values(this.providerClients)) this.ownedClients.add(client);
   }
 
   getSnapshot(cwd?: string): ProviderSnapshotEntry[] {
@@ -455,6 +468,7 @@ export class ProviderSnapshotManager {
     }
     const client = definition.createClient(this.logger);
     this.providerClients[provider] = client;
+    this.ownedClients.add(client);
     return client;
   }
 
@@ -608,40 +622,126 @@ export class ProviderSnapshotManager {
     const options = Array.isArray(removedProviderIdsOrOptions)
       ? maybeOptions
       : (removedProviderIdsOrOptions ?? maybeOptions);
-    const removedProviderIds = [
+    const removeProviders = [
       ...(Array.isArray(removedProviderIdsOrOptions) ? removedProviderIdsOrOptions : []),
       ...(options.removeProviders ?? []),
     ];
-    this.baseProviderOverrides = omitProviderOverrides(
-      this.baseProviderOverrides,
-      removedProviderIds,
-    );
-    this.providerOverrides = applyMutableProviderConfigToOverrides(
-      this.baseProviderOverrides,
-      mutableProviders,
-    );
-    this.providerRegistry = this.buildRegistry();
-    this.providerClients = { ...this.extraClients } as Record<AgentProvider, AgentClient>;
-
-    // A provider that was just registered has no entry in any existing
-    // snapshot, and reconcile can only seed it as "unavailable". Left there it
-    // reads as a failed provider - the model picker hides those - so a freshly
-    // added provider would show its models in Settings (which refreshes the
-    // global snapshot explicitly) yet be missing from every workspace's picker
-    // until something else forced a re-probe. Probe them instead.
-    const addedProviders = this.getUnprobedProviderIds();
-    for (const cwd of this.snapshots.keys()) {
-      this.providerLoads.delete(cwd);
-      this.snapshots.set(cwd, this.reconcileSnapshotForRegistry(cwd));
-      this.emitChange(cwd);
+    const staged = this.stageMutableProviderConfig(mutableProviders, {
+      ...options,
+      removeProviders,
+    });
+    try {
+      staged.publish();
+      return staged.agentManagerState;
+    } catch (error) {
+      staged.rollback();
+      throw error;
     }
-    for (const provider of addedProviders) {
-      void this.refreshProviderEverywhere(provider).catch((error: unknown) => {
-        this.logger.warn({ err: error, provider }, "Failed to probe newly registered provider");
-      });
-    }
+  }
 
-    return this.getAgentManagerProviderState();
+  /**
+   * Rebuild the registry against a new mutable provider config without
+   * publishing it. The caller gets the resulting state plus a `publish` that
+   * emits it and a `rollback` that puts the manager back, so a config apply
+   * that fails downstream leaves no half-applied registry behind.
+   */
+  stageMutableProviderConfig(
+    mutableProviders: MutableDaemonConfig["providers"] | undefined,
+    options: ApplyMutableProviderConfigOptions = {},
+  ): StagedMutableProviderConfig {
+    const previous = this.captureMutableProviderState();
+    const snapshotCwds = Array.from(this.snapshots.keys());
+    try {
+      if (options.replace) {
+        this.baseProviderOverrides = undefined;
+        this.runtimeSettings = undefined;
+      } else {
+        this.baseProviderOverrides = omitProviderOverrides(
+          this.baseProviderOverrides,
+          options.removeProviders ?? [],
+        );
+      }
+      this.providerOverrides = applyMutableProviderConfigToOverrides(
+        this.baseProviderOverrides,
+        mutableProviders,
+      );
+      // The mutable config is the complete provider source after startup. Keeping
+      // startup-derived runtime settings here would retain removed command/env fields.
+      if (options.replace) this.runtimeSettings = undefined;
+      this.providerRegistry = this.buildRegistry();
+      this.providerClients = { ...this.extraClients } as Record<AgentProvider, AgentClient>;
+
+      // A provider that was just registered has no entry in any existing
+      // snapshot, and reconcile can only seed it as "unavailable". Left there it
+      // reads as a failed provider - the model picker hides those - so a freshly
+      // added provider would show its models in Settings (which refreshes the
+      // global snapshot explicitly) yet be missing from every workspace's picker
+      // until something else forced a re-probe. Probe them on publish instead.
+      const addedProviders = this.getUnprobedProviderIds();
+
+      for (const cwd of this.snapshots.keys()) {
+        this.providerLoads.delete(cwd);
+        this.snapshots.set(cwd, this.reconcileSnapshotForRegistry(cwd));
+      }
+
+      return {
+        agentManagerState: this.getAgentManagerProviderState(),
+        publish: () => {
+          for (const cwd of snapshotCwds) {
+            this.emitChange(cwd);
+            const target =
+              cwd === GLOBAL_PROVIDER_SNAPSHOT_KEY
+                ? createGlobalSnapshotTarget()
+                : createWorkspaceSnapshotTarget(cwd);
+            const providers = this.resolveProvidersToWarm(cwd);
+            if (providers.length > 0) void this.warmUp(target, providers);
+          }
+          for (const provider of addedProviders) {
+            void this.refreshProviderEverywhere(provider).catch((error: unknown) => {
+              this.logger.warn(
+                { err: error, provider },
+                "Failed to probe newly registered provider",
+              );
+            });
+          }
+        },
+        rollback: () => this.restoreMutableProviderState(previous),
+      };
+    } catch (error) {
+      this.restoreMutableProviderState(previous);
+      throw error;
+    }
+  }
+
+  private captureMutableProviderState(): MutableProviderState {
+    return {
+      baseProviderOverrides: this.baseProviderOverrides,
+      runtimeSettings: this.runtimeSettings,
+      providerOverrides: this.providerOverrides,
+      providerRegistry: this.providerRegistry,
+      providerClients: this.providerClients,
+      // Preserve the inner map identities: in-flight refreshes close over them.
+      // Staging replaces active maps instead of mutating these originals.
+      snapshots: new Map(this.snapshots),
+      providerLoads: new Map(this.providerLoads),
+    };
+  }
+
+  private restoreMutableProviderState(previous: MutableProviderState): void {
+    this.baseProviderOverrides = previous.baseProviderOverrides;
+    this.runtimeSettings = previous.runtimeSettings;
+    this.providerOverrides = previous.providerOverrides;
+    this.providerRegistry = previous.providerRegistry;
+    this.providerClients = previous.providerClients;
+    this.snapshots.clear();
+    for (const [cwd, entries] of previous.snapshots) this.snapshots.set(cwd, entries);
+    this.providerLoads.clear();
+    for (const [cwd, loads] of previous.providerLoads) this.providerLoads.set(cwd, loads);
+  }
+
+  setRefreshTimeoutMs(refreshTimeoutMs: number | undefined): void {
+    this.refreshTimeoutMs = resolveRefreshTimeoutMs(refreshTimeoutMs);
+    this.diagnosticTimeoutMs = resolveDiagnosticTimeoutMs(undefined, this.refreshTimeoutMs);
   }
 
   /**
@@ -763,11 +863,8 @@ export class ProviderSnapshotManager {
     // Materialize a client per enabled provider so provider-owned resources
     // (background processes, sockets, etc.) get a chance to release even when
     // a given provider hasn't been touched yet during this daemon's lifetime.
-    const state = this.getAgentManagerProviderState();
-    const clients = Object.values(state.clients).filter(
-      (client): client is AgentClient => client !== undefined,
-    );
-    await shutdownAgentClients(clients, this.logger);
+    this.getAgentManagerProviderState();
+    await shutdownAgentClients(this.ownedClients, this.logger);
   }
 
   destroy(): void {
@@ -941,28 +1038,22 @@ export class ProviderSnapshotManager {
         defaultModeId: definition?.defaultModeId ?? null,
       };
 
-      // A provider with no entry yet is one this registry rebuild just added;
-      // seeding it "unavailable" is what getUnprobedProviderIds keys off to
-      // probe it. An in-flight probe is a different case and must not be
-      // demoted: "unavailable" is only re-probed once its retry window lapses,
-      // so rewriting `loading` here froze whichever provider happened to be
-      // mid-probe when a daemon-config change landed. Codex was almost always
-      // that provider, because its catalog fetch spawns a whole app-server.
-      // Leaving it "loading" is self-healing - resolveProvidersToWarm picks
-      // loading entries up on the next read, and applyMutableProviderConfig
-      // has already dropped the orphaned load.
-      if (!definition?.enabled || !current) {
+      if (!definition?.enabled) {
         entries.set(provider, {
           ...metadata,
           status: "unavailable",
-          enabled: definition?.enabled ?? true,
+          enabled: false,
         });
         continue;
       }
 
       entries.set(provider, {
-        ...current,
         ...metadata,
+        status: "loading",
+        enabled: true,
+        models: current?.models,
+        modes: current?.modes,
+        fetchedAt: current?.fetchedAt,
       });
     }
 

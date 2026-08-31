@@ -25,6 +25,7 @@ import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-op
 import { resolveWorkspaceFilePaths, type WorkspaceFileLocation } from "@/workspace/file-open";
 import { planWorkspaceOpenTargets } from "@/workspace/open-target-planner";
 import type { Theme } from "@/styles/theme";
+import { HEADER_CONTROL_HEIGHT, buttonControlHeight } from "@/components/ui/control-geometry";
 
 interface WorkspaceOpenInEditorButtonProps {
   serverId: string;
@@ -299,16 +300,19 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   splitButtonPrimary: {
-    paddingLeft: theme.spacing[3],
-    paddingRight: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
+    paddingHorizontal: {
+      xs: theme.spacing[3],
+      md: theme.spacing[2],
+    },
     justifyContent: "center",
     position: "relative",
   },
   splitButtonPrimaryIconOnly: {
-    paddingLeft: theme.spacing[2],
-    paddingRight: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
+    width: {
+      xs: buttonControlHeight.xs,
+      md: HEADER_CONTROL_HEIGHT,
+    },
+    paddingHorizontal: 0,
     justifyContent: "center",
     position: "relative",
   },
@@ -319,8 +323,8 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.6,
   },
   splitButtonText: {
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.5,
+    fontSize: theme.fontSize.base,
+    lineHeight: theme.fontSize.base * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
@@ -343,7 +347,10 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: theme.fontSize.sm * 1.5,
   },
   splitButtonCaret: {
-    width: 28,
+    width: {
+      xs: buttonControlHeight.xs,
+      md: HEADER_CONTROL_HEIGHT,
+    },
     alignItems: "center",
     justifyContent: "center",
   },

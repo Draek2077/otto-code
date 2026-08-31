@@ -4,59 +4,15 @@ import { StyleSheet } from "react-native-unistyles";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import { DiffViewer } from "@/components/diff-viewer";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { LegacyDiffFileBody } from "@/git/diff-pane";
-import type { ParsedDiffFile } from "@/git/use-diff-query";
-import { useAppSettings } from "@/hooks/use-settings";
 import { settingsStyles } from "@/styles/settings";
-import { buildLineDiff, type DiffLine } from "@/utils/tool-call-parsers";
+import { buildLineDiff } from "@/utils/tool-call-parsers";
 import { selectDiffRenderer } from "@/utils/diff-renderer-selection";
 import {
   getStructuralDiffDemoScenario,
   STRUCTURAL_DIFF_DEMO_SCENARIOS,
-  type StructuralDiffDemoScenario,
 } from "@/utils/structural-diff-demo-scenarios";
 
 type PreviewRenderer = "old" | "new";
-function buildLegacyPreviewFile(
-  scenario: StructuralDiffDemoScenario,
-  diffLines: readonly DiffLine[],
-): ParsedDiffFile {
-  const contentLines = diffLines.filter((line) => line.type !== "header");
-  const oldCount = contentLines.filter((line) => line.type !== "add").length;
-  const newCount = contentLines.filter((line) => line.type !== "remove").length;
-  const additions = contentLines.filter((line) => line.type === "add").length;
-  const deletions = contentLines.filter((line) => line.type === "remove").length;
-  const oldStart =
-    contentLines.find((line) => line.oldLineNumber !== undefined)?.oldLineNumber ?? 1;
-  const newStart =
-    contentLines.find((line) => line.newLineNumber !== undefined)?.newLineNumber ?? 1;
-  const hunkHeader = `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`;
-
-  return {
-    path: scenario.filePath,
-    isNew: false,
-    isDeleted: false,
-    additions,
-    deletions,
-    hunks: [
-      {
-        oldStart,
-        oldCount,
-        newStart,
-        newCount,
-        lines: [
-          { type: "header", content: hunkHeader },
-          ...contentLines.map((line) =>
-            line.tokens
-              ? { type: line.type, content: line.content, tokens: line.tokens }
-              : { type: line.type, content: line.content },
-          ),
-        ],
-      },
-    ],
-  };
-}
-
 export function DiffPresentationPreview({
   showFormattingChanges,
 }: {
@@ -64,30 +20,17 @@ export function DiffPresentationPreview({
 }) {
   const [renderer, setRenderer] = useState<PreviewRenderer>("new");
   const [scenario, setScenario] = useState("small-edit");
-  const { settings } = useAppSettings();
+
   const selectedScenario = getStructuralDiffDemoScenario(scenario);
   const diffLines = useMemo(
     () => buildLineDiff(selectedScenario.before, selectedScenario.after),
     [selectedScenario],
-  );
-  const legacyFile = useMemo(
-    () => buildLegacyPreviewFile(selectedScenario, diffLines),
-    [diffLines, selectedScenario],
   );
   const selectedRenderer = selectDiffRenderer({
     isNewDiffEnabled: renderer === "new",
     isNewDiffCapable: true,
   });
   const useNewDiff = selectedRenderer === "new";
-  const legacyLineHeight = Math.round(settings.codeFontSize * 1.5);
-  const legacyTextMetrics = useMemo(() => {
-    const monoFontFamily = settings.monoFontFamily.trim();
-    return {
-      fontSize: settings.codeFontSize,
-      lineHeight: legacyLineHeight,
-      ...(monoFontFamily ? { fontFamily: monoFontFamily } : null),
-    };
-  }, [legacyLineHeight, settings.codeFontSize, settings.monoFontFamily]);
   const scenarioOptions = useMemo(
     () => STRUCTURAL_DIFF_DEMO_SCENARIOS.map(({ id, label }) => ({ value: id, label })),
     [],
@@ -133,30 +76,18 @@ export function DiffPresentationPreview({
         <Text style={styles.sampleDescription}>{selectedScenario.description}</Text>
       </View>
       <AppearanceStyleBoundary>
-        {useNewDiff ? (
-          <DiffViewer
-            diffLines={diffLines}
-            filePath={selectedScenario.filePath}
-            source="before-after"
-            beforeSource={selectedScenario.before}
-            afterSource={selectedScenario.after}
-            // The preview compares the old review body with the new Structural
-            // renderer. It intentionally does not inherit the user's default,
-            // which only governs live review surfaces.
-            presentation="structural"
-            wrap
-          />
-        ) : (
-          <LegacyDiffFileBody
-            file={legacyFile}
-            layout="unified"
-            presentation="line"
-            wrapLines
-            codeFontSize={settings.codeFontSize}
-            textMetricsStyle={legacyTextMetrics}
-            testID="legacy-diff-preview"
-          />
-        )}
+        {/* One renderer, two presentations. The preview pins the presentation
+            rather than inheriting the user's default, which governs live review
+            surfaces only - the point here is to show both so they can choose. */}
+        <DiffViewer
+          diffLines={diffLines}
+          filePath={selectedScenario.filePath}
+          source="before-after"
+          beforeSource={selectedScenario.before}
+          afterSource={selectedScenario.after}
+          presentation={useNewDiff ? "structural" : "line"}
+          wrap
+        />
       </AppearanceStyleBoundary>
       {useNewDiff && !showFormattingChanges && scenario === "formatting" ? (
         <Text style={styles.formattingHidden}>Formatting-only changes are hidden.</Text>

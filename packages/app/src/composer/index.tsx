@@ -58,7 +58,12 @@ import { useWidgetPromptStore } from "@/widgets/prompt-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
-import { MessageInput, type MessageInputRef, type AttachmentMenuItem } from "./input/input";
+import {
+  type AttachmentMenuItem,
+  type ComposerKeyPressEvent,
+  MessageInput,
+  type MessageInputRef,
+} from "./input/input";
 import type { ImageAttachment, MessagePayload } from "./types";
 import { compactUp, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
@@ -110,8 +115,8 @@ import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
 import type { ForgeSearchItem } from "@otto-code/protocol/messages";
-import type { WorkspaceFileComposerAttachment } from "@/attachments/types";
 import type {
+  WorkspaceFileComposerAttachment,
   AttachmentMetadata,
   ComposerAttachment,
   UserComposerAttachment,
@@ -141,6 +146,7 @@ import { ComposerFrame } from "@/composer/composer-frame";
 import { focusMessageInputWithPlatformStrategy } from "@/composer/message-input-keyboard";
 import type { IconSizeProp } from "@/components/icons/icon-size";
 import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
+import { PluginResourceAttachmentPill } from "@/plugins";
 
 const composerImageAttachmentPersister: Pick<
   AttachmentPersister,
@@ -342,8 +348,8 @@ interface RenderAttachmentTrayArgs {
     openImage: string;
     removeImage: string;
     removeFile: string;
-    openGithub: (kind: string, number: number) => string;
-    removeGithub: (kind: string, number: number) => string;
+    openGithub: (kind: string, identifier: string | number) => string;
+    removeGithub: (kind: string, identifier: string | number) => string;
   };
 }
 
@@ -502,6 +508,20 @@ function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): R
       onOpen,
       onRemove,
     });
+  }
+  if (attachment.kind === "plugin_resource") {
+    return (
+      <PluginResourceAttachmentPill
+        key={`${attachment.pluginId}:${attachment.sourceId}:${attachment.item.id}`}
+        attachment={attachment}
+        index={index}
+        disabled={disabled}
+        onOpen={onOpen}
+        onRemove={onRemove}
+        openLabel={labels.openGithub}
+        removeLabel={labels.removeGithub}
+      />
+    );
   }
   return (
     <GithubAttachmentPill
@@ -964,6 +984,9 @@ interface ComposerProps {
   blurOnSubmit?: boolean;
   value: string;
   onChangeText: (text: string) => void;
+  /** Changes when the draft's text is replaced programmatically, so the input
+   *  remounts instead of fighting the caret. See AgentInputDraft.replaceText. */
+  textReplacementKey: string;
   attachments: UserComposerAttachment[];
   attachmentScopeKeys?: readonly string[];
   /** Scope key new workspace attachments (e.g. a folder added from the attach menu) are written to. Defaults to the first entry of `attachmentScopeKeys`. */
@@ -1219,6 +1242,7 @@ export function Composer({
   viewportHeight,
   inputMode = "chat",
   readOnly = false,
+  textReplacementKey,
   submitLabel,
   placeholder,
 }: ComposerProps) {
@@ -2194,7 +2218,7 @@ export function Composer({
   // Compose the composer key handler: autocomplete popover first (it consumes
   // navigation keys while open), then ghost-text accept, then history recall.
   const handleCommandKeyPress = useCallback(
-    (event: { key: string; preventDefault: () => void }) => {
+    (event: ComposerKeyPressEvent) => {
       if (autocompleteOnKeyPressRef.current(event)) return true;
       if (event.key === "Tab" && acceptPromptSuggestion()) {
         event.preventDefault();
@@ -2529,10 +2553,10 @@ export function Composer({
           openImage: t("composer.attachments.openImage"),
           removeImage: t("composer.attachments.removeImage"),
           removeFile: t("composer.attachments.removeFile"),
-          openGithub: (kind: string, number: number) =>
-            t("composer.attachments.openGithub", { kind, number }),
-          removeGithub: (kind: string, number: number) =>
-            t("composer.attachments.removeGithub", { kind, number }),
+          openGithub: (kind: string, identifier: string | number) =>
+            t("composer.attachments.openGithub", { kind, number: identifier }),
+          removeGithub: (kind: string, identifier: string | number) =>
+            t("composer.attachments.removeGithub", { kind, number: identifier }),
         },
       }),
     [handleOpenAttachment, handleRemoveAttachment, isComposerLocked, selectedAttachments, t],
@@ -2684,6 +2708,7 @@ export function Composer({
               attachmentSlot={attachmentTray}
               inputMode={inputMode}
               readOnly={readOnly}
+              textReplacementKey={textReplacementKey}
               submitLabel={submitLabel}
             />
             <Combobox

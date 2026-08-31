@@ -32,7 +32,6 @@ import {
   WorkspaceTabRowExtras,
   type WorkspaceDesktopTabRowItem,
 } from "@/screens/workspace/workspace-desktop-tabs-row";
-import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import {
   computeWorkspaceTabRailWidth,
@@ -46,6 +45,7 @@ import type { WorkspaceTabMenuLabels } from "@/screens/workspace/workspace-tab-m
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useResizeHandleHighlight } from "@/components/use-resize-handle-highlight";
+import type { TerminalProfile } from "@otto-code/protocol/messages";
 
 interface WorkspaceDesktopTabsRailProps {
   paneId?: string;
@@ -70,7 +70,7 @@ interface WorkspaceDesktopTabsRailProps {
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
-  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfileInput }) => void;
+  onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfile }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
   showCreateBrowserTab?: boolean;
   disableCreateTerminal?: boolean;
@@ -301,7 +301,7 @@ export function WorkspaceDesktopTabsRail({
   }, [onCreateTerminalTab, paneId]);
 
   const handleCreateTerminalWithProfile = useCallback(
-    (profile: TerminalProfileInput) => {
+    (profile: TerminalProfile) => {
       onCreateTerminalTab({ paneId, profile });
     },
     [onCreateTerminalTab, paneId],

@@ -1,6 +1,7 @@
-import { Fragment, useMemo, type ReactElement, type ReactNode } from "react";
+import { Fragment, type ReactElement, type ReactNode, useMemo } from "react";
 import { withUnistyles } from "react-native-unistyles";
 import {
+  ArrowRightToLine,
   Copy,
   CopyPlus,
   Download,
@@ -22,24 +23,39 @@ import {
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
 import type { IconComponent } from "@/components/icons/icon-size";
+import { Undo2 } from "@/components/icons/material-icons";
 
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+type FileActionGroup = "create" | "open" | "reference" | "manage" | "destructive";
+
 interface FileAction {
   key: string;
+  group: FileActionGroup;
   label: string;
   icon: IconComponent;
   onSelect: () => void;
   destructive?: boolean;
-  section?: "open" | "create" | "edit" | "path" | "sharing" | "destructive";
   separatorBefore?: boolean;
   testID?: string;
+}
+
+function optionalFileAction(
+  available: boolean,
+  onSelect: (() => void) | undefined,
+  action: Omit<FileAction, "onSelect">,
+): FileAction | null {
+  return available && onSelect ? { ...action, onSelect } : null;
 }
 
 interface FileActionsContextMenuContentProps {
   fileKind: "file" | "directory";
   fileExists?: boolean;
   onOpenFile?: () => void;
+  onOpenToSide?: () => void;
+  /** Rendered above the actions, separated: the explorer shows file size and
+   *  modified time here. */
+  header?: ReactNode;
   /** Opens the file's tab in editor view - the same action the Changes menu offers. */
   onEditFile?: () => void;
   onCopyPath?: () => void;
@@ -53,9 +69,10 @@ interface FileActionsContextMenuContentProps {
   onCollapseFolder?: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
+  /** Discard this file's working-tree changes. Destructive, so it sits with
+   *  delete rather than with the edit actions. */
+  onRevert?: () => void;
   onDelete?: () => void;
-  /** Optional metadata block rendered above the actions (e.g. size/modified). */
-  header?: ReactNode;
   testIDPrefix?: string;
 }
 
@@ -67,6 +84,8 @@ export function FileActionsContextMenuContent({
   fileKind,
   fileExists = true,
   onOpenFile,
+  onOpenToSide,
+  header,
   onEditFile,
   onCopyPath,
   onCopyRelativePath,
@@ -79,8 +98,8 @@ export function FileActionsContextMenuContent({
   onCollapseFolder,
   onRename,
   onDuplicate,
+  onRevert,
   onDelete,
-  header,
   testIDPrefix,
 }: FileActionsContextMenuContentProps): ReactElement | null {
   const { t } = useTranslation();
@@ -93,34 +112,40 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.openFile"),
             icon: FileText,
             onSelect: onOpenFile,
-            section: "open",
+            group: "open",
           }
         : null,
+      optionalFileAction(availableFile, onOpenToSide, {
+        key: "open-to-side",
+        group: "open",
+        label: t("workspace.fileActions.openToSide"),
+        icon: ArrowRightToLine,
+      }),
       onNewFile
         ? {
             key: "new-file",
+            group: "create",
             label: t("workspace.fileActions.newFile"),
             icon: FilePlus,
             onSelect: onNewFile,
-            section: "create",
           }
         : null,
       onNewFolder
         ? {
             key: "new-folder",
+            group: "create",
             label: t("workspace.fileActions.newFolder"),
             icon: FolderPlus,
             onSelect: onNewFolder,
-            section: "create",
           }
         : null,
       onCollapseFolder
         ? {
             key: "collapse-folder",
+            group: "open",
             label: t("workspace.fileActions.collapseFolder"),
             icon: ListChevronsDownUp,
             onSelect: onCollapseFolder,
-            section: "create",
           }
         : null,
       availableFile && onEditFile
@@ -129,7 +154,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.editFile"),
             icon: SquarePen,
             onSelect: onEditFile,
-            section: "edit",
+            group: "manage",
           }
         : null,
       onRename
@@ -138,7 +163,7 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.rename"),
             icon: Pencil,
             onSelect: onRename,
-            section: "edit",
+            group: "manage",
           }
         : null,
       onDuplicate
@@ -147,71 +172,70 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.duplicate"),
             icon: CopyPlus,
             onSelect: onDuplicate,
-            section: "edit",
+            group: "manage",
           }
         : null,
       onCopyPath
         ? {
             key: "copy-path",
+            group: "reference",
             label: t("workspace.fileActions.copyPath"),
             icon: Copy,
             onSelect: onCopyPath,
-            section: "path",
           }
         : null,
       onCopyRelativePath
         ? {
             key: "copy-relative-path",
+            group: "reference",
             label: t("workspace.fileActions.copyRelativePath"),
             icon: Copy,
             onSelect: onCopyRelativePath,
-            section: "path",
           }
         : null,
-      onReveal && revealTargetName
+      optionalFileAction(Boolean(revealTargetName), onReveal, {
+        key: "reveal",
+        group: "reference",
+        label: t("workspace.fileActions.revealIn", { target: revealTargetName }),
+        icon: FolderOpen,
+      }),
+      optionalFileAction(availableFile, onDownload, {
+        key: "download",
+        group: "reference",
+        label: t("workspace.fileActions.download"),
+        icon: Download,
+      }),
+      optionalFileAction(availableFile, onAddToChat, {
+        key: "add-to-chat",
+        group: "reference",
+        label: t("workspace.fileActions.addToChat"),
+        icon: MessageSquarePlus,
+      }),
+      onRevert
         ? {
-            key: "reveal",
-            label: t("workspace.fileActions.revealIn", { target: revealTargetName }),
-            icon: FolderOpen,
-            onSelect: onReveal,
-            section: "path",
-          }
-        : null,
-      availableFile && onDownload
-        ? {
-            key: "download",
-            label: t("workspace.fileActions.download"),
-            icon: Download,
-            onSelect: onDownload,
-            section: "sharing",
-          }
-        : null,
-      availableFile && onAddToChat
-        ? {
-            key: "add-to-chat",
-            label: t("workspace.fileActions.addToChat"),
-            icon: MessageSquarePlus,
-            onSelect: onAddToChat,
-            section: "sharing",
+            key: "revert",
+            group: "destructive",
+            label: t("workspace.fileActions.revert"),
+            icon: Undo2,
+            onSelect: onRevert,
+            destructive: true,
           }
         : null,
       onDelete
         ? {
             key: "delete",
+            group: "destructive",
             label: t("workspace.fileActions.delete"),
             icon: Trash2,
             onSelect: onDelete,
             destructive: true,
-            section: "destructive",
           }
         : null,
     ];
     const availableActions = specs.filter((action): action is FileAction => action !== null);
     return availableActions.map((action, index) =>
       Object.assign(action, {
-        separatorBefore: Boolean(
-          index > 0 && action.section !== availableActions[index - 1].section,
-        ),
+        separatorBefore: Boolean(index > 0 && action.group !== availableActions[index - 1].group),
         testID: testIDPrefix ? `${testIDPrefix}-${action.key}` : undefined,
       }),
     );
@@ -222,6 +246,7 @@ export function FileActionsContextMenuContent({
     onCollapseFolder,
     onCopyPath,
     onCopyRelativePath,
+    onRevert,
     onDelete,
     onDownload,
     onDuplicate,
@@ -229,6 +254,7 @@ export function FileActionsContextMenuContent({
     onNewFile,
     onNewFolder,
     onOpenFile,
+    onOpenToSide,
     onRename,
     onReveal,
     revealTargetName,

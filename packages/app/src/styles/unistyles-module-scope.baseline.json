@@ -19,7 +19,6 @@
   "desktop/components/desktop-updates-section.tsx",
   "desktop/components/desktop-window-behavior-section.tsx",
   "desktop/components/integrations-section.tsx",
-  "git/diff-pane.tsx",
   "git/file-history/revision-diff-body.tsx",
   "screens/settings-screen.tsx",
   "screens/settings/agent-personalities-section.tsx",

@@ -131,6 +131,8 @@ extraResources:
     to: tray-icon-mac-attention.png
   - from: assets/tray-icon-mac-attention@2x.png
     to: tray-icon-mac-attention@2x.png
+  - from: assets/editor-targets
+    to: editor-target-icons
 publish:
   provider: github
   owner: Draek2077

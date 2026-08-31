@@ -484,7 +484,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorsBannerText: {
     color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   filterEmpty: {
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
@@ -497,7 +497,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   message: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.base,
     textAlign: "center",
   },
   // Static color holder read by the spinner; keeps the muted token without

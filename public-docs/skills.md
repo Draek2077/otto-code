@@ -14,10 +14,10 @@ Otto ships orchestration skills that teach coding agents (Claude Code, Codex) ho
 
 Two ways to install:
 
-- **Desktop app:** Settings → Integrations → Install
+- **Otto app:** Connect to the host, then open Settings → Host → Agents → Orchestration skills. The selected host installs the skills on its own machine.
 - **Manual:** `npx skills add Draek2077/otto-code`, this installs to `~/.agents/skills/` and sets up symlinks for each agent.
 
-When the desktop app finds installed Otto skills, it keeps the bundled skills up to date on startup. If automatic update fails, use Settings → Integrations → Update or the manual command above.
+When a daemon finds installed Otto skills, it keeps the selected bundled skills up to date on startup without removing deselected directories. Use the host's Orchestration skills card to install, update, choose, or uninstall skills. Removal always asks for confirmation.
 
 ## Project knowledge skills
 
@@ -40,6 +40,7 @@ relevant. Proposals remain review-only until a user confirms them in Manage know
 ## `/otto`, Otto Reference
 
 The foundational skill. Otto reference for managing agents and worktrees. Load it when an agent needs to create agents, send them prompts, or manage worktrees.
+The foundational skill. Otto reference for managing projects, workspaces, and agents. Load it when an agent needs to register a project, create agents, send them prompts, or manage workspace isolation.
 
 Not typically invoked directly by users, it's a reference that other skills depend on.
 

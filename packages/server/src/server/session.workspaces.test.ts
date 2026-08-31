@@ -780,6 +780,55 @@ function createSessionForWorkspaceTests(
   return session;
 }
 
+test("project.list.request catches up by sequence on the existing RPC", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  let project = createPersistedProjectRecord({
+    projectId: "project-sequenced",
+    rootPath: "/repo/sequenced",
+    kind: "git",
+    displayName: "Before",
+    createdAt: "2026-08-12T08:00:00.000Z",
+    updatedAt: "2026-08-12T08:00:00.000Z",
+  });
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+    projectRegistry: {
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => [project],
+      get: async () => project,
+      getOrCreateActiveByRoot: async () => project,
+      upsert: async () => {},
+      archive: async () => {},
+      remove: async () => {},
+    },
+  });
+
+  await session.handleMessage({
+    type: "project.list.request",
+    requestId: "initial",
+    sync: {},
+  });
+  const initial = findByType(emitted, "project.list.response")?.payload;
+  expect(initial?.sync).toMatchObject({ mode: "snapshot", headSeq: 1 });
+
+  project = { ...project, displayName: "After", updatedAt: "2026-08-12T08:01:00.000Z" };
+  await session.handleMessage({
+    type: "project.list.request",
+    requestId: "catch-up",
+    sync: {
+      generation: initial?.sync?.generation,
+      afterSeq: initial?.sync?.headSeq,
+    },
+  });
+  const responses = filterByType(emitted, "project.list.response");
+  expect(responses.at(-1)?.payload).toMatchObject({
+    requestId: "catch-up",
+    projects: [{ projectId: "project-sequenced", projectDisplayName: "After", syncSeq: 2 }],
+    sync: { mode: "changes", headSeq: 2, removals: [] },
+  });
+});
+
 test("agent updates preserve queued live transitions across stored metadata reads", async () => {
   const running = makeManagedAgent({
     id: "agent-coherent",
@@ -6948,15 +6997,17 @@ const ICON_PNG_1X1 = Buffer.from([
 
 test("project.icon.set.request publishes a custom icon that project.icon.get serves back", async () => {
   const emitted: SessionOutboundMessage[] = [];
+  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-project-icon-test-")));
   const session = asTestSession(
-    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+    createSessionForWorkspaceTests({
+      ottoHome: path.join(tempDir, "otto-home"),
+      onMessage: (message) => emitted.push(message),
+    }),
   );
   session.updateClientCapabilities({ [CLIENT_CAPS.projectUpdates]: true });
 
-  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-project-icon-test-")));
   const projectRoot = path.join(tempDir, "project-without-icons");
   mkdirSync(projectRoot, { recursive: true });
-  session.ottoHome = path.join(tempDir, "otto-home");
 
   const project = createPersistedProjectRecord({
     projectId: "prj_icon",
@@ -7200,6 +7251,9 @@ test("project.rename.request announces a project with no active workspaces on th
       projectDisplayName: "Ouroboroz",
       projectCustomName: "Ouroboroz",
       projectCustomIconRevision: null,
+      // Distinct from the custom revision above: this is the icon the project
+      // actually resolves to, which is the automatic one until a user picks.
+      projectIconRevision: "automatic:none:v1",
       // A project that has never chosen a Kanban board reports null, which is
       // what the Kanban screen reads as "not configured".
       projectKanban: null,

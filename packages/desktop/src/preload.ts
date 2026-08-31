@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { BrowserKeyboardPolicy } from "./features/browser-keyboard/index.js";
+import type { DesktopWindowChromeMode } from "./window/chrome.js";
 
 // This preload runs in Electron's sandbox and is tsc-compiled (not bundled), so it MUST
 // NOT emit any runtime module load other than "electron" - a require() of a local or
@@ -11,6 +12,17 @@ const OTTO_BROWSER_PROFILE_PARTITION = "persist:otto-browser";
 
 type EventHandler = (payload: unknown) => void;
 
+function readWindowChromeMode(): DesktopWindowChromeMode {
+  const prefix = "--otto-window-chrome-mode=";
+  const value = process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
+  if (value === "native-mac" || value === "custom-windows" || value === "custom-linux") {
+    return value;
+  }
+  // COMPAT(windowChromeMode): added in v0.5.3; remove after 2026-11-25.
+  if (process.platform === "darwin") return "native-mac";
+  return process.platform === "linux" ? "custom-linux" : "custom-windows";
+}
+
 interface AttachedBrowserRegistration {
   browserId: string;
   workspaceId: string;
@@ -20,6 +32,7 @@ interface AttachedBrowserRegistration {
 contextBridge.exposeInMainWorld("ottoDesktop", {
   platform: process.platform,
   arch: process.arch,
+  windowChromeMode: readWindowChromeMode(),
   invoke: (command: string, args?: Record<string, unknown>) =>
     ipcRenderer.invoke("otto:invoke", command, args),
   getPendingOpenProject: () =>
@@ -52,16 +65,15 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
       ipcRenderer.invoke("otto:window:openNew", options),
     signalReady: () => ipcRenderer.invoke("otto:window:signalReady"),
     getCurrentWindow: () => ({
+      minimize: () => ipcRenderer.invoke("otto:window:minimize"),
+      close: () => ipcRenderer.invoke("otto:window:close"),
       toggleMaximize: () => ipcRenderer.invoke("otto:window:toggleMaximize"),
+      isMaximized: () => ipcRenderer.invoke("otto:window:isMaximized"),
       setFullscreen: (fullscreen: boolean) =>
         ipcRenderer.invoke("otto:window:setFullscreen", fullscreen),
       isFullscreen: () => ipcRenderer.invoke("otto:window:isFullscreen"),
-      updateWindowControls: (update: {
-        height?: number;
-        backgroundColor?: string;
-        foregroundColor?: string;
-        trafficLightOffsetY?: number;
-      }) => ipcRenderer.invoke("otto:window:updateWindowControls", update),
+      updateChrome: (update: { backgroundColor?: string; trafficLightOffsetY?: number }) =>
+        ipcRenderer.invoke("otto:window:updateChrome", update),
       onResized: (handler: EventHandler): (() => void) => {
         const listener = (_ipcEvent: Electron.IpcRendererEvent, payload: unknown) => {
           handler(payload);

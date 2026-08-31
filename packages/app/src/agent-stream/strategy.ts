@@ -1,6 +1,7 @@
 import type { ComponentType, ReactElement, ReactNode, RefObject } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import type { StreamItem } from "@/types/stream";
+import { continuesResponse } from "./turn-membership";
 import type { StreamHistoryBoundary, StreamRenderSegments } from "./model";
 import type {
   BottomAnchorLocalRequest,
@@ -102,7 +103,7 @@ export interface StreamStrategy {
     index: number,
     relation: NeighborRelation,
   ) => StreamItem | undefined;
-  collectAssistantTurnContent: (items: StreamItem[], startIndex: number) => string;
+  collectAssistantResponseContent: (items: StreamItem[], startIndex: number) => string;
   isNearBottom: (input: StreamNearBottomInput) => boolean;
   getBottomOffset: (metrics: StreamViewportMetrics) => number;
   getEdgeSlotProps: (
@@ -167,20 +168,22 @@ export function createStreamStrategy(config: StreamStrategyConfig): StreamStrate
       }
       return items[neighborIndex];
     },
-    collectAssistantTurnContent: (items, startIndex) => {
+    collectAssistantResponseContent: (items, startIndex) => {
       const messages: string[] = [];
+      let laterItem: StreamItem | null = null;
       for (
         let index = startIndex;
         index >= 0 && index < items.length;
         index += config.assistantTurnTraversalStep
       ) {
         const currentItem = items[index];
-        if (currentItem.kind === "user_message") {
+        if (!currentItem || (laterItem && !continuesResponse(currentItem, laterItem))) {
           break;
         }
         if (currentItem.kind === "assistant_message") {
           messages.push(currentItem.text);
         }
+        laterItem = currentItem;
       }
       return messages.toReversed().join("\n\n");
     },
@@ -277,12 +280,12 @@ export function getStreamNeighborItem(params: {
   return params.strategy.getNeighborItem(params.items, params.index, params.relation);
 }
 
-export function collectAssistantTurnContentForStreamRenderStrategy(params: {
+export function collectAssistantResponseContentForStreamRenderStrategy(params: {
   strategy: StreamStrategy;
   items: StreamItem[];
   startIndex: number;
 }): string {
-  return params.strategy.collectAssistantTurnContent(params.items, params.startIndex);
+  return params.strategy.collectAssistantResponseContent(params.items, params.startIndex);
 }
 
 export function isNearBottomForStreamRenderStrategy(
@@ -333,4 +336,12 @@ export function getFrameChildOrderForStreamRenderStrategy(params: {
   strategy: StreamStrategy;
 }): StreamFrameChildOrder {
   return params.strategy.getFrameChildOrder();
+}
+
+export function collectAssistantTurnContentForStreamRenderStrategy(params: {
+  strategy: StreamStrategy;
+  items: StreamItem[];
+  startIndex: number;
+}): string {
+  return params.strategy.collectAssistantResponseContent(params.items, params.startIndex);
 }

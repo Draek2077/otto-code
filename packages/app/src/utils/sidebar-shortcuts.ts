@@ -44,13 +44,13 @@ export function buildSidebarShortcutModel(input: {
 
 export function buildStatusSidebarShortcutModel(input: {
   groups: readonly StatusGroup[];
-  collapsedStatusGroupKeys?: ReadonlySet<string>;
+  collapsedWorkspaceGroupKeys?: ReadonlySet<string>;
   shortcutLimit?: number;
 }): SidebarShortcutModel {
   return buildSidebarShortcutSections({
     sections: input.groups.map((group) => ({
       workspaces: group.rows,
-      collapsed: input.collapsedStatusGroupKeys?.has(group.bucket),
+      collapsed: input.collapsedWorkspaceGroupKeys?.has(group.bucket),
     })),
     shortcutLimit: input.shortcutLimit,
   });

@@ -1,4 +1,5 @@
 import type { TranslationResources } from "./en";
+import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
   common: {
@@ -1545,6 +1546,7 @@ export const ar: TranslationResources = {
     },
     fileActions: {
       openFile: "افتح الملف",
+      openToSide: "فتح إلى الجانب",
       editFile: "تحرير الملف",
       navigateToFile: "انتقل إلى الملف",
       navigateToChanges: "انتقل إلى التغييرات",
@@ -3262,6 +3264,7 @@ export const ar: TranslationResources = {
       terminals: "الطرفيات",
       host: "نظرة عامة",
     },
+    plugins: pluginSettings.ar,
     metadataGeneration: {
       title: "إنشاء البيانات الوصفية",
       description:

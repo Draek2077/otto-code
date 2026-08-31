@@ -7,6 +7,11 @@ import type { CheckoutCommit, CheckoutCommitFile } from "@otto-code/protocol/mes
 import { maxBase64EncryptedPlaintextByteLength } from "@otto-code/relay";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
+import {
+  normalizeHost,
+  parseGitHubRemoteIdentity,
+  parseGitRemoteLocation,
+} from "@otto-code/protocol/git-remote";
 import { parseGitHubRepoFromRemote } from "../server/workspace-git-metadata.js";
 import {
   GitHubCommandError,
@@ -29,6 +34,7 @@ import { isOttoOwnedWorktreeCwd, resolveOttoWorktreesBaseRoot } from "./worktree
 import {
   branchNameFromRef,
   getOttoWorktreeChangeRequestHintForBranch,
+  type OttoWorktreeMetadata,
   normalizeAndValidateBaseRefName,
   readOttoWorktreeMetadata,
   rebindOttoWorktreeChangeRequestHint,
@@ -93,6 +99,9 @@ interface CheckoutReadCacheOptions {
 
 interface PullRequestStatusLookupTarget {
   headRef: string;
+  /** The commit the lookup was made against, so a cached PR status can be told
+   *  apart from one that matches the checkout as it stands. */
+  headSha?: string;
   headRepositoryOwner?: string;
 }
 
@@ -142,8 +151,10 @@ function createShortstatCache(ttlMs: number) {
   });
 }
 
-function getPullRequestStatusCacheKey(cwd: string): string {
-  return resolve(cwd);
+// Keyed by head sha as well as cwd: a new commit is a different question, so
+// the answer to the previous one must not be served for it.
+function getPullRequestStatusCacheKey(cwd: string, headSha: string | null): string {
+  return `${resolve(cwd)}\u0000${headSha ?? ""}`;
 }
 
 function rememberPullRequestStatus(cacheKey: string, status: PullRequestStatusResult): void {
@@ -897,6 +908,7 @@ export type CheckoutSnapshotFacts =
       comparisonBaseRef: string | null;
       branchRemoteName: string | null;
       branchMergeRef: string | null;
+      upstreamStatus: UpstreamStatus | null;
       pullRequestLookupTarget: PullRequestStatusLookupTarget | null;
     };
 
@@ -2062,28 +2074,21 @@ async function inspectCheckoutContext(
   }
 }
 
-// The worktree's own record of which change request it was cut for. It wins over
-// branch config because that config cannot describe a cross-repo MR whose head
-// branch was never pushed to this remote, or a worktree whose local branch had to
-// be uniquified away from the head ref.
-function buildPullRequestLookupTargetFromMetadata(
-  worktreeRoot: string | null,
-  currentBranch: string,
-): PullRequestStatusLookupTarget | null {
-  if (!worktreeRoot) {
-    return null;
-  }
-  const target = getOttoWorktreeChangeRequestHintForBranch(
-    readOttoWorktreeMetadata(worktreeRoot),
-    currentBranch,
-  );
-  if (!target) {
-    return null;
-  }
-  return {
-    headRef: target.headRef,
-    ...(target.headRepositoryOwner ? { headRepositoryOwner: target.headRepositoryOwner } : {}),
-  };
+/**
+ * A host-agnostic, case-insensitive identity for "are these the same repository".
+ *
+ * `parseGitHubRepoFromRemote` answers a narrower question - "is this github.com,
+ * and which repo" - and remains what names a fork's owner. It returns null for a
+ * self-hosted Enterprise host, which would leave two remotes on that host
+ * incomparable rather than equal, and it is case-sensitive, so `Acme/Repo` and
+ * `acme/repo` would read as different repositories.
+ */
+function parseRemoteRepoIdentity(remoteUrl: string): string | null {
+  const location = parseGitRemoteLocation(remoteUrl);
+  if (!location) return null;
+  const identity = parseGitHubRemoteIdentity(location.path);
+  if (!identity) return null;
+  return `${normalizeHost(location.host)}/${identity.repo}`.toLowerCase();
 }
 
 function buildPullRequestLookupTargetFromBranchConfig(
@@ -2094,13 +2099,22 @@ function buildPullRequestLookupTargetFromBranchConfig(
     return { headRef: input.currentBranch };
   }
 
+  // github.com-only and case-sensitive on purpose: this is what names the fork
+  // owner the forge API expects, which the broader identity below is not.
   const remoteRepo = input.branchRemoteUrl
     ? parseGitHubRepoFromRemote(input.branchRemoteUrl)
     : null;
-  const originRepo = input.originRemoteUrl
-    ? parseGitHubRepoFromRemote(input.originRemoteUrl)
+  // Both identities have to parse before "same repo or not" is an answer at all.
+  // With an unparseable origin the comparison is indeterminate, and a tracked
+  // fork branch keeps its owner rather than being second-guessed.
+  const remoteIdentity = input.branchRemoteUrl
+    ? parseRemoteRepoIdentity(input.branchRemoteUrl)
     : null;
-  const isSameRepo = Boolean(remoteRepo && originRepo && remoteRepo === originRepo);
+  const originIdentity = input.originRemoteUrl
+    ? parseRemoteRepoIdentity(input.originRemoteUrl)
+    : null;
+  const comparableRepos = Boolean(remoteIdentity && originIdentity);
+  const isSameRepo = comparableRepos && remoteIdentity === originIdentity;
   const headRepositoryOwner = remoteRepo && !isSameRepo ? remoteRepo.split("/")[0] : null;
   const normalizedBaseRef = input.resolvedBaseRef
     ? normalizeLocalBranchRefName(input.resolvedBaseRef)
@@ -2111,7 +2125,20 @@ function buildPullRequestLookupTargetFromBranchConfig(
       ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
     };
   }
-  if (trackedHeadRef === normalizedBaseRef && isSameRepo) {
+  // A PR worktree checks the contributor's branch out as `<owner>/<headRef>` and
+  // points it at their fork (see `utils/worktree.ts`), so a local branch of that
+  // shape really is tracking a pull request head even when the head is named
+  // like the base branch.
+  const tracksForkPullRequestHead =
+    remoteRepo !== null &&
+    !isSameRepo &&
+    input.currentBranch === `${remoteRepo.split("/")[0]}/${trackedHeadRef}`;
+  // Otherwise, tracking a base branch is not a pull request head whoever owns
+  // the remote: a fork whose branch follows upstream's `main` still opens its PR
+  // from the local branch. Only applies where the comparison was determinate -
+  // an unparseable origin leaves it a guess, and a guess should not override a
+  // tracked head.
+  if (trackedHeadRef === normalizedBaseRef && comparableRepos && !tracksForkPullRequestHead) {
     return { headRef: input.currentBranch };
   }
 
@@ -2158,6 +2185,60 @@ function buildPullRequestLookupTargetFromPushConfig(
   };
 }
 
+// The worktree's own record of which change request it was cut for. It wins over
+// branch config because that config cannot describe a cross-repo MR whose head
+// branch was never pushed to this remote, or a worktree whose local branch had to
+// be uniquified away from the head ref.
+function buildPullRequestLookupTargetFromMetadata(
+  metadata: OttoWorktreeMetadata | null,
+  currentBranch: string,
+): PullRequestStatusLookupTarget | null {
+  const target = getOttoWorktreeChangeRequestHintForBranch(metadata, currentBranch);
+  if (!target) {
+    return null;
+  }
+  return {
+    headRef: target.headRef,
+    ...(target.headRepositoryOwner ? { headRepositoryOwner: target.headRepositoryOwner } : {}),
+  };
+}
+
+function buildInitialPullRequestLookupTarget(input: {
+  currentBranch: string | null;
+  branchRemoteName: string | null;
+  branchMergeRef: string | null;
+  branchRemoteUrl: string | null;
+  originRemoteUrl: string | null;
+  resolvedBaseRef: string | null;
+}): PullRequestStatusLookupTarget | null {
+  if (!input.currentBranch) {
+    return null;
+  }
+
+  const hasConfiguredBranchTarget = Boolean(
+    input.branchRemoteName && parseBranchMergeHeadRef(input.branchMergeRef),
+  );
+  if (hasConfiguredBranchTarget) {
+    return buildPullRequestLookupTargetFromBranchConfig({
+      currentBranch: input.currentBranch,
+      branchRemoteName: input.branchRemoteName,
+      branchMergeRef: input.branchMergeRef,
+      branchRemoteUrl: input.branchRemoteUrl,
+      originRemoteUrl: input.originRemoteUrl,
+      resolvedBaseRef: input.resolvedBaseRef,
+    });
+  }
+
+  return buildPullRequestLookupTargetFromBranchConfig({
+    currentBranch: input.currentBranch,
+    branchRemoteName: input.branchRemoteName,
+    branchMergeRef: input.branchMergeRef,
+    branchRemoteUrl: input.branchRemoteUrl,
+    originRemoteUrl: input.originRemoteUrl,
+    resolvedBaseRef: input.resolvedBaseRef,
+  });
+}
+
 async function resolvePullRequestLookupTargetFromPushConfig(
   cwd: string,
   currentBranch: string,
@@ -2190,6 +2271,119 @@ async function resolvePullRequestLookupTargetFromPushConfig(
   });
 }
 
+async function getCurrentHeadSha(cwd: string, context?: CheckoutContext): Promise<string | null> {
+  const knownSha = context?.facts?.isGit
+    ? context.facts.pullRequestLookupTarget?.headSha
+    : undefined;
+  if (knownSha) {
+    return knownSha;
+  }
+  try {
+    const { stdout } = await runGitCommand(["rev-parse", "HEAD"], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      logger: context?.logger,
+    });
+    const sha = stdout.trim();
+    return sha.length > 0 ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
+async function addHeadShaToPullRequestLookupTarget(
+  cwd: string,
+  target: PullRequestStatusLookupTarget | null,
+  context?: CheckoutContext,
+): Promise<PullRequestStatusLookupTarget | null> {
+  if (!target) {
+    return null;
+  }
+  const headSha = await getCurrentHeadSha(cwd, context);
+  return headSha ? { ...target, headSha } : target;
+}
+
+/** A branch's upstream and how far it has drifted, from a single git read. */
+export interface UpstreamStatus {
+  ref: string;
+  aheadBehind: AheadBehind;
+}
+
+/**
+ * The upstream ref and its ahead/behind counts in one `for-each-ref`. Replaces
+ * three separate reads (`getConfiguredUpstreamRef`, `getAheadOfOrigin`,
+ * `getBehindOfOrigin`), which is worth having on a path the workspace list hits
+ * once per checkout.
+ */
+async function getUpstreamStatus(
+  cwd: string,
+  currentBranch: string,
+  context?: CheckoutContext,
+): Promise<UpstreamStatus | null> {
+  try {
+    const { stdout } = await runGitCommand(
+      [
+        "for-each-ref",
+        "--format=%(upstream)%00%(upstream:track,nobracket)",
+        `refs/heads/${currentBranch}`,
+      ],
+      { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
+    );
+    const [ref = "", track = ""] = stdout.trim().split("\0", 2);
+    if (!ref || track === "gone") {
+      return null;
+    }
+    const ahead = Number.parseInt(track.match(/ahead (\d+)/)?.[1] ?? "0", 10);
+    const behind = Number.parseInt(track.match(/behind (\d+)/)?.[1] ?? "0", 10);
+    return { ref, aheadBehind: { ahead, behind } };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveFactsPullRequestLookupTarget(input: {
+  cwd: string;
+  inspected: CheckoutInspectionContext;
+  metadata: OttoWorktreeMetadata | null;
+  branchRemoteName: string | null;
+  branchMergeRef: string | null;
+  branchRemoteUrl: string | null;
+  resolvedBaseRef: string | null;
+  context?: CheckoutContext;
+}): Promise<PullRequestStatusLookupTarget | null> {
+  const { cwd, inspected, metadata, context } = input;
+  const metadataTarget = inspected.currentBranch
+    ? buildPullRequestLookupTargetFromMetadata(metadata, inspected.currentBranch)
+    : null;
+  if (metadataTarget) {
+    return metadataTarget;
+  }
+
+  let target = buildInitialPullRequestLookupTarget({
+    currentBranch: inspected.currentBranch,
+    branchRemoteName: input.branchRemoteName,
+    branchMergeRef: input.branchMergeRef,
+    branchRemoteUrl: input.branchRemoteUrl,
+    originRemoteUrl: inspected.remoteUrl,
+    resolvedBaseRef: input.resolvedBaseRef,
+  });
+  if (
+    inspected.currentBranch &&
+    target?.headRef === inspected.currentBranch &&
+    !target.headRepositoryOwner
+  ) {
+    target =
+      (await resolvePullRequestLookupTargetFromPushConfig(
+        cwd,
+        inspected.currentBranch,
+        inspected.remoteUrl,
+        input.resolvedBaseRef,
+        context,
+      )) ?? target;
+  }
+  return target;
+}
+
 export async function getCheckoutSnapshotFacts(
   cwd: string,
   context?: CheckoutContext,
@@ -2203,6 +2397,9 @@ export async function getCheckoutSnapshotFacts(
     return { isGit: false };
   }
 
+  const ottoWorktreeMetadata = inspected.ottoWorktree.isOttoOwnedWorktree
+    ? readOttoWorktreeMetadata(inspected.ottoWorktree.worktreeRoot)
+    : null;
   const { storedBaseRef, resolvedBaseRef, baseSource } = await resolveBaseRefLadder(cwd, {
     worktreeRoot: inspected.worktreeRoot,
     currentBranch: inspected.currentBranch,
@@ -2228,6 +2425,9 @@ export async function getCheckoutSnapshotFacts(
   let branchRemoteName: string | null = null;
   let branchMergeRef: string | null = null;
   let branchRemoteUrl: string | null = null;
+  const upstreamStatusPromise = inspected.currentBranch
+    ? getUpstreamStatus(cwd, inspected.currentBranch, context)
+    : Promise.resolve(null);
   if (inspected.currentBranch) {
     branchRemoteName = await getGitConfigValue(
       cwd,
@@ -2241,34 +2441,22 @@ export async function getCheckoutSnapshotFacts(
       ]);
     }
   }
-  let pullRequestLookupTarget = inspected.currentBranch
-    ? (buildPullRequestLookupTargetFromMetadata(
-        inspected.ottoWorktree.isOttoOwnedWorktree ? inspected.ottoWorktree.worktreeRoot : null,
-        inspected.currentBranch,
-      ) ??
-      buildPullRequestLookupTargetFromBranchConfig({
-        currentBranch: inspected.currentBranch,
-        branchRemoteName,
-        branchMergeRef,
-        branchRemoteUrl,
-        originRemoteUrl: inspected.remoteUrl,
-        resolvedBaseRef,
-      }))
-    : null;
-  if (
-    inspected.currentBranch &&
-    pullRequestLookupTarget?.headRef === inspected.currentBranch &&
-    !pullRequestLookupTarget.headRepositoryOwner
-  ) {
-    pullRequestLookupTarget =
-      (await resolvePullRequestLookupTargetFromPushConfig(
-        cwd,
-        inspected.currentBranch,
-        inspected.remoteUrl,
-        resolvedBaseRef,
-        context,
-      )) ?? pullRequestLookupTarget;
-  }
+  let pullRequestLookupTarget = await resolveFactsPullRequestLookupTarget({
+    cwd,
+    inspected,
+    metadata: ottoWorktreeMetadata,
+    branchRemoteName,
+    branchMergeRef,
+    branchRemoteUrl,
+    resolvedBaseRef,
+    context,
+  });
+  pullRequestLookupTarget = await addHeadShaToPullRequestLookupTarget(
+    cwd,
+    pullRequestLookupTarget,
+    context,
+  );
+  const upstreamStatus = await upstreamStatusPromise;
 
   return {
     isGit: true,
@@ -2285,6 +2473,7 @@ export async function getCheckoutSnapshotFacts(
     comparisonBaseRef,
     branchRemoteName,
     branchMergeRef,
+    upstreamStatus,
     pullRequestLookupTarget,
   };
 }
@@ -2299,7 +2488,7 @@ const TOTAL_DIFF_MAX_BYTES = 2 * 1024 * 1024; // 2MB
 const CHECKOUT_DIFF_MAX_CONCURRENT_FILES = 2;
 const RELAY_MAX_FRAME_BYTES = 32 * 1024 * 1024;
 const CHECKOUT_DIFF_FRAME_HEADROOM_BYTES = 1024 * 1024;
-// Temporary until diffs load lazily per file. The Paseo relay's 32 MiB frame limit is
+// Temporary until diffs load lazily per file. The Otto relay's 32 MiB frame limit is
 // binding: string frames are encrypted and base64-encoded. Reserve 1 MiB plaintext for
 // the surrounding WebSocket JSON envelope after inverting that exact wire expansion.
 export const CHECKOUT_DIFF_MAX_STRUCTURED_BYTES =
@@ -2571,6 +2760,49 @@ function invalidateBaseRefDependentCaches(cwd: string): void {
   pullRequestStatusCache.clear();
 }
 
+/**
+ * How far this branch has drifted from its base and from its upstream.
+ *
+ * `for-each-ref` answers the upstream half in a single read, so that is the
+ * path taken whenever the branch has a configured upstream. The per-field reads
+ * are the fallback for the case it cannot answer: a remote exists but the
+ * branch is not tracking anything on it.
+ */
+async function resolveCheckoutDivergence(
+  cwd: string,
+  facts: Extract<CheckoutSnapshotFacts, { isGit: true }>,
+  context: CheckoutContext | undefined,
+): Promise<{
+  aheadBehind: AheadBehind | null;
+  upstreamRef: string | null;
+  aheadOfOrigin: number | null;
+  behindOfOrigin: number | null;
+}> {
+  const { currentBranch, resolvedBaseRef, upstreamStatus } = facts;
+  const needsFallback = !upstreamStatus && facts.remoteUrl !== null && currentBranch !== null;
+  const factsContext = { ...context, facts };
+  const [aheadBehind, fallbackUpstreamRef, fallbackAhead, fallbackBehind] = await Promise.all([
+    resolvedBaseRef && currentBranch
+      ? getAheadBehind(cwd, resolvedBaseRef, currentBranch, factsContext)
+      : Promise.resolve(null),
+    needsFallback && currentBranch
+      ? getConfiguredUpstreamRef(cwd, currentBranch, factsContext)
+      : Promise.resolve(null),
+    needsFallback && currentBranch
+      ? getAheadOfOrigin(cwd, currentBranch, factsContext)
+      : Promise.resolve(null),
+    needsFallback && currentBranch
+      ? getBehindOfOrigin(cwd, currentBranch, factsContext)
+      : Promise.resolve(null),
+  ]);
+  return {
+    aheadBehind,
+    upstreamRef: upstreamStatus?.ref ?? fallbackUpstreamRef,
+    aheadOfOrigin: upstreamStatus?.aheadBehind.ahead ?? fallbackAhead,
+    behindOfOrigin: upstreamStatus?.aheadBehind.behind ?? fallbackBehind,
+  };
+}
+
 export async function getCheckoutStatus(
   cwd: string,
   context?: CheckoutContext,
@@ -2591,21 +2823,8 @@ export async function getCheckoutStatus(
     ? (readOttoWorktreeMetadata(ottoWorktree.worktreeRoot)?.baseRef ?? comparisonBaseRef)
     : comparisonBaseRef;
   const mainRepoRoot = facts.mainRepoRoot;
-  const factsContext = { ...context, facts };
-  const [aheadBehind, upstreamRef, aheadOfOrigin, behindOfOrigin] = await Promise.all([
-    comparisonBaseRef && currentBranch
-      ? getAheadBehind(cwd, comparisonBaseRef, currentBranch, factsContext)
-      : Promise.resolve(null),
-    hasRemote && currentBranch
-      ? getConfiguredUpstreamRef(cwd, currentBranch, factsContext)
-      : Promise.resolve(null),
-    hasRemote && currentBranch
-      ? getAheadOfOrigin(cwd, currentBranch, factsContext)
-      : Promise.resolve(null),
-    hasRemote && currentBranch
-      ? getBehindOfOrigin(cwd, currentBranch, factsContext)
-      : Promise.resolve(null),
-  ]);
+  const { aheadBehind, upstreamRef, aheadOfOrigin, behindOfOrigin } =
+    await resolveCheckoutDivergence(cwd, facts, context);
 
   if (ottoWorktree.isOttoOwnedWorktree && baseRef) {
     return {
@@ -4341,7 +4560,8 @@ export async function getPullRequestStatus(
   options?: CheckoutReadCacheOptions,
   context?: CheckoutContext,
 ): Promise<PullRequestStatusResult> {
-  const cacheKey = getPullRequestStatusCacheKey(cwd);
+  const headSha = await getCurrentHeadSha(cwd, context);
+  const cacheKey = getPullRequestStatusCacheKey(cwd, headSha);
   if (!options?.force) {
     const cached = pullRequestStatusCache.get(cacheKey);
     if (cached) {
@@ -4354,7 +4574,7 @@ export async function getPullRequestStatus(
     }
   }
 
-  const lookup = getPullRequestStatusUncached(cwd, forgeService, options, context)
+  const lookup = getPullRequestStatusUncached(cwd, forgeService, options, context, headSha)
     .then((status) => {
       pullRequestStatusCache.set(cacheKey, status);
       rememberPullRequestStatus(cacheKey, status);
@@ -4377,11 +4597,42 @@ export async function getPullRequestStatus(
   return lookup;
 }
 
+/**
+ * The forge call itself. A forced read must name its reason - that is what makes
+ * an unattended refresh loop visible in the logs rather than anonymous traffic.
+ */
+async function requestCurrentPullRequestStatus(params: {
+  cwd: string;
+  forgeService: ForgeService;
+  lookupTarget: PullRequestStatusLookupTarget;
+  options?: CheckoutReadCacheOptions;
+}): Promise<CurrentPullRequestStatus | null> {
+  const { cwd, forgeService, lookupTarget, options } = params;
+  if (!options?.force) {
+    return forgeService.getCurrentPullRequestStatus({
+      cwd,
+      ...lookupTarget,
+      reason: options?.reason,
+    });
+  }
+  const reason = options.reason;
+  if (!reason) {
+    throw new Error("Forced PR status read requires a reason");
+  }
+  return forgeService.getCurrentPullRequestStatus({
+    cwd,
+    ...lookupTarget,
+    force: true,
+    reason,
+  });
+}
+
 async function getPullRequestStatusUncached(
   cwd: string,
   forgeService: ForgeService,
   options?: CheckoutReadCacheOptions,
   context?: CheckoutContext,
+  headSha?: string | null,
 ): Promise<PullRequestStatusResult> {
   if (context?.facts?.isGit === false) {
     return {
@@ -4390,6 +4641,8 @@ async function getPullRequestStatusUncached(
       githubFeaturesEnabled: false,
     };
   }
+  const unavailable = getUnavailablePullRequestStatus(context?.facts);
+  if (unavailable) return unavailable;
   if (!context?.facts?.isGit) {
     await requireGitRepo(cwd);
   }
@@ -4402,26 +4655,19 @@ async function getPullRequestStatusUncached(
     };
   }
   try {
-    const lookupTarget = await resolvePullRequestStatusLookupTarget(cwd, head, context);
-    let status: CurrentPullRequestStatus | null;
-    if (options?.force) {
-      const reason = options.reason;
-      if (!reason) {
-        throw new Error("Forced PR status read requires a reason");
-      }
-      status = await forgeService.getCurrentPullRequestStatus({
-        cwd,
-        ...lookupTarget,
-        force: true,
-        reason,
-      });
-    } else {
-      status = await forgeService.getCurrentPullRequestStatus({
-        cwd,
-        ...lookupTarget,
-        reason: options?.reason,
-      });
-    }
+    const resolvedLookupTarget = await resolvePullRequestStatusLookupTarget(cwd, head, context);
+    // The facts carry the sha already when they resolved the target; this covers
+    // the path that computed it here instead.
+    const lookupTarget =
+      headSha && !resolvedLookupTarget.headSha
+        ? { ...resolvedLookupTarget, headSha }
+        : resolvedLookupTarget;
+    const status = await requestCurrentPullRequestStatus({
+      cwd,
+      forgeService,
+      lookupTarget,
+      options,
+    });
     return buildPullRequestStatusResult(status, "authenticated");
   } catch (error) {
     if (isForgeAuthError(error) || isGitHostingFeatureDisabledError(error)) {
@@ -4429,6 +4675,22 @@ async function getPullRequestStatusUncached(
     }
     throw error;
   }
+}
+
+function getUnavailablePullRequestStatus(
+  facts: CheckoutSnapshotFacts | null | undefined,
+): PullRequestStatusResult | null {
+  if (facts?.isGit === false) {
+    return buildPullRequestStatusResult(null, "no_remote");
+  }
+  if (
+    facts?.isGit === true &&
+    facts.ottoWorktree.isOttoOwnedWorktree &&
+    facts.pullRequestLookupTarget === null
+  ) {
+    return buildPullRequestStatusResult(null, "authenticated");
+  }
+  return null;
 }
 
 export async function listCheckoutCommits({

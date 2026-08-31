@@ -147,6 +147,7 @@ export interface OttoWorkspaceHandle {
   };
   current(): OttoWorkspace | null;
   refresh(options?: { requestId?: string }): Promise<OttoWorkspace | null>;
+  setTitle(title: string | null, requestId?: string): Promise<{ title: string | null }>;
   archive(requestId?: string): Promise<OttoWorkspaceArchiveResult>;
   /**
    * Subscribes to already-emitted daemon workspace_update events for this id.
@@ -365,11 +366,14 @@ export interface OttoConfigActions {
   ): Promise<{ requestId: string; config: MutableDaemonConfig }>;
 }
 
-export interface OttoClient {
+export interface OttoApi {
   readonly workspaces: OttoWorkspaceActions;
   readonly agents: OttoAgentActions;
   readonly providers: OttoProviderActions;
   readonly config: OttoConfigActions;
+}
+
+export interface OttoClient extends OttoApi {
   connect(): Promise<void>;
   close(): Promise<void>;
   ensureConnected(): void;
@@ -382,6 +386,16 @@ export function createOttoClient(config: OttoClientConfig): OttoClient {
     clientId: config.clientId ?? createGeneratedClientId(),
     clientType: "cli",
   });
+  return {
+    ...createOttoApi(daemonClient),
+    connect: () => daemonClient.connect(),
+    close: () => daemonClient.close(),
+    ensureConnected: () => daemonClient.ensureConnected(),
+    getConnectionState: () => daemonClient.getConnectionState(),
+  };
+}
+
+export function createOttoApi(daemonClient: DaemonClient): OttoApi {
   const createAgentHandle = createAgentHandleFactory(daemonClient);
   const createAgent = async (
     options: OttoAgentCreateOptions,
@@ -459,10 +473,6 @@ export function createOttoClient(config: OttoClientConfig): OttoClient {
       get: (requestId) => daemonClient.getDaemonConfig(requestId),
       patch: (patch, requestId) => daemonClient.patchDaemonConfig(patch, requestId),
     },
-    connect: () => daemonClient.connect(),
-    close: () => daemonClient.close(),
-    ensureConnected: () => daemonClient.ensureConnected(),
-    getConnectionState: () => daemonClient.getConnectionState(),
   };
 }
 
@@ -529,6 +539,7 @@ function createWorkspaceHandleFactory(
       },
       current: () => current,
       refresh,
+      setTitle: (title, requestId) => daemonClient.setWorkspaceTitle(id, title, requestId),
       archive: async (requestId) => {
         const result = await daemonClient.archiveWorkspace(id, { requestId });
         if (current) {

@@ -1,3 +1,4 @@
+import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
 import { useMemo, type ReactElement } from "react";
 import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -27,6 +28,12 @@ export interface WorkspaceTabPresentation {
   provider?: string;
   /** Busy glyph while running: the AI blob loader (default) or a plain spinner. */
   busyLoader?: "blob" | "spinner";
+  /**
+   * The full hover/accessibility text. The vertical rail truncates its label to
+   * a single line and the icon rail shows none at all, so the untruncated title
+   * has to travel with the presentation rather than being re-derived per rail.
+   */
+  tooltip: string;
 }
 
 interface WorkspaceTabIconProps {
@@ -35,8 +42,14 @@ interface WorkspaceTabIconProps {
   /** Accent-colored icon - marks the selected tab in the desktop tabs row. */
   accent?: boolean;
   /** Accepted by shared call sites whose status renderer uses a surface knockout. */
-  backdrop?: "surface0" | "surface1";
+  /** The surface this icon is drawn on, so its knockouts fill with the colour
+   *  behind them. Otto's explorer rail sits on the sidebar surfaces, not just the
+   *  two upstream rails use. */
+  backdrop?: SurfaceBackdrop;
   size?: number;
+  /** Passed through to the glyph; the explorer rail draws thinner strokes than
+   *  the tab strip. */
+  strokeWidth?: number;
 }
 
 export function WorkspaceTabIcon({

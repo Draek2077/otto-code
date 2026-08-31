@@ -16,7 +16,8 @@ import { withUnistyles } from "react-native-unistyles";
 import { getIsElectronRuntime } from "@/constants/layout";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
-import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
+
+import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { resolveShortcutKeysForAction } from "@/keyboard/keyboard-shortcuts";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
@@ -92,6 +93,7 @@ function CircleDashedIcon({ size }: CommandCenterIconProps) {
 }
 
 export function CommandCenterRootActions() {
+  const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const { t } = useTranslation();
   const { overrides } = useKeyboardShortcutOverrides();
   const shortcutsAvailable = useKeyboardShortcutsAvailable();
@@ -267,6 +269,7 @@ export function CommandCenterRootActions() {
     groupMode,
     homeRoute,
     openProjectPicker,
+    keyboardActionDispatcher,
     overrides,
     schedulesRoute,
     sessionsRoute,

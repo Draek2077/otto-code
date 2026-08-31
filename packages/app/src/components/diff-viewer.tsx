@@ -377,7 +377,7 @@ const styles = StyleSheet.create((theme) => {
       justifyContent: "center" as const,
     },
     emptyText: {
-      fontSize: theme.fontSize.sm,
+      fontSize: theme.fontSize.base,
       color: theme.colors.foregroundMuted,
     },
     diffSurface: {

@@ -275,7 +275,16 @@ describe("git diff inline review helpers", () => {
 
     expect(rowState?.left).toBeNull();
     expect(rowState?.right?.comments).toEqual([rightComment]);
-    expect(rowState?.height).toBe(210);
+    expect(rowState?.height).toBe(226);
+  });
+
+  it("includes thread padding in the inline editor height", () => {
+    const reviewTarget = target();
+    const actions = buildReviewActions({
+      editor: { target: reviewTarget, commentId: null, body: "" },
+    });
+
+    expect(getInlineReviewThreadState({ reviewTarget, reviewActions: actions })?.height).toBe(148);
   });
 
   it("expands a review row to the measured editor height", () => {
@@ -492,28 +501,38 @@ describe("InlineReviewEditor", () => {
     expect(onSave).toHaveBeenCalledWith("ready");
   });
 
-  it("shows shared shortcut hints while focused on a fine-pointer screen", () => {
-    window.matchMedia = vi.fn().mockReturnValue({
-      matches: true,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    });
-    const { getByTestId, getByText, queryByText } = render(
-      <InlineReviewEditor
-        initialBody="ready"
-        onCancel={vi.fn()}
-        onSave={vi.fn()}
-        testID="editor"
-      />,
-    );
-    const input = getByTestId("editor-input");
+  // Otto shows the shortcut hints while the editor has focus, but only where a
+  // keyboard is plausible: a fine pointer. On a touch device they are noise.
+  it.each([
+    { finePointer: true, hintsShown: true },
+    { finePointer: false, hintsShown: false },
+  ])(
+    "shows shortcut hints only with a fine pointer ($finePointer)",
+    ({ finePointer, hintsShown }) => {
+      window.matchMedia = vi.fn().mockReturnValue({
+        matches: finePointer,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+      const { getByTestId, queryByText } = render(
+        <InlineReviewEditor
+          initialBody="ready"
+          onCancel={vi.fn()}
+          onSave={vi.fn()}
+          testID="editor"
+        />,
+      );
+      const input = getByTestId("editor-input");
 
-    expect(getByText("Esc")).toBeTruthy();
-    expect(getByText(/(?:⌘⏎|Ctrl\+⏎)/)).toBeTruthy();
-
-    fireEvent.blur(input);
-    expect(queryByText("Esc")).toBeNull();
-  });
+      fireEvent.focus(input);
+      if (hintsShown) {
+        expect(queryByText("Esc")).not.toBeNull();
+      } else {
+        expect(queryByText("Esc")).toBeNull();
+        expect(queryByText(/(?:⌘⏎|Ctrl\+⏎)/)).toBeNull();
+      }
+    },
+  );
 });
 
 describe("InlineReviewThread", () => {

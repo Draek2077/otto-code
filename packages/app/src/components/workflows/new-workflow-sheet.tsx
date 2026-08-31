@@ -867,7 +867,6 @@ function OpenNewOrchestrationSheet({
           testID="workflow-name-input"
           accessibilityLabel="Orchestration name"
           initialValue={name}
-          value={name}
           onChangeText={setName}
           placeholder="Release notes sweep"
           style={styles.input}
@@ -883,7 +882,6 @@ function OpenNewOrchestrationSheet({
             testID="workflow-description-input"
             accessibilityLabel="Description"
             initialValue={description}
-            value={description}
             onChangeText={setDescription}
             placeholder="What is this workflow for?"
             style={styles.multilineInput}
@@ -952,7 +950,6 @@ function OpenNewOrchestrationSheet({
               testID="workflow-prompt-input"
               accessibilityLabel="Prompt"
               initialValue={prompt}
-              value={prompt}
               onChangeText={setPrompt}
               placeholder="What should the workflow accomplish?"
               style={styles.multilineInput}
@@ -1322,7 +1319,6 @@ function GraphAnswerField({
     <AdaptiveTextInput
       accessibilityLabel={declared.label}
       initialValue={value}
-      value={value}
       onChangeText={handleChange}
       placeholder={declared.description ?? ""}
       style={declared.multiline ? styles.multilineInput : styles.input}

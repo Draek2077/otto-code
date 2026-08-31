@@ -1,4 +1,5 @@
 import type { TranslationResources } from "./en";
+import { pluginSettings } from "./plugin-settings";
 
 export const ja: TranslationResources = {
   common: {
@@ -1577,6 +1578,7 @@ export const ja: TranslationResources = {
     },
     fileActions: {
       openFile: "ファイルを開く",
+      openToSide: "横に開く",
       editFile: "ファイルを編集",
       navigateToFile: "ファイルへ移動",
       navigateToChanges: "変更へ移動",
@@ -3307,6 +3309,7 @@ export const ja: TranslationResources = {
       terminals: "ターミナル",
       host: "概要",
     },
+    plugins: pluginSettings.ja,
     metadataGeneration: {
       title: "メタデータ生成",
       description:

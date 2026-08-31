@@ -1,18 +1,19 @@
-import { useMemo } from "react";
+import React, { useMemo, type ReactNode } from "react";
 import { View, Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
-type StatusBadgeVariant = "success" | "warning" | "error" | "muted";
+export type StatusBadgeVariant = "success" | "warning" | "error" | "muted";
 
 interface StatusBadgeProps {
   label: string;
   variant?: StatusBadgeVariant;
+  leading?: ReactNode;
 }
 
 // One shared pill for every status across Artifacts, Schedules, and
 // Orchestrations: same shape, same three-color scheme (green/yellow/red),
 // title case applied uniformly here so callers can pass raw status strings.
-export function StatusBadge({ label, variant = "muted" }: StatusBadgeProps) {
+export function StatusBadge({ label, variant = "muted", leading }: StatusBadgeProps) {
   const pillStyle = useMemo(
     () => [
       styles.pill,
@@ -34,6 +35,7 @@ export function StatusBadge({ label, variant = "muted" }: StatusBadgeProps) {
 
   return (
     <View style={pillStyle}>
+      {leading}
       <Text style={textStyle}>{label}</Text>
     </View>
   );
@@ -43,6 +45,7 @@ const styles = StyleSheet.create((theme) => ({
   pill: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
     borderRadius: theme.borderRadius.full,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -65,7 +68,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.statusDanger,
   },
   pillText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
     textTransform: "capitalize",

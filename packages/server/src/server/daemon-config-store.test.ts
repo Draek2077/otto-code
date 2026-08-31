@@ -9,11 +9,49 @@ import {
   applyMutableProviderConfigToOverrides,
   redactDaemonConfigForClient,
 } from "./daemon-config-store.js";
-import { loadPersistedConfig } from "./persisted-config.js";
+import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
 import {
   DEFAULT_AGENT_PROFILES,
   DEFAULT_AGENT_TEAMS,
 } from "@otto-code/protocol/default-personalities";
+import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
+
+/**
+ * The mutable config a reload-capable daemon starts from: every leaf that
+ * `RELOADABLE_PATHS` maps has to be present, or `reload()` cannot tell an edit
+ * to it from "unchanged". The store's schema fills in the rest of Otto's
+ * sections, so only the reloadable ones are spelled out here.
+ */
+function reloadableConfig(
+  persisted: PersistedConfig,
+  options: { relayEnabledFallback?: boolean } = {},
+): MutableDaemonConfig {
+  const daemon = persisted.daemon ?? {};
+  const relay = daemon.relay ?? {};
+  const git = daemon.git ?? {};
+  const agents = persisted.agents ?? {};
+  return {
+    relay: { enabled: relay.enabled ?? options.relayEnabledFallback ?? true },
+    mcp: { enabled: true, injectIntoAgents: false },
+    browserTools: { enabled: daemon.browserTools?.enabled ?? false },
+    providers: (agents.providers ?? {}) as MutableDaemonConfig["providers"],
+    metadataGeneration: { providers: agents.metadataGeneration?.providers ?? [] },
+    autoArchiveAfterMerge: daemon.autoArchiveAfterMerge ?? false,
+    enableTerminalAgentHooks: daemon.enableTerminalAgentHooks ?? false,
+    appendSystemPrompt: daemon.appendSystemPrompt ?? "",
+    terminalProfiles: daemon.terminalProfiles,
+    agentProfiles: daemon.agentProfiles,
+    cors: { allowedOrigins: [] },
+    trustedProxies: ["loopback"],
+    git: {
+      maxProcessesPerSecond: git.maxProcessesPerSecond ?? 64,
+      maxProcessConcurrency: git.maxProcessConcurrency ?? 8,
+    },
+    app: { baseUrl: "https://app.otto-code.me" },
+    pluginsEnabled: persisted.pluginsEnabled ?? false,
+    plugins: persisted.plugins ?? {},
+  } as MutableDaemonConfig;
+}
 
 describe("applyMutableProviderConfigToOverrides", () => {
   test("merges mutable provider fields onto provider overrides", () => {
@@ -73,9 +111,9 @@ describe("DaemonConfigStore", () => {
   });
 
   test("patch persists relay state and emits its field change", () => {
-    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
-    tempDirs.push(paseoHome);
-    const store = new DaemonConfigStore(paseoHome, {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const store = new DaemonConfigStore(ottoHome, {
       relay: { enabled: false },
       mcp: { injectIntoAgents: false },
       browserTools: { enabled: false },
@@ -91,13 +129,13 @@ describe("DaemonConfigStore", () => {
     store.patch({ relay: { enabled: true } });
 
     expect(changes).toEqual([true]);
-    expect(loadPersistedConfig(paseoHome).daemon?.relay?.enabled).toBe(true);
+    expect(loadPersistedConfig(ottoHome).daemon?.relay?.enabled).toBe(true);
   });
 
   test("patch round-trips agent profiles through the strictly-parsed persisted config", () => {
-    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
-    tempDirs.push(paseoHome);
-    const store = new DaemonConfigStore(paseoHome, {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const store = new DaemonConfigStore(ottoHome, {
       relay: { enabled: false },
       mcp: { injectIntoAgents: false },
       browserTools: { enabled: false },
@@ -124,7 +162,7 @@ describe("DaemonConfigStore", () => {
       ],
     });
 
-    expect(loadPersistedConfig(paseoHome).daemon?.agentProfiles).toEqual([
+    expect(loadPersistedConfig(ottoHome).daemon?.agentProfiles).toEqual([
       {
         id: "profile_ui",
         name: "UI work",
@@ -141,9 +179,9 @@ describe("DaemonConfigStore", () => {
   });
 
   test("patch replaces the whole agent profile list rather than merging entries", () => {
-    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
-    tempDirs.push(paseoHome);
-    const store = new DaemonConfigStore(paseoHome, {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const store = new DaemonConfigStore(ottoHome, {
       relay: { enabled: false },
       mcp: { injectIntoAgents: false },
       browserTools: { enabled: false },
@@ -161,13 +199,13 @@ describe("DaemonConfigStore", () => {
     store.patch({ agentProfiles: [{ id: "a", name: "Keep", provider: "claude" }] });
 
     expect(store.get().agentProfiles).toEqual([{ id: "a", name: "Keep", provider: "claude" }]);
-    expect(loadPersistedConfig(paseoHome).daemon?.agentProfiles).toHaveLength(1);
+    expect(loadPersistedConfig(ottoHome).daemon?.agentProfiles).toHaveLength(1);
   });
 
   test("rolls back config when a field transition fails", () => {
-    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
-    tempDirs.push(paseoHome);
-    const store = new DaemonConfigStore(paseoHome, {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const store = new DaemonConfigStore(ottoHome, {
       relay: { enabled: false },
       mcp: { injectIntoAgents: false },
       browserTools: { enabled: false },
@@ -187,14 +225,46 @@ describe("DaemonConfigStore", () => {
       "Relay transport failed to start",
     );
     expect(store.get().relay?.enabled).toBe(false);
-    expect(loadPersistedConfig(paseoHome).daemon?.relay?.enabled).toBe(false);
+    expect(loadPersistedConfig(ottoHome).daemon?.relay?.enabled).toBe(false);
+  });
+
+  test("rolls back live owners when a later transactional owner fails", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const store = new DaemonConfigStore(ottoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+    });
+    let browserToolsEnabled = false;
+    store.onApply((next, previous) => {
+      browserToolsEnabled = next.browserTools.enabled;
+      return () => {
+        browserToolsEnabled = previous.browserTools.enabled;
+      };
+    });
+    store.onApply(() => {
+      throw new Error("Provider refresh failed");
+    });
+
+    expect(() => store.patch({ browserTools: { enabled: true } })).toThrow(
+      "Provider refresh failed",
+    );
+    expect(browserToolsEnabled).toBe(false);
+    expect(store.get().browserTools.enabled).toBe(false);
+    expect(loadPersistedConfig(ottoHome).daemon?.browserTools?.enabled).toBeUndefined();
   });
 
   test("rejects relay patches when a launch override owns the setting", () => {
-    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
-    tempDirs.push(paseoHome);
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
     const store = new DaemonConfigStore(
-      paseoHome,
+      ottoHome,
       {
         relay: { enabled: false },
         mcp: { injectIntoAgents: false },
@@ -215,18 +285,18 @@ describe("DaemonConfigStore", () => {
   });
 
   test("unrelated patches do not persist a one-launch relay override", () => {
-    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
-    tempDirs.push(paseoHome);
-    const persisted = loadPersistedConfig(paseoHome);
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const persisted = loadPersistedConfig(ottoHome);
     writeFileSync(
-      path.join(paseoHome, "config.json"),
+      path.join(ottoHome, "config.json"),
       `${JSON.stringify({
         ...persisted,
         daemon: { ...persisted.daemon, relay: { enabled: false } },
       })}\n`,
     );
     const store = new DaemonConfigStore(
-      paseoHome,
+      ottoHome,
       {
         relay: { enabled: true },
         mcp: { injectIntoAgents: false },
@@ -243,7 +313,54 @@ describe("DaemonConfigStore", () => {
 
     store.patch({ browserTools: { enabled: true } });
 
-    expect(loadPersistedConfig(paseoHome).daemon?.relay?.enabled).toBe(false);
+    expect(loadPersistedConfig(ottoHome).daemon?.relay?.enabled).toBe(false);
+  });
+
+  // DEFERRED(patch-scoped-persistence): upstream writes the *patch* into
+  // config.json; Otto writes the resolved config, and did so long before this
+  // merge - `buildPersistedDaemonSection` materializes Otto's daemon sections on
+  // every patch. Converging is a real change to what every install's config.json
+  // looks like after the next settings edit, and an attempt at it during the
+  // v0.6.1 merge broke provider removal, metadata clearing, and launch-provided
+  // secret round-trips. It wants its own change. See docs/upstream-merges.md.
+  test.skip("unrelated patches persist only requested file intent", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const before = loadPersistedConfig(ottoHome);
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        relay: { enabled: true },
+        mcp: { enabled: false, injectIntoAgents: false },
+        hostnames: ["launch.example.test"],
+        cors: { allowedOrigins: ["https://launch.example.test"] },
+        trustedProxies: true,
+        git: { maxProcessesPerSecond: 7, maxProcessConcurrency: 2 },
+        app: { baseUrl: "https://launch.example.test" },
+        catalogRefreshTimeoutMs: 9_000,
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+      { relayEnabledMutable: false },
+    );
+
+    store.patch({
+      appendSystemPrompt: "Only this field",
+      // Reload-only runtime state is accepted as unknown wire data for forward
+      // compatibility but is not part of the patch capability.
+      hostnames: ["attempted-patch.example.test"],
+    } as Parameters<typeof store.patch>[0]);
+
+    expect(store.get().hostnames).toEqual(["launch.example.test"]);
+    expect(loadPersistedConfig(ottoHome)).toEqual({
+      ...before,
+      daemon: { ...before.daemon, appendSystemPrompt: "Only this field" },
+    });
   });
 
   test("patch persists provider enabled flags into config.json", () => {
@@ -1288,7 +1405,7 @@ describe("DaemonConfigStore", () => {
 
     const removals: string[][] = [];
     store.onChange((_config, details) => {
-      removals.push(details.removedProviderIds);
+      removals.push(details.removedProviders);
     });
 
     const next = store.patch({ providers: { lmstudio: null } });
@@ -1346,7 +1463,7 @@ describe("DaemonConfigStore", () => {
 
     const removals: string[][] = [];
     store.onChange((_config, details) => {
-      removals.push(details.removedProviderIds);
+      removals.push(details.removedProviders);
     });
 
     const next = store.patch({ removeProviders: ["lmstudio"] });
@@ -1487,5 +1604,288 @@ describe("DaemonConfigStore", () => {
     const persisted = loadPersistedConfig(ottoHome);
     expect(persisted.gitHosting?.providers?.bitbucketCloud?.apiToken).toBeUndefined();
     expect(persisted.gitHosting?.providers?.bitbucketCloud?.email).toBe("dev@example.com");
+  });
+});
+
+describe("DaemonConfigStore reload", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function createReloadableStore(
+    options: {
+      overrideControlledPaths?: string[];
+      initialPersisted?: PersistedConfig;
+    } = {},
+  ) {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-reload-"));
+    tempDirs.push(ottoHome);
+    if (options.initialPersisted) {
+      writeFileSync(
+        path.join(ottoHome, "config.json"),
+        `${JSON.stringify(options.initialPersisted, null, 2)}\n`,
+      );
+    }
+    const persisted = loadPersistedConfig(ottoHome);
+    const relayEnabledFallback = persisted.daemon?.relay?.enabled === undefined;
+    const initialMutable = reloadableConfig(persisted, { relayEnabledFallback });
+    const store = new DaemonConfigStore(ottoHome, initialMutable, undefined, {
+      reloadSource: {
+        resolve: (nextPersisted) => {
+          const mutable = reloadableConfig(nextPersisted, { relayEnabledFallback });
+          if (options.overrideControlledPaths?.includes("daemon.relay.enabled")) {
+            mutable.relay = initialMutable.relay;
+          }
+          return {
+            mutable,
+            overrideControlledPaths: options.overrideControlledPaths ?? [],
+          };
+        },
+      },
+    });
+    return { ottoHome, store, persisted };
+  }
+
+  function writeConfig(ottoHome: string, config: unknown): void {
+    writeFileSync(path.join(ottoHome, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+  }
+
+  test("applies mutable edits and reports startup-only edits", () => {
+    const { ottoHome, store, persisted } = createReloadableStore();
+    writeConfig(ottoHome, {
+      ...persisted,
+      daemon: {
+        ...persisted.daemon,
+        listen: "127.0.0.1:7777",
+        browserTools: { enabled: true },
+        git: { maxProcessesPerSecond: 12, maxProcessConcurrency: 3 },
+      },
+    });
+
+    expect(store.reload()).toEqual({
+      appliedPaths: [
+        "daemon.browserTools.enabled",
+        "daemon.git.maxProcessConcurrency",
+        "daemon.git.maxProcessesPerSecond",
+      ],
+      restartRequiredPaths: ["daemon.listen"],
+      overrideControlledPaths: [],
+    });
+    expect(store.get().browserTools.enabled).toBe(true);
+    expect(store.get().git).toEqual({ maxProcessesPerSecond: 12, maxProcessConcurrency: 3 });
+  });
+
+  test("applies the global plugin switch in both directions", () => {
+    const { ottoHome, store, persisted } = createReloadableStore({
+      initialPersisted: { version: 1, pluginsEnabled: false },
+    });
+    const changes: unknown[] = [];
+    store.onFieldChange("pluginsEnabled", (value) => changes.push(value));
+
+    writeConfig(ottoHome, { ...persisted, pluginsEnabled: true });
+    expect(store.reload()).toEqual({
+      appliedPaths: ["pluginsEnabled"],
+      restartRequiredPaths: [],
+      overrideControlledPaths: [],
+    });
+    expect(store.get().pluginsEnabled).toBe(true);
+
+    writeConfig(ottoHome, { ...persisted, pluginsEnabled: false });
+    expect(store.reload()).toEqual({
+      appliedPaths: ["pluginsEnabled"],
+      restartRequiredPaths: [],
+      overrideControlledPaths: [],
+    });
+    expect(store.get().pluginsEnabled).toBe(false);
+    expect(changes).toEqual([true, false]);
+  });
+
+  test("classifies every leaf when a parent subtree is added", () => {
+    const { ottoHome, store } = createReloadableStore({
+      initialPersisted: { version: 1 },
+    });
+    writeConfig(ottoHome, {
+      version: 1,
+      daemon: {
+        relay: {
+          enabled: false,
+          endpoint: "relay.example.test:443",
+          useTls: true,
+        },
+      },
+    });
+
+    expect(store.reload()).toEqual({
+      appliedPaths: ["daemon.relay.enabled"],
+      restartRequiredPaths: ["daemon.relay.endpoint", "daemon.relay.useTls"],
+      overrideControlledPaths: [],
+    });
+  });
+
+  test("classifies every leaf when the daemon subtree is removed", () => {
+    const { ottoHome, store } = createReloadableStore({
+      initialPersisted: {
+        version: 1,
+        daemon: {
+          listen: "127.0.0.1:7777",
+          browserTools: { enabled: true },
+          relay: {
+            enabled: false,
+            endpoint: "relay.example.test:443",
+            useTls: true,
+          },
+          serviceProxy: {
+            listen: "127.0.0.1:7788",
+            publicBaseUrl: "https://services.example.test",
+          },
+        },
+      },
+    });
+    writeConfig(ottoHome, { version: 1 });
+
+    expect(store.reload()).toEqual({
+      appliedPaths: ["daemon.browserTools.enabled"],
+      restartRequiredPaths: [
+        "daemon.listen",
+        "daemon.relay.endpoint",
+        "daemon.relay.useTls",
+        "daemon.serviceProxy.listen",
+        "daemon.serviceProxy.publicBaseUrl",
+      ],
+      overrideControlledPaths: [],
+    });
+    expect(store.get().relay?.enabled).toBe(false);
+  });
+
+  test("keeps overridden leaves separate from restart-required siblings", () => {
+    const { ottoHome, store } = createReloadableStore({
+      initialPersisted: { version: 1 },
+      overrideControlledPaths: ["daemon.relay.enabled"],
+    });
+    writeConfig(ottoHome, {
+      version: 1,
+      daemon: {
+        relay: { enabled: false, endpoint: "relay.example.test:443" },
+      },
+    });
+
+    expect(store.reload()).toEqual({
+      appliedPaths: [],
+      restartRequiredPaths: ["daemon.relay.endpoint"],
+      overrideControlledPaths: ["daemon.relay.enabled"],
+    });
+  });
+
+  test("invalid JSON and invalid schema apply nothing", () => {
+    const { ottoHome, store } = createReloadableStore();
+    writeFileSync(path.join(ottoHome, "config.json"), "{ nope\n");
+    expect(() => store.reload()).toThrow("Invalid JSON");
+    expect(store.get().browserTools.enabled).toBe(false);
+
+    writeConfig(ottoHome, { daemon: { browserTools: { enabled: "yes" } } });
+    expect(() => store.reload()).toThrow("Invalid config");
+    expect(store.get().browserTools.enabled).toBe(false);
+  });
+
+  test("removing providers and optional profiles clears live state", () => {
+    const { ottoHome, store, persisted } = createReloadableStore();
+    writeConfig(ottoHome, {
+      ...persisted,
+      daemon: {
+        ...persisted.daemon,
+        terminalProfiles: [{ id: "shell", name: "Shell", command: "bash" }],
+        agentProfiles: [{ id: "review", name: "Review", provider: "codex" }],
+      },
+      agents: {
+        providers: {
+          gemini: { extends: "acp", label: "Gemini", command: ["gemini", "--acp"] },
+        },
+      },
+    });
+    store.reload();
+
+    writeConfig(ottoHome, persisted);
+    const result = store.reload();
+
+    expect(result.appliedPaths).toEqual([
+      "agents.providers",
+      "daemon.agentProfiles",
+      "daemon.terminalProfiles",
+    ]);
+    expect(store.get().providers).toEqual({});
+    expect(store.get().terminalProfiles).toBeUndefined();
+    expect(store.get().agentProfiles).toBeUndefined();
+  });
+
+  test("reports a launch-controlled edit without changing live state", () => {
+    const { ottoHome, store, persisted } = createReloadableStore({
+      overrideControlledPaths: ["daemon.relay.enabled"],
+    });
+    const initialRelay = store.get().relay?.enabled;
+    writeConfig(ottoHome, {
+      ...persisted,
+      daemon: { ...persisted.daemon, relay: { enabled: !initialRelay } },
+    });
+
+    expect(store.reload()).toEqual({
+      appliedPaths: [],
+      restartRequiredPaths: [],
+      overrideControlledPaths: ["daemon.relay.enabled"],
+    });
+    expect(store.get().relay?.enabled).toBe(initialRelay);
+  });
+
+  // DEFERRED(patch-scoped-persistence): same cause as the intent test above.
+  // Otto materializes its daemon sections on the first patch, so the reload diff
+  // against the startup snapshot reports them as restart-required.
+  test.skip("an unrelated patch does not mark a manual override-owned edit as applied", () => {
+    const { ottoHome, store, persisted } = createReloadableStore({
+      overrideControlledPaths: ["daemon.relay.enabled"],
+    });
+    writeConfig(ottoHome, {
+      ...persisted,
+      daemon: { ...persisted.daemon, relay: { enabled: true } },
+    });
+    store.patch({ appendSystemPrompt: "patched elsewhere" });
+
+    expect(store.reload()).toEqual({
+      appliedPaths: [],
+      restartRequiredPaths: [],
+      overrideControlledPaths: ["daemon.relay.enabled"],
+    });
+  });
+
+  test("reports startup-only launch overrides instead of restart warnings", () => {
+    const { ottoHome, store, persisted } = createReloadableStore({
+      overrideControlledPaths: ["daemon.listen", "daemon.relay.endpoint"],
+    });
+    writeConfig(ottoHome, {
+      ...persisted,
+      daemon: {
+        ...persisted.daemon,
+        listen: "127.0.0.1:7777",
+        relay: {
+          ...persisted.daemon?.relay,
+          endpoint: "relay.example.test:443",
+        },
+      },
+    });
+
+    expect(store.reload()).toEqual({
+      appliedPaths: [],
+      restartRequiredPaths: [],
+      overrideControlledPaths: ["daemon.listen", "daemon.relay.endpoint"],
+    });
+  });
+
+  test("a no-op reload returns empty path lists", () => {
+    const { store } = createReloadableStore();
+    expect(store.reload()).toEqual({
+      appliedPaths: [],
+      restartRequiredPaths: [],
+      overrideControlledPaths: [],
+    });
   });
 });

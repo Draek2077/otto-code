@@ -44,7 +44,11 @@ import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { ensureCheckoutStatus } from "@/git/checkout-status-cache";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { resolveTerminalProfiles } from "@otto-code/protocol/terminal-profiles";
-import type { TerminalProfile } from "@otto-code/protocol/messages";
+import type {
+  TerminalProfile,
+  AgentAttachment,
+  ForgeSearchItem,
+} from "@otto-code/protocol/messages";
 import { LaunchControl } from "@/new-workspace-launch/launch-control";
 import { resolveLaunchTarget, type LaunchTarget } from "@/new-workspace-launch/target";
 import { useTerminalComposerState } from "@/new-workspace-launch/composer-state";
@@ -58,9 +62,11 @@ import {
 } from "@/runtime/host-runtime";
 import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
 import type { HostProfile } from "@/types/host-connection";
-import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import {
+  navigateToWorkspace,
+  useLastWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 import { confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
-import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import {
   normalizeWorkspaceDescriptor,
   useSessionStore,
@@ -73,7 +79,6 @@ import {
 } from "./new-workspace-existing-workspace";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { buildNewWorkspaceDraftKey, generateDraftId } from "@/stores/draft-keys";
-import { useDraftStore } from "@/stores/draft-store";
 import { isActiveCreateFlowForDraft, useCreateFlowStore } from "@/stores/create-flow-store";
 import {
   useWorkspaceDraftSubmissionStore,
@@ -101,7 +106,6 @@ import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/t
 import { useProjectIcons } from "@/projects/icons";
 import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import type { MessagePayload } from "@/composer/types";
-import type { AgentAttachment, ForgeSearchItem } from "@otto-code/protocol/messages";
 import type { CreateOttoWorktreeInput } from "@otto-code/client/internal/daemon-client";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
@@ -136,6 +140,7 @@ import {
   resolveNewWorkspaceAutomaticServerId,
   resolveNewWorkspaceInitialServerId,
 } from "./new-workspace-initial-context";
+import { buildNewWorkspaceProjectIconTargets } from "./new-workspace/project-icon-targets";
 import { useNewWorkspaceProjectPicker } from "./new-workspace/project-picker";
 import type { IconSizeProp } from "@/components/icons/icon-size";
 
@@ -869,7 +874,7 @@ function normalizeBranchDetails(
 
 interface SubmitDraftInput {
   serverId: string;
-  draftKey: string;
+  clearDraft: (lifecycle: "sent" | "abandoned") => void;
   draftId?: string;
   initialSetup?: WorkspaceDraftTabSetup;
   workspaceId: string;
@@ -987,7 +992,7 @@ interface CreateChatAgentInput {
     withInitialAgent: boolean;
   }) => Promise<ReturnType<typeof normalizeWorkspaceDescriptor>>;
   serverId: string;
-  draftKey: string;
+  clearDraft: (lifecycle: "sent" | "abandoned") => void;
   draftId?: string;
   labels: {
     composerStateRequired: string;
@@ -1054,7 +1059,7 @@ function buildComposerInitialValues(input: {
 }
 
 async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
-  const { payload, composerState, ensureWorkspace, serverId, draftKey } = input;
+  const { payload, composerState, ensureWorkspace, serverId, clearDraft } = input;
   const { text, attachments, cwd } = payload;
   if (!composerState) {
     throw new Error(input.labels.composerStateRequired);
@@ -1079,7 +1084,7 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
   });
   submitWorkspaceDraft({
     serverId,
-    draftKey,
+    clearDraft,
     draftId: input.draftId,
     initialSetup,
     workspaceId: ensuredWorkspace.id,
@@ -1197,7 +1202,7 @@ function resolveWorkspaceDraftSubmissionConfig(input: {
 function submitWorkspaceDraft(input: SubmitDraftInput): void {
   const {
     serverId,
-    draftKey,
+    clearDraft,
     draftId: draftIdInput,
     workspaceId,
     workspaceDirectory,
@@ -1255,7 +1260,10 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     workspaceId,
     target: submission.target,
   });
-  useDraftStore.getState().clearDraftInput({ draftKey, lifecycle: "sent" });
+  // After the handoff, not before: the destination tab spawns from the pending
+  // submission, and clearing early would blank the composer while the draft is
+  // still the source of truth for it.
+  clearDraft("sent");
 }
 
 function useNewWorkspaceHostSelector(input: {
@@ -1838,24 +1846,7 @@ export function NewWorkspaceScreen({
   });
 
   const projectIconTargets = useMemo(
-    () =>
-      projects.flatMap((project) => {
-        const iconWorkingDir = getHostProjectSourceDirectory(project, selectedServerId)?.trim();
-        if (!iconWorkingDir) {
-          return [];
-        }
-        const host = project.hosts.find((candidate) => candidate.serverId === selectedServerId);
-        if (!host) return [];
-        return [
-          {
-            projectViewKey: project.viewKey,
-            projectId: host.projectId,
-            serverId: selectedServerId,
-            iconWorkingDir,
-            customIconRevision: host.customIconRevision,
-          },
-        ];
-      }),
+    () => buildNewWorkspaceProjectIconTargets(projects, selectedServerId),
     [projects, selectedServerId],
   );
 
@@ -2284,7 +2275,7 @@ export function NewWorkspaceScreen({
         forkDraftSetup,
         ensureWorkspace: ensureWorkspaceForSubmit,
         serverId: selectedServerId,
-        draftKey,
+        clearDraft: chatDraft.clear,
         draftId,
         labels: {
           composerStateRequired: t("newWorkspace.errors.composerStateRequired"),
@@ -2295,7 +2286,7 @@ export function NewWorkspaceScreen({
     [
       composerState,
       draftId,
-      draftKey,
+      chatDraft.clear,
       ensureWorkspace,
       forkDraftSetup,
       launchTarget,
@@ -2643,6 +2634,7 @@ export function NewWorkspaceScreen({
               blurOnSubmit={true}
               value={terminalComposerValue}
               onChangeText={setTerminalPromptText}
+              textReplacementKey={launchFocusKey}
               attachments={NO_TERMINAL_ATTACHMENTS}
               onChangeAttachments={noopChangeAttachments}
               cwd={selectedSourceDirectory ?? ""}
@@ -2695,6 +2687,7 @@ export function NewWorkspaceScreen({
                 submitBehavior="preserve-and-lock"
                 blurOnSubmit={true}
                 value={chatDraft.text}
+                textReplacementKey={chatDraft.textReplacementKey}
                 onChangeText={chatDraft.setText}
                 attachments={chatDraft.attachments}
                 attachmentScopeKeys={visibleDraftContextScopeKeys}
@@ -2744,12 +2737,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[4],
   },
   composerTitle: {
-    fontSize: theme.fontSize.xl,
+    fontSize: theme.fontSize["2xl"],
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
   },
   errorText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.destructive,
     lineHeight: 20,
     // Match the composer's own horizontal inset so the message sits centered
@@ -2855,11 +2848,11 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   tooltipText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.popoverForeground,
   },
   refDivergenceLabel: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     fontVariant: ["tabular-nums"],
   },

@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Chat } from "@/components/icons/material-icons";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useHostFeature } from "@/runtime/host-features";
 import { useSessionStore } from "@/stores/session-store";
 import { CommunicationsRoom } from "@/screens/workspace/communications-room";
@@ -69,11 +69,10 @@ function CommunicationsRoomPanel(): ReactElement {
   );
 }
 
-export const communicationsRoomPanelRegistration: PanelRegistration<"communicationsRoom"> = {
-  kind: "communicationsRoom",
+export const communicationsRoomPanelRegistration = definePanel("communicationsRoom", {
   component: CommunicationsRoomPanel,
   useDescriptor: useCommunicationsRoomDescriptor,
-};
+});
 
 const styles = StyleSheet.create((theme) => ({
   centered: {

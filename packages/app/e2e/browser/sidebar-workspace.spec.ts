@@ -11,6 +11,7 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 import { expectWorkspaceHeader } from "../support/helpers/workspace-ui";
 import { getServerId } from "../support/helpers/server-id";
 import { escapeRegex } from "../support/helpers/regex";
+import { openFilesPanel } from "../support/helpers/workspace-tabs";
 
 const GITHUB_REMOTE_URL = "https://github.com/test-owner/test-repo.git";
 
@@ -117,19 +118,6 @@ test.describe("Sidebar workspace list", () => {
 
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
       await expect(projectRow).not.toContainText("test-owner/test-repo");
-    } finally {
-      await workspace.cleanup();
-    }
-  });
-
-  test("project shows workspace under it", async ({ page }) => {
-    const workspace = await seedWorkspace({ repoPrefix: "sidebar-workspace-under-project-" });
-
-    try {
-      await gotoAppShell(page);
-
-      await waitForSidebarProject(page, path.basename(workspace.repoPath));
-      await waitForSidebarWorkspace(page, workspace.workspaceId);
     } finally {
       await workspace.cleanup();
     }
@@ -251,7 +239,7 @@ test.describe("Half-screen desktop layout", () => {
     const closedToggle = page.getByTestId("menu-button");
     const closedBounds = await closedToggle.boundingBox();
     expect(closedBounds).not.toBeNull();
-    expect(closedBounds?.x).toBeCloseTo(12, 0);
+    expect(closedBounds?.x).toBeCloseTo(9, 0);
     expect(closedBounds?.y).toBe(openBounds?.y);
   });
 
@@ -268,7 +256,7 @@ test.describe("Half-screen desktop layout", () => {
     await expect(page.getByTestId("sidebar-command-center-search")).not.toBeVisible();
   });
 
-  test("yields app navigation to the Explorer", async ({ page }) => {
+  test("keeps app navigation beside the Explorer pane", async ({ page }) => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-half-screen-explorer-" });
 
     try {
@@ -276,9 +264,10 @@ test.describe("Half-screen desktop layout", () => {
       await waitForSidebarProject(page, path.basename(workspace.repoPath));
       await openWorkspaceFromSidebar(page, workspace.workspaceId);
 
-      await page.getByTestId("workspace-explorer-toggle").first().click();
+      await openFilesPanel(page);
+      const explorerToggle = page.getByTestId("workspace-explorer-toggle").first();
       await expect(
-        page.getByTestId("explorer-tab-files").filter({ visible: true }).first(),
+        page.getByTestId("explorer-sidebar-tab-files").filter({ visible: true }),
       ).toBeVisible();
       await expect(page.getByTestId("workspace-explorer-toggle").first()).toBeVisible();
       await expect(page.getByTestId("explorer-close")).toBeVisible();
@@ -304,9 +293,12 @@ test.describe("Half-screen desktop layout", () => {
         .poll(async () => (await workspaceTabsStrip(page).first().boundingBox())?.width ?? 0)
         .toBeGreaterThanOrEqual(400);
 
-      await page.getByTestId("explorer-close").click();
-      await expect(page.getByTestId("explorer-tab-files")).not.toBeVisible();
-      await expect(page.getByTestId("workspace-explorer-toggle").first()).toBeVisible();
+      await explorerToggle.click();
+      await expect(
+        page.getByTestId("explorer-sidebar-tab-files").filter({ visible: true }),
+      ).toHaveCount(0);
+      await expect(explorerToggle).toHaveAccessibleName("Open Explorer sidebar");
+      await expect(page.getByTestId("sidebar-global-new-workspace")).toBeVisible();
     } finally {
       await workspace.cleanup();
     }

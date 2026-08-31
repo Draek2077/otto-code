@@ -334,13 +334,15 @@ try {
 }
 
 if (!stopping) {
-  spawnChild("electron", electron, [...electronArgs, desktopDir], {
-    detached: !isWindows,
-    ...(isWindows ? { windowsHide: true } : {}),
-    env: {
-      ...process.env,
-      ...colorEnv,
-      EXPO_DEV_URL: expoDevUrl,
-    },
-  });
+  spawnChild(
+    "electron",
+    electron,
+    [...electronArgs, desktopDir],
+    createElectronSpawnOptions({
+      env: process.env,
+      colorEnv,
+      expoDevUrl,
+      devBuildLabel,
+    }),
+  );
 }

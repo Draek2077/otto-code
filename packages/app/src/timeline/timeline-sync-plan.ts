@@ -103,6 +103,14 @@ export function planTimelineTailFetch() {
   } as const;
 }
 
+export function planTimelineResumeFetch(
+  range: { epoch: string; endSeq: number } | null | undefined,
+): ProjectedTimelineForwardFetchPlan {
+  return range
+    ? planTimelineCatchUpAfter({ epoch: range.epoch, seq: range.endSeq })
+    : planTimelineTailFetch();
+}
+
 export function planTimelineOlderFetch(cursor: TimelineSyncCursor) {
   return {
     direction: "before",

@@ -42,6 +42,9 @@ export interface BuildAgentStreamRenderModelInput {
   head: StreamItem[];
   platform: "web" | "native";
   isMobileBreakpoint: boolean;
+  /** Index into `tail` marking where the loaded history begins - rows before it
+   *  belong to an older page that has not been fetched. */
+  historyStart?: number;
   groupConsecutiveActions?: boolean;
   /**
    * Item id of the mounted-window boundary to hold while the reader is scrolled
@@ -192,10 +195,14 @@ export function buildAgentStreamRenderModel(
     platform: input.platform === "web" ? "web" : "native",
     isMobileBreakpoint: input.isMobileBreakpoint,
   });
-  // Grouping happens on the chronological tail, before strategy ordering can
-  // reverse it, and only ever on the render path - stores stay ungrouped.
-  const tailSource = input.groupConsecutiveActions ? getGroupedTail(input.tail) : input.tail;
   const orderingCacheKey = `${input.platform}:${input.isMobileBreakpoint}`;
+  // The window comes off the chronological tail first, then grouping runs on
+  // what survives it: grouping the whole tail and windowing afterwards would
+  // both do work on history that is never rendered and let a group straddle
+  // the window edge. Grouping stays on the render path only - stores stay
+  // ungrouped.
+  const renderedTail = input.historyStart ? input.tail.slice(input.historyStart) : input.tail;
+  const tailSource = input.groupConsecutiveActions ? getGroupedTail(renderedTail) : renderedTail;
   const orderedTail = getOrderedItems({
     cache: orderedTailCache,
     source: tailSource,
@@ -227,7 +234,7 @@ export function buildAgentStreamRenderModel(
   const turnTiming = getTurnTiming({
     isTurnActive: input.isTurnActive,
     activeTurnStartedAt: input.activeTurnStartedAt,
-    tail: input.tail,
+    tail: renderedTail,
     head: input.head,
   });
 

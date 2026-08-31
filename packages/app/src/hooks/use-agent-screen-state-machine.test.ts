@@ -80,20 +80,17 @@ function createBaseMemory(
   };
 }
 
+// These narrow by asserting, not by casting: a state machine that returns the
+// wrong tag should fail the test that says it returns "ready", not slip through
+// an unchecked return.
 function expectReadyState(state: AgentScreenViewState): ReadyState {
   expect(state.tag).toBe("ready");
-  if (state.tag !== "ready") {
-    throw new Error("expected ready state");
-  }
-  return state;
+  return state as ReadyState;
 }
 
 function expectCatchingUpSync(state: ReadyState): CatchingUpSyncState {
   expect(state.sync.status).toBe("catching_up");
-  if (state.sync.status !== "catching_up") {
-    throw new Error("expected catching_up sync state");
-  }
-  return state.sync;
+  return state.sync as CatchingUpSyncState;
 }
 
 function expectSyncErrorSync(state: ReadyState): void {
@@ -332,6 +329,22 @@ describe("deriveAgentScreenViewState", () => {
 
     expect(ready.source).toBe("stale");
     expect(ready.agent.id).toBe("agent-1");
+  });
+
+  it("marks the sync error as retrying while a user-requested retry is in flight", () => {
+    const memory = createBaseMemory({
+      hasRenderedReady: true,
+      lastReadyAgent: createAgent("agent-1"),
+    });
+    const input: AgentScreenMachineInput = {
+      ...createBaseInput(),
+      visibilityCatchUpStatus: "retrying",
+    };
+
+    const result = deriveAgentScreenViewState({ input, memory });
+    const ready = expectReadyState(result.state);
+
+    expect(ready.sync).toEqual({ status: "sync_error", isRetrying: true });
   });
 
   it("returns blocking error before first paint when refresh fails", () => {

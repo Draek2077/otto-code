@@ -381,7 +381,7 @@ export interface SpeechService {
   /** Apply a new resolved config without restarting the daemon. No-op when unchanged. */
   reconfigure: (next: SpeechServiceConfigUpdate) => Promise<void>;
   start: () => void;
-  stop: () => void;
+  stop: () => Promise<void>;
   ready: Promise<void>;
 }
 
@@ -424,6 +424,8 @@ export function createSpeechService(params: {
 
   let missingLocalModelIds: LocalSpeechModelId[] = [];
   let backgroundDownloadInProgress = false;
+  let backgroundDownloadAbortController: AbortController | null = null;
+  let backgroundDownloadPromise: Promise<void> | null = null;
   let backgroundDownloadError: string | null = null;
   let stopped = false;
   let monitorTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -639,12 +641,15 @@ export function createSpeechService(params: {
       "Starting background download for missing local speech models",
     );
 
-    void (async () => {
+    const abortController = new AbortController();
+    backgroundDownloadAbortController = abortController;
+    backgroundDownloadPromise = (async () => {
       try {
         await ensureLocalSpeechModels({
           modelsDir,
           modelIds,
           logger,
+          signal: abortController.signal,
         });
         await runReconcile();
         backgroundDownloadError = null;
@@ -659,6 +664,7 @@ export function createSpeechService(params: {
           "Background local speech model download failed",
         );
       } finally {
+        backgroundDownloadAbortController = null;
         backgroundDownloadInProgress = false;
         await refreshMissingLocalModels().catch((error) => {
           logger.warn({ err: error }, "Failed to refresh local speech model status after download");
@@ -729,13 +735,16 @@ export function createSpeechService(params: {
     })();
   };
 
-  const stop = (): void => {
+  const stop = async (): Promise<void> => {
     stopped = true;
     if (monitorTimeout) {
       clearTimeout(monitorTimeout);
       monitorTimeout = null;
     }
     localCleanup();
+    backgroundDownloadAbortController?.abort();
+    await backgroundDownloadPromise?.catch(() => undefined);
+    backgroundDownloadPromise = null;
   };
 
   const configFingerprint = (

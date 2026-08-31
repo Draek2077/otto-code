@@ -94,7 +94,7 @@ import { RouteFadeContainer } from "@/components/route-fade-container";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { legacyFavoriteProfileMigration } from "@/agent-profiles/migration";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
-import { signalDesktopWindowReady, updateDesktopWindowControls } from "@/desktop/electron/window";
+import { signalDesktopWindowReady, updateDesktopWindowChrome } from "@/desktop/electron/window";
 import { getDesktopHost } from "@/desktop/host";
 import { loadDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { RosettaCalloutSource } from "@/desktop/updates/rosetta-callout-source";
@@ -112,7 +112,10 @@ import { useStableEvent } from "@/hooks/use-stable-event";
 import { useOpenAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelsProvider } from "@/mobile-panels/provider";
 import { I18nProvider } from "@/i18n/provider";
-import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
+import { createKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
+
+// Upstream turned the dispatcher into a factory; Otto uses one app-wide instance.
+const keyboardActionDispatcher = createKeyboardActionDispatcher();
 import { polyfillCrypto } from "@/polyfills/crypto";
 import { polyfillNavigator } from "@/polyfills/navigator";
 import { queryClient } from "@/data/query-client";
@@ -678,7 +681,9 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
         </WindowChromeRegion>
       ) : null}
       {isCompactLayout ? (
-        <CompactExplorerSidebarHost enabled={chromeEnabled}>
+        // Compact is always the overlay presentation: Otto's docked explorer is
+        // a desktop surface, and this host only runs on the compact layout.
+        <CompactExplorerSidebarHost enabled={chromeEnabled} presentation="overlay">
           <WindowChromeRegion corners={chromeEnabled ? "both" : appChromeLayout.contentCorners}>
             <RouteFadeContainer>{children}</RouteFadeContainer>
           </WindowChromeRegion>
@@ -920,7 +925,7 @@ function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
 
   useEffect(() => {
     if (!enabled || isNative) return;
-    void updateDesktopWindowControls({
+    void updateDesktopWindowChrome({
       backgroundColor,
       foregroundColor: foreground,
     }).catch((error) => {

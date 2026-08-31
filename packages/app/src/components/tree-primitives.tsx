@@ -181,3 +181,26 @@ const styles = StyleSheet.create((theme: Theme) => ({
 // Stable module-level style ref so TreeChevron passes a constant array, not one created
 // per render - satisfies react-perf (no inline-array prop) without a per-render useMemo.
 const CHEVRON_EXPANDED_STYLE = [styles.chevron, styles.chevronExpanded];
+
+/**
+ * Trailing glyph rail shared with the explorer X and Changes options chevron.
+ * The extra 2px is optical: text ink ends inside its layout box, while the
+ * header icons' strokes extend to theirs.
+ */
+/** Shared painted-edge rail for pane headers, toolbars, and tree/diff rows. */
+export const WORKSPACE_PANE_TRAILING_GLYPH_RAIL = SPACING[2];
+
+export const workspaceTreeRowStyles = StyleSheet.create((theme: Theme) => ({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: WORKSPACE_FILE_ROW_VERTICAL_PADDING,
+    paddingRight: WORKSPACE_PANE_TRAILING_GLYPH_RAIL,
+  },
+  active: {
+    backgroundColor: theme.colors.surfaceSidebarHover,
+  },
+  name: { color: theme.colors.foreground, opacity: 0.76 },
+  nameHovered: { opacity: 1 },
+}));

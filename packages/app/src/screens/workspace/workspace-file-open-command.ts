@@ -3,7 +3,11 @@ import {
   normalizeWorkspaceFileLocation,
 } from "@/workspace/file-open";
 import { setFileViewModeFor } from "@/stores/file-view-store";
-import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
+import {
+  FOCUSED_PANE_PLACEMENT,
+  type WorkspaceTabPlacement,
+} from "@/stores/workspace-layout-store";
+import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 
 interface OpenWorkspaceFileFromExplorerInput {
   filePath: string;
@@ -12,13 +16,20 @@ interface OpenWorkspaceFileFromExplorerInput {
   /** Preview view only: highlight and scroll to this 1-based line. */
   lineStart?: number;
   persistenceKey: string | null;
+  closeExplorerAfterOpen: boolean;
   showMobileAgent: () => void;
-  openWorkspaceTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
+  openWorkspaceTabInFocusedPane: (
+    workspaceKey: string,
+    target: WorkspaceTabTarget,
+    placement?: WorkspaceTabPlacement,
+  ) => string | null;
   focusWorkspaceTab: (workspaceKey: string, tabId: string) => void;
 }
 
 export function openWorkspaceFileFromExplorer(input: OpenWorkspaceFileFromExplorerInput): void {
-  input.showMobileAgent();
+  if (input.closeExplorerAfterOpen) {
+    input.showMobileAgent();
+  }
   if (!input.persistenceKey) {
     return;
   }
@@ -37,9 +48,10 @@ export function openWorkspaceFileFromExplorer(input: OpenWorkspaceFileFromExplor
       mode: "editor",
     });
   }
-  const tabId = input.openWorkspaceTabFocused(
+  const tabId = input.openWorkspaceTabInFocusedPane(
     input.persistenceKey,
     createWorkspaceFileTabTarget(location),
+    FOCUSED_PANE_PLACEMENT,
   );
   if (tabId) {
     input.focusWorkspaceTab(input.persistenceKey, tabId);

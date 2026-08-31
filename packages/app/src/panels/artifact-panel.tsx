@@ -9,7 +9,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useArtifactContent } from "@/artifacts/use-artifact-content";
 import { useArtifacts } from "@/artifacts/use-artifacts";
 import { usePaneContext } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 
 function useArtifactPanelDescriptor(
   target: { kind: "artifact"; artifactId: string },
@@ -133,14 +133,13 @@ function ArtifactPanel() {
   );
 }
 
-export const artifactPanelRegistration: PanelRegistration<"artifact"> = {
-  kind: "artifact",
+export const artifactPanelRegistration = definePanel("artifact", {
   component: ArtifactPanel,
   useDescriptor: useArtifactPanelDescriptor,
   confirmClose() {
     return Promise.resolve(true);
   },
-};
+});
 
 const styles = StyleSheet.create((theme) => ({
   container: {

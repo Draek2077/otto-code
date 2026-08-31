@@ -8,15 +8,21 @@ import type {
 import type { AgentManager, ManagedAgent } from "./agent-manager.js";
 import type { AgentStorage } from "./agent-storage.js";
 import { ensureAgentLoaded } from "./agent-loading.js";
+import type { ActiveTurnBehavior } from "@otto-code/protocol/messages";
+
+export type AgentUnarchiveController = Pick<AgentManager, "notifyAgentState" | "unarchiveSnapshot">;
 
 export type AgentRunController = Pick<
   AgentManager,
   | "getAgent"
   | "tryRunOutOfBand"
   | "hasInFlightRun"
-  | "isBusyOnlyWithOutOfBandRun"
   | "replaceAgentRun"
+  | "steerOrReplaceActiveTurn"
   | "streamAgent"
+  // OTTO: the steer queue's two entry points. Same Pick<AgentManager> shape as
+  // upstream's, so the controller stays derived rather than hand-written.
+  | "isBusyOnlyWithOutOfBandRun"
   | "enqueueSteerMessage"
 >;
 
@@ -36,17 +42,27 @@ export type AgentPromptDelivery = "interrupt" | "queue";
 
 export interface StartAgentRunOptions {
   replaceRunning?: boolean;
+  activeTurnBehavior?: ActiveTurnBehavior;
   runOptions?: AgentRunOptions;
+  /** Ask the provider to deny permissions blocking this steer. */
+  clearPendingPermissions?: boolean;
   delivery?: AgentPromptDelivery;
   /** Marks system-injected prompts so the queue never merges them into a user turn. */
   source?: "user" | "system";
 }
 
-export interface StartAgentRunResult {
-  outOfBand: boolean;
-  /** True when the prompt was parked for the next turn instead of dispatched. */
-  queued: boolean;
-  /** The queue entry's id, so the caller can find its own message again. */
+/**
+ * What happened to a dispatched prompt. `queued` is Otto's: the steer queue
+ * parked the prompt for the next turn rather than running it now. It sits in
+ * upstream's union rather than beside it so every caller that switches on a
+ * disposition has to account for it.
+ */
+export type PromptDispatchDisposition = "out_of_band" | "steered" | "turn_started" | "queued";
+
+export interface PromptDispatchResult {
+  disposition: PromptDispatchDisposition;
+  /** The queue entry's id, so the caller can find its own message again.
+   *  Set only when the disposition is `queued`. */
   queuedMessageId?: string;
 }
 
@@ -62,7 +78,7 @@ function tryQueuePrompt(
   prompt: AgentPromptInput,
   logger: Logger,
   options: StartAgentRunOptions | undefined,
-): StartAgentRunResult | null {
+): PromptDispatchResult | null {
   // An out-of-band command has no turn to interrupt, and `/compact` is the one
   // that matters: cutting in mid-rewrite runs the next turn against a
   // half-summarized conversation. So an interrupt is downgraded to a queue
@@ -81,19 +97,63 @@ function tryQueuePrompt(
   }
   logger.trace({ agentId, entryId: enqueued.entry?.id }, "agent.session.start_stream.queued");
   return {
-    outOfBand: false,
-    queued: true,
+    disposition: "queued",
     ...(enqueued.entry ? { queuedMessageId: enqueued.entry.id } : {}),
   };
 }
 
-export function startAgentRun(
+async function steerOrReplaceActiveRun(
+  agentManager: AgentRunController,
+  agentId: string,
+  prompt: AgentPromptInput,
+  options: StartAgentRunOptions | undefined,
+): Promise<
+  | { disposition: "steered" }
+  | {
+      disposition: "turn_started";
+      iterator: AsyncGenerator<import("./agent-sdk-types.js").AgentStreamEvent>;
+    }
+  | null
+> {
+  if (options?.activeTurnBehavior !== "steer") {
+    return null;
+  }
+  const steerOptions = options.clearPendingPermissions
+    ? { ...options.runOptions, clearPendingPermissions: true }
+    : options.runOptions;
+  const result = await agentManager.steerOrReplaceActiveTurn(agentId, prompt, steerOptions);
+  if (result.status === "steered") {
+    return { disposition: "steered" };
+  }
+  if (result.status === "replaced") {
+    return { disposition: "turn_started", iterator: result.iterator };
+  }
+  return null;
+}
+
+async function startOrReplaceRun(
+  agentManager: AgentRunController,
+  agentId: string,
+  prompt: AgentPromptInput,
+  options: StartAgentRunOptions | undefined,
+): Promise<{
+  iterator: AsyncGenerator<import("./agent-sdk-types.js").AgentStreamEvent>;
+  replaced: boolean;
+}> {
+  const replaced = Boolean(options?.replaceRunning && agentManager.hasInFlightRun(agentId));
+  const iterator = replaced
+    ? await agentManager.replaceAgentRun(agentId, prompt, options?.runOptions)
+    : agentManager.streamAgent(agentId, prompt, options?.runOptions);
+  return { iterator, replaced };
+}
+
+export async function startAgentRun(
   agentManager: AgentRunController,
   agentId: string,
   prompt: AgentPromptInput,
   logger: Logger,
   options?: StartAgentRunOptions,
-): StartAgentRunResult {
+): Promise<PromptDispatchResult> {
   const snapshot = agentManager.getAgent(agentId);
   logger.trace(
     {
@@ -107,29 +167,29 @@ export function startAgentRun(
     },
     "agent.session.start_stream.request",
   );
-  const runOptions = options?.runOptions;
   // Out-of-band commands (e.g. /goal pause) must run WITHOUT canceling an
-  // in-flight turn - replaceAgentRun would interrupt the running turn. The
-  // intercept lives at this layer so it covers every prompt entrypoint. The run
-  // options ride along so the prompt the manager records carries the composer's
-  // message id and reconciles the client's optimistic row.
-  if (agentManager.tryRunOutOfBand(agentId, prompt, runOptions)) {
-    return { outOfBand: true, queued: false };
+  // in-flight turn — replaceAgentRun would interrupt the running turn. The
+  // intercept lives at this layer so it covers every prompt entrypoint.
+  if (agentManager.tryRunOutOfBand(agentId, prompt, options?.runOptions)) {
+    return { disposition: "out_of_band" };
   }
-  const queuedResult = tryQueuePrompt(agentManager, agentId, prompt, logger, options);
-  if (queuedResult) {
-    return queuedResult;
+  const queued = tryQueuePrompt(agentManager, agentId, prompt, logger, options);
+  if (queued) {
+    return queued;
   }
-  const shouldReplace = Boolean(options?.replaceRunning && agentManager.hasInFlightRun(agentId));
-  const iterator = shouldReplace
-    ? agentManager.replaceAgentRun(agentId, prompt, runOptions)
-    : agentManager.streamAgent(agentId, prompt, runOptions);
+  const steered = await steerOrReplaceActiveRun(agentManager, agentId, prompt, options);
+  if (steered?.disposition === "steered") {
+    return steered;
+  }
+  const { iterator, replaced } = steered
+    ? { iterator: steered.iterator, replaced: true }
+    : await startOrReplaceRun(agentManager, agentId, prompt, options);
   logger.trace(
     {
       agentId,
       provider: snapshot?.provider,
       providerSessionId: snapshot?.persistence?.sessionId ?? undefined,
-      shouldReplace,
+      shouldReplace: replaced,
     },
     "agent.session.start_stream.iterator_returned",
   );
@@ -159,7 +219,7 @@ export function startAgentRun(
       logger.error({ err: error, agentId }, "Agent stream failed");
     }
   })();
-  return { outOfBand: false, queued: false };
+  return { disposition: "turn_started" };
 }
 
 /**
@@ -167,14 +227,6 @@ export function startAgentRun(
  * Shared across Session (app/WS), MCP, and CLI so every surface that acts on
  * an archived agent unarchives it the same way.
  */
-export interface AgentUnarchiveController {
-  unarchiveSnapshot(
-    agentId: string,
-    updates?: { workspaceId?: string; labels?: Record<string, string | null> },
-  ): Promise<boolean>;
-  notifyAgentState(agentId: string): void;
-}
-
 export async function unarchiveAgentState(
   _agentStorage: AgentStorage,
   agentManager: AgentUnarchiveController,
@@ -209,6 +261,7 @@ export interface SendPromptToAgentParams {
   /** Prompt to dispatch to the provider (may include image blocks or wrapped text). */
   prompt: AgentPromptInput;
   messageId?: string;
+  activeTurnBehavior?: ActiveTurnBehavior;
   runOptions?: AgentRunOptions;
   /** Optional mode to set on the agent before the run starts. */
   sessionMode?: string;
@@ -218,16 +271,11 @@ export interface SendPromptToAgentParams {
    * schedule fires, notify-on-finish).
    */
   unarchive?: boolean;
-  /**
-   * How to reach a busy agent. Defaults to `interrupt` - today's behavior for
-   * every caller. See AgentPromptDelivery.
-   */
+  /** See {@link StartAgentRunOptions.clearPendingPermissions}. */
+  clearPendingPermissions?: boolean;
+  /** See {@link StartAgentRunOptions.delivery}. */
   delivery?: AgentPromptDelivery;
-  /**
-   * Marks the prompt as Otto-injected (chat mention, schedule fire,
-   * notify-on-finish) rather than typed by a person. Only affects queue
-   * merging; system-injected entries are always delivered as their own turn.
-   */
+  /** See {@link StartAgentRunOptions.source}. */
   source?: "user" | "system";
   logger: Logger;
 }
@@ -241,14 +289,35 @@ export interface StartCreatedAgentInitialPromptParams {
   logger: Logger;
 }
 
-const AGENT_RUN_START_TIMEOUT_MS = 15_000;
+/**
+ * Outer bound on a run reaching "started" after dispatch.
+ *
+ * This wraps provider startup, so it MUST stay larger than the slowest provider's own
+ * startup budget — otherwise it aborts a start the provider was still allowed to be
+ * working on, and the provider's budget can never apply. OpenCode is the slowest today:
+ * up to 30s for the server to boot (OPENCODE_SERVER_STARTUP_TIMEOUT_MS) and then a
+ * session.create on the same budget, so this is deliberately set well above 30s.
+ *
+ * Not derived from the provider constant on purpose: this module is provider-agnostic
+ * and must not depend on a specific provider's internals.
+ */
+const AGENT_RUN_START_TIMEOUT_MS = 60_000;
 
 export async function waitForAgentRunStartWithTimeout(
   agentManager: AgentManager,
   agentId: string,
 ): Promise<void> {
+  const provider = agentManager.getAgent(agentId)?.provider ?? "provider";
   const startAbort = new AbortController();
-  const startTimeout = setTimeout(() => startAbort.abort("timeout"), AGENT_RUN_START_TIMEOUT_MS);
+  const startTimeout = setTimeout(
+    () =>
+      startAbort.abort(
+        new Error(
+          `${provider} run did not start within ${AGENT_RUN_START_TIMEOUT_MS / 1000} seconds (phase: run start)`,
+        ),
+      ),
+    AGENT_RUN_START_TIMEOUT_MS,
+  );
 
   try {
     await agentManager.waitForAgentRunStart(agentId, { signal: startAbort.signal });
@@ -266,17 +335,17 @@ export async function waitForAgentRunStartWithTimeout(
  * drift between them.
  *
  * When `unarchive` is false and the agent is archived, the call is a silent
- * no-op (returns `{ outOfBand: false }`) - the agent is not run.
+ * no-op (returns the normal turn-start disposition) — the agent is not run.
  */
 export async function sendPromptToAgent(
   params: SendPromptToAgentParams,
-): Promise<StartAgentRunResult> {
+): Promise<PromptDispatchResult> {
   const unarchive = params.unarchive ?? true;
 
   const record = await params.agentStorage.get(params.agentId);
   if (record?.archivedAt) {
     if (!unarchive) {
-      return { outOfBand: false, queued: false };
+      return { disposition: "turn_started" };
     }
     await unarchiveAgentState(params.agentStorage, params.agentManager, params.agentId);
   }
@@ -309,6 +378,8 @@ export async function sendPromptToAgent(
 
   return startAgentRun(params.agentManager, params.agentId, params.prompt, params.logger, {
     replaceRunning: true,
+    activeTurnBehavior: params.activeTurnBehavior,
+    clearPendingPermissions: params.clearPendingPermissions,
     runOptions,
     ...(params.delivery ? { delivery: params.delivery } : {}),
     ...(params.source ? { source: params.source } : {}),
@@ -327,7 +398,7 @@ export async function startCreatedAgentInitialPrompt(
     return currentSnapshot;
   }
 
-  const dispatchResult = startAgentRun(
+  const dispatchResult = await startAgentRun(
     params.agentManager,
     params.agentId,
     params.prompt,
@@ -337,7 +408,7 @@ export async function startCreatedAgentInitialPrompt(
     },
   );
 
-  if (!dispatchResult.outOfBand) {
+  if (dispatchResult.disposition === "turn_started") {
     await waitForAgentRunStartWithTimeout(params.agentManager, params.agentId);
   }
 
@@ -452,6 +523,7 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
       agentStorage,
       agentId: callerAgentId,
       prompt: formatSystemNotificationPrompt(body),
+      activeTurnBehavior: "steer",
       unarchive: false,
       // "Your child finished" is a report, not a correction. Interrupting the
       // parent destroyed the turn it was running while the child worked, and a

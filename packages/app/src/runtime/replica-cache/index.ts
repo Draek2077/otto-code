@@ -651,6 +651,18 @@ export class ReplicaCache {
     }
   }
 
+  /**
+   * Push the pending persist back. Called on user interaction so a batched
+   * write lands in a gap rather than while the user is mid-gesture. A no-op
+   * when nothing is scheduled.
+   */
+  recordUserActivity(): void {
+    if (!this.persistTimer) return;
+    clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    this.schedulePersist();
+  }
+
   start(): void {
     if (this.unsubscribe) return;
     const changedBeforeSubscription = this.captureSessions();

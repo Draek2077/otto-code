@@ -8,6 +8,7 @@ import type {
 } from "../../messages.js";
 import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { StoredAgentRecord } from "../../agent/agent-storage.js";
+import { DirectorySyncService } from "../../directory-sync/index.js";
 
 // No mocks - every dependency is an injected in-memory fake. The agent payloads
 // are supplied through the fake builders, so each test fully controls the
@@ -101,6 +102,7 @@ function buildHarness() {
   let buildAgentPayloadError: Error | null = null;
   let workspaceUpdateError: Error | null = null;
   let enrichProjectedPayload = false;
+  const directorySync = new DirectorySyncService("test-generation");
 
   const service = createAgentUpdatesService({
     emit: (message) => emitted.push(message),
@@ -137,6 +139,13 @@ function buildHarness() {
       }
       workspaceUpdates.push(workspaceId);
     },
+    sequenceAgentUpdate: (payload, agent, project, agentId, includeSequence) =>
+      directorySync.sequenceAgentUpdate(
+        payload,
+        agent && project ? { agent, project } : null,
+        agentId,
+        includeSequence,
+      ),
     logger: { error: (...args: unknown[]) => loggedErrors.push(args) } as unknown as pino.Logger,
   });
 

@@ -12,9 +12,12 @@ import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.j
 import { ConnectorConfigSchema, OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
 import {
   AgentProfileSchema,
+  AgentSkillSelectionSchema,
   MutableProjectArtifactsConfigSchema,
   MutableProjectKnowledgeConfigSchema,
   MutableProjectWorkflowsConfigSchema,
+  PluginIdSchema,
+  PluginSourceSchema,
   TerminalProfileSchema,
 } from "@otto-code/protocol/messages";
 import { OttoServicePortAllocationSchema } from "@otto-code/protocol/otto-config-schema";
@@ -564,6 +567,8 @@ export const PersistedConfigSchema = z
       .optional(),
 
     providers: ProvidersSchema.optional(),
+    pluginsEnabled: z.boolean().optional(),
+    plugins: z.record(PluginIdSchema, PluginSourceSchema).optional(),
     worktrees: WorktreesConfigSchema.optional(),
     agents: z
       .object({
@@ -575,6 +580,7 @@ export const PersistedConfigSchema = z
         modelTierOverrides: z.array(ModelTierOverrideConfigSchema).optional(),
         modelVisibilityOverrides: z.array(ModelVisibilityOverrideConfigSchema).optional(),
         savedProviderEndpoints: z.array(SavedProviderEndpointConfigSchema).optional(),
+        skills: z.object({ selection: AgentSkillSelectionSchema.optional() }).strict().optional(),
       })
       .strict()
       .optional(),

@@ -417,7 +417,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   );
 
   // Client activity tracking (heartbeat, push token registration)
-  useClientActivity({ client, focusedAgentId, focusedTerminalId, onAppResumed: handleAppResumed });
+  useClientActivity({
+    client,
+    focusedAgentId,
+    focusedTerminalId,
+    onUserActivity: () => getHostRuntimeStore().recordUserActivity(),
+    onAppResumed: handleAppResumed,
+  });
   usePushTokenRegistration({ client, serverId });
 
   const notifyAgentAttention = useCallback(

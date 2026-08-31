@@ -83,10 +83,15 @@ export function asDaemonConfigStore(stub: {
  * so a store that only stubs `onChange` throws before the test starts.
  */
 export function createDaemonConfigStoreStub(): {
+  onApply: () => () => void;
   onChange: () => () => void;
   get: () => { lsp: Record<string, unknown>; dotnetSolutionManagement: Record<string, unknown> };
 } {
   return {
+    // Otto applies config changes to live subsystems, so the server subscribes to
+    // both the write and the apply. A stub missing this one leaks an unsubscribe
+    // call onto undefined at teardown.
+    onApply: vi.fn(() => () => {}),
     onChange: vi.fn(() => () => {}),
     get: vi.fn(() => ({
       lsp: {

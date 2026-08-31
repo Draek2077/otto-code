@@ -8,6 +8,7 @@ function descriptor(
   key: string,
   root: string,
   customIconRevision: string | null = null,
+  iconRevision: string | undefined = undefined,
 ): ProjectDescriptor {
   return {
     projectId: id,
@@ -16,6 +17,7 @@ function descriptor(
     projectCustomName: null,
     projectCustomIconRevision: customIconRevision,
     projectKanban: null,
+    ...(iconRevision === undefined ? {} : { projectIconRevision: iconRevision }),
     projectRootPath: root,
     projectKind: "git",
   };
@@ -49,14 +51,14 @@ describe("buildProjects", () => {
           serverId: "host-a",
           serverName: "Host A",
           isOnline: true,
-          projects: [descriptor("prj_a", key, "/a/app")],
+          projects: [descriptor("prj_a", key, "/a/app", "revision-a")],
           workspaces: [workspace("ws-a", "prj_a", "/a/app")],
         },
         {
           serverId: "host-b",
           serverName: "Host B",
           isOnline: false,
-          projects: [descriptor("prj_b", key, "/b/app")],
+          projects: [descriptor("prj_b", key, "/b/app", "revision-b")],
           workspaces: [workspace("ws-b", "prj_b", "/b/app")],
         },
       ],
@@ -70,8 +72,16 @@ describe("buildProjects", () => {
         onlineHostCount: 1,
         totalWorkspaceCount: 2,
         hosts: [
-          expect.objectContaining({ serverId: "host-a", projectId: "prj_a" }),
-          expect.objectContaining({ serverId: "host-b", projectId: "prj_b" }),
+          expect.objectContaining({
+            serverId: "host-a",
+            projectId: "prj_a",
+            customIconRevision: "revision-a",
+          }),
+          expect.objectContaining({
+            serverId: "host-b",
+            projectId: "prj_b",
+            customIconRevision: "revision-b",
+          }),
         ],
       }),
     ]);

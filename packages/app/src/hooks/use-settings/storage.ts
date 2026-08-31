@@ -66,7 +66,9 @@ export interface AppSettings extends OttoAppSettings {
   monoFontFamily: string; // "" = platform default mono stack
   uiFontSize: number; // clamped px, default 16
   codeFontSize: number; // clamped px, default 12
-  syntaxTheme: SyntaxThemeId; // default "default"
+  syntaxTheme: SyntaxThemeId;
+  openInSidePane: OpenInSidePanePreferences; // default "default"
+  pluginThemeId: string | null; // upstream plugin theming; null = built-in theme
   // Whether whitespace-only changes appear in diff review. Device-local
   // presentation only. Default on.
   workspaceTitleSource: WorkspaceTitleSource;
@@ -81,6 +83,26 @@ export interface AppSettings extends OttoAppSettings {
   sidebarChecksDisplay: SidebarChecksDisplay;
   /** Constrained leader-only Otto action mappings for Vim keybindings. */
 }
+
+export interface OpenInSidePanePreferences {
+  explorerFiles: boolean;
+  explorerChanges: boolean;
+  chatFiles: boolean;
+  diffFiles: boolean;
+  subagents: boolean;
+  pullRequests: boolean;
+  changesLinks: boolean;
+}
+
+export const DEFAULT_OPEN_IN_SIDE_PANE_PREFERENCES: OpenInSidePanePreferences = {
+  explorerFiles: false,
+  explorerChanges: false,
+  chatFiles: false,
+  diffFiles: false,
+  subagents: false,
+  pullRequests: false,
+  changesLinks: false,
+};
 
 export interface Settings extends AppSettings {
   manageBuiltInDaemon: boolean;
@@ -99,6 +121,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   uiFontSize: DEFAULT_UI_FONT_SIZE,
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
   syntaxTheme: "default",
+  openInSidePane: DEFAULT_OPEN_IN_SIDE_PANE_PREFERENCES,
+  pluginThemeId: null,
   workspaceTitleSource: "title",
   autoExpandReasoning: false,
   toolCallDetailLevel: "detailed",
@@ -373,3 +397,7 @@ export {
   MIN_TERMINAL_FONT_SIZE,
   MIN_UI_FONT_SIZE,
 } from "./limits";
+
+/** What a migration reads off disk: the settings as stored, before defaults
+ *  are layered on. */
+export type PersistedAppSettings = Partial<Settings>;

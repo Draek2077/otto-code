@@ -4,6 +4,7 @@ const pkg = require("./package.json");
 const withAndroidAsyncStorageSize = require("./plugins/with-android-async-storage-size");
 const withAndroidProfileable = require("./plugins/with-android-profileable");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
+const withPasteInput = require("./plugins/with-paste-input");
 const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.OTTO_FDROID_BUILD === "1";
@@ -153,7 +154,8 @@ export default {
     },
     plugins: [
       "expo-router",
-      [withAndroidAsyncStorageSize, 10],
+      withPasteInput,
+      [withAndroidAsyncStorageSize, 64],
       ...buildProfile.cameraPlugins,
       [
         "expo-splash-screen",

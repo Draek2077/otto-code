@@ -18,7 +18,11 @@ Log in from the machine first:
 otto hub login https://hub.example.com
 ```
 
-The CLI prints a URL and a verification code and opens your browser. The approved login is stored under `OTTO_HOME`. Then enroll the daemon:
+The CLI prints a URL and a verification code and opens your browser. The approved login is stored under `OTTO_HOME`.
+
+In an interactive terminal, login then offers to finish setup: whether to connect this daemon, and whether to initialize and deploy a starter workflow. Both default to yes. Declining the connection prints `otto hub connect <origin>; then otto hub init`, since connecting alone leaves the project without a workflow. Declining only the starter prints `otto hub init`. `--json` or non-TTY login only logs in. [Quickstart](/docs/hub/quickstart) walks through the questions.
+
+Enroll the daemon on its own when you declined, or when the machine is already logged in:
 
 ```sh
 otto hub connect

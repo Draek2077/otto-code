@@ -61,6 +61,8 @@ export const AlignJustify = createMaterialSymbolIcon("AlignJustify");
 export const Architecture = createMaterialSymbolIcon("Architecture");
 export const Archive = createMaterialSymbolIcon("Archive");
 export const ArrowDown = createMaterialSymbolIcon("ArrowDown");
+// Material's `vertical_align_bottom`. Entering focus mode.
+export const ArrowDownToLine = createMaterialSymbolIcon("ArrowDownToLine");
 export const ArrowDownUp = createMaterialSymbolIcon("ArrowDownUp");
 export const ArrowLeft = createMaterialSymbolIcon("ArrowLeft");
 export const ArrowLeftToLine = createMaterialSymbolIcon("ArrowLeftToLine");
@@ -170,6 +172,8 @@ export const Files = createMaterialSymbolIcon("Files");
 export const FileWarning = createMaterialSymbolIcon("FileWarning");
 export const FitScreen = createMaterialSymbolIcon("FitScreen");
 export const FlaskConical = createMaterialSymbolIcon("FlaskConical");
+// Material's `center_focus_strong`. Moving focus between panes.
+export const Focus = createMaterialSymbolIcon("Focus");
 export const Folder = createMaterialSymbolIcon("Folder");
 export const FolderGit2 = createMaterialSymbolIcon("FolderGit2");
 export const FolderOpen = createMaterialSymbolIcon("FolderOpen");
@@ -238,6 +242,8 @@ export const Moon = createMaterialSymbolIcon("Moon");
 export const MoreHorizontal = createMaterialSymbolIcon("MoreHorizontal");
 export const MoreVertical = createMaterialSymbolIcon("MoreVertical");
 export const MousePointer2 = createMaterialSymbolIcon("MousePointer2");
+// Material's `open_with`. Moving a tab between panes.
+export const Move = createMaterialSymbolIcon("Move");
 export const Network = createMaterialSymbolIcon("Network");
 export const Neurology = createMaterialSymbolIcon("Neurology");
 export const OpenInFull = createMaterialSymbolIcon("OpenInFull");
@@ -320,6 +326,8 @@ export const Timeline = createMaterialSymbolIcon("Timeline");
 export const Trash2 = createMaterialSymbolIcon("Trash2");
 export const TravelExplore = createMaterialSymbolIcon("TravelExplore");
 export const TriangleAlert = createMaterialSymbolIcon("TriangleAlert");
+// Material's `sell` - the tag/label glyph. Upstream reaches for lucide's Tag here.
+export const Tag = createMaterialSymbolIcon("Tag");
 export const Type = createMaterialSymbolIcon("Type");
 export const Undo2 = createMaterialSymbolIcon("Undo2");
 export const Unlink = createMaterialSymbolIcon("Unlink");

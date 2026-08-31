@@ -4,8 +4,13 @@ import { getIsElectronRuntime } from "@/constants/layout";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import { getResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
-import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
-import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
+import {
+  navigateToWorkspace,
+  type ActiveWorkspaceSelection,
+  navigateToLastWorkspace,
+  useActiveWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
+import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import {
   type ChordState,
   type KeyboardShortcutInput,
@@ -31,11 +36,8 @@ import { isNative } from "@/constants/platform";
 import { keyboardShortcutsAvailable } from "@/keyboard/availability";
 import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
-import {
-  type ActiveWorkspaceSelection,
-  navigateToLastWorkspace,
-  useActiveWorkspaceSelection,
-} from "@/stores/navigation-active-workspace-store";
+import { buildOpenProjectRoute } from "@/utils/host-routes";
+import { hasActiveWebOverlay, dispatchTopWebOverlayKeyDown } from "@/lib/overlay-root";
 
 export function useKeyboardShortcuts({
   enabled,
@@ -54,6 +56,7 @@ export function useKeyboardShortcuts({
   exitFocusMode: () => void;
   cycleTheme?: () => void;
 }) {
+  const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const pathname = usePathname();
   const router = useRouter();
   const resetModifiers = useKeyboardShortcutsStore((s) => s.resetModifiers);
@@ -154,7 +157,11 @@ export function useKeyboardShortcuts({
           navigateToWorkspace({ serverId: action.serverId, workspaceId: action.workspaceId });
           return true;
         case "navigate-last-workspace":
-          return navigateToLastWorkspace();
+          if (navigateToLastWorkspace()) {
+            return true;
+          }
+          router.replace(buildOpenProjectRoute());
+          return true;
         case "router-replace":
           router.replace(action.route as Parameters<typeof router.replace>[0]);
           return true;
@@ -246,7 +253,6 @@ export function useKeyboardShortcuts({
         },
         bindings,
       });
-
       chordStateRef.current = result.nextChordState;
       if (
         shouldPublishBrowserShortcutPolicy({
@@ -290,6 +296,10 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      if (dispatchTopWebOverlayKeyDown(event)) {
+        return;
+      }
+
       // During IME composition, Enter confirms the candidate selection and must
       // not route through global shortcuts like message send.
       if (isImeComposingKeyboardEvent(event)) {
@@ -302,6 +312,26 @@ export function useKeyboardShortcuts({
       }
 
       syncShortcutDiscoveryModifiers(event);
+      const key = event.key ?? "";
+      if (
+        key === "Escape" &&
+        pathname.startsWith("/settings") &&
+        !isMobile &&
+        hasActiveWebOverlay()
+      ) {
+        return;
+      }
+      // Shortcut discovery reads the live modifier set, which
+      // `syncShortcutDiscoveryModifiers` keeps current from the event itself.
+      // Shift arriving on top of an existing modifier means the user is
+      // building a different chord, so the discovery overlay stands down.
+      syncShortcutDiscoveryModifiers(event);
+      if (key === "Shift") {
+        const { alt, ctrl, meta } = useKeyboardShortcutsStore.getState().shortcutDiscoveryModifiers;
+        if (alt || ctrl || meta) {
+          useKeyboardShortcutsStore.getState().resetModifiers();
+        }
+      }
 
       const focusScope = resolveKeyboardFocusScope({
         target: event.target,
@@ -370,6 +400,7 @@ export function useKeyboardShortcuts({
     isMac,
     isMobile,
     isWorkspaceFocusModeEnabled,
+    keyboardActionDispatcher,
     openProjectPickerAction,
     pathname,
     publishBrowserShortcutPolicy,

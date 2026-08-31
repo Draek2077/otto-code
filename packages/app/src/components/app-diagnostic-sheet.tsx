@@ -341,7 +341,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   mutedText: {
     flex: 1,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
   },
   headerActions: {

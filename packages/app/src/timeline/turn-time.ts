@@ -1,5 +1,6 @@
 import type { AgentUsage } from "@otto-code/protocol/agent-types";
 import type { StreamItem } from "@/types/stream";
+import { startsNewTurn } from "@/agent-stream/turn-membership";
 
 export interface TurnTiming {
   startedAt: Date;
@@ -65,6 +66,7 @@ export function deriveStreamTurnTiming(params: {
   let currentAssistantIds: string[] = [];
   let currentUsage: AgentUsage | undefined;
   let currentStreamedChars = 0;
+  let previousItem: StreamItem | null = null;
 
   const flushCompletedTurn = () => {
     if (!currentUserAt || !currentLastItemAt || currentAssistantIds.length === 0) {
@@ -82,16 +84,19 @@ export function deriveStreamTurnTiming(params: {
   };
 
   const visitItem = (item: StreamItem) => {
-    if (item.kind === "user_message") {
+    // Falls through rather than returning: the item that opened the turn is
+    // still part of it, and `previousItem` has to advance or every later item
+    // is measured against a null predecessor and reads as another turn start.
+    if (startsNewTurn(item, previousItem)) {
       flushCompletedTurn();
-      currentUserAt = item.timestamp;
+      currentUserAt = item.kind === "user_message" ? item.timestamp : null;
       currentLastItemAt = null;
       currentAssistantIds = [];
       currentUsage = undefined;
       currentStreamedChars = 0;
-      return;
     }
     if (!currentUserAt) {
+      previousItem = item;
       return;
     }
     currentLastItemAt = item.timestamp;
@@ -102,6 +107,7 @@ export function deriveStreamTurnTiming(params: {
         currentUsage = item.turnUsage;
       }
     }
+    previousItem = item;
   };
 
   for (const item of params.tail) {

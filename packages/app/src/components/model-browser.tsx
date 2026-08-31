@@ -133,6 +133,8 @@ export interface ModelBrowserState {
   personality: RolePersonality | null;
   view: ModelBrowserView;
   searchQuery: string;
+  isSearchFocused: boolean;
+  onSearchFocusChange: (focused: boolean) => void;
   header: SheetHeader;
   selectedModelLabel: string;
   triggerLabel: string;
@@ -161,6 +163,7 @@ interface ModelBrowserContentProps extends Omit<ModelBrowserProps, "state" | "sc
   selectedProvider: string;
   selectedModel: string;
   searchQuery: string;
+  isSearchFocused: boolean;
   personality: RolePersonality | null;
   onDrillDown: (providerId: string, providerLabel: string) => void;
   scrolling: "sheet" | "independent";
@@ -229,6 +232,9 @@ export function useModelBrowser({
   const { t } = useTranslation();
   const [view, setView] = useState<ModelBrowserView>({ kind: "all" });
   const [searchQuery, setSearchQuery] = useState("");
+  // Focusing the field opens the searchable list straight away, so an empty
+  // query still means "I am looking for a model" rather than "browse".
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
   const hasProfiles = (personality?.personalities?.length ?? 0) > 0;
 
@@ -267,6 +273,10 @@ export function useModelBrowser({
 
   const handleSearchQueryChange = useCallback((value: string) => {
     setSearchQuery(value);
+  }, []);
+
+  const handleSearchFocusChange = useCallback((focused: boolean) => {
+    setIsSearchFocused(focused);
   }, []);
 
   const singleProviderView = providers.length === 1;
@@ -346,6 +356,8 @@ export function useModelBrowser({
     personality,
     view,
     searchQuery,
+    isSearchFocused,
+    onSearchFocusChange: handleSearchFocusChange,
     header,
     selectedModelLabel,
     triggerLabel,
@@ -1038,6 +1050,7 @@ function ModelBrowserContent({
   selectedProvider,
   selectedModel,
   searchQuery,
+  isSearchFocused,
   personality,
   onSelect,
   onSelectProfile,
@@ -1058,8 +1071,8 @@ function ModelBrowserContent({
     [providers, view],
   );
   const allView = useMemo(
-    () => resolveModelBrowserAllView({ providers, normalizedQuery }),
-    [normalizedQuery, providers],
+    () => resolveModelBrowserAllView({ providers, normalizedQuery, isSearchFocused }),
+    [isSearchFocused, normalizedQuery, providers],
   );
   const hasResults = personality !== null || providers.length > 0;
 
@@ -1156,6 +1169,7 @@ export function ModelBrowser({
       selectedProvider={state.selectedProvider}
       selectedModel={state.selectedModel}
       searchQuery={state.searchQuery}
+      isSearchFocused={state.isSearchFocused}
       personality={state.personality}
       onSelect={onSelect}
       onSelectProfile={onSelectProfile}

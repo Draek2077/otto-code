@@ -29,6 +29,12 @@ test("Browse fills the directory field with the folder the desktop dialog return
   const browse = page.getByRole("button", { name: "Browse…" });
   await expect(browse).toBeVisible({ timeout: 30_000 });
   await browse.click();
+  const dialogOptions = await waitForDirectoryDialog(page);
+  expect(dialogOptions).toEqual({
+    createDirectory: true,
+    directory: true,
+    multiple: false,
+  });
 
   // The New project page is a form, so Browse selects the folder and stops
   // there. Submitting is the explicit Open action - the old modal opened the

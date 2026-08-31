@@ -37,6 +37,26 @@ export const UI_STATE_GALLERY_COVERED_FILES = [
  */
 export const UI_STATE_GALLERY_EXEMPTIONS: Readonly<Record<string, string>> = {
   "autocomplete-popover.tsx": "Composition of the covered Autocomplete and floating surface.",
+  "horizontal-scroll-boundary.tsx":
+    "Exports a scroll-boundary hook only; it renders nothing of its own.",
+  "overlay-scrollbar/dom-overlay-scrollbar.tsx":
+    "Web DOM half of the overlay scrollbar; it has no resting state away from a scrolling surface.",
+  "overlay-scrollbar/overlay-scrollbar.tsx":
+    "Draws over whichever surface is scrolling, so it has no standalone fixture to audit.",
+  "pane-content-toolbar.tsx":
+    "Composition of the covered toolbar icon buttons and separators over a pane's content.",
+  "skeleton-pulse.tsx":
+    "Animation driver hook for the skeletons that use it; it renders no element itself.",
+  "skeleton-pulse.web.tsx":
+    "Web variant of the same driver hook, sharing its timing with the native one.",
+  "text-input/text-input.tsx":
+    "Editing-surface primitive with no chrome of its own; the fields that wrap it are covered.",
+  "text-input/text-input.web.tsx":
+    "Web variant of the same unstyled editing primitive, differing only in IME handling.",
+  "toolbar-label-trigger.tsx":
+    "Style helpers for the covered toolbar buttons rather than an element of its own.",
+  "trailing-action-scrim.tsx":
+    "Gradient fade behind a hovered row's trailing actions; it has no state of its own to audit.",
   "combobox-trigger.tsx": "Structural trigger wrapper; its visual chrome is caller-owned.",
   "control-state-preview.tsx": "Gallery-only state plumbing with no standalone visual chrome.",
   "context-menu.tsx": "Uses the covered dropdown menu items and floating surface.",

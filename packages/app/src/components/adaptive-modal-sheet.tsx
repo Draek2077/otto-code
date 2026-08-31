@@ -1,5 +1,5 @@
 /* oxlint-disable complexity -- this shared adaptive surface owns the compact, desktop, and bounded-resize lifecycle. */
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -9,7 +9,7 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
+  type TextStyle,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -17,10 +17,9 @@ import type {
   LayoutChangeEvent,
   PressableStateCallbackType,
   StyleProp,
-  TextInputProps,
   ViewStyle,
 } from "react-native";
-import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import {
   getOverlayRoot,
@@ -32,7 +31,6 @@ import {
 import {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-  BottomSheetTextInput,
   useBottomSheetInternal,
 } from "@gorhom/bottom-sheet";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
@@ -46,9 +44,10 @@ import {
   SHEET_HORIZONTAL_PADDING_SCALE,
 } from "@/components/ui/sheet-chrome";
 import { createControlGeometry } from "@/components/ui/control-geometry";
-import { isNative, isWeb } from "@/constants/platform";
+import { isWeb } from "@/constants/platform";
 import { useSheetScrollRegion } from "@/components/use-sheet-scroll-region";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
 
 // Re-exported so the many callers that align their own rows to the sheet's indent keep one
 // import. The token itself, and the rest of the shared sheet frame, live in sheet-chrome.tsx.
@@ -322,7 +321,11 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const SEARCH_INPUT_STYLE = [styles.searchInput, isWeb && { outlineStyle: "none" }];
+// `outlineStyle` is web-only; the cast is what the RN style type cannot express.
+const SEARCH_INPUT_STYLE = [
+  styles.searchInput,
+  isWeb && ({ outlineStyle: "none" } as object),
+] as StyleProp<TextStyle>;
 
 // @gorhom/bottom-sheet components are not Unistyles-tracked: on web, Unistyles
 // style objects carry their values as non-enumerable properties, so any style
@@ -425,55 +428,12 @@ export function BottomSheetVisibleContent({ children }: { children: ReactNode })
   );
 }
 
-export type AdaptiveTextInputProps = TextInputProps & {
-  initialValue?: string;
-  resetKey?: string | number;
-};
-
-// React Native controlled TextInput can replay stale JS values during fast input
-// and visibly flicker/cursor-jump. Keep the rendered text native-owned; callers
-// can seed it once with initialValue and remount with resetKey for real resets.
-// See https://github.com/facebook/react-native/issues/44157
-//
-// Text color and placeholder color are owned by this leaf - not the caller.
-// `@gorhom/bottom-sheet` mounts header subtrees before the sheet is visible
-// under whatever theme is active at mount time, then keeps them mounted across
-// theme changes; any caller that paints color via `StyleSheet.create((theme) =>
-// ...)` from outside this leaf ends up with stale colors in dark mode (see
-// docs/unistyles.md "Hidden Sheet Content"). withUnistyles wraps the actual
-// TextInput so theme-driven re-renders land on the wrapper.
-const ThemedTextInput = withUnistyles(TextInput, (theme) => ({
-  placeholderTextColor: theme.colors.foregroundMuted,
-}));
-const ThemedBottomSheetTextInput = withUnistyles(BottomSheetTextInput, (theme) => ({
-  placeholderTextColor: theme.colors.foregroundMuted,
-}));
-
-export const AdaptiveTextInput = forwardRef<TextInput, AdaptiveTextInputProps>(
-  function AdaptiveTextInputInner(props, ref) {
-    const isMobile = useIsCompactFormFactor();
-    const { value: _value, initialValue, resetKey, defaultValue, style, ...inputProps } = props;
-    // Leaf-owned color goes LAST so callers cannot override it with a stale
-    // theme read. Outline color is theme-aware on web :focus-visible.
-    const textInputProps = {
-      ...inputProps,
-      defaultValue: initialValue ?? defaultValue,
-      style: [styles.adaptiveInputOutline, style, styles.adaptiveInputText],
-    };
-
-    if (isMobile && isNative) {
-      return (
-        <ThemedBottomSheetTextInput
-          key={resetKey}
-          ref={ref as unknown as Ref<never>}
-          {...textInputProps}
-        />
-      );
-    }
-    return <ThemedTextInput key={resetKey} ref={ref} {...textInputProps} />;
-  },
-);
-
+// The adaptive input lives in its own module: it resets through the editing
+// handle rather than by remounting, so callers keep focus and caret. Re-exported
+// here because this is where the sheet's callers already import it from.
+export { AdaptiveTextInput, type AdaptiveTextInputProps } from "@/components/adaptive-text-input";
+import { AdaptiveTextInput } from "@/components/adaptive-text-input";
+import { type EditingTextInputHandle } from "@/components/ui/text-input";
 function closeButtonStyle({
   hovered,
   pressed,
@@ -645,7 +605,7 @@ function HeaderSearchInput({
   resetKey?: string | number;
   testID?: string;
 }): ReactElement {
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<EditingTextInputHandle>(null);
   const [value, setValue] = useState("");
   useEffect(() => setValue(""), [resetKey]);
   const handleChange = useCallback(
@@ -656,7 +616,7 @@ function HeaderSearchInput({
     [onChange],
   );
   const clear = useCallback(() => {
-    inputRef.current?.clear();
+    inputRef.current?.replaceText("");
     handleChange("");
   }, [handleChange]);
 
@@ -664,7 +624,6 @@ function HeaderSearchInput({
     <>
       <AdaptiveTextInput
         ref={inputRef}
-        // @ts-expect-error - outlineStyle is web-only
         style={SEARCH_INPUT_STYLE}
         placeholder={placeholder}
         resetKey={resetKey}
@@ -827,6 +786,9 @@ export function AdaptiveModalSheet({
     footerHeight,
     windowHeight,
   ]);
+  // With the keyboard up the OS already insets the sheet, so the safe-area
+  // padding must not be added a second time.
+  const isKeyboardVisible = useKeyboardVisibility();
   const compactSafeAreaPadding = useMemo(
     () =>
       getCompactSheetSafeAreaPadding({
@@ -835,8 +797,9 @@ export function AdaptiveModalSheet({
         baseContentPadding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
         baseFooterPadding: theme.spacing[3],
         safeAreaBottom: insets.bottom,
+        isKeyboardVisible,
       }),
-    [footer, insets.bottom, isMobile, theme.spacing],
+    [footer, insets.bottom, isKeyboardVisible, isMobile, theme.spacing],
   );
   const effectiveContentStyle = useMemo(
     () => [contentContainerStyle, contentStyle],

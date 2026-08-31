@@ -11,6 +11,7 @@ export interface SubagentRowPresentationData {
   subtitle: string;
   titleState: "ready" | "loading";
   statusBucket: SidebarStateBucket | null;
+  tooltip: string;
 }
 
 // Provider-reported subagents report terminal states Otto's agent lifecycle
@@ -50,6 +51,7 @@ export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowP
     kind: "agent",
     label: label ?? "",
     subtitle: subtitle ?? "",
+    tooltip: subtitle ? `${label ?? ""} - ${subtitle}` : (label ?? ""),
     titleState: label ? "ready" : "loading",
     statusBucket: deriveSidebarStateBucket({
       status: toAgentLifecycleStatus(row),

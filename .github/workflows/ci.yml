@@ -434,11 +434,11 @@ jobs:
         timeout-minutes: 10
         run: npm run browsers:install
 
-      - name: Build app dependencies
-        run: npm run build:app-deps
-
       - name: Build server stack
         run: npm run build:server
+
+      - name: Build native app dependency
+        run: npm run build --workspace=@otto-code/expo-two-way-audio
 
       - name: Install agent CLIs for provider tests
         if: ${{ !matrix.desktop }}

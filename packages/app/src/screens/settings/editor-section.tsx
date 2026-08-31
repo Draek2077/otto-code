@@ -410,7 +410,7 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
                 </View>
                 <FormTextInput
                   size="sm"
-                  value={settings.fileEditorCustomCommand}
+                  initialValue={settings.fileEditorCustomCommand}
                   onChangeText={handleExternalEditorCommandChange}
                   placeholder="editor --wait"
                   autoCapitalize="none"

@@ -2,7 +2,21 @@ import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import type { FileEol } from "@otto-code/protocol/messages";
+import type {
+  FileEol,
+  AgentCumulativeUsage,
+  QueuedAgentMessagePayload,
+  ServerInfoStatusPayload,
+  ProjectPlacementPayload,
+  ServerCapabilities,
+  WorkspaceDescriptorPayload,
+  WorkspaceProjectDescriptorPayload,
+  BackgroundShellTaskInfo,
+  SuggestedTaskInfo,
+  AgentRateLimitInfo,
+  ProjectKanbanTarget,
+  ProjectKnowledgeStoreLocationValue,
+} from "@otto-code/protocol/messages";
 import type { ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
@@ -34,20 +48,6 @@ import type {
   AgentUsage,
   AgentPersistenceHandle,
 } from "@otto-code/protocol/agent-types";
-import type {
-  AgentCumulativeUsage,
-  QueuedAgentMessagePayload,
-  ServerInfoStatusPayload,
-  ProjectPlacementPayload,
-  ServerCapabilities,
-  WorkspaceDescriptorPayload,
-  WorkspaceProjectDescriptorPayload,
-  BackgroundShellTaskInfo,
-  SuggestedTaskInfo,
-  AgentRateLimitInfo,
-  ProjectKanbanTarget,
-  ProjectKnowledgeStoreLocationValue,
-} from "@otto-code/protocol/messages";
 import {
   normalizeWorkspaceOpaqueId,
   normalizeWorkspacePath,
@@ -134,6 +134,12 @@ export interface Agent {
   id: string;
   provider: AgentProvider;
   status: AgentLifecycleStatus;
+  /** The turn this agent is on, foreground or autonomous. The client half of
+   *  the daemon's turn identity: it lets optimistic activity be retired against
+   *  a named turn instead of waiting for an idle frame. */
+  // Optional, matching the wire: AgentSnapshotPayloadSchema leaves it undefined
+  // on a daemon that does not report turn identity.
+  activeTurn?: { turnId: string | null; startedAt: Date | null } | null;
   createdAt: Date;
   updatedAt: Date;
   lastUserMessageAt: Date | null;
@@ -239,6 +245,7 @@ export interface WorkspaceDescriptor {
   name: string;
   title?: string | null;
   pinnedAt?: string | null;
+  labels?: string[];
   status: WorkspaceDescriptorPayload["status"];
   statusEnteredAt: Date | null;
   archivingAt: string | null;
@@ -278,6 +285,8 @@ export function normalizeWorkspaceDescriptor(
     name: payload.name,
     title: payload.title ?? null,
     pinnedAt: payload.pinnedAt ?? null,
+    // COMPAT(workspaceLabels): old daemons omit assignments.
+    labels: payload.labels ?? [],
     status: payload.status,
     statusEnteredAt,
     archivingAt: payload.archivingAt ?? null,
@@ -298,6 +307,12 @@ export interface ProjectDescriptor {
   projectDisplayName: string;
   projectCustomName: string | null;
   projectCustomIconRevision?: string | null;
+  /**
+   * The revision of the icon actually being shown, custom or derived. Distinct
+   * from `projectCustomIconRevision`, which is only set when the user has
+   * chosen one: this is what a cache key should be built from.
+   */
+  projectIconRevision?: string;
   /** The project's Kanban board target; null means no board is configured. */
   projectKanban: ProjectKanbanTarget | null;
   /**
@@ -489,6 +504,7 @@ export interface SessionState {
   // Hydration status
   hasHydratedAgents: boolean;
   hasHydratedWorkspaces: boolean;
+  hasWorkspaceDirectorySnapshot: boolean;
 
   // Audio state
   isPlayingAudio: boolean;
@@ -933,6 +949,7 @@ function createInitialSessionState(
     serverInfo: null,
     hasHydratedAgents: false,
     hasHydratedWorkspaces: false,
+    hasWorkspaceDirectorySnapshot: false,
     isPlayingAudio: false,
     focusedAgentId: null,
     focusedTerminalId: null,
@@ -1084,6 +1101,16 @@ export const useSessionStore = create<SessionStore>()(
           if (timeline) {
             agentStreamTail.set(timeline.agentId, timeline.items);
           }
+          const agentTimelineCursor = new Map<string, AgentTimelineCursorState>();
+          const agentTimelineHasOlder = new Map<string, boolean>();
+          const agentTimelineHasNewer = new Map<string, boolean>();
+          const agentAuthoritativeHistoryApplied = new Map<string, boolean>();
+          if (timeline?.cursor) {
+            agentTimelineCursor.set(timeline.agentId, timeline.cursor);
+            agentTimelineHasOlder.set(timeline.agentId, timeline.hasOlder);
+            agentTimelineHasNewer.set(timeline.agentId, false);
+            agentAuthoritativeHistoryApplied.set(timeline.agentId, true);
+          }
           const agentLastActivity = new Map(prev.agentLastActivity);
           for (const agent of replica.agents.values()) {
             agentLastActivity.set(agent.id, agent.lastActivityAt);
@@ -1098,6 +1125,7 @@ export const useSessionStore = create<SessionStore>()(
                 workspaceAgentActivity: buildWorkspaceAgentActivityIndex(replica.agents),
                 workspaces: replica.workspaces,
                 projects: replica.projects,
+                hasWorkspaceDirectorySnapshot: true,
                 agentStreamTail,
               },
             },

@@ -29,10 +29,11 @@ describe("loadChangesPreferencesFromStorage", () => {
     expect(result).toEqual({
       presentation: "line",
       layout: "unified",
-      viewMode: "flat",
+      desktopTreeVisible: false,
       wrapLines: true,
       hideWhitespace: false,
       pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
+      inlineDiff: false,
       commitsCollapsed: true,
       commitType: "none",
     });
@@ -55,10 +56,11 @@ describe("loadChangesPreferencesFromStorage", () => {
     expect(result).toEqual({
       presentation: "line",
       layout: "split",
-      viewMode: "tree",
+      desktopTreeVisible: true,
       hideWhitespace: true,
       wrapLines: false,
       pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
+      inlineDiff: false,
       commitsCollapsed: true,
       commitType: "none",
     });
@@ -137,6 +139,22 @@ describe("changes preferences commitType", () => {
   });
 });
 
+describe("changes preferences inlineDiff", () => {
+  it("keeps inline diff disabled by default", () => {
+    expect(DEFAULT_CHANGES_PREFERENCES.inlineDiff).toBe(false);
+  });
+
+  it("round-trips the inline diff preference", async () => {
+    const storage = createInMemoryKeyValueStorage({
+      [CHANGES_PREFERENCES_STORAGE_KEY]: JSON.stringify({ inlineDiff: true }),
+    });
+
+    const prefs = await loadChangesPreferencesFromStorage(storage);
+
+    expect(prefs.inlineDiff).toBe(true);
+  });
+});
+
 describe("saveChangesPreferences", () => {
   it("merges updates onto cached preferences and persists the result", async () => {
     const storage = createInMemoryKeyValueStorage();
@@ -145,14 +163,14 @@ describe("saveChangesPreferences", () => {
 
     await saveChangesPreferences({
       queryClient,
-      updates: { layout: "split", viewMode: "tree", hideWhitespace: true },
+      updates: { layout: "split", desktopTreeVisible: true, hideWhitespace: true },
       storage,
     });
 
     const expected = {
       ...DEFAULT_CHANGES_PREFERENCES,
       layout: "split",
-      viewMode: "tree",
+      desktopTreeVisible: true,
       hideWhitespace: true,
     };
     expect(queryClient.getQueryData(CHANGES_PREFERENCES_QUERY_KEY)).toEqual(expected);

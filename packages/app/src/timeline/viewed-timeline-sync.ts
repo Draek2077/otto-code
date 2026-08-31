@@ -21,7 +21,7 @@ interface ViewedTimelineSyncPorts {
 }
 
 export type TimelineDeliveryMode = "legacy" | "selective";
-export type ViewedTimelineStatus = "ready" | "pending" | "error" | "missing";
+export type ViewedTimelineStatus = "ready" | "pending" | "error" | "retrying" | "missing";
 
 export interface ViewedTimelineUiBridge {
   replaceVisibleAgentIds(sourceId: string, agentIds: string[]): void;
@@ -467,7 +467,12 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
     },
     getAgentTimelineStatus(agentId) {
       if (visibilityCatchUpMissing.has(agentId)) return "missing";
-      if (visibilityCatchUpErrors.has(agentId)) return "error";
+      if (visibilityCatchUpErrors.has(agentId)) {
+        // A scheduled attempt is the difference between "this failed" and
+        // "this failed and is being retried"; only the latter should suppress
+        // a Retry affordance the user would otherwise press pointlessly.
+        return catchUps.get(agentId)?.cancelRetry ? "retrying" : "error";
+      }
       if (!isDesired(agentId) || visibilityCatchUpPending.has(agentId)) return "pending";
       return "ready";
     },

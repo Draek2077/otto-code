@@ -5,6 +5,7 @@ import {
   GitHubCommandError,
   computeGithubNextInterval,
   createGitHubService,
+  parseStatusCheckRollup,
   type GitHubCommandRunner,
   type GitHubCommandRunnerOptions,
   type CurrentPullRequestStatus,
@@ -660,14 +661,18 @@ describe("GitHubService", () => {
       number: 526,
       baseRefName: "main",
       headRefName: "main",
+      // Otto resolves the fetchable refs up front so the checkout does not have
+      // to know GitHub's refs/pull/N/head convention. Neutral by design: each
+      // forge adapter reports its own ref layout here. Both remotes are listed
+      // because a cross-repository PR can be fetched from either.
+      checkoutRefs: [
+        { remoteName: "origin", remoteRef: "refs/pull/526/head" },
+        { remoteName: "upstream", remoteRef: "refs/pull/526/head" },
+      ],
       headOwnerLogin: "therainisme",
       headRepositorySshUrl: "git@github.com:therainisme/otto.git",
       headRepositoryUrl: "https://github.com/therainisme/otto",
       isCrossRepository: true,
-      // Otto resolves the fetchable refs up front so the checkout does not have
-      // to know GitHub's refs/pull/N/head convention. Neutral by design: each
-      // forge adapter reports its own ref layout here.
-      checkoutRefs: [{ remoteName: "origin", remoteRef: "refs/pull/526/head" }],
     });
 
     expect(runner.calls).toHaveLength(2);
@@ -2713,6 +2718,49 @@ describe("GitHubService", () => {
         headRef: "feature/missing",
       }),
     ).resolves.toBeNull();
+  });
+
+  it("measures a still-running check to now, so a pending check reports a duration too", () => {
+    const nowMs = Date.parse("2026-04-02T13:55:00Z");
+
+    const checks = parseStatusCheckRollup(
+      [
+        {
+          __typename: "CheckRun",
+          name: "still-going",
+          status: "IN_PROGRESS",
+          conclusion: null,
+          detailsUrl: "https://github.com/acme/repo/runs/1",
+          startedAt: "2026-04-02T13:50:00Z",
+          completedAt: null,
+        },
+        {
+          __typename: "CheckRun",
+          name: "queued",
+          status: "QUEUED",
+          conclusion: null,
+          detailsUrl: "https://github.com/acme/repo/runs/2",
+          startedAt: null,
+          completedAt: null,
+        },
+        {
+          __typename: "CheckRun",
+          name: "finished",
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          detailsUrl: "https://github.com/acme/repo/runs/3",
+          startedAt: "2026-04-02T13:50:00Z",
+          completedAt: "2026-04-02T13:52:14Z",
+        },
+      ],
+      nowMs,
+    );
+
+    expect(checks.map((check) => [check.name, check.duration])).toEqual([
+      ["still-going", "5m"],
+      ["queued", undefined],
+      ["finished", "2m 14s"],
+    ]);
   });
 
   it("keeps S1 PR status schema additions optional and strips internal check timestamps", () => {

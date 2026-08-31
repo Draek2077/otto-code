@@ -179,6 +179,7 @@ function createGitHubServiceRecordingPullRequestTargets(
   github.getCurrentPullRequestStatus = async (request) => {
     options.requestedTargets.push({
       headRef: request.headRef,
+      ...(request.headSha ? { headSha: request.headSha } : {}),
       ...(request.headRepositoryOwner ? { headRepositoryOwner: request.headRepositoryOwner } : {}),
     });
     return createPullRequestStatus({
@@ -2348,7 +2349,8 @@ const x = 1;
 
     const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
 
-    expect(lookupTarget).toEqual({ headRef: "refactor/workspace-scripts" });
+    expect(lookupTarget).toMatchObject({ headRef: "refactor/workspace-scripts" });
+    expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it("keeps the local branch lookup when origin tracking uses the same head name", async () => {
@@ -2367,7 +2369,138 @@ const x = 1;
 
     const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
 
-    expect(lookupTarget).toEqual({ headRef: "feature" });
+    expect(lookupTarget).toMatchObject({ headRef: "feature" });
+    expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it.each([
+    { state: "open", isMerged: false },
+    { state: "closed", isMerged: false },
+    { state: "merged", isMerged: true },
+  ])(
+    "shows a $state PR for the branch currently checked out after workspace creation",
+    async ({ state, isMerged }) => {
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/repo.git"], {
+        cwd: repoDir,
+      });
+      execFileSync("git", ["branch", "contributor/old-change"], { cwd: repoDir });
+      execFileSync("git", ["branch", "new-change"], { cwd: repoDir });
+      execFileSync("git", ["config", "branch.new-change.remote", "origin"], { cwd: repoDir });
+      execFileSync("git", ["config", "branch.new-change.merge", "refs/heads/new-change"], {
+        cwd: repoDir,
+      });
+      const workspaceDir = join(ottoHome, "worktrees", "repo", "pr-worktree");
+      mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+      execFileSync("git", ["worktree", "add", workspaceDir, "contributor/old-change"], {
+        cwd: repoDir,
+      });
+      writeOttoWorktreeMetadata(workspaceDir, {
+        baseRefName: "main",
+        changeRequestLookupTarget: {
+          headRef: "old-change",
+          headRepositoryOwner: "contributor",
+          changeRequestNumber: 41,
+          localBranchName: "contributor/old-change",
+        },
+      });
+
+      execFileSync("git", ["checkout", "new-change"], { cwd: workspaceDir });
+      const requestedTargets: RequestedPullRequestTarget[] = [];
+      const facts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+      const result = await getPullRequestStatus(
+        workspaceDir,
+        createGitHubServiceRecordingPullRequestTargets({
+          requestedTargets,
+          statusOverrides: { state, isMerged },
+        }),
+        { force: true, reason: "current-checkout-pr" },
+        { ottoHome, facts },
+      );
+
+      expect(requestedTargets).toEqual([expect.objectContaining({ headRef: "new-change" })]);
+      expect(result.status).toMatchObject({
+        headRefName: "new-change",
+        state,
+        isMerged,
+      });
+    },
+  );
+
+  it("shows the PR after an agent renames the branch directly with git", async () => {
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/repo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["branch", "placeholder"], { cwd: repoDir });
+    const workspaceDir = join(ottoHome, "worktrees", "repo", "renamed-by-agent");
+    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "placeholder"], { cwd: repoDir });
+    writeOttoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "placeholder",
+        localBranchName: "placeholder",
+      },
+    });
+
+    execFileSync("git", ["branch", "-m", "agent-chosen-name"], { cwd: workspaceDir });
+    const requestedTargets: RequestedPullRequestTarget[] = [];
+    const facts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    const result = await getPullRequestStatus(
+      workspaceDir,
+      createGitHubServiceRecordingPullRequestTargets({ requestedTargets }),
+      { force: true, reason: "agent-renamed-branch-pr" },
+      { ottoHome, facts },
+    );
+
+    expect(requestedTargets).toEqual([expect.objectContaining({ headRef: "agent-chosen-name" })]);
+    expect(result.status).toMatchObject({
+      headRefName: "agent-chosen-name",
+      state: "open",
+      isMerged: false,
+    });
+  });
+
+  it("does not replace a managed branch pin from shared push config", async () => {
+    execFileSync("git", ["branch", "feature/pinned"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/repo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["remote", "add", "fork", "https://github.com/other/repo.git"], {
+      cwd: repoDir,
+    });
+    const workspaceDir = join(ottoHome, "worktrees", "repo", "pinned-worktree");
+    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "feature/pinned"], { cwd: repoDir });
+    writeOttoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "feature/pinned",
+        localBranchName: "feature/pinned",
+      },
+    });
+    execFileSync("git", ["config", "branch.feature/pinned.pushRemote", "fork"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "remote.fork.push", "HEAD:refs/heads/unrelated"], {
+      cwd: repoDir,
+    });
+
+    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
+      headRef: "feature/pinned",
+    });
+  });
+
+  it("uses the checked-out branch when a managed worktree has no metadata", async () => {
+    execFileSync("git", ["branch", "feature/unpinned"], { cwd: repoDir });
+    const workspaceDir = join(ottoHome, "worktrees", "repo", "unpinned-worktree");
+    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "feature/unpinned"], {
+      cwd: repoDir,
+    });
+
+    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
+      headRef: "feature/unpinned",
+    });
   });
 
   it("reconciles a PR worktree lookup from current branch tracking", async () => {
@@ -2453,7 +2586,7 @@ const x = 1;
     });
   });
 
-  it("does not apply ambiguous legacy PR metadata to a suffixed branch", async () => {
+  it("uses the checked-out branch instead of ambiguous legacy PR metadata", async () => {
     execFileSync("git", ["branch", "contributor/old-change-1"], { cwd: repoDir });
     const workspaceDir = join(ottoHome, "worktrees", "repo", "legacy-pr-worktree");
     mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
@@ -2472,7 +2605,6 @@ const x = 1;
     const lookupTarget = await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome);
 
     expect(lookupTarget).toMatchObject({ headRef: "contributor/old-change-1" });
-    expect(lookupTarget).not.toHaveProperty("headRepositoryOwner");
   });
 
   it("does not apply a legacy fork hint to an ownerless branch with the same head", async () => {
@@ -2515,8 +2647,14 @@ const x = 1;
       { ottoHome, facts: ownerlessFacts },
     );
 
-    expect(requestedTargets.at(-1)).toMatchObject({ headRef: "old-change" });
-    expect(requestedTargets.at(-1)).not.toHaveProperty("headRepositoryOwner");
+    expect(requestedTargets).toEqual([
+      expect.objectContaining({
+        headRef: "old-change",
+        headRepositoryOwner: "contributor",
+      }),
+      expect.objectContaining({ headRef: "old-change" }),
+    ]);
+    expect(requestedTargets[1]).not.toHaveProperty("headRepositoryOwner");
   });
 
   it("recognizes a normalized GitHub owner branch from legacy Enterprise metadata", async () => {
@@ -2587,7 +2725,7 @@ const x = 1;
     });
   });
 
-  it("keeps a ref-only change request bound across rename but not branch switch", async () => {
+  it("keeps a ref-only change request across rename and follows a later branch switch", async () => {
     execFileSync("git", ["branch", "feature/gitlab-mr"], { cwd: repoDir });
     const workspaceDir = join(ottoHome, "worktrees", "repo", "gitlab-mr-worktree");
     mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
@@ -2631,7 +2769,37 @@ const x = 1;
       { ottoHome, facts: switchedFacts },
     );
 
-    expect(requestedTargets.at(-1)).toMatchObject({ headRef: "other-branch" });
+    expect(requestedTargets).toEqual([
+      expect.objectContaining({ headRef: "feature/gitlab-mr" }),
+      expect.objectContaining({ headRef: "other-branch" }),
+    ]);
+  });
+
+  it("moves a managed branch identity pin when its branch is renamed", async () => {
+    execFileSync("git", ["branch", "feature/placeholder"], { cwd: repoDir });
+    const workspaceDir = join(ottoHome, "worktrees", "repo", "renamed-worktree");
+    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    execFileSync("git", ["worktree", "add", workspaceDir, "feature/placeholder"], {
+      cwd: repoDir,
+    });
+    writeOttoWorktreeMetadata(workspaceDir, {
+      baseRefName: "main",
+      changeRequestLookupTarget: {
+        headRef: "feature/placeholder",
+        localBranchName: "feature/placeholder",
+      },
+    });
+
+    await renameCurrentBranch(workspaceDir, "feature/generated");
+
+    expect(readOttoWorktreeMetadata(workspaceDir)?.changeRequestLookupTarget).toEqual({
+      headRef: "feature/generated",
+      localBranchName: "feature/generated",
+    });
+    const facts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    expect(facts.isGit && facts.pullRequestLookupTarget).toMatchObject({
+      headRef: "feature/generated",
+    });
   });
 
   it("keeps fork identity when the local and tracked branch names match", async () => {
@@ -2676,7 +2844,8 @@ const x = 1;
 
     const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
 
-    expect(lookupTarget).toEqual({ headRef: "refactor/workspace-scripts" });
+    expect(lookupTarget).toMatchObject({ headRef: "refactor/workspace-scripts" });
+    expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it("keeps the fork owner when same-repo comparison is indeterminate", async () => {
@@ -2694,7 +2863,7 @@ const x = 1;
 
     const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
 
-    expect(lookupTarget).toEqual({ headRef: "main", headRepositoryOwner: "chethanuk" });
+    expect(lookupTarget).toMatchObject({ headRef: "main", headRepositoryOwner: "chethanuk" });
   });
 
   it("uses the configured push remote for fork PR lookup when upstream is absent", async () => {
@@ -2727,8 +2896,11 @@ const x = 1;
     );
 
     expect(getBranchUpstream(repoDir)).toBeNull();
-    expect(factsTarget).toEqual({ headRef: "main", headRepositoryOwner: "chethanuk" });
-    expect(requestedTargets).toEqual([{ headRef: "main", headRepositoryOwner: "chethanuk" }]);
+    expect(factsTarget).toMatchObject({ headRef: "main", headRepositoryOwner: "chethanuk" });
+    expect(factsTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(requestedTargets).toEqual([
+      expect.objectContaining({ headRef: "main", headRepositoryOwner: "chethanuk" }),
+    ]);
   });
 
   it("keeps the local branch lookup when same-repo tracking points at the base branch", async () => {
@@ -2747,7 +2919,7 @@ const x = 1;
 
     const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
 
-    expect(lookupTarget).toEqual({ headRef: "tender-parrot" });
+    expect(lookupTarget).toMatchObject({ headRef: "tender-parrot" });
   });
 
   it("keeps the local branch lookup when a fork tracks the upstream base branch", async () => {
@@ -2857,7 +3029,9 @@ const x = 1;
 
     const status = await getPullRequestStatus(repoDir, github);
 
-    expect(requestedTargets).toEqual([{ headRef: "main", headRepositoryOwner: "chethanuk" }]);
+    expect(requestedTargets).toEqual([
+      expect.objectContaining({ headRef: "main", headRepositoryOwner: "chethanuk" }),
+    ]);
     expect(status.status?.number).toBe(345);
     expect(status.status?.headRefName).toBe("main");
   });
