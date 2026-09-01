@@ -1,6 +1,5 @@
 import { SETTINGS_DESKTOP_SPLIT_MIN_WIDTH } from "@/constants/layout";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "@/stores/panel-store";
-import { MAX_EXPLORER_SIDEBAR_WIDTH, MIN_EXPLORER_SIDEBAR_WIDTH } from "@/stores/panel-store";
 
 const MIN_DESKTOP_CENTER_WIDTH = 400;
 
@@ -63,22 +62,8 @@ export function resolveDesktopSidebarWidth(input: {
   });
 }
 
-export function resolveDesktopAppContentMinimum(input: {
-  isSettingsRoute: boolean;
-  // Otto keeps a docked explorer, so an open one reserves its width plus a
-  // usable centre; upstream's shell only has to clear the settings split.
-  isWorkspaceExplorerOpen: boolean;
-  requestedExplorerWidth: number;
-  viewportWidth: number;
-}): number {
-  const workspaceMinimum = input.isWorkspaceExplorerOpen
-    ? MIN_DESKTOP_CENTER_WIDTH +
-      resolveDesktopExplorerWidth({
-        requestedWidth: input.requestedExplorerWidth,
-        viewportWidth: input.viewportWidth,
-      })
-    : 0;
-  return Math.max(input.isSettingsRoute ? SETTINGS_DESKTOP_SPLIT_MIN_WIDTH : 0, workspaceMinimum);
+export function resolveDesktopAppContentMinimum(input: { isSettingsRoute: boolean }): number {
+  return input.isSettingsRoute ? SETTINGS_DESKTOP_SPLIT_MIN_WIDTH : 0;
 }
 
 export function canDesktopAppSidebarShare(input: {
@@ -94,16 +79,4 @@ export function canDesktopAppSidebarShare(input: {
       }) >=
     input.contentMinimumWidth
   );
-}
-
-export function resolveDesktopExplorerWidth(input: {
-  requestedWidth: number;
-  viewportWidth: number;
-}): number {
-  "worklet";
-  return resolveDesktopPanelWidth({
-    ...input,
-    minimumWidth: MIN_EXPLORER_SIDEBAR_WIDTH,
-    maximumWidth: MAX_EXPLORER_SIDEBAR_WIDTH,
-  });
 }

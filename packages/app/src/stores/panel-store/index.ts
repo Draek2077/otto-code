@@ -12,37 +12,27 @@ import {
   buildOpenFileExplorerPatch,
   buildToggleFileExplorerPatch,
   clampContextSidebarWidth,
-  clampExplorerFilesSplitRatio,
-  clampExplorerWidth,
   clampTreeRailWidth,
   clampSidebarWidth,
   DEFAULT_CONTEXT_SIDEBAR_WIDTH,
   DEFAULT_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
-  DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
-  DEFAULT_EXPLORER_SIDEBAR_WIDTH,
   DEFAULT_TREE_RAIL_WIDTH,
   DEFAULT_SIDEBAR_WIDTH,
   MAX_CONTEXT_SIDEBAR_WIDTH,
   MAX_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
-  MAX_EXPLORER_FILES_SPLIT_RATIO,
-  MAX_EXPLORER_SIDEBAR_WIDTH,
   MAX_TREE_RAIL_WIDTH,
   MAX_SIDEBAR_WIDTH,
   MIN_CONTEXT_SIDEBAR_WIDTH,
   MIN_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
-  MIN_EXPLORER_FILES_SPLIT_RATIO,
-  MIN_EXPLORER_SIDEBAR_WIDTH,
   MIN_TREE_RAIL_WIDTH,
   MIN_SIDEBAR_WIDTH,
   migratePanelState,
   PanelPersistedStateSchema,
   selectIsAgentListOpen,
   selectIsCompactFileExplorerOpen,
-  selectIsFileExplorerOpen,
   setMobilePanelTarget,
   type DesktopSidebarState,
   type ExplorerViewMode,
-  type ExplorerPanelIntent,
   type MobilePanelView,
   type MobilePanelSelection,
   type PanelLayoutInput,
@@ -54,7 +44,6 @@ export type { ExplorerTab } from "../explorer-tab-memory";
 export type { ExplorerCheckoutContext } from "../explorer-checkout-context";
 export type {
   DesktopSidebarState,
-  ExplorerPanelIntent,
   ExplorerViewMode,
   MobilePanelView,
   MobilePanelSelection,
@@ -64,24 +53,17 @@ export type {
 export { buildExplorerCheckoutKey, resolveExplorerViewMode } from "./state";
 export {
   DEFAULT_CONTEXT_SIDEBAR_WIDTH,
-  DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
-  DEFAULT_EXPLORER_SIDEBAR_WIDTH,
   DEFAULT_TREE_RAIL_WIDTH,
   DEFAULT_SIDEBAR_WIDTH,
   MAX_CONTEXT_SIDEBAR_WIDTH,
-  MAX_EXPLORER_FILES_SPLIT_RATIO,
-  MAX_EXPLORER_SIDEBAR_WIDTH,
   MAX_TREE_RAIL_WIDTH,
   MAX_SIDEBAR_WIDTH,
   MIN_CONTEXT_SIDEBAR_WIDTH,
-  MIN_EXPLORER_FILES_SPLIT_RATIO,
-  MIN_EXPLORER_SIDEBAR_WIDTH,
   MIN_TREE_RAIL_WIDTH,
   MIN_SIDEBAR_WIDTH,
   clampTreeRailWidth,
   selectIsAgentListOpen,
   selectIsCompactFileExplorerOpen,
-  selectIsFileExplorerOpen,
 };
 
 export type ExpandedPathsUpdate = string[] | ((currentPaths: string[]) => string[]);
@@ -112,14 +94,12 @@ export interface PanelState {
   diffCollapsedFoldersByWorkspace: Record<string, string[]>;
   collapsedFilePathsByWorkspace: Record<string, string[]>;
   sidebarWidth: number;
-  explorerWidth: number;
   // Context Management's left column. App-wide rather than per-workspace: it's a
   // reading preference about this tool, not a fact about any one project.
   contextSidebarWidth: number;
   projectKnowledgeSidebarWidth: number;
   explorerSortOption: SortOption;
   explorerShowHiddenFiles: boolean;
-  explorerFilesSplitRatio: number;
   // Ephemeral (not persisted): bumped when a keyboard action wants the project
   // search input focused; the search pane consumes it back to 0.
   projectSearchFocusToken: number;
@@ -164,9 +144,6 @@ export interface PanelState {
   openDesktopAgentList: () => void;
   closeDesktopAgentList: () => void;
   toggleDesktopAgentList: () => void;
-  closeDesktopFileExplorer: () => void;
-  openFileExplorerForCheckout: (input: ExplorerPanelIntent) => void;
-  toggleFileExplorerForCheckout: (input: ExplorerPanelIntent) => void;
   openAgentListForLayout: (input: PanelLayoutInput) => void;
   closeAgentListForLayout: (input: PanelLayoutInput) => void;
   toggleAgentListForLayout: (input: PanelLayoutInput) => void;
@@ -191,12 +168,10 @@ export interface PanelState {
   setCollapsedFilePathsForWorkspace: (workspaceKey: string, paths: string[]) => void;
   activateExplorerTabForCheckout: (checkout: ExplorerCheckoutContext) => void;
   setSidebarWidth: (width: number) => void;
-  setExplorerWidth: (width: number) => void;
   setContextSidebarWidth: (width: number) => void;
   setProjectKnowledgeSidebarWidth: (width: number) => void;
   setExplorerSortOption: (option: SortOption) => void;
   toggleExplorerShowHiddenFiles: () => void;
-  setExplorerFilesSplitRatio: (ratio: number) => void;
   requestProjectSearchFocus: () => void;
   clearProjectSearchFocusRequest: () => void;
   requestFileFinderOpen: () => void;
@@ -230,7 +205,6 @@ export const usePanelStore = create<PanelState>()(
       // Desktop defaults based on platform
       desktop: {
         agentListOpen: DEFAULT_DESKTOP_OPEN,
-        fileExplorerOpen: false,
         focusModeEnabled: false,
       },
 
@@ -243,12 +217,10 @@ export const usePanelStore = create<PanelState>()(
       diffCollapsedFoldersByWorkspace: {},
       collapsedFilePathsByWorkspace: {},
       sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
-      explorerWidth: DEFAULT_EXPLORER_SIDEBAR_WIDTH,
       contextSidebarWidth: DEFAULT_CONTEXT_SIDEBAR_WIDTH,
       projectKnowledgeSidebarWidth: DEFAULT_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
       explorerSortOption: "name",
       explorerShowHiddenFiles: true,
-      explorerFilesSplitRatio: DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
       projectSearchFocusToken: 0,
       fileFinderOpenToken: 0,
       filesRevealRequest: null,
@@ -336,27 +308,11 @@ export const usePanelStore = create<PanelState>()(
           };
         }),
 
-      // Upstream's pair is compact-only by name and by contract, so it pins the
-      // intent rather than reading the form factor.
       openCompactFileExplorer: (checkout) =>
-        set((state) => buildOpenFileExplorerPatch(state, { checkout, isCompact: true })),
+        set((state) => buildOpenFileExplorerPatch(state, checkout)),
 
       toggleCompactFileExplorer: (checkout) =>
-        set((state) => buildToggleFileExplorerPatch(state, { checkout, isCompact: true })),
-
-      closeDesktopFileExplorer: () =>
-        set((state) => {
-          if (!state.desktop.fileExplorerOpen) {
-            return state;
-          }
-          return { desktop: { ...state.desktop, fileExplorerOpen: false } };
-        }),
-
-      openFileExplorerForCheckout: (input) =>
-        set((state) => buildOpenFileExplorerPatch(state, input)),
-
-      toggleFileExplorerForCheckout: (input) =>
-        set((state) => buildToggleFileExplorerPatch(state, input)),
+        set((state) => buildToggleFileExplorerPatch(state, checkout)),
 
       setExplorerTab: (tab) => set({ explorerTab: tab }),
       setExplorerTabForCheckout: ({ serverId, cwd, isGit, tab }) =>
@@ -433,7 +389,6 @@ export const usePanelStore = create<PanelState>()(
           }),
         })),
       setSidebarWidth: (width) => set({ sidebarWidth: clampSidebarWidth(width) }),
-      setExplorerWidth: (width) => set({ explorerWidth: clampExplorerWidth(width) }),
       setContextSidebarWidth: (width) =>
         set({ contextSidebarWidth: clampContextSidebarWidth(width) }),
       setProjectKnowledgeSidebarWidth: (width) =>
@@ -446,12 +401,6 @@ export const usePanelStore = create<PanelState>()(
       setExplorerSortOption: (option) => set({ explorerSortOption: option }),
       toggleExplorerShowHiddenFiles: () =>
         set((state) => ({ explorerShowHiddenFiles: !state.explorerShowHiddenFiles })),
-      setExplorerFilesSplitRatio: (ratio) =>
-        set({
-          explorerFilesSplitRatio: Number.isFinite(ratio)
-            ? clampExplorerFilesSplitRatio(ratio)
-            : DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
-        }),
       requestProjectSearchFocus: () =>
         set((state) => ({ projectSearchFocusToken: state.projectSearchFocusToken + 1 })),
       clearProjectSearchFocusRequest: () => set({ projectSearchFocusToken: 0 }),
@@ -489,7 +438,7 @@ export const usePanelStore = create<PanelState>()(
       name: "panel-state",
       version: 16,
       storage: createValidatedPersistStorage(AsyncStorage, PanelPersistedStateSchema),
-      migrate: (persistedState, version) => migratePanelState(persistedState, version, { isWeb }),
+      migrate: (persistedState, version) => migratePanelState(persistedState, version),
       partialize: (state) => ({
         desktop: state.desktop,
         explorerTab: state.explorerTab,
@@ -500,7 +449,6 @@ export const usePanelStore = create<PanelState>()(
         diffCollapsedFoldersByWorkspace: state.diffCollapsedFoldersByWorkspace,
         collapsedFilePathsByWorkspace: state.collapsedFilePathsByWorkspace,
         sidebarWidth: state.sidebarWidth,
-        explorerWidth: state.explorerWidth,
         contextSidebarWidth: state.contextSidebarWidth,
         projectKnowledgeSidebarWidth: state.projectKnowledgeSidebarWidth,
         explorerSortOption: state.explorerSortOption,

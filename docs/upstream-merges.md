@@ -758,6 +758,33 @@ focused pane's tabs, and the default layout seeds a New tab placeholder, so the
 workspace, a later one was silently swallowed. A non-failed push now releases the
 claim, which is what "until a later setup lifecycle begins" meant.
 
+### Explorer pane-host convergence at v0.6.1
+
+Upstream's pane-host Explorer now owns the desktop dock and the combined compact
+Explorer owns overlay and wide-native presentations. Otto's legacy
+`components/explorer-sidebar.tsx` and its desktop panel-store visibility, width,
+and split-ratio state were deleted because those Otto-owned implementations were
+superseded by the adopted upstream shells. Persisted legacy fields remain accepted
+only long enough for migration to discard them.
+
+`stores/explorer-tab-memory.ts` stays. It is upstream-owned and the compact
+Explorer still uses it to remember the selected combined-content tab. Otto adds
+Search to that upstream selection union instead of replacing the store.
+
+Three deliberate Otto behaviors remain additive to upstream:
+
+- Focus mode keeps the complete main split layout visible and hides only workspace
+  chrome and the Explorer dock. It does not collapse the main canvas to one focused
+  pane.
+- User interface mode exposes Files as the Explorer's only built-in navigation
+  surface. Changes, Search, and Pull Request are filtered at the Explorer rail and
+  launcher boundary rather than through the global developer-tab filter, which
+  would also remove those kinds from ordinary panes.
+- Panel-originated file opens resolve project Knowledge files before selecting a
+  workspace preview. The redirect lives in the shared preferred-target handler, so
+  Files, Search, and future panels use one rule while chat keeps its separate
+  cross-project open path.
+
 **Upstream tests asserting upstream's design.** Several theme tests encode
 upstream's type scale, neutral light palette, and surface-derived sidebar
 states. Otto's scale is a tier larger, its light theme is warm, and its
@@ -793,12 +820,12 @@ the screen now defines upstream's `openWorkspaceTabFocused(key, target, placemen
 and `createWorkspaceTab` over the store's `openTab`, and Otto's own behaviour
 (the Browser-tools-off heads-up, terminal profiles) rides on top of it.
 
-Two upstream modules in the same subsystem are still orphaned and are worth a
-decision rather than a fix: `screens/workspace/workspace-new-tab-menu.tsx` and
-`screens/workspace/explorer-sidebar.tsx`. Both consume the launcher catalog and
-nothing renders either, because Otto's desktop tab row and docked explorer
-sidebar are its own. If either is ever adopted, mount a `NewTabLauncherProvider`
-around the fallback tab row too, the way upstream does for its issue #3750.
+One upstream module in the same subsystem remains orphaned and is worth a
+decision rather than a fix: `screens/workspace/workspace-new-tab-menu.tsx`.
+The upstream `screens/workspace/explorer-sidebar.tsx` cited by the original
+audit is now the live pane-host dock. If the fallback new-tab menu is adopted,
+mount a `NewTabLauncherProvider` around the fallback tab row too, the way
+upstream does for its issue #3750.
 
 The general check: for every context whose hook throws or asserts, grep for a
 mount outside tests. `useContext` returning null is not a type error, so nothing

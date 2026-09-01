@@ -11,11 +11,14 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 import { usePanelStore } from "@/stores/panel-store";
 import {
   collectAllTabs,
+  findPaneById,
   selectExplorerSidebarPaneId,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import {
+  filterExplorerSidebarTabs,
   isExplorerSidebarOpen,
+  openExplorerSidebarTab,
   openExplorerSidebarView,
   resolveExplorerSidebarPresentation,
   toggleExplorerSidebar,
@@ -84,5 +87,59 @@ describe("Explorer sidebar", () => {
     expect(isExplorerSidebarOpen(input)).toBe(true);
     toggleExplorerSidebar(input);
     expect(isExplorerSidebarOpen(input)).toBe(false);
+  });
+
+  it("opens Files instead of developer-only tabs in User mode", () => {
+    openExplorerSidebarTab({
+      isCompact: true,
+      isDeveloperMode: false,
+      workspaceKey: WORKSPACE_KEY,
+      checkout: CHECKOUT,
+      tab: "search",
+    });
+
+    expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
+    expect(usePanelStore.getState().explorerTab).toBe("files");
+  });
+
+  it("defaults the User-mode compact toggle to Files for Git workspaces", () => {
+    usePanelStore.setState({ explorerTab: "changes" });
+
+    toggleExplorerSidebar({
+      isCompact: true,
+      isDeveloperMode: false,
+      workspaceKey: WORKSPACE_KEY,
+      checkout: CHECKOUT,
+    });
+
+    expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
+    expect(usePanelStore.getState().explorerTab).toBe("files");
+  });
+
+  it("defaults the User-mode desktop toggle to Files for Git workspaces", () => {
+    const input = {
+      isCompact: false,
+      isDeveloperMode: false,
+      supportsPaneSplits: true,
+      workspaceKey: WORKSPACE_KEY,
+      checkout: CHECKOUT,
+    };
+    toggleExplorerSidebar(input);
+
+    const state = useWorkspaceLayoutStore.getState();
+    const layout = state.layoutByWorkspace[WORKSPACE_KEY];
+    const paneId = selectExplorerSidebarPaneId(state, WORKSPACE_KEY);
+    const pane = paneId && layout ? findPaneById(layout.root, paneId) : null;
+    const focusedTab = layout
+      ? (collectAllTabs(layout.root).find((tab) => tab.tabId === pane?.focusedTabId) ?? null)
+      : null;
+    expect(focusedTab?.target.kind).toBe("files");
+    const paneTabs =
+      layout && pane
+        ? collectAllTabs(layout.root).filter((tab) => pane.tabIds.includes(tab.tabId))
+        : [];
+    expect(filterExplorerSidebarTabs(paneTabs, false).map((tab) => tab.target.kind)).toEqual([
+      "files",
+    ]);
   });
 });

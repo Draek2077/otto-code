@@ -81,9 +81,6 @@ describe("desktop sidebar layout", () => {
   it("yields app navigation when settings needs the shell width", () => {
     const settingsMinimum = resolveDesktopAppContentMinimum({
       isSettingsRoute: true,
-      isWorkspaceExplorerOpen: false,
-      requestedExplorerWidth: 0,
-      viewportWidth: 1440,
     });
     expect(settingsMinimum).toBe(720);
     expect(
@@ -99,18 +96,12 @@ describe("desktop sidebar layout", () => {
     expect(
       resolveDesktopAppContentMinimum({
         isSettingsRoute: false,
-        isWorkspaceExplorerOpen: false,
-        requestedExplorerWidth: 0,
-        viewportWidth: 1440,
       }),
     ).toBe(0);
     expect(
       canDesktopAppSidebarShare({
         contentMinimumWidth: resolveDesktopAppContentMinimum({
           isSettingsRoute: false,
-          isWorkspaceExplorerOpen: false,
-          requestedExplorerWidth: 0,
-          viewportWidth: 1440,
         }),
         requestedSidebarWidth: 320,
         viewportWidth: 751,

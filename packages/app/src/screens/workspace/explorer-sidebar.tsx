@@ -13,6 +13,8 @@ import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-
 import type { SplitPane } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab } from "@/workspace-tabs/model";
 import { WindowChromeRegion, WindowChromeSafeArea } from "@/utils/window-chrome";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { filterExplorerSidebarTabs } from "@/workspace-tabs/explorer-sidebar";
 
 interface ExplorerSidebarDockProps {
   pane: SplitPane;
@@ -53,7 +55,15 @@ export function ExplorerSidebarDock({
   buildPaneContentModel,
   headerAction,
 }: ExplorerSidebarDockProps) {
-  const paneState = useMemo(() => deriveWorkspacePaneState({ pane, tabs: uiTabs }), [pane, uiTabs]);
+  const isDeveloperMode = useIsDeveloperMode();
+  const visibleTabs = useMemo(
+    () => filterExplorerSidebarTabs(uiTabs, isDeveloperMode),
+    [isDeveloperMode, uiTabs],
+  );
+  const paneState = useMemo(
+    () => deriveWorkspacePaneState({ pane, tabs: visibleTabs }),
+    [pane, visibleTabs],
+  );
   const tabs = useMemo(() => paneState.tabs.map((tab) => tab.descriptor), [paneState.tabs]);
   const activeTabId = paneState.activeTabId;
   const tabItems = useMemo<WorkspaceDesktopTabRowItem[]>(

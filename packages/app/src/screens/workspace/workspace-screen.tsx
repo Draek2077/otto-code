@@ -74,10 +74,9 @@ import {
   FloatingPanelPortalHostNameProvider,
 } from "@/components/ui/floating-panel-portal";
 import {
-  openExplorerSidebarView,
+  openExplorerSidebarTab,
   toggleExplorerSidebar,
   useIsExplorerSidebarOpen,
-  usesCompactExplorerSidebar,
 } from "@/workspace-tabs/explorer-sidebar";
 import { SplitContainer } from "@/components/split-container";
 import { RetainedPanel } from "@/components/retained-panel";
@@ -2610,8 +2609,6 @@ function WorkspaceScreenContent({
   const isSidebarOpen = usePanelStore((state) =>
     selectIsAgentListOpen(state, { isCompact: isMobile }),
   );
-  const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
-  const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
   const requestProjectSearchFocus = usePanelStore((state) => state.requestProjectSearchFocus);
   const requestFileFinderOpen = usePanelStore((state) => state.requestFileFinderOpen);
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
@@ -2636,10 +2633,11 @@ function WorkspaceScreenContent({
     }
     toggleExplorerSidebar({
       isCompact: isMobile,
+      isDeveloperMode,
       workspaceKey: persistenceKey,
       checkout: activeExplorerCheckout,
     });
-  }, [activeExplorerCheckout, isMobile, persistenceKey]);
+  }, [activeExplorerCheckout, isDeveloperMode, isMobile, persistenceKey]);
 
   const handleOpenExplorerTab = useCallback(
     (tab: ExplorerTab) => {
@@ -2648,42 +2646,13 @@ function WorkspaceScreenContent({
       }
       const sidebarInput = {
         isCompact: isMobile,
+        isDeveloperMode,
         workspaceKey: persistenceKey,
         checkout: activeExplorerCheckout,
       };
-      if (tab === "changes" || tab === "files") {
-        openExplorerSidebarView({ ...sidebarInput, view: tab });
-        return;
-      }
-      // Search and PR are ordinary panels in the dock rather than singleton
-      // Explorer views. The compact overlay still hosts them as its own tabs.
-      if (usesCompactExplorerSidebar(sidebarInput)) {
-        openFileExplorerForCheckout({
-          isCompact: isMobile,
-          checkout: activeExplorerCheckout,
-        });
-        setExplorerTabForCheckout({ ...activeExplorerCheckout, tab });
-        return;
-      }
-      if (!persistenceKey) {
-        return;
-      }
-      const layoutStore = useWorkspaceLayoutStore.getState();
-      const explorerPaneId = layoutStore.showExplorerSidebar(persistenceKey);
-      layoutStore.openTab({
-        workspaceKey: persistenceKey,
-        target: tab === "search" ? { kind: "project_search" } : { kind: "pull_request" },
-        intent: "reveal",
-        placement: explorerPaneId ? { mode: "pane", paneId: explorerPaneId } : undefined,
-      });
+      openExplorerSidebarTab({ ...sidebarInput, tab });
     },
-    [
-      activeExplorerCheckout,
-      isMobile,
-      openFileExplorerForCheckout,
-      persistenceKey,
-      setExplorerTabForCheckout,
-    ],
+    [activeExplorerCheckout, isDeveloperMode, isMobile, persistenceKey],
   );
 
   const hasDiffStat = useMemo(() => Boolean(workspaceDescriptor?.diffStat), [workspaceDescriptor]);
@@ -4577,20 +4546,37 @@ function WorkspaceScreenContent({
           if (!persistenceKey) {
             return;
           }
-          const tabId = openPreferredWorkspacePreview({
-            isCompact: isMobile,
-            workspaceKey: persistenceKey,
-            serverId: normalizedServerId,
-            workspaceId: normalizedWorkspaceId,
-            explorerSidebarPaneId: null,
-            lastMainPaneId: input.paneId ?? null,
-            target,
-            source,
-            preferences: openInSidePanePreferences,
-          });
-          if (tabId) {
-            navigateToTabId(tabId);
-          }
+          void (async () => {
+            if (target.kind === "file") {
+              const selection = await findKnowledgeFileSelection(
+                target.path,
+                normalizedWorkspaceId,
+              );
+              if (selection) {
+                openProjectKnowledgeTab({
+                  serverId: normalizedServerId,
+                  workspaceId: normalizedWorkspaceId,
+                  selection,
+                  navigate: true,
+                });
+                return;
+              }
+            }
+            const tabId = openPreferredWorkspacePreview({
+              isCompact: isMobile,
+              workspaceKey: persistenceKey,
+              serverId: normalizedServerId,
+              workspaceId: normalizedWorkspaceId,
+              explorerSidebarPaneId: null,
+              lastMainPaneId: input.paneId ?? null,
+              target,
+              source,
+              preferences: openInSidePanePreferences,
+            });
+            if (tabId) {
+              navigateToTabId(tabId);
+            }
+          })();
         },
         onSetCurrentTabState: (state) => {
           if (persistenceKey) {
@@ -4620,6 +4606,7 @@ function WorkspaceScreenContent({
       }),
     [
       handleCloseTabById,
+      findKnowledgeFileSelection,
       focusWorkspacePane,
       handleOpenWorkspaceFileFromPane,
       navigateToTabId,

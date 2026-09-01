@@ -16,8 +16,6 @@ export interface MobilePanelSelection {
 
 export interface DesktopSidebarState {
   agentListOpen: boolean;
-  /** Otto keeps a docked explorer sidebar on wide layouts. */
-  fileExplorerOpen: boolean;
   focusModeEnabled: boolean;
 }
 
@@ -62,11 +60,6 @@ export const DEFAULT_SIDEBAR_WIDTH = 320;
 export const MIN_SIDEBAR_WIDTH = 225;
 export const MAX_SIDEBAR_WIDTH = 600;
 
-export const DEFAULT_EXPLORER_SIDEBAR_WIDTH = 400;
-export const MIN_EXPLORER_SIDEBAR_WIDTH = 280;
-// Upper bound is intentionally generous; desktop resizing enforces a min-chat-width constraint.
-export const MAX_EXPLORER_SIDEBAR_WIDTH = 2000;
-
 // Context Management's left column (summary + tree). Persisted app-wide rather
 // than per-workspace: it's a reading preference about this tool, not a fact
 // about any one project.
@@ -79,14 +72,6 @@ export const DEFAULT_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH = 340;
 export const MIN_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH = 260;
 export const MAX_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH = 520;
 
-export const DEFAULT_EXPLORER_FILES_SPLIT_RATIO = 0.38;
-export const MIN_EXPLORER_FILES_SPLIT_RATIO = 0.2;
-export const MAX_EXPLORER_FILES_SPLIT_RATIO = 0.8;
-
-export interface PanelVisibilityState {
-  isAgentListOpen: boolean;
-  isFileExplorerOpen: boolean;
-}
 export const DEFAULT_TREE_RAIL_WIDTH = 260;
 export const MIN_TREE_RAIL_WIDTH = 180;
 export const MAX_TREE_RAIL_WIDTH = 600;
@@ -113,36 +98,12 @@ export function clampSidebarWidth(width: number): number {
   return clampNumber(width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
 }
 
-export function clampExplorerWidth(width: number): number {
-  return clampNumber(width, MIN_EXPLORER_SIDEBAR_WIDTH, MAX_EXPLORER_SIDEBAR_WIDTH);
-}
-
 export function clampTreeRailWidth(width: number): number {
   return clampNumber(width, MIN_TREE_RAIL_WIDTH, MAX_TREE_RAIL_WIDTH);
 }
 
 export function clampContextSidebarWidth(width: number): number {
   return clampNumber(width, MIN_CONTEXT_SIDEBAR_WIDTH, MAX_CONTEXT_SIDEBAR_WIDTH);
-}
-
-export function clampExplorerFilesSplitRatio(ratio: number): number {
-  return clampNumber(ratio, MIN_EXPLORER_FILES_SPLIT_RATIO, MAX_EXPLORER_FILES_SPLIT_RATIO);
-}
-
-export function selectPanelVisibility(
-  state: PanelCoreState,
-  input: PanelLayoutInput,
-): PanelVisibilityState {
-  if (input.isCompact) {
-    return {
-      isAgentListOpen: state.mobilePanel.target === "agent-list",
-      isFileExplorerOpen: state.mobilePanel.target === "file-explorer",
-    };
-  }
-  return {
-    isAgentListOpen: state.desktop.agentListOpen,
-    isFileExplorerOpen: state.desktop.fileExplorerOpen,
-  };
 }
 
 export function selectIsAgentListOpen(state: PanelCoreState, input: PanelLayoutInput): boolean {
@@ -155,18 +116,6 @@ export function selectIsAgentListOpen(state: PanelCoreState, input: PanelLayoutI
  */
 export function selectIsCompactFileExplorerOpen(state: PanelCoreState): boolean {
   return state.mobilePanel.target === "file-explorer";
-}
-
-/**
- * Otto keeps the docked explorer sidebar on wide layouts, which upstream retired
- * in favour of explorer tabs. The state it reads (`desktop.fileExplorerOpen`) is
- * still upstream's - this is the layout-aware reader Otto's workspace screen
- * needs, alongside their compact-only one above.
- */
-export function selectIsFileExplorerOpen(state: PanelCoreState, input: PanelLayoutInput): boolean {
-  return input.isCompact
-    ? state.mobilePanel.target === "file-explorer"
-    : state.desktop.fileExplorerOpen;
 }
 
 export function setMobilePanelTarget(
@@ -191,49 +140,31 @@ function resolveExplorerTabFromCheckout(
   });
 }
 
-// Otto keeps a docked desktop explorer alongside the compact one upstream
-// retired, so opening it is form-factor dependent: compact swaps the mobile
-// panel target, desktop toggles the docked sidebar's own flag.
 export interface OpenFileExplorerPatch {
-  mobilePanel?: MobilePanelSelection;
-  desktop?: DesktopSidebarState;
+  mobilePanel: MobilePanelSelection;
   explorerTab: ExplorerTab;
 }
 
 export function buildOpenFileExplorerPatch(
   state: PanelCoreState,
-  input: ExplorerPanelIntent,
+  checkout: ExplorerCheckoutContext,
 ): OpenFileExplorerPatch {
-  const resolvedTab = resolveExplorerTabFromCheckout(state, input.checkout);
-  if (input.isCompact) {
-    return {
-      mobilePanel: setMobilePanelTarget(state.mobilePanel, "file-explorer"),
-      explorerTab: resolvedTab,
-    };
-  }
   return {
-    desktop: { ...state.desktop, fileExplorerOpen: true },
-    explorerTab: resolvedTab,
+    mobilePanel: setMobilePanelTarget(state.mobilePanel, "file-explorer"),
+    explorerTab: resolveExplorerTabFromCheckout(state, checkout),
   };
 }
 
-export type ToggleFileExplorerPatch =
-  | OpenFileExplorerPatch
-  | { mobilePanel: MobilePanelSelection }
-  | { desktop: DesktopSidebarState };
+export type ToggleFileExplorerPatch = OpenFileExplorerPatch | { mobilePanel: MobilePanelSelection };
 
 export function buildToggleFileExplorerPatch(
   state: PanelCoreState,
-  input: ExplorerPanelIntent,
+  checkout: ExplorerCheckoutContext,
 ): ToggleFileExplorerPatch {
-  const isOpen = selectIsFileExplorerOpen(state, input);
-  if (!isOpen) {
-    return buildOpenFileExplorerPatch(state, input);
+  if (!selectIsCompactFileExplorerOpen(state)) {
+    return buildOpenFileExplorerPatch(state, checkout);
   }
-  if (input.isCompact) {
-    return { mobilePanel: setMobilePanelTarget(state.mobilePanel, "agent") };
-  }
-  return { desktop: { ...state.desktop, fileExplorerOpen: false } };
+  return { mobilePanel: setMobilePanelTarget(state.mobilePanel, "agent") };
 }
 
 const ExplorerTabSchema = z.enum(["changes", "files", "search", "pr"]);
@@ -335,20 +266,13 @@ function migratePanelDesktopFocusMode(state: MigratablePanelState): void {
   }
 }
 
-export function migratePanelState(
-  persistedState: unknown,
-  version: number,
-  options: { isWeb: boolean },
-): MigratablePanelState {
+export function migratePanelState(persistedState: unknown, version: number): MigratablePanelState {
   const result = PanelPersistedStateSchema.safeParse(persistedState);
   const state: MigratablePanelState = result.success ? result.data : {};
-  const { isWeb } = options;
-
-  if (version < 2) {
-    migratePanelV2Explorer(state, isWeb);
-  }
-  if (version < 3) {
-    migratePanelV3Explorer(state, isWeb);
+  delete state.explorerWidth;
+  delete state.explorerFilesSplitRatio;
+  if (state.desktop) {
+    delete state.desktop.fileExplorerOpen;
   }
   if (!isExplorerTab(state.explorerTab)) {
     state.explorerTab = "changes";
@@ -415,28 +339,3 @@ function normalizeProjectKnowledgeSidebarWidth(width: unknown): number {
 
 export { buildExplorerCheckoutKey, resolveExplorerTabForCheckout };
 export type { ExplorerTab, ExplorerCheckoutContext };
-
-export interface ExplorerPanelIntent extends PanelLayoutInput {
-  checkout: ExplorerCheckoutContext;
-}
-
-function migratePanelV2Explorer(state: MigratablePanelState, isWeb: boolean): void {
-  if (isWeb && typeof state.explorerWidth === "number" && state.explorerWidth === 400) {
-    state.explorerWidth = DEFAULT_EXPLORER_SIDEBAR_WIDTH;
-  }
-  if (typeof state.explorerFilesSplitRatio !== "number") {
-    state.explorerFilesSplitRatio = DEFAULT_EXPLORER_FILES_SPLIT_RATIO;
-  } else {
-    state.explorerFilesSplitRatio = clampExplorerFilesSplitRatio(state.explorerFilesSplitRatio);
-  }
-}
-
-function migratePanelV3Explorer(state: MigratablePanelState, isWeb: boolean): void {
-  if (
-    isWeb &&
-    typeof state.explorerWidth === "number" &&
-    (state.explorerWidth === 400 || state.explorerWidth === 520)
-  ) {
-    state.explorerWidth = DEFAULT_EXPLORER_SIDEBAR_WIDTH;
-  }
-}

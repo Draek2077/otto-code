@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Animated, Easing, Platform, Text, ToastAndroid, View } from "react-native";
+import {
+  Animated,
+  Easing,
+  Platform,
+  Text,
+  ToastAndroid,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -13,11 +21,11 @@ import {
 import { isNative, isWeb } from "@/constants/platform";
 import { AlertTriangle, CheckCircle2 } from "@/components/icons/material-icons";
 import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
-import {
-  selectIsAgentListOpen,
-  selectIsFileExplorerOpen,
-  usePanelStore,
-} from "@/stores/panel-store";
+import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
+import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { resolveExplorerSidebarWidth } from "@/components/explorer-sidebar-layout";
 
 export type ToastVariant = "default" | "success" | "error";
 
@@ -125,18 +133,34 @@ function useContentRegionInsets(placement: ToastViewportPlacement): {
   const isAgentListOpen = usePanelStore((state) =>
     selectIsAgentListOpen(state, { isCompact: isCompact }),
   );
-  const isFileExplorerOpen = usePanelStore((state) =>
-    selectIsFileExplorerOpen(state, { isCompact: isCompact }),
+  const isExplorerSidebarVisible = usePanelStore((state) => state.explorerSidebarVisible);
+  const activeWorkspace = useActiveWorkspaceSelection();
+  const workspaceKey = useMemo(
+    () =>
+      activeWorkspace
+        ? buildWorkspaceTabPersistenceKey({
+            serverId: activeWorkspace.serverId,
+            workspaceId: activeWorkspace.workspaceId,
+          })
+        : null,
+    [activeWorkspace],
+  );
+  const requestedExplorerWidth = useWorkspaceLayoutStore((state) =>
+    workspaceKey ? state.explorerSidebarWidthByWorkspace[workspaceKey] : undefined,
   );
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
-  const explorerWidth = usePanelStore((state) => state.explorerWidth);
+  const { width: viewportWidth } = useWindowDimensions();
+  const explorerWidth = resolveExplorerSidebarWidth({
+    requestedWidth: requestedExplorerWidth,
+    containerWidth: viewportWidth,
+  });
 
   if (placement !== "app-shell" || isCompact) {
     return { left: 0, right: 0 };
   }
   return {
     left: isAgentListOpen ? sidebarWidth : 0,
-    right: isFileExplorerOpen ? explorerWidth : 0,
+    right: isExplorerSidebarVisible ? explorerWidth : 0,
   };
 }
 

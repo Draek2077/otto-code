@@ -11,10 +11,12 @@ import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { queryClient } from "@/data/query-client";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
-import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
 import { revealDirectoryInFiles } from "@/git/changes-reveal";
+import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { useIsCompactFormFactor } from "@/constants/layout";
 
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
 
@@ -85,7 +87,19 @@ function TerminalPanel() {
   }));
   const workspaceDirectory = workspaceFields?.workspaceDirectory || null;
   const isGitCheckout = workspaceFields?.isGitCheckout ?? false;
-  const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
+  const isCompact = useIsCompactFormFactor();
+  const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+  const openFilesExplorer = useCallback(() => {
+    if (!workspaceDirectory) {
+      return;
+    }
+    openExplorerSidebarView({
+      isCompact,
+      workspaceKey,
+      checkout: { serverId, cwd: workspaceDirectory, isGit: isGitCheckout },
+      view: "files",
+    });
+  }, [isCompact, isGitCheckout, serverId, workspaceDirectory, workspaceKey]);
   const handleNavigateToFolder = useCallback(
     (path: string) => {
       if (!workspaceDirectory) {
@@ -97,20 +111,10 @@ function TerminalPanel() {
         path,
         isGit: isGitCheckout,
       });
-      openFileExplorerForCheckout({
-        isCompact: true,
-        checkout: { serverId, cwd: workspaceDirectory, isGit: isGitCheckout },
-      });
+      openFilesExplorer();
     },
-    [isGitCheckout, openFileExplorerForCheckout, serverId, workspaceDirectory],
+    [isGitCheckout, openFilesExplorer, serverId, workspaceDirectory],
   );
-  const openCompactFileExplorer = usePanelStore((state) => state.openCompactFileExplorer);
-  const handleOpenFileExplorer = useCallback(() => {
-    if (!workspaceDirectory) {
-      return;
-    }
-    openCompactFileExplorer({ serverId, cwd: workspaceDirectory, isGit: isGitCheckout });
-  }, [isGitCheckout, openCompactFileExplorer, serverId, workspaceDirectory]);
   invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
 
   if (!workspaceDirectory) {
@@ -128,7 +132,7 @@ function TerminalPanel() {
       terminalId={target.terminalId}
       isWorkspaceFocused={isWorkspaceFocused}
       isPaneFocused={isPaneFocused}
-      onOpenFileExplorer={handleOpenFileExplorer}
+      onOpenFileExplorer={openFilesExplorer}
       onNavigateToFolder={handleNavigateToFolder}
       onOpenWorkspaceFile={openFileInWorkspace}
     />

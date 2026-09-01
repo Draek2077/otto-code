@@ -107,7 +107,6 @@ import { useBrowserStore } from "@/stores/browser-store";
 import { AgentTaskList } from "@/composer/task-list";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
-import { usePanelStore } from "@/stores/panel-store";
 import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
 import {
   selectAgentTimelineState,
@@ -117,6 +116,7 @@ import {
 } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
 import type { Theme } from "@/styles/theme";
 import {
   useArchiveSubagent,
@@ -2056,8 +2056,6 @@ function ActiveAgentComposer({
     () => [agentAttachmentScopeKey, workspaceAttachmentScopeKey],
     [agentAttachmentScopeKey, workspaceAttachmentScopeKey],
   );
-  const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
-  const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
   const handleOpenWorkspaceAttachment = useCallback(
     (attachment: WorkspaceComposerAttachment) => {
       if (attachment.kind === "file_context") {
@@ -2078,22 +2076,14 @@ function ActiveAgentComposer({
         cwd: attachment.attachment.cwd,
         isGit: true,
       };
-      openFileExplorerForCheckout({
-        checkout,
+      openExplorerSidebarView({
         isCompact: isCompactFormFactor,
-      });
-      setExplorerTabForCheckout({
-        ...checkout,
-        tab: "changes",
+        workspaceKey: buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
+        checkout,
+        view: "changes",
       });
     },
-    [
-      isCompactFormFactor,
-      openFileExplorerForCheckout,
-      paneContext,
-      serverId,
-      setExplorerTabForCheckout,
-    ],
+    [isCompactFormFactor, paneContext, serverId, workspaceId],
   );
 
   const handleClientSlashCommand = useCallback(

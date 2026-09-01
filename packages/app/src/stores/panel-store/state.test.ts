@@ -9,9 +9,8 @@ import {
   buildToggleFileExplorerPatch,
   migratePanelState,
   selectIsAgentListOpen,
-  selectIsFileExplorerOpen,
+  selectIsCompactFileExplorerOpen,
   setMobilePanelTarget,
-  selectPanelVisibility,
   type PanelCoreState,
 } from "./state";
 
@@ -20,7 +19,6 @@ function makePanelState(overrides: Partial<PanelCoreState> = {}): PanelCoreState
     mobilePanel: { target: "agent", revision: 0 },
     desktop: {
       agentListOpen: false,
-      fileExplorerOpen: false,
       focusModeEnabled: false,
     },
     explorerTab: "changes",
@@ -110,7 +108,6 @@ describe("panel-store migration", () => {
         projectKnowledgeSidebarWidth: 430,
       },
       12,
-      { isWeb: false },
     );
 
     expect(state).toMatchObject({
@@ -123,22 +120,41 @@ describe("panel-store migration", () => {
     });
   });
 
+  it("drops the superseded desktop Explorer state while keeping compact selection memory", () => {
+    const state = migratePanelState(
+      {
+        desktop: {
+          agentListOpen: true,
+          focusModeEnabled: false,
+          fileExplorerOpen: true,
+        },
+        explorerWidth: 520,
+        explorerFilesSplitRatio: 0.5,
+        explorerTab: "search",
+      },
+      16,
+    );
+
+    expect(state.desktop?.fileExplorerOpen).toBeUndefined();
+    expect(state.explorerWidth).toBeUndefined();
+    expect(state.explorerFilesSplitRatio).toBeUndefined();
+    expect(state.explorerTab).toBe("search");
+  });
+
   it("defaults hidden-file visibility to showing hidden files", () => {
-    const state = migratePanelState({}, 10, { isWeb: false });
+    const state = migratePanelState({}, 10);
 
     expect(state.explorerShowHiddenFiles).toBe(true);
   });
 
   it("initializes diffCollapsedFoldersByWorkspace for pre-v12 state", () => {
-    const state = migratePanelState({}, 11, { isWeb: false });
+    const state = migratePanelState({}, 11);
 
     expect(state.diffCollapsedFoldersByWorkspace).toEqual({});
   });
 
   it("preserves an existing diffCollapsedFoldersByWorkspace map", () => {
-    const state = migratePanelState({ diffCollapsedFoldersByWorkspace: { ws: ["src/app"] } }, 12, {
-      isWeb: false,
-    });
+    const state = migratePanelState({ diffCollapsedFoldersByWorkspace: { ws: ["src/app"] } }, 12);
 
     expect(state.diffCollapsedFoldersByWorkspace).toEqual({ ws: ["src/app"] });
   });
@@ -147,7 +163,6 @@ describe("panel-store migration", () => {
     const state = migratePanelState(
       { mobileView: "agent-list", mobilePanel: { target: "file-explorer", revision: 42 } },
       11,
-      { isWeb: false },
     );
 
     expect(state.mobileView).toBeUndefined();
@@ -169,33 +184,24 @@ describe("panel-store visibility selectors", () => {
   it("uses the mobile panel target for compact layout visibility", () => {
     const state = makePanelState({
       mobilePanel: { target: "file-explorer", revision: 1 },
-      desktop: { agentListOpen: true, fileExplorerOpen: false, focusModeEnabled: false },
+      desktop: { agentListOpen: true, focusModeEnabled: false },
     });
 
-    expect(selectPanelVisibility(state, { isCompact: true })).toEqual({
-      isAgentListOpen: false,
-      isFileExplorerOpen: true,
-    });
     expect(selectIsAgentListOpen(state, { isCompact: true })).toBe(false);
-    expect(selectIsFileExplorerOpen(state, { isCompact: true })).toBe(true);
+    expect(selectIsCompactFileExplorerOpen(state)).toBe(true);
   });
 
-  it("uses desktop flags for expanded layout visibility", () => {
+  it("uses the desktop flag for expanded agent-list visibility", () => {
     const state = makePanelState({
       mobilePanel: { target: "file-explorer", revision: 1 },
-      desktop: { agentListOpen: true, fileExplorerOpen: false, focusModeEnabled: false },
+      desktop: { agentListOpen: true, focusModeEnabled: false },
     });
 
-    expect(selectPanelVisibility(state, { isCompact: false })).toEqual({
-      isAgentListOpen: true,
-      isFileExplorerOpen: false,
-    });
     expect(selectIsAgentListOpen(state, { isCompact: false })).toBe(true);
-    expect(selectIsFileExplorerOpen(state, { isCompact: false })).toBe(false);
   });
 });
 
-describe("panel-store checkout-intent file explorer actions", () => {
+describe("panel-store compact file explorer actions", () => {
   it("opens the compact explorer and resolves the tab from the explicit checkout", () => {
     const checkout = { serverId: "server-1", cwd: "/tmp/repo", isGit: true };
     const key = buildExplorerCheckoutKey(checkout.serverId, checkout.cwd)!;
@@ -204,42 +210,25 @@ describe("panel-store checkout-intent file explorer actions", () => {
       explorerTabByCheckout: { [key]: "files" },
     });
 
-    const patch = buildOpenFileExplorerPatch(state, { isCompact: true, checkout });
+    const patch = buildOpenFileExplorerPatch(state, checkout);
 
     expect(patch.mobilePanel).toEqual({ target: "file-explorer", revision: 1 });
-    expect(patch.desktop).toBeUndefined();
-    expect(patch.explorerTab).toBe("files");
-  });
-
-  it("opens the expanded explorer and resolves the tab from the explicit checkout", () => {
-    const checkout = { serverId: "server-1", cwd: "/tmp/repo", isGit: true };
-    const key = buildExplorerCheckoutKey(checkout.serverId, checkout.cwd)!;
-    const state = makePanelState({
-      explorerTab: "changes",
-      explorerTabByCheckout: { [key]: "files" },
-    });
-
-    const patch = buildOpenFileExplorerPatch(state, { isCompact: false, checkout });
-
-    expect(patch.mobilePanel).toBeUndefined();
-    expect(patch.desktop?.fileExplorerOpen).toBe(true);
     expect(patch.explorerTab).toBe("files");
   });
 
   it("toggles the explorer closed without changing the active tab", () => {
     const state = makePanelState({
-      desktop: { agentListOpen: false, fileExplorerOpen: true, focusModeEnabled: false },
+      mobilePanel: { target: "file-explorer", revision: 1 },
       explorerTab: "files",
     });
 
     const patch = buildToggleFileExplorerPatch(state, {
-      isCompact: false,
-      checkout: { serverId: "server-1", cwd: "/tmp/repo", isGit: true },
+      serverId: "server-1",
+      cwd: "/tmp/repo",
+      isGit: true,
     });
 
-    expect(patch).toEqual({
-      desktop: { agentListOpen: false, fileExplorerOpen: false, focusModeEnabled: false },
-    });
+    expect(patch).toEqual({ mobilePanel: { target: "agent", revision: 2 } });
   });
 
   it("coerces changes to files for a non-git checkout", () => {
@@ -250,7 +239,7 @@ describe("panel-store checkout-intent file explorer actions", () => {
       explorerTabByCheckout: { [key]: "changes" },
     });
 
-    const patch = buildOpenFileExplorerPatch(state, { isCompact: false, checkout });
+    const patch = buildOpenFileExplorerPatch(state, checkout);
 
     expect(patch.explorerTab).toBe("files");
   });
@@ -259,11 +248,12 @@ describe("panel-store checkout-intent file explorer actions", () => {
     const state = makePanelState({ explorerTab: "changes", explorerTabByCheckout: {} });
 
     const patch = buildOpenFileExplorerPatch(state, {
-      isCompact: false,
-      checkout: { serverId: "server-1", cwd: "/tmp/non-git", isGit: false },
+      serverId: "server-1",
+      cwd: "/tmp/non-git",
+      isGit: false,
     });
 
-    expect(patch.desktop?.fileExplorerOpen).toBe(true);
+    expect(patch.mobilePanel).toEqual({ target: "file-explorer", revision: 1 });
     expect(patch.explorerTab).toBe("files");
   });
 });

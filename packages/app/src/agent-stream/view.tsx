@@ -32,7 +32,6 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "@/components/icons/material-icons";
-import { usePanelStore } from "@/stores/panel-store";
 import {
   AssistantMessage,
   SpeakMessage,
@@ -500,8 +499,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       new Set(),
     );
     const [expandAllCommand, setExpandAllCommand] = useState<ExpandAllCommand | null>(null);
-    const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
-
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
 
@@ -630,13 +627,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         path: resolvedPath.relativePath,
         isGit: context.projectPlacement?.checkout?.isGit ?? false,
       });
-      openFileExplorerForCheckout({
+      openExplorerSidebarView({
         isCompact: isMobile,
+        workspaceKey: buildWorkspaceTabPersistenceKey({
+          serverId: resolvedServerId,
+          workspaceId: context.workspaceId ?? "",
+        }),
         checkout: {
           serverId: resolvedServerId,
           cwd: workspaceRoot,
           isGit: context.projectPlacement?.checkout?.isGit ?? false,
         },
+        view: "files",
       });
     });
 
@@ -655,13 +657,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         path: folderPath,
         isGit: context.projectPlacement?.checkout?.isGit ?? false,
       });
-      openFileExplorerForCheckout({
+      openExplorerSidebarView({
         isCompact: isMobile,
+        workspaceKey: buildWorkspaceTabPersistenceKey({
+          serverId: resolvedServerId,
+          workspaceId: context.workspaceId ?? "",
+        }),
         checkout: {
           serverId: resolvedServerId,
           cwd: workspaceRoot,
           isGit: context.projectPlacement?.checkout?.isGit ?? false,
         },
+        view: "files",
       });
     });
 

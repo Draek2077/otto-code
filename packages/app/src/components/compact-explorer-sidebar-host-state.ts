@@ -1,6 +1,7 @@
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import type { ActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
+import type { ExplorerTab } from "@/stores/panel-store";
 
 export interface CompactExplorerSidebarHostModel {
   serverId: string;
@@ -8,6 +9,30 @@ export interface CompactExplorerSidebarHostModel {
   persistenceKey: string;
   workspaceRoot: string;
   isGit: boolean;
+}
+
+export function resolveCompactExplorerTabs(input: {
+  activeTab: ExplorerTab;
+  isDeveloperMode: boolean;
+  isGit: boolean;
+  hasProjectSearch: boolean;
+  showPullRequest: boolean;
+}): { activeTab: ExplorerTab; tabs: ExplorerTab[] } {
+  if (!input.isDeveloperMode) {
+    return { activeTab: "files", tabs: ["files"] };
+  }
+  const tabs: ExplorerTab[] = input.isGit ? ["changes", "files"] : ["files"];
+  if (input.hasProjectSearch) tabs.push("search");
+  if (input.isGit && input.showPullRequest) tabs.push("pr");
+  let activeTab = input.activeTab;
+  if (!input.isGit && (activeTab === "changes" || activeTab === "pr")) {
+    activeTab = "files";
+  } else if (activeTab === "search" && !input.hasProjectSearch) {
+    activeTab = "files";
+  } else if (activeTab === "pr" && !input.showPullRequest) {
+    activeTab = input.isGit ? "changes" : "files";
+  }
+  return { activeTab, tabs };
 }
 
 interface ResolveCompactExplorerSidebarHostModelInput {

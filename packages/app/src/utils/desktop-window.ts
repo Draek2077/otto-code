@@ -289,7 +289,7 @@ export function useWindowControlsPadding(role: WindowControlsPaddingRole): {
   top: number;
 } {
   const sidebarOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const explorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
+  const explorerOpen = usePanelStore((state) => state.explorerSidebarVisible);
   const focusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
   const rawPadding = useRawWindowControlsPadding();
   const sidebarClosed = !sidebarOpen;

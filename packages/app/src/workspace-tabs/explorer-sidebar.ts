@@ -1,11 +1,15 @@
 import { supportsDesktopPaneSplits } from "@/constants/layout";
-import { selectIsCompactFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
+import {
+  selectIsCompactFileExplorerOpen,
+  usePanelStore,
+  type ExplorerTab,
+} from "@/stores/panel-store";
 import type { ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import {
   selectIsExplorerSidebarVisible,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
-import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
+import type { WorkspaceTab, WorkspaceTabTarget } from "@/workspace-tabs/model";
 
 export type ExplorerSidebarView = "changes" | "files";
 export type ExplorerSidebarPresentation = "overlay" | "dock" | "pane";
@@ -15,8 +19,26 @@ const VIEW_TARGETS: Record<ExplorerSidebarView, WorkspaceTabTarget> = {
   files: { kind: "files" },
 };
 
+const TAB_TARGETS: Record<ExplorerTab, WorkspaceTabTarget> = {
+  changes: VIEW_TARGETS.changes,
+  files: VIEW_TARGETS.files,
+  search: { kind: "project_search" },
+  pr: { kind: "pull_request" },
+};
+
+const USER_MODE_HIDDEN_EXPLORER_KINDS = new Set(["changes_tree", "project_search", "pull_request"]);
+
+export function filterExplorerSidebarTabs(
+  tabs: WorkspaceTab[],
+  isDeveloperMode: boolean,
+): WorkspaceTab[] {
+  if (isDeveloperMode) return tabs;
+  return tabs.filter((tab) => !USER_MODE_HIDDEN_EXPLORER_KINDS.has(tab.target.kind));
+}
+
 export interface ExplorerSidebarQuery {
   isCompact: boolean;
+  isDeveloperMode?: boolean;
   workspaceKey: string | null;
   supportsPaneSplits?: boolean;
 }
@@ -46,14 +68,17 @@ function canUseExplorerSidebar(
   return resolveExplorerSidebarPresentation(input) === "pane";
 }
 
-/** Reveals the Explorer sidebar and selects one of its navigation trees. */
-export function openExplorerSidebarView(
-  input: ExplorerSidebarInput & { view: ExplorerSidebarView },
-): void {
+/** Reveals the Explorer sidebar and selects one of its tabs. */
+export function openExplorerSidebarTab(input: ExplorerSidebarInput & { tab: ExplorerTab }): void {
+  const requestedTab = input.isDeveloperMode === false ? "files" : input.tab;
+  const tab =
+    input.checkout && !input.checkout.isGit && (requestedTab === "changes" || requestedTab === "pr")
+      ? "files"
+      : requestedTab;
   if (usesCompactExplorerSidebar(input)) {
     if (!input.checkout) return;
     const panel = usePanelStore.getState();
-    panel.setExplorerTabForCheckout({ ...input.checkout, tab: input.view });
+    panel.setExplorerTabForCheckout({ ...input.checkout, tab });
     panel.openCompactFileExplorer(input.checkout);
     return;
   }
@@ -62,10 +87,17 @@ export function openExplorerSidebarView(
   const paneId = store.showExplorerSidebar(input.workspaceKey);
   store.openTab({
     workspaceKey: input.workspaceKey,
-    target: VIEW_TARGETS[input.view],
+    target: TAB_TARGETS[tab],
     intent: "reveal",
     placement: paneId ? { mode: "pane", paneId } : undefined,
   });
+}
+
+/** Reveals one of the Explorer's singleton navigation trees. */
+export function openExplorerSidebarView(
+  input: ExplorerSidebarInput & { view: ExplorerSidebarView },
+): void {
+  openExplorerSidebarTab({ ...input, tab: input.view });
 }
 
 export function showExplorerSidebar(input: ExplorerSidebarInput): void {
@@ -89,12 +121,8 @@ export function hideExplorerSidebar(input: ExplorerSidebarInput): void {
 }
 
 export function toggleExplorerSidebar(input: ExplorerSidebarInput): void {
-  if (usesCompactExplorerSidebar(input)) {
-    if (input.checkout) usePanelStore.getState().toggleCompactFileExplorer(input.checkout);
-    return;
-  }
-  if (!input.workspaceKey) return;
-  const view: ExplorerSidebarView = input.checkout?.isGit ? "changes" : "files";
+  const view: ExplorerSidebarView =
+    input.isDeveloperMode !== false && input.checkout?.isGit ? "changes" : "files";
   if (isExplorerSidebarOpen(input)) {
     hideExplorerSidebar(input);
   } else {

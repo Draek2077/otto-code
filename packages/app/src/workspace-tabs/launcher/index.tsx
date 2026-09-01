@@ -152,7 +152,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         Icon: changesPresentation.icon,
         disabled: false,
         panelKind: "changes_tree",
-        hidden: !launcher.showChanges,
+        hidden: !isDeveloperMode || !launcher.showChanges,
         launch: launchSelection(BUILT_IN_SELECTIONS.changes),
       },
       diff: {
@@ -162,7 +162,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         shortcutActionId: "workspace-tab-target-changes",
         disabled: false,
         panelKind: "working_diff",
-        hidden: !launcher.showChanges,
+        hidden: !isDeveloperMode || !launcher.showChanges,
         launch: launchSelection(BUILT_IN_SELECTIONS.diff),
       },
       files: {
@@ -201,7 +201,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         Icon: pullRequestPresentation.icon,
         disabled: false,
         panelKind: "pull_request",
-        hidden: !launcher.showPullRequest,
+        hidden: !isDeveloperMode || !launcher.showPullRequest,
         launch: launchSelection(BUILT_IN_SELECTIONS.pullRequest),
       },
     };
@@ -265,6 +265,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
     plugins,
     purpose,
     host,
+    isDeveloperMode,
     serverId,
     showProjectSearch,
     t,

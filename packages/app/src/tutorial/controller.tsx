@@ -3,7 +3,10 @@ import { useWindowDimensions } from "react-native";
 import { useTranslation } from "react-i18next";
 import { usePathname, useRouter } from "expo-router";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { selectIsFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
+import { usePanelStore } from "@/stores/panel-store";
+import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { useIsExplorerSidebarOpen } from "@/workspace-tabs/explorer-sidebar";
 import { useSessionStore } from "@/stores/session-store";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
 import { useLaunchTutorial } from "./use-launch-tutorial";
@@ -22,6 +25,17 @@ export function TutorialController() {
   const pathname = usePathname();
   const isCompact = useIsCompactFormFactor();
   const { width: winW, height: winH } = useWindowDimensions();
+  const activeWorkspace = useActiveWorkspaceSelection();
+  const workspaceKey = useMemo(
+    () =>
+      activeWorkspace
+        ? buildWorkspaceTabPersistenceKey({
+            serverId: activeWorkspace.serverId,
+            workspaceId: activeWorkspace.workspaceId,
+          })
+        : null,
+    [activeWorkspace],
+  );
 
   useLaunchTutorial();
 
@@ -33,7 +47,7 @@ export function TutorialController() {
   const complete = useTutorialStore((s) => s.complete);
   const setRect = useTutorialStore((s) => s.setRect);
 
-  const isExplorerOpen = usePanelStore((s) => selectIsFileExplorerOpen(s, { isCompact }));
+  const isExplorerOpen = useIsExplorerSidebarOpen({ isCompact, workspaceKey });
 
   // Total registered projects across all hosts. Returns a primitive so the
   // controller only re-renders when the count actually changes, not on every

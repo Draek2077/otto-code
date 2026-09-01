@@ -5,11 +5,11 @@ title: "Explorer sidebar convergence on upstream's pane-host system"
 status: "proposed"
 tags: ["explorer-sidebar","upstream-convergence","workspace-tabs","paseo-v0.6.1"]
 delivery_status: "in_build"
-progress_completed: 1
+progress_completed: 4
 progress_total: 5
 progress_unit: "stages"
 created_at: "2026-08-31T22:20:25.244Z"
-updated_at: "2026-08-31T22:20:25.244Z"
+updated_at: "2026-09-01T00:37:05.050Z"
 ---
 # Explorer sidebar convergence on upstream's pane-host system
 
@@ -53,3 +53,11 @@ Otto desktop shows upstream's Explorer dock (tab rail, New Tab launcher, reorder
 - time: "2026-08-31T22:20:25.244Z"
   kind: "evidence"
   summary: "Scoping audit 2026-08-31: upstream design read from docs/explorer-sidebar.md and commits c914bcb44 (#3826), 19a7d2634 (#3605), ab274d635 (#3287), c779ef06c (#3510 - labels are workspace organization, not tab placement). Current tree state: Otto's docked sidebar live in workspace-screen threePaneRow; upstream's ExplorerSidebarDock + tab rail orphaned but byte-identical; layout store, explorer-sidebar-layout helpers, panel manifest, launcher, and compact overlay all merged and live. Stage 1 landed as c321a4a00."
+- time: "2026-09-01T00:02:12.191Z"
+  kind: "note"
+  summary: "Stages 2 and 3 landed. Stage 2 (118d34c39): split-container converged on upstream's pane-host architecture - explorer pane extracted from the split tree and rendered as the right-side dock (persisted width, resize handle, drag between dock and main panes, host-filtered drops, hidden-pane space redistribution, pane-maximize state pending its row trigger), with Otto's reworks on top (vertical tab rail + orientation-aware drop math, drag-preview equality bailouts, extended copy-path contract, pane empty state, Otto's keep-full-layout focus-mode semantics); WorkspacePanelHost retention cap now resolves from Otto's mountedTabLimit setting. Stage 3 (2291b1afb): desktop header moved into the split canvas via renderMainHeader so the dock divides the full workspace height; legacy ExplorerSidebar no longer renders on desktop; header toggle and sidebar.open.* keyboard actions route through the explorer-sidebar controller (Changes for git, Files otherwise; Search/PR open as dock panels); toggle state reads dock visibility. Remaining: stage 4 (retire components/explorer-sidebar.tsx + explorer-tab-memory, compact overlay convergence, User-mode Files-only gating in the dock rail/launcher, knowledge-file redirect parity in the panel open path, PR panel content parity) and stage 5 (e2e spec sync - Otto specs asserting the legacy explorer-tab-* testids will fail until synced, upstream's explorer-sidebar.spec.ts becomes acceptance, docs + ledger, visual pass in the dev app)."
+  affects: ["explorer-sidebar-convergence-on-upstream-s-pane-host-system"]
+- time: "2026-09-01T00:37:05.050Z"
+  kind: "note"
+  summary: "Stage 4 verified complete. Deleted Otto-owned packages/app/src/components/explorer-sidebar.tsx because the adopted upstream pane-host dock and combined compact Explorer supersede it. Removed the Otto-only desktop panel-store visibility, width, split-ratio, selectors, and actions; the persisted schema accepts those old fields only so migration can discard them. Retained stores/explorer-tab-memory.ts because commit 20d7efc46 proves it is upstream-owned and the combined compact Explorer still requires it; Otto's Search tab remains an additive union member. Compact overlay and wide-native dock now use upstream's combined content with Search and User-mode Files-only behavior, the desktop rail and launcher gate Changes/Search/PR locally in User mode, and toggles select Files in User mode. Panel-originated file opens redirect Knowledge files at the shared preferred-target choke point. PR parity was audited: the registered pull_request panel already preserves the legacy data, activity, attachment, loading, and retry affordances and adds an empty state, so no port was required. docs/upstream-merges.md records the supersession and deliberate deviations. Verification: app typecheck, scoped lint with zero warnings, and 218 relevant unit tests passed. Stage 5 E2E sync, authoritative-doc review, and visual pass were not started."
+  affects: ["explorer-sidebar-convergence-on-upstream-s-pane-host-system"]

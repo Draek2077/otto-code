@@ -104,6 +104,7 @@ import { useGlobalNewWorkspaceAction } from "@/hooks/use-global-new-workspace-ac
 import { useLatchedBoolean } from "@/hooks/use-latched-boolean";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { resolveExplorerSidebarPresentation } from "@/workspace-tabs/explorer-sidebar";
 import { KeyboardShiftProvider } from "@/hooks/use-keyboard-shift-style";
 import { useCompactWebViewportZoomLock } from "@/hooks/use-compact-web-viewport-zoom-lock";
 import { useOpenProject } from "@/hooks/use-open-project";
@@ -558,7 +559,6 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const toggleDesktopAgentList = usePanelStore((state) => state.toggleDesktopAgentList);
   const openDesktopAgentList = usePanelStore((state) => state.openDesktopAgentList);
   const closeDesktopAgentList = usePanelStore((state) => state.closeDesktopAgentList);
-  const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
   const focusModeHandlerId = useId();
   const handleToggleFocusMode = useCallback((): boolean => {
@@ -584,6 +584,10 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   }, [settings.colorSchemeMode, settings.darkTheme, settings.lightTheme, updateSettings]);
 
   const isCompactLayout = useIsCompactFormFactor();
+  const explorerSidebarPresentation = resolveExplorerSidebarPresentation({
+    isCompact: isCompactLayout,
+  });
+  const usesCompactExplorerHost = explorerSidebarPresentation !== "pane";
   useCompactWebViewportZoomLock(isCompactLayout);
   const pathname = usePathname();
   const isWorkspaceRoute = parseHostWorkspaceRouteFromPathname(pathname) !== null;
@@ -592,25 +596,19 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const hasMountedDesktopSidebar = useLatchedBoolean(chromeEnabled);
   const toggleAgentList = isCompactLayout ? toggleMobileAgentList : toggleDesktopAgentList;
   const toggleDesktopSidebars = useCallback(() => {
-    const { desktop } = usePanelStore.getState();
+    const { desktop, explorerSidebarVisible } = usePanelStore.getState();
     toggleDesktopSidebarsWithCheckoutIntent({
       isAgentListOpen: desktop.agentListOpen,
-      isFileExplorerOpen: desktop.fileExplorerOpen,
+      isExplorerOpen: explorerSidebarVisible,
       openAgentList: openDesktopAgentList,
       closeAgentList: closeDesktopAgentList,
-      closeFileExplorer: closeDesktopFileExplorer,
-      toggleFocusedFileExplorer: () =>
+      toggleExplorer: () =>
         keyboardActionDispatcher.dispatch({
           id: "sidebar.toggle.right",
           scope: "sidebar",
         }),
     });
-  }, [
-    closeDesktopAgentList,
-    closeDesktopFileExplorer,
-    keyboardActionDispatcher,
-    openDesktopAgentList,
-  ]);
+  }, [closeDesktopAgentList, keyboardActionDispatcher, openDesktopAgentList]);
   // TODO: stop matching pathname here as a branch. `chromeEnabled` should not
   // conflate workspace/project-specific chrome (sidebar, mobile gesture) with
   // global concerns like keyboard shortcuts. Split those out so settings (and
@@ -643,15 +641,10 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   // A half-screen window with Settings or the Explorer open is the case that
   // matters, and there app navigation yields rather than squeezing the content.
   const isDesktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const isDesktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
-  const explorerWidth = usePanelStore((state) => state.explorerWidth);
   const { width: viewportWidth } = useWindowDimensions();
   const appContentMinimumWidth = resolveDesktopAppContentMinimum({
     isSettingsRoute: pathname.includes("/settings"),
-    isWorkspaceExplorerOpen: pathname.includes("/workspace/") && isDesktopFileExplorerOpen,
-    requestedExplorerWidth: explorerWidth,
-    viewportWidth,
   });
   const desktopSidebarMounted = hasMountedDesktopSidebar && !isWorkspaceFocusModeEnabled;
   const desktopSidebarVisible = resolveDesktopSidebarVisibility({
@@ -686,10 +679,11 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
           {sidebarChrome}
         </WindowChromeRegion>
       ) : null}
-      {isCompactLayout ? (
-        // Compact is always the overlay presentation: Otto's docked explorer is
-        // a desktop surface, and this host only runs on the compact layout.
-        <CompactExplorerSidebarHost enabled={chromeEnabled} presentation="overlay">
+      {usesCompactExplorerHost ? (
+        <CompactExplorerSidebarHost
+          enabled={chromeEnabled}
+          presentation={explorerSidebarPresentation === "dock" ? "dock" : "overlay"}
+        >
           <WindowChromeRegion corners={chromeEnabled ? "both" : appChromeLayout.contentCorners}>
             <RouteFadeContainer>{children}</RouteFadeContainer>
           </WindowChromeRegion>
