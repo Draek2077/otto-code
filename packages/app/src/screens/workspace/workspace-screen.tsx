@@ -73,7 +73,12 @@ import {
   FloatingPanelPortalHost,
   FloatingPanelPortalHostNameProvider,
 } from "@/components/ui/floating-panel-portal";
-import { ExplorerSidebar } from "@/components/explorer-sidebar";
+import {
+  openExplorerSidebarView,
+  toggleExplorerSidebar,
+  useIsExplorerSidebarOpen,
+  usesCompactExplorerSidebar,
+} from "@/workspace-tabs/explorer-sidebar";
 import { SplitContainer } from "@/components/split-container";
 import { RetainedPanel } from "@/components/retained-panel";
 import { WorkspaceActions } from "@/git/workspace-actions";
@@ -109,12 +114,7 @@ import {
 } from "@/screens/workspace/use-explorer-sidebar-visibility";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useToast } from "@/contexts/toast-context";
-import {
-  selectIsAgentListOpen,
-  selectIsFileExplorerOpen,
-  usePanelStore,
-  type ExplorerTab,
-} from "@/stores/panel-store";
+import { selectIsAgentListOpen, usePanelStore, type ExplorerTab } from "@/stores/panel-store";
 import { getOrCreateClientId } from "@/utils/client-id";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import { traceInstant } from "@/performance/native-trace";
@@ -273,7 +273,6 @@ import {
   resolveTerminalProfiles,
 } from "@otto-code/protocol/terminal-profiles";
 import { getProviderIcon } from "@/components/provider-icons";
-import { setFileViewModeFor } from "@/stores/file-view-store";
 import { releaseCleanEditorBuffer } from "@/editor/editor-buffer-store";
 import {
   createWorkspaceFileTabTarget,
@@ -2604,14 +2603,12 @@ function WorkspaceScreenContent({
     checkoutState: workspaceHeaderCheckoutState,
   });
 
-  const isExplorerOpen = usePanelStore((state) =>
-    selectIsFileExplorerOpen(state, { isCompact: isMobile }),
-  );
+  const isExplorerOpen = useIsExplorerSidebarOpen({
+    isCompact: isMobile,
+    workspaceKey: persistenceKey,
+  });
   const isSidebarOpen = usePanelStore((state) =>
     selectIsAgentListOpen(state, { isCompact: isMobile }),
-  );
-  const toggleFileExplorerForCheckout = usePanelStore(
-    (state) => state.toggleFileExplorerForCheckout,
   );
   const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
   const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
@@ -2637,24 +2634,56 @@ function WorkspaceScreenContent({
     if (!activeExplorerCheckout) {
       return;
     }
-    toggleFileExplorerForCheckout({
+    toggleExplorerSidebar({
       isCompact: isMobile,
+      workspaceKey: persistenceKey,
       checkout: activeExplorerCheckout,
     });
-  }, [activeExplorerCheckout, isMobile, toggleFileExplorerForCheckout]);
+  }, [activeExplorerCheckout, isMobile, persistenceKey]);
 
   const handleOpenExplorerTab = useCallback(
     (tab: ExplorerTab) => {
       if (!activeExplorerCheckout) {
         return;
       }
-      openFileExplorerForCheckout({
+      const sidebarInput = {
         isCompact: isMobile,
+        workspaceKey: persistenceKey,
         checkout: activeExplorerCheckout,
+      };
+      if (tab === "changes" || tab === "files") {
+        openExplorerSidebarView({ ...sidebarInput, view: tab });
+        return;
+      }
+      // Search and PR are ordinary panels in the dock rather than singleton
+      // Explorer views. The compact overlay still hosts them as its own tabs.
+      if (usesCompactExplorerSidebar(sidebarInput)) {
+        openFileExplorerForCheckout({
+          isCompact: isMobile,
+          checkout: activeExplorerCheckout,
+        });
+        setExplorerTabForCheckout({ ...activeExplorerCheckout, tab });
+        return;
+      }
+      if (!persistenceKey) {
+        return;
+      }
+      const layoutStore = useWorkspaceLayoutStore.getState();
+      const explorerPaneId = layoutStore.showExplorerSidebar(persistenceKey);
+      layoutStore.openTab({
+        workspaceKey: persistenceKey,
+        target: tab === "search" ? { kind: "project_search" } : { kind: "pull_request" },
+        intent: "reveal",
+        placement: explorerPaneId ? { mode: "pane", paneId: explorerPaneId } : undefined,
       });
-      setExplorerTabForCheckout({ ...activeExplorerCheckout, tab });
     },
-    [activeExplorerCheckout, isMobile, openFileExplorerForCheckout, setExplorerTabForCheckout],
+    [
+      activeExplorerCheckout,
+      isMobile,
+      openFileExplorerForCheckout,
+      persistenceKey,
+      setExplorerTabForCheckout,
+    ],
   );
 
   const hasDiffStat = useMemo(() => Boolean(workspaceDescriptor?.diffStat), [workspaceDescriptor]);
@@ -3256,48 +3285,6 @@ function WorkspaceScreenContent({
     showWorkspaceSetup,
     workspaceSetupSnapshot,
   ]);
-
-  const handleOpenFileFromExplorer = useCallback(
-    async function handleOpenFileFromExplorer(
-      filePath: string,
-      options?: { edit?: boolean; lineStart?: number },
-    ) {
-      if (!persistenceKey) {
-        return;
-      }
-      const location = normalizeWorkspaceFileLocation({
-        path: filePath,
-        lineStart: options?.lineStart,
-      });
-      if (!location) {
-        return;
-      }
-      const selection = await findKnowledgeFileSelection(location.path, normalizedWorkspaceId);
-      if (selection) {
-        const tabId = openWorkspaceTabFocused(persistenceKey, {
-          kind: "projectKnowledge",
-          selection,
-        });
-        if (tabId) navigateToTabId(tabId);
-        return;
-      }
-      if (options?.edit) {
-        // One tab per file: "Edit" opens the same file tab in editor view.
-        setFileViewModeFor({ persistenceKey, path: location.path, mode: "editor" });
-      }
-      const tabId = openWorkspaceTabFocused(persistenceKey, createWorkspaceFileTabTarget(location));
-      if (tabId) {
-        navigateToTabId(tabId);
-      }
-    },
-    [
-      findKnowledgeFileSelection,
-      navigateToTabId,
-      normalizedWorkspaceId,
-      openWorkspaceTabFocused,
-      persistenceKey,
-    ],
-  );
 
   const handleOpenFileFromChat = useCallback(
     async (location: WorkspaceFileLocation, options?: { parentTabId?: string | null }) => {
@@ -5062,6 +5049,119 @@ function WorkspaceScreenContent({
       `${WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX}:${normalizedServerId}:${normalizedWorkspaceId}`,
     [normalizedServerId, normalizedWorkspaceId],
   );
+  // The workspace header renders inside the split canvas's main column on the
+  // desktop split path so the Explorer dock divides the full workspace height,
+  // including the header (docs/explorer-sidebar.md). The mobile and non-split
+  // fallback paths keep rendering it at the top of the center column.
+  const workspaceScreenHeaderNode = useMemo(
+    () =>
+      showScreenHeader ? (
+        <ScreenHeader
+          onRowLayout={onHeaderLayout}
+          left={
+            <>
+              <SidebarMenuToggle />
+              <WorkspaceHeaderTitleBar
+                isLoading={isWorkspaceHeaderLoading}
+                title={workspaceHeaderTitle}
+                subtitle={workspaceHeaderSubtitle}
+                isSubtitleDistinct={isWorkspaceHeaderSubtitleDistinct}
+                currentBranchName={currentBranchName}
+                normalizedServerId={normalizedServerId}
+                normalizedWorkspaceId={normalizedWorkspaceId}
+                activeChatAttachmentScopeKey={getActiveChatAttachmentScopeKey(activeTabDescriptor)}
+                workspaceScripts={workspaceScripts}
+                liveTerminalIds={liveTerminalIds}
+                showWorkspaceSetup={showWorkspaceSetup}
+                showCreateBrowserTab={showCreateBrowserTab}
+                isMobile={isMobile}
+                showVisualizerAction={headerActionFit.showVisualizer}
+                showVoiceCuesAction={headerActionFit.showVoiceCues}
+                showPlayAction={headerActionFit.showPlay}
+                showTeamChatAction={headerActionFit.showTeamChat}
+                showMeetingsAction={headerActionFit.showMeetings}
+                showWakeWordAction={headerActionFit.showWakeWord}
+                onTeamChatAvailabilityChange={setHasTeamChatButton}
+                onMeetingsAvailabilityChange={setHasMeetingsButton}
+                showBrainAction={showBrainAction}
+                showVisualizerMenuItem={headerActionFit.menuVisualizer}
+                showVoiceCuesMenuItem={headerActionFit.menuVoiceCues}
+                showExplorerMenuItem={headerActionFit.menuExplorer}
+                showScriptsMenuItem={headerActionFit.menuPlay}
+                showTeamChatMenuItem={headerActionFit.menuTeamChat}
+                showMeetingsMenuItem={headerActionFit.menuMeetings}
+                showWakeWordMenuItem={headerActionFit.menuWakeWord}
+                onToggleExplorer={handleToggleExplorer}
+                createTerminalDisabled={createTerminalDisabled}
+                importAgentDisabled={!canOpenImportSheet}
+                copyPathDisabled={!workspaceDirectory}
+                menuNewAgentIcon={menuNewAgentIcon}
+                menuNewTerminalIcon={menuNewTerminalIcon}
+                menuNewBrowserIcon={MENU_NEW_BROWSER_ICON}
+                menuImportIcon={MENU_IMPORT_ICON}
+                menuCopyIcon={menuCopyIcon}
+                menuSettingsIcon={menuSettingsIcon}
+                onCreateDraftTab={handleCreateDraftTab}
+                onCreateTerminal={handleCreateTerminal}
+                onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
+                onCreateBrowser={handleCreateBrowserTab}
+                onOpenImportSheet={openImportSheet}
+                onCopyWorkspacePath={handleCopyWorkspacePath}
+                onCopyBranchName={handleCopyBranchName}
+                onOpenSetupTab={handleOpenSetupTab}
+                onOpenContextManagement={handleOpenContextManagement}
+                onOpenProjectKnowledge={handleOpenProjectKnowledge}
+                onScriptTerminalStarted={handleScriptTerminalStarted}
+                onViewScriptTerminal={handleViewScriptTerminal}
+                onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
+              />
+            </>
+          }
+          right={headerRight}
+        />
+      ) : null,
+    [
+      showScreenHeader,
+      onHeaderLayout,
+      isWorkspaceHeaderLoading,
+      workspaceHeaderTitle,
+      workspaceHeaderSubtitle,
+      isWorkspaceHeaderSubtitleDistinct,
+      currentBranchName,
+      normalizedServerId,
+      normalizedWorkspaceId,
+      activeTabDescriptor,
+      workspaceScripts,
+      liveTerminalIds,
+      showWorkspaceSetup,
+      showCreateBrowserTab,
+      isMobile,
+      headerActionFit,
+      showBrainAction,
+      handleToggleExplorer,
+      createTerminalDisabled,
+      canOpenImportSheet,
+      workspaceDirectory,
+      menuNewAgentIcon,
+      menuNewTerminalIcon,
+      menuCopyIcon,
+      menuSettingsIcon,
+      handleCreateDraftTab,
+      handleCreateTerminal,
+      handleCreateTerminalWithProfile,
+      handleCreateBrowserTab,
+      openImportSheet,
+      handleCopyWorkspacePath,
+      handleCopyBranchName,
+      handleOpenSetupTab,
+      handleOpenContextManagement,
+      handleOpenProjectKnowledge,
+      handleScriptTerminalStarted,
+      handleViewScriptTerminal,
+      handleOpenUrlInBrowserTab,
+      headerRight,
+    ],
+  );
   const selectWorkspaceTabInPane = useWorkspaceLayoutStore((state) => state.selectTabInPane);
   // The Explorer dock selects its tab without moving workspace focus; main
   // panes route through navigateToTabId, which focuses.
@@ -5090,6 +5190,7 @@ function WorkspaceScreenContent({
     return (
       <SplitContainer
         layout={workspaceLayout}
+        renderMainHeader={() => workspaceScreenHeaderNode}
         workspaceKey={persistenceKey}
         normalizedServerId={normalizedServerId}
         normalizedWorkspaceId={normalizedWorkspaceId}
@@ -5155,6 +5256,7 @@ function WorkspaceScreenContent({
     handleSelectTabInPane,
     isFocusModeEnabled,
     exitFocusMode,
+    workspaceScreenHeaderNode,
     showCreateBrowserTab,
     buildDesktopPaneContentModel,
     handleFocusPane,
@@ -5189,71 +5291,9 @@ function WorkspaceScreenContent({
 
   const workspaceCenterColumn = (
     <View style={styles.centerColumn}>
-      {showScreenHeader && (
-        <ScreenHeader
-          onRowLayout={onHeaderLayout}
-          left={
-            <>
-              <SidebarMenuToggle />
-              <WorkspaceHeaderTitleBar
-                isLoading={isWorkspaceHeaderLoading}
-                title={workspaceHeaderTitle}
-                subtitle={workspaceHeaderSubtitle}
-                isSubtitleDistinct={isWorkspaceHeaderSubtitleDistinct}
-                currentBranchName={currentBranchName}
-                normalizedServerId={normalizedServerId}
-                normalizedWorkspaceId={normalizedWorkspaceId}
-                activeChatAttachmentScopeKey={getActiveChatAttachmentScopeKey(activeTabDescriptor)}
-                workspaceScripts={workspaceScripts}
-                liveTerminalIds={liveTerminalIds}
-                showWorkspaceSetup={showWorkspaceSetup}
-                showCreateBrowserTab={showCreateBrowserTab}
-                isMobile={isMobile}
-                showVisualizerAction={headerActionFit.showVisualizer}
-                showVoiceCuesAction={headerActionFit.showVoiceCues}
-                showPlayAction={headerActionFit.showPlay}
-                showTeamChatAction={headerActionFit.showTeamChat}
-                showMeetingsAction={headerActionFit.showMeetings}
-                showWakeWordAction={headerActionFit.showWakeWord}
-                onTeamChatAvailabilityChange={setHasTeamChatButton}
-                onMeetingsAvailabilityChange={setHasMeetingsButton}
-                showBrainAction={showBrainAction}
-                showVisualizerMenuItem={headerActionFit.menuVisualizer}
-                showVoiceCuesMenuItem={headerActionFit.menuVoiceCues}
-                showExplorerMenuItem={headerActionFit.menuExplorer}
-                showScriptsMenuItem={headerActionFit.menuPlay}
-                showTeamChatMenuItem={headerActionFit.menuTeamChat}
-                showMeetingsMenuItem={headerActionFit.menuMeetings}
-                showWakeWordMenuItem={headerActionFit.menuWakeWord}
-                onToggleExplorer={handleToggleExplorer}
-                createTerminalDisabled={createTerminalDisabled}
-                importAgentDisabled={!canOpenImportSheet}
-                copyPathDisabled={!workspaceDirectory}
-                menuNewAgentIcon={menuNewAgentIcon}
-                menuNewTerminalIcon={menuNewTerminalIcon}
-                menuNewBrowserIcon={MENU_NEW_BROWSER_ICON}
-                menuImportIcon={MENU_IMPORT_ICON}
-                menuCopyIcon={menuCopyIcon}
-                menuSettingsIcon={menuSettingsIcon}
-                onCreateDraftTab={handleCreateDraftTab}
-                onCreateTerminal={handleCreateTerminal}
-                onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
-                onCreateBrowser={handleCreateBrowserTab}
-                onOpenImportSheet={openImportSheet}
-                onCopyWorkspacePath={handleCopyWorkspacePath}
-                onCopyBranchName={handleCopyBranchName}
-                onOpenSetupTab={handleOpenSetupTab}
-                onOpenContextManagement={handleOpenContextManagement}
-                onOpenProjectKnowledge={handleOpenProjectKnowledge}
-                onScriptTerminalStarted={handleScriptTerminalStarted}
-                onViewScriptTerminal={handleViewScriptTerminal}
-                onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
-              />
-            </>
-          }
-          right={headerRight}
-        />
-      )}
+      {/* The desktop split path renders the header inside the split canvas's
+          main column (renderMainHeader) so the Explorer dock divides it. */}
+      {desktopSplitContent == null ? workspaceScreenHeaderNode : null}
 
       {isMobile ? (
         <MobileWorkspaceTabSwitcher
@@ -5353,16 +5393,6 @@ function WorkspaceScreenContent({
               </FloatingPanelPortalHostNameProvider>
 
               <FloatingPanelPortalHost name={workspaceFloatingPanelPortalHostName} />
-
-              {showExplorerSidebar && workspaceDirectory ? (
-                <ExplorerSidebar
-                  serverId={normalizedServerId}
-                  workspaceId={normalizedWorkspaceId}
-                  workspaceRoot={workspaceDirectory}
-                  isGit={isGitCheckout}
-                  onOpenFile={handleOpenFileFromExplorer}
-                />
-              ) : null}
             </View>
             <ImportSessionSheet
               visible={isRouteFocused && isImportSheetVisible}
