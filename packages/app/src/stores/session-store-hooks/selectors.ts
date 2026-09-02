@@ -127,6 +127,19 @@ export function selectWorkspaceChangeStat(
 }
 
 /**
+ * The UI never renders an empty +/- badge. Keep that presentation rule beside
+ * the mode selector so every workspace-level indicator agrees on both its
+ * comparison base and whether it has anything to show.
+ */
+export function selectVisibleWorkspaceChangeStat(
+  workspace: Pick<WorkspaceDescriptor, "workingTreeDiffStat" | "diffStat">,
+  indicator: WorkspaceChangeIndicator,
+): { additions: number; deletions: number } | null {
+  const diffStat = selectWorkspaceChangeStat(workspace, indicator);
+  return diffStat && (diffStat.additions > 0 || diffStat.deletions > 0) ? diffStat : null;
+}
+
+/**
  * Aggregate the same mode-specific +/- stat used by workspace rows. This keeps
  * a project header from silently falling back to branch-versus-base totals.
  */

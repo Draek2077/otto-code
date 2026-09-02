@@ -58,6 +58,7 @@ import {
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
+import { useWorkspaceChangeIndicator } from "@/hooks/use-workspace-change-indicator";
 import { shouldSyncAgentTimelineOnFocus } from "@/timeline/timeline-sync-plan";
 import { useAgentStreamRetention } from "@/timeline/use-agent-stream-retention";
 import { useAppSettingValue, useAppSettings } from "@/hooks/use-settings";
@@ -1644,7 +1645,12 @@ const AgentStreamSection = memo(function AgentStreamSection({
     serverId,
     parentAgentId: agentId ?? "",
   });
-  const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId ?? "");
+  const workspaceChangeIndicator = useWorkspaceChangeIndicator();
+  const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(
+    serverId,
+    workspaceId ?? "",
+    workspaceChangeIndicator,
+  );
   const hasVisibleComposerTracks =
     hasActiveComposer &&
     (trackSubagentRows.length > 0 || trackBackgroundTaskRows.length > 0 || hasWorkspaceDiffStat);

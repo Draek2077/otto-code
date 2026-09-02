@@ -1,24 +1,28 @@
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
+import type { WorkspaceChangeIndicator } from "@/hooks/use-settings/otto-settings";
+import { selectVisibleWorkspaceChangeStat } from "@/stores/session-store-hooks/selectors";
 
 type DiffStat = NonNullable<WorkspaceDescriptor["diffStat"]>;
 
 export function useVisibleWorkspaceDiffStat(
   serverId: string,
   workspaceId: string,
+  indicator: WorkspaceChangeIndicator,
 ): DiffStat | null {
-  const diffStat = useWorkspaceFields(serverId, workspaceId, (workspace) => workspace.diffStat);
-  return hasDiffStatChanges(diffStat) ? diffStat : null;
-}
-
-export function useWorkspaceHasDiffStat(serverId: string, workspaceId: string): boolean {
-  return (
-    useWorkspaceFields(serverId, workspaceId, (workspace) =>
-      hasDiffStatChanges(workspace.diffStat),
-    ) ?? false
+  return useWorkspaceFields(serverId, workspaceId, (workspace) =>
+    selectVisibleWorkspaceChangeStat(workspace, indicator),
   );
 }
 
-function hasDiffStatChanges(diffStat: WorkspaceDescriptor["diffStat"]): diffStat is DiffStat {
-  return Boolean(diffStat && (diffStat.additions > 0 || diffStat.deletions > 0));
+export function useWorkspaceHasDiffStat(
+  serverId: string,
+  workspaceId: string,
+  indicator: WorkspaceChangeIndicator,
+): boolean {
+  return (
+    useWorkspaceFields(serverId, workspaceId, (workspace) =>
+      Boolean(selectVisibleWorkspaceChangeStat(workspace, indicator)),
+    ) ?? false
+  );
 }

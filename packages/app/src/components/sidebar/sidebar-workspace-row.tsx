@@ -38,6 +38,7 @@ import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop
 import { selectWorkspaceServiceSummary } from "@/components/sidebar/workspace-meta-row";
 import {
   SidebarWorkspaceTrailingContent,
+  useWorkspaceChangeIndicator,
   useSidebarWorkspaceTrailing,
   type SidebarWorkspaceTrailing,
 } from "@/components/sidebar/workspace-trailing";
@@ -267,6 +268,7 @@ function WorkspaceRowBody({
   const isTouchPlatform = platformIsNative;
   const [isPressed, setIsPressed] = useState(false);
   const trailing = useSidebarWorkspaceTrailing();
+  const indicator = useWorkspaceChangeIndicator();
   const draggable = Boolean(drag);
   const interaction = useLongPressDragInteraction({
     drag: drag ?? noop,
@@ -366,6 +368,7 @@ function WorkspaceRowBody({
                 <WorkspaceRowTrailingActions
                   workspace={workspace}
                   trailing={trailing}
+                  indicator={indicator}
                   isHovered={isHovered}
                   isTouchPlatform={isTouchPlatform}
                   isCreating={isCreating}
@@ -393,6 +396,7 @@ function WorkspaceRowBody({
 function WorkspaceRowTrailingActions({
   workspace,
   trailing,
+  indicator,
   isHovered,
   isTouchPlatform,
   isCreating,
@@ -410,6 +414,7 @@ function WorkspaceRowTrailingActions({
 }: {
   workspace: SidebarWorkspaceEntry;
   trailing: SidebarWorkspaceTrailing;
+  indicator: import("@/hooks/use-settings/otto-settings").WorkspaceChangeIndicator;
   isHovered: boolean;
   isTouchPlatform: boolean;
   isCreating: boolean;
@@ -435,6 +440,7 @@ function WorkspaceRowTrailingActions({
   } = resolveTrailingActionVisibility({
     workspace,
     trailing,
+    indicator,
     hasArchiveAction: Boolean(onArchive),
     isHovered,
     isTouchPlatform,
@@ -451,7 +457,11 @@ function WorkspaceRowTrailingActions({
       {renderSlot ? (
         <SidebarWorkspaceTrailingActionSlot reserveWidth={kebab.showKebab}>
           <SidebarWorkspaceTrailingActionBase visible={showTrailing}>
-            <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
+            <SidebarWorkspaceTrailingContent
+              workspace={workspace}
+              trailing={trailing}
+              indicator={indicator}
+            />
           </SidebarWorkspaceTrailingActionBase>
           <SidebarWorkspaceTrailingActionOverlay visible={kebab.showKebab}>
             {onArchive ? (

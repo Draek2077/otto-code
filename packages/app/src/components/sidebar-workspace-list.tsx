@@ -116,6 +116,7 @@ import { useOpenKebabMenuVisibility } from "@/components/sidebar/use-open-kebab-
 import { selectWorkspaceServiceSummary } from "@/components/sidebar/workspace-meta-row";
 import {
   SidebarWorkspaceTrailingContent,
+  useWorkspaceChangeIndicator,
   useSidebarWorkspaceTrailing,
 } from "@/components/sidebar/workspace-trailing";
 import { Button } from "@/components/ui/button";
@@ -687,6 +688,7 @@ function WorkspaceRowRightGroup({
   const workspacePath = workspace.workspaceDirectory ?? workspace.projectRootPath;
   const { t } = useTranslation();
   const trailing = useSidebarWorkspaceTrailing();
+  const indicator = useWorkspaceChangeIndicator();
   const isCompact = useIsCompactFormFactor();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const {
@@ -696,6 +698,7 @@ function WorkspaceRowRightGroup({
   } = resolveTrailingActionVisibility({
     workspace,
     trailing,
+    indicator,
     hasArchiveAction: Boolean(onArchive),
     isHovered,
     isTouchPlatform,
@@ -712,7 +715,11 @@ function WorkspaceRowRightGroup({
       {renderSlot ? (
         <SidebarWorkspaceTrailingActionSlot reserveWidth={kebab.showKebab}>
           <SidebarWorkspaceTrailingActionBase visible={showTrailing}>
-            <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
+            <SidebarWorkspaceTrailingContent
+              workspace={workspace}
+              trailing={trailing}
+              indicator={indicator}
+            />
           </SidebarWorkspaceTrailingActionBase>
           <SidebarWorkspaceTrailingActionOverlay visible={kebab.showKebab}>
             {onArchive ? (

@@ -10,6 +10,7 @@ import {
   selectWorkspaceDirectoryServerIds,
   selectProjectOrder,
   selectProjectChangeStat,
+  selectVisibleWorkspaceChangeStat,
   selectRecommendedProjectPaths,
   selectWorkspace,
   selectWorkspaceChangeStat,
@@ -153,6 +154,26 @@ describe("workspace change indicators", () => {
       deletions: 7,
     });
     expect(selectWorkspaceChangeStat(workspace, "hidden")).toBeNull();
+    expect(selectVisibleWorkspaceChangeStat(workspace, "uncommitted")).toEqual({
+      additions: 3,
+      deletions: 2,
+    });
+    expect(selectVisibleWorkspaceChangeStat(workspace, "branch")).toEqual({
+      additions: 11,
+      deletions: 7,
+    });
+    expect(selectVisibleWorkspaceChangeStat(workspace, "hidden")).toBeNull();
+  });
+
+  it("does not render an empty stat in either comparison mode", () => {
+    const workspace = createWorkspace({
+      id: "clean",
+      workingTreeDiffStat: { additions: 0, deletions: 0 },
+      diffStat: { additions: 0, deletions: 0 },
+    });
+
+    expect(selectVisibleWorkspaceChangeStat(workspace, "uncommitted")).toBeNull();
+    expect(selectVisibleWorkspaceChangeStat(workspace, "branch")).toBeNull();
   });
 
   it("aggregates project rows using the selected presentation mode", () => {

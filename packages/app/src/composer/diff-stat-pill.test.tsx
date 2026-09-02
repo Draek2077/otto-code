@@ -26,10 +26,12 @@ const workspace: WorkspaceDescriptor = {
   scripts: [],
 };
 
-function setDiffStat(diffStat: WorkspaceDescriptor["diffStat"]): void {
+function setWorkingTreeDiffStat(
+  workingTreeDiffStat: WorkspaceDescriptor["workingTreeDiffStat"],
+): void {
   useSessionStore.getState().setWorkspaces(SERVER_ID, (workspaces) => {
     const next = new Map(workspaces);
-    next.set(WORKSPACE_ID, { ...workspace, diffStat });
+    next.set(WORKSPACE_ID, { ...workspace, workingTreeDiffStat });
     return next;
   });
 }
@@ -48,21 +50,21 @@ describe("useWorkspaceHasDiffStat", () => {
     let renderCount = 0;
     const { result } = renderHook(() => {
       renderCount += 1;
-      return useWorkspaceHasDiffStat(SERVER_ID, WORKSPACE_ID);
+      return useWorkspaceHasDiffStat(SERVER_ID, WORKSPACE_ID, "uncommitted");
     });
 
     expect(result.current).toBe(false);
     expect(renderCount).toBe(1);
 
-    act(() => setDiffStat({ additions: 2, deletions: 0 }));
+    act(() => setWorkingTreeDiffStat({ additions: 2, deletions: 0 }));
     expect(result.current).toBe(true);
     expect(renderCount).toBe(2);
 
-    act(() => setDiffStat({ additions: 5, deletions: 3 }));
+    act(() => setWorkingTreeDiffStat({ additions: 5, deletions: 3 }));
     expect(result.current).toBe(true);
     expect(renderCount).toBe(2);
 
-    act(() => setDiffStat(null));
+    act(() => setWorkingTreeDiffStat(null));
     expect(result.current).toBe(false);
     expect(renderCount).toBe(3);
   });

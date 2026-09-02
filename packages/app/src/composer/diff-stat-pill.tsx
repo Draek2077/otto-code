@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { DiffStat } from "@/components/diff-stat";
 import { composerPillStyles } from "@/composer/pill-styles";
 import { useVisibleWorkspaceDiffStat } from "@/composer/workspace-diff-stat";
+import type { WorkspaceChangeIndicator } from "@/hooks/use-settings/otto-settings";
 
 interface ComposerDiffStatPillProps {
   additions: number;
@@ -39,13 +40,15 @@ export function ComposerDiffStatPill({ additions, deletions, onPress }: Composer
 export const WorkspaceDiffStatPill = memo(function WorkspaceDiffStatPill({
   serverId,
   workspaceId,
+  indicator,
   onPress,
 }: {
   serverId: string;
   workspaceId: string;
+  indicator: WorkspaceChangeIndicator;
   onPress: () => void;
 }): ReactElement | null {
-  const diffStat = useVisibleWorkspaceDiffStat(serverId, workspaceId);
+  const diffStat = useVisibleWorkspaceDiffStat(serverId, workspaceId, indicator);
   if (!diffStat) {
     return null;
   }

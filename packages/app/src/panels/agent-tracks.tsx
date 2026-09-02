@@ -3,6 +3,7 @@ import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { AgentTaskList } from "@/composer/task-list";
 import { ComposerTrackBar } from "@/composer/tracks";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
+import { useWorkspaceChangeIndicator } from "@/hooks/use-workspace-change-indicator";
 import { useAutoClearCompletedSubagentsSetting } from "@/hooks/use-auto-clear-completed-subagents";
 import { useSettings } from "@/hooks/use-settings";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -48,13 +49,14 @@ export const AgentTracks = memo(function AgentTracks({
   const clearCompleted = useClearCompletedSubagents({ serverId, parentAgentId: agentId });
   const detachSubagent = useDetachSubagent({ serverId });
   const autoClearCompleted = useAutoClearCompletedSubagentsSetting();
+  const workspaceChangeIndicator = useWorkspaceChangeIndicator();
   useAutoClearCompletedSubagents({
     serverId,
     parentAgentId: agentId,
     rows,
     enabled: autoClearCompleted,
   });
-  const hasDiff = useWorkspaceHasDiffStat(serverId, workspaceId);
+  const hasDiff = useWorkspaceHasDiffStat(serverId, workspaceId, workspaceChangeIndicator);
   const hasTasks = useSessionStore((state) =>
     Boolean(state.sessions[serverId]?.agentTasks.get(agentId)?.length),
   );
@@ -115,7 +117,12 @@ export const AgentTracks = memo(function AgentTracks({
         onClearCompleted={clearCompleted}
         onDetachSubagent={canDetach ? detachSubagent : undefined}
       />
-      <WorkspaceDiffStatPill serverId={serverId} workspaceId={workspaceId} onPress={openChanges} />
+      <WorkspaceDiffStatPill
+        serverId={serverId}
+        workspaceId={workspaceId}
+        indicator={workspaceChangeIndicator}
+        onPress={openChanges}
+      />
     </ComposerTrackBar>
   );
 });

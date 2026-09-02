@@ -4,7 +4,10 @@ import { DiffStat } from "@/components/diff-stat";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
 import type { SidebarWorkspaceTrailing } from "@/hooks/use-settings";
+import type { WorkspaceChangeIndicator } from "@/hooks/use-settings/otto-settings";
+import { useWorkspaceChangeIndicator } from "@/hooks/use-workspace-change-indicator";
 import { useCompactTimeAgo } from "@/hooks/use-compact-time-ago";
+import { selectVisibleWorkspaceChangeStat } from "@/stores/session-store-hooks/selectors";
 
 export type { SidebarWorkspaceTrailing };
 
@@ -23,15 +26,21 @@ export function useSidebarWorkspaceTrailing(): SidebarWorkspaceTrailing {
   return sidebarWorkspaceTrailing;
 }
 
+export { useWorkspaceChangeIndicator };
+
 /** Whether the slot has anything to draw for this workspace under the current preference. */
 export function hasSidebarWorkspaceTrailing({
   workspace,
   trailing,
+  indicator,
 }: {
   workspace: SidebarWorkspaceEntry;
   trailing: SidebarWorkspaceTrailing;
+  indicator: WorkspaceChangeIndicator;
 }): boolean {
-  if (trailing === "diff") return workspace.diffStat !== null;
+  if (trailing === "diff") {
+    return selectVisibleWorkspaceChangeStat(workspace, indicator) !== null;
+  }
   if (trailing === "timestamp") return workspace.statusEnteredAt !== null;
   return false;
 }
@@ -39,14 +48,15 @@ export function hasSidebarWorkspaceTrailing({
 export function SidebarWorkspaceTrailingContent({
   workspace,
   trailing,
+  indicator,
 }: {
   workspace: SidebarWorkspaceEntry;
   trailing: SidebarWorkspaceTrailing;
+  indicator: WorkspaceChangeIndicator;
 }) {
-  if (trailing === "diff" && workspace.diffStat) {
-    return (
-      <DiffStat additions={workspace.diffStat.additions} deletions={workspace.diffStat.deletions} />
-    );
+  const diffStat = selectVisibleWorkspaceChangeStat(workspace, indicator);
+  if (trailing === "diff" && diffStat) {
+    return <DiffStat additions={diffStat.additions} deletions={diffStat.deletions} />;
   }
   if (trailing === "timestamp" && workspace.statusEnteredAt) {
     return <WorkspaceTimestamp enteredAt={workspace.statusEnteredAt} />;

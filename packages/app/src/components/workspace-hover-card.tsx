@@ -38,10 +38,12 @@ import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { PrBadge } from "@/components/sidebar/pr-badge";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { useWorkspaceChangeIndicator } from "@/hooks/use-workspace-change-indicator";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
 import { useHosts } from "@/runtime/host-runtime";
+import { selectVisibleWorkspaceChangeStat } from "@/stores/session-store-hooks/selectors";
 
 interface Rect {
   x: number;
@@ -239,6 +241,8 @@ function WorkspaceHoverCardContent({
 }): ReactElement | null {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
+  const workspaceChangeIndicator = useWorkspaceChangeIndicator();
+  const diffStat = selectVisibleWorkspaceChangeStat(workspace, workspaceChangeIndicator);
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
@@ -316,12 +320,9 @@ function WorkspaceHoverCardContent({
               <PrBadge hint={prHint} />
             </View>
           ) : null}
-          {workspace.diffStat ? (
+          {diffStat ? (
             <View style={styles.cardInfoRow}>
-              <DiffStat
-                additions={workspace.diffStat.additions}
-                deletions={workspace.diffStat.deletions}
-              />
+              <DiffStat additions={diffStat.additions} deletions={diffStat.deletions} />
             </View>
           ) : null}
           <HostRow serverId={workspace.serverId} />

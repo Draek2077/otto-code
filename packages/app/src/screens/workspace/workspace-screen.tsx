@@ -308,6 +308,8 @@ import { type TerminalProfile } from "@otto-code/protocol/messages";
 import { openPreferredWorkspacePreview } from "@/workspace-tabs/open-beside";
 import { getExplorerRequestedTargetHost } from "@/workspace-tabs/explorer-open-policy";
 import { type PaneHost } from "@/panels/panel-manifest";
+import { useVisibleWorkspaceDiffStat } from "@/composer/workspace-diff-stat";
+import { useWorkspaceChangeIndicator } from "@/hooks/use-workspace-change-indicator";
 
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
@@ -2667,7 +2669,13 @@ function WorkspaceScreenContent({
     [activeExplorerCheckout, isDeveloperMode, isMobile, persistenceKey],
   );
 
-  const hasDiffStat = useMemo(() => Boolean(workspaceDescriptor?.diffStat), [workspaceDescriptor]);
+  const workspaceChangeIndicator = useWorkspaceChangeIndicator();
+  const visibleWorkspaceDiffStat = useVisibleWorkspaceDiffStat(
+    normalizedServerId,
+    normalizedWorkspaceId,
+    workspaceChangeIndicator,
+  );
+  const hasDiffStat = visibleWorkspaceDiffStat !== null;
   // The open sidebar already shows the diff stats on the workspace row - hide
   // the header copy to avoid the duplicate; they reappear when it's closed.
   const showExplorerDiffStat = useMemo(
@@ -4861,7 +4869,7 @@ function WorkspaceScreenContent({
                     accessibilityState={explorerToggleAccessibilityState}
                     style={explorerToggleStyle}
                     isExplorerOpen={isExplorerOpen}
-                    diffStat={workspaceDescriptor?.diffStat}
+                    diffStat={visibleWorkspaceDiffStat}
                     showDiffStat={showExplorerDiffStat}
                   />
                 ) : null}
@@ -4950,6 +4958,7 @@ function WorkspaceScreenContent({
       isMobile,
       isDeveloperMode,
       workspaceDescriptor,
+      visibleWorkspaceDiffStat,
       normalizedServerId,
       normalizedWorkspaceId,
       workspaceDirectory,

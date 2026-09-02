@@ -15,6 +15,7 @@ import {
   type SidebarWorkspaceTrailing,
 } from "@/components/sidebar/workspace-trailing";
 import { useAppSettings } from "@/hooks/use-settings";
+import type { WorkspaceChangeIndicator } from "@/hooks/use-settings/otto-settings";
 import { compactUp } from "@/styles/theme";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
@@ -338,6 +339,7 @@ export function SidebarWorkspaceShortcutBadge({ number }: { number: number }) {
 export function resolveTrailingActionVisibility({
   workspace,
   trailing,
+  indicator,
   hasArchiveAction,
   isHovered,
   isTouchPlatform,
@@ -346,6 +348,7 @@ export function resolveTrailingActionVisibility({
 }: {
   workspace: SidebarWorkspaceEntry;
   trailing: SidebarWorkspaceTrailing;
+  indicator: WorkspaceChangeIndicator;
   hasArchiveAction: boolean;
   isHovered: boolean;
   isTouchPlatform: boolean;
@@ -361,7 +364,7 @@ export function resolveTrailingActionVisibility({
   showKebab: boolean;
   renderSlot: boolean;
 } {
-  const hasTrailing = hasSidebarWorkspaceTrailing({ workspace, trailing });
+  const hasTrailing = hasSidebarWorkspaceTrailing({ workspace, trailing, indicator });
   const showKebab =
     Boolean(hasArchiveAction && (isHovered || isTouchPlatform || isCompact)) && !showShortcut;
   const showTrailing = hasTrailing && !showShortcut && !showKebab;
