@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { usePanelStore } from "@/stores/panel-store";
 
 /**
@@ -21,7 +21,10 @@ export function usePublishExplorerSidebarVisibility(input: {
   const painted =
     input.showExplorerSidebar && Boolean(input.workspaceDirectory) && input.explorerOpen;
   const setExplorerSidebarVisible = usePanelStore((state) => state.setExplorerSidebarVisible);
-  useEffect(() => {
+  // This ownership feeds the root-level desktop chrome. Publishing it in a
+  // passive effect leaves the caption strip one paint behind a restored open
+  // Explorer; toggling the sidebar happens to repair that stale first frame.
+  useLayoutEffect(() => {
     setExplorerSidebarVisible(painted);
   }, [painted, setExplorerSidebarVisible]);
   useEffect(
@@ -48,7 +51,8 @@ export function usePublishFocusModeTabStripVisibility(input: {
 }): void {
   const visible = input.isFocusModeEnabled && !input.isCompact;
   const setFocusModeTabStripVisible = usePanelStore((state) => state.setFocusModeTabStripVisible);
-  useEffect(() => {
+  // The focus-mode tab strip has the same top-right chrome ownership rule.
+  useLayoutEffect(() => {
     setFocusModeTabStripVisible(visible);
   }, [visible, setFocusModeTabStripVisible]);
   useEffect(

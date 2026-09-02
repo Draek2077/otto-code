@@ -13,6 +13,7 @@ import type { ConnectionOffer } from "@otto-code/protocol/connection-offer";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
 import { defaultHostAppearance } from "@/hosts/appearance";
 import { useSessionStore, type Agent } from "@/stores/session-store";
+import { useWorkspaceLabels } from "@/workspace-labels";
 import { queryClient } from "@/data/query-client";
 import {
   HostRuntimeController,
@@ -50,6 +51,7 @@ class FakeDaemonClient {
   public connectCalls = 0;
   public fetchAgentsCalls: FetchAgentsOptions[] = [];
   public fetchAgentsResponses: Awaited<ReturnType<DaemonClient["fetchAgents"]>>[] = [];
+  public listWorkspaceLabelsCalls: unknown[] = [];
 
   async connect(): Promise<void> {
     this.connectCalls += 1;
@@ -68,6 +70,10 @@ class FakeDaemonClient {
 
   getConnectionState(): ConnectionState {
     return this.state;
+  }
+
+  getLastServerInfoMessage() {
+    return { features: { workspaceLabels: true } };
   }
 
   subscribeConnectionStatus(listener: (status: ConnectionState) => void): () => void {
@@ -113,6 +119,15 @@ class FakeDaemonClient {
       entries: [],
       subscriptionId: options?.subscribe?.subscriptionId ?? undefined,
     });
+  }
+
+  async listWorkspaceLabels(options: unknown) {
+    this.listWorkspaceLabelsCalls.push(options);
+    return {
+      requestId: "workspace-labels",
+      labels: [{ name: "Urgent", color: "red" }],
+      sync: { mode: "snapshot", generation: "labels-generation", headSeq: 0, removals: [] },
+    };
   }
 
   async ping(): Promise<{ rttMs: number }> {
@@ -169,6 +184,7 @@ afterEach(() => {
   vi.useRealTimers();
   delete (globalThis as Record<string, unknown>).__OTTO_INITIAL_DAEMON_CONNECTION__;
   delete (globalThis as { window?: unknown }).window;
+  useWorkspaceLabels.setState({ hosts: {} });
 });
 
 function useHostRuntimeClock(): void {
@@ -1430,6 +1446,101 @@ describe("HostRuntimeStore", () => {
 
     store.syncHosts([]);
     useSessionStore.getState().clearSession(host.serverId);
+  });
+
+  it("connects workspace labels during the normal directory bootstrap", async () => {
+    const host = makeHost({
+      connections: [
+        {
+          id: "direct:lan:6868",
+          type: "directTcp",
+          endpoint: "lan:6868",
+        },
+      ],
+    });
+    const fakeClient = new FakeDaemonClient();
+    fakeClient.setConnectionState({ status: "connected" });
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async ({ host: hostProfile }) => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: hostProfile.serverId,
+          hostname: hostProfile.label ?? null,
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    try {
+      store.syncHosts([host]);
+      await vi.waitFor(() => {
+        expect(fakeClient.listWorkspaceLabelsCalls).toHaveLength(1);
+        expect(fakeClient.listWorkspaceLabelsCalls[0]).toMatchObject({
+          subscriptionId: `workspace-labels:${host.serverId}`,
+        });
+      });
+      expect(useWorkspaceLabels.getState().hosts[host.serverId]).toEqual({
+        serverId: host.serverId,
+        status: "online",
+        error: null,
+        labels: [{ name: "Urgent", color: "red" }],
+      });
+    } finally {
+      store.syncHosts([]);
+    }
+  });
+
+  it("reconnects workspace labels after a live server-id reconciliation", async () => {
+    const originalServerId = "local:lan:6868";
+    const reconciledServerId = "srv_reconciled_labels";
+    const host = makeHost({
+      serverId: originalServerId,
+      connections: [
+        {
+          id: "direct:lan:6868",
+          type: "directTcp",
+          endpoint: "lan:6868",
+        },
+      ],
+    });
+    const fakeClient = new FakeDaemonClient();
+    fakeClient.setConnectionState({ status: "connected" });
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async ({ host: hostProfile }) => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: hostProfile.serverId,
+          hostname: hostProfile.label ?? null,
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    try {
+      store.syncHosts([host]);
+      await vi.waitFor(() => {
+        expect(fakeClient.listWorkspaceLabelsCalls).toHaveLength(1);
+      });
+
+      store.reconcileServerId(originalServerId, reconciledServerId);
+
+      await vi.waitFor(() => {
+        expect(fakeClient.listWorkspaceLabelsCalls).toEqual([
+          { subscriptionId: `workspace-labels:${originalServerId}` },
+          { subscriptionId: `workspace-labels:${reconciledServerId}` },
+        ]);
+      });
+      expect(useWorkspaceLabels.getState().hosts[reconciledServerId]).toEqual({
+        serverId: reconciledServerId,
+        status: "online",
+        error: null,
+        labels: [{ name: "Urgent", color: "red" }],
+      });
+    } finally {
+      store.syncHosts([]);
+    }
   });
 
   it("bootstraps agent directory immediately when connection goes online (no session required)", async () => {

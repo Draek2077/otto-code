@@ -93,7 +93,15 @@ Every prompt entrypoint (composer, MCP `send_chat_prompt`, CLI, chat mentions, s
 | `interrupt` (default) | Cancel the in-flight turn, run this now **in the same provider session** |
 | `queue`               | Let the turn finish; run this as the next turn                           |
 
-`interrupt` is the wire default. UI label: **Interrupt** / **Queue** (Settings → Default send, and the composer's Queue track). `cancel_chat` remains interrupt-only - abort the current turn and keep the chat available.
+`interrupt` is the wire default. `cancel_chat` remains interrupt-only - abort the current turn and keep the chat available.
+
+### Composer active-turn behavior
+
+Settings → Chat → Default send offers **Interrupt**, **Steer**, and **Queue**. While an agent is busy, Enter uses the selected behavior and Command/Ctrl+Enter uses its paired action: Interrupt and Steer pair with Queue; Queue pairs with an immediate send. The Queue track remains daemon-owned where supported, including edit, reorder, send-now, send-all, and hold-on-cancel behavior.
+
+`steer` is an `activeTurnBehavior`, not a second queue or a client-side imitation. `AgentManager.steerOrReplaceActiveTurn` is the one provider-neutral admission point: an adapter that accepts steering receives the message in the active turn and the manager records it on that turn; an adapter that reports `unavailable` falls back once to the existing interrupt-and-replace path. Adapter errors are surfaced without a retry or replacement, because delivery is ambiguous. Codex, Claude, and OpenCode currently accept native steering. ACP, Pi/OMP, OpenAI-compatible endpoints, and Otto Brain follow the centralized unavailable path until their own runtime exposes steering.
+
+The persisted default is **Steer**. Existing settings whose one-time `sendBehaviorMigrationVersion` marker is absent migrate `interrupt` to `steer` and write the marker immediately; `queue` remains unchanged. The old record did not distinguish the historical interrupt default from a deliberate old Interrupt selection, so both migrate to Steer. Once marked, an explicit Interrupt selection is preserved forever.
 
 The whole feature lives in the turn lifecycle **above** every provider adapter, so it behaves identically for Claude, Codex, Copilot, OpenCode, Pi, and the openai-compatible provider. There are no per-provider adapters.
 
@@ -321,6 +329,10 @@ The collapsible track above the composer in a chat's pane (`packages/app/src/sub
 ```
 parentAgentId === thisAgent.id  AND  !archivedAt
 ```
+
+### Presentation is local; subagent state is not
+
+**Settings → Chat → Sub-agent presentation** is an App-local `panels | pills` preference, defaulting to **panels**. Panels are Otto's detailed track. Pills restore Paseo's compact composer-track bar, with the same popover/sheet behavior on wide and compact layouts. Both renderers consume `useSubagentsForParent` and the same open, stop, detach, archive, bulk-clear, nesting, and accounting paths; switching mode never creates, archives, duplicates, or restarts a subagent. The pill bar also preserves the task-list and working-diff track controls. Composer attachment and plugin pills remain ordinary Composer children, so this presentation switch does not hide them.
 
 Archived subagents disappear from the track, by design. To remove a subagent from the track without closing its tab, use the **archive button (X)** on the row - it opens a confirm dialog and archives the subagent on confirm. That same archive shows the subagent leave the track on every connected client.
 

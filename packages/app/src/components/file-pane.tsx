@@ -24,11 +24,9 @@ import {
   MarkdownRenderer,
   type MarkdownDocumentAnnotationTarget,
 } from "@/components/markdown/renderer";
-import { findHighlightStyles } from "@/components/find-highlight-styles";
 import { FileHtmlPreview } from "@/file-pane/html-preview";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
-import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import {
   useWorkspaceAttachmentScopeKey,
@@ -36,21 +34,13 @@ import {
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
-import { highlightCode, type HighlightToken } from "@otto-code/highlight";
-import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
-import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import { lineNumberGutterWidth } from "@/components/code-insets";
-import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { exceedsHighlightBudget, renderedDocumentKind } from "@/components/file-pane-render-mode";
-import { LargeFileNotice } from "@/components/large-file-notice";
+import { renderedDocumentKind } from "@/components/file-pane-render-mode";
 import { toRenderedDocument } from "@/components/markdown/rendered-document";
 import type { WorkspaceImageSource } from "@/components/markdown/image-context";
 import { createWorkspaceImageBase } from "@/components/markdown/workspace-image-source";
 import {
   buildRenderedFindIndex,
   findPreviewMatches,
-  splitTokensForMatches,
-  type MatchedTokenSegment,
   type PreviewFindQuery,
   type PreviewLineMatchRange,
 } from "@/components/file-preview-find";
@@ -81,15 +71,9 @@ import {
   type FilePreviewState,
 } from "@/components/file-pane-enabled";
 import { InlineReviewEditor } from "@/review/surface";
-
-interface CodeLineProps {
-  tokens: HighlightToken[];
-  lineNumber: number;
-  gutterWidth: number;
-  highlighted: boolean;
-  /** Find hits on this line, if any; drives the search-match tinting. */
-  matchRanges?: readonly PreviewLineMatchRange[];
-}
+import { FileSourceView } from "@/file-pane/source/view";
+import type { FileSourceViewHandle, SourceFindMatch } from "@/file-pane/source/types";
+import { selectSourcePresentation } from "@/file-pane/source/presentation";
 
 /** What the preview learned about the file after reading it. */
 export interface FilePreviewFileInfo {
@@ -207,8 +191,9 @@ interface FilePreviewBodyProps {
   preview: ExplorerFile | null;
   state: FilePreviewState;
   showWebScrollbar: boolean;
-  isMobile: boolean;
   location: WorkspaceFileLocation;
+  /** Changes when the same location is requested again and must scroll anew. */
+  navigationRevision?: number;
   imagePreviewUri: string | null;
   svgXml: string | null;
   imageDimensions: ImageDimensions | null;
@@ -245,11 +230,6 @@ function trimNonEmpty(value: string | null | undefined): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-interface FileLineSelection {
-  lineStart: number;
-  lineEnd: number;
 }
 
 function toRenderedDocumentLocator(
@@ -326,188 +306,6 @@ async function createFilePanePreview(file: FileReadResult | null): Promise<{
     svgXml: null,
     imageDimensions,
   };
-}
-
-function clampLineSelection(input: {
-  lineStart?: number;
-  lineEnd?: number;
-  lineCount: number;
-}): FileLineSelection | null {
-  if (!input.lineStart || input.lineStart <= 0 || input.lineCount <= 0) {
-    return null;
-  }
-  const lineStart = Math.min(Math.floor(input.lineStart), input.lineCount);
-  const rawLineEnd =
-    input.lineEnd && input.lineEnd >= input.lineStart ? input.lineEnd : input.lineStart;
-  const lineEnd = Math.min(Math.floor(rawLineEnd), input.lineCount);
-  return { lineStart, lineEnd: Math.max(lineStart, lineEnd) };
-}
-
-const CodeLine = React.memo(function CodeLine({
-  tokens,
-  lineNumber,
-  gutterWidth,
-  highlighted,
-  matchRanges,
-}: CodeLineProps) {
-  const gutterStyle = useMemo(
-    () => [codeLineStyles.gutter, inlineUnistylesStyle({ width: gutterWidth })],
-    [gutterWidth],
-  );
-  const lineStyle = useMemo(
-    () => [codeLineStyles.line, highlighted && codeLineStyles.highlightedLine],
-    [highlighted],
-  );
-  // With find hits on the line, re-cut the tokens so each match becomes its own
-  // (still syntax-styled) segment carrying the highlight; otherwise the plain
-  // token stream renders as before.
-  const keyedSegments = useMemo(() => {
-    if (!matchRanges || matchRanges.length === 0) {
-      return null;
-    }
-    return splitTokensForMatches(tokens, matchRanges).map((segment, index) => ({
-      key: `${index}-${segment.text}`,
-      segment,
-    }));
-  }, [tokens, matchRanges]);
-  const keyedTokens = useMemo(
-    () => tokens.map((token, index) => ({ key: `${index}-${token.text}`, token })),
-    [tokens],
-  );
-  return (
-    <View style={lineStyle}>
-      <View style={gutterStyle}>
-        <Text numberOfLines={1} style={codeLineStyles.gutterText}>
-          {String(lineNumber)}
-        </Text>
-      </View>
-      <Text selectable style={codeLineStyles.lineText}>
-        {keyedSegments
-          ? keyedSegments.map(({ key, segment }) => <CodeLineSegment key={key} segment={segment} />)
-          : keyedTokens.map(({ key, token }) => <CodeLineToken key={key} token={token} />)}
-      </Text>
-    </View>
-  );
-});
-
-interface CodeLineTokenProps {
-  token: HighlightToken;
-}
-
-function CodeLineToken({ token }: CodeLineTokenProps) {
-  return <Text style={syntaxTokenStyleFor(token.style)}>{token.text}</Text>;
-}
-
-function CodeLineSegment({ segment }: { segment: MatchedTokenSegment }) {
-  const style = useMemo(() => {
-    const base = syntaxTokenStyleFor(segment.style);
-    if (segment.highlight === "active") {
-      return [base, findHighlightStyles.active];
-    }
-    if (segment.highlight === "match") {
-      return [base, findHighlightStyles.match];
-    }
-    return base;
-  }, [segment.highlight, segment.style]);
-  return <Text style={style}>{segment.text}</Text>;
-}
-
-const codeLineStyles = StyleSheet.create((theme) => ({
-  line: {
-    flexDirection: "row",
-  },
-  highlightedLine: {
-    backgroundColor: theme.colors.accentBorder,
-  },
-  gutter: {
-    alignItems: "flex-end",
-    paddingRight: theme.spacing[3],
-    flexShrink: 0,
-  },
-  gutterText: {
-    color: theme.colors.foreground,
-    fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.code,
-    lineHeight: theme.fontSize.code * 1.45,
-    opacity: 0.4,
-    userSelect: "none",
-  },
-  lineText: {
-    fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.code,
-    lineHeight: theme.fontSize.code * 1.45,
-    flex: 1,
-  },
-}));
-
-/**
- * Find-in-preview: scan the file for the query, report the count, keep the
- * active match in view, and hand back the per-line ranges the code lines tint.
- * Lives as a hook so its several effects don't spend FilePreviewBody's
- * cyclomatic-complexity budget. `enabled` is false for the markdown and
- * image/binary views, which have no line-mapped text to highlight.
- */
-function usePreviewFindHighlights({
-  enabled,
-  content,
-  findQuery,
-  activeMatchIndex,
-  onFindMatchCount,
-  scrollRef,
-  metricsRef,
-  lineHeight,
-}: {
-  enabled: boolean;
-  content: string;
-  findQuery: PreviewFindQuery | null;
-  activeMatchIndex: number;
-  onFindMatchCount?: (count: number) => void;
-  scrollRef: React.RefObject<RNScrollView | null>;
-  metricsRef: React.RefObject<PreviewScrollMetrics>;
-  lineHeight: number;
-}): Map<number, PreviewLineMatchRange[]> {
-  const findMatches = useMemo(() => {
-    if (!enabled || !findQuery) {
-      return [];
-    }
-    return findPreviewMatches(content, findQuery);
-  }, [enabled, findQuery, content]);
-
-  const onFindMatchCountRef = useRef(onFindMatchCount);
-  onFindMatchCountRef.current = onFindMatchCount;
-  useEffect(() => {
-    onFindMatchCountRef.current?.(findMatches.length);
-  }, [findMatches]);
-
-  // The active match's line carries the stronger highlight; every other hit
-  // (on this line or another) gets the base match tint.
-  const matchRangesByLine = useMemo(() => {
-    const byLine = new Map<number, PreviewLineMatchRange[]>();
-    findMatches.forEach((match, index) => {
-      const ranges = byLine.get(match.line) ?? [];
-      ranges.push({ start: match.start, end: match.end, active: index === activeMatchIndex });
-      byLine.set(match.line, ranges);
-    });
-    return byLine;
-  }, [findMatches, activeMatchIndex]);
-
-  // Keep the active match in view: land it a third of the way down so there is
-  // context above it, clamped at the document start.
-  const activeMatchLine =
-    findMatches.length > 0 ? (findMatches[activeMatchIndex]?.line ?? null) : null;
-  useEffect(() => {
-    if (activeMatchLine === null) {
-      return;
-    }
-    const timeout = setTimeout(() => {
-      const targetTop = (activeMatchLine - 1) * lineHeight;
-      const viewportLead = Math.min(metricsRef.current.clientHeight / 3, targetTop);
-      scrollRef.current?.scrollTo({ y: Math.max(0, targetTop - viewportLead), animated: false });
-    }, 0);
-    return () => clearTimeout(timeout);
-  }, [activeMatchLine, lineHeight, metricsRef, scrollRef]);
-
-  return matchRangesByLine;
 }
 
 const EMPTY_FIND_RANGES: ReadonlyMap<string, PreviewLineMatchRange[]> = new Map();
@@ -634,8 +432,8 @@ function FilePreviewBody({
   preview,
   state,
   showWebScrollbar,
-  isMobile,
   location,
+  navigationRevision = 0,
   imagePreviewUri,
   svgXml,
   imageDimensions,
@@ -780,13 +578,9 @@ function FilePreviewBody({
   }, [bodyLineOffset, onToggleTask]);
 
   const previewScrollRef = useRef<RNScrollView>(null);
+  const sourceScrollRef = useRef<FileSourceViewHandle>(null);
   const scrollbar = useWebScrollViewScrollbar(previewScrollRef, {
     enabled: showWebScrollbar,
-  });
-  const horizontalScrollRef = useRef<RNScrollView>(null);
-  const horizontalScrollbar = useWebScrollViewScrollbar(horizontalScrollRef, {
-    enabled: showWebScrollbar,
-    axis: "horizontal",
   });
 
   // Split-view sync plumbing: track the viewport imperatively (re-rendering
@@ -884,34 +678,55 @@ function FilePreviewBody({
     });
   }, []);
 
-  const highlightTooLarge = useMemo(
-    () => preview?.kind === "text" && !documentKind && exceedsHighlightBudget(effectiveContent),
-    [documentKind, preview, effectiveContent],
+  const sourceTheme = useMemo(
+    () => ({
+      colorScheme: theme.colorScheme,
+      background: theme.colors.surfaceCode,
+      foreground: theme.colors.foreground,
+      cursor: theme.colors.terminal.cursor,
+      foregroundMuted: theme.colors.foregroundMuted,
+      border: theme.colors.border,
+      selection: theme.colors.terminal.selectionBackground,
+      monoFont: theme.fontFamily.mono,
+      codeFontSize: theme.fontSize.code,
+      syntax: theme.colors.syntax,
+    }),
+    [
+      theme.colorScheme,
+      theme.colors.border,
+      theme.colors.foreground,
+      theme.colors.foregroundMuted,
+      theme.colors.surfaceCode,
+      theme.colors.syntax,
+      theme.colors.terminal.cursor,
+      theme.colors.terminal.selectionBackground,
+      theme.fontFamily.mono,
+      theme.fontSize.code,
+    ],
   );
-
-  const highlightedLines = useMemo(() => {
-    if (!preview || preview.kind !== "text" || documentKind || highlightTooLarge) {
-      return null;
+  const sourcePreview = preview?.kind === "text" && !documentKind;
+  const sourceSearchEnabled =
+    sourcePreview &&
+    selectSourcePresentation({
+      size: preview?.size ?? 0,
+      platform: isNative ? "native" : "web",
+    }) !== "unsupported";
+  const sourceFindMatches = useMemo<SourceFindMatch[]>(() => {
+    if (!sourceSearchEnabled || !findQuery) return [];
+    return findPreviewMatches(effectiveContent, findQuery).map((match, index) => ({
+      line: match.line,
+      start: match.start,
+      end: match.end,
+      active: index === activeMatchIndex,
+    }));
+  }, [activeMatchIndex, effectiveContent, findQuery, sourceSearchEnabled]);
+  const onFindMatchCountRef = useRef(onFindMatchCount);
+  onFindMatchCountRef.current = onFindMatchCount;
+  useEffect(() => {
+    if (sourcePreview) {
+      onFindMatchCountRef.current?.(sourceFindMatches.length);
     }
-
-    return highlightCode(effectiveContent, filePath);
-  }, [documentKind, highlightTooLarge, preview, effectiveContent, filePath]);
-
-  const gutterWidth = useMemo(() => {
-    if (!highlightedLines) return 0;
-    return lineNumberGutterWidth(highlightedLines.length, theme.fontSize.code);
-  }, [highlightedLines, theme.fontSize.code]);
-  const lineHeight = theme.fontSize.code * 1.45;
-  const lineSelection = useMemo(() => {
-    if (!highlightedLines) {
-      return null;
-    }
-    return clampLineSelection({
-      lineStart: location.lineStart,
-      lineEnd: location.lineEnd,
-      lineCount: highlightedLines.length,
-    });
-  }, [highlightedLines, location.lineEnd, location.lineStart]);
+  }, [sourceFindMatches.length, sourcePreview]);
 
   // Declared here, below the layout facts it reads: `scrollToLine` needs the
   // code view's line height to be exact, and the split-view methods have no
@@ -919,21 +734,32 @@ function FilePreviewBody({
   useImperativeHandle(
     syncRef,
     () => ({
-      getMetrics: () => ({ ...syncMetricsRef.current }),
+      getMetrics: () =>
+        sourcePreview
+          ? (sourceScrollRef.current?.getMetrics() ?? { ...syncMetricsRef.current })
+          : { ...syncMetricsRef.current },
       scrollToFraction: (fraction: number) => {
+        if (sourcePreview) {
+          sourceScrollRef.current?.scrollToFraction(fraction);
+          return;
+        }
         const metrics = syncMetricsRef.current;
         const max = Math.max(0, metrics.contentHeight - metrics.clientHeight);
         scrollToSyncTop(Math.max(0, Math.min(fraction, 1)) * max);
       },
       scrollToContentY: (contentY: number, viewportOffsetY: number) => {
+        if (sourcePreview) {
+          sourceScrollRef.current?.scrollToContentY(contentY, viewportOffsetY);
+          return;
+        }
         scrollToSyncTop(contentY - viewportOffsetY);
       },
       scrollToLine: (line: number) => {
-        const target = Math.max(1, line);
-        if (highlightedLines) {
-          scrollToSyncTop((target - 1) * lineHeight);
+        if (sourcePreview) {
+          sourceScrollRef.current?.scrollToLine(line);
           return;
         }
+        const target = Math.max(1, line);
         // Rendered markdown: prose has no line height, so place the line
         // proportionally through the rendered document - close enough to land
         // on the heading the outline named.
@@ -945,19 +771,8 @@ function FilePreviewBody({
         scrollToSyncTop((Math.min(target, lineCount) - 1) * (metrics.contentHeight / lineCount));
       },
     }),
-    [effectiveContent, highlightedLines, lineHeight, scrollToSyncTop],
+    [effectiveContent, scrollToSyncTop, sourcePreview],
   );
-
-  const matchRangesByLine = usePreviewFindHighlights({
-    enabled: Boolean(highlightedLines),
-    content: effectiveContent,
-    findQuery: findQuery ?? null,
-    activeMatchIndex,
-    onFindMatchCount,
-    scrollRef: previewScrollRef,
-    metricsRef: syncMetricsRef,
-    lineHeight,
-  });
 
   const renderedMatchRanges = useRenderedPreviewFindHighlights({
     enabled: Boolean(renderedDocument),
@@ -983,19 +798,6 @@ function FilePreviewBody({
         : annotationRules,
     [annotationRules, renderedMatchRanges],
   );
-
-  useEffect(() => {
-    if (!lineSelection) {
-      return;
-    }
-    const timeout = setTimeout(() => {
-      previewScrollRef.current?.scrollTo({
-        y: Math.max(0, (lineSelection.lineStart - 1) * lineHeight),
-        animated: false,
-      });
-    }, 0);
-    return () => clearTimeout(timeout);
-  }, [lineHeight, lineSelection]);
 
   if (!isFilePreviewAvailable(state, preview)) {
     return <FilePreviewUnavailable state={state} />;
@@ -1045,69 +847,22 @@ function FilePreviewBody({
       );
     }
 
-    const lines = highlightedLines ?? [[{ text: effectiveContent, style: null }]];
-    const keyedLines = lines.map((tokens, index) => ({
-      key: `line-${index}`,
-      tokens,
-      lineNumber: index + 1,
-    }));
-    const codeLines = (
-      <View
-        ref={syncContentRef}
-        onPointerDown={handleSyncPointerDown}
-        dataSet={CODE_SURFACE_DATASET}
-      >
-        {keyedLines.map(({ key, tokens, lineNumber }) => (
-          <CodeLine
-            key={key}
-            tokens={tokens}
-            lineNumber={lineNumber}
-            gutterWidth={gutterWidth}
-            highlighted={
-              Boolean(lineSelection) &&
-              lineNumber >= (lineSelection?.lineStart ?? 0) &&
-              lineNumber <= (lineSelection?.lineEnd ?? 0)
-            }
-            matchRanges={matchRangesByLine.get(lineNumber)}
-          />
-        ))}
-      </View>
-    );
-
     return (
       <View style={styles.previewScrollContainer}>
-        <LargeFileNotice visible={highlightTooLarge} />
-        <RNScrollView
-          ref={previewScrollRef}
-          style={styles.previewContent}
-          onLayout={handleVerticalLayout}
-          onScroll={handleVerticalScroll}
-          onContentSizeChange={handleVerticalContentSizeChange}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!showWebScrollbar}
-        >
-          {/* Wrapping is the absence of the horizontal scroller: the line text
-              already wraps when nothing lets it grow sideways. */}
-          {isMobile || wrapLines ? (
-            <View style={styles.previewCodeScrollContent}>{codeLines}</View>
-          ) : (
-            <RNScrollView
-              ref={horizontalScrollRef}
-              horizontal
-              nestedScrollEnabled
-              onLayout={horizontalScrollbar.onLayout}
-              onScroll={horizontalScrollbar.onScroll}
-              onContentSizeChange={horizontalScrollbar.onContentSizeChange}
-              scrollEventThrottle={16}
-              showsHorizontalScrollIndicator={!showWebScrollbar}
-              contentContainerStyle={styles.previewCodeScrollContent}
-            >
-              {codeLines}
-            </RNScrollView>
-          )}
-        </RNScrollView>
-        {scrollbar.overlay}
-        {horizontalScrollbar.overlay}
+        <FileSourceView
+          ref={sourceScrollRef}
+          content={effectiveContent}
+          filename={filePath}
+          location={location}
+          navigationRevision={navigationRevision}
+          size={preview.size}
+          theme={sourceTheme}
+          tooLargeMessage={t("panels.file.tooLargeToDisplay")}
+          findMatches={sourceFindMatches}
+          wrapLines={wrapLines || isNative}
+          onScrolledSync={onScrolledSync}
+          onPointerDownSync={onPointerDownSync}
+        />
       </View>
     );
   }
@@ -1191,6 +946,8 @@ export interface FilePreviewProps {
   workspaceId?: string | null;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
+  /** Replays a same-line navigation against a retained preview. */
+  navigationRevision?: number;
   /** Soft-wrap long code lines instead of scrolling sideways. */
   wrapLines?: boolean;
   /** Live buffer contents to render instead of the disk read (split view). */
@@ -1221,6 +978,7 @@ export function FilePreview({
   workspaceId,
   workspaceRoot,
   location,
+  navigationRevision,
   wrapLines,
   contentOverride,
   onFileInfo,
@@ -1233,7 +991,6 @@ export function FilePreview({
   onToggleTask = null,
 }: FilePreviewProps) {
   const { t } = useTranslation();
-  const isMobile = useIsCompactFormFactor();
   // Ungated on compact: the app's overlay bar is wanted on mobile web too,
   // where the platform otherwise draws its dated one. No-ops off web.
   const showWebScrollbar = isWeb;
@@ -1409,8 +1166,8 @@ export function FilePreview({
           hasPreview: Boolean(query.data?.file),
         })}
         showWebScrollbar={showWebScrollbar}
-        isMobile={isMobile}
         location={location}
+        navigationRevision={navigationRevision}
         imagePreviewUri={imagePreviewUri}
         svgXml={query.data?.svgXml ?? null}
         imageDimensions={imageDimensions}

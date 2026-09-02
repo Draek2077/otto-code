@@ -5,7 +5,7 @@ title: "Settings ownership and visibility catalog"
 status: "confirmed"
 tags: ["finding","settings-catalog"]
 created_at: "2026-08-16T22:16:11.514Z"
-updated_at: "2026-08-25T01:44:58.849Z"
+updated_at: "2026-09-02T14:09:01.926Z"
 ---
 # Settings ownership and visibility catalog
 
@@ -84,3 +84,8 @@ The exhaustive row-level details live in the generated inventory rather than bei
   summary: "The user clarified that connection verification is part of the Brain settings workflow even when lifecycle controls move elsewhere. The implementation now restores a read-only Detected Brain section and the audited inventory/search totals increase from 397 to 405."
   source: "User correction and verified implementation on 2026-08-24"
   affects: ["settings-search-navigates-to-setting-row","settings-opens-to-search-first-overview"]
+- time: "2026-09-02T14:09:01.926Z"
+  kind: "evidence"
+  summary: "Release-preparation reconciliation regenerated the live catalog from `outputs/settings-inventory/settings-index.md` and verified **433** unique Settings entries: **183 App** and **250 Host**. The catalog’s field-for-field inventory test passes. The audit corrected stale inventory summary and contents counts, repaired two source links that pointed beyond their files after code moved, and added permanent test guards for summary totals, every contents-table count, and source-link existence/line validity. Focused catalog tests (15/15), targeted lint, and App typecheck passed."
+  source: "Release-preparation audit, 2026-09-02"
+  affects: ["settings-opens-to-search-first-overview","settings-search-navigates-to-setting-row"]

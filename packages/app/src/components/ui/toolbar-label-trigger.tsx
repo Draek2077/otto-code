@@ -25,7 +25,9 @@ export function isToolbarLabelTriggerHighlighted(state: ToolbarLabelTriggerState
 export function toolbarLabelTriggerStyle(state: ToolbarLabelTriggerState): StyleProp<ViewStyle> {
   return [
     toolbarLabelTriggerFrameStyle(),
-    isToolbarLabelTriggerHighlighted(state) ? styles.highlighted : null,
+    state.open && !state.hovered && !state.pressed ? styles.open : null,
+    state.hovered && !state.pressed ? styles.hovered : null,
+    state.pressed ? styles.pressed : null,
   ];
 }
 
@@ -88,8 +90,16 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     flexShrink: 1,
   },
-  highlighted: {
-    backgroundColor: theme.colors.interactionHighlight,
+  // A current value keeps the quieter open treatment; pointer interaction
+  // deliberately wins so this toolbar trigger matches all other controls.
+  open: {
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
+  hovered: {
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  pressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   label: {
     minWidth: 0,

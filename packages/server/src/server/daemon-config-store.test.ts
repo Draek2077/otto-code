@@ -316,14 +316,7 @@ describe("DaemonConfigStore", () => {
     expect(loadPersistedConfig(ottoHome).daemon?.relay?.enabled).toBe(false);
   });
 
-  // DEFERRED(patch-scoped-persistence): upstream writes the *patch* into
-  // config.json; Otto writes the resolved config, and did so long before this
-  // merge - `buildPersistedDaemonSection` materializes Otto's daemon sections on
-  // every patch. Converging is a real change to what every install's config.json
-  // looks like after the next settings edit, and an attempt at it during the
-  // v0.6.1 merge broke provider removal, metadata clearing, and launch-provided
-  // secret round-trips. It wants its own change. See docs/upstream-merges.md.
-  test.skip("unrelated patches persist only requested file intent", () => {
+  test("unrelated patches persist only requested file intent", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);
     const before = loadPersistedConfig(ottoHome);
@@ -361,6 +354,100 @@ describe("DaemonConfigStore", () => {
       ...before,
       daemon: { ...before.daemon, appendSystemPrompt: "Only this field" },
     });
+  });
+
+  test("uses the latest disk state as the patch base for a stale client write", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const initial = loadPersistedConfig(ottoHome);
+    writeFileSync(
+      path.join(ottoHome, "config.json"),
+      `${JSON.stringify({
+        ...initial,
+        daemon: {
+          ...initial.daemon,
+          brain: {
+            mode: "remote",
+            remote: { host: "other-host", port: 9443, authToken: "disk-token" },
+          },
+        },
+      })}\n`,
+    );
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        brain: { mode: "local", remote: { host: "", port: 1234, authToken: null } },
+      },
+      undefined,
+    );
+
+    store.patch({ appendSystemPrompt: "client edit" });
+
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.daemon?.appendSystemPrompt).toBe("client edit");
+    expect(persisted.daemon?.brain).toEqual({
+      mode: "remote",
+      remote: { host: "other-host", port: 9443, authToken: "disk-token" },
+    });
+  });
+
+  test("persists a remote-host edit without clearing its masked authorization", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        brain: {
+          mode: "remote",
+          remote: { host: "old-host", port: 9443, authToken: "secret" },
+        },
+      },
+      undefined,
+    );
+
+    store.patch({ brain: { remote: { host: "new-host" } } });
+
+    expect(loadPersistedConfig(ottoHome).daemon?.brain).toMatchObject({
+      mode: "remote",
+      remote: { host: "new-host", port: 9443, authToken: "secret" },
+    });
+  });
+
+  test("persists sparse LSP updates without freezing untouched defaults", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        lsp: { enabled: true, languages: {}, maxRunningServers: 6, idleMinutes: 10 },
+      },
+      undefined,
+    );
+
+    store.patch({ lsp: { languages: { rust: false } } });
+
+    expect(loadPersistedConfig(ottoHome).daemon?.lsp).toEqual({ languages: { rust: false } });
   });
 
   test("patch persists provider enabled flags into config.json", () => {
@@ -1258,8 +1345,6 @@ describe("DaemonConfigStore", () => {
         { provider: "claude", model: "haiku" },
         { provider: "codex", model: "gpt-5.4-mini", thinkingOptionId: "low" },
       ],
-      enabled: true,
-      preferWriterPersonalities: false,
     });
   });
 
@@ -1276,6 +1361,8 @@ describe("DaemonConfigStore", () => {
           agents: {
             metadataGeneration: {
               providers: [{ provider: "claude", model: "haiku" }],
+              enabled: false,
+              preferWriterPersonalities: true,
             },
           },
         },
@@ -1293,7 +1380,11 @@ describe("DaemonConfigStore", () => {
         autoArchiveAfterMerge: false,
         enableTerminalAgentHooks: false,
         appendSystemPrompt: "",
-        metadataGeneration: { providers: [{ provider: "claude", model: "haiku" }] },
+        metadataGeneration: {
+          providers: [{ provider: "claude", model: "haiku" }],
+          enabled: false,
+          preferWriterPersonalities: true,
+        },
       },
       undefined,
     );
@@ -1303,8 +1394,8 @@ describe("DaemonConfigStore", () => {
     const persisted = loadPersistedConfig(ottoHome);
     expect(persisted.agents?.metadataGeneration).toEqual({
       providers: [],
-      enabled: true,
-      preferWriterPersonalities: false,
+      enabled: false,
+      preferWriterPersonalities: true,
     });
   });
 
@@ -1837,10 +1928,7 @@ describe("DaemonConfigStore reload", () => {
     expect(store.get().relay?.enabled).toBe(initialRelay);
   });
 
-  // DEFERRED(patch-scoped-persistence): same cause as the intent test above.
-  // Otto materializes its daemon sections on the first patch, so the reload diff
-  // against the startup snapshot reports them as restart-required.
-  test.skip("an unrelated patch does not mark a manual override-owned edit as applied", () => {
+  test("an unrelated patch does not mark a manual override-owned edit as applied", () => {
     const { ottoHome, store, persisted } = createReloadableStore({
       overrideControlledPaths: ["daemon.relay.enabled"],
     });

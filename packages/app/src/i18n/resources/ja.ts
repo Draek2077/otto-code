@@ -1038,6 +1038,7 @@ export const ja: TranslationResources = {
         copyTerminalId: "ターミナルIDをコピー",
         copyFilePath: "ファイルパスをコピー",
         moveToMain: "メインパネルへ移動",
+        moveToExplorer: "エクスプローラーパネルへ移動",
       },
       actions: {
         newAgent: "新しいチャット",
@@ -3402,10 +3403,13 @@ export const ja: TranslationResources = {
         label: "デフォルトの送信",
         descriptions: {
           interrupt: "エージェント実行中、Enterで中断します。Command/Ctrl+Enterでキューに追加。",
+          steer:
+            "エージェント実行中、Enterで現在のターンに指示を送ります。Command/Ctrl+Enterでキューに追加。",
           queue: "エージェント実行中、Enterでキューに追加します。Command/Ctrl+Enterで送信。",
         },
         options: {
           interrupt: "中断",
+          steer: "指示",
           queue: "キュー",
         },
       },
@@ -3715,10 +3719,10 @@ export const ja: TranslationResources = {
             full: "全幅",
           },
         },
-        hidePinnedToolbarOptions: {
-          title: "固定されたツールバーの項目を隠す",
-          hint: "タブバーと差分ツールバーの固定項目を、その領域にカーソルを重ねるまで非表示にします",
-          accessibilityLabel: "固定されたツールバーの項目を隠す",
+        hideTabToolbarOptions: {
+          title: "タブツールバーのオプションを隠す",
+          hint: "タブバーにカーソルを重ねるまで、タブツールバーのオプションを非表示にします",
+          accessibilityLabel: "タブツールバーのオプションを隠す",
         },
       },
       visualizer: {

@@ -119,6 +119,24 @@ it("projects the daemon-owned active turn identity", () => {
   });
 });
 
+it("does not expose an invalid turn identity once the agent is no longer running", () => {
+  // An idle/error agent cannot have a live turn. Keep the wire invariant even
+  // for an older or malformed in-memory record that still carries an identity.
+  const settled = createManagedAgent({
+    lifecycle: "idle",
+    activeTurnId: "foreground-turn-1",
+    activeTurnStartedAt: new Date("2025-01-01T00:00:01.000Z"),
+  });
+  expect(toAgentPayload(settled).activeTurn).toBeNull();
+
+  const failed = createManagedAgent({
+    lifecycle: "error",
+    activeTurnId: "foreground-turn-1",
+    activeTurnStartedAt: new Date("2025-01-01T00:00:01.000Z"),
+  });
+  expect(toAgentPayload(failed).activeTurn).toBeNull();
+});
+
 function createPermission(overrides: Partial<AgentPermissionRequest> = {}): AgentPermissionRequest {
   const base: AgentPermissionRequest = {
     id: "perm-1",

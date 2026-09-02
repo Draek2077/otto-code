@@ -83,7 +83,8 @@ export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 45;
 
 // Windows/Linux window controls (minimize/maximize/close) - top-right
 export const DESKTOP_WINDOW_CONTROLS_WIDTH = 140;
-export const DESKTOP_WINDOW_CONTROLS_HEIGHT = 48;
+// Controls occupy the same chrome strip as ScreenHeader and the docked Explorer.
+export const DESKTOP_WINDOW_CONTROLS_HEIGHT = HEADER_INNER_HEIGHT;
 
 export {
   getIsElectron as getIsElectronRuntime,

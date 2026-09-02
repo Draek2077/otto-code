@@ -5,7 +5,7 @@ title: "Theme-aware UI state gallery"
 status: "confirmed"
 tags: ["ui","design-system","theme","visual-audit","accessibility","developer-tools"]
 created_at: "2026-08-21T16:33:33.252Z"
-updated_at: "2026-08-22T01:02:42.866Z"
+updated_at: "2026-09-02T12:44:18.533Z"
 ---
 # Theme-aware UI state gallery
 
@@ -64,3 +64,8 @@ The gallery renders production primitives and production state-style paths rathe
   summary: "The UI Gallery's split-button primary pressed state now carries the accent border through the menu-owned shared divider. `SplitButtonPrimary` propagates real and deterministic preview pressed state through the compound-control context, and `SplitButtonMenuTrigger` paints the divider with the accent while that state is active. Verification: targeted split-button lint, app typecheck, formatting, and `git diff --check` passed."
   source: "Split-button pressed-divider correction on 2026-08-21"
   affects: ["interactive-state-colors-use-one-theme-accent-ladder","daylight-outlined-controls-match-structural-borders"]
+- time: "2026-09-02T12:44:18.533Z"
+  kind: "evidence"
+  summary: "Corrected two visual-audit defects reported from the dark UI Gallery: the swatch labeled **success** now uses semantic `statusSuccess` rather than the theme accent alias, so it accurately renders the status-success green; and the shared `Slider` container explicitly establishes its relative positioning context so the absolutely positioned thumb is anchored to its own track on React Native Web. Verification: focused Gallery and palette tests passed (52 tests), targeted lint passed with 0 warnings/errors, formatting passed, full workspace `npm run typecheck` passed, and `git diff --check` passed. Rendered browser confirmation was unavailable because no browser surface was connected."
+  source: "UI Gallery theme and slider correction on 2026-09-02"
+  affects: ["interactive-state-colors-use-one-theme-accent-ladder"]

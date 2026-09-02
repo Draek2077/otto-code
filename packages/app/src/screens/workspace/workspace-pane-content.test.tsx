@@ -60,6 +60,7 @@ function buildContent(tab: WorkspaceTabDescriptor = agentTab, host: "main" | "ex
     tab,
     normalizedServerId: "server-a",
     normalizedWorkspaceId: "workspace-a",
+    paneId: "pane-main",
     host,
     onOpenTab: vi.fn(),
     onOpenPreferredTarget: vi.fn(),

@@ -1,0 +1,29 @@
+{
+  "id": "graph_mtk6bao6_c8h7k8",
+  "name": "test",
+  "description": "test",
+  "inputs": [],
+  "nodes": [
+    {
+      "id": "root",
+      "kind": "orchestrator",
+      "title": "Orchestrator",
+      "position": {
+        "x": 40,
+        "y": 200
+      }
+    }
+  ],
+  "edges": [],
+  "createdAt": "2026-09-02T14:10:26.122Z",
+  "updatedAt": "2026-09-02T14:10:26.122Z",
+  "workflowStorage": {
+    "schemaVersion": 1,
+    "projectRoot": "C:\\Users\\phili\\Projects\\otto-code",
+    "projectId": "remote:github.com/Draek2077/otto-code",
+    "projectKey": "remote:github.com/draek2077/otto-code",
+    "location": "repository",
+    "storeKey": "workflows:repository:key:remote:github.com/draek2077/otto-code",
+    "source": "project-store"
+  }
+}

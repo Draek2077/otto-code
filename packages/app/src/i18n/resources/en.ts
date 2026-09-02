@@ -1029,6 +1029,7 @@ export const en = {
         copyTerminalId: "Copy terminal id",
         copyFilePath: "Copy file path",
         moveToMain: "Move to main panel",
+        moveToExplorer: "Move to Explorer panel",
       },
       actions: {
         newAgent: "New chat",
@@ -3440,10 +3441,13 @@ export const en = {
         label: "Default send",
         descriptions: {
           interrupt: "When the agent is running, Enter interrupts. Command/Ctrl+Enter queues.",
+          steer:
+            "When the agent is running, Enter steers the active turn. Command/Ctrl+Enter queues.",
           queue: "When the agent is running, Enter queues. Command/Ctrl+Enter submits.",
         },
         options: {
           interrupt: "Interrupt",
+          steer: "Steer",
           queue: "Queue",
         },
       },
@@ -3752,10 +3756,10 @@ export const en = {
             full: "Full",
           },
         },
-        hidePinnedToolbarOptions: {
-          title: "Hide pinned toolbar options",
-          hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
-          accessibilityLabel: "Hide pinned toolbar options",
+        hideTabToolbarOptions: {
+          title: "Hide tab toolbar options",
+          hint: "Keep tab toolbar options hidden until you hover over the tab bar",
+          accessibilityLabel: "Hide tab toolbar options",
         },
       },
       visualizer: {

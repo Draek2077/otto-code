@@ -23,17 +23,29 @@ test.afterAll(async () => {
   await workspace?.cleanup();
 });
 
-const modifier = process.platform === "darwin" ? "Meta" : "Control";
-
 test.describe("File finder", () => {
   test("fuzzy-opens a file by name", async ({ page }) => {
     await gotoWorkspace(page, workspace.workspaceId);
     await openFileExplorer(page);
-    await page.getByTestId("explorer-tab-files").click();
+    await page.getByTestId("explorer-sidebar-tab-files").filter({ visible: true }).click();
 
     // "Find file in project" (sidebar.open.files) is the only entry point now -
     // the dedicated toolbar button was folded into this shortcut.
-    await page.keyboard.press(`${modifier}+,`);
+    // Browsers reserve Mod+, for their own settings UI. Dispatch the same
+    // cancellable keydown at the app window so this still exercises Otto's
+    // sidebar.open.files shortcut route.
+    await page.evaluate((isMac) => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: ",",
+          code: "Comma",
+          metaKey: isMac,
+          ctrlKey: !isMac,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }, process.platform === "darwin");
     const input = page.getByTestId("file-finder-input");
     await expect(input).toBeVisible({ timeout: 30_000 });
 

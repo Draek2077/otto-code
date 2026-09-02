@@ -16,6 +16,7 @@ export interface WorkspaceTabMenuLabels {
   copyWorkspacePath: string;
   rename: string;
   moveToWorkspace: string;
+  moveToExplorer: string;
   closeAbove: string;
   closeBelow: string;
   closeLeft: string;
@@ -39,6 +40,7 @@ export const DEFAULT_WORKSPACE_TAB_MENU_LABELS: WorkspaceTabMenuLabels = {
   copyWorkspacePath: i18n.t("workspace.tabs.menu.copyWorkspacePath"),
   rename: i18n.t("workspace.tabs.menu.rename"),
   moveToWorkspace: i18n.t("workspace.tabs.menu.moveToWorkspace"),
+  moveToExplorer: i18n.t("workspace.tabs.menu.moveToExplorer"),
   closeAbove: i18n.t("workspace.tabs.menu.closeAbove"),
   closeBelow: i18n.t("workspace.tabs.menu.closeBelow"),
   closeLeft: i18n.t("workspace.tabs.menu.closeLeft"),
@@ -107,6 +109,8 @@ interface BuildWorkspaceTabMenuEntriesInput {
   // than shown disabled: a dead menu row teaches the user nothing.
   onMoveToWorkspace?: (agentId: string) => void;
   canMoveToWorkspace?: boolean;
+  onMoveToExplorer?: (tabId: string) => void;
+  canMoveToExplorer?: boolean;
   labels?: WorkspaceTabMenuLabels;
 }
 
@@ -131,6 +135,8 @@ interface BuildWorkspaceDesktopTabActionsInput {
   onDeleteAgent?: (agentId: string) => Promise<void> | void;
   onMoveToWorkspace?: (agentId: string) => void;
   canMoveToWorkspace?: boolean;
+  onMoveToExplorer?: (tabId: string) => void;
+  canMoveToExplorer?: boolean;
   labels?: WorkspaceTabMenuLabels;
 }
 
@@ -138,6 +144,20 @@ export interface WorkspaceDesktopTabActions {
   contextMenuTestId: string;
   menuEntries: WorkspaceTabMenuEntry[];
   closeButtonTestId: string;
+  canClose: boolean;
+}
+
+/** Explorer surfaces are workspace fixtures, not disposable document tabs. */
+export function canCloseWorkspaceTab(tab: WorkspaceTabDescriptor): boolean {
+  switch (tab.target.kind) {
+    case "files":
+    case "working_diff":
+    case "changes_tree":
+    case "project_search":
+      return false;
+    default:
+      return true;
+  }
 }
 
 // Close direction follows the axis the tabs stack along, not the surface. Mobile
@@ -375,6 +395,29 @@ function appendTabFunctionMenuEntries(input: {
   }
 }
 
+function appendMoveToExplorerMenuEntry(input: {
+  tab: WorkspaceTabDescriptor;
+  entries: WorkspaceTabMenuEntry[];
+  labels: WorkspaceTabMenuLabels;
+  menuTestIDBase: string;
+  onMoveToExplorer?: (tabId: string) => void;
+  canMoveToExplorer?: boolean;
+}): void {
+  const { tab, entries, labels, menuTestIDBase, onMoveToExplorer, canMoveToExplorer } = input;
+  if (!onMoveToExplorer || !canMoveToExplorer) return;
+
+  entries.push({
+    kind: "item",
+    key: "move-to-explorer",
+    label: labels.moveToExplorer,
+    icon: "arrow-right-to-line",
+    testID: `${menuTestIDBase}-move-to-explorer`,
+    onSelect: () => {
+      onMoveToExplorer(tab.tabId);
+    },
+  });
+}
+
 export function buildWorkspaceTabMenuEntries(
   input: BuildWorkspaceTabMenuEntriesInput,
 ): WorkspaceTabMenuEntry[] {
@@ -401,6 +444,8 @@ export function buildWorkspaceTabMenuEntries(
     onDeleteAgent,
     onMoveToWorkspace,
     canMoveToWorkspace,
+    onMoveToExplorer,
+    canMoveToExplorer,
   } = input;
   const labels = input.labels ?? DEFAULT_WORKSPACE_TAB_MENU_LABELS;
   const isFirstTab = index === 0;
@@ -502,6 +547,15 @@ export function buildWorkspaceTabMenuEntries(
     });
   }
 
+  appendMoveToExplorerMenuEntry({
+    tab,
+    entries,
+    labels,
+    menuTestIDBase,
+    onMoveToExplorer,
+    canMoveToExplorer,
+  });
+
   const managesChat = appendChatManagementMenuEntries({
     tab,
     entries,
@@ -533,6 +587,10 @@ export function buildWorkspaceTabMenuEntries(
       onReloadAgent,
       onRenameTab,
     });
+
+    if (!canCloseWorkspaceTab(tab)) {
+      return entries;
+    }
 
     if (entries.length > 0) {
       entries.push({
@@ -622,8 +680,11 @@ export function buildWorkspaceDesktopTabActions(
       onDeleteAgent: input.onDeleteAgent,
       onMoveToWorkspace: input.onMoveToWorkspace,
       canMoveToWorkspace: input.canMoveToWorkspace,
+      onMoveToExplorer: input.onMoveToExplorer,
+      canMoveToExplorer: input.canMoveToExplorer,
       labels: input.labels,
     }),
     closeButtonTestId: getCloseButtonTestId(input.tab),
+    canClose: canCloseWorkspaceTab(input.tab),
   };
 }

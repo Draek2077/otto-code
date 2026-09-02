@@ -1,4 +1,4 @@
-import { type ReactElement, useCallback, useMemo } from "react";
+import { type ReactElement, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ForgeBrandIcon } from "@/git/forge-icon";
 import { ActivityIndicator, Text, View, type PressableStateCallbackType } from "react-native";
@@ -32,6 +32,8 @@ interface WorkspaceOpenInEditorButtonProps {
   cwd: string;
   activeFile?: WorkspaceFileLocation | null;
   hideLabels?: boolean;
+  /** Reports whether this workspace contributes a visible toolbar control. */
+  onAvailabilityChange?: (available: boolean) => void;
   // Stretch to fill the available width (content stays centered).
   fill?: boolean;
   tooltipSide?: "top" | "bottom";
@@ -81,6 +83,7 @@ export function WorkspaceOpenInEditorButton({
   cwd,
   activeFile,
   hideLabels,
+  onAvailabilityChange,
   fill,
   tooltipSide = "bottom",
 }: WorkspaceOpenInEditorButtonProps) {
@@ -198,7 +201,10 @@ export function WorkspaceOpenInEditorButton({
     }
   }, [primaryOption, handleOpenTarget]);
 
-  if (!canResolveWorkspace || !primaryOption || targets.length === 0) {
+  const isAvailable = canResolveWorkspace && primaryOption !== null && targets.length > 0;
+  useEffect(() => onAvailabilityChange?.(isAvailable), [isAvailable, onAvailabilityChange]);
+
+  if (!isAvailable) {
     return null;
   }
 
@@ -304,6 +310,10 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.spacing[3],
       md: theme.spacing[2],
     },
+    // Same vertical inset as the git Commit split button: the two controls
+    // share one recipe (label line height + this inset + the border), so they
+    // arrive at the same height naturally instead of being pinned to match.
+    paddingVertical: theme.spacing[1],
     justifyContent: "center",
     position: "relative",
   },
@@ -323,8 +333,16 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.6,
   },
   splitButtonText: {
-    fontSize: theme.fontSize.base,
-    lineHeight: theme.fontSize.base * 1.5,
+    // Mirrors the git Commit split button's label geometry (including its
+    // compact bump) so both controls share the same natural height.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
+    lineHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.5,
+      md: theme.fontSize.sm * 1.5,
+    },
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
@@ -338,13 +356,20 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     gap: theme.spacing[2],
-    // Icon-only content (16px) is shorter than the label's line height - pin
-    // the same minimum so all three workspace-tools split buttons match.
-    minHeight: theme.fontSize.sm * 1.5,
+    // Icon-only content (16px) is shorter than the label's line height, so
+    // the content keeps the label's line height as its minimum. That is what
+    // lets the icon-only state come out the same height as the labeled one.
+    minHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.5,
+      md: theme.fontSize.sm * 1.5,
+    },
   },
   splitButtonSpinnerOnly: {
     transform: [{ scale: 0.8 }],
-    minHeight: theme.fontSize.sm * 1.5,
+    minHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.5,
+      md: theme.fontSize.sm * 1.5,
+    },
   },
   splitButtonCaret: {
     width: {

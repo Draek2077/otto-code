@@ -1,10 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import {
-  DARK_VARIANT_THEMES,
-  LIGHT_VARIANT_THEMES,
-} from "@/screens/settings/appearance/apply-color-scheme";
+import { DARK_VARIANT_THEMES, LIGHT_VARIANT_THEMES } from "@/appearance/color-scheme";
 import { buildVisualizerPalette, resolveVisualizerTheme } from "./visualizer-theme";
 
 // Every variant the app ships, in the exact shape the resolver consumes.

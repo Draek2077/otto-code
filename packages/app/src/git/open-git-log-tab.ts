@@ -5,12 +5,14 @@ export interface OpenGitLogTabInput {
   serverId: string;
   workspaceId: string;
   operation: string;
+  /** New logs prefer this pane without moving an existing user-placed tab. */
+  defaultPaneId?: string;
 }
 
 /**
  * Open (or focus) the log pane for a git operation. One tab per operation per
- * workspace - reopening the same operation focuses the existing tab. New tabs
- * land right next to the tab the user is looking at.
+ * workspace - reopening the same operation focuses the existing tab. A caller
+ * may give new tabs a preferred pane without moving an existing user-placed log.
  */
 export function openGitLogTab(input: OpenGitLogTabInput): boolean {
   const workspaceKey = buildWorkspaceTabPersistenceKey({
@@ -20,12 +22,17 @@ export function openGitLogTab(input: OpenGitLogTabInput): boolean {
   if (!workspaceKey) {
     return false;
   }
-  useWorkspaceLayoutStore
-    .getState()
-    .openTabFocused(
+  const target = { kind: "gitLog" as const, operation: input.operation };
+  const layout = useWorkspaceLayoutStore.getState();
+  if (input.defaultPaneId) {
+    layout.openTab({
       workspaceKey,
-      { kind: "gitLog", operation: input.operation },
-      { insertAfterFocusedTab: true },
-    );
+      target,
+      intent: "reveal",
+      placement: { mode: "prefer", paneId: input.defaultPaneId },
+    });
+  } else {
+    layout.openTabFocused(workspaceKey, target, { insertAfterFocusedTab: true });
+  }
   return true;
 }

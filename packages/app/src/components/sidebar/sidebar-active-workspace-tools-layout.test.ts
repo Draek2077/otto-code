@@ -5,7 +5,7 @@ import {
 } from "./sidebar-active-workspace-tools-layout";
 
 describe("getWorkspaceToolsLabelVisibility", () => {
-  const threeTools = { hasScripts: true, hasOpenInEditor: true };
+  const threeTools = { availableTools: ["scripts", "git", "openInEditor"] as const };
 
   it("keeps every tool icon-only at the smallest usable width", () => {
     expect(getWorkspaceToolsLabelVisibility({ width: 303, ...threeTools })).toEqual({
@@ -33,14 +33,31 @@ describe("getWorkspaceToolsLabelVisibility", () => {
     });
   });
 
-  it("does not reserve a Scripts label when no scripts control renders", () => {
+  it("does not reserve space for controls that do not render", () => {
     expect(
       getWorkspaceToolsLabelVisibility({
-        width: 271,
-        hasScripts: false,
-        hasOpenInEditor: true,
+        width: 235,
+        availableTools: ["git", "openInEditor"],
       }),
     ).toEqual({
+      scripts: false,
+      git: false,
+      openInEditor: false,
+    });
+    expect(
+      getWorkspaceToolsLabelVisibility({
+        width: 236,
+        availableTools: ["git", "openInEditor"],
+      }),
+    ).toEqual({
+      scripts: false,
+      git: true,
+      openInEditor: false,
+    });
+  });
+
+  it("reveals the lone tool's label without reserving absent siblings", () => {
+    expect(getWorkspaceToolsLabelVisibility({ width: 164, availableTools: ["git"] })).toEqual({
       scripts: false,
       git: true,
       openInEditor: false,

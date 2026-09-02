@@ -7,6 +7,7 @@ import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
 import { FileChangeIcon } from "@/components/file-change-icon";
 import { MaterialFileIcon } from "@/components/material-file-icon";
 import {
+  TreeIndentGuides,
   treeRowPaddingLeft,
   workspaceTreeRowStyles,
   WORKSPACE_PANE_TRAILING_GLYPH_RAIL,
@@ -27,6 +28,8 @@ export interface FileHeaderProps {
   showsBodyState?: boolean;
   isSelected?: boolean;
   depth?: number;
+  /** Which ancestor guide rails continue below this tree row. */
+  ancestorMask?: number;
   showDir?: boolean;
   interactive?: boolean;
   onActivate?: (path: string) => void;
@@ -175,6 +178,7 @@ export const FileHeader = memo(function FileHeader({
   showsBodyState = true,
   isSelected = false,
   depth = 0,
+  ancestorMask,
   showDir = true,
   interactive = true,
   onActivate,
@@ -293,6 +297,7 @@ export const FileHeader = memo(function FileHeader({
       onPointerLeave={hover.handlePointerLeave}
       testID={testID}
     >
+      {!showDir ? <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} /> : null}
       <ContextMenu>
         <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>

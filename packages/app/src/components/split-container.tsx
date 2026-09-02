@@ -95,6 +95,7 @@ import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
 import { RenderProfile } from "@/utils/render-profiler";
 import { isNative } from "@/constants/platform";
 import { panelTargetSupportsHost } from "@/plugins/workspace-panels/locations";
+import type { PaneHost } from "@/panels/panel-manifest";
 
 interface SplitContainerProps {
   layout: WorkspaceLayout;
@@ -133,6 +134,7 @@ interface SplitContainerProps {
   buildPaneContentModel: (input: {
     paneId: string;
     tab: WorkspaceTabDescriptor;
+    host?: PaneHost;
   }) => WorkspacePaneContentModel;
   onFocusPane: (paneId: string) => void;
   onSplitPane: (input: {
@@ -191,6 +193,7 @@ interface SplitNodeViewProps extends Omit<
   SplitContainerProps,
   "layout" | "onMoveTabToPane" | "onSelectTabInPane"
 > {
+  onMoveTabToExplorer: (tabId: string) => void;
   node: SplitNode;
   uiTabs: WorkspaceTab[];
   focusedPaneId: string | null;
@@ -453,6 +456,15 @@ export function SplitContainer({
     },
     [layout.focusedPaneId, onMoveTabToPane],
   );
+  const handleMoveMainTabToExplorer = useCallback(
+    (tabId: string) => {
+      const explorerPaneId = useWorkspaceLayoutStore.getState().showExplorerSidebar(workspaceKey);
+      if (explorerPaneId) {
+        onMoveTabToPane(tabId, explorerPaneId);
+      }
+    },
+    [onMoveTabToPane, workspaceKey],
+  );
   const splitRoot = useMemo(
     () =>
       resolveSplitContainerRoot({
@@ -471,21 +483,26 @@ export function SplitContainer({
   );
   const resizeExplorerSidebar = useWorkspaceLayoutStore((state) => state.resizeExplorerSidebar);
   const [workspaceShellWidth, setWorkspaceShellWidth] = useState(0);
-  const [previewExplorerSidebarWidth, setPreviewExplorerSidebarWidth] = useState<number | null>(
-    null,
-  );
-  const requestedExplorerSidebarWidth = previewExplorerSidebarWidth ?? storedExplorerSidebarWidth;
   const explorerSidebarWidth = resolveExplorerSidebarWidth({
-    requestedWidth: requestedExplorerSidebarWidth,
+    requestedWidth: storedExplorerSidebarWidth,
     containerWidth: workspaceShellWidth,
   });
+  // Explorer content is much denser than an ordinary pane. Its live width must
+  // stay off React's render path while the pointer moves, as split panes do.
+  const explorerSidebarResizeWidth = useSharedValue(explorerSidebarWidth);
+  const isPreviewingExplorerSidebarResizeRef = useRef(false);
+  useEffect(() => {
+    if (!isPreviewingExplorerSidebarResizeRef.current) {
+      explorerSidebarResizeWidth.value = explorerSidebarWidth;
+    }
+  }, [explorerSidebarResizeWidth, explorerSidebarWidth]);
   const explorerSidebarDockSizes = useMemo(
     () =>
       resolveExplorerSidebarDockSizes({
-        requestedWidth: requestedExplorerSidebarWidth,
+        requestedWidth: storedExplorerSidebarWidth,
         containerWidth: workspaceShellWidth,
       }),
-    [requestedExplorerSidebarWidth, workspaceShellWidth],
+    [storedExplorerSidebarWidth, workspaceShellWidth],
   );
   const renderExplorerSidebarDock = Boolean(
     !focusModeEnabled && explorerSidebarPane && explorerSidebarPane.hidden !== true,
@@ -494,10 +511,11 @@ export function SplitContainer({
     ? removeWindowChromeCorner(inheritedWindowChromeCorners, "top-right")
     : inheritedWindowChromeCorners;
   const mainColumnStyle = styles.mainColumn;
-  const explorerSidebarDockStyle = useMemo(
-    () => [styles.explorerSidebarDock, { width: explorerSidebarWidth }],
-    [explorerSidebarWidth],
+  const explorerSidebarDockResizeStyle = useAnimatedStyle(
+    () => ({ width: explorerSidebarResizeWidth.value }),
+    [explorerSidebarResizeWidth],
   );
+  const explorerSidebarDockStyle = [styles.explorerSidebarDock, explorerSidebarDockResizeStyle];
   const handleWorkspaceShellLayout = useCallback((event: LayoutChangeEvent) => {
     const nextWidth = event.nativeEvent.layout.width;
     setWorkspaceShellWidth((current) => (current === nextWidth ? current : nextWidth));
@@ -506,31 +524,29 @@ export function SplitContainer({
     (_groupId: string, sizes: number[]) => {
       const nextRatio = sizes[1];
       if (nextRatio !== undefined) {
-        setPreviewExplorerSidebarWidth(
-          resolveExplorerSidebarWidth({
-            requestedWidth: nextRatio * workspaceShellWidth,
-            containerWidth: workspaceShellWidth,
-          }),
-        );
+        isPreviewingExplorerSidebarResizeRef.current = true;
+        explorerSidebarResizeWidth.value = resolveExplorerSidebarWidth({
+          requestedWidth: nextRatio * workspaceShellWidth,
+          containerWidth: workspaceShellWidth,
+        });
       }
     },
-    [workspaceShellWidth],
+    [explorerSidebarResizeWidth, workspaceShellWidth],
   );
   const commitExplorerSidebarResize = useCallback(
     (_groupId: string, sizes: number[]) => {
-      setPreviewExplorerSidebarWidth(null);
+      isPreviewingExplorerSidebarResizeRef.current = false;
       const nextRatio = sizes[1];
       if (nextRatio !== undefined) {
-        resizeExplorerSidebar(
-          workspaceKey,
-          resolveExplorerSidebarWidth({
-            requestedWidth: nextRatio * workspaceShellWidth,
-            containerWidth: workspaceShellWidth,
-          }),
-        );
+        const width = resolveExplorerSidebarWidth({
+          requestedWidth: nextRatio * workspaceShellWidth,
+          containerWidth: workspaceShellWidth,
+        });
+        explorerSidebarResizeWidth.value = width;
+        resizeExplorerSidebar(workspaceKey, width);
       }
     },
-    [resizeExplorerSidebar, workspaceKey, workspaceShellWidth],
+    [explorerSidebarResizeWidth, resizeExplorerSidebar, workspaceKey, workspaceShellWidth],
   );
   const renderRoot = useMemo(() => wrapRootPaneForStableMount(splitRoot.root), [splitRoot.root]);
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -741,6 +757,7 @@ export function SplitContainer({
                   onFocusPane={onFocusPane}
                   onSplitPane={onSplitPane}
                   onSplitPaneEmpty={onSplitPaneEmpty}
+                  onMoveTabToExplorer={handleMoveMainTabToExplorer}
                   onResizeSplit={onResizeSplit}
                   onReorderTabsInPane={onReorderTabsInPane}
                   activeDragTabId={activeDragTabId}
@@ -770,7 +787,7 @@ export function SplitContainer({
                 onPreviewResizeSplit={previewExplorerSidebarResize}
                 onResizeSplit={commitExplorerSidebarResize}
               />
-              <View style={explorerSidebarDockStyle}>
+              <Animated.View style={explorerSidebarDockStyle}>
                 <ExplorerSidebarDock
                   pane={explorerSidebarPane}
                   uiTabs={uiTabs}
@@ -788,7 +805,7 @@ export function SplitContainer({
                   tabDropPreview={tabDropPreview}
                   headerAction={renderExplorerSidebarHeaderAction?.()}
                 />
-              </View>
+              </Animated.View>
             </>
           ) : null}
         </View>
@@ -1008,6 +1025,7 @@ function SplitNodeView({
   onFocusPane,
   onSplitPane,
   onSplitPaneEmpty,
+  onMoveTabToExplorer,
   onResizeSplit,
   onReorderTabsInPane,
   activeDragTabId,
@@ -1102,6 +1120,7 @@ function SplitNodeView({
             onFocusPane={onFocusPane}
             onSplitPane={onSplitPane}
             onSplitPaneEmpty={onSplitPaneEmpty}
+            onMoveTabToExplorer={onMoveTabToExplorer}
             onReorderTabsInPane={onReorderTabsInPane}
             activeDragTabId={activeDragTabId}
             showDropZones={showDropZones}
@@ -1159,6 +1178,7 @@ function SplitNodeView({
               onFocusPane={onFocusPane}
               onSplitPane={onSplitPane}
               onSplitPaneEmpty={onSplitPaneEmpty}
+              onMoveTabToExplorer={onMoveTabToExplorer}
               onResizeSplit={onResizeSplit}
               onReorderTabsInPane={onReorderTabsInPane}
               activeDragTabId={activeDragTabId}
@@ -1224,11 +1244,17 @@ function SplitPaneView({
   onFocusPane,
   onSplitPane: _onSplitPane,
   onSplitPaneEmpty,
+  onMoveTabToExplorer,
   onReorderTabsInPane,
   activeDragTabId,
   showDropZones,
   dropPreview,
   tabDropPreview,
+  maximizedPaneId,
+  workspaceHasSplits,
+  onTogglePaneMaximized,
+  focusModeEnabled,
+  onExitFocusMode,
 }: SplitPaneViewProps) {
   const paneRef = useRef<View | null>(null);
   const stableOnFocusPane = useStableEvent(onFocusPane);
@@ -1244,6 +1270,10 @@ function SplitPaneView({
         resolvedTabOrientation === "vertical" ? "horizontal" : "vertical",
       );
   }, [pane.id, resolvedTabOrientation, workspaceKey]);
+  const handleTogglePaneMaximized = useCallback(
+    () => onTogglePaneMaximized(pane.id),
+    [onTogglePaneMaximized, pane.id],
+  );
   const paneState = useMemo(
     () =>
       deriveWorkspacePaneState({
@@ -1388,6 +1418,7 @@ function SplitPaneView({
             onCloseTabsToLeft={handleCloseTabsToLeft}
             onCloseTabsToRight={handleCloseTabsToRight}
             onCloseOtherTabs={handleCloseOtherTabs}
+            onMoveTabToExplorer={onMoveTabToExplorer}
             onCreateDraftTab={onCreateDraftTab}
             onCreateTerminalTab={onCreateTerminalTab}
             onCreateBrowserTab={onCreateBrowserTab}
@@ -1402,6 +1433,11 @@ function SplitPaneView({
             }
             tabOrientation={resolvedTabOrientation}
             onToggleTabOrientation={handleToggleTabOrientation}
+            showPaneMaximizeAction={workspaceHasSplits}
+            paneMaximized={pane.id === maximizedPaneId}
+            onTogglePaneMaximized={handleTogglePaneMaximized}
+            focusModeEnabled={focusModeEnabled}
+            onExitFocusMode={onExitFocusMode}
           />
         ) : (
           <WindowChromeSafeArea placement="inline" style={styles.paneTabs}>
@@ -1426,6 +1462,7 @@ function SplitPaneView({
               onCloseTabsToLeft={handleCloseTabsToLeft}
               onCloseTabsToRight={handleCloseTabsToRight}
               onCloseOtherTabs={handleCloseOtherTabs}
+              onMoveTabToExplorer={onMoveTabToExplorer}
               onCreateDraftTab={onCreateDraftTab}
               onCreateTerminalTab={onCreateTerminalTab}
               onCreateBrowserTab={onCreateBrowserTab}
@@ -1440,6 +1477,11 @@ function SplitPaneView({
               }
               tabOrientation={resolvedTabOrientation}
               onToggleTabOrientation={handleToggleTabOrientation}
+              showPaneMaximizeAction={workspaceHasSplits}
+              paneMaximized={pane.id === maximizedPaneId}
+              onTogglePaneMaximized={handleTogglePaneMaximized}
+              focusModeEnabled={focusModeEnabled}
+              onExitFocusMode={onExitFocusMode}
             />
           </WindowChromeSafeArea>
         )}

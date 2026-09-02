@@ -3,11 +3,13 @@ import {
   BLACK_LIGHT_VARIANT_COLORS,
   DEFAULT_FONT_CONTRAST,
   darkClaudeTheme,
+  darkPureBlackTheme,
   darkTheme,
   daylightTheme,
   meadowTheme,
 } from "@/styles/theme";
-import { applyColorScheme, type ColorSchemeInput } from "./apply-color-scheme";
+import { DARK_VARIANT_THEMES, LIGHT_VARIANT_THEMES } from "./color-scheme";
+import { applyColorScheme, type ColorSchemeInput } from "./color-scheme";
 
 // These assertions are about *which variant* got painted into a mirror, not
 // about any particular hex. Read the expected accent off the variant itself so
@@ -295,4 +297,45 @@ describe("applyColorScheme", () => {
     const wrongScheme = makeFakeTheme("dark");
     expect(lightUpdater(wrongScheme)).toBe(wrongScheme);
   });
+});
+
+describe("Otto palette token matrix", () => {
+  const lightVariants = [
+    "daylight",
+    "meadow",
+    "terracotta",
+    "horizon",
+    "powder",
+    "pastel",
+    "ivory",
+  ];
+  const darkVariants = [
+    "dark",
+    "evergreen",
+    "zinc",
+    "midnight",
+    "claude",
+    "ghostty",
+    "cyberpunk",
+    "obsidian",
+  ];
+  const tokenKeys = Object.keys(darkTheme.colors).sort();
+  const terminalKeys = Object.keys(darkTheme.colors.terminal).sort();
+
+  it("keeps the exact 7-light / 8-dark Otto registry and retains Paseo's pure-black preset", () => {
+    expect(Object.keys(LIGHT_VARIANT_THEMES)).toEqual(lightVariants);
+    expect(Object.keys(DARK_VARIANT_THEMES)).toEqual(darkVariants);
+    expect(DARK_VARIANT_THEMES.obsidian.colors.surface0).toBe("#121212");
+    // Paseo's retained compatibility preset supplies actual zero-luminance
+    // surfaces; it is not an Otto ninth dark identity.
+    expect(darkPureBlackTheme.colors.surface0).toBe("#000000");
+  });
+
+  it.each([...Object.entries(LIGHT_VARIANT_THEMES), ...Object.entries(DARK_VARIANT_THEMES)])(
+    "%s supplies every semantic and terminal token",
+    (_name, theme) => {
+      expect(Object.keys(theme.colors).sort()).toEqual(tokenKeys);
+      expect(Object.keys(theme.colors.terminal).sort()).toEqual(terminalKeys);
+    },
+  );
 });

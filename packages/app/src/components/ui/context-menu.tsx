@@ -216,6 +216,7 @@ export function ContextMenuTrigger({
 
   const handleContextMenu = useCallback(
     (event: unknown) => {
+      if (!shouldEnableOnThisPlatform || disabled) return;
       if (isNative) return;
       // Text selection is an app-wide capability. Let the root selection menu
       // own it instead of turning a selected row label into unrelated row
@@ -231,7 +232,7 @@ export function ContextMenuTrigger({
       onContextMenu?.(event);
       openAtEvent(event);
     },
-    [onContextMenu, openAtEvent],
+    [disabled, onContextMenu, openAtEvent, shouldEnableOnThisPlatform],
   );
 
   const resolveDynamicStyle = useCallback(

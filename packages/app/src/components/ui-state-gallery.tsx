@@ -46,7 +46,7 @@ import {
   DARK_VARIANT_THEMES,
   LIGHT_VARIANT_THEMES,
   type ColorSchemeInput,
-} from "@/screens/settings/appearance/apply-color-scheme";
+} from "@/appearance/color-scheme";
 import {
   type DarkThemeName,
   type LightThemeName,
@@ -1168,7 +1168,7 @@ const styles = StyleSheet.create((theme) => ({
   tokenSuccess: {
     height: 44,
     borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.success,
+    backgroundColor: theme.colors.statusSuccess,
   },
   tokenWarning: {
     height: 44,

@@ -1022,6 +1022,7 @@ export const ar: TranslationResources = {
         copyTerminalId: "نسخ معرف المحطة",
         copyFilePath: "Copy file path",
         moveToMain: "Move to main panel",
+        moveToExplorer: "Move to Explorer panel",
       },
       actions: {
         newAgent: "محادثة جديدة",
@@ -3356,10 +3357,13 @@ export const ar: TranslationResources = {
         descriptions: {
           interrupt:
             "عند تشغيل الوكيل، يوقف Enter التشغيل. Command/Ctrl+Enter يضيف إلى قائمة الانتظار.",
+          steer:
+            "عند تشغيل الوكيل، يوجّه Enter الجولة النشطة. يضيف Command/Ctrl+Enter إلى قائمة الانتظار.",
           queue: "عند تشغيل الوكيل، يضيف Enter إلى قائمة الانتظار. Command/Ctrl+Enter يرسل.",
         },
         options: {
           interrupt: "مقاطعة",
+          steer: "توجيه",
           queue: "طابور",
         },
       },
@@ -3668,10 +3672,10 @@ export const ar: TranslationResources = {
             full: "كامل",
           },
         },
-        hidePinnedToolbarOptions: {
-          title: "إخفاء خيارات شريط الأدوات المثبّتة",
-          hint: "يبقي خيارات شريط التبويبات وشريط أدوات الفروق المثبّتة مخفية حتى تمرّ بالمؤشر فوق منطقة شريط الأدوات",
-          accessibilityLabel: "إخفاء خيارات شريط الأدوات المثبّتة",
+        hideTabToolbarOptions: {
+          title: "إخفاء خيارات شريط أدوات علامات التبويب",
+          hint: "يبقي خيارات شريط أدوات علامات التبويب مخفية حتى تمرّ بالمؤشر فوق شريط علامات التبويب",
+          accessibilityLabel: "إخفاء خيارات شريط أدوات علامات التبويب",
         },
       },
       visualizer: {

@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SETTINGS_SEARCH_ITEMS, searchSettingsCatalog } from "./settings-search-catalog";
 import { HOST_SECTION_SLUGS, SETTINGS_SECTION_SLUGS } from "@/utils/host-routes";
 
-function readInventoryRows() {
-  const inventoryPath = fileURLToPath(
+function inventoryMarkdownPath() {
+  return fileURLToPath(
     new URL("../../../../outputs/settings-inventory/settings-index.md", import.meta.url),
   );
-  const lines = readFileSync(inventoryPath, "utf8").split(/\r?\n/);
+}
+
+function readInventoryRows() {
+  const lines = readFileSync(inventoryMarkdownPath(), "utf8").split(/\r?\n/);
   let surface = "";
   let category = "";
   let group = "";
@@ -20,6 +24,12 @@ function readInventoryRows() {
     title: string;
     description: string;
     scope: string;
+    kind: string;
+    choices: string;
+    defaultValue: string;
+    audience: string;
+    conditions: string;
+    persistence: string;
   }> = [];
 
   for (const line of lines) {
@@ -50,6 +60,12 @@ function readInventoryRows() {
       title: cells[0] ?? "",
       description: cells[1] ?? "",
       scope: cells[2] ?? "",
+      kind: cells[3] ?? "",
+      choices: cells[4] ?? "",
+      defaultValue: cells[5] ?? "",
+      audience: cells[6] ?? "",
+      conditions: cells[7] ?? "",
+      persistence: cells[8] ?? "",
     });
   }
   return rows;
@@ -57,7 +73,7 @@ function readInventoryRows() {
 
 describe("Settings search catalog", () => {
   it("assigns every entry a unique id and a real settings scope", () => {
-    expect(SETTINGS_SEARCH_ITEMS).toHaveLength(428);
+    expect(SETTINGS_SEARCH_ITEMS).toHaveLength(433);
     expect(new Set(SETTINGS_SEARCH_ITEMS.map((item) => item.id)).size).toBe(
       SETTINGS_SEARCH_ITEMS.length,
     );
@@ -80,8 +96,60 @@ describe("Settings search catalog", () => {
         title: item.title,
         description: item.description,
         scope: item.scope,
+        kind: item.kind,
+        choices: item.choices,
+        defaultValue: item.defaultValue,
+        audience: item.audience,
+        conditions: item.conditions,
+        persistence: item.persistence,
       })),
     ).toEqual(readInventoryRows());
+  });
+
+  it("keeps the inventory summary totals aligned with its indexed rows", () => {
+    const rows = readInventoryRows();
+    const inventory = readFileSync(inventoryMarkdownPath(), "utf8");
+    const appRows = rows.filter((row) => row.surface === "App");
+    const hostRows = rows.filter((row) => row.surface === "Host");
+
+    expect(inventory).toContain(`**Total indexed entries:** ${rows.length}`);
+    expect(inventory).toContain(`**App surface:** ${appRows.length}`);
+    expect(inventory).toContain(`**Host surface:** ${hostRows.length}`);
+  });
+
+  it("keeps every inventory contents count aligned with its category", () => {
+    const rows = readInventoryRows();
+    const inventory = readFileSync(inventoryMarkdownPath(), "utf8");
+    const contents = inventory.slice(
+      inventory.indexOf("## Contents"),
+      inventory.indexOf("## App settings"),
+    );
+    const entries = [...contents.matchAll(/^  - \[(.+) \((\d+)\)\]\(#(app|host)-/gm)];
+
+    expect(entries).not.toHaveLength(0);
+    for (const [, category, count, surface] of entries) {
+      expect(Number(count)).toBe(
+        rows.filter(
+          (row) =>
+            row.surface === (surface === "app" ? "App" : "Host") && row.category === category,
+        ).length,
+      );
+    }
+  });
+
+  it("keeps every inventory source link pointed at an existing source line", () => {
+    const inventoryPath = inventoryMarkdownPath();
+    const inventory = readFileSync(inventoryPath, "utf8");
+    const sourceLinks = [...inventory.matchAll(/\]\(\.\.\/\.\.\/([^)#]+)#L(\d+)\)/g)];
+
+    expect(sourceLinks).toHaveLength(readInventoryRows().length);
+    for (const [, sourcePath, sourceLine] of sourceLinks) {
+      const source = resolve(dirname(inventoryPath), "..", "..", sourcePath);
+      expect(existsSync(source)).toBe(true);
+      expect(Number(sourceLine)).toBeLessThanOrEqual(
+        readFileSync(source, "utf8").split(/\r?\n/).length,
+      );
+    }
   });
 
   it("finds product vocabulary rather than requiring the canonical row label", () => {
@@ -139,13 +207,8 @@ describe("Settings search catalog", () => {
       SETTINGS_SEARCH_ITEMS.filter((item) => item.host).map((item) => item.section),
     );
 
-    const canonicalAppSections = SETTINGS_SECTION_SLUGS.filter(
-      (section) => section !== "notifications",
-    );
-    // Plugins arrived with the v0.6.1 upstream merge and has no rows in the
-    // generated inventory yet, so it is excluded here the same way notifications
-    // is. Index it and drop this filter.
-    const canonicalHostSections = HOST_SECTION_SLUGS.filter((section) => section !== "plugins");
+    const canonicalAppSections = SETTINGS_SECTION_SLUGS;
+    const canonicalHostSections = HOST_SECTION_SLUGS;
     expect([...indexedAppSections].sort()).toEqual([...canonicalAppSections].sort());
     expect([...indexedHostSections].sort()).toEqual([...canonicalHostSections].sort());
   });
@@ -166,9 +229,11 @@ describe("Settings search catalog", () => {
     expect(sectionFor("Default send")).toBe("chat");
     expect(sectionFor("Review view")).toBe("editor");
     expect(sectionFor("Voice cues")).toBe("integrations");
+    expect(sectionFor("Play sound")).toBe("notifications");
     expect(sectionFor("Clear cached copies")).toBe("diagnostics");
     expect(sectionFor("Notification permission")).toBe("permissions");
     expect(sectionFor("Metadata generation")).toBe("metadata");
+    expect(sectionFor("Enable plugins")).toBe("plugins");
   });
 
   it("keeps every device-local voice and wake control on the App Integrations page", () => {

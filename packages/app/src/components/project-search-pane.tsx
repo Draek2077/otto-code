@@ -1042,7 +1042,7 @@ export function ProjectSearchPane({
           onTogglePin={handleToggleToolbarPin}
           hovered={toolbarHovered}
           isMobile={isCompact}
-          hideUntilHover={appSettings.hidePinnedToolbarOptions}
+          hideUntilHover={false}
           optionsLabel={t("projectSearch.options")}
           testIDPrefix="project-search"
         />

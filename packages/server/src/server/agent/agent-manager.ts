@@ -955,6 +955,8 @@ interface StreamEventFlags {
   shouldNotifyWaiters: boolean;
 }
 
+type ActiveTurnTerminalDisposition = "closed_current" | "stale" | "untracked";
+
 interface HandleStreamEventOptions {
   fromHistory?: boolean;
 }
@@ -4120,6 +4122,7 @@ export class AgentManager {
       this.foregroundRuns.rememberFinalizedTurn(mutableAgent, turnId);
     }
     mutableAgent.activeForegroundTurnId = null;
+    this.applyActiveTurnTerminal(mutableAgent, turnId);
     const terminalError = mutableAgent.lastError;
     const shouldHoldBusyForReplacement = mutableAgent.pendingReplacement && !terminalError;
     // Before the drain is decided: if this turn would otherwise leave the agent
@@ -6171,6 +6174,15 @@ export class AgentManager {
       this.agentStreamCoalescer.flushFor(agent.id);
     }
 
+    let terminalDisposition: ActiveTurnTerminalDisposition = "untracked";
+    if (isTurnTerminalEvent(event)) {
+      terminalDisposition = this.applyActiveTurnTerminal(
+        agent,
+        eventTurnId,
+        options?.fromHistory === true,
+      );
+    }
+
     const flags: StreamEventFlags = { shouldDispatchEvent: true, shouldNotifyWaiters: true };
 
     const dispatchPromise = this.dispatchStreamEventByType({
@@ -6179,6 +6191,7 @@ export class AgentManager {
       options,
       isForegroundEvent,
       eventTurnId,
+      terminalDisposition,
       flags,
     });
     if (dispatchPromise) {
@@ -6264,9 +6277,11 @@ export class AgentManager {
     options: HandleStreamEventOptions | undefined;
     isForegroundEvent: boolean;
     eventTurnId: string | undefined;
+    terminalDisposition: ActiveTurnTerminalDisposition;
     flags: StreamEventFlags;
   }): Promise<void> | undefined {
-    const { agent, event, options, isForegroundEvent, eventTurnId, flags } = params;
+    const { agent, event, options, isForegroundEvent, eventTurnId, terminalDisposition, flags } =
+      params;
     if (isProjectionStreamEvent(event)) {
       this.dispatchProjectionStreamEvent(agent, event);
       flags.shouldDispatchEvent = false;
@@ -6290,7 +6305,13 @@ export class AgentManager {
       case "timeline":
         return this.onStreamTimelineEvent({ agent, event, options, isForegroundEvent, flags });
       case "turn_completed":
-        this.onStreamTurnCompleted({ agent, event, eventTurnId, isForegroundEvent });
+        this.onStreamTurnCompleted({
+          agent,
+          event,
+          eventTurnId,
+          isForegroundEvent,
+          terminalDisposition,
+        });
         return undefined;
       case "turn_failed":
         return this.onStreamTurnFailed({
@@ -6298,10 +6319,18 @@ export class AgentManager {
           event,
           eventTurnId,
           isForegroundEvent,
+          terminalDisposition,
           options,
         });
       case "turn_canceled":
-        this.onStreamTurnCanceled({ agent, event, eventTurnId, isForegroundEvent, options });
+        this.onStreamTurnCanceled({
+          agent,
+          event,
+          eventTurnId,
+          isForegroundEvent,
+          terminalDisposition,
+          options,
+        });
         return undefined;
       case "turn_started":
         this.onStreamTurnStarted({ agent, eventTurnId, isForegroundEvent, flags });
@@ -6647,8 +6676,9 @@ export class AgentManager {
     event: Extract<AgentStreamEvent, { type: "turn_completed" }>;
     eventTurnId: string | undefined;
     isForegroundEvent: boolean;
+    terminalDisposition: ActiveTurnTerminalDisposition;
   }): void {
-    const { agent, event, eventTurnId, isForegroundEvent } = params;
+    const { agent, event, eventTurnId, isForegroundEvent, terminalDisposition } = params;
     this.logger.trace(
       {
         agentId: agent.id,
@@ -6660,6 +6690,7 @@ export class AgentManager {
       },
       "agent.manager.turn.completed",
     );
+    if (terminalDisposition === "stale") return;
     // A completion without usage means "nothing further to report", not "the
     // turn used nothing". Providers that stream usage_updated during the turn
     // and then complete with no usage were having the turn's own numbers wiped.
@@ -6688,9 +6719,10 @@ export class AgentManager {
     event: Extract<AgentStreamEvent, { type: "turn_failed" }>;
     eventTurnId: string | undefined;
     isForegroundEvent: boolean;
+    terminalDisposition: ActiveTurnTerminalDisposition;
     options: { fromHistory?: boolean } | undefined;
   }): Promise<void> {
-    const { agent, event, eventTurnId, isForegroundEvent, options } = params;
+    const { agent, event, eventTurnId, isForegroundEvent, terminalDisposition, options } = params;
     this.logger.warn(
       {
         agentId: agent.id,
@@ -6706,6 +6738,7 @@ export class AgentManager {
       },
       "handleStreamEvent: turn_failed",
     );
+    if (terminalDisposition === "stale") return;
     if (!isForegroundEvent) {
       agent.lifecycle = "error";
     }
@@ -6730,13 +6763,14 @@ export class AgentManager {
     event: Extract<AgentStreamEvent, { type: "turn_canceled" }>;
     eventTurnId: string | undefined;
     isForegroundEvent: boolean;
+    terminalDisposition: ActiveTurnTerminalDisposition;
     options:
       | {
           fromHistory?: boolean;
         }
       | undefined;
   }): void {
-    const { agent, event, eventTurnId, isForegroundEvent, options } = params;
+    const { agent, event, eventTurnId, isForegroundEvent, terminalDisposition, options } = params;
     this.logger.trace(
       {
         agentId: agent.id,
@@ -6749,6 +6783,7 @@ export class AgentManager {
       },
       "agent.manager.turn.canceled",
     );
+    if (terminalDisposition === "stale") return;
     if (!isForegroundEvent && !agent.pendingReplacement && !agent.pendingSteerDrain) {
       agent.lifecycle = "idle";
     }
@@ -6768,6 +6803,25 @@ export class AgentManager {
   private openActiveTurn(agent: ActiveManagedAgent, turnId: string, startedAt: Date): void {
     agent.activeTurnId = turnId;
     agent.activeTurnStartedAt = startedAt;
+  }
+
+  /**
+   * Retire the daemon-owned active identity when its matching turn settles.
+   * Terminal events for an older turn must not change the lifecycle, usage,
+   * permissions, or wire timeline of the newer active turn. History is
+   * observational, so it never mutates live turn ownership.
+   */
+  private applyActiveTurnTerminal(
+    agent: ActiveManagedAgent,
+    turnId?: string,
+    fromHistory = false,
+  ): ActiveTurnTerminalDisposition {
+    if (fromHistory) return "stale";
+    if (!agent.activeTurnId) return "untracked";
+    if (turnId && agent.activeTurnId !== turnId) return "stale";
+    agent.activeTurnId = null;
+    agent.activeTurnStartedAt = null;
+    return "closed_current";
   }
 
   private onStreamTurnStarted(params: {

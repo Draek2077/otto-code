@@ -55,6 +55,7 @@ const REDO_KEYS = IS_MAC ? "{Meta>}{Shift>}z{/Shift}{/Meta}" : "{Control>}y{/Con
 
 interface Mounted {
   core: EditorCore;
+  host: HTMLElement;
   /** Every value the core reported, in order. */
   dirtyEvents: boolean[];
   /** The last reported value, or null when it never reported. */
@@ -80,6 +81,7 @@ function mount(options?: { doc?: string; cleanDoc?: string }): Mounted {
   mounted.push({ core, host });
   return {
     core,
+    host,
     dirtyEvents,
     reported: () => (dirtyEvents.length === 0 ? null : dirtyEvents[dirtyEvents.length - 1]),
   };
@@ -98,6 +100,24 @@ afterEach(() => {
 });
 
 describe("editor core dirty tracking", () => {
+  it("keeps the line-number gutter at its intrinsic width", () => {
+    const editor = mount();
+    const gutter = editor.host.querySelector<HTMLElement>(".cm-gutters");
+    const content = editor.host.querySelector<HTMLElement>(".cm-content");
+
+    if (gutter === null || content === null) {
+      throw new Error("editor gutters did not mount");
+    }
+
+    // A gutter is a fixed margin, never the pane's growing flex child. The
+    // content must retain the overwhelming majority of the editor width.
+    expect(getComputedStyle(gutter).flex).toBe("0 0 auto");
+    expect(gutter.getBoundingClientRect().width).toBeLessThan(80);
+    expect(content.getBoundingClientRect().width).toBeGreaterThan(
+      gutter.getBoundingClientRect().width * 8,
+    );
+  });
+
   it("stays quiet on a document that opens at its saved text", () => {
     const editor = mount();
     expect(editor.reported()).toBe(null);

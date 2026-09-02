@@ -28,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { isDev, isNative } from "@/constants/platform";
+import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { Theme } from "@/styles/theme";
@@ -390,13 +390,11 @@ function RunsScreenContent(): ReactElement {
     [runs, filter, selectedHost],
   );
 
-  // The user-initiated front door (projects/orchestration-graphs). Dev builds
-  // only for now, then gated on any connected host advertising the capability;
-  // the dialog itself picks the host. See useOrchestrationGraphsFeature.
+  // The user-initiated front door is gated on any connected host advertising
+  // the capability; the dialog itself picks the host.
   // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
   const canCreateOrchestration = useMemo(
     () =>
-      isDev &&
       hosts.some(
         (host) =>
           sessions[host.serverId]?.serverInfo?.features?.orchestrationGraphs === true &&

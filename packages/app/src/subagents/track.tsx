@@ -422,15 +422,17 @@ function SubagentsTrackRow({
                 {currentToolLabel}
               </Text>
             ) : null}
-            <SubagentRowActions
-              rowId={row.id}
-              displayLabel={displayLabel}
-              visible={actionsVisible}
-              rowAction={rowAction}
-              onDetachPress={detachHandler ? handleDetachPress : undefined}
-              onArchivePress={handleArchivePress}
-              onStopPress={handleStopPress}
-            />
+            {row.kind === "otto" ? (
+              <SubagentRowActions
+                rowId={row.id}
+                displayLabel={displayLabel}
+                visible={actionsVisible}
+                rowAction={rowAction}
+                onDetachPress={detachHandler ? handleDetachPress : undefined}
+                onArchivePress={handleArchivePress}
+                onStopPress={handleStopPress}
+              />
+            ) : null}
           </View>
         )}
       </Pressable>

@@ -527,6 +527,21 @@ const x = 1;
     expect(file?.afterSource).toBe(updatedContent);
   });
 
+  it("preserves the source path for a structured staged rename", async () => {
+    execFileSync("git", ["mv", "file.txt", "renamed.txt"], { cwd: repoDir });
+
+    const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
+
+    expect(diff.structured).toEqual([
+      expect.objectContaining({
+        path: "renamed.txt",
+        oldPath: "file.txt",
+        isNew: false,
+        isDeleted: false,
+      }),
+    ]);
+  });
+
   it("preserves no-prefix structured paths that start with a or b", async () => {
     mkdirSync(join(repoDir, "a"));
     mkdirSync(join(repoDir, "b"));
@@ -1199,6 +1214,24 @@ const x = 1;
     expect(diff.structured?.some((f) => f.path === "file.txt" && f.status === "too_large")).toBe(
       true,
     );
+  });
+
+  it("rejects a render-hostile structured diff before highlighting it", async () => {
+    writeFileSync(join(repoDir, "generated.ts"), "export const baseline = 0;\n");
+    execFileSync("git", ["add", "generated.ts"], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add generated"], {
+      cwd: repoDir,
+    });
+
+    const lines = Array.from(
+      { length: 20_001 },
+      (_, index) => `export const generated_${index} = ${index};`,
+    );
+    writeFileSync(join(repoDir, "generated.ts"), `${lines.join("\n")}\n`);
+
+    const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
+
+    expect(diff).toEqual({ diff: "", structured: [], diffTooLarge: true });
   });
 
   it("marks tracked generated one-line diffs as too_large by content size", async () => {

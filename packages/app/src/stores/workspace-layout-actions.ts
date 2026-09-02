@@ -315,6 +315,7 @@ function createPaneNode(input: {
   tabs?: WorkspaceTab[];
   focusedTabId?: string | null;
   hidden?: boolean;
+  tabOrientation?: "horizontal" | "vertical";
 }): SplitNodeInternal {
   const normalizedTabs = normalizeWorkspaceTabs(input.tabs ?? []);
   const tabIds = normalizedTabs.map((tab) => tab.tabId);
@@ -330,6 +331,7 @@ function createPaneNode(input: {
       tabIds,
       focusedTabId,
       ...(input.hidden === true ? { hidden: true } : {}),
+      ...(input.tabOrientation ? { tabOrientation: input.tabOrientation } : {}),
     },
   };
 }
@@ -671,6 +673,7 @@ function normalizePaneAfterTabChange(pane: SplitPaneInternal): SplitPaneInternal
     tabIds,
     focusedTabId,
     ...(pane.hidden === true ? { hidden: true } : {}),
+    ...(pane.tabOrientation ? { tabOrientation: pane.tabOrientation } : {}),
   };
 }
 
@@ -694,6 +697,10 @@ function normalizePaneNode(rawPane: SplitPaneInternal | undefined): SplitNodeInt
     tabs: mergedTabs,
     focusedTabId: trimNonEmpty(rawPane?.focusedTabId) ?? null,
     hidden: rawPane?.hidden === true,
+    tabOrientation:
+      rawPane?.tabOrientation === "horizontal" || rawPane?.tabOrientation === "vertical"
+        ? rawPane.tabOrientation
+        : undefined,
   });
 }
 
@@ -775,7 +782,11 @@ function reorderTabsForPane(input: ReorderTabsForPaneInput): SplitPaneInternal {
 function removePaneByPath(root: SplitNodeInternal, path: number[]): SplitNodeInternal {
   if (path.length === 0) {
     invariant(root.kind === "pane", "Expected pane at root while removing pane");
-    return createPaneNode({ id: root.pane.id, tabs: [createNewWorkspaceTab()] });
+    return createPaneNode({
+      id: root.pane.id,
+      tabs: [createNewWorkspaceTab()],
+      tabOrientation: root.pane.tabOrientation,
+    });
   }
 
   const parentPath = path.slice(0, -1);
@@ -1120,6 +1131,7 @@ function stripEphemeralTabsFromNode(node: SplitNodeInternal): SplitNodeInternal 
       tabs: nextTabs,
       focusedTabId: node.pane.focusedTabId,
       hidden: node.pane.hidden,
+      tabOrientation: node.pane.tabOrientation,
     });
   }
   return createGroupNode({
@@ -1157,7 +1169,12 @@ function restoreEmptyPanesInNode(
             node.pane.id === explorerSidebarPaneId
               ? createDefaultExplorerSidebarTabs()
               : [createNewWorkspaceTab()],
+          focusedTabId:
+            node.pane.id === explorerSidebarPaneId
+              ? getDefaultExplorerSidebarFocusedTabId()
+              : undefined,
           hidden: node.pane.hidden,
+          tabOrientation: node.pane.tabOrientation,
         });
   }
   return createGroupNode({
@@ -1204,12 +1221,52 @@ export function createDefaultLayout(): WorkspaceLayout {
 
 function createDefaultExplorerSidebarTabs(): WorkspaceTab[] {
   const createdAt = Date.now();
-  const targets = [{ kind: "files" }, { kind: "changes_tree" }] as const;
+  const targets = [
+    { kind: "files" },
+    { kind: "changes_tree" },
+    { kind: "project_search" },
+  ] as const;
   return targets.map((target) => ({
     tabId: buildDeterministicWorkspaceTabId(target),
     target,
     createdAt,
   }));
+}
+
+function getDefaultExplorerSidebarFocusedTabId(): string {
+  return buildDeterministicWorkspaceTabId({ kind: "changes_tree" });
+}
+
+/** Restores Explorer's singleton navigation tabs without changing the selected tab. */
+export function ensureExplorerSidebarDefaultTabsInLayout(
+  layout: WorkspaceLayout,
+  explorerSidebarPaneId: string | null,
+): WorkspaceLayout {
+  if (!explorerSidebarPaneId) {
+    return layout;
+  }
+  const pane = findPaneById(layout.root, explorerSidebarPaneId);
+  if (!pane) {
+    return layout;
+  }
+  const tabsById = new Map(collectAllTabs(layout.root).map((tab) => [tab.tabId, tab]));
+  const existingKinds = new Set(
+    pane.tabIds.map((tabId) => tabsById.get(tabId)?.target.kind).filter(Boolean),
+  );
+  const missingTabs = createDefaultExplorerSidebarTabs().filter(
+    (tab) => !existingKinds.has(tab.target.kind),
+  );
+  if (missingTabs.length === 0) {
+    return layout;
+  }
+  return withNormalizedParentTabMap({
+    root: updatePaneInTree(asInternalNode(layout.root), {
+      paneId: explorerSidebarPaneId,
+      updater: (currentPane) => ({ ...currentPane, tabs: [...currentPane.tabs, ...missingTabs] }),
+    }),
+    focusedPaneId: layout.focusedPaneId,
+    parentTabIdByTabId: layout.parentTabIdByTabId,
+  });
 }
 
 /** The desktop companion pane exists before it is first shown. */
@@ -1223,6 +1280,7 @@ export function createWorkspaceLayoutWithExplorerSidebar(): WorkspaceLayout {
         createPaneNode({
           id: EXPLORER_SIDEBAR_PANE_ID,
           tabs: createDefaultExplorerSidebarTabs(),
+          focusedTabId: getDefaultExplorerSidebarFocusedTabId(),
           hidden: true,
         }),
       ],

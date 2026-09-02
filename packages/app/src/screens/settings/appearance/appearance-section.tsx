@@ -18,9 +18,11 @@ import {
 import { SettingsSection } from "@/screens/settings/settings-section";
 import {
   MAX_CODE_FONT_SIZE,
+  MAX_CONTENT_FONT_SIZE,
   MAX_TERMINAL_FONT_SIZE,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_CONTENT_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
   MIN_UI_FONT_SIZE,
   parseClampedFontSize,
@@ -28,6 +30,8 @@ import {
   useAppSettings,
   type AppSettings,
 } from "@/hooks/use-settings";
+import { useContributedThemes } from "@/appearance/provider";
+import type { PluginThemeOption } from "@/plugins/themes";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
   DEFAULT_FONT_CONTRAST,
@@ -241,6 +245,61 @@ function ThemeRow({ list, value, onChange }: ThemeRowProps) {
         </DropdownMenuContent>
       </DropdownMenu>
     </View>
+  );
+}
+
+function PluginThemeRow({
+  options,
+  selected,
+  onSelect,
+}: {
+  options: PluginThemeOption[];
+  selected: PluginThemeOption | null;
+  onSelect: (option: PluginThemeOption) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <View style={styles.rowWithBorder}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Plugin theme</Text>
+        <Text style={settingsStyles.rowHint}>Provided by an installed plugin</Text>
+      </View>
+      <DropdownMenu>
+        <DropdownMenuTrigger style={dropdownTriggerStyle} accessibilityLabel="Plugin theme">
+          {selected ? <ThemeSwatch color={selected.swatch} /> : null}
+          <Text style={styles.triggerText}>{selected?.name ?? "Built-in"}</Text>
+          <ThemedChevronDown uniProps={mutedColorMapping} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="bottom" align="end" width={200}>
+          {options.map((option) => (
+            <PluginThemeMenuItem
+              key={option.id}
+              option={option}
+              selected={selected?.id === option.id}
+              onSelect={onSelect}
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </View>
+  );
+}
+
+function PluginThemeMenuItem({
+  option,
+  selected,
+  onSelect,
+}: {
+  option: PluginThemeOption;
+  selected: boolean;
+  onSelect: (option: PluginThemeOption) => void;
+}) {
+  const handleSelect = useCallback(() => onSelect(option), [onSelect, option]);
+  const leading = useMemo(() => <ThemeSwatch color={option.swatch} />, [option.swatch]);
+  return (
+    <DropdownMenuItem selected={selected} onSelect={handleSelect} leading={leading}>
+      {option.name}
+    </DropdownMenuItem>
   );
 }
 
@@ -805,10 +864,34 @@ export function ChatAppearanceSection() {
     (textEffectTheme: TextEffectThemeId) => void updateSettings({ textEffectTheme }),
     [updateSettings],
   );
+  const handleSubagentTrackPresentationChange = useCallback(
+    (subagentTrackPresentation: AppSettings["subagentTrackPresentation"]) =>
+      void updateSettings({ subagentTrackPresentation }),
+    [updateSettings],
+  );
 
   return (
     <SettingsSection title="Presentation">
       <View style={settingsStyles.card}>
+        <View style={settingsStyles.rowResponsive}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Sub-agent presentation</Text>
+            <Text style={settingsStyles.rowHint}>
+              Choose Otto&apos;s detailed panels or Paseo&apos;s compact composer pills. This
+              changes only how the same running sub-agents are shown.
+            </Text>
+          </View>
+          <SegmentedControl
+            size="sm"
+            value={settings.subagentTrackPresentation}
+            onValueChange={handleSubagentTrackPresentationChange}
+            options={[
+              { value: "panels", label: "Panels" },
+              { value: "pills", label: "Pills" },
+            ]}
+            testID="settings-subagent-track-presentation"
+          />
+        </View>
         <LayoutToggleRow
           title={t("settings.appearance.agents.blackChatBackground.title")}
           hint={t("settings.appearance.agents.blackChatBackground.hint")}
@@ -913,6 +996,11 @@ export function ChatAppearanceSection() {
 export function AppearanceSection() {
   const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
+  const {
+    options: pluginThemes,
+    selected: selectedPluginTheme,
+    select: selectPluginTheme,
+  } = useContributedThemes();
   const showFontFamilyRows = !isNative;
   const showLayoutSection = !isNative;
   const isDeveloperMode = useIsDeveloperMode();
@@ -923,6 +1011,7 @@ export function AppearanceSection() {
   const [uiFontDraft, setUiFontDraft] = useState(settings.uiFontFamily);
   const [monoFontDraft, setMonoFontDraft] = useState(settings.monoFontFamily);
   const [uiSizeDraft, setUiSizeDraft] = useState(settings.uiFontSize);
+  const [contentSizeDraft, setContentSizeDraft] = useState(settings.contentFontSize);
   const [codeSizeDraft, setCodeSizeDraft] = useState(settings.codeFontSize);
   const [terminalSizeDraft, setTerminalSizeDraft] = useState(settings.terminalFontSize);
   const [contrastDraft, setContrastDraft] = useState(() =>
@@ -937,6 +1026,9 @@ export function AppearanceSection() {
   useEffect(() => {
     setUiSizeDraft(settings.uiFontSize);
   }, [settings.uiFontSize]);
+  useEffect(() => {
+    setContentSizeDraft(settings.contentFontSize);
+  }, [settings.contentFontSize]);
   useEffect(() => {
     setCodeSizeDraft(settings.codeFontSize);
   }, [settings.codeFontSize]);
@@ -962,7 +1054,10 @@ export function AppearanceSection() {
 
   const handleModeChange = useCallback(
     (colorSchemeMode: AppSettings["colorSchemeMode"]) => {
-      void updateSettings({ colorSchemeMode });
+      void updateSettings({
+        colorSchemeMode,
+        theme: colorSchemeMode === "system" ? "auto" : colorSchemeMode,
+      });
     },
     [updateSettings],
   );
@@ -972,9 +1067,9 @@ export function AppearanceSection() {
   const handleThemeVariantChange = useCallback(
     (variant: ThemeVariantName) => {
       if (effectiveSpectrum === "light") {
-        void updateSettings({ lightTheme: variant as LightThemeName });
+        void updateSettings({ lightTheme: variant as LightThemeName, theme: "light" });
       } else {
-        void updateSettings({ darkTheme: variant as DarkThemeName });
+        void updateSettings({ darkTheme: variant as DarkThemeName, theme: "dark" });
       }
     },
     [effectiveSpectrum, updateSettings],
@@ -1033,9 +1128,9 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
-  const handleHidePinnedToolbarOptionsChange = useCallback(
-    (hidePinnedToolbarOptions: boolean) => {
-      void updateSettings({ hidePinnedToolbarOptions });
+  const handleHideTabToolbarOptionsChange = useCallback(
+    (hideTabToolbarOptions: boolean) => {
+      void updateSettings({ hideTabToolbarOptions });
     },
     [updateSettings],
   );
@@ -1096,6 +1191,19 @@ export function AppearanceSection() {
     [settings.codeFontSize, updateSettings],
   );
 
+  const commitContentSize = useCallback(
+    (value: number) => {
+      const next = parseClampedFontSize(value, {
+        min: MIN_CONTENT_FONT_SIZE,
+        max: MAX_CONTENT_FONT_SIZE,
+      });
+      if (next !== null && next !== settings.contentFontSize) {
+        void updateSettings({ contentFontSize: next });
+      }
+    },
+    [settings.contentFontSize, updateSettings],
+  );
+
   const commitTerminalSize = useCallback(
     (value: number) => {
       const next = parseClampedFontSize(value, {
@@ -1128,6 +1236,11 @@ export function AppearanceSection() {
             list={scopedThemeList}
             value={scopedThemeValue}
             onChange={handleThemeVariantChange}
+          />
+          <PluginThemeRow
+            options={pluginThemes}
+            selected={selectedPluginTheme}
+            onSelect={selectPluginTheme}
           />
           {showUiGallery ? (
             <View style={styles.rowWithBorder}>
@@ -1217,15 +1330,15 @@ export function AppearanceSection() {
               onChange={handleDefaultTabOrientationChange}
             />
             <LayoutToggleRow
-              title={t("settings.appearance.layout.hidePinnedToolbarOptions.title")}
-              hint={t("settings.appearance.layout.hidePinnedToolbarOptions.hint")}
+              title={t("settings.appearance.layout.hideTabToolbarOptions.title")}
+              hint={t("settings.appearance.layout.hideTabToolbarOptions.hint")}
               accessibilityLabel={t(
-                "settings.appearance.layout.hidePinnedToolbarOptions.accessibilityLabel",
+                "settings.appearance.layout.hideTabToolbarOptions.accessibilityLabel",
               )}
-              value={settings.hidePinnedToolbarOptions}
+              value={settings.hideTabToolbarOptions}
               withBorder
-              onValueChange={handleHidePinnedToolbarOptionsChange}
-              testID="settings-hide-pinned-toolbar-options-switch"
+              onValueChange={handleHideTabToolbarOptionsChange}
+              testID="settings-hide-tab-toolbar-options-switch"
             />
           </View>
         </SettingsSection>
@@ -1256,6 +1369,15 @@ export function AppearanceSection() {
             withBorder={showFontFamilyRows}
             onChangeDraft={setUiSizeDraft}
             onCommit={commitUiSize}
+          />
+          <FontSizeRow
+            title="Content size"
+            accessibilityLabel="Content size"
+            min={MIN_CONTENT_FONT_SIZE}
+            max={MAX_CONTENT_FONT_SIZE}
+            draft={contentSizeDraft}
+            onChangeDraft={setContentSizeDraft}
+            onCommit={commitContentSize}
           />
           {showFontFamilyRows ? (
             <FontFamilyRow

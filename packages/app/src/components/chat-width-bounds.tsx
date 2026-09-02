@@ -1,36 +1,38 @@
 import { useMemo, type ReactNode } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
-import { useUnistyles } from "react-native-unistyles";
-import { useChatOutlineLayout } from "@/agent-stream/chat-outline/layout";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
+import { useChatWidthLayout } from "./chat-width-layout-context";
 
 interface ChatWidthBoundsProps {
   style?: StyleProp<ViewStyle>;
   children?: ReactNode;
 }
 
-// `theme.layout.chatMaxWidth` is a high-churn dynamic pixel value (the user's
-// chat-width setting). Unistyles' web runtime hashes each distinct maxWidth
-// into its own CSS class; switching between two already-seen values can leave
-// the DOM element pointed at the previous class for a render (see
-// docs/unistyles.md "Dynamic Pixel Styles On Web"). Isolate the sanctioned
-// `useUnistyles()` escape hatch to this one leaf and apply the value as a
-// genuine inline style instead of baking it into a themed stylesheet class.
+// ChatWidthLayoutProvider supplies one live width contract to every track.
+// Keep its dynamic pixel values inline: Unistyles' web runtime retains a CSS
+// class for every distinct value (see docs/unistyles.md "Dynamic Pixel Styles
+// On Web").
 export function ChatWidthBounds({ style, children }: ChatWidthBoundsProps) {
-  const { theme } = useUnistyles();
-  const { isRailVisible } = useChatOutlineLayout();
+  const { chatMaxWidth, outlinePadding } = useChatWidthLayout();
   const combinedStyle = useMemo(
     () => [
       style,
       inlineUnistylesStyle({
-        maxWidth: theme.layout.chatMaxWidth,
-        // The rail spans 8px..44px. This outer inset combines with the chat's
-        // existing inner gutter to clear it, without translating a full-width
-        // track beyond its right edge or over-shifting narrow message bubbles.
-        paddingLeft: isRailVisible ? theme.spacing[6] : 0,
+        maxWidth: chatMaxWidth,
       }),
     ],
-    [isRailVisible, style, theme.layout.chatMaxWidth, theme.spacing],
+    [chatMaxWidth, style],
   );
-  return <View style={combinedStyle}>{children}</View>;
+  // The rail needs clearance around the content, never a unilateral nudge.
+  // Keeping this symmetric preserves the lane's centered left/right gutters
+  // and gives the composer the exact same geometry as transcript rows.
+  const contentInsetStyle = useMemo(
+    () => inlineUnistylesStyle({ paddingHorizontal: outlinePadding }),
+    [outlinePadding],
+  );
+  return (
+    <View style={combinedStyle}>
+      <View style={contentInsetStyle}>{children}</View>
+    </View>
+  );
 }

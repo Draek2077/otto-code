@@ -1017,6 +1017,7 @@ export const zhCN: TranslationResources = {
         copyTerminalId: "复制 Terminal ID",
         copyFilePath: "Copy file path",
         moveToMain: "移至主面板",
+        moveToExplorer: "移至资源管理器面板",
       },
       actions: {
         newAgent: "新建对话",
@@ -3317,10 +3318,12 @@ export const zhCN: TranslationResources = {
         label: "默认发送",
         descriptions: {
           interrupt: "Agent 运行时，Enter 会中断。Command/Ctrl+Enter 会排队。",
+          steer: "Agent 运行时，Enter 会引导当前回合。Command/Ctrl+Enter 会排队。",
           queue: "Agent 运行时，Enter 会排队。Command/Ctrl+Enter 会提交。",
         },
         options: {
           interrupt: "中断",
+          steer: "引导",
           queue: "排队",
         },
       },
@@ -3629,10 +3632,10 @@ export const zhCN: TranslationResources = {
             full: "全宽",
           },
         },
-        hidePinnedToolbarOptions: {
-          title: "隐藏固定的工具栏选项",
-          hint: "在鼠标悬停到工具栏区域之前，隐藏标签栏和差异工具栏中固定的选项",
-          accessibilityLabel: "隐藏固定的工具栏选项",
+        hideTabToolbarOptions: {
+          title: "隐藏标签工具栏选项",
+          hint: "在鼠标悬停到标签栏之前，隐藏标签工具栏选项",
+          accessibilityLabel: "隐藏标签工具栏选项",
         },
       },
       visualizer: {

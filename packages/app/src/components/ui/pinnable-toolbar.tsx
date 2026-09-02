@@ -19,9 +19,8 @@ import type { IconSizeProp } from "@/components/icons/icon-size";
 /**
  * The pane-toolbar option strip shared by Changes and project Search: every
  * option lives in the ▾ menu and can be pinned into the strip beside it.
- * Mirrors the workspace tab bar's pin model (see @/workspace-pins) - pins are
- * global (device-local), not per-workspace, and each surface persists its own
- * catalog of pinned ids.
+ * Pins are global (device-local), not per-workspace, and each surface persists
+ * its own catalog of pinned ids.
  */
 export function isToolbarItemPinned<Id extends string>(pinned: readonly Id[], id: Id): boolean {
   return pinned.includes(id);
@@ -36,8 +35,7 @@ export function togglePinnedToolbarItem<Id extends string>(pinned: readonly Id[]
 }
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-// Pinned state uses the same gold as a favorited star, matching the tab bar's
-// pin toggle (see @/workspace-pins/pinnable-menu-item).
+// Pinned state uses the same gold as a favorited star.
 const starColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
@@ -183,7 +181,7 @@ export interface PinnableToolbarProps<Id extends string> {
   /**
    * When true, the pinned strip stays hidden (opacity-gated) until the row is
    * hovered. When false (the default behavior), pinned options are always
-   * visible. Driven by the "Hide pinned toolbar options" appearance setting.
+   * visible. Project Search keeps its pinned options visible.
    */
   hideUntilHover: boolean;
   optionsLabel: string;

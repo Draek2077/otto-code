@@ -31,6 +31,7 @@ import {
   getFocusedBrowserId,
   getTreeDepth,
   insertSplit,
+  ensureExplorerSidebarDefaultTabsInLayout,
   moveTabToPaneInLayout,
   normalizeLayout,
   openTabInLayoutBackground,
@@ -225,6 +226,7 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("browser"), browserId: z.string() }),
   z.strictObject({ kind: z.literal("changes_tree") }),
   z.strictObject({ kind: z.literal("files") }),
+  z.strictObject({ kind: z.literal("project_search") }),
   z.strictObject({ kind: z.literal("pull_request") }),
   z.strictObject({
     kind: z.literal("file"),
@@ -315,7 +317,7 @@ const WorkspaceLayoutPersistedStateSchema = z.strictObject({
 });
 
 const LEGACY_EXPLORER_SIDEBAR_REFERENCE_WIDTH = 1440;
-const WORKSPACE_LAYOUT_PERSIST_VERSION = 2;
+const WORKSPACE_LAYOUT_PERSIST_VERSION = 3;
 
 function convertLegacyExplorerSidebarRatios(
   ratiosByWorkspace: Record<string, number>,
@@ -434,7 +436,8 @@ function migrateVersionOneWorkspaceLayout(input: {
     (tab) =>
       legacyExplorerPane.tabIds.includes(tab.tabId) &&
       tab.target.kind !== "files" &&
-      tab.target.kind !== "changes_tree",
+      tab.target.kind !== "changes_tree" &&
+      tab.target.kind !== "project_search",
   );
   const preservedSide = preserveVersionOneSideTabs({
     layout: strippedLayout,
@@ -467,36 +470,94 @@ function migrateVersionOneWorkspaceLayout(input: {
   };
 }
 
+function migrateProjectSearchToExplorer(
+  layout: WorkspaceLayout,
+  explorerPaneId: string,
+): WorkspaceLayout {
+  const projectSearchTab = collectAllTabs(layout.root).find(
+    (tab) => tab.target.kind === "project_search",
+  );
+  const sourcePane = projectSearchTab
+    ? findPaneContainingTab(layout.root, projectSearchTab.tabId)
+    : null;
+  const explorerPane = findPaneById(layout.root, explorerPaneId);
+  if (!explorerPane || !projectSearchTab || sourcePane?.id === explorerPaneId) {
+    return ensureExplorerSidebarDefaultTabsInLayout(layout, explorerPaneId);
+  }
+
+  const explorerWasHidden = explorerPane.hidden === true;
+  const visibleLayout = explorerWasHidden
+    ? (setPaneHiddenInLayout({ layout, paneId: explorerPaneId, hidden: false }) ?? layout)
+    : layout;
+  const movedLayout =
+    moveTabToPaneInLayout({
+      layout: visibleLayout,
+      tabId: projectSearchTab.tabId,
+      toPaneId: explorerPaneId,
+      explorerSidebarPaneId: explorerPaneId,
+    }) ?? visibleLayout;
+  const restoredLayout = explorerWasHidden
+    ? (setPaneHiddenInLayout({ layout: movedLayout, paneId: explorerPaneId, hidden: true }) ??
+      movedLayout)
+    : movedLayout;
+  return ensureExplorerSidebarDefaultTabsInLayout(restoredLayout, explorerPaneId);
+}
+
 function migrateWorkspaceLayoutPersistedState(
   persistedState: unknown,
   version: number,
   ids: WorkspaceLayoutIdSource,
 ): z.infer<typeof WorkspaceLayoutPersistedStateSchema> {
   const result = WorkspaceLayoutPersistedStateSchema.safeParse(persistedState);
-  if (!result.success || version >= WORKSPACE_LAYOUT_PERSIST_VERSION) {
-    return result.success ? result.data : { layoutByWorkspace: {} };
+  if (!result.success) {
+    return { layoutByWorkspace: {} };
+  }
+  if (version >= WORKSPACE_LAYOUT_PERSIST_VERSION) {
+    return result.data;
+  }
+
+  let migratedState = result.data;
+  if (version < 2) {
+    const layoutByWorkspace: Record<string, WorkspaceLayout> = {};
+    const explorerPaneIdByWorkspace: Record<string, string | null> = {};
+    const sidePaneIdByWorkspace = { ...result.data.sidePaneIdByWorkspace };
+    for (const [workspaceKey, layout] of Object.entries(result.data.layoutByWorkspace)) {
+      const migrated = migrateVersionOneWorkspaceLayout({
+        layout,
+        legacyExplorerPaneId: result.data.explorerPaneIdByWorkspace?.[workspaceKey],
+        rememberedSidePaneId: result.data.sidePaneIdByWorkspace?.[workspaceKey],
+        ids,
+      });
+      layoutByWorkspace[workspaceKey] = migrated.layout;
+      explorerPaneIdByWorkspace[workspaceKey] = migrated.explorerPaneId;
+      sidePaneIdByWorkspace[workspaceKey] = migrated.sidePaneId;
+    }
+    migratedState = {
+      ...result.data,
+      layoutByWorkspace,
+      explorerPaneIdByWorkspace,
+      sidePaneIdByWorkspace,
+    };
   }
 
   const layoutByWorkspace: Record<string, WorkspaceLayout> = {};
-  const explorerPaneIdByWorkspace: Record<string, string | null> = {};
-  const sidePaneIdByWorkspace = { ...result.data.sidePaneIdByWorkspace };
-  for (const [workspaceKey, layout] of Object.entries(result.data.layoutByWorkspace)) {
-    const migrated = migrateVersionOneWorkspaceLayout({
+  const explorerPaneIdByWorkspace: Record<string, string | null> = {
+    ...(migratedState.explorerSidebarPaneIdByWorkspace ?? migratedState.explorerPaneIdByWorkspace),
+  };
+  for (const [workspaceKey, layout] of Object.entries(migratedState.layoutByWorkspace)) {
+    const explorerPaneId = resolveExplorerSidebarPaneId(
       layout,
-      legacyExplorerPaneId: result.data.explorerPaneIdByWorkspace?.[workspaceKey],
-      rememberedSidePaneId: result.data.sidePaneIdByWorkspace?.[workspaceKey],
-      ids,
-    });
-    layoutByWorkspace[workspaceKey] = migrated.layout;
-    explorerPaneIdByWorkspace[workspaceKey] = migrated.explorerPaneId;
-    sidePaneIdByWorkspace[workspaceKey] = migrated.sidePaneId;
+      explorerPaneIdByWorkspace[workspaceKey],
+    );
+    layoutByWorkspace[workspaceKey] = explorerPaneId
+      ? migrateProjectSearchToExplorer(layout, explorerPaneId)
+      : layout;
+    explorerPaneIdByWorkspace[workspaceKey] = explorerPaneId;
   }
-
   return {
-    ...result.data,
+    ...migratedState,
     layoutByWorkspace,
     explorerPaneIdByWorkspace,
-    sidePaneIdByWorkspace,
   };
 }
 

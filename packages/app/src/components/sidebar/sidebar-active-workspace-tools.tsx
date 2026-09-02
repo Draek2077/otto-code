@@ -1,9 +1,9 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { getIsElectron, isWeb } from "@/constants/platform";
+import { getIsElectron } from "@/constants/platform";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { useContainerWidth } from "@/hooks/use-container-width";
 import { useSidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
@@ -26,9 +26,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   getWorkspaceToolsLabelVisibility,
   shouldFillWorkspaceTool,
+  type WorkspaceTool,
 } from "./sidebar-active-workspace-tools-layout";
 
 const EMPTY_TERMINAL_IDS: string[] = [];
+const WORKSPACE_TOOL_ORDER: readonly WorkspaceTool[] = ["scripts", "git", "openInEditor"];
 
 /**
  * Shows the scripts / open-in-editor / Git actions controls for whichever
@@ -44,6 +46,7 @@ export function SidebarActiveWorkspaceTools() {
   // User mode hides the cluster entirely.
   const isDeveloperMode = useIsDeveloperMode();
   const { onLayout: onContainerLayout, width: containerWidth } = useContainerWidth();
+  const [availableTools, setAvailableTools] = useState<readonly WorkspaceTool[]>([]);
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const serverId = activeWorkspaceSelection?.serverId ?? "";
   const workspaceId = activeWorkspaceSelection?.workspaceId ?? "";
@@ -128,14 +131,35 @@ export function SidebarActiveWorkspaceTools() {
     ],
   );
 
-  // The tools reveal their labels one at a time once the row can accommodate
-  // them. The Git action is still budgeted even when it later renders null;
-  // that keeps the first measured frame conservative without introducing a
-  // layout jump when its action policy resolves.
+  const reportToolAvailability = useCallback((tool: WorkspaceTool, available: boolean) => {
+    setAvailableTools((current) => {
+      const isCurrentlyAvailable = current.includes(tool);
+      if (isCurrentlyAvailable === available) return current;
+      if (!available) return current.filter((candidate) => candidate !== tool);
+      return WORKSPACE_TOOL_ORDER.filter(
+        (candidate) => candidate === tool || current.includes(candidate),
+      );
+    });
+  }, []);
+  const reportScriptsAvailability = useCallback(
+    (available: boolean) => reportToolAvailability("scripts", available),
+    [reportToolAvailability],
+  );
+  const reportOpenInEditorAvailability = useCallback(
+    (available: boolean) => reportToolAvailability("openInEditor", available),
+    [reportToolAvailability],
+  );
+  const reportGitAvailability = useCallback(
+    (available: boolean) => reportToolAvailability("git", available),
+    [reportToolAvailability],
+  );
+
+  // Controls report after resolving their own runtime policy. The layout must
+  // budget only for controls that actually render; editor targets and Git
+  // actions can legitimately be absent for the active workspace.
   const labelVisibility = getWorkspaceToolsLabelVisibility({
     width: containerWidth,
-    hasScripts: (workspaceEntry?.scripts.length ?? 0) > 0,
-    hasOpenInEditor: isWeb,
+    availableTools,
   });
   const handleOpenUrlInBrowserTab = useCallback(
     (url: string) => {
@@ -162,6 +186,7 @@ export function SidebarActiveWorkspaceTools() {
       <View style={styles.toolsRow}>
         <WorkspaceToolTooltip
           enabled={!labelVisibility.scripts}
+          fill={shouldFillWorkspaceTool(labelVisibility, "scripts")}
           label={t("workspace.scripts.title")}
         >
           <WorkspaceScriptsButton
@@ -172,6 +197,7 @@ export function SidebarActiveWorkspaceTools() {
             onScriptTerminalStarted={handleScriptTerminalStarted}
             onViewTerminal={handleViewScriptTerminal}
             onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
+            onAvailabilityChange={reportScriptsAvailability}
             hideLabels={!labelVisibility.scripts}
             fill={shouldFillWorkspaceTool(labelVisibility, "scripts")}
           />
@@ -179,6 +205,7 @@ export function SidebarActiveWorkspaceTools() {
         <WorkspaceOpenInEditorButton
           serverId={workspaceEntry.serverId}
           cwd={workspaceDirectory}
+          onAvailabilityChange={reportOpenInEditorAvailability}
           hideLabels={!labelVisibility.openInEditor}
           fill={shouldFillWorkspaceTool(labelVisibility, "openInEditor")}
           tooltipSide="top"
@@ -186,6 +213,7 @@ export function SidebarActiveWorkspaceTools() {
         <WorkspaceActions
           serverId={workspaceEntry.serverId}
           cwd={workspaceDirectory}
+          onAvailabilityChange={reportGitAvailability}
           hideLabels={!labelVisibility.git}
           fill={shouldFillWorkspaceTool(labelVisibility, "git")}
           tooltipSide="top"
@@ -198,17 +226,24 @@ export function SidebarActiveWorkspaceTools() {
 function WorkspaceToolTooltip({
   children,
   enabled,
+  fill,
   label,
 }: {
   children: ReactNode;
   enabled: boolean;
+  fill: boolean;
   label: string;
 }) {
   if (!enabled) return children;
   return (
     <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild>
-        <View collapsable={false}>{children}</View>
+        {/* The trigger View is a flex child of the tools row. It has to carry
+            the fill flags itself, or it caps the wrapped button at natural
+            width and the siblings absorb the whole remainder between them. */}
+        <View collapsable={false} style={fill ? styles.tooltipFill : undefined}>
+          {children}
+        </View>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <Text style={styles.tooltipText}>{label}</Text>
@@ -235,6 +270,11 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     gap: theme.spacing[1],
+  },
+  tooltipFill: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   tooltipText: { color: theme.colors.popoverForeground, fontSize: theme.fontSize.sm },
 }));

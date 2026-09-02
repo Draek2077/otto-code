@@ -198,6 +198,10 @@ export function Slider({
 
 const styles = StyleSheet.create((theme) => ({
   container: {
+    // React Native Web only creates an absolute-positioning containing block
+    // when this is explicit. The thumb otherwise anchors to the gallery card
+    // instead of this control, separating it from its track.
+    position: "relative",
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 120,

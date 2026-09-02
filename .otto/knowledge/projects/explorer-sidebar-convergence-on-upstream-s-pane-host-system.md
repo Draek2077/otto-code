@@ -9,7 +9,7 @@ progress_completed: 4
 progress_total: 5
 progress_unit: "stages"
 created_at: "2026-08-31T22:20:25.244Z"
-updated_at: "2026-09-01T00:37:05.050Z"
+updated_at: "2026-09-01T04:51:44.120Z"
 ---
 # Explorer sidebar convergence on upstream's pane-host system
 
@@ -60,4 +60,12 @@ Otto desktop shows upstream's Explorer dock (tab rail, New Tab launcher, reorder
 - time: "2026-09-01T00:37:05.050Z"
   kind: "note"
   summary: "Stage 4 verified complete. Deleted Otto-owned packages/app/src/components/explorer-sidebar.tsx because the adopted upstream pane-host dock and combined compact Explorer supersede it. Removed the Otto-only desktop panel-store visibility, width, split-ratio, selectors, and actions; the persisted schema accepts those old fields only so migration can discard them. Retained stores/explorer-tab-memory.ts because commit 20d7efc46 proves it is upstream-owned and the combined compact Explorer still requires it; Otto's Search tab remains an additive union member. Compact overlay and wide-native dock now use upstream's combined content with Search and User-mode Files-only behavior, the desktop rail and launcher gate Changes/Search/PR locally in User mode, and toggles select Files in User mode. Panel-originated file opens redirect Knowledge files at the shared preferred-target choke point. PR parity was audited: the registered pull_request panel already preserves the legacy data, activity, attachment, loading, and retry affordances and adds an empty state, so no port was required. docs/upstream-merges.md records the supersession and deliberate deviations. Verification: app typecheck, scoped lint with zero warnings, and 218 relevant unit tests passed. Stage 5 E2E sync, authoritative-doc review, and visual pass were not started."
+  affects: ["explorer-sidebar-convergence-on-upstream-s-pane-host-system"]
+- time: "2026-09-01T04:51:05.666Z"
+  kind: "note"
+  summary: "Stage 5 partial verification on 2026-08-31: legacy desktop Explorer testids were migrated to workspace-explorer-sidebar and explorer-sidebar-tab-* surfaces; the retired manual commit selector spec was removed; the coverage matrix now records the Explorer dock, current Changes log behavior, and canvas-host coverage. Restored the FileFinderOverlay mount required by sidebar.open.files. Targeted Edge Playwright passed project-search.spec.ts, file-finder.spec.ts, changes-commit.spec.ts, and selected reworked changes-pane cases for the canvas, file actions, typography, wrapping, duplication, and recursive tree collapse. The upstream explorer-sidebar.spec.ts test passed unchanged, with one Windows run reporting only an EBUSY teardown error. App typecheck, scoped lint, formatting, git diff checks, and the coverage scoreboard command pass. docs/explorer-sidebar.md and docs/upstream-merges.md now record supersession and Otto's three deliberate deviations. Stage 5 remains incomplete because the required in-app Browser backend reported no available browser against the isolated 6799/8095 lane, so no whole-frame visual evidence could be captured; the lane was shut down without touching ports 6868 or 6788."
+  affects: ["explorer-sidebar-convergence-on-upstream-s-pane-host-system"]
+- time: "2026-09-01T04:51:44.120Z"
+  kind: "note"
+  summary: "Stage 5 remains open for two verification gates. The live visual pass is blocked because the in-app Browser backend exposes no browser connection for the isolated 6799/8095 lane. In addition, changes-pane.spec.ts is not yet wholly green on Windows: the Explorer-host, canvas, file-action, duplication, and recursive-tree cases pass, but the remaining discard/rename cases exposed Windows line-ending and staged-rename behavior plus retained-surface scoping that still require a final rerun after the test updates. Do not treat the project as 5/5 until both the individual spec and whole-frame browser evidence are green."
   affects: ["explorer-sidebar-convergence-on-upstream-s-pane-host-system"]

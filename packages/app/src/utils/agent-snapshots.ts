@@ -9,6 +9,10 @@ export function normalizeAgentActiveTurn(
   lastUserMessageAt: Date | null,
 ): ActiveTurnIdentity | null {
   if (snapshot.activeTurn === null) return null;
+  // Older daemons can leave a settled turn's identity on an idle/error
+  // snapshot. Status and activeTurn are emitted atomically, so a non-running
+  // status means whatever turn the snapshot still names is already over.
+  if (snapshot.status !== "running") return null;
   if (snapshot.activeTurn) {
     return {
       turnId: snapshot.activeTurn.turnId,

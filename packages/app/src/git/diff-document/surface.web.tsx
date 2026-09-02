@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ViewStyle } from "react-native";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { DomOverlayScrollbar } from "@/components/ui/overlay-scrollbar/dom-overlay-scrollbar";
 import { InlineReviewAddButton, InlineReviewThread } from "@/review";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
@@ -27,6 +28,7 @@ const RESIZE_SETTLE_DELAY_MS = 120;
 
 export function DiffSurface(props: DiffSurfaceProps) {
   const { t } = useTranslation();
+  const isRetainedPanelActive = useRetainedPanelActive();
   const workspaceCache = useDiffDocumentWorkspaceCache();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,9 +52,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const resizeReleaseFrameRef = useRef<number | null>(null);
   const resizePointerActiveRef = useRef(false);
   const pendingViewportRef = useRef({ width: 0, height: 0 });
+  const committedViewportRef = useRef({ width: 0, height: 0 });
   const forcePaintRef = useRef(true);
   const canvasWindowRef = useRef({ top: 0, height: 0 });
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  committedViewportRef.current = viewport;
   const [hoveredAffordance, setHoveredAffordance] = useState<{
     hit: Extract<DiffHit, { kind: "cell" }>;
     left: number;
@@ -215,9 +219,10 @@ export function DiffSurface(props: DiffSurfaceProps) {
 
   useLayoutEffect(() => {
     const root = rootRef.current;
-    if (!root) return;
-    const commitPendingViewport = () =>
+    if (!root || !isRetainedPanelActive) return;
+    const commitPendingViewport = () => {
       setViewport((current) => retainDiffViewport(current, pendingViewportRef.current));
+    };
     const clearResizeSettleTimer = () => {
       if (resizeSettleTimerRef.current === null) return;
       clearTimeout(resizeSettleTimerRef.current);
@@ -241,6 +246,15 @@ export function DiffSurface(props: DiffSurfaceProps) {
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
       const nextViewport = { width: entry.contentRect.width, height: entry.contentRect.height };
+      const pendingViewport = pendingViewportRef.current;
+      const committedViewport = committedViewportRef.current;
+      const geometryChanged =
+        nextViewport.width !== pendingViewport.width ||
+        nextViewport.height !== pendingViewport.height;
+      const hasUncommittedGeometry =
+        nextViewport.width !== committedViewport.width ||
+        nextViewport.height !== committedViewport.height;
+      if (!geometryChanged && !hasUncommittedGeometry) return;
       pendingViewportRef.current = nextViewport;
       if (resizePointerActiveRef.current) return;
       setViewport((currentViewport) =>
@@ -267,7 +281,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       window.removeEventListener("pointerup", handlePointerEnd, { capture: true });
       window.removeEventListener("pointercancel", handlePointerEnd, { capture: true });
     };
-  }, []);
+  }, [isRetainedPanelActive]);
   useEffect(() => {
     let cancelled = false;
     if (typographyResource.isReady()) {
@@ -309,6 +323,14 @@ export function DiffSurface(props: DiffSurfaceProps) {
     },
     [],
   );
+  useLayoutEffect(() => {
+    if (!isRetainedPanelActive) {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+      return;
+    }
+    schedulePaint();
+  }, [isRetainedPanelActive, schedulePaint]);
   const mode = props.mode;
   const collapsedFilePaths = props.collapsedFilePaths;
   const onToggleFile = props.onToggleFile;
@@ -541,6 +563,8 @@ export function DiffSurface(props: DiffSurfaceProps) {
     }),
     [desiredTypography, loadedTypography, model.viewportWidth],
   );
+
+  if (!isRetainedPanelActive) return null;
 
   return (
     <div data-testid="git-diff-canvas-root" ref={rootRef} style={rootStyle}>

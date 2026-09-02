@@ -271,7 +271,7 @@ soakDescribe("Loaded-corpus soak", () => {
 
     // Right panel: the explorer, parked on Changes so every subsequent switch
     // pays for a git status and diff.
-    const changesTab = page.getByTestId("explorer-tab-changes");
+    const changesTab = page.getByTestId("explorer-sidebar-tab-changes_tree");
     if (!(await changesTab.isVisible().catch(() => false))) {
       await page.getByRole("button", { name: "Open explorer" }).click();
     }

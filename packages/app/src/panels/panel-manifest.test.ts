@@ -10,6 +10,8 @@ describe("panel manifest", () => {
     expect(panelSupportsHost("new_tab", "explorer")).toBe(true);
     expect(panelSupportsHost("files", "explorer")).toBe(true);
     expect(panelSupportsHost("files", "main")).toBe(false);
+    expect(panelSupportsHost("project_search", "explorer")).toBe(true);
+    expect(panelSupportsHost("project_search", "main")).toBe(false);
     expect(panelSupportsHost("setup", "explorer")).toBe(false);
   });
 

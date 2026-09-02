@@ -2,6 +2,7 @@ import { useCallback, useMemo, type ReactNode } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { RetainedPanel } from "@/components/retained-panel";
+import { SidebarSeamShadow } from "@/components/sidebar-seam-shadow";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import type { TabDropPreview } from "@/components/split-container-tab-drop-preview";
 import { ExplorerSidebarTabRail } from "@/screens/workspace/explorer-sidebar-tab-rail";
@@ -12,6 +13,7 @@ import type { WorkspacePaneContentModel } from "@/screens/workspace/workspace-pa
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import type { SplitPane } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab } from "@/workspace-tabs/model";
+import type { PaneHost } from "@/panels/panel-manifest";
 import { WindowChromeRegion, WindowChromeSafeArea } from "@/utils/window-chrome";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { filterExplorerSidebarTabs } from "@/workspace-tabs/explorer-sidebar";
@@ -33,6 +35,7 @@ interface ExplorerSidebarDockProps {
   buildPaneContentModel: (input: {
     paneId: string;
     tab: WorkspaceTabDescriptor;
+    host?: PaneHost;
   }) => WorkspacePaneContentModel;
   headerAction?: ReactNode;
 }
@@ -89,6 +92,11 @@ export function ExplorerSidebarDock({
     },
     [onReorderTabsInPane, pane.id],
   );
+  const buildExplorerPaneContentModel = useCallback(
+    (input: { paneId: string; tab: WorkspaceTabDescriptor }) =>
+      buildPaneContentModel({ ...input, host: "explorer" }),
+    [buildPaneContentModel],
+  );
 
   return (
     <RetainedPanel active>
@@ -123,9 +131,10 @@ export function ExplorerSidebarDock({
               normalizedWorkspaceId={normalizedWorkspaceId}
               isWorkspaceFocused={isWorkspaceFocused}
               isPaneFocused
-              buildPaneContentModel={buildPaneContentModel}
+              buildPaneContentModel={buildExplorerPaneContentModel}
             />
           </View>
+          <SidebarSeamShadow seam="left" />
         </View>
       </WindowChromeRegion>
     </RetainedPanel>
@@ -137,7 +146,9 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: theme.colors.surfaceSidebar,
+    // The dock owns the deepest Explorer layer. Its tab rail remains on
+    // surfaceSidebar below, matching the workspace tab gutter.
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   tabRail: {
     position: "relative",
@@ -155,6 +166,6 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
 }));

@@ -112,6 +112,7 @@ import {
   usePublishFocusModeTabStripVisibility,
 } from "@/screens/workspace/use-explorer-sidebar-visibility";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
+import { FileFinderOverlay } from "@/components/file-finder-overlay";
 import { useToast } from "@/contexts/toast-context";
 import { selectIsAgentListOpen, usePanelStore, type ExplorerTab } from "@/stores/panel-store";
 import { getOrCreateClientId } from "@/utils/client-id";
@@ -120,6 +121,7 @@ import { traceInstant } from "@/performance/native-trace";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
   collectAllTabs,
+  DEFAULT_PANE_ID,
   findPaneById,
   FOCUSED_PANE_PLACEMENT,
   getFocusedBrowserId,
@@ -304,6 +306,7 @@ import {
 } from "./workspace-otto-controls";
 import { type TerminalProfile } from "@otto-code/protocol/messages";
 import { openPreferredWorkspacePreview } from "@/workspace-tabs/open-beside";
+import { getExplorerRequestedTargetHost } from "@/workspace-tabs/explorer-open-policy";
 import { type PaneHost } from "@/panels/panel-manifest";
 
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
@@ -752,6 +755,7 @@ function MobileWorkspaceTabOption({
       copyWorkspacePath: t("workspace.tabs.menu.copyWorkspacePath"),
       rename: t("workspace.tabs.menu.rename"),
       moveToWorkspace: t("workspace.tabs.menu.moveToWorkspace"),
+      moveToExplorer: t("workspace.tabs.menu.moveToExplorer"),
       closeAbove: t("workspace.tabs.menu.closeAbove"),
       closeBelow: t("workspace.tabs.menu.closeBelow"),
       closeLeft: t("workspace.tabs.menu.closeLeft"),
@@ -1899,7 +1903,13 @@ function WorkspaceHeaderTitleBar({
         {/* The Brain status light, standing in for the sidebar's own whenever
             the sidebar is collapsed or overlaid. It is immediately before
             Explorer and never fitted away - see workspace-brain-button.tsx. */}
-        {showBrainAction ? <WorkspaceBrainButton /> : null}
+        {showBrainAction ? (
+          // Halve the cluster's desktop inter-control gap before the status
+          // light, so it stays near its neighboring action without going flush.
+          <View style={styles.headerBrainAction}>
+            <WorkspaceBrainButton />
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -2611,6 +2621,8 @@ function WorkspaceScreenContent({
   );
   const requestProjectSearchFocus = usePanelStore((state) => state.requestProjectSearchFocus);
   const requestFileFinderOpen = usePanelStore((state) => state.requestFileFinderOpen);
+  const fileFinderOpenToken = usePanelStore((state) => state.fileFinderOpenToken);
+  const clearFileFinderOpenRequest = usePanelStore((state) => state.clearFileFinderOpenRequest);
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
 
   const activeExplorerCheckout = useMemo<ExplorerCheckoutContext | null>(() => {
@@ -3305,6 +3317,13 @@ function WorkspaceScreenContent({
       persistenceKey,
       showMobileAgent,
     ],
+  );
+
+  const handleOpenFileFromFinder = useCallback(
+    (path: string) => {
+      void handleOpenFileFromChat({ path });
+    },
+    [handleOpenFileFromChat],
   );
 
   const handleOpenFileFromChatInSidePane = useCallback(
@@ -4529,6 +4548,7 @@ function WorkspaceScreenContent({
         tab: input.tab,
         normalizedServerId,
         normalizedWorkspaceId,
+        paneId: input.paneId ?? DEFAULT_PANE_ID,
         host: input.host ?? "main",
         onOpenTab: (target) => {
           if (!persistenceKey) {
@@ -4562,16 +4582,22 @@ function WorkspaceScreenContent({
                 return;
               }
             }
+            const explorerRequestedHost =
+              input.host === "explorer" ? getExplorerRequestedTargetHost(target) : null;
             const tabId = openPreferredWorkspacePreview({
               isCompact: isMobile,
               workspaceKey: persistenceKey,
               serverId: normalizedServerId,
               workspaceId: normalizedWorkspaceId,
-              explorerSidebarPaneId: null,
+              explorerSidebarPaneId: input.host === "explorer" ? (input.paneId ?? null) : null,
               lastMainPaneId: input.paneId ?? null,
               target,
               source,
               preferences: openInSidePanePreferences,
+              ...(explorerRequestedHost === "main" ? { defaultPaneId: DEFAULT_PANE_ID } : {}),
+              ...(explorerRequestedHost === "explorer" && input.paneId
+                ? { defaultPaneId: input.paneId }
+                : {}),
             });
             if (tabId) {
               navigateToTabId(tabId);
@@ -5390,6 +5416,13 @@ function WorkspaceScreenContent({
               onClose={closeImportSheet}
               onImportedAgent={handleImportedAgent}
             />
+            <FileFinderOverlay
+              serverId={normalizedServerId}
+              workspaceRoot={workspaceDirectory ?? ""}
+              visible={isRouteFocused && workspaceDirectory !== null && fileFinderOpenToken > 0}
+              onClose={clearFileFinderOpenRequest}
+              onOpenFile={handleOpenFileFromFinder}
+            />
             <WorkspaceTabRenameModal
               renamingTab={isRouteFocused ? renamingTab : null}
               onSubmit={handleRenameModalSubmit}
@@ -5570,6 +5603,15 @@ const styles = StyleSheet.create((theme) => ({
     gap: {
       xs: 0,
       md: theme.spacing[2],
+    },
+  },
+  // `compactHeaderMenuCluster` supplies the desktop gap between action slots.
+  // The Brain status slot uses half of it, which keeps the status glyph close
+  // to its preceding action without joining their touch-target chrome.
+  headerBrainAction: {
+    marginLeft: {
+      xs: 0,
+      md: -theme.spacing[1],
     },
   },
   sourceControlButton: {

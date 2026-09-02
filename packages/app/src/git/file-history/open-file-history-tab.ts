@@ -9,13 +9,16 @@ export interface OpenFileHistoryTabInput {
   /** 1-based inclusive line scope. Both or neither. */
   startLine?: number;
   endLine?: number;
+  /** New histories prefer this pane without moving an existing user-placed tab. */
+  defaultPaneId?: string;
 }
 
 /**
  * Open (or focus) the git investigation tab for a file. Whole-file and
  * line-scoped histories are separate tabs - asking "who changed these three
  * lines" does not replace the answer to "what happened to this file" - and each
- * lands next to the tab the user is looking at, like the git operation logs.
+ * defaults to the requesting pane when supplied, while preserving an existing
+ * tab where the user moved it.
  */
 export function openFileHistoryTab(input: OpenFileHistoryTabInput): boolean {
   const workspaceKey = buildWorkspaceTabPersistenceKey({
@@ -29,14 +32,21 @@ export function openFileHistoryTab(input: OpenFileHistoryTabInput): boolean {
     typeof input.startLine === "number" &&
     typeof input.endLine === "number" &&
     input.endLine >= input.startLine;
-  useWorkspaceLayoutStore.getState().openTabFocused(
-    workspaceKey,
-    {
-      kind: "fileHistory",
-      path: input.path,
-      ...(hasRange ? { startLine: input.startLine, endLine: input.endLine } : {}),
-    },
-    { insertAfterFocusedTab: true },
-  );
+  const target = {
+    kind: "fileHistory" as const,
+    path: input.path,
+    ...(hasRange ? { startLine: input.startLine, endLine: input.endLine } : {}),
+  };
+  const layout = useWorkspaceLayoutStore.getState();
+  if (input.defaultPaneId) {
+    layout.openTab({
+      workspaceKey,
+      target,
+      intent: "reveal",
+      placement: { mode: "prefer", paneId: input.defaultPaneId },
+    });
+  } else {
+    layout.openTabFocused(workspaceKey, target, { insertAfterFocusedTab: true });
+  }
   return true;
 }

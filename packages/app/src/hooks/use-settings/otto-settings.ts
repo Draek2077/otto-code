@@ -2,10 +2,12 @@ import { isSyntaxThemeId } from "@otto-code/highlight";
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
+  MAX_CONTENT_FONT_SIZE,
   MAX_TERMINAL_FONT_SIZE,
   MAX_FONT_FAMILY_LENGTH,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_CONTENT_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
   MIN_UI_FONT_SIZE,
 } from "./limits";
@@ -25,7 +27,13 @@ import {
   isTextEffectThemeId,
   type TextEffectThemeId,
 } from "@/styles/text-effects";
-import { DEFAULT_FONT_CONTRAST, type LightThemeName, type DarkThemeName } from "@/styles/theme";
+import {
+  DEFAULT_FONT_CONTRAST,
+  PLUGIN_THEME_PREFERENCE,
+  type DarkThemeName,
+  type LightThemeName,
+  type ThemePreference,
+} from "@/styles/theme";
 import {
   DEFAULT_VIM_MAPPING_SETTINGS,
   normalizeVimMappingSettings,
@@ -239,10 +247,9 @@ export interface OttoAppSettings {
   // Move the client performance resource bar from the Metrics page to the app
   // shell footer, keeping it visible below every page and outside scroll regions.
   clientResourceBarAllPages: boolean;
-  // Keep the pinned tab-bar and diff-toolbar options hidden until the pointer
-  // is over their toolbar area (web only - hover). When false (default), pinned
-  // options are always visible.
-  hidePinnedToolbarOptions: boolean;
+  // Keep tab-toolbar options hidden until the pointer is over the tab bar (web
+  // only - hover). When false (default), the options are always visible.
+  hideTabToolbarOptions: boolean;
   // Keep chat message operational details (timestamp, duration, copy/fork/
   // rewind actions) hidden until the pointer is over the message. Hover-only:
   // native and compact layouts always show details, and the running-turn
@@ -279,6 +286,9 @@ export interface OttoAppSettings {
   // (see subagents/cleared-subagent-tokens-store.ts). Device-local presentation
   // only. Default off. See docs/agent-lifecycle.md (the sub-agents track).
   autoClearCompletedSubagents: boolean;
+  // Device-local rendering only: both presentations consume the same rows,
+  // accounting, and actions. Panels retain Otto's richer default.
+  subagentTrackPresentation: SubagentTrackPresentation;
   // Auto-clear completed background shell tasks out of a chat's background tasks
   // track once they settle, instead of leaving them in the collapsed "Completed"
   // group for a manual "Clear all completed". Separate from
@@ -434,7 +444,7 @@ export interface OttoAppSettings {
   alwaysUseOttoEditorForMarkdown: boolean;
 }
 
-export type SendBehavior = "interrupt" | "queue";
+export type SendBehavior = "interrupt" | "steer" | "queue";
 
 export type ReleaseChannel = "stable" | "beta";
 
@@ -479,6 +489,8 @@ export type MeetingTranscriptDeliveryPolicy =
   | "current_connection";
 
 export type ChatTimestampDisplay = "absolute" | "relative";
+
+export type SubagentTrackPresentation = "panels" | "pills";
 
 // Device-local display depth chosen in the setup wizard's first step. Presentation
 // only - never synced to the daemon. See projects/first-time-wizard/interface-modes.md.
@@ -555,6 +567,8 @@ const VALID_TAB_ORIENTATIONS = new Set<TabOrientation>(["horizontal", "vertical"
 const VALID_CHAT_WIDTHS = new Set<ChatWidth>(["default", "wide", "full"]);
 
 const VALID_CHAT_TIMESTAMP_DISPLAYS = new Set<ChatTimestampDisplay>(["absolute", "relative"]);
+
+const VALID_SUBAGENT_TRACK_PRESENTATIONS = new Set<SubagentTrackPresentation>(["panels", "pills"]);
 
 const VALID_INTERFACE_MODES = new Set<InterfaceMode>(["user", "developer"]);
 
@@ -722,11 +736,33 @@ export function pickThemeAndBehaviorSettings(stored: Partial<AppSettings>): Part
   if (typeof stored.darkTheme === "string" && VALID_DARK_THEMES.has(stored.darkTheme)) {
     result.darkTheme = stored.darkTheme;
   }
+  if (
+    typeof stored.theme === "string" &&
+    (
+      [
+        "light",
+        "dark",
+        "auto",
+        "zinc",
+        "midnight",
+        "claude",
+        "ghostty",
+        "pureBlack",
+        PLUGIN_THEME_PREFERENCE,
+      ] as const
+    ).includes(stored.theme as ThemePreference)
+  ) {
+    result.theme = stored.theme as ThemePreference;
+  }
   const language = parseAppLanguage(stored.language);
   if (language !== null) {
     result.language = language;
   }
-  if (stored.sendBehavior === "interrupt" || stored.sendBehavior === "queue") {
+  if (
+    stored.sendBehavior === "interrupt" ||
+    stored.sendBehavior === "steer" ||
+    stored.sendBehavior === "queue"
+  ) {
     result.sendBehavior = stored.sendBehavior;
   }
   if (
@@ -760,6 +796,13 @@ export function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSetti
   });
   if (uiFontSize !== null) {
     result.uiFontSize = uiFontSize;
+  }
+  const contentFontSize = parseClampedFontSize(stored.contentFontSize, {
+    min: MIN_CONTENT_FONT_SIZE,
+    max: MAX_CONTENT_FONT_SIZE,
+  });
+  if (contentFontSize !== null) {
+    result.contentFontSize = contentFontSize;
   }
   const codeFontSize = parseClampedFontSize(stored.codeFontSize, {
     min: MIN_CODE_FONT_SIZE,
@@ -817,7 +860,7 @@ const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
   "groupConsecutiveActions",
   "chatMetricsBar",
   "clientResourceBarAllPages",
-  "hidePinnedToolbarOptions",
+  "hideTabToolbarOptions",
   "hideChatMessageDetails",
   "hasCompletedTutorial",
   "pinnedTaskListEnabled",
@@ -1077,6 +1120,15 @@ export function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppS
   }
   if (typeof stored.autoClearCompletedSubagents === "boolean") {
     result.autoClearCompletedSubagents = stored.autoClearCompletedSubagents;
+  }
+  if (
+    typeof stored.subagentTrackPresentation === "string" &&
+    VALID_SUBAGENT_TRACK_PRESENTATIONS.has(
+      stored.subagentTrackPresentation as SubagentTrackPresentation,
+    )
+  ) {
+    result.subagentTrackPresentation =
+      stored.subagentTrackPresentation as SubagentTrackPresentation;
   }
   if (typeof stored.autoClearCompletedBackgroundTasks === "boolean") {
     result.autoClearCompletedBackgroundTasks = stored.autoClearCompletedBackgroundTasks;
@@ -1452,7 +1504,7 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   groupConsecutiveActions: true,
   chatMetricsBar: false,
   clientResourceBarAllPages: false,
-  hidePinnedToolbarOptions: false,
+  hideTabToolbarOptions: false,
   hideChatMessageDetails: true,
   chatTimestampDisplay: "absolute",
   animationsEnabled: true,
@@ -1461,6 +1513,7 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   wrapCodeLines: true,
   wrapToolCallText: false,
   autoClearCompletedSubagents: false,
+  subagentTrackPresentation: "panels",
   autoClearCompletedBackgroundTasks: false,
   autoClearFailedBackgroundTasks: false,
   hasCompletedTutorial: false,

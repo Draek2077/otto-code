@@ -55,6 +55,8 @@ export interface WorkspaceTabLaunchItem {
   shortcutActionId?: string;
   disabled: boolean;
   panelKind: WorkspaceTabTarget["kind"];
+  /** The compact Explorer New Tab surface may offer this supporting request. */
+  explorerNewTab?: boolean;
   launch: (destination: WorkspaceTabLaunchDestination) => void;
 }
 
@@ -162,6 +164,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         shortcutActionId: "workspace-tab-target-changes",
         disabled: false,
         panelKind: "working_diff",
+        explorerNewTab: true,
         hidden: !isDeveloperMode || !launcher.showChanges,
         launch: launchSelection(BUILT_IN_SELECTIONS.diff),
       },
@@ -180,6 +183,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         Icon: searchPresentation.icon,
         disabled: false,
         panelKind: "project_search",
+        explorerNewTab: true,
         // Same gate as Otto's Explorer search view: a Developer-mode surface
         // that needs the host's projectSearch capability.
         hidden: !showProjectSearch,

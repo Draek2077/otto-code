@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
 import { test } from "../support/fixtures";
-import { openFileExplorer } from "../support/helpers/file-explorer";
 import { gotoWorkspace } from "../support/helpers/launcher";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
+import { openProjectSearchPanel } from "../support/helpers/workspace-tabs";
 
 let workspace: SeededWorkspace;
 
@@ -36,9 +36,7 @@ test.afterAll(async () => {
 test.describe("Project search", () => {
   test("finds matches, opens at line, and replaces selected matches", async ({ page }) => {
     await gotoWorkspace(page, workspace.workspaceId);
-    await openFileExplorer(page);
-
-    await page.getByTestId("explorer-tab-search").click();
+    await openProjectSearchPanel(page);
     const input = page.getByTestId("project-search-input");
     await expect(input).toBeVisible({ timeout: 30_000 });
     await input.fill("shared");
@@ -51,19 +49,21 @@ test.describe("Project search", () => {
     await expect(page.getByTestId("project-search-file-src/alpha.ts")).toBeVisible();
     await expect(page.getByTestId("project-search-file-src/beta.ts")).toBeVisible();
 
-    // A match row opens the file tab at that line (code defaults to the editor).
+    // A match row opens the file at that line in the Explorer host that owns Search.
     await page.getByTestId("project-search-match-src/alpha.ts-1").click();
-    await expect(page.getByTestId("workspace-tab-file_src/alpha.ts").first()).toBeVisible({
+    await expect(page.getByTestId("explorer-sidebar-tab-file_src/alpha.ts")).toBeVisible({
       timeout: 30_000,
     });
     await expect(page.getByTestId("workspace-file-tab-pane")).toBeVisible();
+    await page.getByTestId("explorer-sidebar-tab-project_search").click();
+    await expect(page.getByTestId("project-search-input")).toBeVisible();
 
     // A hit takes an inline note, on the review surface Changes writes to: the
     // comment button appears on the line's gutter on hover, and the saved note
     // stays with the line.
     const firstHit = page.getByTestId("project-search-match-src/alpha.ts-0");
     await firstHit.hover();
-    await page.getByTestId("project-search-match-src/alpha.ts-0-comment").click();
+    await page.getByRole("button", { name: "Add review comment" }).first().click();
     await page.getByTestId("inline-review-editor-input").fill("Rename this constant.");
     await page.getByTestId("inline-review-editor-save").click();
     await expect(page.getByText("Rename this constant.")).toBeVisible({ timeout: 10_000 });

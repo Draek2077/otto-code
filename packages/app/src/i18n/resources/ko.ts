@@ -1033,6 +1033,7 @@ export const ko: TranslationResources = {
         copyTerminalId: "터미널 ID 복사",
         copyFilePath: "파일 경로 복사",
         moveToMain: "기본 패널로 이동",
+        moveToExplorer: "탐색기 패널로 이동",
       },
       actions: {
         newAgent: "새 에이전트",
@@ -3385,11 +3386,14 @@ export const ko: TranslationResources = {
         descriptions: {
           interrupt:
             "에이전트가 실행 중일 때 Enter는 중단합니다. Command/Ctrl+Enter는 대기열에 추가합니다.",
+          steer:
+            "에이전트가 실행 중일 때 Enter는 현재 턴에 지시합니다. Command/Ctrl+Enter는 대기열에 추가합니다.",
           queue:
             "에이전트가 실행 중일 때 Enter는 대기열에 추가합니다. Command/Ctrl+Enter는 제출합니다.",
         },
         options: {
           interrupt: "중단",
+          steer: "지시",
           queue: "대기열",
         },
       },
@@ -3698,10 +3702,10 @@ export const ko: TranslationResources = {
             full: "Full",
           },
         },
-        hidePinnedToolbarOptions: {
-          title: "Hide pinned toolbar options",
-          hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
-          accessibilityLabel: "Hide pinned toolbar options",
+        hideTabToolbarOptions: {
+          title: "Hide tab toolbar options",
+          hint: "Keep tab toolbar options hidden until you hover over the tab bar",
+          accessibilityLabel: "Hide tab toolbar options",
         },
       },
       visualizer: {

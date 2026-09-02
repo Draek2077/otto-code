@@ -3,12 +3,11 @@ id: "upstream-subagent-convergence"
 kind: "project"
 title: "Upstream Subagent Convergence"
 status: "confirmed"
-tags: ["project-charter", "legacy-projects-migration"]
+tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "charter"
 created_at: "2026-08-08T06:18:00.609Z"
-updated_at: "2026-08-08T06:19:51.935Z"
+updated_at: "2026-09-01T13:17:27.280Z"
 ---
-
 # Upstream Subagent Convergence
 
 <!-- compiled_truth -->
@@ -188,3 +187,8 @@ The convergence is done when all of these hold:
 - time: "2026-08-08T06:19:51.935Z"
   kind: "note"
   summary: "Migrated from the repository's existing authoritative project or reference documentation at the user's request. New status: confirmed."
+- time: "2026-09-01T13:17:27.280Z"
+  kind: "evidence"
+  summary: "Implemented an App-local `subagentTrackPresentation: panels | pills` preference (default `panels`). The restored Paseo-style pills and Otto's detailed panels both consume the existing normalized `useSubagentsForParent` rows and the same navigation, stop, detach, archive/bulk-clear, nesting, and accounting APIs; the switch changes renderer only and does not alter daemon ingestion or provider state. Pills restore task-list and working-diff composer tracks; Composer attachment/plugin pills remain independent Composer children."
+  source: "User direction and verified implementation in packages/app/src/subagents/pill-track.tsx, packages/app/src/panels/agent-tracks.tsx, packages/app/src/panels/agent"
+  affects: ["observed-subagents"]

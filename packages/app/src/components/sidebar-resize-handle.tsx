@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import {
@@ -46,13 +46,19 @@ function PointerResizeHandle({ edge, gesture, testID }: SidebarResizeHandleProps
     webResizeCursorStyle,
   ];
 
+  // A plain View, not a Pressable: react-native-web renders Pressable as a
+  // tabIndex=0 div, and the global :focus-visible ring then outlines the whole
+  // full-height hit band instead of the 1px seam. The drag lives on the
+  // GestureDetector; this element only tracks hover, per docs/hover.md.
   return (
     <GestureDetector gesture={gesture}>
-      <Pressable
+      <View
         testID={testID}
+        role="separator"
+        aria-orientation="vertical"
         style={hitAreaStyle}
-        onHoverIn={handleHoverIn}
-        onHoverOut={handleHoverOut}
+        onPointerEnter={handleHoverIn}
+        onPointerLeave={handleHoverOut}
       >
         {highlighted ? (
           <View
@@ -61,7 +67,7 @@ function PointerResizeHandle({ edge, gesture, testID }: SidebarResizeHandleProps
             style={[styles.highlight, edge === "left" ? styles.leftEdgeHighlight : null]}
           />
         ) : null}
-      </Pressable>
+      </View>
     </GestureDetector>
   );
 }
@@ -115,8 +121,7 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     left: 5,
     width: 1,
-    backgroundColor: theme.colors.foreground,
-    opacity: 0.25,
+    backgroundColor: theme.colors.accent,
   },
   // A left-side border occupies the first pixel of its parent. The pointer hit
   // band starts from the padding box after that border, so its hover line must

@@ -6,7 +6,13 @@ import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { createChatOutlineHoverIntent } from "./hover-intent";
 import { useChatOutlineLayout } from "./layout";
-import { promptTickMagnification } from "./model";
+import {
+  chatOutlineSegmentContains,
+  chatOutlineSegmentLabel,
+  promptTickMagnification,
+  segmentChatOutlinePrompts,
+  type ChatOutlineSegment,
+} from "./model";
 import type { ChatOutlineRailProps } from "./rail";
 
 // Hover tracking lives on the rail and the slots, never on the Pressable inside them:
@@ -81,6 +87,7 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   // The pointer owns the magnified band while it is on the rail; keyboard focus drives the
   // same band and the same preview once the pointer leaves.
   const attentionIndex = hoveredIndex ?? focusedIndex;
+  const segments = useMemo(() => segmentChatOutlinePrompts(prompts), [prompts]);
 
   if (!isRailVisible) {
     return <View style={styles.panelMeasure} pointerEvents="none" onLayout={onLayout} />;
@@ -97,14 +104,13 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
           onPointerMove={handlePointerMoveRail}
           onPointerLeave={handlePointerLeaveRail}
         >
-          {prompts.map((prompt, index) => (
+          {segments.map((segment, index) => (
             <ChatOutlineTick
-              key={prompt.seq}
+              key={segment.startSeq}
               index={index}
-              seq={prompt.seq}
-              preview={prompt.preview}
-              label={`${index + 1} of ${prompts.length}: ${prompt.preview}`}
-              isActive={prompt.seq === activeSeq}
+              segment={segment}
+              label={chatOutlineSegmentLabel(segment, prompts.length)}
+              isActive={chatOutlineSegmentContains(segment, activeSeq)}
               hasAttention={index === attentionIndex}
               magnification={
                 prefersReducedMotion || attentionIndex === null
@@ -124,8 +130,7 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
 
 interface ChatOutlineTickProps {
   index: number;
-  seq: number;
-  preview: string;
+  segment: ChatOutlineSegment;
   label: string;
   isActive: boolean;
   hasAttention: boolean;
@@ -137,8 +142,7 @@ interface ChatOutlineTickProps {
 
 const ChatOutlineTick = memo(function ChatOutlineTick({
   index,
-  seq,
-  preview,
+  segment,
   label,
   isActive,
   hasAttention,
@@ -148,9 +152,9 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
   onJumpToPrompt,
 }: ChatOutlineTickProps) {
   const handlePress = useCallback(() => {
-    onJumpToPrompt(seq);
+    onJumpToPrompt(segment.target.seq);
     onFocusChange(index, false);
-  }, [index, onFocusChange, onJumpToPrompt, seq]);
+  }, [index, onFocusChange, onJumpToPrompt, segment.target.seq]);
   const handlePointerEnter = useCallback(() => onHover(index), [index, onHover]);
   const handleFocus = useCallback(() => onFocusChange(index, true), [index, onFocusChange]);
   const handleBlur = useCallback(() => onFocusChange(index, false), [index, onFocusChange]);
@@ -172,7 +176,7 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
         accessibilityRole="tab"
         aria-selected={isActive}
         accessibilityLabel={label}
-        testID={`chat-outline-tick-${seq}`}
+        testID={`chat-outline-tick-${segment.target.seq}`}
       >
         <View
           style={[
@@ -186,7 +190,9 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
       {hasAttention ? (
         <View style={styles.preview} pointerEvents="none" aria-hidden testID="chat-outline-preview">
           <Text style={styles.previewText} numberOfLines={2}>
-            {preview}
+            {segment.startIndex === segment.endIndex - 1
+              ? segment.target.preview
+              : `Prompts ${segment.startIndex + 1}–${segment.endIndex}: ${segment.target.preview}`}
           </Text>
         </View>
       ) : null}

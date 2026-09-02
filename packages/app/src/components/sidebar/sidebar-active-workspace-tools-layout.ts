@@ -8,8 +8,7 @@ export interface WorkspaceToolsLabelVisibility {
 
 interface GetWorkspaceToolsLabelVisibilityOptions {
   width: number;
-  hasScripts: boolean;
-  hasOpenInEditor: boolean;
+  availableTools: readonly WorkspaceTool[];
 }
 
 // The icon-only controls remain comfortably targetable at this width. As room
@@ -26,14 +25,8 @@ const LABEL_WIDTH: Record<WorkspaceTool, number> = {
 
 export function getWorkspaceToolsLabelVisibility({
   width,
-  hasScripts,
-  hasOpenInEditor,
+  availableTools,
 }: GetWorkspaceToolsLabelVisibilityOptions): WorkspaceToolsLabelVisibility {
-  const availableTools: WorkspaceTool[] = [
-    ...(hasScripts ? (["scripts"] as const) : []),
-    "git",
-    ...(hasOpenInEditor ? (["openInEditor"] as const) : []),
-  ];
   const labels: WorkspaceToolsLabelVisibility = {
     scripts: false,
     openInEditor: false,

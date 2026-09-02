@@ -3,7 +3,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute } from "../../../src/utils/host-routes";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { getServerId } from "./server-id";
-import { waitForWorkspaceTabsVisible } from "./workspace-tabs";
+import { openChangesTreePanel, waitForWorkspaceTabsVisible } from "./workspace-tabs";
 
 /** Runs git against the fixture repo and returns trimmed stdout. */
 export function gitOutput(repoPath: string, args: string[]): string {
@@ -33,14 +33,7 @@ export async function openWorkspaceChanges(
   input: { workspaceId: string; expectFileName: string },
 ): Promise<void> {
   await openWorkspaceScreen(page, input.workspaceId);
-  // Idempotent: only open the explorer if it isn't already showing its tabs
-  // (callers may re-open the Changes view within one test after a reload).
-  const changesTab = page.getByTestId("explorer-tab-changes");
-  if (!(await changesTab.isVisible().catch(() => false))) {
-    await page.getByRole("button", { name: "Open explorer" }).click();
-  }
-  await expect(changesTab).toBeVisible({ timeout: 30_000 });
-  await changesTab.click();
+  await openChangesTreePanel(page);
   await expect(page.getByText(input.expectFileName)).toBeVisible({ timeout: 30_000 });
 }
 

@@ -4,7 +4,7 @@ import { REGISTERED_THEMES } from "./theme";
 // Only the `light`/`dark` keys participate in mode switching. Every other
 // named variant (Meadow, Ember, Slate, ...) lives in `theme.ts` as plain
 // data, copied into these two keys at runtime by
-// `screens/settings/appearance/apply-color-scheme.ts`. See that file for why:
+// `appearance/color-scheme.ts`. See that file for why:
 // Unistyles' adaptive-theme mechanism hardcodes switching between the
 // literal keys `light`/`dark` and cannot target an arbitrary named theme.
 // Seed content here is today's default pair (Daylight/Twilight).

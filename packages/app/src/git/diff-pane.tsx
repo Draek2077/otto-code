@@ -35,6 +35,7 @@ import type { ChangesState } from "@/panels/changes/state";
 import { defaultChangesState } from "@/panels/changes/state";
 import { openGitLogTab } from "@/git/open-git-log-tab";
 import { DiffDocument, type WorkingDiffMode } from "@/git/diff-document";
+import { exceedsDiffRenderBudget } from "@/git/diff-render-budget";
 import { FileHeader } from "@/git/file-header";
 import {
   buildDiffTree,
@@ -247,6 +248,8 @@ interface ChangesSurfaceProps {
   enabled?: boolean;
   presentation?: ChangesPresentation;
   modeScope: string;
+  /** New operation logs stay with the Explorer or Main pane that requested them. */
+  defaultPaneId?: string;
   focusPath?: string;
   focusRequestId?: number;
   onOpenFile?: (path: string) => void;
@@ -1461,6 +1464,7 @@ function ChangedFilesTree({
           showsBodyState={false}
           isSelected={selectedPath === item.file.path}
           depth={item.depth}
+          ancestorMask={item.ancestorMask}
           showDir={false}
           onActivate={handleSelectFile}
           onSelect={handleSelectPath}
@@ -1686,6 +1690,7 @@ export function ChangesSurface({
   enabled,
   presentation = "combined",
   modeScope,
+  defaultPaneId,
   focusPath,
   focusRequestId,
   onOpenFile,
@@ -1976,6 +1981,9 @@ export function ChangesSurface({
   );
 
   const hasChanges = files.length > 0;
+  // New daemons reject this before sending a structured payload. Retain the
+  // client check so a newer app stays safe against an older daemon as well.
+  const diffRenderBudgetExceeded = useMemo(() => exceedsDiffRenderBudget(files), [files]);
   const selectedDiffStat = useMemo(
     () => computeSelectedDiffStat(files, isDiffLoading),
     [files, isDiffLoading],
@@ -2011,10 +2019,10 @@ export function ChangesSurface({
     () =>
       workspaceId
         ? () => {
-            openGitLogTab({ serverId, workspaceId, operation: "commit" });
+            openGitLogTab({ serverId, workspaceId, operation: "commit", defaultPaneId });
           }
         : null,
-    [serverId, workspaceId],
+    [defaultPaneId, serverId, workspaceId],
   );
   const emptyMessage = computeEmptyMessage(preferences.hideWhitespace, diffMode, baseRefLabel, {
     hiddenWhitespace: t("workspace.git.diff.emptyHiddenWhitespace"),
@@ -2038,7 +2046,7 @@ export function ChangesSurface({
       notGit={notGit}
       isDiffLoading={isDiffLoading}
       diffErrorMessage={diffErrorMessage}
-      diffTooLarge={diffTooLarge}
+      diffTooLarge={diffTooLarge || diffRenderBudgetExceeded}
       hasChanges={hasChanges}
       emptyMessage={emptyMessage}
       emptyAction={emptyAction}
@@ -2222,7 +2230,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingLeft: theme.spacing[2],
   },
   changesToolbarSidebar: {
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   changesToolbarIdentity: {
     flex: 1,

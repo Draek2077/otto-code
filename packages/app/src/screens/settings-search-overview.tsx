@@ -9,7 +9,6 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Search } from "@/components/icons/material-icons";
 import { SearchClearButton } from "@/components/ui/search-clear-button";
 import { isWeb } from "@/constants/platform";
-import { type HostSectionSlug, type SettingsSectionSlug } from "@/utils/host-routes";
 import {
   SETTINGS_SEARCH_ITEMS as SETTINGS_SEARCH_CATALOG,
   matchesSettingsSearchTerms,
@@ -34,16 +33,10 @@ const searchInputProps = (theme: { colors: { foregroundMuted: string } }) => ({
 });
 
 export function SettingsSearchOverview({
-  onSelectSection,
-  onSelectHostSection,
-  activeHostServerId,
-  hasHosts,
+  onSelectItem,
   isDeveloperMode,
 }: {
-  onSelectSection: (section: SettingsSectionSlug) => void;
-  onSelectHostSection: (section: HostSectionSlug) => void;
-  activeHostServerId: string | null;
-  hasHosts: boolean;
+  onSelectItem: (item: SettingsSearchItem) => void;
   isDeveloperMode: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -89,10 +82,7 @@ export function SettingsSearchOverview({
               <SettingsSearchResultRow
                 key={item.id}
                 item={item}
-                onSelectSection={onSelectSection}
-                onSelectHostSection={onSelectHostSection}
-                activeHostServerId={activeHostServerId}
-                hasHosts={hasHosts}
+                onSelectItem={onSelectItem}
                 isDeveloperMode={isDeveloperMode}
               />
             ))}
@@ -126,34 +116,22 @@ export function SettingsSearchOverview({
 
 function SettingsSearchResultRow({
   item,
-  onSelectSection,
-  onSelectHostSection,
-  activeHostServerId,
-  hasHosts,
+  onSelectItem,
   isDeveloperMode,
 }: {
   item: SettingsSearchItem;
-  onSelectSection: (section: SettingsSectionSlug) => void;
-  onSelectHostSection: (section: HostSectionSlug) => void;
-  activeHostServerId: string | null;
-  hasHosts: boolean;
+  onSelectItem: (item: SettingsSearchItem) => void;
   isDeveloperMode: boolean;
 }) {
   const developerSettingUnavailable = item.developerOnly && !isDeveloperMode;
   const handlePress = useCallback(() => {
-    if (item.host) {
-      if (hasHosts && activeHostServerId) {
-        onSelectHostSection(item.section as HostSectionSlug);
-      }
-      return;
-    }
-    onSelectSection(item.section as SettingsSectionSlug);
-  }, [activeHostServerId, hasHosts, item, onSelectHostSection, onSelectSection]);
+    onSelectItem(item);
+  }, [item, onSelectItem]);
 
   return (
     <Pressable
       onPress={handlePress}
-      disabled={developerSettingUnavailable || (item.host && (!hasHosts || !activeHostServerId))}
+      disabled={developerSettingUnavailable}
       style={searchOverviewStyles.resultRow}
       testID={`settings-search-result-${item.id}`}
     >

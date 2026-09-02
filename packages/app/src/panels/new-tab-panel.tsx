@@ -23,6 +23,7 @@ import { ICON_SIZE, SPACING, type Theme } from "@/styles/theme";
 import {
   useWorkspaceTabLaunchCatalog,
   type WorkspaceTabLaunchItem,
+  type WorkspaceTabLaunchGroup,
 } from "@/workspace-tabs/launcher";
 
 const ThemedPlus = withUnistyles(Plus);
@@ -37,6 +38,31 @@ const LAUNCHER_MAX_WIDTH = 380;
 const EDIT_PROFILES_HIT_SIZE = ICON_SIZE.xs + SPACING[2];
 const ROW_DATA_SET = { newTabLauncherRow: "true" };
 const ROW_SELECTOR = '[data-new-tab-launcher-row="true"]';
+
+function getExplorerNewTabGroups(
+  groups: readonly WorkspaceTabLaunchGroup[],
+): readonly WorkspaceTabLaunchGroup[] {
+  const visibleGroups: WorkspaceTabLaunchGroup[] = [];
+  for (const group of groups) {
+    if (group.id === "tabs") {
+      const items: WorkspaceTabLaunchItem[] = [];
+      for (const item of group.items) {
+        if (item.explorerNewTab) {
+          items.push(item);
+        }
+      }
+      if (items.length > 0) {
+        visibleGroups.push({ ...group, items });
+      }
+      continue;
+    }
+    if (group.id === "plugin-panels") {
+      visibleGroups.push(group);
+    }
+  }
+  return visibleGroups;
+}
+
 function LauncherIcon({
   Icon,
   color = "",
@@ -138,9 +164,17 @@ const NewTabPanel = memo(function NewTabPanel(): ReactElement {
     purpose: host === "explorer" ? "supporting" : "primary",
     host,
   });
+  // Explorer is a navigation and triage surface. Its singleton Files and
+  // Changes views are configured from the dock menu; its New Tab page offers
+  // only the supporting requests deliberately approved for that narrow host.
+  // Plugins remain eligible when they explicitly registered an Explorer panel.
+  const visibleGroups = useMemo(
+    () => (host === "explorer" ? getExplorerNewTabGroups(groups) : groups),
+    [groups, host],
+  );
   const itemsById = useMemo(
-    () => new Map(groups.flatMap((group) => group.items).map((item) => [item.id, item])),
-    [groups],
+    () => new Map(visibleGroups.flatMap((group) => group.items).map((item) => [item.id, item])),
+    [visibleGroups],
   );
   const handlesWorkspaceShortcuts = isInteractive && host === "main";
 
@@ -245,7 +279,7 @@ const NewTabPanel = memo(function NewTabPanel(): ReactElement {
     <View ref={containerRef} style={styles.container} testID="workspace-new-tab-panel">
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.rail}>
-          {groups.map((group) => (
+          {visibleGroups.map((group) => (
             <View key={group.id} style={styles.group}>
               {group.label ? (
                 <View style={styles.groupHeader}>

@@ -93,6 +93,7 @@
     "format:check:files": "oxfmt --check",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
+    "settings:catalog": "node scripts/generate-settings-search-catalog.mjs && npm run format:files -- packages/app/src/screens/settings-search-generated.ts",
     "knip": "knip",
     "e2e": "npm run test:e2e --workspace=@otto-code/app",
     "e2e:local-ai": "npm run test:e2e:local-ai --workspace=@otto-code/app",

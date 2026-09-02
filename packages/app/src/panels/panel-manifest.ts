@@ -55,7 +55,7 @@ const manifests = {
   },
   project_search: {
     kind: "project_search",
-    supportedHosts: ["main", "explorer"],
+    supportedHosts: ["explorer"],
     resourceKey: () => "project_search",
   },
   pull_request: {

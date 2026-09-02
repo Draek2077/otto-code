@@ -122,6 +122,16 @@ export async function openFilesPanel(page: Page): Promise<void> {
   });
 }
 
+export async function openProjectSearchPanel(page: Page): Promise<void> {
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.press(`${modifier}+Shift+F`);
+  const explorer = explorerSidebar(page);
+  await expect(explorer.getByTestId("explorer-sidebar-tab-project_search")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(explorer.getByTestId("project-search-input")).toBeVisible({ timeout: 30_000 });
+}
+
 export async function openPullRequestPanel(page: Page): Promise<void> {
   const existingTab = visibleTestId(page, "workspace-tab-pull_request").first();
   if ((await existingTab.count()) > 0) {
@@ -136,10 +146,8 @@ export async function openPullRequestPanel(page: Page): Promise<void> {
 }
 
 export async function waitForWorkspaceTabsVisible(page: Page): Promise<void> {
-  await expect(visibleTestId(page, "workspace-tabs-row").first()).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(visibleTestId(page, "workspace-new-tab-button").first()).toBeVisible({
+  await expect(visibleWorkspaceTabStrip(page)).toBeVisible({ timeout: 30_000 });
+  await expect(visibleTestId(page, "workspace-new-tab-menu-trigger").first()).toBeVisible({
     timeout: 30_000,
   });
 }

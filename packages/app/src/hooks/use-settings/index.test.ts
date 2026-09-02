@@ -33,6 +33,12 @@ describe("collectAppSettingsUpdates", () => {
     });
   });
 
+  it("routes the sub-agent presentation preference", () => {
+    expect(collectAppSettingsUpdates({ subagentTrackPresentation: "pills" })).toEqual({
+      subagentTrackPresentation: "pills",
+    });
+  });
+
   it("routes shortcut overlay mode to app settings", () => {
     expect(collectAppSettingsUpdates({ shortcutOverlayMode: "on-screen" })).toEqual({
       shortcutOverlayMode: "on-screen",

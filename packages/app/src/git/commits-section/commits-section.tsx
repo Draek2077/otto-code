@@ -137,7 +137,7 @@ export function CommitsSection({
         style={styles.header}
       >
         <View style={headerChevronStyle}>
-          <ThemedChevron size="sm" uniProps={chevronColorMapping} />
+          <ThemedChevron size="xs" uniProps={chevronColorMapping} />
         </View>
         <Text style={styles.title}>{t("workspace.git.diff.commits.title")}</Text>
         {commitCount === null ? (
@@ -168,15 +168,18 @@ const styles = StyleSheet.create((theme) => ({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
-    paddingLeft: theme.spacing[2],
+    // This is the Changes pane's status row, not a section heading. Keep its
+    // geometry and metadata density aligned with the File Editor status bar.
+    gap: theme.spacing[1],
+    paddingLeft: theme.spacing[3],
     paddingRight: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    minHeight: 23,
     flexShrink: 0,
   },
   headerChevron: {
-    width: 16,
-    height: 16,
+    width: 12,
+    height: 12,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -185,11 +188,11 @@ const styles = StyleSheet.create((theme) => ({
     transform: [{ rotate: "90deg" }],
   },
   title: {
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foreground,
   },
   count: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     flex: 1,
   },

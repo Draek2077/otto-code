@@ -25,7 +25,6 @@ import {
   useBrowserToolsWarningCopy,
   useOpenBrowserToolsSettings,
 } from "@/utils/browser-tools-warning";
-import { type PinnedTabTarget } from "@/workspace-pins/target";
 import type { PreviewConfiguredServer, PreviewRunningServer } from "@otto-code/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -52,8 +51,6 @@ const PREVIEW_SERVER_POLL_INTERVAL_MS = 10_000;
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 
 const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
-
-export const PREVIEW_TARGET: PinnedTabTarget = { kind: "preview" };
 
 const PREVIEW_BOOTSTRAP_PROMPT =
   "Detect this project's dev servers and save their configurations to `.claude/launch.json` " +

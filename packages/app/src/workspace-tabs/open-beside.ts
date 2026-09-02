@@ -30,6 +30,11 @@ interface OpenPreferredWorkspacePreviewInput extends OpenPreferredWorkspaceTarge
   workspaceId: string;
   explorerSidebarPaneId: string | null;
   lastMainPaneId: string | null;
+  /**
+   * An explicit default for a new implicit target. Existing tabs remain where
+   * the user moved them, matching the `prefer` placement contract.
+   */
+  defaultPaneId?: string;
 }
 
 function resolveMainPane(input: {
@@ -111,7 +116,17 @@ export function openPreferredWorkspacePreview(
   const existing = collectAllTabs(layout.root).some((tab) =>
     workspaceTabTargetsEqual(tab.target, input.target),
   );
-  if (existing) return openPreferredWorkspaceTarget(input);
+  const defaultPane = input.defaultPaneId ? findPaneById(layout.root, input.defaultPaneId) : null;
+  if (existing) {
+    if (!defaultPane) return openPreferredWorkspaceTarget(input);
+    return store.openTab({
+      workspaceKey: input.workspaceKey,
+      target: input.target,
+      intent: "reveal",
+      placement: { mode: "prefer", paneId: defaultPane.id },
+      parentTabId: input.parentTabId ?? undefined,
+    });
+  }
 
   const mainPane = resolveMainPane({
     workspaceKey: input.workspaceKey,
@@ -119,9 +134,10 @@ export function openPreferredWorkspacePreview(
     lastMainPaneId: input.lastMainPaneId,
   });
   const destinationPaneId =
-    !input.isCompact && input.preferences[input.source]
+    defaultPane?.id ??
+    (!input.isCompact && input.preferences[input.source]
       ? store.ensureSidePane(input.workspaceKey)
-      : mainPane?.id;
+      : mainPane?.id);
   if (!destinationPaneId) return null;
   const nextLayout = useWorkspaceLayoutStore.getState().layoutByWorkspace[input.workspaceKey];
   const destinationPane = nextLayout ? findPaneById(nextLayout.root, destinationPaneId) : null;

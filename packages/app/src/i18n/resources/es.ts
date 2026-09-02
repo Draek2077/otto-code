@@ -1036,6 +1036,7 @@ export const es: TranslationResources = {
         copyTerminalId: "Copiar ID del terminal",
         copyFilePath: "Copy file path",
         moveToMain: "Mover al panel principal",
+        moveToExplorer: "Mover al panel Explorador",
       },
       actions: {
         newAgent: "Nuevo chat",
@@ -3432,11 +3433,14 @@ export const es: TranslationResources = {
         descriptions: {
           interrupt:
             "Cuando el agente se está ejecutando, Enter interrumpe. Command/Ctrl+Enter pone en cola.",
+          steer:
+            "Cuando el agente se está ejecutando, Enter dirige el turno activo. Command/Ctrl+Enter pone en cola.",
           queue:
             "Cuando el agente se está ejecutando, Enter pone en cola. Command/Ctrl+Enter envía.",
         },
         options: {
           interrupt: "Interrumpir",
+          steer: "Dirigir",
           queue: "Cola",
         },
       },
@@ -3751,10 +3755,10 @@ export const es: TranslationResources = {
             full: "Completo",
           },
         },
-        hidePinnedToolbarOptions: {
-          title: "Ocultar las opciones fijadas de la barra de herramientas",
-          hint: "Mantiene ocultas las opciones fijadas de la barra de pestañas y de la barra de diff hasta que pases el cursor por esa zona",
-          accessibilityLabel: "Ocultar las opciones fijadas de la barra de herramientas",
+        hideTabToolbarOptions: {
+          title: "Ocultar las opciones de la barra de herramientas de pestañas",
+          hint: "Mantiene ocultas las opciones de la barra de herramientas de pestañas hasta que pases el cursor sobre la barra de pestañas",
+          accessibilityLabel: "Ocultar las opciones de la barra de herramientas de pestañas",
         },
       },
       visualizer: {

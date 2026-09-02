@@ -8,6 +8,8 @@ interface WorkspaceActionsProps {
   hideLabels?: boolean;
   // Stretch to fill the available width (content stays centered).
   fill?: boolean;
+  /** Reports whether this workspace contributes a visible toolbar control. */
+  onAvailabilityChange?: (available: boolean) => void;
   tooltipSide?: "top" | "bottom";
 }
 
@@ -16,6 +18,7 @@ export function WorkspaceActions({
   cwd,
   hideLabels,
   fill,
+  onAvailabilityChange,
   tooltipSide,
 }: WorkspaceActionsProps) {
   const { gitActions } = useGitActions({
@@ -29,6 +32,7 @@ export function WorkspaceActions({
       gitActions={gitActions}
       hideLabels={hideLabels}
       fill={fill}
+      onAvailabilityChange={onAvailabilityChange}
       tooltipSide={tooltipSide}
     />
   );

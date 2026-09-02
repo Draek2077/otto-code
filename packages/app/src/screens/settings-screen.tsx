@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -23,12 +23,14 @@ import type { TFunction } from "i18next";
 import { Buffer } from "buffer";
 import {
   ArrowLeft,
+  Blocks,
   Chat,
   Settings,
   Palette,
   Server,
   Network,
   Brain,
+  CircleNotificationsFilled,
   Bot,
   Boxes,
   CodeBlocks,
@@ -158,6 +160,7 @@ import {
 } from "@/screens/settings/host-page";
 import { HostBrainPage } from "@/screens/settings/host-brain-page";
 import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
+import { HostPluginsPage } from "@/screens/settings/plugins-page";
 import { PreviewCacheSettingsSection } from "@/screens/settings/storage-section";
 import { AgentVoiceCuesRow } from "@/screens/settings/agent-voice-cues-row";
 import { VoicePlaybackVolumeRow } from "@/screens/settings/voice-playback-volume-row";
@@ -190,6 +193,7 @@ import { rememberLastSettingsView } from "@/stores/last-settings-view";
 // Matches MIN_CHAT_WIDTH in left-sidebar.tsx so both sidebars clamp the shared
 // panel-store width identically.
 import { SettingsSearchOverview } from "@/screens/settings-search-overview";
+import { SETTINGS_SEARCH_ITEMS, type SettingsSearchItem } from "@/screens/settings-search-catalog";
 import type { IconSizeProp } from "@/components/icons/icon-size";
 
 const MIN_SETTINGS_CONTENT_WIDTH = 400;
@@ -239,22 +243,15 @@ interface SidebarSectionItem {
 }
 
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
+  // Keep Paseo's v0.6.1 canonical order intact. Otto-only areas are explicit
+  // additions after the upstream base, not a replacement taxonomy.
   { id: "general", labelKey: "settings.sections.general", icon: Settings },
-  { id: "chat", labelKey: "settings.sections.chat", icon: Chat },
   { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
   {
     id: "layout",
     labelKey: "settings.sections.layout",
     icon: PanelRight,
     desktopOnly: true,
-  },
-  // Reuses the (pre-move) Appearance-subsection title key so every locale
-  // already has it - the rows themselves moved to visualizer-section.tsx.
-  {
-    id: "visualizer",
-    labelKey: "settings.appearance.visualizer.title",
-    icon: Waypoints,
-    developerOnly: true,
   },
   {
     id: "editor",
@@ -270,10 +267,9 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   },
   {
     id: "notifications",
-    labelKey: "settings.sections.permissions",
-    icon: Shield,
+    labelKey: "settings.sections.notifications",
+    icon: CircleNotificationsFilled,
     desktopOnly: true,
-    hidden: true,
   },
   {
     id: "permissions",
@@ -283,6 +279,15 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   },
   { id: "diagnostics", labelKey: "settings.sections.diagnostics", icon: Stethoscope },
   { id: "about", labelKey: "settings.sections.about", icon: Info },
+  { id: "chat", labelKey: "settings.sections.chat", icon: Chat },
+  // Reuses the (pre-move) Appearance-subsection title key so every locale
+  // already has it - the rows themselves moved to visualizer-section.tsx.
+  {
+    id: "visualizer",
+    labelKey: "settings.appearance.visualizer.title",
+    icon: Waypoints,
+    developerOnly: true,
+  },
 ];
 
 interface HostSectionItem {
@@ -295,15 +300,14 @@ interface HostSectionItem {
 }
 
 const HOST_SECTION_ITEMS: HostSectionItem[] = [
+  // Paseo's v0.6.1 host sequence is the visible base. Otto-specific systems
+  // remain discrete only where folding them into an upstream page would hide
+  // a separate ownership boundary.
   { id: "host", labelKey: "settings.hostSections.host", icon: Server },
   { id: "projects", labelKey: "settings.hostSections.projects", icon: FolderGit2 },
   { id: "connections", labelKey: "settings.hostSections.connections", icon: Network },
   { id: "pair-device", labelKey: "openProject.tiles.pairDevice.title", icon: Smartphone },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
-  { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
-  { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
-  { id: "code", labelKey: "settings.hostSections.code", icon: DataObject },
-  { id: "brain", labelKey: "settings.hostSections.brain", icon: Brain },
   { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Robot },
   // Git-provider settings are collapsed into "Workspaces" as a "Git" panel - too
   // few options to warrant its own sidebar category. See HostWorkspacesPage.
@@ -317,15 +321,20 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
-  // Not developer-only: reclaiming the disk agents filled is a plain user need,
-  // and User mode is exactly where someone asks where their space went.
-  { id: "storage", labelKey: "settings.hostSections.storage", icon: HardDrive },
   {
     id: "terminals",
     labelKey: "settings.hostSections.terminals",
     icon: SquareTerminal,
     developerOnly: true,
   },
+  { id: "plugins", labelKey: "settings.plugins.title", icon: Blocks },
+  { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
+  { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
+  { id: "code", labelKey: "settings.hostSections.code", icon: DataObject },
+  { id: "brain", labelKey: "settings.hostSections.brain", icon: Brain },
+  // Not developer-only: reclaiming the disk agents filled is a plain user need,
+  // and User mode is exactly where someone asks where their space went.
+  { id: "storage", labelKey: "settings.hostSections.storage", icon: HardDrive },
 ];
 
 function renderHostSettingsContent(
@@ -362,6 +371,8 @@ function renderHostSettingsContent(
       return <HostStoragePage serverId={view.serverId} />;
     case "terminals":
       return isDeveloperMode ? <HostTerminalsPage serverId={view.serverId} /> : null;
+    case "plugins":
+      return <HostPluginsPage serverId={view.serverId} />;
     case "host":
       return <HostSettingsPage serverId={view.serverId} onHostRemoved={onHostRemoved} />;
   }
@@ -395,6 +406,7 @@ const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settings
 function getSendBehaviorOptions(t: TFunction) {
   return [
     { value: "interrupt" as const, label: t("settings.general.defaultSend.options.interrupt") },
+    { value: "steer" as const, label: t("settings.general.defaultSend.options.steer") },
     { value: "queue" as const, label: t("settings.general.defaultSend.options.queue") },
   ];
 }
@@ -967,10 +979,7 @@ function ChatSection({
   const sendBehaviorOptions = useMemo(() => getSendBehaviorOptions(t), [t]);
   const suggestedTasksDefaultModeDescription =
     SUGGESTED_TASKS_DEFAULT_MODE_DESCRIPTIONS[settings.suggestedTasksDefaultMode];
-  const sendBehaviorDescriptionKey =
-    settings.sendBehavior === "interrupt"
-      ? "settings.general.defaultSend.descriptions.interrupt"
-      : "settings.general.defaultSend.descriptions.queue";
+  const sendBehaviorDescriptionKey = `settings.general.defaultSend.descriptions.${settings.sendBehavior}`;
 
   return (
     <Fragment>
@@ -2065,6 +2074,46 @@ export interface SettingsScreenProps {
   view: SettingsView;
   openAddHostIntent?: string | null;
   preferredHostServerId?: string | null;
+  focusSettingId?: string | null;
+}
+
+function SettingsSearchFocus({ settingId }: { settingId: string | null }) {
+  useEffect(() => {
+    if (!isWeb || !settingId) return;
+    const item = SETTINGS_SEARCH_ITEMS.find((candidate) => candidate.id === settingId);
+    if (!item) return;
+
+    const frame = requestAnimationFrame(() => {
+      // Settings rows predate the catalog and do not all expose a shared ref.
+      // The exact visible label is the durable common affordance across those
+      // rows, so make that canonical label the focus target while preserving
+      // each row's existing ownership and component implementation.
+      const labels = Array.from(document.querySelectorAll<HTMLElement>("span, p, div")).filter(
+        (element) => isExactSettingsLabel(element, item.title),
+      );
+      const label =
+        labels.find((element) => element.parentElement?.textContent?.includes(item.description)) ??
+        labels[0];
+      if (!label) return;
+      const target = label.parentElement?.textContent?.includes(item.description)
+        ? label.parentElement
+        : label;
+      target.dataset.settingsSearchTarget = item.id;
+      target.tabIndex = -1;
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+      target.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [settingId]);
+
+  return null;
+}
+
+function isExactSettingsLabel(element: HTMLElement, title: string): boolean {
+  return (
+    element.textContent?.trim() === title &&
+    !Array.from(element.children).some((child) => child.textContent === title)
+  );
 }
 
 function DesktopIntegrationsContent(props: {
@@ -2093,10 +2142,12 @@ function DesktopIntegrationsContent(props: {
   );
 }
 
+// oxlint-disable-next-line complexity -- the Settings shell is the one exhaustive route owner.
 export default function SettingsScreen({
   view,
   openAddHostIntent = null,
   preferredHostServerId = null,
+  focusSettingId = null,
 }: SettingsScreenProps) {
   const router = useRouter();
   const { theme } = useUnistyles();
@@ -2480,6 +2531,28 @@ export default function SettingsScreen({
     },
     [guardProjectSettingsExit, isCompactLayout, router],
   );
+
+  const handleSelectSearchItem = useCallback(
+    (item: SettingsSearchItem) => {
+      if (item.host && !activeHostServerId) {
+        handleAddHost();
+        return;
+      }
+      guardProjectSettingsExit(() => {
+        const target = item.host
+          ? buildSettingsHostSectionRoute(activeHostServerId!, item.section as HostSectionSlug)
+          : buildSettingsSectionRoute(item.section as SettingsSectionSlug);
+        const destination = `${target}?setting=${encodeURIComponent(item.id)}` as Href;
+        if (isCompactLayout) {
+          router.push(destination);
+        } else {
+          router.replace(destination);
+        }
+      });
+    },
+    [activeHostServerId, guardProjectSettingsExit, handleAddHost, isCompactLayout, router],
+  );
+
   // Picker: choose the host for host-section rows. If the user is already on a
   // host detail route, keep that detail section and swap only the host segment.
   const handleSelectHost = useCallback(
@@ -2618,10 +2691,7 @@ export default function SettingsScreen({
     if (view.kind === "root") {
       return (
         <SettingsSearchOverview
-          onSelectSection={handleSelectSection}
-          onSelectHostSection={handleSelectHostSection}
-          activeHostServerId={activeHostServerId}
-          hasHosts={hosts.length > 0}
+          onSelectItem={handleSelectSearchItem}
           isDeveloperMode={isDeveloperMode}
         />
       );
@@ -2704,21 +2774,9 @@ export default function SettingsScreen({
             />
           );
         case "notifications":
-          // COMPAT(settingsNotificationsRoute): retained for remembered/direct routes from before
-          // Permissions and Notifications merged; remove after 2027-02-24.
-          return isDesktopApp ? (
-            <Fragment>
-              <DesktopPermissionsSection />
-              <DesktopNotificationsSection />
-            </Fragment>
-          ) : null;
+          return isDesktopApp ? <DesktopNotificationsSection /> : null;
         case "permissions":
-          return isDesktopApp ? (
-            <Fragment>
-              <DesktopPermissionsSection />
-              <DesktopNotificationsSection />
-            </Fragment>
-          ) : null;
+          return isDesktopApp ? <DesktopPermissionsSection /> : null;
         case "diagnostics":
           return (
             <Fragment>
@@ -2754,6 +2812,7 @@ export default function SettingsScreen({
   // caught error and re-attempts the render.
   const content = (
     <SettingsContentErrorBoundary resetKey={settingsViewKey(view)}>
+      <SettingsSearchFocus settingId={focusSettingId} />
       {renderedContent}
     </SettingsContentErrorBoundary>
   );

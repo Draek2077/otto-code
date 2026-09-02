@@ -18,7 +18,6 @@ import {
   useContext,
   useEffect,
   useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -30,6 +29,7 @@ import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-ha
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { AppearanceProvider } from "@/appearance/provider";
 import { CommandCenter } from "@/command-center/command-center";
 import { CommandCenterRootActions } from "@/command-center/root-registration";
 import { CommandCenterProvider } from "@/command-center/provider";
@@ -49,6 +49,7 @@ import { TutorialController } from "@/tutorial/controller";
 import { QuitConfirmListener } from "@/desktop/components/quit-confirm-listener";
 import { LeftSidebar } from "@/components/left-sidebar";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
+import { DesktopWindowControls } from "@/components/desktop/window-controls";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
@@ -136,9 +137,6 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import { getDaemonStartService } from "@/runtime/daemon-start-service";
-import { useColorScheme } from "@/hooks/use-color-scheme";
-import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
-import { applyColorScheme } from "@/screens/settings/appearance/apply-color-scheme";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
@@ -711,6 +709,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
           </WindowChromeSafeArea>
         </WindowChromeRegion>
       ) : null}
+      <DesktopWindowControls />
       <FloatingPanelPortalHost />
       {isCompactLayout ? sidebarChrome : null}
       <DownloadToast />
@@ -798,66 +797,8 @@ function MobileGestureWrapper({
 }
 
 function ProvidersWrapper({ children }: { children: ReactNode }) {
-  const { settings, isLoading: settingsLoading } = useAppSettings();
+  const { isLoading: settingsLoading } = useAppSettings();
   const { upsertConnectionFromOfferUrl } = useHostMutations();
-  const isCompactLayout = useIsCompactFormFactor();
-
-  // Apply theme setting on mount and when it changes. Keyed on all the
-  // fields together (not split into separate effects) so the mirror repaint
-  // in applyColorScheme always runs before the mode switch, never after.
-  // The OS scheme is a dependency because in System mode the `black` chat
-  // mirror follows whichever spectrum is actually showing - Unistyles flips
-  // the light/dark keys adaptively on its own, but the black repaint must
-  // re-run here when the OS scheme changes.
-  const osColorScheme = useColorScheme();
-  // These patches change native paint values used by the scoped black chat
-  // theme. A passive effect leaves one committed frame using the boot palette,
-  // which can split a newly mounted chat between two backgrounds. Apply them
-  // in the layout phase so the persisted palette is in place before that frame
-  // reaches the screen.
-  useLayoutEffect(() => {
-    if (settingsLoading) return;
-    applyColorScheme({
-      colorSchemeMode: settings.colorSchemeMode,
-      lightTheme: settings.lightTheme,
-      darkTheme: settings.darkTheme,
-      systemColorScheme: osColorScheme,
-      fontContrast: settings.fontContrast,
-    });
-  }, [
-    settingsLoading,
-    settings.colorSchemeMode,
-    settings.lightTheme,
-    settings.darkTheme,
-    settings.fontContrast,
-    osColorScheme,
-  ]);
-
-  // Apply font / size / syntax appearance settings on mount and when they change.
-  // Sibling to the theme effect above; order is irrelevant because both patch
-  // all registered theme keys, so the active key is always current. Also re-runs on
-  // compact-layout changes so fontSize/iconSize repaint when crossing the breakpoint.
-  useLayoutEffect(() => {
-    if (settingsLoading) return;
-    applyAppearance({
-      uiFontFamily: settings.uiFontFamily,
-      monoFontFamily: settings.monoFontFamily,
-      uiFontSize: settings.uiFontSize,
-      codeFontSize: settings.codeFontSize,
-      syntaxTheme: settings.syntaxTheme,
-      chatWidth: settings.chatWidth,
-      isCompact: isCompactLayout,
-    });
-  }, [
-    settingsLoading,
-    settings.uiFontFamily,
-    settings.monoFontFamily,
-    settings.uiFontSize,
-    settings.codeFontSize,
-    settings.chatWidth,
-    settings.syntaxTheme,
-    isCompactLayout,
-  ]);
 
   // Desktop only: maximize/unmaximize doesn't deliver a settled resize to the
   // web layout systems, so breakpoints, the sidebar, and tab sizing freeze at
@@ -869,27 +810,29 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <VoiceProvider>
-      <DesktopWindowControlsSync enabled={!settingsLoading} />
-      <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
-      <HostSessionManager />
-      <FaviconStatusSync />
-      <AppearanceStyleBoundary>
-        {/* Agent voice cues are a notification channel, so playback lives here -
+    <AppearanceProvider>
+      <VoiceProvider>
+        <DesktopWindowControlsSync enabled={!settingsLoading} />
+        <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
+        <HostSessionManager />
+        <FaviconStatusSync />
+        <AppearanceStyleBoundary>
+          {/* Agent voice cues are a notification channel, so playback lives here -
           app-global, above the router - and is independent of the Visualizer
           entirely. Headless: it fires the cue audio and renders nothing. */}
-        <AgentVoiceCuesHost />
-        {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
+          <AgentVoiceCuesHost />
+          {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
           for the same two reasons as the cues: the shared audio engine resolves
           inside VoiceProvider, and a route change must not cut a queue short. */}
-        <AutoSpeechHost />
-        <ZoomRecorderHost />
-        {/* Headless: binds the resource monitor started above the router to the
+          <AutoSpeechHost />
+          <ZoomRecorderHost />
+          {/* Headless: binds the resource monitor started above the router to the
           `resourceMonitorEnabled` setting, so the telemetry can be turned off. */}
-        <ResourceMonitorHost />
-        {children}
-      </AppearanceStyleBoundary>
-    </VoiceProvider>
+          <ResourceMonitorHost />
+          {children}
+        </AppearanceStyleBoundary>
+      </VoiceProvider>
+    </AppearanceProvider>
   );
 }
 

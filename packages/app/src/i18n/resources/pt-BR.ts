@@ -1035,6 +1035,7 @@ export const ptBR: TranslationResources = {
         copyTerminalId: "Copiar ID do terminal",
         copyFilePath: "Copiar caminho do arquivo",
         moveToMain: "Mover para o painel principal",
+        moveToExplorer: "Mover para o painel do Explorador",
       },
       actions: {
         newAgent: "Novo chat",
@@ -3414,10 +3415,13 @@ export const ptBR: TranslationResources = {
         descriptions: {
           interrupt:
             "Quando o agente está em execução, Enter interrompe. Command/Ctrl+Enter enfileira.",
+          steer:
+            "Quando o agente está em execução, Enter orienta o turno ativo. Command/Ctrl+Enter enfileira.",
           queue: "Quando o agente está em execução, Enter enfileira. Command/Ctrl+Enter envia.",
         },
         options: {
           interrupt: "Interromper",
+          steer: "Orientar",
           queue: "Fila",
         },
       },
@@ -3730,10 +3734,10 @@ export const ptBR: TranslationResources = {
             full: "Cheio",
           },
         },
-        hidePinnedToolbarOptions: {
-          title: "Ocultar as opções fixadas da barra de ferramentas",
-          hint: "Mantém ocultas as opções fixadas da barra de abas e da barra de diff até você passar o cursor sobre essa área",
-          accessibilityLabel: "Ocultar as opções fixadas da barra de ferramentas",
+        hideTabToolbarOptions: {
+          title: "Ocultar as opções da barra de ferramentas de abas",
+          hint: "Mantém ocultas as opções da barra de ferramentas de abas até você passar o cursor sobre a barra de abas",
+          accessibilityLabel: "Ocultar as opções da barra de ferramentas de abas",
         },
       },
       visualizer: {

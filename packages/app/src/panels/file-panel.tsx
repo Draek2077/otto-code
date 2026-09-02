@@ -44,7 +44,7 @@ function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDe
 
 function FilePanel() {
   const { t } = useTranslation();
-  const { serverId, workspaceId, target } = usePaneContext();
+  const { serverId, workspaceId, target, fileNavigationRevision } = usePaneContext();
   const paneWorkspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
   invariant(target.kind === "file", "FilePanel requires file target");
   // An external file is served from its owning workspace, or from its own
@@ -65,6 +65,7 @@ function FilePanel() {
       workspaceId={effectiveWorkspaceId}
       workspaceRoot={effectiveRoot}
       location={target}
+      navigationRevision={fileNavigationRevision}
       workspaceActionsEnabled={origin?.outsideAnyProject !== true}
     />
   );

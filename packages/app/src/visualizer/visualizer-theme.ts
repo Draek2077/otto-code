@@ -1,7 +1,4 @@
-import {
-  DARK_VARIANT_THEMES,
-  LIGHT_VARIANT_THEMES,
-} from "@/screens/settings/appearance/apply-color-scheme";
+import { DARK_VARIANT_THEMES, LIGHT_VARIANT_THEMES } from "@/appearance/color-scheme";
 import type { DarkThemeName, LightThemeName } from "@/styles/theme";
 
 // Builds the Visualizer guest palette from the active theme variant: a full

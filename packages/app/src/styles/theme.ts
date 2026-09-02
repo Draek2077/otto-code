@@ -374,7 +374,11 @@ export const THEME_OPTIONS = [
   { name: "pureBlack", group: "variant", theme: darkPureBlackTheme, swatch: "#000000" },
 ] as const;
 
-export type ThemePreference = (typeof THEME_OPTIONS)[number]["name"];
+// `plugin` is Paseo's persisted contribution selection. Otto's per-spectrum
+// variants remain data behind the adaptive light/dark mirrors.
+export type ThemePreference =
+  | (typeof THEME_OPTIONS)[number]["name"]
+  | typeof PLUGIN_THEME_PREFERENCE;
 
 export function getNextThemePreference(current: ThemePreference): ThemePreference {
   const currentIndex = THEME_OPTIONS.findIndex((option) => option.name === current);

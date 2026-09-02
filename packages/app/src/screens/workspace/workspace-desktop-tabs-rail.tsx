@@ -69,6 +69,7 @@ interface WorkspaceDesktopTabsRailProps {
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onMoveTabToExplorer?: (tabId: string) => void;
   onCreateDraftTab: (input: { paneId?: string }) => void;
   onCreateTerminalTab: (input: { paneId?: string; profile?: TerminalProfile }) => void;
   onCreateBrowserTab: (input: { paneId?: string }) => void;
@@ -83,6 +84,11 @@ interface WorkspaceDesktopTabsRailProps {
   activeDragTabId?: string | null;
   /** Index the dragged tab would land at, or null when nothing is over this rail. */
   tabDropPreviewIndex?: number | null;
+  showPaneMaximizeAction?: boolean;
+  paneMaximized?: boolean;
+  onTogglePaneMaximized?: () => void;
+  focusModeEnabled?: boolean;
+  onExitFocusMode?: () => void;
   tabOrientation: "horizontal" | "vertical";
   onToggleTabOrientation: () => void;
 }
@@ -91,8 +97,6 @@ interface WorkspaceDesktopTabsRailProps {
 // (8) + the orientation toggle (22) + the tools strip's own horizontal
 // padding (16) + the more-actions chevron (22). Whatever is left of railWidth
 // after this is the budget pinned tool buttons must fit into; the rest stay
-// reachable through the chevron's catalog menu.
-const RAIL_HEADER_FIXED_CHROME_WIDTH = 68;
 
 // Scales the rail's content-driven width formula up from the horizontal
 // row's per-char metrics - see railMetrics below.
@@ -154,6 +158,7 @@ export function WorkspaceDesktopTabsRail({
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onCloseOtherTabs,
+  onMoveTabToExplorer,
   onCreateDraftTab,
   onCreateTerminalTab,
   onCreateBrowserTab,
@@ -167,6 +172,11 @@ export function WorkspaceDesktopTabsRail({
   externalDndContext = false,
   activeDragTabId = null,
   tabDropPreviewIndex = null,
+  showPaneMaximizeAction,
+  paneMaximized,
+  onTogglePaneMaximized,
+  focusModeEnabled,
+  onExitFocusMode,
   tabOrientation,
   onToggleTabOrientation,
 }: WorkspaceDesktopTabsRailProps) {
@@ -221,7 +231,7 @@ export function WorkspaceDesktopTabsRail({
     [tabLabelLengths, railMetrics],
   );
   const savedRailWidth = useAppSettingValue(selectVerticalTabRailWidth);
-  const { railWidth, railAnimatedStyle, railResizeGesture } = useRailResize({
+  const { railAnimatedStyle, railResizeGesture } = useRailResize({
     contentDrivenWidth,
     savedRailWidth,
   });
@@ -262,6 +272,7 @@ export function WorkspaceDesktopTabsRail({
       copyWorkspacePath: t("workspace.tabs.menu.copyWorkspacePath"),
       rename: t("workspace.tabs.menu.rename"),
       moveToWorkspace: t("workspace.tabs.menu.moveToWorkspace"),
+      moveToExplorer: t("workspace.tabs.menu.moveToExplorer"),
       closeAbove: t("workspace.tabs.menu.closeAbove"),
       closeBelow: t("workspace.tabs.menu.closeBelow"),
       closeLeft: t("workspace.tabs.menu.closeLeft"),
@@ -357,6 +368,7 @@ export function WorkspaceDesktopTabsRail({
           onCloseTabsToLeft={onCloseTabsToLeft}
           onCloseTabsToRight={onCloseTabsToRight}
           onCloseOtherTabs={onCloseOtherTabs}
+          onMoveTabToExplorer={onMoveTabToExplorer}
           resolvedTabWidth="stretch"
           showLabel
           showCloseButton
@@ -380,6 +392,7 @@ export function WorkspaceDesktopTabsRail({
       onCloseTab,
       onCloseTabsToLeft,
       onCloseTabsToRight,
+      onMoveTabToExplorer,
       onCopyAgentId,
       onCopyFilePath,
       onCopyResumeCommand,
@@ -440,14 +453,16 @@ export function WorkspaceDesktopTabsRail({
               showCreateBrowserTab && !paneHasPreviewTab && paneHasEditableAgentTab
             }
             terminalDisabled={terminalDisabled}
-            tabsContainerWidth={0}
-            tabCount={tabs.length}
             onSplitRight={onSplitRight}
             onSplitDown={onSplitDown}
             showPaneSplitActions={showPaneSplitActions}
             onStripLayout={noopStripLayout}
-            toolsAvailableWidth={Math.max(0, railWidth - RAIL_HEADER_FIXED_CHROME_WIDTH)}
             rowHovered={railHovered}
+            showPaneMaximizeAction={showPaneMaximizeAction}
+            paneMaximized={paneMaximized}
+            onTogglePaneMaximized={onTogglePaneMaximized}
+            focusModeEnabled={focusModeEnabled}
+            onExitFocusMode={onExitFocusMode}
           />
           <View pointerEvents="none" style={styles.headerBottomHairline} />
         </View>
@@ -628,8 +643,7 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     right: 0,
     width: 1,
-    backgroundColor: theme.colors.foreground,
-    opacity: 0.25,
+    backgroundColor: theme.colors.accent,
   },
   // The rail/pane separator is a positioned child rather than a borderRight so
   // the active chip (which runs flush to the rail's right edge) can paint over

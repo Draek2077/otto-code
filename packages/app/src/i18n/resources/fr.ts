@@ -1037,6 +1037,7 @@ export const fr: TranslationResources = {
         copyTerminalId: "Copier l'identifiant du terminal",
         copyFilePath: "Copy file path",
         moveToMain: "Déplacer vers le panneau principal",
+        moveToExplorer: "Déplacer vers le panneau Explorateur",
       },
       actions: {
         newAgent: "Nouvelle conversation",
@@ -3448,11 +3449,14 @@ export const fr: TranslationResources = {
         descriptions: {
           interrupt:
             "Lorsque l'agent est en cours d'exécution, Entrée interrompt. Commande/Ctrl+Entrée met en file d'attente.",
+          steer:
+            "Lorsque l’agent est en cours d’exécution, Entrée oriente le tour actif. Commande/Ctrl+Entrée met en file d’attente.",
           queue:
             "Lorsque l'agent est en cours d'exécution, Entrée met en file d'attente. Commande/Ctrl+Entrée envoie.",
         },
         options: {
           interrupt: "Interrompre",
+          steer: "Orienter",
           queue: "File d'attente",
         },
       },
@@ -3766,10 +3770,10 @@ export const fr: TranslationResources = {
             full: "Pleine largeur",
           },
         },
-        hidePinnedToolbarOptions: {
-          title: "Masquer les options épinglées de la barre d'outils",
-          hint: "Garde masquées les options épinglées de la barre d'onglets et de la barre de diff jusqu'au survol de la barre d'outils",
-          accessibilityLabel: "Masquer les options épinglées de la barre d'outils",
+        hideTabToolbarOptions: {
+          title: "Masquer les options de la barre d’outils des onglets",
+          hint: "Masque les options de la barre d’outils des onglets jusqu’à ce que vous survoliez la barre d’onglets",
+          accessibilityLabel: "Masquer les options de la barre d’outils des onglets",
         },
       },
       visualizer: {

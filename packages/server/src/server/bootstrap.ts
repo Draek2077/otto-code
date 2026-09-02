@@ -972,6 +972,18 @@ function buildInitialProjectStorageConfig(
   };
 }
 
+function buildInitialLspConfig(persistedConfig: PersistedConfig): MutableDaemonConfig["lsp"] {
+  const lsp = persistedConfig.daemon?.lsp;
+  return {
+    enabled: lsp?.enabled ?? true,
+    languages: lsp?.languages ?? {},
+    ...(lsp?.csharpProjectScope ? { csharpProjectScope: lsp.csharpProjectScope } : {}),
+    maxRunningServers: lsp?.maxRunningServers ?? 6,
+    idleMinutes: lsp?.idleMinutes ?? 10,
+    backgroundIdleMinutes: lsp?.backgroundIdleMinutes ?? 2,
+  };
+}
+
 function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
   const providers = config.providerOverrides ?? {};
 
@@ -987,13 +999,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     browserTools: { enabled: config.browserToolsEnabled ?? false },
     // On by default and safe: nothing spawns until a code-intelligence action needs
     // a language in a workspace, so an unused language costs nothing.
-    lsp: {
-      enabled: true,
-      languages: {},
-      maxRunningServers: 6,
-      idleMinutes: 10,
-      backgroundIdleMinutes: 2,
-    },
+    lsp: buildInitialLspConfig(persistedConfig),
     dotnetSolutionManagement: buildInitialDotnetSolutionManagement(persistedConfig),
     // Local AI host (otto-brain) section. Round-trips from config.json; the
     // brain's own config.json is the source of truth and the daemon writes

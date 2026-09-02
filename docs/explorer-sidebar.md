@@ -3,10 +3,10 @@
 The Explorer sidebar and the side pane share panel implementations, but they have different shell
 contracts.
 
-| Surface          | Purpose                      | Lifecycle                                  |
-| ---------------- | ---------------------------- | ------------------------------------------ |
-| Explorer sidebar | Files and Changes navigation | Cmd+E shows or hides the dedicated dock    |
-| Side pane        | Ordinary workspace content   | Created and closed like any workspace pane |
+| Surface          | Purpose                               | Lifecycle                                  |
+| ---------------- | ------------------------------------- | ------------------------------------------ |
+| Explorer sidebar | Files, Changes, and Search navigation | Cmd+E shows or hides the dedicated dock    |
+| Side pane        | Ordinary workspace content            | Created and closed like any workspace pane |
 
 ## Panel host contract
 
@@ -15,7 +15,7 @@ fixed-target labels and icons from that registration, filter by host, and never 
 panel type for another. Tab moves reject unsupported destinations, and placement resolves only to
 a compatible pane.
 
-Files and Changes are the Explorer defaults and its singleton navigation views. Other compatible
+Files, Changes, and Search are Explorer-only singleton navigation views. Other compatible
 tabs, including agents, terminals, files, and diffs, can move between Explorer and main panes.
 Keep panel implementations independent of either shell. `WorkspacePanelHost` owns mounting and
 retention, while each shell owns its tabs, focus, dragging, resizing, and shortcuts.
@@ -32,15 +32,33 @@ that pane from the workspace split tree and docks it separately. Persisted ident
 literal `"explorer"` pane id and `explorerPaneIdByWorkspace` key for compatibility.
 
 The tab rail has no inline add or close controls. Its context menu opens a New Tab launcher and
-toggles the singleton Files and Changes views. Individual tab menus close instances or move
+toggles the singleton Files, Changes, and Search views. Individual tab menus close instances or move
 compatible tabs to main. Explorer tabs can be reordered, but the dock cannot be split. Selecting
 an Explorer tab does not change workspace focus.
+
+Explorer is a navigation and triage surface, not the default destination for new work. Opening or
+editing a file from Files, Changes, or project search creates its tab in Main. Opening a Diff from
+Changes creates it in Explorer. Both are `prefer` placements: reopening an existing tab preserves
+the host where the user previously moved it. Explorer's New Tab page offers only Diff, project
+search, and plugin panels that explicitly support the Explorer; Files and Changes remain dock
+navigation views rather than general launch targets.
 
 Cmd+E selects Changes for Git workspaces and Files otherwise. Compact layouts use the combined
 full-screen Explorer overlay and close it after a file opens. Wide native layouts without pane
 splits use the same combined content in a resizable inline dock; opening a file leaves that dock
 visible. Both presentations keep their selection in the panel store and reuse the layout store's
 per-workspace Explorer width. They do not create a second Explorer lifecycle.
+
+## Otto deviations
+
+Otto keeps three deliberate additions on top of upstream's pane-host Explorer:
+
+- Focus mode hides workspace chrome and the Explorer dock while keeping the complete main split
+  layout visible. It does not collapse the canvas to one focused pane.
+- The main pane keeps Otto's vertical tab rail. Draft, terminal, and browser strip launchers ride
+  alongside upstream's New Tab launcher.
+- `WorkspacePanelHost` reads its retained-panel cap from the user's `mountedTabLimit` setting rather
+  than using a fixed limit.
 
 ## Side pane
 

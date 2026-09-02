@@ -57,6 +57,23 @@ describe("normalizeAgentSnapshot", () => {
     expect(normalizeAgentSnapshot(identified, "server-1")).not.toHaveProperty("activeTurn");
   });
 
+  it("ignores a stale activeTurn on a snapshot whose status is no longer running", () => {
+    // A daemon without the projection gate keeps re-broadcasting the settled
+    // turn's identity on idle snapshots; honoring it re-opened the busy
+    // spinner forever after the turn completed.
+    const stale = createSnapshot({
+      status: "idle",
+      activeTurn: { turnId: "foreground-turn-1", startedAt: "2026-07-31T12:00:00.000Z" },
+    });
+    expect(normalizeAgentActiveTurn(stale, null)).toBeNull();
+
+    const failed = createSnapshot({
+      status: "error",
+      activeTurn: { turnId: "foreground-turn-1", startedAt: "2026-07-31T12:00:00.000Z" },
+    });
+    expect(normalizeAgentActiveTurn(failed, null)).toBeNull();
+  });
+
   it("derives parentAgentId from the parent label while preserving labels", () => {
     const labels = {
       [PARENT_AGENT_ID_LABEL]: "parent-1",

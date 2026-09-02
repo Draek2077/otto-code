@@ -3,7 +3,7 @@ import type { MessagePayload } from "@/composer/types";
 
 export interface DictationTranscriptContext {
   value: string;
-  defaultSendBehavior: "interrupt" | "queue";
+  defaultSendBehavior: "interrupt" | "steer" | "queue";
   isAgentRunning: boolean;
   isCompacting?: boolean;
   onQueue: ((payload: MessagePayload) => void) | undefined;

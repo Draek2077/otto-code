@@ -135,7 +135,7 @@ import {
   type BrowserAutomationHostCapability,
 } from "@otto-code/protocol/browser-automation/capabilities";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
-import { LspService } from "./lsp/service.js";
+import { LspService, type LspSettings } from "./lsp/service.js";
 import { SolutionService } from "./solution-model/service.js";
 import { killAllSharedDotnetProcesses } from "./dotnet-process-registry.js";
 import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
@@ -846,6 +846,11 @@ export class VoiceAssistantWebSocketServer {
     // workspace, so every client session shares one pool rather than spawning its own.
     this.lspService = LspService.create({ logger: this.logger });
     this.lspService.setSettings(daemonConfigStore.get().lsp);
+    const unsubscribeLspSettings = daemonConfigStore.onFieldChange("lsp", (value) => {
+      void this.lspService.applySettings(value as Partial<LspSettings>).catch((err: unknown) => {
+        this.logger.warn({ err }, "Failed to apply LSP settings");
+      });
+    });
     // Language-server startup and indexing are the slow, invisible part on a large
     // project. Broadcasting the busy set lets the sidebar show that it is live.
     this.lspService.onActivityChange((busyRoots) => {
@@ -927,6 +932,7 @@ export class VoiceAssistantWebSocketServer {
     });
     this.unsubscribeDaemonConfigChange = () => {
       unsubscribeProviderConfig();
+      unsubscribeLspSettings();
       unsubscribeChange();
     };
 

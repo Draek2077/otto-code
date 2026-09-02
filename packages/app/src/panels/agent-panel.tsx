@@ -32,6 +32,7 @@ import {
 } from "@/components/black-chat-scope-context";
 import { ChatThemeScope } from "@/components/chat-theme-scope";
 import { ChatOutlineLayoutProvider } from "@/agent-stream/chat-outline/layout";
+import { ChatWidthLayoutProvider } from "@/components/chat-width-layout-context";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
@@ -59,7 +60,7 @@ import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
 import { shouldSyncAgentTimelineOnFocus } from "@/timeline/timeline-sync-plan";
 import { useAgentStreamRetention } from "@/timeline/use-agent-stream-retention";
-import { useAppSettings } from "@/hooks/use-settings";
+import { useAppSettingValue, useAppSettings } from "@/hooks/use-settings";
 import { useAgentInputDraft, type AgentInputDraft } from "@/composer/draft/input-draft";
 import {
   type AgentScreenAgent,
@@ -129,6 +130,7 @@ import {
 } from "@/subagents";
 import { useAutoClearCompletedSubagentsSetting } from "@/hooks/use-auto-clear-completed-subagents";
 import { SubagentsTrack } from "@/subagents/track";
+import { AgentTracks } from "@/panels/agent-tracks";
 import { ChatMetricsBar } from "@/subagents/chat-metrics-bar";
 import {
   useAutoClearCompletedBackgroundTasks,
@@ -534,7 +536,7 @@ export function AgentConversationPanel() {
   return (
     <BlackChatScope enabled={settings.blackTabBackground}>
       <ChatOutlineLayoutProvider enabled={settings.chatOutlineEnabled}>
-        {content}
+        <ChatWidthLayoutProvider>{content}</ChatWidthLayoutProvider>
       </ChatOutlineLayoutProvider>
     </BlackChatScope>
   );
@@ -1423,6 +1425,10 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
 }) {
   const { t } = useTranslation();
   const isBlackChat = useBlackChatScope();
+  const subagentTrackPresentation = useAppSettingValue(
+    (settings) => settings.subagentTrackPresentation,
+  );
+  const { workspaceId } = usePaneContext();
   const suggestedTaskRows = useSuggestedTasksForParent({ serverId, parentAgentId: agentId });
   const hasSuggestedTasks = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.suggestedTasks === true,
@@ -1482,11 +1488,20 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         onComposerHeightChange={handleComposerHeightChange}
         onMessageSent={handleMessageSent}
         viewportHeight={paneHeight}
+        subagentTrackPresentation={subagentTrackPresentation}
       />
     </RenderProfile>
   );
   const streamContent = (
-    <ReanimatedAnimated.View style={animatedContentStyle}>{streamSection}</ReanimatedAnimated.View>
+    <ReanimatedAnimated.View style={animatedContentStyle}>
+      {streamSection}
+      {!agentState.archivedAt &&
+      !isArchivingCurrentAgent &&
+      subagentTrackPresentation === "pills" &&
+      workspaceId ? (
+        <AgentTracks serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
+      ) : null}
+    </ReanimatedAnimated.View>
   );
   const contentContainer = (
     <View style={styles.contentContainer}>
@@ -1866,6 +1881,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onComposerHeightChange,
   onMessageSent,
   viewportHeight,
+  subagentTrackPresentation,
 }: {
   agentId?: string;
   serverId: string;
@@ -1879,6 +1895,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
   viewportHeight: number;
+  subagentTrackPresentation: "panels" | "pills";
 }) {
   const agentInputDraft = useAgentInputDraft({
     draftKey: buildDraftStoreKey({
@@ -1925,6 +1942,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
         onComposerHeightChange={onComposerHeightChange}
         onMessageSent={onMessageSent}
         viewportHeight={viewportHeight}
+        subagentTrackPresentation={subagentTrackPresentation}
       />
     </RewindComposerRestoreProvider>
   );
@@ -1942,6 +1960,7 @@ function ActiveAgentComposer({
   onComposerHeightChange,
   onMessageSent,
   viewportHeight,
+  subagentTrackPresentation,
 }: {
   agentId: string;
   serverId: string;
@@ -1954,6 +1973,7 @@ function ActiveAgentComposer({
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
   viewportHeight: number;
+  subagentTrackPresentation: "panels" | "pills";
 }) {
   const isBlackChat = useBlackChatScope();
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -2005,7 +2025,7 @@ function ActiveAgentComposer({
     serverId,
     parentAgentId: agentId,
     rows: subagentRows,
-    enabled: autoClearCompletedSubagents,
+    enabled: autoClearCompletedSubagents && subagentTrackPresentation === "panels",
   });
   const clearedSubagentTokens = useClearedSubagentTokens(serverId, agentId);
   const handleDetachSubagent = useDetachSubagent({ serverId });
@@ -2196,16 +2216,18 @@ function ActiveAgentComposer({
         {SHOW_PASEO_TASK_LIST_PANEL ? (
           <AgentTaskList serverId={serverId} agentId={agentId} />
         ) : null}
-        <SubagentsTrack
-          rows={subagentRows}
-          onOpenSubagent={handleOpenSubagent}
-          onOpenProviderSubagent={handleOpenProviderSubagent}
-          onArchiveSubagent={handleArchiveSubagent}
-          onStopSubagent={handleStopSubagent}
-          onClearCompleted={handleClearCompletedSubagents}
-          onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
-          clearedTokens={clearedSubagentTokens}
-        />
+        {subagentTrackPresentation === "panels" ? (
+          <SubagentsTrack
+            rows={subagentRows}
+            onOpenSubagent={handleOpenSubagent}
+            onOpenProviderSubagent={handleOpenProviderSubagent}
+            onArchiveSubagent={handleArchiveSubagent}
+            onStopSubagent={handleStopSubagent}
+            onClearCompleted={handleClearCompletedSubagents}
+            onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
+            clearedTokens={clearedSubagentTokens}
+          />
+        ) : null}
         {hasBackgroundShellTasks ? (
           <BackgroundTasksTrack
             rows={backgroundTaskRows}

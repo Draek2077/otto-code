@@ -498,7 +498,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[1],
   },
   labelText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
   },
   // `border` sits between surface1 and surface2, which put it within a hair of the hover fill and
@@ -527,12 +527,12 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   hintText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },
   tooltipText: {
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
   // The fill is inset from the surface's edges and rounded, so a hovered row reads as a chip
@@ -601,7 +601,7 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.72,
   },
   itemText: {
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     lineHeight: MENU_ITEM_LINE_HEIGHT,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
@@ -617,7 +617,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   itemDescription: {
     marginTop: 2,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
   },
   // Both slots hold one glyph, so they are one glyph wide at whatever scale the row is drawing.

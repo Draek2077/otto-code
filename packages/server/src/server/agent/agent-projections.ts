@@ -182,10 +182,19 @@ export function toAgentPayload(
     runtimeInfo,
     configuredThinkingOptionId: thinkingOptionId,
   });
+  // `activeTurn` means a turn is in flight now. The manager clears its turn
+  // identity at the matching terminal event, and the lifecycle gate keeps this
+  // payload honest if an older or malformed in-memory record still has one.
   const activeTurnId =
-    "activeTurnId" in agent && typeof agent.activeTurnId === "string" ? agent.activeTurnId : null;
+    agent.lifecycle === "running" &&
+    "activeTurnId" in agent &&
+    typeof agent.activeTurnId === "string"
+      ? agent.activeTurnId
+      : null;
   const activeTurnStartedAt =
-    "activeTurnStartedAt" in agent && agent.activeTurnStartedAt instanceof Date
+    activeTurnId !== null &&
+    "activeTurnStartedAt" in agent &&
+    agent.activeTurnStartedAt instanceof Date
       ? agent.activeTurnStartedAt
       : null;
 

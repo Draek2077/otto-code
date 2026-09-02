@@ -130,10 +130,7 @@ export function resolveInitialTitleBarOverlayOptions(
 }
 
 export function getMainWindowChromeOptions(input: {
-  platform: NodeJS.Platform;
-  theme: WindowTheme;
   mode: DesktopWindowChromeMode;
-  restoredOverlay?: WindowControlsOverlayColors | null;
 }): Pick<
   Electron.BrowserWindowConstructorOptions,
   "titleBarStyle" | "trafficLightPosition" | "frame" | "titleBarOverlay" | "autoHideMenuBar"
@@ -148,7 +145,6 @@ export function getMainWindowChromeOptions(input: {
 
   return {
     frame: false,
-    titleBarOverlay: resolveInitialTitleBarOverlayOptions(input.theme, input.restoredOverlay),
     autoHideMenuBar: true,
   };
 }
@@ -289,6 +285,16 @@ export function registerWindowManager(options?: {
     pendingWindowReveals.get(event.sender.id)?.();
   });
 
+  ipcMain.handle("otto:window:minimize", (event) => {
+    requireTrustedSender(event.sender);
+    BrowserWindow.fromWebContents(event.sender)?.minimize();
+  });
+
+  ipcMain.handle("otto:window:close", (event) => {
+    requireTrustedSender(event.sender);
+    BrowserWindow.fromWebContents(event.sender)?.close();
+  });
+
   ipcMain.handle("otto:window:toggleMaximize", (event) => {
     requireTrustedSender(event.sender);
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -304,6 +310,17 @@ export function registerWindowManager(options?: {
     requireTrustedSender(event.sender);
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isFullScreen() ?? false;
+  });
+
+  ipcMain.handle("otto:window:isMaximized", (event) => {
+    requireTrustedSender(event.sender);
+    return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
+  });
+
+  ipcMain.handle("otto:window:setFullscreen", (event, fullscreen: unknown) => {
+    requireTrustedSender(event.sender);
+    if (typeof fullscreen !== "boolean") return;
+    BrowserWindow.fromWebContents(event.sender)?.setFullScreen(fullscreen);
   });
 
   ipcMain.handle("otto:window:setBadgeCount", (event, count?: unknown) => {
@@ -327,7 +344,7 @@ export function registerWindowManager(options?: {
     setTrayAttention(active === true);
   });
 
-  ipcMain.handle("otto:window:updateWindowControls", (event, update?: unknown) => {
+  ipcMain.handle("otto:window:updateChrome", (event, update?: unknown) => {
     requireTrustedSender(event.sender);
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) {

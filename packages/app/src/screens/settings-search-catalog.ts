@@ -12,6 +12,13 @@ export interface SettingsSearchItem {
   category: string;
   group: string;
   audience: string;
+  kind: string;
+  choices: string;
+  defaultValue: string;
+  /** Capability and visibility gate from the audited Settings source. */
+  conditions: string;
+  /** The authoritative App or Host storage destination from the inventory. */
+  persistence: string;
   advanced: boolean;
   developerOnly?: boolean;
 }

@@ -9,6 +9,7 @@ import type { PaneHost } from "@/panels/panel-manifest";
 export interface PaneContextValue {
   serverId: string;
   workspaceId: string;
+  paneId: string;
   host: PaneHost;
   tabId: string;
   target: WorkspaceTabTarget;

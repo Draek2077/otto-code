@@ -1034,6 +1034,7 @@ export const ru: TranslationResources = {
         copyTerminalId: "Скопировать идентификатор терминала",
         copyFilePath: "Скопировать путь к файлу",
         moveToMain: "Переместить на основную панель",
+        moveToExplorer: "Переместить на панель проводника",
       },
       actions: {
         newAgent: "Новый чат",
@@ -3408,10 +3409,13 @@ export const ru: TranslationResources = {
         label: "Отправка по умолчанию",
         descriptions: {
           interrupt: "Когда агент работает, Enter прерывает. Command/Ctrl+Enter ставит в очередь.",
+          steer:
+            "Когда агент работает, Enter дополняет текущий ответ новым указанием, а Command/Ctrl+Enter ставит сообщение в очередь.",
           queue: "Когда агент работает, Enter ставит в очередь. Command/Ctrl+Enter отправляет.",
         },
         options: {
           interrupt: "Прерывать",
+          steer: "Направить",
           queue: "Очередь",
         },
       },
@@ -3724,10 +3728,10 @@ export const ru: TranslationResources = {
             full: "Во всю ширину",
           },
         },
-        hidePinnedToolbarOptions: {
-          title: "Скрывать закреплённые элементы панели инструментов",
-          hint: "Скрывает закреплённые элементы панели вкладок и панели diff, пока вы не наведёте на них курсор",
-          accessibilityLabel: "Скрывать закреплённые элементы панели инструментов",
+        hideTabToolbarOptions: {
+          title: "Скрывать параметры панели инструментов вкладок",
+          hint: "Скрывает параметры панели инструментов вкладок, пока вы не наведёте указатель на панель вкладок",
+          accessibilityLabel: "Скрывать параметры панели инструментов вкладок",
         },
       },
       visualizer: {

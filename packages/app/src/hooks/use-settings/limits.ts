@@ -15,6 +15,9 @@
 export const DEFAULT_UI_FONT_SIZE = 16; // == FONT_SIZE.base
 export const MIN_UI_FONT_SIZE = 12;
 export const MAX_UI_FONT_SIZE = 22;
+export const DEFAULT_CONTENT_FONT_SIZE = 17; // == FONT_SIZE.content
+export const MIN_CONTENT_FONT_SIZE = 12;
+export const MAX_CONTENT_FONT_SIZE = 24;
 export const DEFAULT_CODE_FONT_SIZE = 12; // == FONT_SIZE.code
 export const MIN_CODE_FONT_SIZE = 12;
 export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe

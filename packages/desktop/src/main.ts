@@ -1014,10 +1014,7 @@ async function createWindow(
     backgroundColor: getWindowBackgroundColor(systemTheme),
     ...(iconPath ? { icon: iconPath } : {}),
     ...getMainWindowChromeOptions({
-      platform: process.platform,
-      theme: systemTheme,
       mode: DESKTOP_WINDOW_CHROME_MODE,
-      restoredOverlay: restoredWindowState?.overlay ?? null,
     }),
     webPreferences: {
       preload: getPreloadPath(),

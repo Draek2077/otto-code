@@ -69,6 +69,67 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.language).toBe("system");
   });
 
+  it("defaults new installs to steer", async () => {
+    const settings = await loadAppSettingsFromStorage(makeDeps());
+
+    expect(settings.sendBehavior).toBe("steer");
+    expect(settings.sendBehaviorMigrationVersion).toBe(1);
+  });
+
+  it("migrates the historical interrupt default to steer exactly once", async () => {
+    const backingStorage = createInMemoryKeyValueStorage({
+      [APP_SETTINGS_KEY]: JSON.stringify({ sendBehavior: "interrupt" }),
+    });
+    let writes = 0;
+    const storage = {
+      ...backingStorage,
+      async setItem(key: string, value: string) {
+        writes += 1;
+        await backingStorage.setItem(key, value);
+      },
+    };
+    const deps = makeDeps({ storage });
+
+    const migrated = await loadAppSettingsFromStorage(deps);
+    const persisted = JSON.parse(storage.entries.get(APP_SETTINGS_KEY) ?? "null");
+    const reloaded = await loadAppSettingsFromStorage(deps);
+
+    expect(migrated.sendBehavior).toBe("steer");
+    expect(persisted).toMatchObject({
+      sendBehavior: "steer",
+      sendBehaviorMigrationVersion: 1,
+    });
+    expect(reloaded.sendBehavior).toBe("steer");
+    expect(JSON.parse(storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toEqual(persisted);
+    expect(writes).toBe(1);
+  });
+
+  it("preserves queue during the steer migration", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ sendBehavior: "queue" }),
+      }),
+    });
+
+    const settings = await loadAppSettingsFromStorage(deps);
+
+    expect(settings.sendBehavior).toBe("queue");
+    expect(settings.sendBehaviorMigrationVersion).toBe(1);
+  });
+
+  it("preserves an interrupt choice made after the steer migration", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          sendBehavior: "interrupt",
+          sendBehaviorMigrationVersion: 1,
+        }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("interrupt");
+  });
+
   it("loads the legacy terminal renderer preference", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -893,6 +954,28 @@ describe("mountedTabLimit persistence", () => {
   });
 });
 
+describe("sub-agent track presentation persistence", () => {
+  it("defaults to panels, persists pills, and rejects unknown values", async () => {
+    expect(DEFAULT_APP_SETTINGS.subagentTrackPresentation).toBe("panels");
+
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ subagentTrackPresentation: "pills" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(deps)).subagentTrackPresentation).toBe("pills");
+
+    const invalidDeps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ subagentTrackPresentation: "cards" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(invalidDeps)).subagentTrackPresentation).toBe(
+      "panels",
+    );
+  });
+});
+
 describe("appearance settings", () => {
   it("defaults the appearance fields when an old blob omits them", async () => {
     const deps = makeDeps({
@@ -913,24 +996,37 @@ describe("appearance settings", () => {
     expect(result.structuralReplacementPresentation).toBe("new-token");
   });
 
-  it("defaults hide-pinned-toolbar-options to false when omitted", async () => {
+  it("defaults hide-tab-toolbar-options to false when omitted", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
         [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).hidePinnedToolbarOptions).toBe(false);
+    expect((await loadAppSettingsFromStorage(deps)).hideTabToolbarOptions).toBe(false);
   });
 
-  it("loads a persisted hide-pinned-toolbar-options preference", async () => {
+  it("loads a persisted hide-tab-toolbar-options preference", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ hideTabToolbarOptions: true }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).hideTabToolbarOptions).toBe(true);
+  });
+
+  it("migrates the legacy pinned-toolbar preference", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
         [APP_SETTINGS_KEY]: JSON.stringify({ hidePinnedToolbarOptions: true }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).hidePinnedToolbarOptions).toBe(true);
+    expect((await loadAppSettingsFromStorage(deps)).hideTabToolbarOptions).toBe(true);
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toMatchObject({
+      hideTabToolbarOptions: true,
+    });
   });
 
   it("defaults hide-chat-message-details to true when omitted", async () => {

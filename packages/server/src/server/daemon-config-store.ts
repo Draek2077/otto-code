@@ -12,21 +12,12 @@ import {
 import type { AgentProfile, AgentSkillSelection, AgentTeam } from "@otto-code/protocol/messages";
 
 import {
-  buildPersistedDaemonSection,
   buildPersistedGitHosting,
-  computeShouldPersistMetadataGeneration,
-  extractProviderRemovals,
   healActiveAgentTeamId,
   mergeSpeechIntoPersistedFeatures,
   mergeSpeechOpenAiIntoPersistedProviders,
+  normalizeDaemonConfigPatchIntent,
   readAgentTeamsSection,
-  readMetadataGenerationFlags,
-  readMetadataGenerationProviders,
-  resolveNextAgents,
-  restoreConnectorSecretsInPatch,
-  stripRedactedSecretsFromPatch,
-  withAgentArraySections,
-  withAgentTeams,
 } from "./otto-daemon-config.js";
 
 // Back-compat: the session, the websocket server, and the connector tests
@@ -44,8 +35,8 @@ type ProviderOverride = import("./agent/provider-launch-config.js").ProviderOver
 
 /**
  * OTTO: the sections Otto persists that upstream's daemon has no equivalent of.
- * They are copied through verbatim rather than narrowed field by field, because
- * each is read back off the resolved config when persisting.
+ * The shared intent builder below maps each to its durable owner; it never
+ * infers a write from a value merely being present in the resolved config.
  */
 const OTTO_SUPPORTED_PATCH_KEYS = [
   "agentBehaviors",
@@ -512,14 +503,10 @@ export class DaemonConfigStore {
 
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
     const parsedPatch = MutableDaemonConfigPatchSchema.parse(partial);
-    // OTTO: secrets are masked on the way out to a client, so a round-tripped
-    // patch carries the sentinel rather than the stored value. Both of these
-    // run on the raw client patch, before the supported-field pick narrows it.
-    stripRedactedSecretsFromPatch(parsedPatch);
-    restoreConnectorSecretsInPatch(parsedPatch, this.current);
-    // OTTO: a `providers` entry set to null is a provider uninstall. Fold those
-    // into removeProviders so upstream's removal path sees one representation.
-    const { patch: prunedPatch, removedProviderIds } = extractProviderRemovals(parsedPatch);
+    const { patch: prunedPatch, removedProviderIds } = normalizeDaemonConfigPatchIntent({
+      patch: parsedPatch,
+      current: this.current,
+    });
     return this.applySupportedPatch({
       ...pickSupportedPatchFields(prunedPatch),
       ...(removedProviderIds.length > 0 ? { removeProviders: removedProviderIds } : {}),
@@ -565,6 +552,7 @@ export class DaemonConfigStore {
 
     const { previous: persistedBeforePatch, knownNext } = this.persistConfig(
       next,
+      configPatch,
       removedProviders,
     );
     if (!configChanged) {
@@ -733,7 +721,7 @@ export class DaemonConfigStore {
     if (isEqualValue(this.current, next)) {
       return this.current;
     }
-    this.persistConfig(next, []);
+    this.persistConfig(next, { connectors: nextConnectors }, []);
     this.applyReplacement(next, { removedProviders: [] });
     return next;
   }
@@ -787,6 +775,7 @@ export class DaemonConfigStore {
    */
   private persistConfig(
     config: MutableDaemonConfig,
+    patch: Omit<SupportedMutableConfigPatch, "removeProviders">,
     removeProviders: readonly string[],
   ): { previous: PersistedConfig; knownNext: PersistedConfig } {
     const persisted = loadPersistedConfig(this.ottoHome, this.logger);
@@ -794,6 +783,7 @@ export class DaemonConfigStore {
       mergeMutableConfigIntoPersistedConfig({
         persisted: source,
         mutable: config,
+        patch,
         removedProviderIds: removeProviders,
         persistRelayEnabled: this.relayEnabledMutable,
       });
@@ -807,99 +797,267 @@ export class DaemonConfigStore {
 function mergeMutableConfigIntoPersistedConfig(params: {
   persisted: PersistedConfig;
   mutable: MutableDaemonConfig;
+  patch: Omit<SupportedMutableConfigPatch, "removeProviders">;
   removedProviderIds: readonly string[];
   persistRelayEnabled: boolean;
 }): PersistedConfig {
-  const { persisted, mutable, removedProviderIds, persistRelayEnabled } = params;
+  const { persisted, mutable, patch, removedProviderIds, persistRelayEnabled } = params;
   if (!mutable.relay) {
     throw new Error("Mutable daemon config is missing relay state");
   }
-  const metadataGenerationProviders = readMetadataGenerationProviders(mutable);
-  const metadataGenerationFlags = readMetadataGenerationFlags(mutable);
-  const removedProviders = new Set(removedProviderIds);
+  const daemon = mergeMutableDaemonPatch({ persisted, mutable, patch, persistRelayEnabled });
+  const agents = mergeMutableAgentPatch({ persisted, mutable, patch, removedProviderIds });
+  const next: Record<string, unknown> = { ...persisted };
+
+  if (patch.pluginsEnabled !== undefined) next["pluginsEnabled"] = patch.pluginsEnabled;
+  if (patch.plugins !== undefined) next["plugins"] = patch.plugins;
+  if (daemon !== undefined) next["daemon"] = daemon;
+  if (agents !== undefined) next["agents"] = agents;
+  else if (hasAgentPatchIntent(patch, removedProviderIds)) delete next["agents"];
+  if (patch.speech !== undefined) {
+    next["features"] = mergeSpeechIntoPersistedFeatures(persisted, patch.speech);
+    next["providers"] = mergeSpeechOpenAiIntoPersistedProviders(persisted, patch.speech);
+  }
+  if (patch.gitHosting !== undefined) {
+    next["gitHosting"] = buildPersistedGitHosting(persisted, patch.gitHosting, mutable.gitHosting);
+  }
+
+  return next as PersistedConfig;
+}
+
+function hasAgentPatchIntent(
+  patch: Omit<SupportedMutableConfigPatch, "removeProviders">,
+  removedProviderIds: readonly string[],
+): boolean {
+  return (
+    patch.providers !== undefined ||
+    patch.metadataGeneration !== undefined ||
+    patch.agentPersonalities !== undefined ||
+    patch.agentTeams !== undefined ||
+    patch.modelTierOverrides !== undefined ||
+    patch.modelVisibilityOverrides !== undefined ||
+    patch.savedProviderEndpoints !== undefined ||
+    patch.skills !== undefined ||
+    removedProviderIds.length > 0
+  );
+}
+
+interface MergeMutableDaemonPatchParams {
+  persisted: PersistedConfig;
+  mutable: MutableDaemonConfig;
+  patch: Omit<SupportedMutableConfigPatch, "removeProviders">;
+  persistRelayEnabled: boolean;
+}
+
+function mergeMutableDaemonPatch(
+  params: MergeMutableDaemonPatchParams,
+): PersistedConfig["daemon"] | undefined {
+  const { persisted, mutable, patch, persistRelayEnabled } = params;
+  const next: Record<string, unknown> = { ...persisted.daemon };
+
+  applyDaemonTransportPatch(next, persisted, patch, persistRelayEnabled);
+  applyDaemonScalarPatch(next, patch);
+  applyDaemonStructuredPatch(next, persisted, mutable, patch);
+
+  return Object.keys(next).length > 0 ? (next as PersistedConfig["daemon"]) : undefined;
+}
+
+function applyDaemonTransportPatch(
+  next: Record<string, unknown>,
+  persisted: PersistedConfig,
+  patch: Omit<SupportedMutableConfigPatch, "removeProviders">,
+  persistRelayEnabled: boolean,
+): void {
+  if (persistRelayEnabled && patch.relay?.enabled !== undefined) {
+    next["relay"] = { ...persisted.daemon?.relay, enabled: patch.relay.enabled };
+  }
+  if (patch.mcp?.injectIntoAgents !== undefined) {
+    next["mcp"] = { ...persisted.daemon?.mcp, injectIntoAgents: patch.mcp.injectIntoAgents };
+  }
+  if (patch.browserTools?.enabled !== undefined) {
+    next["browserTools"] = {
+      ...persisted.daemon?.browserTools,
+      enabled: patch.browserTools.enabled,
+    };
+  }
+}
+
+function applyDaemonScalarPatch(
+  next: Record<string, unknown>,
+  patch: Omit<SupportedMutableConfigPatch, "removeProviders">,
+): void {
+  const values = {
+    hideMergeIntoBaseAction: patch.hideMergeIntoBaseAction,
+    attachmentImageMaxAgeDays: patch.attachmentImageMaxAgeDays,
+    attachmentImageMaxTotalMb: patch.attachmentImageMaxTotalMb,
+    enableTerminalAgentHooks: patch.enableTerminalAgentHooks,
+    terminalTitleMode: patch.terminalTitleMode,
+    terminalTitleIncludePaths: patch.terminalTitleIncludePaths,
+    defaultTerminalShell: patch.defaultTerminalShell,
+    autoArchiveAfterMerge: patch.autoArchiveAfterMerge,
+    appendSystemPrompt: patch.appendSystemPrompt,
+    terminalProfiles: patch.terminalProfiles,
+    agentProfiles: patch.agentProfiles,
+  };
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined) next[key] = value;
+  }
+}
+
+function applyDaemonStructuredPatch(
+  next: Record<string, unknown>,
+  persisted: PersistedConfig,
+  mutable: MutableDaemonConfig,
+  patch: Omit<SupportedMutableConfigPatch, "removeProviders">,
+): void {
+  const persistedDaemon = persisted.daemon as Record<string, unknown> | undefined;
+  const recordPatches: Array<[string, Record<string, unknown> | undefined]> = [
+    ["agentBehaviors", patch.agentBehaviors],
+    ["gitFetch", patch.gitFetch],
+    ["lsp", patch.lsp],
+    ["dotnetSolutionManagement", patch.dotnetSolutionManagement],
+    ["projectKnowledge", patch.projectKnowledge],
+    ["projectArtifacts", patch.projectArtifacts],
+    ["projectWorkflows", patch.projectWorkflows],
+  ];
+  for (const [key, value] of recordPatches) {
+    const existing = persistedDaemon?.[key];
+    if (value !== undefined)
+      next[key] = deepMergeRecord(isRecord(existing) ? existing : undefined, value);
+  }
+  if (patch.brain !== undefined) {
+    next["brain"] = mergeBrainPatch(persisted.daemon?.brain, mutable.brain, patch.brain);
+  }
+  if (patch.connectors !== undefined) next["connectors"] = mutable.connectors;
+}
+
+interface MergeMutableAgentPatchParams {
+  persisted: PersistedConfig;
+  mutable: MutableDaemonConfig;
+  patch: Omit<SupportedMutableConfigPatch, "removeProviders">;
+  removedProviderIds: readonly string[];
+}
+
+function mergeMutableAgentPatch(
+  params: MergeMutableAgentPatchParams,
+): PersistedConfig["agents"] | undefined {
+  const { persisted, mutable, patch, removedProviderIds } = params;
+  const next: Record<string, unknown> = { ...persisted.agents };
+  const removed = new Set(removedProviderIds);
+
+  applyAgentProviderPatch(next, persisted, patch.providers, removed);
+  applyMetadataGenerationPatch(next, persisted, patch.metadataGeneration, removed);
+  applyAgentRosterPatch(next, persisted, mutable, patch);
+
+  return Object.keys(next).length > 0 ? (next as PersistedConfig["agents"]) : undefined;
+}
+
+function applyAgentProviderPatch(
+  next: Record<string, unknown>,
+  persisted: PersistedConfig,
+  providers: MutableDaemonConfig["providers"] | undefined,
+  removed: ReadonlySet<string>,
+): void {
+  if (providers === undefined && removed.size === 0) return;
   const persistedOverrides = persisted.agents?.providers as
     | Record<string, ProviderOverride>
     | undefined;
-  const retainedOverrides =
-    persistedOverrides && removedProviders.size > 0
-      ? Object.fromEntries(
-          Object.entries(persistedOverrides).filter(
-            ([providerId]) => !removedProviders.has(providerId),
-          ),
-        )
-      : persistedOverrides;
-  const providerOverrides = applyMutableProviderConfigToOverrides(
-    retainedOverrides,
-    mutable.providers,
-  );
-  const persistedAgents = persisted.agents as Record<string, unknown> | undefined;
-  const persistedMetadataGeneration = {
-    providers: metadataGenerationProviders,
-    enabled: metadataGenerationFlags.enabled,
-    preferWriterPersonalities: metadataGenerationFlags.preferWriterPersonalities,
-  };
-  const shouldPersistMetadataGeneration = computeShouldPersistMetadataGeneration({
-    providerCount: metadataGenerationProviders.length,
-    hadSection: persisted.agents?.metadataGeneration !== undefined,
-    flags: metadataGenerationFlags,
-  });
+  const retainedOverrides = persistedOverrides
+    ? Object.fromEntries(
+        Object.entries(persistedOverrides).filter(([providerId]) => !removed.has(providerId)),
+      )
+    : undefined;
+  const providerOverrides = applyMutableProviderConfigToOverrides(retainedOverrides, providers);
+  if (providerOverrides && Object.keys(providerOverrides).length > 0)
+    next["providers"] = providerOverrides;
+  else delete next["providers"];
+}
 
-  let nextAgents = resolveNextAgents({
-    persistedAgents,
-    providerOverrides,
-    removedProviders,
-    persistedOverrides,
-    shouldPersistMetadataGeneration,
-    persistedMetadataGeneration,
-    initial: persisted.agents as PersistedConfig["agents"],
-  });
-
-  // COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
-  // The roster now lives in daemon.agentProfiles, so nothing writes
-  // agents.agentPersonalities any more. It is deliberately NOT folded in here:
-  // resolveNextAgents spreads the persisted agents section verbatim, so leaving
-  // it alone preserves the pre-import roster on disk as a rollback tombstone.
-  // Folding the (now unmaintained) mutable roster back in would overwrite it
-  // with an empty array on the first unrelated config patch.
-
-  // Fold the teams + active team id into agents.agentTeams.
-  nextAgents = withAgentTeams({
-    nextAgents,
-    persistedAgents,
-    hadTeams: persisted.agents?.agentTeams !== undefined,
-    section: readAgentTeamsSection(mutable),
-  });
-
-  // Fold the plain array sections (model-tier tags, remembered endpoints) in.
-  nextAgents = withAgentArraySections({ nextAgents, persistedAgents, persisted, mutable });
-
-  // Upstream's agent skill selection persists alongside Otto's agent sections.
-  if (mutable.skills?.selection !== undefined) {
-    nextAgents = {
-      ...nextAgents,
-      skills: { selection: mutable.skills.selection },
-    } as PersistedConfig["agents"];
+function applyMetadataGenerationPatch(
+  next: Record<string, unknown>,
+  persisted: PersistedConfig,
+  patch: MutableDaemonConfigPatch["metadataGeneration"],
+  removed: ReadonlySet<string>,
+): void {
+  if (patch === undefined && removed.size === 0) return;
+  const metadata = deepMergeRecord(persisted.agents?.metadataGeneration, patch);
+  if (removed.size > 0 && Array.isArray(metadata["providers"])) {
+    metadata["providers"] = metadata["providers"].filter(
+      (entry) => !isRecord(entry) || !removed.has(String(entry["provider"])),
+    );
   }
+  if (Object.keys(metadata).length > 0) next["metadataGeneration"] = metadata;
+}
 
-  return {
+function applyAgentRosterPatch(
+  next: Record<string, unknown>,
+  persisted: PersistedConfig,
+  mutable: MutableDaemonConfig,
+  patch: Omit<SupportedMutableConfigPatch, "removeProviders">,
+): void {
+  if (patch.agentPersonalities?.personalities !== undefined) {
+    next["agentPersonalities"] = { personalities: patch.agentPersonalities.personalities };
+  }
+  if (patch.agentTeams !== undefined) {
+    next["agentTeams"] = mergeAgentTeamsPatch(persisted, mutable, patch);
+  }
+  const arrays = {
+    modelTierOverrides: patch.modelTierOverrides,
+    modelVisibilityOverrides: patch.modelVisibilityOverrides,
+    savedProviderEndpoints: patch.savedProviderEndpoints,
+  };
+  for (const [key, value] of Object.entries(arrays)) {
+    if (value !== undefined) next[key] = value;
+  }
+  if (patch.skills?.selection !== undefined) {
+    next["skills"] = { ...persisted.agents?.skills, selection: patch.skills.selection };
+  }
+}
+
+function mergeAgentTeamsPatch(
+  persisted: PersistedConfig,
+  mutable: MutableDaemonConfig,
+  patch: Omit<SupportedMutableConfigPatch, "removeProviders">,
+): Record<string, unknown> {
+  const teams = deepMergeRecord(persisted.agents?.agentTeams, {});
+  const section = readAgentTeamsSection(mutable);
+  if (patch.agentTeams?.teams !== undefined) teams["teams"] = section.teams;
+  if (patch.agentTeams?.activeTeamId !== undefined) {
+    if (patch.agentTeams.activeTeamId === null) delete teams["activeTeamId"];
+    else teams["activeTeamId"] = patch.agentTeams.activeTeamId;
+  } else if (patch.agentTeams?.teams !== undefined && section.activeTeamId === null) {
+    delete teams["activeTeamId"];
+  }
+  return teams;
+}
+
+function deepMergeRecord(
+  current: Record<string, unknown> | undefined,
+  patch: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  return deepMerge(current ?? {}, patch ?? {});
+}
+
+function mergeBrainPatch(
+  persisted: Record<string, unknown> | undefined,
+  current: MutableDaemonConfig["brain"],
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  // A remote edit needs its connection context to survive the first write. Do
+  // not copy a whole default-filled brain block: fill only the remote branch
+  // from the daemon's effective state when disk has no value, then let disk and
+  // the explicit patch take precedence in that order.
+  if (!isRecord(patch["remote"])) return deepMergeRecord(persisted, patch);
+  const persistedRemote = isRecord(persisted?.["remote"])
+    ? (persisted["remote"] as Record<string, unknown>)
+    : {};
+  const currentRemote = isRecord(current?.remote)
+    ? (current.remote as Record<string, unknown>)
+    : {};
+  const base = {
     ...persisted,
-    ...(mutable.pluginsEnabled !== undefined ? { pluginsEnabled: mutable.pluginsEnabled } : {}),
-    ...(mutable.plugins !== undefined ? { plugins: mutable.plugins } : {}),
-    daemon: {
-      ...buildPersistedDaemonSection(persisted, mutable),
-      ...(persistRelayEnabled
-        ? {
-            relay: {
-              ...persisted.daemon?.relay,
-              enabled: mutable.relay.enabled,
-            },
-          }
-        : {}),
-      ...(mutable.agentProfiles !== undefined ? { agentProfiles: mutable.agentProfiles } : {}),
-    },
-    agents: nextAgents,
-    features: mergeSpeechIntoPersistedFeatures(persisted, mutable.speech),
-    providers: mergeSpeechOpenAiIntoPersistedProviders(persisted, mutable.speech),
-    gitHosting: buildPersistedGitHosting(persisted, mutable.gitHosting),
-  } as PersistedConfig;
+    ...(persisted?.["mode"] === undefined ? { mode: current?.mode } : {}),
+    remote: { ...currentRemote, ...persistedRemote },
+  };
+  return deepMerge(base, patch);
 }

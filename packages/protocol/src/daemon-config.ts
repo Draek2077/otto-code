@@ -43,6 +43,21 @@ export const MutableAgentBehaviorsConfigSchema = z
   })
   .passthrough();
 
+// Read state is default-filled, while a patch must encode only fields the
+// caller named. Keep this separate from `.partial()` so defaults never become
+// an accidental write intent.
+export const MutableAgentBehaviorsConfigPatchSchema = z
+  .object({
+    promptSuggestions: z.boolean(),
+    agentProgressSummaries: z.boolean(),
+    notifyOnFinishDefault: z.boolean(),
+    todoNudge: z.boolean(),
+    todoReconcileOnIdle: z.boolean(),
+    stallGuardThreshold: z.number().int().min(0).max(STALL_GUARD_MAX_THRESHOLD),
+  })
+  .partial()
+  .passthrough();
+
 /**
  * Language-server code intelligence, host-scoped because the servers are processes
  * on the daemon's machine - they follow the host, not the client.
@@ -69,9 +84,8 @@ export const MutableLspConfigSchema = z
      * but it loads them one at a time (measured at ~4s each, so a 200-project repo is minutes, not
      * seconds). Absent means `"solution"`.
      *
-     * Deliberately carries NO `.default()`. The patch schema is `MutableLspConfigSchema.partial()`,
-     * and Zod keeps defaults through `.partial()`, so a default here would be injected into every
-     * unrelated `lsp` patch and deep-merge would silently reset the user's choice.
+     * Deliberately carries NO `.default()`: absence means the daemon's
+     * shipped policy, while an explicit setting is durable user intent.
      */
     csharpProjectScope: z.enum(["solution", "allProjects"]).optional(),
     /** Hard LRU cap on simultaneously running servers, across all workspaces. */
@@ -80,6 +94,21 @@ export const MutableLspConfigSchema = z
     /** Shorter allowance for workspaces the user is not currently looking at. */
     backgroundIdleMinutes: z.number().int().positive().default(2),
   })
+  .passthrough();
+
+// LSP read state is default-filled, but a write must retain only fields the
+// client supplied. `.partial()` on the read schema keeps its defaults and
+// turns a one-field update into a reset before post-validation normalization.
+export const MutableLspConfigPatchSchema = z
+  .object({
+    enabled: z.boolean(),
+    languages: z.record(z.string(), z.boolean()),
+    csharpProjectScope: z.enum(["solution", "allProjects"]),
+    maxRunningServers: z.number().int().positive(),
+    idleMinutes: z.number().int().positive(),
+    backgroundIdleMinutes: z.number().int().positive(),
+  })
+  .partial()
   .passthrough();
 
 /**
@@ -103,6 +132,15 @@ export const MutableDotnetSolutionConfigSchema = z
     maxRunningProbes: z.number().int().positive().default(2),
     idleMinutes: z.number().int().positive().default(10),
   })
+  .passthrough();
+
+export const MutableDotnetSolutionConfigPatchSchema = z
+  .object({
+    enabled: z.boolean(),
+    maxRunningProbes: z.number().int().positive(),
+    idleMinutes: z.number().int().positive(),
+  })
+  .partial()
   .passthrough();
 
 // Host-level git hosting credentials, one set per provider. A workspace's
@@ -198,6 +236,11 @@ export const MutableProjectKnowledgeConfigSchema = z
   })
   .passthrough();
 
+export const MutableProjectKnowledgeConfigPatchSchema = z
+  .object({ defaultStoreLocation: ProjectKnowledgeStoreLocationSchema })
+  .partial()
+  .passthrough();
+
 export type MutableProjectKnowledgeConfig = z.infer<typeof MutableProjectKnowledgeConfigSchema>;
 
 export const DEFAULT_MUTABLE_PROJECT_KNOWLEDGE_CONFIG: MutableProjectKnowledgeConfig = {
@@ -217,6 +260,11 @@ export const MutableProjectArtifactsConfigSchema = z
   })
   .passthrough();
 
+export const MutableProjectArtifactsConfigPatchSchema = z
+  .object({ defaultStoreLocation: ProjectArtifactStoreLocationSchema })
+  .partial()
+  .passthrough();
+
 export type MutableProjectArtifactsConfig = z.infer<typeof MutableProjectArtifactsConfigSchema>;
 
 export const DEFAULT_MUTABLE_PROJECT_ARTIFACTS_CONFIG: MutableProjectArtifactsConfig = {
@@ -232,6 +280,11 @@ export const MutableProjectWorkflowsConfigSchema = z
   .object({
     defaultStoreLocation: ProjectWorkflowStoreLocationSchema.default("repository"),
   })
+  .passthrough();
+
+export const MutableProjectWorkflowsConfigPatchSchema = z
+  .object({ defaultStoreLocation: ProjectWorkflowStoreLocationSchema })
+  .partial()
   .passthrough();
 
 export type MutableProjectWorkflowsConfig = z.infer<typeof MutableProjectWorkflowsConfigSchema>;

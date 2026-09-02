@@ -1,4 +1,3 @@
-import { isDev } from "@/constants/platform";
 import {
   buildWorkspaceTabPersistenceKey,
   type WorkspaceTabTarget,
@@ -22,11 +21,6 @@ export interface OpenOrchestrationGraphTabInput {
  * than splitting a pane.
  */
 export function openOrchestrationGraphTab(input: OpenOrchestrationGraphTabInput): boolean {
-  // Dev builds only while the designer is under construction - the last door
-  // into it, so release bundles can never end up with a graph tab open.
-  if (!isDev) {
-    return false;
-  }
   const workspaceKey = buildWorkspaceTabPersistenceKey({
     serverId: input.serverId,
     workspaceId: input.workspaceId,

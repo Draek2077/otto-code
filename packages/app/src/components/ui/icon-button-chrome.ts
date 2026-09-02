@@ -38,11 +38,13 @@ export function iconButtonChromeStyle({
   disabled = false,
   style,
 }: IconButtonChromeOptions): StyleProp<ViewStyle> {
-  const highlighted = state?.active || state?.hovered || state?.pressed || state?.open;
+  const selected = state?.active || state?.open;
   return [
     resolveIconButtonFrame(size, compact),
     style,
-    highlighted ? styles.highlighted : null,
+    selected ? styles.selected : null,
+    state?.hovered && !state.pressed ? styles.hovered : null,
+    state?.pressed ? styles.pressed : null,
     disabled ? styles.disabled : null,
   ];
 }
@@ -104,8 +106,14 @@ const styles = StyleSheet.create((theme) => ({
     outlineWidth: 0,
     outlineColor: "transparent",
   },
-  highlighted: {
-    backgroundColor: theme.colors.interactionHighlight,
+  selected: {
+    backgroundColor: theme.colors.surfaceInteractiveSelected,
+  },
+  hovered: {
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  pressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   disabled: {
     opacity: theme.opacity[50],

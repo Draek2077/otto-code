@@ -1,6 +1,5 @@
 import { useMutation, type UseQueryResult } from "@tanstack/react-query";
 import type { OrchestrationGraph, PromptTemplate } from "@otto-code/protocol/workflow";
-import { isDev } from "@/constants/platform";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useFetchQuery, useReplicaQuery } from "@/data/query";
@@ -11,18 +10,13 @@ import { fetchPromptTemplates, promptTemplatesQueryKey } from "@/data/prompt-tem
  * The single detection point for the orchestration-graphs capability
  * (user orchestrations: the New Orchestration dialog + graph designer).
  *
- * Dev builds only while the node editor is still being built out: the whole
- * surface - the New Orchestration dialog, the designer tab, running graph
- * orchestrations - stays out of release builds, which keep the Orchestrations
- * page exactly as it was. `isDev` is Metro's `__DEV__`, so a production bundle
- * dead-code-strips the branch entirely.
  * COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
  */
 export function useOrchestrationGraphsFeature(serverId: string): boolean {
   const hostSupports = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.orchestrationGraphs === true,
   );
-  return isDev && hostSupports;
+  return hostSupports;
 }
 
 /**

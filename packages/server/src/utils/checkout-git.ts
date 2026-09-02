@@ -2480,6 +2480,10 @@ export async function getCheckoutSnapshotFacts(
 
 const PER_FILE_DIFF_MAX_BYTES = 1024 * 1024; // 1MB
 const TOTAL_DIFF_MAX_BYTES = 2 * 1024 * 1024; // 2MB
+// The renderer builds its canvas model synchronously. A payload that fits in a
+// WebSocket frame can still monopolize the UI thread before it paints, so the
+// server rejects it before shipping more source lines than the client can safely lay out.
+const CHECKOUT_DIFF_MAX_RENDER_LINES = 20_000;
 // `runGitCommand` has one daemon-wide FIFO limiter. A structured checkout diff
 // used to enqueue every file patch and historical-content read at once, which
 // could put hundreds of low-priority reads ahead of session restoration RPCs.
@@ -2505,10 +2509,11 @@ export const CHECKOUT_DIFF_MAX_STRUCTURED_BYTES =
 interface StructuredDiffAccumulator {
   files: ParsedDiffFile[];
   serializedBytes: number;
+  renderLines: number;
 }
 
 function createStructuredDiffAccumulator(): StructuredDiffAccumulator {
-  return { files: [], serializedBytes: Buffer.byteLength("[]", "utf8") };
+  return { files: [], serializedBytes: Buffer.byteLength("[]", "utf8"), renderLines: 0 };
 }
 
 /** Returns false when appending `file` would exceed the frame budget. */
@@ -2516,6 +2521,10 @@ function appendStructuredFile(
   structured: StructuredDiffAccumulator,
   file: ParsedDiffFile,
 ): boolean {
+  const renderLines = countStructuredDiffLines(file);
+  if (structured.renderLines + renderLines > CHECKOUT_DIFF_MAX_RENDER_LINES) {
+    return false;
+  }
   const separatorBytes = structured.files.length > 0 ? 1 : 0;
   const fileBytes = Buffer.byteLength(JSON.stringify(file), "utf8");
   const nextBytes = structured.serializedBytes + separatorBytes + fileBytes;
@@ -2524,7 +2533,32 @@ function appendStructuredFile(
   }
   structured.files.push(file);
   structured.serializedBytes = nextBytes;
+  structured.renderLines += renderLines;
   return true;
+}
+
+function countStructuredDiffLines(file: ParsedDiffFile): number {
+  return file.hunks.reduce((total, hunk) => total + hunk.lines.length, 0);
+}
+
+/** Counts only patch body lines without allocating an array for a large raw diff. */
+function countRenderableDiffLines(text: string): number {
+  let lines = 0;
+  for (let lineStart = 0; lineStart < text.length; ) {
+    const lineEnd = text.indexOf("\n", lineStart);
+    const first = text.charCodeAt(lineStart);
+    const isPatchBody = first === 32 || first === 43 || first === 45;
+    const isFileMarker =
+      (first === 43 || first === 45) &&
+      text.charCodeAt(lineStart + 1) === first &&
+      text.charCodeAt(lineStart + 2) === first;
+    if (isPatchBody && !isFileMarker) {
+      lines += 1;
+      if (lines > CHECKOUT_DIFF_MAX_RENDER_LINES) return lines;
+    }
+    lineStart = lineEnd === -1 ? text.length : lineEnd + 1;
+  }
+  return lines;
 }
 
 const UNTRACKED_BINARY_SNIFF_BYTES = 16 * 1024;
@@ -2593,6 +2627,7 @@ function buildPlaceholderParsedDiffFile(
 ): ParsedDiffFile {
   return {
     path: change.path,
+    ...(change.oldPath ? { oldPath: change.oldPath } : {}),
     isNew: change.isNew,
     isDeleted: change.isDeleted,
     additions: options.stat?.additions ?? 0,
@@ -3319,6 +3354,7 @@ async function appendStructuredTrackedDiffs(
       const appended = appendStructuredFile(structured, {
         ...parsedFile,
         path: change.path,
+        ...(change.oldPath ? { oldPath: change.oldPath } : {}),
         isNew: change.isNew,
         isDeleted: change.isDeleted,
         status: "ok",
@@ -3409,6 +3445,9 @@ async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promi
   }
 
   appendDiff(text);
+  if (structured.renderLines + countRenderableDiffLines(text) > CHECKOUT_DIFF_MAX_RENDER_LINES) {
+    return false;
+  }
   const parsed = await parseAndHighlightDiff(text, cwd);
   const parsedFile =
     parsed[0] ??
@@ -3613,6 +3652,13 @@ export async function getCheckoutDiff(
     ignoreWhitespace,
     appendDiff,
   });
+
+  if (
+    compare.includeStructured &&
+    countRenderableDiffLines(trackedDiff.trackedDiffText) > CHECKOUT_DIFF_MAX_RENDER_LINES
+  ) {
+    return { diff: "", structured: [], diffTooLarge: true };
+  }
 
   const appendTrackedPlaceholderComment = (
     change: CheckoutFileChange,

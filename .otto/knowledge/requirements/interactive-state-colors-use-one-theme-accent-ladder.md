@@ -5,7 +5,7 @@ title: "Interactive state colors use one theme-accent ladder"
 status: "confirmed"
 tags: ["theme","interaction-state","hover","selection","controls","design-system"]
 created_at: "2026-08-21T16:35:51.834Z"
-updated_at: "2026-08-21T17:09:01.711Z"
+updated_at: "2026-09-02T02:11:51.272Z"
 ---
 # Interactive state colors use one theme-accent ladder
 
@@ -52,3 +52,11 @@ All interactive UI families use one theme-derived semantic state ladder: `surfac
   summary: "Removed `borderInteractiveHover` from the shared split-button segment hover style. Scripts, Open With, and Git Actions now keep the same stable `borderAccent` frame while hover is communicated by `surfaceInteractiveHover`; open/focus can still promote the relevant border to `accent`. Formatting, targeted lint, and `git diff --check` passed. The app typecheck was attempted but was blocked by unrelated concurrent errors in `packages/app/src/components/file-pane.tsx` for undefined `normalizedFilePath` and `attachmentScopeKey`; the split-button files produced no reported errors."
   source: "Split-button hover-frame correction on 2026-08-21"
   affects: ["theme-aware-ui-state-gallery"]
+- time: "2026-09-02T02:08:34.442Z"
+  kind: "evidence"
+  summary: "The shared `ToolbarLabelTrigger` still used neutral `interactionHighlight` for the Changes **Uncommitted** mode trigger, bypassing the canonical ladder. It now maps open to `surfaceInteractiveSelected`, hover to `surfaceInteractiveHover`, and press to `surfaceInteractivePressed`, with press and hover taking precedence over open. `npm run format:files -- packages/app/src/components/ui/toolbar-label-trigger.tsx`, targeted lint, app typecheck, and `git diff --check` passed."
+  source: "Implementation verified on 2026-09-01"
+- time: "2026-09-02T02:11:51.272Z"
+  kind: "evidence"
+  summary: "The Explorer Files and Changes trailing actions both flow through shared `iconButtonChromeStyle`, which still painted the neutral `interactionHighlight` wash. It now maps selected/open to `surfaceInteractiveSelected`, hover to `surfaceInteractiveHover`, and press to `surfaceInteractivePressed`, with press and hover overriding selected/open feedback. Focused format, lint, and `git diff --check` passed. App typecheck reached unrelated pre-existing syntax errors in `packages/app/src/git/file-history/open-file-history-tab.ts` before it could assess this component."
+  source: "Implementation verified on 2026-09-01"

@@ -517,6 +517,7 @@ function PreviewOnlyView({
   workspaceId,
   workspaceRoot,
   location,
+  navigationRevision = 0,
   modeBarProps,
   toolbarLeadingSlot,
   onExportHtml,
@@ -534,6 +535,8 @@ function PreviewOnlyView({
   workspaceId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
+  /** Replays a same-line navigation against a retained file tab. */
+  navigationRevision?: number;
   modeBarProps: FileViewModeBarProps | null;
   toolbarLeadingSlot: ReactNode;
   /** Null when the document is not markdown, or the host cannot write it. */
@@ -756,6 +759,7 @@ function PreviewOnlyView({
         workspaceId={workspaceId}
         workspaceRoot={workspaceRoot}
         location={location}
+        navigationRevision={navigationRevision}
         wrapLines={wordWrap}
         contentOverride={draftOverride}
         onFileInfo={onFileInfo}
@@ -2417,6 +2421,7 @@ export function FileTabPane({
   workspaceId,
   workspaceRoot,
   location,
+  navigationRevision = 0,
   workspaceActionsEnabled = true,
   toolbarLeadingSlot = null,
 }: {
@@ -2424,6 +2429,8 @@ export function FileTabPane({
   workspaceId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
+  /** Replays a same-line navigation against a retained preview. */
+  navigationRevision?: number;
   /** Whether actions that rely on a registered workspace may be offered. */
   workspaceActionsEnabled?: boolean;
   /** Host-supplied toolbar controls, placed just after the file's own jobs. Lets
@@ -2433,7 +2440,7 @@ export function FileTabPane({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { closeCurrentTab } = usePaneContext();
+  const { closeCurrentTab, paneId } = usePaneContext();
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
 
   // Editing is independent from project ownership. Rendered formats (markdown,
@@ -2625,9 +2632,10 @@ export function FileTabPane({
         workspaceId,
         path: location.path,
         ...(range ? { startLine: range.startLine, endLine: range.endLine } : {}),
+        defaultPaneId: paneId,
       });
     },
-    [location.path, serverId, workspaceId],
+    [location.path, paneId, serverId, workspaceId],
   );
   const onOpenHistory = gitFileHistorySupported ? openHistory : null;
 
@@ -2878,6 +2886,7 @@ export function FileTabPane({
         workspaceId={workspaceId}
         workspaceRoot={workspaceRoot}
         location={location}
+        navigationRevision={navigationRevision}
         modeBarProps={modeBarProps}
         toolbarLeadingSlot={toolbarLeadingSlot}
         onExportHtml={onExportHtml}

@@ -53,6 +53,20 @@ type MutableGitHostingConfig = import("@otto-code/protocol/messages").MutableGit
 // restore is handled defensively rather than relying on the client.
 export const DAEMON_CONFIG_SECRET_SENTINEL = "__otto_secret_present__";
 
+/**
+ * The post-validation representation of a config write. `patch` contains only
+ * values the caller actually supplied; `removedProviderIds` is deliberately
+ * separate because deletion is an operation, not an absent provider value.
+ *
+ * This distinction is the persistence contract: an omitted field can mean an
+ * older client did not load it (or a secret was masked), while an empty array,
+ * null, or removeProviders entry is explicit user intent.
+ */
+export interface NormalizedDaemonConfigPatchIntent {
+  patch: MutableDaemonConfigPatch;
+  removedProviderIds: string[];
+}
+
 // Wire paths (within the mutable config) of the secrets masked on the way to
 // clients. Deliberately narrow - only host-provider credentials.
 const SECRET_WIRE_PATHS: readonly (readonly string[])[] = [
@@ -249,6 +263,30 @@ export function stripRedactedSecretsFromPatch(patch: MutableDaemonConfigPatch): 
   }
 }
 
+// The patch-persistence counterpart to stripRedactedSecretsFromPatch. A
+// sentinel means "retain the value the daemon already holds", not "delete this
+// field": absence is reserved for untouched or unavailable data. Replacing it
+// before persistence lets a client round-trip a masked config even when the
+// secret originated from a launch override and is not yet on disk.
+export function restoreRedactedSecretsInPatch(
+  patch: MutableDaemonConfigPatch,
+  current: MutableDaemonConfig,
+): void {
+  for (const path of SECRET_WIRE_PATHS) {
+    let container: unknown = patch;
+    for (let i = 0; i < path.length - 1; i += 1) {
+      container = isRecord(container) ? container[path[i]] : undefined;
+    }
+    const leafKey = path[path.length - 1];
+    if (!isRecord(container) || container[leafKey] !== DAEMON_CONFIG_SECRET_SENTINEL) {
+      continue;
+    }
+    const retained = getValueAtPath(current, path.join("."));
+    if (retained === undefined) delete container[leafKey];
+    else container[leafKey] = retained;
+  }
+}
+
 // Post-validation normalization (wire schemas stay pure declarations): never
 // let a dangling active team id survive a patch. Deleting the active team -
 // or patching an id that matches no team - heals to "no team active" rather
@@ -305,6 +343,21 @@ export function extractProviderRemovals(patch: MutableDaemonConfigPatch): {
     patch: { ...patchWithoutRemovals, providers: remainingProviders },
     removedProviderIds,
   };
+}
+
+/**
+ * Normalize a validated config patch before it touches runtime state or disk.
+ * Wire schemas intentionally stay structural, so secret restoration and the
+ * two equivalent provider-removal spellings belong here instead.
+ */
+export function normalizeDaemonConfigPatchIntent(params: {
+  patch: MutableDaemonConfigPatch;
+  current: MutableDaemonConfig;
+}): NormalizedDaemonConfigPatchIntent {
+  const { patch, current } = params;
+  restoreRedactedSecretsInPatch(patch, current);
+  restoreConnectorSecretsInPatch(patch, current);
+  return extractProviderRemovals(patch);
 }
 
 export function removeProviders(
@@ -473,21 +526,44 @@ function buildPersistedBrainSection(
 // remaining credentials is dropped so stale tokens never linger on disk.
 export function buildPersistedGitHosting(
   persisted: PersistedConfig,
-  gitHosting: MutableGitHostingConfig | undefined,
+  patch: MutableGitHostingConfig,
+  current: MutableGitHostingConfig | undefined,
 ): PersistedConfig["gitHosting"] {
-  if (!gitHosting) {
-    return persisted.gitHosting;
-  }
-  const email = gitHosting.providers?.bitbucketCloud?.email?.trim();
-  const apiToken = gitHosting.providers?.bitbucketCloud?.apiToken?.trim();
-  const bitbucketCloud = {
-    ...(email ? { email } : {}),
-    ...(apiToken ? { apiToken } : {}),
+  const providers = {
+    ...(persisted.gitHosting?.providers as Record<string, Record<string, unknown>> | undefined),
   };
-  if (Object.keys(bitbucketCloud).length === 0) {
-    return undefined;
+  // Values supplied through launch/config resolution have to survive the first
+  // targeted edit, but never overwrite a newer value already on disk. The
+  // explicit patch below wins over both.
+  const currentProviders = current?.providers as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  const currentBitbucketCloud = currentProviders?.["bitbucketCloud"];
+  if (currentBitbucketCloud) {
+    providers["bitbucketCloud"] = {
+      ...currentBitbucketCloud,
+      ...providers["bitbucketCloud"],
+    };
   }
-  return { providers: { bitbucketCloud } };
+  const patchProviders = patch.providers as Record<string, Record<string, unknown>> | undefined;
+  for (const [providerId, providerPatch] of Object.entries(patchProviders ?? {})) {
+    if (providerId !== "bitbucketCloud") continue;
+    const provider = { ...providers[providerId] };
+    for (const [key, value] of Object.entries(providerPatch)) {
+      // Empty credential inputs are an explicit clear. Other values, including
+      // future passthrough fields, retain their precise patch intent.
+      if (typeof value === "string" && value.trim().length === 0) {
+        delete provider[key];
+      } else {
+        provider[key] = value;
+      }
+    }
+    if (Object.keys(provider).length > 0) providers[providerId] = provider;
+    else delete providers[providerId];
+  }
+  return Object.keys(providers).length > 0
+    ? ({ providers } as PersistedConfig["gitHosting"])
+    : undefined;
 }
 
 // The speech OpenAI key lives at providers.openai.apiKey in config.json (the

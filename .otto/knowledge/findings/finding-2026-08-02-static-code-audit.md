@@ -3,11 +3,10 @@ id: "finding-2026-08-02-static-code-audit"
 kind: "finding"
 title: "Performance and efficiency audit: where Otto burns CPU, memory, and tokens a user feels"
 status: "confirmed"
-tags: ["finding", "performance-efficiency-audit"]
+tags: ["finding","performance-efficiency-audit"]
 created_at: "2026-08-16T22:16:11.495Z"
-updated_at: "2026-08-16T22:16:11.495Z"
+updated_at: "2026-09-02T12:13:03.674Z"
 ---
-
 # Performance and efficiency audit: where Otto burns CPU, memory, and tokens a user feels
 
 <!-- compiled_truth -->
@@ -328,3 +327,12 @@ sits behind the final-chunk path).
   kind: "migration"
   summary: "Migrated from the legacy findings report without discarding its evidence."
   source: "findings/performance-efficiency-audit/2026-08-02-static-code-audit.md"
+- time: "2026-09-02T02:22:06.403Z"
+  kind: "evidence"
+  summary: "**Chat outline rail (verified, fixed):** `packages/app/src/agent-stream/chat-outline/rail.web.tsx` rendered an unbounded `prompts.map(...)`, so every indexed user prompt created a focus target, pointer handler, and dynamic Unistyles subtree. Paseo v0.6.1 did not change that mapping; its only chat-outline changes were the later local layout-reservation commit `2ed273c5a` plus prompt-jump virtualization wiring. The rail now groups the complete index into at most 96 contiguous positional segments (`segmentChatOutlinePrompts`), targets each condensed segment's middle prompt, marks active ranges, and names the represented range in its hover preview/accessibility label. The 1,000-prompt unit case proves the ceiling and complete ordered coverage. Do not expand a condensed segment into every individual item on hover: that would recreate the unbounded DOM/event workload the cap removes."
+  source: "Local code inspection and targeted unit verification, 2026-09-01"
+- time: "2026-09-02T12:13:03.674Z"
+  kind: "evidence"
+  summary: "**Explorer sidebar resize regression (verified, fixed):** The desktop Explorer dock introduced in `118d34c39` kept `previewExplorerSidebarWidth` in React state. Every pointer frame during `workspace-explorer-sidebar-resize-handle` drag therefore re-rendered `SplitContainer` and its dense Explorer tree. Ordinary split panes already update `flexGrow` through a Reanimated shared value. `split-container.tsx` now drives the Explorer dock width through `explorerSidebarResizeWidth` and persists only on drag completion, so drag frames no longer enter React's render path. Focused lint, app typecheck, and `resize-handle-drag.test.ts` passed."
+  source: "Local code inspection and targeted verification, 2026-09-02"
+  affects: ["upstream-subagent-convergence"]

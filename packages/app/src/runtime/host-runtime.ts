@@ -2032,8 +2032,9 @@ export class HostRuntimeStore {
       return;
     }
     const snapshot = controller.getSnapshot();
+    const directory = this.directorySyncByServer.get(serverId);
     const directorySourceChanged =
-      this.directorySyncByServer.get(serverId)?.connectionChanged({
+      directory?.connectionChanged({
         client: snapshot.client,
         status: snapshot.connectionStatus === "online" ? "online" : "offline",
         source: {
@@ -2090,7 +2091,10 @@ export class HostRuntimeStore {
     if (snapshot.connectionStatus !== "online") {
       return;
     }
-    if (!didTransitionOnline && snapshot.hasEverLoadedAgentDirectory) {
+    // A server-id reconciliation replaces the directory replica while the host remains online.
+    // That replacement deliberately disconnects every live directory subscription, including
+    // workspace labels, so a changed source must bootstrap even when no online transition fired.
+    if (!didTransitionOnline && !directorySourceChanged && snapshot.hasEverLoadedAgentDirectory) {
       return;
     }
     if (this.directoryBootstrapInFlight.has(serverId) && !directorySourceChanged) {
@@ -2112,6 +2116,15 @@ export class HostRuntimeStore {
           }),
           this.refreshWorkspaceDirectory({ serverId, subscribe: true }).catch((error) => {
             console.error("[HostRuntime] workspace directory bootstrap failed", {
+              serverId,
+              error: toErrorMessage(error),
+            });
+          }),
+          // Labels are a host-scoped live replica, not part of the workspace-directory payload.
+          // Starting the two directory subscriptions individually used to skip this connection,
+          // leaving the workspace menu to interpret an otherwise-online host as offline.
+          (directory?.connectWorkspaceLabels() ?? Promise.resolve()).catch((error) => {
+            console.error("[HostRuntime] workspace label bootstrap failed", {
               serverId,
               error: toErrorMessage(error),
             });

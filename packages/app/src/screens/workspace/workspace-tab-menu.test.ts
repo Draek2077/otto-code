@@ -15,6 +15,35 @@ function createAgentTab(): WorkspaceTabDescriptor {
 }
 
 describe("buildWorkspaceTabMenuEntries", () => {
+  it.each([
+    ["Files", { kind: "files" as const }],
+    ["Changes", { kind: "working_diff" as const }],
+    ["Search", { kind: "project_search" as const }],
+  ])("does not offer close actions for the permanent %s tab", (_label, target) => {
+    const entries = buildWorkspaceTabMenuEntries({
+      surface: "desktop",
+      tab: { key: target.kind, tabId: target.kind, kind: target.kind, target },
+      index: 0,
+      tabCount: 1,
+      menuTestIDBase: `workspace-tab-context-${target.kind}`,
+      isDeveloperMode: false,
+      onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
+      onCopyAgentId: vi.fn(),
+      onCopyFilePath: vi.fn(),
+      onReloadAgent: vi.fn(),
+      onRenameTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseTabsBefore: vi.fn(),
+      onCloseTabsAfter: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+    });
+
+    expect(entries.some((entry) => entry.kind === "item" && entry.key.startsWith("close"))).toBe(
+      false,
+    );
+  });
+
   it("replaces Close with Archive and Delete for chats", () => {
     const archive = vi.fn();
     const deleteAgent = vi.fn();
@@ -123,6 +152,45 @@ describe("buildWorkspaceTabMenuEntries", () => {
       "Close other tabs",
       "Close",
     ]);
+  });
+
+  it("moves an Explorer-compatible file tab into the Explorer panel", () => {
+    const moveToExplorer = vi.fn();
+    const entries = buildWorkspaceTabMenuEntries({
+      surface: "desktop",
+      tab: {
+        key: "file_readme",
+        tabId: "file_readme",
+        kind: "file",
+        target: { kind: "file", path: "/workspace/README.md" },
+      },
+      index: 0,
+      tabCount: 1,
+      menuTestIDBase: "workspace-tab-context-file_readme",
+      isDeveloperMode: false,
+      onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
+      onCopyAgentId: vi.fn(),
+      onCopyFilePath: vi.fn(),
+      onReloadAgent: vi.fn(),
+      onRenameTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseTabsBefore: vi.fn(),
+      onCloseTabsAfter: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+      onMoveToExplorer: moveToExplorer,
+      canMoveToExplorer: true,
+    });
+
+    const moveEntry = entries.find(
+      (entry) => entry.kind === "item" && entry.key === "move-to-explorer",
+    );
+    expect(moveEntry).toMatchObject({
+      label: "Move to Explorer panel",
+      testID: "workspace-tab-context-file_readme-move-to-explorer",
+    });
+    if (moveEntry?.kind === "item") moveEntry.onSelect();
+    expect(moveToExplorer).toHaveBeenCalledWith("file_readme");
   });
 
   it("omits the developer-only entries in User interface mode", () => {

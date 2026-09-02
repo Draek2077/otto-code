@@ -683,6 +683,28 @@ describe("agent personalities compatibility", () => {
     expect(parsed).not.toHaveProperty("agentPersonalities");
   });
 
+  test("default-filled config sections preserve single-field patch intent", () => {
+    const parsed = MutableDaemonConfigPatchSchema.parse({
+      agentBehaviors: { todoNudge: false },
+      browserTools: { enabled: true },
+      metadataGeneration: { providers: [] },
+      lsp: { languages: { rust: false } },
+      dotnetSolutionManagement: { enabled: true },
+      projectKnowledge: { defaultStoreLocation: "host" },
+      projectArtifacts: { defaultStoreLocation: "host" },
+      projectWorkflows: { defaultStoreLocation: "host" },
+    });
+
+    expect(parsed.agentBehaviors).toEqual({ todoNudge: false });
+    expect(parsed.browserTools).toEqual({ enabled: true });
+    expect(parsed.metadataGeneration).toEqual({ providers: [] });
+    expect(parsed.lsp).toEqual({ languages: { rust: false } });
+    expect(parsed.dotnetSolutionManagement).toEqual({ enabled: true });
+    expect(parsed.projectKnowledge).toEqual({ defaultStoreLocation: "host" });
+    expect(parsed.projectArtifacts).toEqual({ defaultStoreLocation: "host" });
+    expect(parsed.projectWorkflows).toEqual({ defaultStoreLocation: "host" });
+  });
+
   test("a single-field brain patch does not inject defaults for the other fields", () => {
     // Regression: MutableBrainConfigSchema.partial() kept every field's default,
     // so a one-field brain patch expanded to a full defaulted block and the

@@ -7,6 +7,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
+import { FolderOpen, Search } from "@/components/icons/material-icons";
+import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Shortcut } from "@/components/ui/shortcut";
+import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { formatPrTabLabel, PullRequestTabIcon } from "@/git/pull-request-panel";
 import {
   usePanelStore,
@@ -60,8 +65,13 @@ const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foregrou
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
+const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
 const ThemedCloseIcon = withUnistyles(X);
+const ThemedFolderOpen = withUnistyles(FolderOpen);
+const ThemedSearch = withUnistyles(Search);
+const ThemedSourceControl = withUnistyles(SourceControlPanelIcon);
 const ThemedPullRequestTabIcon = withUnistyles(PullRequestTabIcon);
+const EXPLORER_TAB_LABELED_MIN_WIDTH = 80;
 
 interface ExplorerSidebarSharedState {
   explorerTab: ExplorerTab;
@@ -268,28 +278,69 @@ export function NativeExplorerSidebarDock({
 interface ExplorerTabButtonProps {
   tab: ExplorerTab;
   active: boolean;
-  label?: string;
+  label: string;
+  showLabel: boolean;
+  pullRequestProvider?: React.ComponentProps<typeof PullRequestTabIcon>["provider"];
   onTabPress: (tab: ExplorerTab) => void;
   testID: string;
-  children?: React.ReactNode;
+}
+
+function ExplorerTabIcon({
+  tab,
+  active,
+  pullRequestProvider,
+}: Pick<ExplorerTabButtonProps, "tab" | "active" | "pullRequestProvider">) {
+  const uniProps = active ? accentColorMapping : foregroundMutedColorMapping;
+  if (tab === "changes") return <ThemedSourceControl size={14} uniProps={uniProps} />;
+  if (tab === "files") return <ThemedFolderOpen size={14} uniProps={uniProps} />;
+  if (tab === "search") return <ThemedSearch size={14} uniProps={uniProps} />;
+  return <ThemedPullRequestTabIcon provider={pullRequestProvider} size={13} uniProps={uniProps} />;
 }
 
 function ExplorerTabButton({
   tab,
   active,
   label,
+  showLabel,
+  pullRequestProvider,
   onTabPress,
   testID,
-  children,
 }: ExplorerTabButtonProps) {
   const handlePress = useCallback(() => onTabPress(tab), [onTabPress, tab]);
-  const tabStyle = useMemo(() => [styles.tab, active && styles.tabActive], [active]);
+  const changesShortcutKeys = useShortcutKeys("workspace-tab-target-changes");
+  const filesShortcutKeys = useShortcutKeys("workspace-tab-target-files");
+  let shortcutKeys = null;
+  if (tab === "changes") {
+    shortcutKeys = changesShortcutKeys;
+  } else if (tab === "files") {
+    shortcutKeys = filesShortcutKeys;
+  }
+  const tabStyle = useMemo(
+    () => [styles.tab, !showLabel && styles.tabCompact, active && styles.tabActive],
+    [active, showLabel],
+  );
   const tabTextStyle = useMemo(() => [styles.tabText, active && styles.tabTextActive], [active]);
   return (
-    <Pressable testID={testID} style={tabStyle} onPress={handlePress}>
-      {children}
-      {label !== undefined ? <Text style={tabTextStyle}>{label}</Text> : null}
-    </Pressable>
+    <Tooltip delayDuration={300} enabledOnDesktop={!showLabel} enabledOnMobile={false}>
+      <TooltipTrigger asChild triggerRefProp="triggerRef">
+        <Pressable
+          testID={testID}
+          style={tabStyle}
+          onPress={handlePress}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+        >
+          <ExplorerTabIcon tab={tab} active={active} pullRequestProvider={pullRequestProvider} />
+          {showLabel ? <Text style={tabTextStyle}>{label}</Text> : null}
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="center" offset={8}>
+        <View style={styles.tooltipRow}>
+          <Text style={styles.tooltipText}>{label}</Text>
+          {shortcutKeys ? <Shortcut chord={shortcutKeys} /> : null}
+        </View>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -336,6 +387,17 @@ function ExplorerSidebarContent({
   });
   const resolvedTab = resolved.activeTab;
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
+  const [tabsContainerWidth, setTabsContainerWidth] = useState(0);
+  const handleTabsContainerLayout = useCallback(
+    (event: { nativeEvent: { layout: { width: number } } }) => {
+      const nextWidth = Math.round(event.nativeEvent.layout.width);
+      setTabsContainerWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+    },
+    [],
+  );
+  const compactLabels =
+    tabsContainerWidth > 0 &&
+    tabsContainerWidth < resolved.tabs.length * EXPLORER_TAB_LABELED_MIN_WIDTH;
   const { mountedTabIds } = useMountedTabSet({
     activeTabId: resolvedTab,
     allTabIds: resolved.tabs,
@@ -352,12 +414,13 @@ function ExplorerSidebarContent({
         testID="explorer-header"
       >
         <TitlebarDragRegion />
-        <View style={styles.tabsContainer}>
+        <View style={styles.tabsContainer} onLayout={handleTabsContainerLayout}>
           {isDeveloperMode && isGit && (
             <ExplorerTabButton
               tab="changes"
               active={resolvedTab === "changes"}
               label={t("workspace.tabs.explorerSidebar.changes")}
+              showLabel={!compactLabels}
               onTabPress={onTabPress}
               testID="explorer-tab-changes"
             />
@@ -366,6 +429,7 @@ function ExplorerSidebarContent({
             tab="files"
             active={resolvedTab === "files"}
             label={t("workspace.tabs.explorerSidebar.files")}
+            showLabel={!compactLabels}
             onTabPress={onTabPress}
             testID="explorer-tab-files"
           />
@@ -374,6 +438,7 @@ function ExplorerSidebarContent({
               tab="search"
               active={resolvedTab === "search"}
               label={t("workspace.tabs.explorer.search")}
+              showLabel={!compactLabels}
               onTabPress={onTabPress}
               testID="explorer-tab-search"
             />
@@ -383,17 +448,11 @@ function ExplorerSidebarContent({
               tab="pr"
               active={resolvedTab === "pr"}
               label={prTabLabel}
+              showLabel={!compactLabels}
+              pullRequestProvider={prPane.hostingProvider}
               onTabPress={onTabPress}
               testID="explorer-tab-pr"
-            >
-              <ThemedPullRequestTabIcon
-                provider={prPane.hostingProvider}
-                size={13}
-                uniProps={
-                  resolvedTab === "pr" ? foregroundColorMapping : foregroundMutedColorMapping
-                }
-              />
-            </ExplorerTabButton>
+            />
           )}
         </View>
         <View style={styles.headerRightSection}>
@@ -516,14 +575,14 @@ const PrTabContent = PullRequestContent;
 
 const styles = StyleSheet.create((theme) => ({
   mobileSidebar: {
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   nativeDock: {
     position: "relative",
     height: "100%",
     minHeight: 0,
     overflow: "hidden",
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   nativeDockContent: {
     position: "relative",
@@ -550,6 +609,8 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   tabsContainer: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     gap: theme.spacing[1],
   },
@@ -561,6 +622,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
   },
+  tabCompact: {
+    width: 32,
+    height: 32,
+    justifyContent: "center",
+    paddingHorizontal: 0,
+  },
   tabActive: {
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
@@ -570,7 +637,16 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   tabTextActive: {
-    color: theme.colors.foreground,
+    color: theme.colors.accent,
+  },
+  tooltipText: {
+    color: theme.colors.popoverForeground,
+    fontSize: theme.fontSize.sm,
+  },
+  tooltipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   tabTextMuted: {
     opacity: 0.8,

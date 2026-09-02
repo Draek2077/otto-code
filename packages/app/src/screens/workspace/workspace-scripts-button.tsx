@@ -60,7 +60,6 @@ import {
 } from "@/utils/workspace-script-links";
 import type { Theme } from "@/styles/theme";
 import { useWorkspaceServiceRoutePreferencesStore } from "@/workspace-service-routes/store";
-import { buttonControlHeight, HEADER_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
 
 type RowActionIcon = "copy" | "open" | "restart" | "start" | "stop" | "terminal";
 
@@ -78,6 +77,8 @@ interface WorkspaceScriptsButtonProps {
   onViewTerminal: (terminalId: string) => void;
   onOpenUrlInBrowserTab?: (url: string) => void;
   hideLabels?: boolean;
+  /** Reports whether this workspace contributes a visible toolbar control. */
+  onAvailabilityChange?: (available: boolean) => void;
   // Stretch to fill the available width (content stays centered).
   fill?: boolean;
   presentation?: "split" | "ghost";
@@ -729,6 +730,7 @@ export function WorkspaceScriptsButton({
   onViewTerminal,
   onOpenUrlInBrowserTab,
   hideLabels,
+  onAvailabilityChange,
   fill,
   presentation = "split",
   ghostIconSize,
@@ -863,6 +865,8 @@ export function WorkspaceScriptsButton({
   }, [allScripts, startScript]);
 
   const isFillSplit = Boolean(fill) && presentation === "split";
+  const hasScripts = allScripts.length > 0;
+  useEffect(() => onAvailabilityChange?.(hasScripts), [hasScripts, onAvailabilityChange]);
   const rowStyle = useMemo(() => [styles.row, isFillSplit && styles.fillItem], [isFillSplit]);
   const triggerStyle = useCallback(
     ({
@@ -919,7 +923,7 @@ export function WorkspaceScriptsButton({
     [serverId, setPreferredRoute],
   );
 
-  if (allScripts.length === 0) {
+  if (!hasScripts) {
     return null;
   }
 
@@ -1036,19 +1040,15 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   splitButton: {
-    height: {
-      xs: buttonControlHeight.xs,
-      md: HEADER_CONTROL_HEIGHT,
-    },
     flexDirection: "row",
     alignItems: "stretch",
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     overflow: "hidden",
-    // This used to live on the inner trigger while the parent owned the
-    // border. The trigger owns both now, so it must retain the same content
-    // inset and therefore the exact previous control size.
+    // No fixed height. The control shares the git Commit split button's
+    // recipe (sm label line height + this vertical inset + the border), so
+    // every button built from it lands on the same height on its own.
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
     justifyContent: "center",
@@ -1085,8 +1085,16 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
   },
   splitButtonText: {
-    fontSize: theme.fontSize.base,
-    lineHeight: theme.fontSize.base * 1.5,
+    // Mirrors the git Commit split button's label geometry (including its
+    // compact bump) so both controls share the same natural height.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
+    lineHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.5,
+      md: theme.fontSize.sm * 1.5,
+    },
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
@@ -1096,7 +1104,12 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     gap: theme.spacing[1.5],
-    minHeight: theme.fontSize.sm * 1.5,
+    // The label's line height is the content minimum, so the icon-only state
+    // keeps the same natural height as the labeled one.
+    minHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.5,
+      md: theme.fontSize.sm * 1.5,
+    },
   },
   scriptList: {
     paddingVertical: theme.spacing[1],

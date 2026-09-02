@@ -534,6 +534,12 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     ".cm-gutters": {
       backgroundColor: spec.gutterBackground,
       color: spec.gutterForeground,
+      // CM6's base theme leaves grow at its browser default. That is normally
+      // zero, but a host-level flex rule can turn the gutter into the pane's
+      // growing child and leave the code well with no width. The gutter has
+      // intrinsic content (line numbers + the 11px diagnostic lane), so state
+      // the only valid sizing contract here instead of relying on that default.
+      flex: "0 0 auto",
       border: "none",
       borderRight: `1px solid ${spec.gutterBorder}`,
       paddingRight: "2px",

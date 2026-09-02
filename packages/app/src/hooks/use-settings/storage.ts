@@ -13,7 +13,7 @@ import {
   parseSidebarRowItems,
   type SidebarRowItems,
 } from "@/components/sidebar/display-preferences/row-items";
-import { DEFAULT_CODE_FONT_SIZE, DEFAULT_UI_FONT_SIZE } from "./limits";
+import { DEFAULT_CODE_FONT_SIZE, DEFAULT_CONTENT_FONT_SIZE, DEFAULT_UI_FONT_SIZE } from "./limits";
 import {
   DEFAULT_OTTO_SETTINGS,
   DEFAULT_TERMINAL_SCROLLBACK_LINES,
@@ -46,15 +46,27 @@ import type {
   ToolCallDetailLevel,
   WorkspaceTitleSource,
 } from "./otto-settings";
+export type { SubagentTrackPresentation } from "./otto-settings";
+import type { ThemePreference } from "@/styles/theme";
 export const APP_SETTINGS_KEY = "@otto:app-settings";
 export const APP_SETTINGS_QUERY_KEY = ["app-settings"];
 const LEGACY_SETTINGS_KEY = "@otto:settings";
 
+// This is deliberately persisted with the settings rather than inferred from
+// the current value. Before steering existed, "interrupt" was both the
+// historical default and a possible deliberate user choice, so its provenance
+// cannot be recovered from the old record.
+const SEND_BEHAVIOR_STEER_MIGRATION_VERSION = 1;
+
 export type SidebarWorkspaceTrailing = "diff" | "timestamp" | "none";
 
 export interface AppSettings extends OttoAppSettings {
+  /** Paseo's provider-level source selection; Otto variants live in the spectrum fields. */
+  theme: ThemePreference;
   language: AppLanguage;
   sendBehavior: SendBehavior;
+  /** Internal one-shot marker; keeps a later explicit Interrupt choice intact. */
+  sendBehaviorMigrationVersion: number;
   // Show AI-predicted next-prompt suggestions as composer ghost-text watermark
   // (Tab to accept). Native Claude prompt suggestions; gated on the host's
   // promptSuggestions capability. Device-local presentation only. Default on.
@@ -65,6 +77,7 @@ export interface AppSettings extends OttoAppSettings {
   uiFontFamily: string; // "" = platform default UI stack
   monoFontFamily: string; // "" = platform default mono stack
   uiFontSize: number; // clamped px, default 16
+  contentFontSize: number; // clamped px, independently controls prose
   codeFontSize: number; // clamped px, default 12
   syntaxTheme: SyntaxThemeId;
   openInSidePane: OpenInSidePanePreferences; // default "default"
@@ -111,14 +124,17 @@ export interface Settings extends AppSettings {
 
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   ...DEFAULT_OTTO_SETTINGS,
+  theme: "auto",
   language: "system",
-  sendBehavior: "interrupt",
+  sendBehavior: "steer",
+  sendBehaviorMigrationVersion: SEND_BEHAVIOR_STEER_MIGRATION_VERSION,
   serviceUrlBehavior: "ask",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
   useLegacyTerminalRenderer: false,
   uiFontFamily: "",
   monoFontFamily: "",
   uiFontSize: DEFAULT_UI_FONT_SIZE,
+  contentFontSize: DEFAULT_CONTENT_FONT_SIZE,
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
   syntaxTheme: "default",
   openInSidePane: DEFAULT_OPEN_IN_SIDE_PANE_PREFERENCES,
@@ -175,13 +191,22 @@ export async function loadAppSettingsFromStorage(deps: SettingsDeps): Promise<Ap
     if (stored) {
       const parsed = parseSettingsRecord(stored);
       if (parsed) {
-        return {
+        const next = {
           ...DEFAULT_CLIENT_SETTINGS,
           ...migrateLegacyThemeField(parsed),
           ...migrateTutorialFlag(parsed),
           ...migrateSetupWizardFlag(parsed),
           ...pickAppSettings(parsed as Partial<AppSettings>),
-        };
+          ...migrateLegacySendBehavior(parsed),
+          ...migrateLegacyTabToolbarOptions(parsed),
+        } satisfies AppSettings;
+        // The marker makes this migration one-shot. Persist it with the
+        // resolved setting, so a user who chooses Interrupt after upgrading is
+        // never mistaken for an old default on a later launch.
+        if (needsSendBehaviorSteerMigration(parsed) || needsTabToolbarOptionsMigration(parsed)) {
+          await deps.storage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
+        }
+        return next;
       }
       // Unreadable blob: reset to defaults and persist so we don't re-hit the bad
       // value on every launch. The previous code threw here, which left the
@@ -210,6 +235,40 @@ export async function loadAppSettingsFromStorage(deps: SettingsDeps): Promise<Ap
     console.error("[AppSettings] Failed to load settings:", error);
     throw error;
   }
+}
+
+function needsSendBehaviorSteerMigration(stored: Record<string, unknown>): boolean {
+  return stored.sendBehaviorMigrationVersion !== SEND_BEHAVIOR_STEER_MIGRATION_VERSION;
+}
+
+function migrateLegacySendBehavior(stored: Record<string, unknown>): Partial<AppSettings> {
+  if (!needsSendBehaviorSteerMigration(stored)) {
+    return {};
+  }
+
+  // The old store recorded only the resulting value, not whether it came from
+  // the default or a tap in Settings. Therefore an old explicit Interrupt is
+  // indistinguishable from the old default and moves to Steer with it. Queue
+  // was already a distinct choice and is preserved. See docs/chat-lifecycle.md.
+  return {
+    sendBehavior: stored.sendBehavior === "queue" ? "queue" : "steer",
+    sendBehaviorMigrationVersion: SEND_BEHAVIOR_STEER_MIGRATION_VERSION,
+  };
+}
+
+function needsTabToolbarOptionsMigration(stored: Record<string, unknown>): boolean {
+  return (
+    stored.hideTabToolbarOptions === undefined &&
+    typeof stored.hidePinnedToolbarOptions === "boolean"
+  );
+}
+
+function migrateLegacyTabToolbarOptions(stored: Record<string, unknown>): Partial<AppSettings> {
+  // COMPAT(tabToolbarOptions): `hidePinnedToolbarOptions` was renamed in v0.8.20;
+  // remove this fallback after 2027-03-02.
+  return needsTabToolbarOptionsMigration(stored)
+    ? { hideTabToolbarOptions: stored.hidePinnedToolbarOptions as boolean }
+    : {};
 }
 
 export async function loadSettingsFromStorage(deps: SettingsDeps): Promise<Settings> {
@@ -387,13 +446,16 @@ export type { OttoAppSettings } from "./otto-settings";
 // load this file's whole import graph - see limits.ts for why that matters outside Metro.
 export {
   DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_CONTENT_FONT_SIZE,
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_UI_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
+  MAX_CONTENT_FONT_SIZE,
   MAX_TERMINAL_FONT_SIZE,
   MAX_FONT_FAMILY_LENGTH,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_CONTENT_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
   MIN_UI_FONT_SIZE,
 } from "./limits";

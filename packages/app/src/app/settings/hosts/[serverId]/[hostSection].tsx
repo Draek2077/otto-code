@@ -5,15 +5,20 @@ import SettingsScreen from "@/screens/settings-screen";
 import { normalizeHostSectionSlug } from "@/utils/host-routes";
 
 export default function SettingsHostSectionRoute() {
-  const params = useLocalSearchParams<{ serverId?: string; hostSection?: string }>();
+  const params = useLocalSearchParams<{
+    serverId?: string;
+    hostSection?: string;
+    setting?: string;
+  }>();
   const serverId = typeof params.serverId === "string" ? params.serverId.trim() : "";
   const rawSection = typeof params.hostSection === "string" ? params.hostSection : "";
   const section = normalizeHostSectionSlug(rawSection) ?? "connections";
+  const focusSettingId = typeof params.setting === "string" ? params.setting : null;
   const view = useMemo(() => ({ kind: "host" as const, serverId, section }), [serverId, section]);
 
   return (
     <HostRouteBootstrapBoundary>
-      <SettingsScreen view={view} />
+      <SettingsScreen view={view} focusSettingId={focusSettingId} />
     </HostRouteBootstrapBoundary>
   );
 }

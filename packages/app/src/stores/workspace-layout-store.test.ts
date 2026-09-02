@@ -135,7 +135,8 @@ function contentTabs(tabs: WorkspaceTab[]): WorkspaceTab[] {
     (tab) =>
       tab.target.kind !== "new_tab" &&
       tab.target.kind !== "files" &&
-      tab.target.kind !== "changes_tree",
+      tab.target.kind !== "changes_tree" &&
+      tab.target.kind !== "project_search",
   );
 }
 
@@ -145,7 +146,7 @@ function expectGroup(node: SplitNode): Extract<SplitNode, { kind: "group" }> {
 }
 
 describe("workspace-layout-store helpers", () => {
-  it("seeds Files and Changes in the default Explorer sidebar", () => {
+  it("seeds Files, Changes, and Search in the default Explorer sidebar", () => {
     const layout = createWorkspaceLayoutWithExplorerSidebar();
     const tabs = collectAllTabs(layout.root);
 
@@ -153,6 +154,7 @@ describe("workspace-layout-store helpers", () => {
       { kind: "new_tab" },
       { kind: "files" },
       { kind: "changes_tree" },
+      { kind: "project_search" },
     ]);
     expect(findPaneById(layout.root, "explorer")?.focusedTabId).toBe(
       tabs.find((tab) => tab.target.kind === "changes_tree")?.tabId,
@@ -181,6 +183,7 @@ describe("workspace-layout-store helpers", () => {
       { kind: "new_tab" },
       { kind: "files" },
       { kind: "changes_tree" },
+      { kind: "project_search" },
     ]);
     const restoredNewTab = restoredTabs.find((tab) => tab.target.kind === "new_tab");
     expect(restoredNewTab).toBeTruthy();
@@ -284,7 +287,7 @@ describe("workspace-layout-store helpers", () => {
   });
 });
 
-describe("workspace-layout-store version 2 migration", () => {
+describe("workspace-layout-store migrations", () => {
   const workspaceKey = "workspace";
   const preservedFileState = { treeVisible: true, treeWidth: 333 };
 
@@ -407,6 +410,7 @@ describe("workspace-layout-store version 2 migration", () => {
     expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
       { kind: "files" },
       { kind: "changes_tree" },
+      { kind: "project_search" },
     ]);
 
     const sidePane = findPaneById(layout.root, sidePaneId);
@@ -433,7 +437,7 @@ describe("workspace-layout-store version 2 migration", () => {
         const persisted = JSON.parse(
           (await AsyncStorage.getItem("workspace-layout-state")) ?? "{}",
         );
-        expect(persisted.version).toBe(2);
+        expect(persisted.version).toBe(3);
       });
     },
   );
@@ -450,7 +454,7 @@ describe("workspace-layout-store version 2 migration", () => {
     });
   });
 
-  it("writes version 2 with the persisted Explorer key accepted by released v0.6", async () => {
+  it("writes version 3 with the persisted Explorer key accepted by released v0.6", async () => {
     await persistVersionOneLayout("v0.6");
     const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
 
@@ -458,7 +462,7 @@ describe("workspace-layout-store version 2 migration", () => {
 
     await vi.waitFor(async () => {
       const persisted = JSON.parse((await AsyncStorage.getItem("workspace-layout-state")) ?? "{}");
-      expect(persisted.version).toBe(2);
+      expect(persisted.version).toBe(3);
       expect(Object.keys(persisted.state).sort()).toEqual([
         "explorerPaneIdByWorkspace",
         "explorerSidebarWidthByWorkspace",
@@ -472,7 +476,7 @@ describe("workspace-layout-store version 2 migration", () => {
     });
   });
 
-  it("does not replace Explorer again when the migrated version 2 layout reloads", async () => {
+  it("does not replace Explorer again when the migrated version 3 layout reloads", async () => {
     await persistVersionOneLayout("v0.6");
     const migrated = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
     await migrated.persist.rehydrate();
@@ -491,7 +495,7 @@ describe("workspace-layout-store version 2 migration", () => {
 
     await vi.waitFor(async () => {
       const persisted = JSON.parse((await AsyncStorage.getItem("workspace-layout-state")) ?? "{}");
-      expect(persisted.version).toBe(2);
+      expect(persisted.version).toBe(3);
     });
     const reloaded = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
     await reloaded.persist.rehydrate();
@@ -506,6 +510,35 @@ describe("workspace-layout-store version 2 migration", () => {
     expect(findPaneContainingTab(reloadedLayout.root, addedTabId as string)?.id).toBe(
       reloadedExplorer?.id,
     );
+  });
+
+  it("adds Search to an Explorer sidebar persisted by version 2", async () => {
+    const layout = createWorkspaceLayoutWithExplorerSidebar();
+    const projectSearchTabId = collectAllTabs(layout.root).find(
+      (tab) => tab.target.kind === "project_search",
+    )?.tabId;
+    expect(projectSearchTabId).toBeTruthy();
+    const versionTwoLayout = {
+      ...layout,
+      root: removeTabFromTree(layout.root, projectSearchTabId as string),
+    };
+    await AsyncStorage.setItem(
+      "workspace-layout-state",
+      JSON.stringify({
+        state: {
+          layoutByWorkspace: { versionTwo: versionTwoLayout },
+          explorerPaneIdByWorkspace: { versionTwo: "explorer" },
+        },
+        version: 2,
+      }),
+    );
+
+    const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+    await restored.persist.rehydrate();
+
+    expect(
+      findPaneById(restored.getState().layoutByWorkspace.versionTwo.root, "explorer")?.tabIds,
+    ).toEqual(["files", "changes_tree", "project_search"]);
   });
 });
 
@@ -691,6 +724,32 @@ describe("workspace-layout-store tree transforms", () => {
     const emptied = removeTabFromTree(singlePaneRoot, "tab-a");
     expect(collectAllTabs(emptied)).toHaveLength(1);
     expect(collectAllTabs(emptied)[0]?.target).toEqual({ kind: "new_tab" });
+  });
+});
+
+describe("SplitPane.tabOrientation persistence", () => {
+  it("retains an orientation override when persisting the initial New tab", async () => {
+    const workspaceKey = createWorkspaceKey();
+    await AsyncStorage.removeItem("workspace-layout-state");
+
+    const writingStore = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+    await writingStore.persist.rehydrate();
+    writingStore.getState().setPaneTabOrientation(workspaceKey, "main", "horizontal");
+
+    await vi.waitFor(async () => {
+      const persisted = await AsyncStorage.getItem("workspace-layout-state");
+      expect(persisted).not.toBeNull();
+      const savedLayout = JSON.parse(persisted!).state.layoutByWorkspace[workspaceKey];
+      expect(findPaneById(savedLayout.root, "main")?.tabOrientation).toBe("horizontal");
+    });
+
+    const restoredStore = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
+    await restoredStore.persist.rehydrate();
+
+    expect(
+      findPaneById(restoredStore.getState().layoutByWorkspace[workspaceKey].root, "main")
+        ?.tabOrientation,
+    ).toBe("horizontal");
   });
 });
 
@@ -1181,6 +1240,7 @@ describe("workspace-layout-store actions", () => {
       "agent",
       "files",
       "changes_tree",
+      "project_search",
       "pull_request",
     ]);
     expect(state.explorerSidebarPaneIdByWorkspace[workspaceKey]).toBe(explorerSidebarPaneId);
@@ -1217,7 +1277,13 @@ describe("workspace-layout-store actions", () => {
       const persisted = await AsyncStorage.getItem("workspace-layout-state");
       expect(persisted).not.toBeNull();
       const root = JSON.parse(persisted ?? "{}").state.layoutByWorkspace[workspaceKey].root;
-      expect(collectTabIds(root)).toEqual([first, second, "files", "changes_tree"]);
+      expect(collectTabIds(root)).toEqual([
+        first,
+        second,
+        "files",
+        "changes_tree",
+        "project_search",
+      ]);
     });
 
     const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
@@ -2170,7 +2236,7 @@ describe("workspace-layout-store actions", () => {
     let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)).toMatchObject({
       hidden: true,
-      tabIds: ["files", "changes_tree"],
+      tabIds: ["files", "changes_tree", "project_search"],
     });
     expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
     expect(layout.focusedPaneId).toBe("main");
@@ -2178,7 +2244,7 @@ describe("workspace-layout-store actions", () => {
     store.showExplorerSidebar(workspaceKey);
     layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)).toMatchObject({
-      tabIds: ["files", "changes_tree"],
+      tabIds: ["files", "changes_tree", "project_search"],
     });
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
     expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
@@ -2262,7 +2328,7 @@ describe("workspace-layout-store actions", () => {
     expect(layout.focusedPaneId).toBe("main");
     expect(findPaneById(layout.root, paneId)).toMatchObject({
       focusedTabId: targetTabId,
-      tabIds: ["files", "changes_tree", targetTabId],
+      tabIds: ["files", "changes_tree", "project_search", targetTabId],
     });
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
     expect(expectGroup(layout.root).group.sizes).toEqual(group.sizes);
@@ -2814,6 +2880,7 @@ describe("workspace-layout-store actions", () => {
     expect(findPaneById(layout.root, explorerSidebarPaneId)?.tabIds).toEqual([
       "files",
       "changes_tree",
+      "project_search",
     ]);
   });
 
@@ -2955,6 +3022,7 @@ describe("workspace-layout-store actions", () => {
       },
       { kind: "files" },
       { kind: "changes_tree" },
+      { kind: "project_search" },
     ]);
   });
 
@@ -3956,7 +4024,7 @@ describe("workspace-layout-store actions", () => {
     const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneContainingTab(layout.root, changesTabId)?.id).toBe("main");
     const sidePane = findPaneById(layout.root, paneId);
-    expect(sidePane?.tabIds).toEqual(["files", "changes_tree"]);
+    expect(sidePane?.tabIds).toEqual(["files", "changes_tree", "project_search"]);
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
   });
   it("keeps the final ordinary pane when Explorer is visible", () => {

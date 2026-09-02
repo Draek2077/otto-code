@@ -412,6 +412,20 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
+        // Code-intelligence policy. This is deliberately a persisted shape
+        // with no defaults: absent leaves keep the registry's current shipped
+        // defaults, while a patch writes only the exact user intent.
+        lsp: z
+          .object({
+            enabled: z.boolean().optional(),
+            languages: z.record(z.string(), z.boolean()).optional(),
+            csharpProjectScope: z.enum(["solution", "allProjects"]).optional(),
+            maxRunningServers: z.number().int().positive().optional(),
+            idleMinutes: z.number().int().positive().optional(),
+            backgroundIdleMinutes: z.number().int().positive().optional(),
+          })
+          .passthrough()
+          .optional(),
         git: z
           .object({
             maxProcessesPerSecond: z.number().int().positive().optional(),

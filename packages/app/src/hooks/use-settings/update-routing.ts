@@ -31,6 +31,7 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "chatMetricsBar",
   "wrapCodeLines",
   "wrapToolCallText",
+  "subagentTrackPresentation",
   "interfaceMode",
   "suggestedTasksEnabled",
   "suggestedTasksDefaultMode",

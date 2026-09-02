@@ -6,8 +6,11 @@ import {
   DEFAULT_WINDOW_HEIGHT,
   DEFAULT_WINDOW_WIDTH,
   getMainWindowChromeOptions,
+  getTitleBarOverlayOptions,
   readBadgeCount,
+  readWindowControlsOverlayUpdate,
   readWindowTheme,
+  resolveRuntimeTitleBarOverlayOptions,
   resolveWindowBounds,
 } from "./window-manager";
 
@@ -137,7 +140,7 @@ describe("window-manager", () => {
   });
 
   describe("getMainWindowChromeOptions", () => {
-    it("uses renderer-painted controls on windows", () => {
+    it("uses renderer-painted controls on windows without a native overlay", () => {
       expect(
         getMainWindowChromeOptions({
           mode: "custom-windows",
@@ -145,11 +148,6 @@ describe("window-manager", () => {
       ).toEqual({
         frame: false,
         autoHideMenuBar: true,
-        titleBarOverlay: {
-          color: "#1e2221",
-          symbolColor: "#e4e4e7",
-          height: 29,
-        },
       });
     });
 
@@ -176,55 +174,14 @@ describe("window-manager", () => {
       });
     });
 
-    it("seeds the initial overlay from restored colors so launch does not flash", () => {
+    it("does not create a native overlay from restored colors", () => {
       expect(
         getMainWindowChromeOptions({
-          platform: "win32",
-          theme: "dark",
-          restoredOverlay: { backgroundColor: "#161b1a", foregroundColor: "#d4d4d8" },
+          mode: "custom-windows",
         }),
       ).toEqual({
-        titleBarStyle: "hidden",
         frame: false,
         autoHideMenuBar: true,
-        titleBarOverlay: {
-          color: "#161b1a",
-          symbolColor: "#d4d4d8",
-          height: 29,
-        },
-      });
-    });
-
-    it("falls back per-color to the theme default when a restored color is missing", () => {
-      expect(
-        getMainWindowChromeOptions({
-          platform: "win32",
-          theme: "dark",
-          restoredOverlay: { backgroundColor: "#161b1a" },
-        }),
-      ).toEqual({
-        titleBarStyle: "hidden",
-        frame: false,
-        autoHideMenuBar: true,
-        titleBarOverlay: {
-          color: "#161b1a",
-          symbolColor: "#e4e4e7",
-          height: 29,
-        },
-      });
-    });
-
-    it("ignores restored overlay on mac (traffic lights, no overlay colors)", () => {
-      expect(
-        getMainWindowChromeOptions({
-          platform: "darwin",
-          theme: "dark",
-          restoredOverlay: { backgroundColor: "#161b1a", foregroundColor: "#d4d4d8" },
-        }),
-      ).toEqual({
-        titleBarStyle: "hidden",
-        titleBarOverlay: true,
-        trafficLightPosition: { x: 16, y: 14 },
       });
     });
   });

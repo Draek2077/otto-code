@@ -1,3 +1,4 @@
+// The mirror implementation lives in the application appearance runtime, not Settings.
 import { UnistylesRuntime } from "react-native-unistyles";
 import { syncBlackChatScopeVars } from "@/styles/black-chat-scope";
 import {

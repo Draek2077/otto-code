@@ -1,13 +1,19 @@
 import { z } from "zod";
 import {
   MutableAgentBehaviorsConfigSchema,
+  MutableAgentBehaviorsConfigPatchSchema,
   MutableLspConfigSchema,
+  MutableLspConfigPatchSchema,
   MutableDotnetSolutionConfigSchema,
+  MutableDotnetSolutionConfigPatchSchema,
   MutableGitHostingConfigSchema,
   MutableKanbanConfigSchema,
   MutableProjectKnowledgeConfigSchema,
+  MutableProjectKnowledgeConfigPatchSchema,
   MutableProjectArtifactsConfigSchema,
+  MutableProjectArtifactsConfigPatchSchema,
   MutableProjectWorkflowsConfigSchema,
+  MutableProjectWorkflowsConfigPatchSchema,
   MutableAgentPersonalitiesConfigSchema,
   MutableAgentPersonalitiesConfigPatchSchema,
   MutableAgentTeamsConfigSchema,
@@ -640,6 +646,16 @@ const MutableMetadataGenerationConfigSchema = z
   })
   .passthrough();
 
+const MutableMetadataGenerationConfigPatchSchema = z
+  .object({
+    providers: z.array(MutableStructuredGenerationProviderSchema),
+    enabled: z.boolean(),
+    preferWriterPersonalities: z.boolean(),
+    preferWriterProfiles: z.boolean(),
+  })
+  .partial()
+  .passthrough();
+
 export const TerminalProfileSchema = z
   .object({
     id: z.string(),
@@ -700,6 +716,10 @@ const MutableBrowserToolsConfigSchema = z
   .object({
     enabled: z.boolean().default(false),
   })
+  .passthrough();
+const MutableBrowserToolsConfigPatchSchema = z
+  .object({ enabled: z.boolean() })
+  .partial()
   .passthrough();
 
 export const ModelTierSchema: z.ZodType<ModelTier> = z.enum(["deep", "standard", "fast"]);
@@ -939,9 +959,9 @@ export const MutableDaemonConfigPatchSchema = z
   .object({
     relay: MutableRelayConfigSchema.partial().optional(),
     mcp: z.object({ injectIntoAgents: z.boolean().optional() }).passthrough().optional(),
-    browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
+    browserTools: MutableBrowserToolsConfigPatchSchema.optional(),
     // Gated by server_info features.agentBehaviorToggles; patches deep-merge.
-    agentBehaviors: MutableAgentBehaviorsConfigSchema.partial().optional(),
+    agentBehaviors: MutableAgentBehaviorsConfigPatchSchema.optional(),
     // A null entry removes the provider's config entirely (custom provider
     // uninstall). Gated by server_info features.providerRemove - old daemons
     // reject null values.
@@ -949,7 +969,7 @@ export const MutableDaemonConfigPatchSchema = z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough().nullable())
       .optional(),
     removeProviders: z.array(z.string().min(1)).optional(),
-    metadataGeneration: MutableMetadataGenerationConfigSchema.partial().optional(),
+    metadataGeneration: MutableMetadataGenerationConfigPatchSchema.optional(),
     autoArchiveAfterMerge: z.boolean().optional(),
     // Gated by server_info.features.gitFetchControl; patches deep-merge.
     gitFetch: MutableGitFetchConfigSchema.partial().optional(),
@@ -973,11 +993,11 @@ export const MutableDaemonConfigPatchSchema = z
     gitHosting: MutableGitHostingConfigSchema.optional(),
     // Gated by server_info features.projectKnowledgeStoreLocation; patches
     // deep-merge.
-    projectKnowledge: MutableProjectKnowledgeConfigSchema.partial().optional(),
+    projectKnowledge: MutableProjectKnowledgeConfigPatchSchema.optional(),
     // COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
-    projectArtifacts: MutableProjectArtifactsConfigSchema.partial().optional(),
+    projectArtifacts: MutableProjectArtifactsConfigPatchSchema.optional(),
     // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
-    projectWorkflows: MutableProjectWorkflowsConfigSchema.partial().optional(),
+    projectWorkflows: MutableProjectWorkflowsConfigPatchSchema.optional(),
     // Gated by server_info features.agentPersonalities. A patch replaces the
     // full roster (read-modify-write the array), matching how terminalProfiles
     // and metadataGeneration.providers patch.
@@ -995,11 +1015,11 @@ export const MutableDaemonConfigPatchSchema = z
     // Gated by server_info features.savedProviderEndpoints. Replaces the full
     // array (read-modify-write), so forgetting an endpoint drops it from disk.
     savedProviderEndpoints: z.array(SavedProviderEndpointSchema).optional(),
-    // Gated by server_info features.lsp; patches deep-merge, so a `languages`
-    // patch replaces only the keys it names.
-    lsp: MutableLspConfigSchema.partial().optional(),
+    // Gated by server_info features.lsp; dedicated no-default patch schema so
+    // a `languages` update cannot materialize and reset the LSP defaults.
+    lsp: MutableLspConfigPatchSchema.optional(),
     // Gated by server_info features.solutionView; patches deep-merge.
-    dotnetSolutionManagement: MutableDotnetSolutionConfigSchema.partial().optional(),
+    dotnetSolutionManagement: MutableDotnetSolutionConfigPatchSchema.optional(),
     // Gated by server_info features.brainControl; patches deep-merge. Uses the
     // dedicated no-default patch schema (see MutableBrainConfigPatchSchema): a
     // plain `.partial()` here keeps every field's default and resets the whole
@@ -9982,8 +10002,11 @@ export * from "./terminal-compatibility.js";
 
 export {
   MutableAgentBehaviorsConfigSchema,
+  MutableAgentBehaviorsConfigPatchSchema,
   MutableLspConfigSchema,
+  MutableLspConfigPatchSchema,
   MutableDotnetSolutionConfigSchema,
+  MutableDotnetSolutionConfigPatchSchema,
   MutableGitHostingBitbucketCloudConfigSchema,
   MutableGitHostingAtlassianConfigSchema,
   MutableGitHostingProvidersConfigSchema,
@@ -9991,10 +10014,13 @@ export {
   MutableKanbanConfigSchema,
   ProjectKnowledgeStoreLocationSchema,
   MutableProjectKnowledgeConfigSchema,
+  MutableProjectKnowledgeConfigPatchSchema,
   ProjectArtifactStoreLocationSchema,
   MutableProjectArtifactsConfigSchema,
+  MutableProjectArtifactsConfigPatchSchema,
   ProjectWorkflowStoreLocationSchema,
   MutableProjectWorkflowsConfigSchema,
+  MutableProjectWorkflowsConfigPatchSchema,
   MutableAgentPersonalitiesConfigSchema,
   MutableAgentPersonalitiesConfigPatchSchema,
   MutableAgentTeamsConfigSchema,

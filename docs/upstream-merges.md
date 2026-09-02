@@ -300,12 +300,12 @@ The table below is the authority on **why**: what each merge deliberately left
 behind, and what still needs deciding. Without it, every merge re-litigates the
 same subsystems from scratch.
 
-| Merged     | Upstream tag | Upstream sha | Otto version | Deliberately skipped                                                            |
-| ---------- | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------- |
-| 2026-07-12 | v0.1.106     | `c05e337cd`  | 0.5.x        | -                                                                               |
-| 2026-08-01 | v0.2.5       | `6fc491e62`  | 0.7.5        | Hub (`a414f8ea8`) - **permanent**; upstream's client-side subagent presentation |
-| 2026-08-21 | v0.4.0       | `b44bb63cf`  | 0.8.12       | Not recorded at the time. Reconstructed from git only; treat as unknown.        |
-| 2026-08-30 | v0.6.1       | `20d7efc46`  | 0.8.19       | Tab-bar workspace pins, and Otto's app-side diff layer - both **to revisit**    |
+| Merged     | Upstream tag | Upstream sha | Otto version | Deliberately skipped                                                                                                     |
+| ---------- | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| 2026-07-12 | v0.1.106     | `c05e337cd`  | 0.5.x        | -                                                                                                                        |
+| 2026-08-01 | v0.2.5       | `6fc491e62`  | 0.7.5        | Hub (`a414f8ea8`) - **permanent**; upstream's client-side subagent presentation                                          |
+| 2026-08-21 | v0.4.0       | `b44bb63cf`  | 0.8.12       | Not recorded at the time. Reconstructed from git only; treat as unknown.                                                 |
+| 2026-08-30 | v0.6.1       | `20d7efc46`  | 0.8.19       | Explorer pane-host gap resolved by adoption; tab-bar workspace pins and Otto's app-side diff layer remain **to revisit** |
 
 The 2026-08-21 row is a warning as much as a record. That merge happened and
 nobody wrote down what it left behind, so the only surviving account of it is the
@@ -675,19 +675,42 @@ longer treated as a pull request head - except where the local branch is named
 `<owner>/<headRef>`, which is how a PR worktree checks a contributor's branch out
 and is the one case where the head really is named after the base.
 
-### Persisting config: still whole-config, deliberately
+### Persisting config: patch intent, not resolved state
 
-Upstream writes the _patch_ into `config.json`. Otto writes the resolved config,
-and did long before this merge. Two upstream tests encode the narrower contract
-and are skipped with that reason.
+Upstream writes the _patch_ into `config.json`. Otto now follows that core
+architecture through one post-validation `NormalizedDaemonConfigPatchIntent`:
+set values stay distinct from `removeProviders`, explicit empty arrays remain
+clears, and omitted or masked values remain untouched.
 
-Converging was attempted during this merge and reverted. Writing only the paths a
-patch changed is easy to state and wrong in three places Otto's own tests catch:
-a provider removal cancels itself out of the diff, clearing metadata generation
-writes a half section, and a launch-provided secret that a client round-trips
-through the masking sentinel never reaches disk. Getting it right means teaching
-each of the ~15 section builders which keys the patch named, which is its own
-change with its own review.
+The earlier convergence attempt was reverted because it inferred intent from a
+resolved-config diff: provider removal could cancel itself out, metadata clearing
+could write only half a section, and a launch-provided secret behind the masking
+sentinel could never reach disk. The shared builder now applies explicit intent
+to the latest persisted snapshot, preserving unrelated external edits. Every
+default-filled read section has a separate no-default patch schema, so a
+single-field update cannot become an implicit reset.
+
+| Mutation                           | Intent on the wire                                                                 | Persisted result                                                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Create or update                   | Named scalar, record entry, or array                                               | Only the named durable owner changes.                                                                            |
+| Explicit clear                     | Empty string, `null` where the field allows it, or an empty full-replacement array | The clear is written; sibling fields remain.                                                                     |
+| Provider removal                   | `removeProviders` or a provider entry of `null`                                    | Normalized to an explicit removal set before merge, including the final provider.                                |
+| Reorder                            | Full replacement array                                                             | The supplied order replaces the previous order.                                                                  |
+| Masked secret retention            | Daemon mask sentinel                                                               | Restored from the current effective value before persistence; an explicit empty value still clears.              |
+| Remote-host edit                   | Sparse `brain.remote` record                                                       | Existing remote connection context survives while the named host field changes.                                  |
+| Concurrent refresh or stale client | Any sparse patch                                                                   | The builder reads the latest disk snapshot as its merge base, preserving unrelated external edits.               |
+| Unloaded or retired field          | Omitted                                                                            | Never inferred as deletion. Retired Kanban credentials remain accepted on the wire but have no persistent owner. |
+
+The matrix covers daemon transport and scalars, agent behaviors, providers and
+metadata, agent rosters, Brain, speech, git hosting/fetch, LSP, Solution,
+project storage defaults, connectors, profiles, skills, plugins, and their
+full-replacement arrays.
+
+Focused regression coverage proves provider deletion, metadata clearing, masked
+secret retention, remote-Brain edits, stale-client writes, and LSP sparse writes.
+The Hub exclusion is unchanged: its source remains upstream-shaped but all value
+imports terminate at the explicit disabled boundary and the distribution grep
+must stay empty.
 
 ### Adopted at v0.6.1 with a burn-down
 
@@ -771,11 +794,18 @@ only long enough for migration to discard them.
 Explorer still uses it to remember the selected combined-content tab. Otto adds
 Search to that upstream selection union instead of replacing the store.
 
-Three deliberate Otto behaviors remain additive to upstream:
+Three deliberate structural deviations remain additive to upstream:
 
 - Focus mode keeps the complete main split layout visible and hides only workspace
   chrome and the Explorer dock. It does not collapse the main canvas to one focused
   pane.
+- Otto's vertical tab rail remains available for main panes. The draft, terminal,
+  and browser strip launchers ride alongside upstream's New Tab launcher.
+- `WorkspacePanelHost` takes its retained-panel cap from Otto's `mountedTabLimit`
+  setting instead of using a fixed limit.
+
+Two Otto product rules also remain at the Explorer boundary:
+
 - User interface mode exposes Files as the Explorer's only built-in navigation
   surface. Changes, Search, and Pull Request are filtered at the Explorer rail and
   launcher boundary rather than through the global developer-tab filter, which

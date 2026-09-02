@@ -261,13 +261,16 @@ function SidebarWorkspaceMenuItems({
         </WorkspaceMenuItem>
       ) : null}
       {hasManagementActions ? (
-        <DropdownMenuSubTrigger
-          id={WORKSPACE_LABEL_PAGE_ID}
-          leading={labelsLeadingIcon}
-          testID={`sidebar-workspace-menu-labels-${workspaceKey}`}
-        >
-          {t("workspaceLabels.title")}
-        </DropdownMenuSubTrigger>
+        <>
+          <WorkspaceMenuSeparator surface={surface} />
+          <DropdownMenuSubTrigger
+            id={WORKSPACE_LABEL_PAGE_ID}
+            leading={labelsLeadingIcon}
+            testID={`sidebar-workspace-menu-labels-${workspaceKey}`}
+          >
+            {t("workspaceLabels.title")}
+          </DropdownMenuSubTrigger>
+        </>
       ) : null}
       {hasManagementActions && hasLocationActions ? (
         <WorkspaceMenuSeparator surface={surface} />

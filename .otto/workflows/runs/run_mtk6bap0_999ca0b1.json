@@ -1,0 +1,55 @@
+{
+  "id": "run_mtk6bap0_999ca0b1",
+  "title": "test",
+  "description": "test",
+  "status": "draft",
+  "kind": "graph",
+  "graphId": "graph_mtk6bao6_c8h7k8",
+  "graphSnapshot": {
+    "id": "graph_mtk6bao6_c8h7k8",
+    "name": "test",
+    "description": "test",
+    "inputs": [],
+    "nodes": [
+      {
+        "id": "root",
+        "kind": "orchestrator",
+        "title": "Orchestrator",
+        "position": {
+          "x": 40,
+          "y": 200
+        }
+      }
+    ],
+    "edges": [],
+    "createdAt": "2026-09-02T14:10:26.122Z",
+    "updatedAt": "2026-09-02T14:10:26.122Z",
+    "workflowStorage": {
+      "schemaVersion": 1,
+      "projectRoot": "C:\\Users\\phili\\Projects\\otto-code",
+      "projectId": "remote:github.com/Draek2077/otto-code",
+      "projectKey": "remote:github.com/draek2077/otto-code",
+      "location": "repository",
+      "storeKey": "workflows:repository:key:remote:github.com/draek2077/otto-code",
+      "source": "project-store"
+    }
+  },
+  "graphInputs": {},
+  "phases": [],
+  "cwd": "C:/Users/phili/Projects/otto-code",
+  "workspaceId": "wks_6af52e5238ec79b3",
+  "teamId": "team_preset_application_1n1foi9",
+  "teamName": "Application Team",
+  "workflowStorage": {
+    "schemaVersion": 1,
+    "projectRoot": "C:\\Users\\phili\\Projects\\otto-code",
+    "projectId": "remote:github.com/Draek2077/otto-code",
+    "projectKey": "remote:github.com/draek2077/otto-code",
+    "location": "repository",
+    "storeKey": "workflows:repository:key:remote:github.com/draek2077/otto-code",
+    "source": "project-store"
+  },
+  "agentCount": 0,
+  "createdAt": "2026-09-02T14:10:26.148Z",
+  "updatedAt": "2026-09-02T14:10:26.148Z"
+}

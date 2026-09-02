@@ -64,6 +64,7 @@ import {
   MessageInput,
   type MessageInputRef,
 } from "./input/input";
+import { resolveActiveSendBehavior } from "./input/state";
 import type { ImageAttachment, MessagePayload } from "./types";
 import { compactUp, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
@@ -1437,7 +1438,13 @@ export function Composer({
   const { pickFiles } = useFilePicker();
   const agentIdRef = useRef(agentId);
   const sendAgentMessageRef = useRef<
-    ((agentId: string, text: string, attachments: ComposerAttachment[]) => Promise<void>) | null
+    | ((
+        agentId: string,
+        text: string,
+        attachments: ComposerAttachment[],
+        activeTurnBehavior: "interrupt" | "steer",
+      ) => Promise<void>)
+    | null
   >(null);
   const onSubmitMessageRef = useRef(onSubmitMessage);
 
@@ -1494,9 +1501,14 @@ export function Composer({
       if (!sendAgentMessageRef.current) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
-      await sendAgentMessageRef.current(agentIdRef.current, text, submitAttachments);
+      await sendAgentMessageRef.current(
+        agentIdRef.current,
+        text,
+        submitAttachments,
+        appSettings.sendBehavior === "steer" ? "steer" : "interrupt",
+      );
     },
-    [cwd, onMessageSent, t],
+    [appSettings.sendBehavior, cwd, onMessageSent, t],
   );
 
   const registerWidgetPromptSender = useWidgetPromptStore((state) => state.registerSender);
@@ -1510,6 +1522,7 @@ export function Composer({
       targetAgentId: string,
       text: string,
       sendAttachments: ComposerAttachment[],
+      activeTurnBehavior: "interrupt" | "steer",
     ) => {
       if (!client) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
@@ -1521,6 +1534,12 @@ export function Composer({
         attachments: sendAttachments,
         encodeImages,
         submission: createMessageSubmissionWriter(serverId),
+        activeTurnBehavior,
+        activeTurnId:
+          activeTurnBehavior === "steer"
+            ? (useSessionStore.getState().sessions[serverId]?.agents.get(targetAgentId)?.activeTurn
+                ?.turnId ?? undefined)
+            : undefined,
       });
       onAttentionPromptSend?.();
     };
@@ -1549,6 +1568,20 @@ export function Composer({
       selectAgentTurnPresentation(session, agentId).isActive,
     );
   });
+  // Queueing behind a permission prompt would strand the message because the
+  // active turn cannot advance until its request is answered.
+  const hasPendingPermission = useSessionStore((state) => {
+    const pendingPermissions = state.sessions[serverId]?.pendingPermissions;
+    if (!pendingPermissions) return false;
+    for (const permission of pendingPermissions.values()) {
+      if (permission.agentId === agentId) return true;
+    }
+    return false;
+  });
+  const activeSendBehavior = resolveActiveSendBehavior(
+    appSettings.sendBehavior,
+    hasPendingPermission,
+  );
   const hasAgent = agentState.status !== null;
 
   const queueMessage = useCallback(
@@ -1620,7 +1653,7 @@ export function Composer({
       // composer untouched - including its grown height (the false return
       // tells the input not to collapse).
       const canForceSend = forceSend === true && !isCompacting;
-      if (canForceSend && isAgentRunning) {
+      if (canForceSend && isAgentRunning && appSettings.sendBehavior !== "steer") {
         const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
           serverId,
           parentAgentId: agentId,
@@ -1683,6 +1716,7 @@ export function Composer({
       agentId,
       allowEmptySubmit,
       appendSentPrompt,
+      appSettings.sendBehavior,
       clearDraft,
       completeSubmit,
       hasExternalContent,
@@ -2696,7 +2730,7 @@ export function Composer({
               voiceAgentId={agentId}
               isAgentRunning={isAgentRunning}
               isCompacting={isCompacting}
-              defaultSendBehavior={appSettings.sendBehavior}
+              defaultSendBehavior={activeSendBehavior}
               onQueue={handleQueue}
               onSubmitLoadingPress={submitLoadingPressHandler}
               onKeyPress={handleCommandKeyPress}

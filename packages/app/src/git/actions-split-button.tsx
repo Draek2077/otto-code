@@ -1,5 +1,5 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { View, Text, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ChevronDown, MoreVertical } from "@/components/icons/material-icons";
@@ -30,6 +30,8 @@ interface GitActionsSplitButtonProps {
   hideLabels?: boolean;
   // Stretch to fill the available width (content stays centered).
   fill?: boolean;
+  /** Reports whether this workspace contributes a visible toolbar control. */
+  onAvailabilityChange?: (available: boolean) => void;
   tooltipSide?: "top" | "bottom";
   /** Upstream: compact surfaces render the actions as a menu with no split button. */
   menuOnly?: boolean;
@@ -90,12 +92,15 @@ export function GitActionsSplitButton({
   gitActions,
   hideLabels,
   fill,
+  onAvailabilityChange,
   tooltipSide = "bottom",
 }: GitActionsSplitButtonProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const runGitAction = useGitActionRunner();
   const archiveShortcutKeys = useShortcutKeys("archive-workspace");
+  const isAvailable = Boolean(gitActions.primary) || gitActions.menu.length > 0;
+  useEffect(() => onAvailabilityChange?.(isAvailable), [isAvailable, onAvailabilityChange]);
 
   const getActionDisplayLabel = useCallback((action: GitAction): string => {
     if (action.status === "pending") return action.pendingLabel;
@@ -150,7 +155,7 @@ export function GitActionsSplitButton({
   // sidebar tools cluster every child carries `fill` (flexGrow: 1), so an empty
   // View would still claim an equal share of the row and push a lone sibling
   // (e.g. the "Open" button) off-center.
-  if (!gitActions.primary && gitActions.menu.length === 0) {
+  if (!isAvailable) {
     return null;
   }
 
