@@ -481,6 +481,8 @@ interface FileExplorerPaneProps {
   onOpenFile?: (filePath: string, options?: { edit?: boolean }) => void;
   onAddToChat?: (path: string) => void;
   onOpenFileToSide?: (path: string) => void;
+  /** Files is Explorer-owned; callers can override this for another host. */
+  surface?: "workspace" | "explorer";
 }
 
 export function FileExplorerPane({
@@ -490,6 +492,7 @@ export function FileExplorerPane({
   onOpenFile,
   onAddToChat,
   onOpenFileToSide,
+  surface = "explorer",
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -1242,9 +1245,13 @@ export function FileExplorerPane({
       {...{
         onContextMenu: (event: { preventDefault?: () => void }) => event.preventDefault?.(),
       }}
-      style={styles.container}
+      style={[
+        styles.container,
+        surface === "explorer" ? styles.containerExplorer : styles.containerWorkspace,
+      ]}
     >
       <FileExplorerPaneContent
+        surface={surface}
         error={error}
         showInitialLoading={showInitialLoading}
         showBackFromError={showBackFromError}
@@ -1325,6 +1332,7 @@ function RootCreationContextTarget({
 }
 
 interface FileExplorerPaneContentProps {
+  surface: "workspace" | "explorer";
   error: string | null;
   showInitialLoading: boolean;
   showBackFromError: boolean;
@@ -1353,6 +1361,7 @@ interface FileExplorerPaneContentProps {
 function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
   const { t } = useTranslation();
   const {
+    surface,
     error,
     showInitialLoading,
     showBackFromError,
@@ -1435,7 +1444,13 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
 
   return (
     <View style={[styles.treePane, styles.treePaneFill]}>
-      <View style={styles.paneHeader} testID="files-pane-header">
+      <View
+        style={[
+          styles.paneHeader,
+          surface === "explorer" ? styles.paneHeaderExplorer : styles.paneHeaderWorkspace,
+        ]}
+        testID="files-pane-header"
+      >
         <View style={styles.headerLeading}>
           <ExplorerLensSwitcher
             solutions={solutions}
@@ -1861,6 +1876,11 @@ function getErrorRecoveryPath(state: AgentFileExplorerState | undefined): string
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
+  },
+  containerWorkspace: {
+    backgroundColor: theme.colors.surfaceWorkspace,
+  },
+  containerExplorer: {
     backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   desktopSplit: {
@@ -1902,6 +1922,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[3],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+  },
+  paneHeaderWorkspace: {
+    backgroundColor: theme.colors.surfaceWorkspace,
+  },
+  paneHeaderExplorer: {
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   headerLeading: {
     flexDirection: "row",

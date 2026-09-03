@@ -544,6 +544,7 @@ function ChangedFilesPane({
       workspaceId={workspaceId}
       cwd={workspaceRoot}
       enabled={isOpen}
+      surface="explorer"
       modeScope="compact-explorer"
       onOpenFile={onOpenFile}
       onAddToChat={canAddToChat ? addFile : undefined}
@@ -565,6 +566,7 @@ function FilesPane({
       serverId={serverId}
       workspaceId={workspaceId}
       workspaceRoot={workspaceRoot}
+      surface="explorer"
       onOpenFile={onOpenFile}
       onAddToChat={canAddToChat ? addFile : undefined}
     />

@@ -247,8 +247,8 @@ interface ChangesSurfaceProps {
   cwd: string;
   enabled?: boolean;
   presentation?: ChangesPresentation;
-  /** The Explorer host uses the primary-sidebar surface for its toolbar. */
-  sidebarSurface?: boolean;
+  /** Required only by the compact Explorer fallback, which has no PaneProvider. */
+  surface?: "workspace" | "explorer";
   modeScope: string;
   /** New operation logs stay with the Explorer or Main pane that requested them. */
   defaultPaneId?: string;
@@ -263,9 +263,9 @@ interface ChangesSurfaceProps {
 }
 
 function usesChangesSidebarSurface(
-  input: Pick<ChangesSurfaceProps, "presentation" | "sidebarSurface">,
+  input: Pick<ChangesSurfaceProps, "presentation" | "surface">,
 ): boolean {
-  return input.sidebarSurface === true || input.presentation === "tree";
+  return input.surface === "explorer" || input.presentation === "tree";
 }
 
 type PressableStyleFn = (
@@ -1697,7 +1697,7 @@ export function ChangesSurface({
   cwd,
   enabled,
   presentation = "combined",
-  sidebarSurface,
+  surface,
   modeScope,
   defaultPaneId,
   focusPath,
@@ -2202,7 +2202,7 @@ export function ChangesSurface({
           compact={isMobile}
           repository={changesHeaderModel.repository}
           comparison={changesHeaderModel.comparison}
-          sidebarSurface={usesChangesSidebarSurface({ presentation, sidebarSurface })}
+          sidebarSurface={usesChangesSidebarSurface({ presentation, surface })}
         />
       ) : null}
 

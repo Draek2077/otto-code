@@ -6,6 +6,9 @@ import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import type { OpenInSidePaneSource } from "@/workspace-tabs/open-beside";
 import type { PaneHost } from "@/panels/panel-manifest";
 
+/** The visual surface owned by the workspace region containing a pane. */
+export type PaneSurface = "workspace" | "explorer";
+
 export interface PaneContextValue {
   serverId: string;
   workspaceId: string;
@@ -86,6 +89,14 @@ export function usePaneContext(): PaneContextValue {
   const value = useContext(PaneContext);
   invariant(value, "PaneContext is required");
   return value;
+}
+
+/**
+ * Workspace panes receive this from their host. Standalone compact Explorer
+ * fallbacks may supply an explicit surface instead.
+ */
+export function usePaneSurface(): PaneSurface {
+  return useContext(PaneContext)?.host === "explorer" ? "explorer" : "workspace";
 }
 
 export function usePaneFocus(): PaneFocusContextValue {

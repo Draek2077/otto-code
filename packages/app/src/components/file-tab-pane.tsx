@@ -139,7 +139,7 @@ import {
 } from "@/components/file-split-sync";
 import { defaultFileViewMode, renderedDocumentKind } from "@/components/file-pane-render-mode";
 import { ResizeHandle } from "@/components/resize-handle";
-import { usePaneContext } from "@/panels/pane-context";
+import { usePaneContext, usePaneSurface, type PaneSurface } from "@/panels/pane-context";
 import { useFileViewMode, useFileViewStore, type FileViewMode } from "@/stores/file-view-store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
@@ -554,6 +554,7 @@ function PreviewOnlyView({
   onAddToChat: (() => void) | null;
 }) {
   const { t } = useTranslation();
+  const paneSurface = usePaneSurface();
   const draftOverride = useDraftOverride({ serverId, workspaceId, path: location.path });
   // Preview has no selection to scope by, so it always investigates the file.
   const handleOpenHistory = useMemo(
@@ -689,7 +690,10 @@ function PreviewOnlyView({
   })();
 
   return (
-    <View style={styles.container} testID="workspace-file-tab-pane">
+    <View
+      style={[styles.container, fileTabPaneContainerSurface(paneSurface)]}
+      testID="workspace-file-tab-pane"
+    >
       {/* Same shape as the editor toolbar: file actions, a separator, then the
           navigate-within-the-file tools - so the two views don't move the
           buttons around under the user when they switch mode. */}
@@ -1414,6 +1418,7 @@ function EditorModeView({
   externalEditorLabel: string | null;
 }) {
   const { t } = useTranslation();
+  const paneSurface = usePaneSurface();
   const path = location.path;
   const {
     buffer,
@@ -2041,7 +2046,10 @@ function EditorModeView({
 
   if (!buffer || buffer.status === "loading") {
     return (
-      <View style={styles.container} testID="workspace-file-tab-pane">
+      <View
+        style={[styles.container, fileTabPaneContainerSurface(paneSurface)]}
+        testID="workspace-file-tab-pane"
+      >
         <View style={styles.centerState}>
           <ThemedLoadingSpinner uniProps={foregroundMutedIconColorMapping} />
           <Text style={styles.mutedText}>{t("editor.loading")}</Text>
@@ -2052,7 +2060,10 @@ function EditorModeView({
 
   if (buffer.status === "error" || !buffer.baseline) {
     return (
-      <View style={styles.container} testID="workspace-file-tab-pane">
+      <View
+        style={[styles.container, fileTabPaneContainerSurface(paneSurface)]}
+        testID="workspace-file-tab-pane"
+      >
         <View style={styles.previewToolbar}>
           {toolbarLeadingSlot}
           <View style={styles.toolbarSpacer} />
@@ -2103,7 +2114,10 @@ function EditorModeView({
   );
 
   return (
-    <View style={styles.container} testID="workspace-file-tab-pane">
+    <View
+      style={[styles.container, fileTabPaneContainerSurface(paneSurface)]}
+      testID="workspace-file-tab-pane"
+    >
       <View style={styles.toolbar} onLayout={collapse.onToolbarLayout}>
         <View style={styles.toolbarGroup} onLayout={collapse.onLeadingGroupLayout}>
           <ToolbarIconButton
@@ -2961,12 +2975,21 @@ export function FileTabPane({
   return content;
 }
 
+function fileTabPaneContainerSurface(surface: PaneSurface) {
+  return surface === "explorer" ? styles.containerExplorer : styles.containerWorkspace;
+}
+
 const styles = StyleSheet.create((theme) => {
   return {
     container: {
       flex: 1,
       minHeight: 0,
-      backgroundColor: theme.colors.surface0,
+    },
+    containerWorkspace: {
+      backgroundColor: theme.colors.surfaceWorkspace,
+    },
+    containerExplorer: {
+      backgroundColor: theme.colors.surfaceSidebarPanel,
     },
     centerState: {
       flex: 1,

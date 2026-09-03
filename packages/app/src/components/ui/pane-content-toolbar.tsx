@@ -19,6 +19,7 @@ import {
   smallIconButtonChromeFrameSize,
 } from "@/components/ui/icon-button-chrome";
 import { WORKSPACE_PANE_TRAILING_GLYPH_RAIL } from "@/components/tree-primitives";
+import { usePaneSurface } from "@/panels/pane-context";
 
 /** Shared chrome at the boundary between a workspace pane's tabs and content. */
 export function PaneContentToolbar({
@@ -30,8 +31,16 @@ export function PaneContentToolbar({
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
+  const paneSurface = usePaneSurface();
   return (
-    <View style={[styles.toolbar, style]} testID={testID}>
+    <View
+      style={[
+        styles.toolbar,
+        paneSurface === "explorer" ? styles.toolbarExplorer : styles.toolbarWorkspace,
+        style,
+      ]}
+      testID={testID}
+    >
       {children}
     </View>
   );
@@ -181,10 +190,15 @@ export function paneContentToolbarIconButtonStyle(
 const styles = StyleSheet.create((theme) => ({
   toolbar: {
     height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
-    backgroundColor: theme.colors.surface0,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     flexShrink: 0,
+  },
+  toolbarWorkspace: {
+    backgroundColor: theme.colors.surfaceWorkspace,
+  },
+  toolbarExplorer: {
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   controls: {
     flexDirection: "row",
