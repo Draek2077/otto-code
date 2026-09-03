@@ -437,7 +437,8 @@ function migrateVersionOneWorkspaceLayout(input: {
       legacyExplorerPane.tabIds.includes(tab.tabId) &&
       tab.target.kind !== "files" &&
       tab.target.kind !== "changes_tree" &&
-      tab.target.kind !== "project_search",
+      tab.target.kind !== "project_search" &&
+      tab.target.kind !== "pull_request",
   );
   const preservedSide = preserveVersionOneSideTabs({
     layout: strippedLayout,
@@ -695,7 +696,7 @@ function ensurePersistedExplorerSidebarPane(input: {
   if (existingPaneId) {
     return {
       layout: keepWorkspaceFocusOutOfExplorerSidebar(
-        input.layout,
+        ensureExplorerSidebarDefaultTabsInLayout(input.layout, existingPaneId),
         existingPaneId,
         input.layout.focusedPaneId,
       ),

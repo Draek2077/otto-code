@@ -5217,6 +5217,7 @@ function WorkspaceScreenContent({
         normalizedServerId={normalizedServerId}
         normalizedWorkspaceId={normalizedWorkspaceId}
         isWorkspaceFocused={isRouteFocused}
+        hasPullRequest={hasPullRequest}
         uiTabs={visibleUiTabs}
         hoveredCloseTabKey={hoveredCloseTabKey}
         setHoveredCloseTabKey={setHoveredCloseTabKey}
@@ -5257,6 +5258,7 @@ function WorkspaceScreenContent({
     normalizedServerId,
     normalizedWorkspaceId,
     isRouteFocused,
+    hasPullRequest,
     handleCopyTerminalId,
     visibleUiTabs,
     hoveredCloseTabKey,

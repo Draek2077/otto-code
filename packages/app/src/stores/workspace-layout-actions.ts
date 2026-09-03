@@ -1225,6 +1225,10 @@ function createDefaultExplorerSidebarTabs(): WorkspaceTab[] {
     { kind: "files" },
     { kind: "changes_tree" },
     { kind: "project_search" },
+    // The Explorer host owns the singleton tab even when this checkout has no
+    // pull request. Its host filters the tab by live PR availability, which
+    // lets a detected PR appear without mutating or focusing the layout.
+    { kind: "pull_request" },
   ] as const;
   return targets.map((target) => ({
     tabId: buildDeterministicWorkspaceTabId(target),

@@ -1475,11 +1475,9 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
     color: theme.colors.foreground,
-    // Explicit compact bump matching the explorer tab labels.
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    // Search stays in the same thin-toolbar typography tier as Files and
+    // Changes. Compact affects hit targets, never label hierarchy.
+    fontSize: theme.fontSize.xs,
   },
   replaceIndent: {
     // Mirrors the replace-expand button's width (icon + iconButton padding) so
@@ -1567,10 +1565,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   searchToggleText: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
   },
   searchToggleTextActive: {

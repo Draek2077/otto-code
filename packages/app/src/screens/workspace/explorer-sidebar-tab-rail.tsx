@@ -439,7 +439,7 @@ const styles = StyleSheet.create((theme) => ({
     // The dock divides the whole workspace, including ScreenHeader. Its tab rail
     // must therefore share that primary chrome height, not the 36px pane-tab rail.
     height: HEADER_INNER_HEIGHT,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
     flexDirection: "row",
     alignItems: "center",
   },

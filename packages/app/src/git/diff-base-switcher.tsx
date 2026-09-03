@@ -329,10 +329,9 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.6,
   },
   label: {
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    // Match the Files sort control and the adjacent Changes mode picker on
+    // every form factor. Toolbar text does not receive a compact-only bump.
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },

@@ -23,6 +23,7 @@ import {
   resolveExplorerSidebarPresentation,
   toggleExplorerSidebar,
 } from "@/workspace-tabs/explorer-sidebar";
+import type { WorkspaceTab } from "@/workspace-tabs/model";
 
 const WORKSPACE_KEY = "server-1:ws-main";
 const CHECKOUT = { serverId: "server-1", cwd: "/tmp/repo", isGit: true };
@@ -140,6 +141,21 @@ describe("Explorer sidebar", () => {
         : [];
     expect(filterExplorerSidebarTabs(paneTabs, false).map((tab) => tab.target.kind)).toEqual([
       "files",
+    ]);
+  });
+
+  it("keeps the registered pull-request tab out of the Explorer until a PR is detected", () => {
+    const tabs: WorkspaceTab[] = [
+      { tabId: "files", target: { kind: "files" }, createdAt: 1 },
+      { tabId: "pr", target: { kind: "pull_request" }, createdAt: 1 },
+    ];
+
+    expect(filterExplorerSidebarTabs(tabs, true, false).map((tab) => tab.target.kind)).toEqual([
+      "files",
+    ]);
+    expect(filterExplorerSidebarTabs(tabs, true, true).map((tab) => tab.target.kind)).toEqual([
+      "files",
+      "pull_request",
     ]);
   });
 });

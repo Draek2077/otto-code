@@ -136,7 +136,8 @@ function contentTabs(tabs: WorkspaceTab[]): WorkspaceTab[] {
       tab.target.kind !== "new_tab" &&
       tab.target.kind !== "files" &&
       tab.target.kind !== "changes_tree" &&
-      tab.target.kind !== "project_search",
+      tab.target.kind !== "project_search" &&
+      tab.target.kind !== "pull_request",
   );
 }
 
@@ -146,7 +147,7 @@ function expectGroup(node: SplitNode): Extract<SplitNode, { kind: "group" }> {
 }
 
 describe("workspace-layout-store helpers", () => {
-  it("seeds Files, Changes, and Search in the default Explorer sidebar", () => {
+  it("seeds Files, Changes, Search, and Pull request in the default Explorer sidebar", () => {
     const layout = createWorkspaceLayoutWithExplorerSidebar();
     const tabs = collectAllTabs(layout.root);
 
@@ -155,6 +156,7 @@ describe("workspace-layout-store helpers", () => {
       { kind: "files" },
       { kind: "changes_tree" },
       { kind: "project_search" },
+      { kind: "pull_request" },
     ]);
     expect(findPaneById(layout.root, "explorer")?.focusedTabId).toBe(
       tabs.find((tab) => tab.target.kind === "changes_tree")?.tabId,
@@ -184,6 +186,7 @@ describe("workspace-layout-store helpers", () => {
       { kind: "files" },
       { kind: "changes_tree" },
       { kind: "project_search" },
+      { kind: "pull_request" },
     ]);
     const restoredNewTab = restoredTabs.find((tab) => tab.target.kind === "new_tab");
     expect(restoredNewTab).toBeTruthy();
@@ -411,6 +414,7 @@ describe("workspace-layout-store migrations", () => {
       { kind: "files" },
       { kind: "changes_tree" },
       { kind: "project_search" },
+      { kind: "pull_request" },
     ]);
 
     const sidePane = findPaneById(layout.root, sidePaneId);
@@ -512,15 +516,22 @@ describe("workspace-layout-store migrations", () => {
     );
   });
 
-  it("adds Search to an Explorer sidebar persisted by version 2", async () => {
+  it("adds missing singleton tabs to an Explorer sidebar persisted by version 2", async () => {
     const layout = createWorkspaceLayoutWithExplorerSidebar();
     const projectSearchTabId = collectAllTabs(layout.root).find(
       (tab) => tab.target.kind === "project_search",
     )?.tabId;
+    const pullRequestTabId = collectAllTabs(layout.root).find(
+      (tab) => tab.target.kind === "pull_request",
+    )?.tabId;
     expect(projectSearchTabId).toBeTruthy();
+    expect(pullRequestTabId).toBeTruthy();
     const versionTwoLayout = {
       ...layout,
-      root: removeTabFromTree(layout.root, projectSearchTabId as string),
+      root: removeTabFromTree(
+        removeTabFromTree(layout.root, projectSearchTabId as string),
+        pullRequestTabId as string,
+      ),
     };
     await AsyncStorage.setItem(
       "workspace-layout-state",
@@ -538,7 +549,7 @@ describe("workspace-layout-store migrations", () => {
 
     expect(
       findPaneById(restored.getState().layoutByWorkspace.versionTwo.root, "explorer")?.tabIds,
-    ).toEqual(["files", "changes_tree", "project_search"]);
+    ).toEqual(["files", "changes_tree", "project_search", "pull_request"]);
   });
 });
 
@@ -1167,6 +1178,8 @@ describe("workspace-layout-store actions", () => {
     expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
       { kind: "files" },
       { kind: "changes_tree" },
+      { kind: "project_search" },
+      { kind: "pull_request" },
     ]);
     expect(restored.getState().splitSizesByWorkspace).toEqual({});
     await expect(AsyncStorage.getItem("workspace-layout-state")).resolves.not.toBeNull();
@@ -1283,6 +1296,7 @@ describe("workspace-layout-store actions", () => {
         "files",
         "changes_tree",
         "project_search",
+        "pull_request",
       ]);
     });
 
@@ -2236,7 +2250,7 @@ describe("workspace-layout-store actions", () => {
     let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)).toMatchObject({
       hidden: true,
-      tabIds: ["files", "changes_tree", "project_search"],
+      tabIds: ["files", "changes_tree", "project_search", "pull_request"],
     });
     expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
     expect(layout.focusedPaneId).toBe("main");
@@ -2244,7 +2258,7 @@ describe("workspace-layout-store actions", () => {
     store.showExplorerSidebar(workspaceKey);
     layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)).toMatchObject({
-      tabIds: ["files", "changes_tree", "project_search"],
+      tabIds: ["files", "changes_tree", "project_search", "pull_request"],
     });
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
     expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
@@ -2881,6 +2895,7 @@ describe("workspace-layout-store actions", () => {
       "files",
       "changes_tree",
       "project_search",
+      "pull_request",
     ]);
   });
 
@@ -3023,6 +3038,7 @@ describe("workspace-layout-store actions", () => {
       { kind: "files" },
       { kind: "changes_tree" },
       { kind: "project_search" },
+      { kind: "pull_request" },
     ]);
   });
 

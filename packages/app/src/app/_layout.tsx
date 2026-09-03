@@ -862,7 +862,7 @@ function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
     backgroundColor = theme.colors.surfaceSidebar;
   }
   if (explorerSidebarVisible) {
-    backgroundColor = theme.colors.background;
+    backgroundColor = theme.colors.surfaceSidebarPanel;
   }
   const foreground = theme.colors.foreground;
 

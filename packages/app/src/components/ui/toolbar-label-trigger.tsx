@@ -104,7 +104,9 @@ const styles = StyleSheet.create((theme) => ({
   label: {
     minWidth: 0,
     flexShrink: 1,
-    fontSize: theme.fontSize.sm,
+    // Pane toolbars are compact chrome. Their labels use the Files sort
+    // control's type tier rather than growing into the main-view hierarchy.
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     fontWeight: theme.fontWeight.normal,
   },

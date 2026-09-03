@@ -157,18 +157,12 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.6,
   },
   branchLabel: {
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    // This is a compact toolbar value, not a main-view title. Keep it on the
+    // Files sort control's type tier across form factors.
+    fontSize: theme.fontSize.xs,
     // Explicit line height so the label's box never rides platform font
     // metrics (Linux ascenders / ALL-CAPS branch names rendered taller).
-    // Mirrors GitActionsSplitButton's splitButtonText, which sits beside
-    // this in the Changes header on compact.
-    lineHeight: {
-      xs: (theme.fontSize.sm + 2) * 1.5,
-      md: theme.fontSize.sm * 1.5,
-    },
+    lineHeight: theme.fontSize.xs * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.medium,
     flexShrink: 1,

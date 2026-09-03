@@ -24,6 +24,7 @@ interface ExplorerSidebarDockProps {
   normalizedServerId: string;
   normalizedWorkspaceId: string;
   isWorkspaceFocused: boolean;
+  hasPullRequest: boolean;
   closingTabIds: Set<string>;
   activeDragTabId: string | null;
   tabDropPreview: TabDropPreview | null;
@@ -47,6 +48,7 @@ export function ExplorerSidebarDock({
   normalizedServerId,
   normalizedWorkspaceId,
   isWorkspaceFocused,
+  hasPullRequest,
   closingTabIds,
   activeDragTabId,
   tabDropPreview,
@@ -60,8 +62,8 @@ export function ExplorerSidebarDock({
 }: ExplorerSidebarDockProps) {
   const isDeveloperMode = useIsDeveloperMode();
   const visibleTabs = useMemo(
-    () => filterExplorerSidebarTabs(uiTabs, isDeveloperMode),
-    [isDeveloperMode, uiTabs],
+    () => filterExplorerSidebarTabs(uiTabs, isDeveloperMode, hasPullRequest),
+    [hasPullRequest, isDeveloperMode, uiTabs],
   );
   const paneState = useMemo(
     () => deriveWorkspacePaneState({ pane, tabs: visibleTabs }),
@@ -147,14 +149,14 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    // Explorer is one uninterrupted canvas. Its tab rail, toolbars, and native
-    // caption strip all use the same background token rather than a panel fill.
-    backgroundColor: theme.colors.background,
+    // Explorer shares the primary sidebar's deepest surface, including its tab
+    // rail, pane toolbars, and native caption strip.
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   tabRail: {
     position: "relative",
     flexShrink: 0,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   tabRailDivider: {
     position: "absolute",
@@ -167,6 +169,6 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
 }));

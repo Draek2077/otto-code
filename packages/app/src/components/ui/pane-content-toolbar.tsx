@@ -198,7 +198,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceWorkspace,
   },
   toolbarExplorer: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   controls: {
     flexDirection: "row",

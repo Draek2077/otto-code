@@ -105,6 +105,7 @@ interface SplitContainerProps {
   normalizedServerId: string;
   normalizedWorkspaceId: string;
   isWorkspaceFocused: boolean;
+  hasPullRequest: boolean;
   uiTabs: WorkspaceTab[];
   hoveredCloseTabKey: string | null;
   setHoveredCloseTabKey: Dispatch<SetStateAction<string | null>>;
@@ -191,7 +192,7 @@ function asDragOverData(data: unknown): WorkspaceTabDragData | SplitPaneDropData
 
 interface SplitNodeViewProps extends Omit<
   SplitContainerProps,
-  "layout" | "onMoveTabToPane" | "onSelectTabInPane"
+  "layout" | "onMoveTabToPane" | "onSelectTabInPane" | "hasPullRequest"
 > {
   onMoveTabToExplorer: (tabId: string) => void;
   node: SplitNode;
@@ -351,6 +352,7 @@ export function SplitContainer({
   normalizedServerId,
   normalizedWorkspaceId,
   isWorkspaceFocused,
+  hasPullRequest,
   uiTabs,
   hoveredCloseTabKey,
   setHoveredCloseTabKey,
@@ -794,6 +796,7 @@ export function SplitContainer({
                   normalizedServerId={normalizedServerId}
                   normalizedWorkspaceId={normalizedWorkspaceId}
                   isWorkspaceFocused={isWorkspaceFocused}
+                  hasPullRequest={hasPullRequest}
                   closingTabIds={closingTabIds}
                   onSelectTab={onSelectTabInPane}
                   onCloseTab={onCloseTab}

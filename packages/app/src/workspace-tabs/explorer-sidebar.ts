@@ -31,9 +31,13 @@ const USER_MODE_HIDDEN_EXPLORER_KINDS = new Set(["changes_tree", "project_search
 export function filterExplorerSidebarTabs(
   tabs: WorkspaceTab[],
   isDeveloperMode: boolean,
+  hasPullRequest = true,
 ): WorkspaceTab[] {
-  if (isDeveloperMode) return tabs;
-  return tabs.filter((tab) => !USER_MODE_HIDDEN_EXPLORER_KINDS.has(tab.target.kind));
+  return tabs.filter(
+    (tab) =>
+      (isDeveloperMode || !USER_MODE_HIDDEN_EXPLORER_KINDS.has(tab.target.kind)) &&
+      (hasPullRequest || tab.target.kind !== "pull_request"),
+  );
 }
 
 export interface ExplorerSidebarQuery {

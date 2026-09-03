@@ -1880,7 +1880,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceWorkspace,
   },
   containerExplorer: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   desktopSplit: {
     flex: 1,
@@ -1926,7 +1926,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceWorkspace,
   },
   paneHeaderExplorer: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   headerLeading: {
     flexDirection: "row",
