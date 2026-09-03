@@ -12,7 +12,9 @@ export const TAB_HORIZONTAL_PADDING = 8;
 // The chip's icon-to-label gap (theme.spacing[1] in styles.tab). Part of the
 // chrome width, so label room is over-estimated without it.
 export const TAB_CONTENT_GAP = 4;
-export const TAB_ESTIMATED_CHAR_WIDTH = 7;
+// Matches the `xs` tab label in workspace-desktop-tabs-row.tsx. Keep this
+// estimate aligned with the rendered type so tabs do not reserve phantom width.
+export const TAB_ESTIMATED_CHAR_WIDTH = 6;
 export const TAB_CLOSE_BUTTON_WIDTH = 22;
 export const TAB_MAX_WIDTH = 200;
 // Once labels no longer fit across the strip, chips keep their icon, close

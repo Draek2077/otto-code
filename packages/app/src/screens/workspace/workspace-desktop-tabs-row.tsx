@@ -2374,7 +2374,9 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    // Tabs are compact navigation chrome. The smaller text leaves their
+    // centered pill geometry intact while giving the workspace more breathing room.
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     userSelect: "none",
   },

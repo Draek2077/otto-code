@@ -550,7 +550,7 @@ function WorkspaceChangeIndicatorRow({ value, onChange }: WorkspaceChangeIndicat
   return (
     <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Workspace change indicator</Text>
+        <Text style={settingsStyles.rowTitle}>Workspace branch changes indicator</Text>
         <Text style={settingsStyles.rowHint}>
           Uncommitted clears when you commit. Branch compares your branch with its selected base.
         </Text>

@@ -2937,7 +2937,18 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
   successBg: {
     backgroundColor: "rgba(20, 83, 45, 0.3)",
   },
-  errorBg: {},
+  // Provider errors are rendered as activity logs rather than assistant text.
+  // They are nevertheless the agent's response in the transcript, so retain
+  // the assistant bubble's left-hand speech-corner rather than stretching a
+  // rectangular status panel across the chat column.
+  errorBg: {
+    alignSelf: "flex-start",
+    backgroundColor: theme.colors.surfaceAssistantBubble,
+    borderRadius: theme.borderRadius["2xl"],
+    borderTopLeftRadius: theme.borderRadius.sm,
+    maxWidth: "100%",
+    minWidth: 0,
+  },
   artifactBg: {
     backgroundColor: "rgba(30, 58, 138, 0.4)",
   },
@@ -2961,8 +2972,11 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
     flex: 1,
   },
   messageText: {
-    fontSize: theme.fontSize.base,
-    lineHeight: 20,
+    // Matches assistant prose (theme.fontSize.sm) - chat is a working surface,
+    // not a document. See createMarkdownStyles' `body`/`text`, and `detailsText`
+    // below, which sits directly under this line on the same card.
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
   },
   detailsRow: {
     flexDirection: "row",

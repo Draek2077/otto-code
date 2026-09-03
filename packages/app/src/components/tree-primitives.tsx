@@ -201,6 +201,9 @@ export const workspaceTreeRowStyles = StyleSheet.create((theme: Theme) => ({
   active: {
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
-  name: { color: theme.colors.foreground, opacity: 0.76 },
+  // Row names sit at the explorer's size, not the diff document header's. FileHeader
+  // shares one name style with that header, so the tree size has to be reasserted
+  // here or Changes file rows render a step larger than the folder rows beside them.
+  name: { fontSize: theme.fontSize.sm, color: theme.colors.foreground, opacity: 0.76 },
   nameHovered: { opacity: 1 },
 }));

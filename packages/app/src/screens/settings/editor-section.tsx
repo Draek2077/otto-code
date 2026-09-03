@@ -322,7 +322,7 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
   return (
     <>
       {!isNative ? (
-        <SettingsSection title={t("settings.editor.title")}>
+        <SettingsSection title="Editing">
           <View style={settingsStyles.card}>
             <View style={settingsStyles.row}>
               <View style={settingsStyles.rowContent}>
@@ -337,6 +337,56 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
               />
             </View>
           </View>
+          {desktop ? (
+            <View style={settingsStyles.card} testID="external-file-editor-settings">
+              <View style={settingsStyles.rowResponsive}>
+                <View style={settingsStyles.rowContent}>
+                  <Text style={settingsStyles.rowTitle}>File editor</Text>
+                  <Text style={settingsStyles.rowHint}>{externalEditorHint}</Text>
+                </View>
+                {externalEditorControl}
+              </View>
+              {externalEditorSupported && settings.fileEditorMode === "custom" ? (
+                <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
+                  <View style={settingsStyles.rowContent}>
+                    <Text style={settingsStyles.rowTitle}>Command</Text>
+                    <Text style={settingsStyles.rowHint}>
+                      Use an executable and any required arguments
+                    </Text>
+                  </View>
+                  <FormTextInput
+                    size="sm"
+                    initialValue={settings.fileEditorCustomCommand}
+                    onChangeText={handleExternalEditorCommandChange}
+                    placeholder="editor --wait"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    accessibilityLabel="Custom file editor command"
+                    testID="external-file-editor-command"
+                    style={styles.externalEditorInput}
+                  />
+                </View>
+              ) : null}
+              {externalEditorSupported && settings.fileEditorMode !== "off" ? (
+                <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+                  <View style={settingsStyles.rowContent}>
+                    <Text style={settingsStyles.rowTitle}>
+                      Always use Otto editor for Markdown files
+                    </Text>
+                    <Text style={settingsStyles.rowHint}>
+                      Keep .md files in Otto for editing and previewing
+                    </Text>
+                  </View>
+                  <Switch
+                    value={settings.alwaysUseOttoEditorForMarkdown}
+                    onValueChange={handleAlwaysUseOttoEditorForMarkdownChange}
+                    accessibilityLabel="Always use Otto editor for Markdown files"
+                    testID="always-use-otto-editor-for-markdown-toggle"
+                  />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </SettingsSection>
       ) : null}
 
@@ -369,7 +419,7 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
         </SettingsSection>
       ) : null}
 
-      <SettingsSection title="File editor">
+      <SettingsSection title="Reading layout">
         <View style={settingsStyles.card} testID="file-editor-settings">
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
@@ -391,56 +441,6 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
             onCommit={handleRulerColumnCommit}
           />
         </View>
-        {desktop ? (
-          <View style={settingsStyles.card} testID="external-file-editor-settings">
-            <View style={settingsStyles.rowResponsive}>
-              <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>File editor</Text>
-                <Text style={settingsStyles.rowHint}>{externalEditorHint}</Text>
-              </View>
-              {externalEditorControl}
-            </View>
-            {externalEditorSupported && settings.fileEditorMode === "custom" ? (
-              <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
-                <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>Command</Text>
-                  <Text style={settingsStyles.rowHint}>
-                    Use an executable and any required arguments
-                  </Text>
-                </View>
-                <FormTextInput
-                  size="sm"
-                  initialValue={settings.fileEditorCustomCommand}
-                  onChangeText={handleExternalEditorCommandChange}
-                  placeholder="editor --wait"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  accessibilityLabel="Custom file editor command"
-                  testID="external-file-editor-command"
-                  style={styles.externalEditorInput}
-                />
-              </View>
-            ) : null}
-            {externalEditorSupported && settings.fileEditorMode !== "off" ? (
-              <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-                <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>
-                    Always use Otto editor for Markdown files
-                  </Text>
-                  <Text style={settingsStyles.rowHint}>
-                    Keep .md files in Otto for editing and previewing
-                  </Text>
-                </View>
-                <Switch
-                  value={settings.alwaysUseOttoEditorForMarkdown}
-                  onValueChange={handleAlwaysUseOttoEditorForMarkdownChange}
-                  accessibilityLabel="Always use Otto editor for Markdown files"
-                  testID="always-use-otto-editor-for-markdown-toggle"
-                />
-              </View>
-            ) : null}
-          </View>
-        ) : null}
       </SettingsSection>
 
       <SyntaxSettingsSection />

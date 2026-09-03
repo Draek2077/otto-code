@@ -51,7 +51,7 @@ export function DiffPresentationSection() {
   );
 
   return (
-    <SettingsSection title="Diff">
+    <SettingsSection title="Diff review">
       <View style={settingsStyles.card}>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>

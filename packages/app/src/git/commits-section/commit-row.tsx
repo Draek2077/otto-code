@@ -86,7 +86,9 @@ const styles = StyleSheet.create((theme) => ({
   subject: {
     flex: 1,
     minWidth: 0,
-    fontSize: theme.fontSize.base,
+    // The row's own sha and timestamp, and the file rows above the section, are all
+    // on `sm`. A subject a step above them reads as a heading rather than a peer.
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
   timestamp: {

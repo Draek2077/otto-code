@@ -448,7 +448,7 @@ const styles = StyleSheet.create((theme) => ({
   // the group's date. Padded past the time gutter to sit over the row cards.
   dayHeader: {
     color: theme.colors.foregroundMuted,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.6,
@@ -483,23 +483,23 @@ const styles = StyleSheet.create((theme) => ({
   },
   totalsTokens: {
     color: theme.colors.foregroundMuted,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   totalsTokensIn: {
     color: theme.colors.usageIn,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   totalsTokensOut: {
     color: theme.colors.usageOut,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   totalsCost: {
     flexShrink: 0,
     color: theme.colors.usageCost,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
@@ -510,7 +510,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   more: {
     color: theme.colors.foregroundMuted,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     textAlign: "center",
     paddingTop: theme.spacing[2],
   },
@@ -625,17 +625,17 @@ const styles = StyleSheet.create((theme) => ({
   // the token line. The tinted variants below carry the fresh-in/out figures.
   rowTokens: {
     color: theme.colors.foregroundMuted,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   rowTokensIn: {
     color: theme.colors.usageIn,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   rowTokensOut: {
     color: theme.colors.usageOut,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   rowCompaction: {
@@ -660,7 +660,7 @@ const styles = StyleSheet.create((theme) => ({
   // and tabular so they read as a summary beside the row's own numbers.
   rowTreeTotal: {
     color: theme.colors.foregroundMuted,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
@@ -668,19 +668,19 @@ const styles = StyleSheet.create((theme) => ({
   // row's own in/out/cost figures so a parent row's Σ reads as the same columns.
   rowTreeTotalIn: {
     color: theme.colors.usageIn,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
   rowTreeTotalOut: {
     color: theme.colors.usageOut,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
   rowTreeTotalCost: {
     color: theme.colors.usageCost,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },

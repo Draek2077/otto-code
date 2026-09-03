@@ -516,6 +516,9 @@ function RunsScreenBody({
     return (
       <View style={styles.centered} testID="runs-empty">
         <Text style={styles.message}>No workflows yet</Text>
+        <Text style={styles.messageSub}>
+          Create a Workflow to coordinate work across your chosen Host and project.
+        </Text>
         {canCreate ? (
           <Button
             variant="outline"
@@ -526,9 +529,7 @@ function RunsScreenBody({
           >
             Create a workflow
           </Button>
-        ) : (
-          <Text style={styles.messageSub}>Teams will orchestrate work on their own.</Text>
-        )}
+        ) : null}
       </View>
     );
   }

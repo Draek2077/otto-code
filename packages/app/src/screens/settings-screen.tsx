@@ -116,7 +116,11 @@ import { Switch } from "@/components/ui/switch";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
 import { DesktopNotificationsSection } from "@/desktop/components/desktop-notifications-section";
-import { IntegrationsSection } from "@/desktop/components/integrations-section";
+import {
+  CommandLineIntegrationSection,
+  IntegrationsSection,
+} from "@/desktop/components/integrations-section";
+import { AgentSkillsSection } from "@/agent-skills";
 import {
   type EnableBuiltInDaemonOption,
   useEnableBuiltInDaemonOption,
@@ -243,15 +247,21 @@ interface SidebarSectionItem {
 }
 
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
-  // Keep Paseo's v0.6.1 canonical order intact. Otto-only areas are explicit
-  // additions after the upstream base, not a replacement taxonomy.
   { id: "general", labelKey: "settings.sections.general", icon: Settings },
+  { id: "chat", labelKey: "settings.sections.chat", icon: Chat },
   { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
   {
     id: "layout",
     labelKey: "settings.sections.layout",
     icon: PanelRight,
     desktopOnly: true,
+  },
+  // Reuses the Appearance-subsection title key so every locale already has it.
+  {
+    id: "visualizer",
+    labelKey: "settings.appearance.visualizer.title",
+    icon: Waypoints,
+    developerOnly: true,
   },
   {
     id: "editor",
@@ -279,15 +289,6 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   },
   { id: "diagnostics", labelKey: "settings.sections.diagnostics", icon: Stethoscope },
   { id: "about", labelKey: "settings.sections.about", icon: Info },
-  { id: "chat", labelKey: "settings.sections.chat", icon: Chat },
-  // Reuses the (pre-move) Appearance-subsection title key so every locale
-  // already has it - the rows themselves moved to visualizer-section.tsx.
-  {
-    id: "visualizer",
-    labelKey: "settings.appearance.visualizer.title",
-    icon: Waypoints,
-    developerOnly: true,
-  },
 ];
 
 interface HostSectionItem {
@@ -2124,6 +2125,8 @@ function DesktopIntegrationsContent(props: {
   const { isDesktopApp, serverId, localServerId } = props;
   return (
     <Fragment>
+      {isDesktopApp && serverId ? <AgentSkillsSection serverId={serverId} /> : null}
+      {isDesktopApp ? <CommandLineIntegrationSection /> : null}
       {serverId ? (
         <SettingsSection title="Voice & dictation">
           <View style={settingsStyles.card}>

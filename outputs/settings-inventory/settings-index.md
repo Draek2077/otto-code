@@ -4,8 +4,8 @@
 
 ## Summary
 
-- **Total indexed entries:** 433
-- **App surface:** 183
+- **Total indexed entries:** 432
+- **App surface:** 182
 - **Host surface:** 250
 - **Persistence scopes:** App, Desktop, Host, and Project. Surface and persistence scope are intentionally separate because some Host pages contain device-local settings.
 - **Dynamic entries:** A single row documents an unbounded runtime collection, such as one row per installed language server or team member. Finite catalogs and keyboard commands are enumerated individually.
@@ -19,7 +19,7 @@
   - [Diagnostics (7)](#app-diagnostics)
   - [Editor (11)](#app-editor)
   - [General (15)](#app-general)
-  - [Integrations (19)](#app-integrations)
+  - [Integrations (18)](#app-integrations)
   - [Layout (7)](#app-layout)
   - [Permissions (5)](#app-permissions)
   - [Shortcuts (58)](#app-shortcuts)
@@ -107,7 +107,7 @@
 | Reduce space above sidebar             | Collapses extra desktop title-bar spacing above New workspace.                               | App   | Preference | On; Off                     | Off         | User      | Web/desktop layout         | compactSidebarTopSpacing | [appearance-section.tsx:1089](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1089) |
 | Show workspace tools in workspace list | Moves editor, Git, and diff tools from the header to a sidebar tool row.                     | App   | Preference | On; Off                     | On          | Developer | Developer mode; non-native | workspaceToolsPlacement  | [appearance-section.tsx:1101](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1101) |
 | Team switcher in title bar             | Moves the Active Team switcher from the sidebar into the workspace title bar.                | App   | Preference | On; Off                     | Off         | User      | Non-native                 | teamSwitcherPlacement    | [appearance-section.tsx:1120](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1120) |
-| Workspace change indicator             | Chooses whether workspace rows show uncommitted changes, branch divergence, or no indicator. | App   | Preference | Uncommitted; Branch; Hidden | Uncommitted | Developer | Developer mode; non-native | workspaceChangeIndicator | [appearance-section.tsx:494](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L494)   |
+| Workspace branch changes indicator     | Chooses whether workspace rows show uncommitted changes, branch divergence, or no indicator. | App   | Preference | Uncommitted; Branch; Hidden | Uncommitted | Developer | Developer mode; non-native | workspaceChangeIndicator | [appearance-section.tsx:494](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L494)   |
 
 #### Theme
 
@@ -179,41 +179,41 @@
 
 ### App / Editor
 
-#### Diff
-
-| Setting                 | What it does                                                                      | Scope | Kind       | Choices / actions       | Default   | Audience  | Conditions                         | Persistence                       | Source                                                                                                        |
-| ----------------------- | --------------------------------------------------------------------------------- | ----- | ---------- | ----------------------- | --------- | --------- | ---------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Compact replacements    | Chooses how structural replacement spans are presented.                           | App   | Preference | New token; Before/after | New token | Developer | Structural diff capability         | structuralReplacementPresentation | [diff-presentation-section.tsx:88](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L88) |
-| Formatting-only changes | Shows whitespace-only changes in a neutral diff color; off hides them.            | App   | Preference | On; Off                 | On        | Developer | Developer mode                     | formattingDiffHighlights          | [diff-presentation-section.tsx:74](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L74) |
-| Review view             | Chooses the regular line diff or the structural/syntax-aware diff when available. | App   | Preference | Line; Structural        | Line      | Developer | Capability-gated structural option | diff presentation preference      | [diff-presentation-section.tsx:58](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L58) |
-
-#### Editor
-
-| Setting         | What it does                                   | Scope | Kind       | Choices / actions | Default | Audience  | Conditions                  | Persistence    | Source                                                                                    |
-| --------------- | ---------------------------------------------- | ----- | ---------- | ----------------- | ------- | --------- | --------------------------- | -------------- | ----------------------------------------------------------------------------------------- |
-| Vim keybindings | Enables Vim motions and modes in source files. | App   | Preference | On; Off           | Off     | Developer | Web/desktop; Developer mode | vimKeybindings | [editor-section.tsx:270](../../packages/app/src/screens/settings/editor-section.tsx#L270) |
-
-#### File editor
+#### Editing
 
 | Setting                                   | What it does                                                                                  | Scope | Kind       | Choices / actions         | Default | Audience  | Conditions                  | Persistence                    | Source                                                                                    |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------- | ----- | ---------- | ------------------------- | ------- | --------- | --------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------- |
 | Always use Otto editor for Markdown files | Keeps Markdown editing and preview inside Otto even when another external editor is selected. | App   | Preference | On; Off                   | Off     | Developer | External editor selected    | alwaysUseOttoEditorForMarkdown | [editor-section.tsx:347](../../packages/app/src/screens/settings/editor-section.tsx#L347) |
 | Command                                   | Sets the custom command used to open files externally.                                        | App   | Preference | Command text              |         | Developer | Custom file editor selected | fileEditorCustomCommand        | [editor-section.tsx:326](../../packages/app/src/screens/settings/editor-section.tsx#L326) |
 | File editor                               | Chooses Otto, Vim, Neovim, or a custom external editor command.                               | App   | Preference | Otto; Vim; Neovim; Custom | Otto    | Developer | Developer mode              | fileEditorMode                 | [editor-section.tsx:318](../../packages/app/src/screens/settings/editor-section.tsx#L318) |
-| Line-length ruler                         | Draws a vertical editor guide at the preferred line length.                                   | App   | Preference | On; Off                   | On      | Developer | Developer mode              | rulerEnabled                   | [editor-section.tsx:376](../../packages/app/src/screens/settings/editor-section.tsx#L376) |
-| Ruler column                              | Sets the character column for the line-length ruler.                                          | App   | Preference | Numeric column            | 120     | Developer | Shown when ruler is enabled | rulerColumn                    | [editor-section.tsx:130](../../packages/app/src/screens/settings/editor-section.tsx#L130) |
-
-#### Syntax
-
-| Setting         | What it does                                          | Scope | Kind       | Choices / actions       | Default | Audience  | Conditions     | Persistence | Source                                                                                                    |
-| --------------- | ----------------------------------------------------- | ----- | ---------- | ----------------------- | ------- | --------- | -------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
-| Highlight theme | Chooses syntax-highlighting colors for code surfaces. | App   | Preference | Available syntax themes | Default | Developer | Developer mode | syntaxTheme | [syntax-settings-section.tsx:63](../../packages/app/src/screens/settings/syntax-settings-section.tsx#L63) |
+| Vim keybindings                           | Enables Vim motions and modes in source files.                                                | App   | Preference | On; Off                   | Off     | Developer | Web/desktop; Developer mode | vimKeybindings                 | [editor-section.tsx:270](../../packages/app/src/screens/settings/editor-section.tsx#L270) |
 
 #### Vim shortcuts
 
 | Setting | What it does                                                         | Scope | Kind       | Choices / actions   | Default          | Audience  | Conditions              | Persistence | Source                                                                                    |
 | ------- | -------------------------------------------------------------------- | ----- | ---------- | ------------------- | ---------------- | --------- | ----------------------- | ----------- | ----------------------------------------------------------------------------------------- |
 | Leader  | Configures constrained leader-key Otto actions used by Vim mappings. | App   | Preference | Leader-key mappings | Shipped mappings | Developer | Vim keybindings enabled | vimMappings | [editor-section.tsx:289](../../packages/app/src/screens/settings/editor-section.tsx#L289) |
+
+#### Reading layout
+
+| Setting           | What it does                                                | Scope | Kind       | Choices / actions | Default | Audience  | Conditions                  | Persistence  | Source                                                                                    |
+| ----------------- | ----------------------------------------------------------- | ----- | ---------- | ----------------- | ------- | --------- | --------------------------- | ------------ | ----------------------------------------------------------------------------------------- |
+| Line-length ruler | Draws a vertical editor guide at the preferred line length. | App   | Preference | On; Off           | On      | Developer | Developer mode              | rulerEnabled | [editor-section.tsx:376](../../packages/app/src/screens/settings/editor-section.tsx#L376) |
+| Ruler column      | Sets the character column for the line-length ruler.        | App   | Preference | Numeric column    | 120     | Developer | Shown when ruler is enabled | rulerColumn  | [editor-section.tsx:130](../../packages/app/src/screens/settings/editor-section.tsx#L130) |
+
+#### Syntax highlighting
+
+| Setting         | What it does                                          | Scope | Kind       | Choices / actions       | Default | Audience  | Conditions     | Persistence | Source                                                                                                    |
+| --------------- | ----------------------------------------------------- | ----- | ---------- | ----------------------- | ------- | --------- | -------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| Highlight theme | Chooses syntax-highlighting colors for code surfaces. | App   | Preference | Available syntax themes | Default | Developer | Developer mode | syntaxTheme | [syntax-settings-section.tsx:63](../../packages/app/src/screens/settings/syntax-settings-section.tsx#L63) |
+
+#### Diff review
+
+| Setting                 | What it does                                                                      | Scope | Kind       | Choices / actions       | Default   | Audience  | Conditions                         | Persistence                       | Source                                                                                                        |
+| ----------------------- | --------------------------------------------------------------------------------- | ----- | ---------- | ----------------------- | --------- | --------- | ---------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Compact replacements    | Chooses how structural replacement spans are presented.                           | App   | Preference | New token; Before/after | New token | Developer | Structural diff capability         | structuralReplacementPresentation | [diff-presentation-section.tsx:88](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L88) |
+| Formatting-only changes | Shows whitespace-only changes in a neutral diff color; off hides them.            | App   | Preference | On; Off                 | On        | Developer | Developer mode                     | formattingDiffHighlights          | [diff-presentation-section.tsx:74](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L74) |
+| Review view             | Chooses the regular line diff or the structural/syntax-aware diff when available. | App   | Preference | Line; Structural        | Line      | Developer | Capability-gated structural option | diff presentation preference      | [diff-presentation-section.tsx:58](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L58) |
 
 ### App / General
 
@@ -259,26 +259,25 @@
 
 #### Integrations
 
-| Setting      | What it does                                                              | Scope   | Kind                | Choices / actions      | Default | Audience  | Conditions       | Persistence         | Source                                                                                                  |
-| ------------ | ------------------------------------------------------------------------- | ------- | ------------------- | ---------------------- | ------- | --------- | ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------- |
-| Command line | Installs or removes the Otto command-line launcher integration.           | Desktop | Action / status     | Install; Uninstall     |         | Developer | Electron desktop | Desktop integration | [integrations-section.tsx:430](../../packages/app/src/desktop/components/integrations-section.tsx#L430) |
-| Otto skills  | Installs Otto skills or opens a selector for individual installed skills. | Desktop | Collection / action | Install; Manage skills |         | Developer | Electron desktop | Desktop skills      | [integrations-section.tsx:462](../../packages/app/src/desktop/components/integrations-section.tsx#L462) |
+| Setting      | What it does                                                    | Scope   | Kind            | Choices / actions  | Default | Audience  | Conditions       | Persistence         | Source                                                                                                |
+| ------------ | --------------------------------------------------------------- | ------- | --------------- | ------------------ | ------- | --------- | ---------------- | ------------------- | ----------------------------------------------------------------------------------------------------- |
+| Command line | Installs or removes the Otto command-line launcher integration. | Desktop | Action / status | Install; Uninstall |         | Developer | Electron desktop | Desktop integration | [integrations-section.tsx:89](../../packages/app/src/desktop/components/integrations-section.tsx#L89) |
+
+#### Orchestration skills
+
+| Setting              | What it does                                                                  | Scope | Kind                | Choices / actions                      | Default | Audience  | Conditions                  | Persistence                | Source                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------- | ----- | ------------------- | -------------------------------------- | ------- | --------- | --------------------------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| Orchestration skills | Reconciles or removes the skills available to agents on the selected Host.    | Host  | Collection / action | Install; Update; Remove; Manage skills |         | Developer | Connected compatible Host   | daemon-owned skill records | [index.tsx:133](../../packages/app/src/agent-skills/index.tsx#L133)                     |
+| Individual skill     | Includes or excludes each available orchestration skill on the selected Host. | Host  | Dynamic preference  | On; Off                                |         | Developer | One row per available skill | daemon-owned skill records | [selection-sheet.tsx:178](../../packages/app/src/agent-skills/selection-sheet.tsx#L178) |
 
 #### Meetings
 
 | Setting                        | What it does                                                                                            | Scope   | Kind            | Choices / actions                                   | Default                   | Audience  | Conditions                      | Persistence                     | Source                                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------- | ------- | --------------- | --------------------------------------------------- | ------------------------- | --------- | ------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Adapter                        | Shows or repairs the installed meeting-capture adapter.                                                 | Desktop | Action / status | Install/Update where available                      |                           | Developer | Platform-specific               | Desktop adapter                 | [integrations-section.tsx:399](../../packages/app/src/desktop/components/integrations-section.tsx#L399) |
-| Local speech recognition model | Downloads, updates, or removes the host-local speech model used by meeting transcription.               | Desktop | Action          | Download/Update; Remove                             |                           | User      | Meeting transcription supported | Desktop model files             | [integrations-section.tsx:377](../../packages/app/src/desktop/components/integrations-section.tsx#L377) |
-| Meeting transcription          | Transcribes supported meetings locally and exposes the recorder title-bar control.                      | App     | Preference      | On; Off                                             | Off                       | User      | Electron desktop; supported OS  | zoomRecorderEnabled             | [integrations-section.tsx:319](../../packages/app/src/desktop/components/integrations-section.tsx#L319) |
-| Transcript delivery            | Chooses whether transcript delivery requires an encrypted connection or may use the current connection. | App     | Preference      | Require secure connection; Allow current connection | Require secure connection | User      | Meeting transcription enabled   | meetingTranscriptDeliveryPolicy | [integrations-section.tsx:336](../../packages/app/src/desktop/components/integrations-section.tsx#L336) |
-
-#### Otto skills
-
-| Setting          | What it does                                                  | Scope   | Kind               | Choices / actions                         | Default | Audience  | Conditions                   | Persistence              | Source                                                                                                    |
-| ---------------- | ------------------------------------------------------------- | ------- | ------------------ | ----------------------------------------- | ------- | --------- | ---------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------- |
-| All skills       | Selects or clears all available Otto skills for installation. | Desktop | Preference pattern | All on; All off; individual skill toggles |         | Developer | Skill-selection sheet        | Desktop skills selection | [skill-selection-sheet.tsx:163](../../packages/app/src/desktop/components/skill-selection-sheet.tsx#L163) |
-| Individual skill | Includes or excludes each discovered Otto skill.              | Desktop | Dynamic preference | On; Off                                   |         | Developer | One row per discovered skill | Desktop skills selection | [skill-selection-sheet.tsx:254](../../packages/app/src/desktop/components/skill-selection-sheet.tsx#L254) |
+| Adapter                        | Shows or repairs the installed meeting-capture adapter.                                                 | Desktop | Action / status | Install/Update where available                      |                           | Developer | Platform-specific               | Desktop adapter                 | [integrations-section.tsx:331](../../packages/app/src/desktop/components/integrations-section.tsx#L331) |
+| Local speech recognition model | Downloads, updates, or removes the host-local speech model used by meeting transcription.               | Desktop | Action          | Download/Update; Remove                             |                           | User      | Meeting transcription supported | Desktop model files             | [integrations-section.tsx:304](../../packages/app/src/desktop/components/integrations-section.tsx#L304) |
+| Meeting transcription          | Transcribes supported meetings locally and exposes the recorder title-bar control.                      | App     | Preference      | On; Off                                             | Off                       | User      | Electron desktop; supported OS  | zoomRecorderEnabled             | [integrations-section.tsx:246](../../packages/app/src/desktop/components/integrations-section.tsx#L246) |
+| Transcript delivery            | Chooses whether transcript delivery requires an encrypted connection or may use the current connection. | App     | Preference      | Require secure connection; Allow current connection | Require secure connection | User      | Meeting transcription enabled   | meetingTranscriptDeliveryPolicy | [integrations-section.tsx:263](../../packages/app/src/desktop/components/integrations-section.tsx#L263) |
 
 #### Voice & dictation
 

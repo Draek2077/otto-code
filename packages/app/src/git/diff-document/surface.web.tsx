@@ -219,7 +219,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
 
   useLayoutEffect(() => {
     const root = rootRef.current;
-    if (!root || !isRetainedPanelActive) return;
+    // The canvas must stay mounted while a retained tab is hidden. Removing it
+    // also removes its ResizeObserver, so a tab can return with a stale (or
+    // zero-width) document model until an unrelated resize happens to wake it.
+    // `retainDiffViewport` already ignores the hidden panel's zero geometry.
+    if (!root) return;
     const commitPendingViewport = () => {
       setViewport((current) => retainDiffViewport(current, pendingViewportRef.current));
     };
@@ -281,7 +285,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       window.removeEventListener("pointerup", handlePointerEnd, { capture: true });
       window.removeEventListener("pointercancel", handlePointerEnd, { capture: true });
     };
-  }, [isRetainedPanelActive]);
+  }, []);
   useEffect(() => {
     let cancelled = false;
     if (typographyResource.isReady()) {
@@ -563,8 +567,6 @@ export function DiffSurface(props: DiffSurfaceProps) {
     }),
     [desiredTypography, loadedTypography, model.viewportWidth],
   );
-
-  if (!isRetainedPanelActive) return null;
 
   return (
     <div data-testid="git-diff-canvas-root" ref={rootRef} style={rootStyle}>

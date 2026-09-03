@@ -147,11 +147,15 @@ export interface WorkspaceDesktopTabActions {
   canClose: boolean;
 }
 
-/** Explorer surfaces are workspace fixtures, not disposable document tabs. */
+/**
+ * The Explorer's singleton navigation views (Files, Changes, Search) are dock
+ * fixtures, not disposable document tabs. Diff is not one of them: it is a
+ * general launch target that moves between Explorer and main, so it closes
+ * like any other pane.
+ */
 export function canCloseWorkspaceTab(tab: WorkspaceTabDescriptor): boolean {
   switch (tab.target.kind) {
     case "files":
-    case "working_diff":
     case "changes_tree":
     case "project_search":
       return false;

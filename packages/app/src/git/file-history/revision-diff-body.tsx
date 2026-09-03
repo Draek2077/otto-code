@@ -498,13 +498,16 @@ const styles = StyleSheet.create((theme) => ({
   formattedContext: { backgroundColor: theme.colors.surface1 },
   formattedAdded: { backgroundColor: theme.colors.syntax.diffAdded },
   formattedRemoved: { backgroundColor: theme.colors.syntax.diffRemoved },
+  // Diff scaffolding, so it rides the Code font setting alongside the marker it
+  // sits beside - `fontSize.xs` is the UI ramp and would hold this column still
+  // while the marker and the body grew.
   formattedGutter: {
     width: 52,
     paddingTop: 5,
     paddingRight: 8,
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.code,
     textAlign: "right",
   },
   formattedMarker: {

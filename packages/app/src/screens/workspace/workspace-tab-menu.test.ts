@@ -17,7 +17,7 @@ function createAgentTab(): WorkspaceTabDescriptor {
 describe("buildWorkspaceTabMenuEntries", () => {
   it.each([
     ["Files", { kind: "files" as const }],
-    ["Changes", { kind: "working_diff" as const }],
+    ["Changes", { kind: "changes_tree" as const }],
     ["Search", { kind: "project_search" as const }],
   ])("does not offer close actions for the permanent %s tab", (_label, target) => {
     const entries = buildWorkspaceTabMenuEntries({
@@ -42,6 +42,30 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(entries.some((entry) => entry.kind === "item" && entry.key.startsWith("close"))).toBe(
       false,
     );
+  });
+
+  it("offers close actions for the Diff tab", () => {
+    const target = { kind: "working_diff" as const };
+    const entries = buildWorkspaceTabMenuEntries({
+      surface: "desktop",
+      tab: { key: target.kind, tabId: target.kind, kind: target.kind, target },
+      index: 0,
+      tabCount: 1,
+      menuTestIDBase: `workspace-tab-context-${target.kind}`,
+      isDeveloperMode: false,
+      onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
+      onCopyAgentId: vi.fn(),
+      onCopyFilePath: vi.fn(),
+      onReloadAgent: vi.fn(),
+      onRenameTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseTabsBefore: vi.fn(),
+      onCloseTabsAfter: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+    });
+
+    expect(entries.some((entry) => entry.kind === "item" && entry.key === "close")).toBe(true);
   });
 
   it("replaces Close with Archive and Delete for chats", () => {

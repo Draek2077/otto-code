@@ -96,7 +96,6 @@ function SyntaxRow({
  * options to the Diff section - neither is a syntax choice.
  */
 export function SyntaxSettingsSection() {
-  const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
   const previewOverrides = useMemo(
     () => ({
@@ -110,7 +109,7 @@ export function SyntaxSettingsSection() {
     [updateSettings],
   );
   return (
-    <SettingsSection title={t("settings.appearance.syntax.title")}>
+    <SettingsSection title="Syntax highlighting">
       <View style={settingsStyles.card}>
         <SyntaxRow value={settings.syntaxTheme} onChange={handleSyntaxThemeChange} />
       </View>
