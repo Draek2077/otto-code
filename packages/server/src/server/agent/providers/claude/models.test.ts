@@ -42,6 +42,7 @@ describe("getClaudeModels", () => {
   it("returns all claude models", () => {
     const models = getClaudeModels();
     expect(models.map((m) => m.id)).toEqual([
+      "claude-fable-5-1",
       "claude-fable-5",
       "claude-opus-5",
       "claude-opus-4-8",
@@ -72,6 +73,7 @@ describe("getClaudeModels", () => {
 
     expect(contextWindows).toEqual(
       new Map([
+        ["claude-fable-5-1", 1_000_000],
         ["claude-fable-5", 1_000_000],
         ["claude-opus-5", 1_000_000],
         ["claude-opus-4-8", 1_000_000],
@@ -126,8 +128,11 @@ describe("getClaudeModels", () => {
     ]);
     expect(models.get("claude-haiku-4-5")?.thinkingOptions).toBeUndefined();
 
-    // Fable 5 rejects disabled thinking at any effort, so Off is withheld from
+    // Fable 5 and 5.1 reject disabled thinking at any effort, so Off is withheld from
     // the picker rather than offered and rejected by the CLI mid-turn.
+    expect(
+      models.get("claude-fable-5-1")?.thinkingOptions?.map((option) => option.id),
+    ).not.toContain(CLAUDE_THINKING_OFF_OPTION_ID);
     expect(models.get("claude-fable-5")?.thinkingOptions?.map((option) => option.id)).not.toContain(
       CLAUDE_THINKING_OFF_OPTION_ID,
     );
@@ -278,6 +283,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
 
 describe("normalizeClaudeRuntimeModelId", () => {
   it("returns exact match for known model IDs", () => {
+    expect(normalizeClaudeRuntimeModelId("claude-fable-5-1")).toBe("claude-fable-5-1");
     expect(normalizeClaudeRuntimeModelId("claude-fable-5")).toBe("claude-fable-5");
     expect(normalizeClaudeRuntimeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
     expect(normalizeClaudeRuntimeModelId("claude-opus-4-6")).toBe("claude-opus-4-6");
@@ -287,6 +293,7 @@ describe("normalizeClaudeRuntimeModelId", () => {
   });
 
   it("normalizes dated model IDs to base model", () => {
+    expect(normalizeClaudeRuntimeModelId("claude-fable-5-1-20260901")).toBe("claude-fable-5-1");
     expect(normalizeClaudeRuntimeModelId("claude-fable-5-20260301")).toBe("claude-fable-5");
     expect(normalizeClaudeRuntimeModelId("claude-sonnet-5-20260101")).toBe("claude-sonnet-5");
     expect(normalizeClaudeRuntimeModelId("claude-opus-4-6-20260101")).toBe("claude-opus-4-6");
@@ -295,6 +302,7 @@ describe("normalizeClaudeRuntimeModelId", () => {
   });
 
   it("preserves [1m] suffix from runtime model strings", () => {
+    expect(normalizeClaudeRuntimeModelId("claude-fable-5-1[1m]")).toBe("claude-fable-5-1");
     expect(normalizeClaudeRuntimeModelId("claude-opus-4-6[1m]")).toBe("claude-opus-4-6[1m]");
   });
 

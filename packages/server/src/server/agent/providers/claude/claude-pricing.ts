@@ -35,13 +35,13 @@ export interface ClaudeModelRates {
   cacheWritePerMTok: number;
 }
 
-function rates(input: number, output: number): ClaudeModelRates {
-  // cache-read 0.1× input, 5-minute cache-write 1.25× input (Anthropic's fixed
-  // multipliers) - derived so a rate change only needs the two headline numbers.
+function rates(input: number, output: number, cacheReadMultiplier = 0.1): ClaudeModelRates {
+  // Cache writes are 1.25× input. Most Claude models price cache reads at 0.1×
+  // input; Fable 5.1 is the published exception at 0.025×.
   return {
     inputPerMTok: input,
     outputPerMTok: output,
-    cacheReadPerMTok: input * 0.1,
+    cacheReadPerMTok: input * cacheReadMultiplier,
     cacheWritePerMTok: input * 1.25,
   };
 }
@@ -49,6 +49,8 @@ function rates(input: number, output: number): ClaudeModelRates {
 // Exact model id (lowercased) → rates. Only the models we can price with
 // confidence; everything else is deliberately absent (→ undefined).
 const CLAUDE_MODEL_RATES: Readonly<Record<string, ClaudeModelRates>> = {
+  // Fable 5.1 - $10 in / $50 out, with $0.25 cache reads.
+  "claude-fable-5-1": rates(10, 50, 0.025),
   // Fable 5 - $10 in / $50 out, the tier above Opus.
   "claude-fable-5": rates(10, 50),
   // Opus 5 and Opus 4.6+ - $5 in / $25 out. (The $15/$75 card belonged to

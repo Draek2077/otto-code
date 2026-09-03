@@ -5,7 +5,9 @@ describe("model-tiers", () => {
   it("classifies known catalog models, case-insensitively", () => {
     expect(catalogTier("claude-opus-4-8[1m]")).toBe("deep");
     expect(catalogTier("claude-opus-4-8")).toBe("deep");
+    expect(catalogTier("claude-fable-5-1")).toBe("deep");
     expect(catalogTier("claude-fable-5")).toBe("deep");
+    expect(catalogTier("GPT-6-ASTRA")).toBe("deep");
     expect(catalogTier("GPT-4o")).toBe("standard");
     expect(catalogTier("deepseek-chat")).toBe("standard");
   });

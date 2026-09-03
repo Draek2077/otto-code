@@ -54,7 +54,7 @@ export const CLAUDE_DEFAULT_THINKING_OPTION_ID = "high";
  * `max_output_tokens`) rather than guessed from the model name:
  *
  * - A `[1m]` entry exists ONLY for models the CLI reports as `window:200000`
- *   AND `supports_1m_beta`. Opus 4.7 / 4.8 / 5, Sonnet 5 and Fable 5 are
+ *   AND `supports_1m_beta`. Opus 4.7 / 4.8 / 5, Sonnet 5, and Fable 5 / 5.1 are
  *   `native_1m` - the plain id already resolves to a 1M window, so a second
  *   "1M" row would be a duplicate of the same model. Opus 4.5 is 200K with no
  *   `supports_1m_beta`, so it gets no 1M row either. Ignore `supports_1m_suffix`
@@ -72,6 +72,17 @@ export const CLAUDE_DEFAULT_THINKING_OPTION_ID = "high";
  * via Project Glasswing.
  */
 export const CLAUDE_MODEL_MANIFEST = [
+  {
+    id: "claude-fable-5-1",
+    label: "Fable 5.1",
+    description: "Fable 5.1 · Most powerful model",
+    contextWindowMaxTokens: 1_000_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    // Fable 5.1 uses adaptive thinking on every request, so the API rejects
+    // an explicit disabled-thinking setting.
+    supportsThinkingOff: false,
+    autoModeSupport: "all",
+  },
   {
     id: "claude-fable-5",
     // COMPAT(claudeFable5OneMillionId): added in v0.3.0, remove after 2027-02-06 once pre-v0.3.0 app preferences are outside support.
@@ -319,7 +330,7 @@ export function normalizeClaudeManifestModelId(value: string | null | undefined)
   }
 
   const runtimeMatch = trimmed.match(
-    /^(?:claude[-_ ])?(opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?(?:[-_ ]+\d{8})?$/i,
+    /^(?:claude[-_ ])?(fable|opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?(?:[-_ ]+\d{8})?$/i,
   );
   if (!runtimeMatch) {
     return null;
@@ -364,7 +375,7 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
   }
 
   const runtimeMatch = trimmed.match(
-    /claude[-_ ](opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?/i,
+    /claude[-_ ](fable|opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?/i,
   );
   if (!runtimeMatch) {
     return null;
@@ -414,7 +425,8 @@ function normalizeMajorMinorClaudeModelId(
   // same way normalizeSingleSegmentClaudeModelId does. Natively-1M models (Opus
   // 4.7/4.8/5) ship one entry, but the CLI still accepts the decorated id and a
   // persisted agent, personality, or team binding may carry it - without this
-  // fallback those resolve to null and silently lose their feature gates.
+  // fallback those resolve to null and silently lose their feature gates. The
+  // same applies to the native-1M Fable 5.1 model.
   const candidates = [
     `claude-${family}-${major}-${minor}${suffix}`,
     `claude-${family}-${major}-${minor}`,

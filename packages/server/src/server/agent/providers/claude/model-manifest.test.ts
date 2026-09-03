@@ -19,6 +19,7 @@ describe("claude model manifest", () => {
     expect(
       Object.fromEntries(CLAUDE_MODEL_MANIFEST.map((model) => [model.id, catalogTier(model.id)])),
     ).toEqual({
+      "claude-fable-5-1": "deep",
       "claude-fable-5": "deep",
       "claude-opus-5": "deep",
       "claude-opus-4-8": "deep",

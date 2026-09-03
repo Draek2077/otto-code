@@ -26,6 +26,7 @@ export const KNOWN_MODEL_TIERS: Readonly<Record<string, ModelTier>> = {
   // Anthropic (Claude) - the full Claude Code manifest. Tiering rule: 1M-context
   // Opus variants are "deep", non-1M Opus and Sonnet are "standard", Haiku is
   // "fast". Fable (1M, most powerful) is "deep".
+  "claude-fable-5-1": "deep",
   "claude-fable-5": "deep",
   // Opus 4.7/4.8/5 are natively 1M, so the plain ids are "deep" and the manifest
   // ships no `[1m]` row for them. The decorated ids stay mapped here because the
@@ -48,6 +49,7 @@ export const KNOWN_MODEL_TIERS: Readonly<Record<string, ModelTier>> = {
   "claude-haiku-4-5": "fast",
   "claude-haiku-4-5-20251001": "fast",
   // OpenAI (GPT / o-series)
+  "gpt-6-astra": "deep",
   "gpt-5": "deep",
   "gpt-5-mini": "fast",
   "gpt-5-nano": "fast",

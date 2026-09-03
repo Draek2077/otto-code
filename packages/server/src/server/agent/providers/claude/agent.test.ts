@@ -500,10 +500,11 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
         force: false,
       });
 
-      // No `[1m]` row for Fable 5, Opus 5, Opus 4.8, Sonnet 5 or Opus 4.7: those are
+      // No `[1m]` row for Fable 5 / 5.1, Opus 5, Opus 4.8, Sonnet 5 or Opus 4.7: those are
       // native 1M, so the plain id already resolves to a 1M window and a second
       // "1M" entry would duplicate the same model. See model-manifest.ts.
       expect(models.map((m) => m.id)).toEqual([
+        "claude-fable-5-1",
         "claude-fable-5",
         "claude-opus-5",
         "claude-opus-4-8",
@@ -574,6 +575,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       };
 
       expect(getThinkingIds("claude-opus-5")).toContain("ultracode");
+      expect(getThinkingIds("claude-fable-5-1")).toContain("ultracode");
       expect(getThinkingIds("claude-fable-5")).toContain("ultracode");
       expect(getThinkingIds("claude-opus-5")).toContain("ultracode");
       expect(getThinkingIds("claude-opus-4-8")).toContain("ultracode");
