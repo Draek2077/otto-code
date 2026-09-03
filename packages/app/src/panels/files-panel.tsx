@@ -44,7 +44,6 @@ function FilesPanel() {
       serverId={serverId}
       workspaceId={workspaceId}
       workspaceRoot={workspaceRoot}
-      surface="explorer"
       onOpenFile={onOpenFile}
       onOpenFileToSide={openTargetToSide ? onOpenFileToSide : undefined}
       onAddToChat={canAddToChat ? addFile : undefined}

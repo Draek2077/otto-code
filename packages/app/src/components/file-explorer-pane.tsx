@@ -56,6 +56,7 @@ import {
   type OverlayFlatListScrollbar,
 } from "@/components/ui/overlay-scrollbar/use-overlay-flat-list-scrollbar";
 import { compactUp, type Theme } from "@/styles/theme";
+import { usePaneSurface } from "@/panels/pane-context";
 import type {
   AgentFileExplorerState,
   ExplorerDirectory,
@@ -481,8 +482,6 @@ interface FileExplorerPaneProps {
   onOpenFile?: (filePath: string, options?: { edit?: boolean }) => void;
   onAddToChat?: (path: string) => void;
   onOpenFileToSide?: (path: string) => void;
-  /** Files is Explorer-owned; callers can override this for another host. */
-  surface?: "workspace" | "explorer";
 }
 
 export function FileExplorerPane({
@@ -492,9 +491,9 @@ export function FileExplorerPane({
   onOpenFile,
   onAddToChat,
   onOpenFileToSide,
-  surface = "explorer",
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
+  const surface = usePaneSurface();
   const isCompact = useIsCompactFormFactor();
 
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);

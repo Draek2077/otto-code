@@ -247,8 +247,6 @@ interface ChangesSurfaceProps {
   cwd: string;
   enabled?: boolean;
   presentation?: ChangesPresentation;
-  /** Required only by the compact Explorer fallback, which has no PaneProvider. */
-  surface?: "workspace" | "explorer";
   modeScope: string;
   /** New operation logs stay with the Explorer or Main pane that requested them. */
   defaultPaneId?: string;
@@ -260,12 +258,6 @@ interface ChangesSurfaceProps {
   onAddToChat?: (path: string) => void;
   state?: ChangesState;
   onStateChange?: (state: ChangesState) => void;
-}
-
-function usesChangesSidebarSurface(
-  input: Pick<ChangesSurfaceProps, "presentation" | "surface">,
-): boolean {
-  return input.surface === "explorer" || input.presentation === "tree";
 }
 
 type PressableStyleFn = (
@@ -581,7 +573,6 @@ interface ChangesHeaderProps {
   compact: boolean;
   repository: ChangesRepositoryToolbarModel;
   comparison: ChangesComparisonToolbarModel;
-  sidebarSurface: boolean;
 }
 
 interface BuildChangesHeaderModelInput {
@@ -630,29 +621,15 @@ function buildChangesHeaderModel(input: BuildChangesHeaderModelInput): {
 }
 
 // Presentation resolves into these two capability models before rendering. The rows
-// never infer which host or Changes presentation produced them.
-function ChangesHeader({ compact, repository, comparison, sidebarSurface }: ChangesHeaderProps) {
+// inherit their surface from the pane host and never infer it from this presentation.
+function ChangesHeader({ compact, repository, comparison }: ChangesHeaderProps) {
   if (comparison.mode.kind === "diff") {
-    return (
-      <ChangesDiffOnlyToolbar
-        compact={compact}
-        mode={comparison.mode}
-        sidebarSurface={sidebarSurface}
-      />
-    );
+    return <ChangesDiffOnlyToolbar compact={compact} mode={comparison.mode} />;
   }
   return (
     <View>
-      <ChangesRepositoryToolbar
-        compact={compact}
-        model={repository}
-        sidebarSurface={sidebarSurface}
-      />
-      <ChangesComparisonToolbar
-        compact={compact}
-        model={comparison}
-        sidebarSurface={sidebarSurface}
-      />
+      <ChangesRepositoryToolbar compact={compact} model={repository} />
+      <ChangesComparisonToolbar compact={compact} model={comparison} />
     </View>
   );
 }
@@ -660,14 +637,12 @@ function ChangesHeader({ compact, repository, comparison, sidebarSurface }: Chan
 function ChangesDiffOnlyToolbar({
   compact,
   mode,
-  sidebarSurface,
 }: {
   compact: boolean;
   mode: Extract<ChangesToolbarMode, { kind: "diff" }>;
-  sidebarSurface: boolean;
 }) {
   return (
-    <ChangesToolbarRow compact={compact} sidebarSurface={sidebarSurface} testID="changes-header">
+    <ChangesToolbarRow compact={compact} testID="changes-header">
       <ChangesToolbarLeading />
       <ChangesToolbarTrailing>
         <ChangesToolbarActions mode={mode} compact={compact} />
@@ -679,21 +654,15 @@ function ChangesDiffOnlyToolbar({
 function ChangesToolbarRow({
   children,
   compact,
-  sidebarSurface,
   testID,
 }: {
   children: ReactNode;
   compact: boolean;
-  sidebarSurface: boolean;
   testID: string;
 }) {
   const toolbarStyle = useMemo(
-    () => [
-      styles.changesToolbar,
-      { paddingRight: paneContentToolbarTrailingPadding(compact) },
-      sidebarSurface ? styles.changesToolbarSidebar : null,
-    ],
-    [compact, sidebarSurface],
+    () => [styles.changesToolbar, { paddingRight: paneContentToolbarTrailingPadding(compact) }],
+    [compact],
   );
   return (
     <PaneContentToolbar style={toolbarStyle} testID={testID}>
@@ -713,18 +682,12 @@ function ChangesToolbarTrailing({ children }: { children: ReactNode }) {
 function ChangesRepositoryToolbar({
   compact,
   model,
-  sidebarSurface,
 }: {
   compact: boolean;
   model: ChangesRepositoryToolbarModel;
-  sidebarSurface: boolean;
 }) {
   return (
-    <ChangesToolbarRow
-      compact={compact}
-      sidebarSurface={sidebarSurface}
-      testID="changes-repository-header"
-    >
+    <ChangesToolbarRow compact={compact} testID="changes-repository-header">
       <ChangesToolbarLeading>
         <BranchSwitcher
           currentBranchName={model.branchName}
@@ -812,14 +775,12 @@ function ChangesPullRequestExternalLink({
 function ChangesComparisonToolbar({
   compact,
   model,
-  sidebarSurface,
 }: {
   compact: boolean;
   model: ChangesComparisonToolbarModel;
-  sidebarSurface: boolean;
 }) {
   return (
-    <ChangesToolbarRow compact={compact} sidebarSurface={sidebarSurface} testID="changes-header">
+    <ChangesToolbarRow compact={compact} testID="changes-header">
       <ChangesToolbarLeading>
         <DiffModeMenu
           diffMode={model.diffMode}
@@ -1697,7 +1658,6 @@ export function ChangesSurface({
   cwd,
   enabled,
   presentation = "combined",
-  surface,
   modeScope,
   defaultPaneId,
   focusPath,
@@ -2202,7 +2162,6 @@ export function ChangesSurface({
           compact={isMobile}
           repository={changesHeaderModel.repository}
           comparison={changesHeaderModel.comparison}
-          sidebarSurface={usesChangesSidebarSurface({ presentation, surface })}
         />
       ) : null}
 
@@ -2238,9 +2197,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     paddingLeft: theme.spacing[2],
-  },
-  changesToolbarSidebar: {
-    backgroundColor: theme.colors.background,
   },
   changesToolbarIdentity: {
     flex: 1,

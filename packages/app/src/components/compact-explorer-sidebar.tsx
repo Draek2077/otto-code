@@ -26,6 +26,7 @@ import {
   HEADER_TOP_PADDING_MOBILE,
 } from "@/constants/layout";
 import { ChangesSurface } from "@/git/diff-pane";
+import { PaneSurfaceProvider } from "@/panels/pane-context";
 import { changesStateSchema, defaultChangesState, type ChangesState } from "@/panels/changes/state";
 import { FileExplorerPane } from "./file-explorer-pane";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
@@ -539,18 +540,19 @@ function ChangedFilesPane({
     changesStateSchema.parse(defaultChangesState),
   );
   return (
-    <ChangesSurface
-      serverId={serverId}
-      workspaceId={workspaceId}
-      cwd={workspaceRoot}
-      enabled={isOpen}
-      surface="explorer"
-      modeScope="compact-explorer"
-      onOpenFile={onOpenFile}
-      onAddToChat={canAddToChat ? addFile : undefined}
-      state={changesState}
-      onStateChange={setChangesState}
-    />
+    <PaneSurfaceProvider surface="explorer">
+      <ChangesSurface
+        serverId={serverId}
+        workspaceId={workspaceId}
+        cwd={workspaceRoot}
+        enabled={isOpen}
+        modeScope="compact-explorer"
+        onOpenFile={onOpenFile}
+        onAddToChat={canAddToChat ? addFile : undefined}
+        state={changesState}
+        onStateChange={setChangesState}
+      />
+    </PaneSurfaceProvider>
   );
 }
 
@@ -562,14 +564,15 @@ function FilesPane({
 }: Pick<SidebarContentProps, "serverId" | "workspaceId" | "workspaceRoot" | "onOpenFile">) {
   const { addFile, canAddToChat } = useAddFileToChat({ serverId, workspaceId });
   return (
-    <FileExplorerPane
-      serverId={serverId}
-      workspaceId={workspaceId}
-      workspaceRoot={workspaceRoot}
-      surface="explorer"
-      onOpenFile={onOpenFile}
-      onAddToChat={canAddToChat ? addFile : undefined}
-    />
+    <PaneSurfaceProvider surface="explorer">
+      <FileExplorerPane
+        serverId={serverId}
+        workspaceId={workspaceId}
+        workspaceRoot={workspaceRoot}
+        onOpenFile={onOpenFile}
+        onAddToChat={canAddToChat ? addFile : undefined}
+      />
+    </PaneSurfaceProvider>
   );
 }
 

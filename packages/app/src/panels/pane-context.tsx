@@ -44,6 +44,7 @@ export interface PaneFocusContextValue {
 }
 
 const PaneContext = createContext<PaneContextValue | null>(null);
+const PaneSurfaceContext = createContext<PaneSurface>("workspace");
 const PaneFocusContext = createContext<PaneFocusContextValue | null>(null);
 const noopFocusPane = () => {};
 
@@ -72,7 +73,23 @@ export function PaneProvider({
   value: PaneContextValue;
   children: ReactNode;
 }) {
-  return <PaneContext.Provider value={value}>{children}</PaneContext.Provider>;
+  const surface: PaneSurface = value.host === "explorer" ? "explorer" : "workspace";
+  return (
+    <PaneSurfaceContext.Provider value={surface}>
+      <PaneContext.Provider value={value}>{children}</PaneContext.Provider>
+    </PaneSurfaceContext.Provider>
+  );
+}
+
+/** Supplies the host-owned surface to standalone pane compositions. */
+export function PaneSurfaceProvider({
+  surface,
+  children,
+}: {
+  surface: PaneSurface;
+  children: ReactNode;
+}) {
+  return <PaneSurfaceContext.Provider value={surface}>{children}</PaneSurfaceContext.Provider>;
 }
 
 export function PaneFocusProvider({
@@ -91,12 +108,9 @@ export function usePaneContext(): PaneContextValue {
   return value;
 }
 
-/**
- * Workspace panes receive this from their host. Standalone compact Explorer
- * fallbacks may supply an explicit surface instead.
- */
+/** The pane host owns this value; child panes never infer it from tab kind. */
 export function usePaneSurface(): PaneSurface {
-  return useContext(PaneContext)?.host === "explorer" ? "explorer" : "workspace";
+  return useContext(PaneSurfaceContext);
 }
 
 export function usePaneFocus(): PaneFocusContextValue {

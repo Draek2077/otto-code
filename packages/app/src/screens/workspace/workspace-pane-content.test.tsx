@@ -10,7 +10,12 @@ import {
   WorkspacePaneContent,
 } from "@/screens/workspace/workspace-pane-content";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
-import { usePaneContext, usePaneFocus, type PaneContextValue } from "@/panels/pane-context";
+import {
+  usePaneContext,
+  usePaneFocus,
+  usePaneSurface,
+  type PaneContextValue,
+} from "@/panels/pane-context";
 
 vi.mock("@/panels/register-panels", () => ({
   ensurePanelsRegistered: vi.fn(),
@@ -27,6 +32,7 @@ vi.mock("@/panels/panel-registry", () => ({
 interface ProbeSnapshot {
   paneContextValue: PaneContextValue;
   focus: ReturnType<typeof usePaneFocus>;
+  surface: ReturnType<typeof usePaneSurface>;
 }
 
 const snapshots: ProbeSnapshot[] = [];
@@ -36,7 +42,8 @@ const unmountCount = vi.fn();
 function ProbePanel() {
   const paneContextValue = usePaneContext();
   const focus = usePaneFocus();
-  snapshots.push({ paneContextValue, focus });
+  const surface = usePaneSurface();
+  snapshots.push({ paneContextValue, focus, surface });
 
   useEffect(() => {
     mountCount();
@@ -131,7 +138,7 @@ describe("WorkspacePaneContent", () => {
     });
   });
 
-  it("exposes the pane host to its content", () => {
+  it("injects the Explorer surface into its content", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -147,6 +154,7 @@ describe("WorkspacePaneContent", () => {
     });
 
     expect(snapshots[0]?.paneContextValue.host).toBe("explorer");
+    expect(snapshots[0]?.surface).toBe("explorer");
   });
 
   it("keeps pane content mounted when a draft tab is retargeted in place", () => {

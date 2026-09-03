@@ -19,23 +19,19 @@ import {
   smallIconButtonChromeFrameSize,
 } from "@/components/ui/icon-button-chrome";
 import { WORKSPACE_PANE_TRAILING_GLYPH_RAIL } from "@/components/tree-primitives";
-import { usePaneSurface, type PaneSurface } from "@/panels/pane-context";
+import { usePaneSurface } from "@/panels/pane-context";
 
 /** Shared chrome at the boundary between a workspace pane's tabs and content. */
 export function PaneContentToolbar({
   children,
   style,
   testID,
-  surface,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   testID?: string;
-  /** Override for a pane rendered outside the standard PaneProvider tree. */
-  surface?: PaneSurface;
 }) {
-  const inheritedPaneSurface = usePaneSurface();
-  const paneSurface = surface ?? inheritedPaneSurface;
+  const paneSurface = usePaneSurface();
   return (
     <View
       style={[
