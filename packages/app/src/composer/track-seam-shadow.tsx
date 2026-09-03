@@ -1,7 +1,10 @@
+import { useMemo } from "react";
 import { StyleSheet as RNStyleSheet, View } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import { useChatWidthLayout } from "@/components/chat-width-layout-context";
 import { SPACING, type Theme } from "@/styles/theme";
+import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 // Visible depth of the cast shadow: how far the darkening reaches UP from the
 // front card's top edge. A fixed pixel value rather than a spacing token - it
@@ -96,12 +99,20 @@ const seamShadowOpacityMapping = (theme: Theme) => ({
  * to that same box with `overflow: "hidden"`. Either way the strip would stop
  * short of the card's real edges. The surface is `alignSelf: "stretch"` inside
  * a `ChatWidthBounds` that has no padding or border of its own, so anchoring
- * here spans the surface's full border box. Being a later sibling also keeps it
- * painted over the card's background and any hover fill.
+ * here spans the surface's full border box. `ChatWidthBounds` adds a live
+ * outline inset around its child lane, so this strip repeats that inset: an
+ * absolute child otherwise uses the padded lane's full box and overhangs both
+ * sides of the card. Being a later sibling also keeps it painted over the
+ * card's background and any hover fill.
  */
 export function ComposerTrackSeamShadow({ layer }: { layer: number }) {
+  const { outlinePadding } = useChatWidthLayout();
+  const insetStyle = useMemo(
+    () => inlineUnistylesStyle({ left: outlinePadding, right: outlinePadding }),
+    [outlinePadding],
+  );
   return (
-    <View style={styles.strip} pointerEvents="none">
+    <View style={[styles.strip, insetStyle]} pointerEvents="none">
       <ThemedTrackSeamShadowGradient layer={layer} uniProps={seamShadowOpacityMapping} />
     </View>
   );

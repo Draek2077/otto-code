@@ -9,9 +9,9 @@ import {
   useMenuContext,
   type MenuTriggerState,
 } from "@/components/ui/menu";
+import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { StatusRing } from "@/components/status-ring";
 import { STATUS_RING_HALO_INSET } from "@/components/status-ring/geometry";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
@@ -33,9 +33,11 @@ import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
 export function ComposerTrackBar({ children }: { children: ReactNode }): ReactElement {
   return (
     <View style={styles.bar} pointerEvents="box-none">
-      <View style={styles.track} pointerEvents="box-none">
-        {children}
-      </View>
+      <ChatWidthBounds style={styles.bounds}>
+        <View style={styles.track} pointerEvents="box-none">
+          {children}
+        </View>
+      </ChatWidthBounds>
     </View>
   );
 }
@@ -326,9 +328,14 @@ const styles = StyleSheet.create((theme) => {
         md: COMPOSER_PILL_CLEARANCE.wide,
       },
     },
+    // The bounds owns the user-selected Default/Wide/Full cap. This bar used
+    // to carry MAX_CONTENT_WIDTH itself, which silently made pill tracks ignore
+    // Wide and Full while the transcript and composer resized correctly.
+    bounds: {
+      width: "100%",
+    },
     track: {
       width: "100%",
-      maxWidth: MAX_CONTENT_WIDTH,
       flexDirection: "row",
       alignItems: "center",
       gap: theme.spacing[1],
