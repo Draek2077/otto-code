@@ -247,6 +247,8 @@ interface ChangesSurfaceProps {
   cwd: string;
   enabled?: boolean;
   presentation?: ChangesPresentation;
+  /** The Explorer host uses the primary-sidebar surface for its toolbar. */
+  sidebarSurface?: boolean;
   modeScope: string;
   /** New operation logs stay with the Explorer or Main pane that requested them. */
   defaultPaneId?: string;
@@ -258,6 +260,12 @@ interface ChangesSurfaceProps {
   onAddToChat?: (path: string) => void;
   state?: ChangesState;
   onStateChange?: (state: ChangesState) => void;
+}
+
+function usesChangesSidebarSurface(
+  input: Pick<ChangesSurfaceProps, "presentation" | "sidebarSurface">,
+): boolean {
+  return input.sidebarSurface === true || input.presentation === "tree";
 }
 
 type PressableStyleFn = (
@@ -1689,6 +1697,7 @@ export function ChangesSurface({
   cwd,
   enabled,
   presentation = "combined",
+  sidebarSurface,
   modeScope,
   defaultPaneId,
   focusPath,
@@ -2193,7 +2202,7 @@ export function ChangesSurface({
           compact={isMobile}
           repository={changesHeaderModel.repository}
           comparison={changesHeaderModel.comparison}
-          sidebarSurface={presentation === "tree"}
+          sidebarSurface={usesChangesSidebarSurface({ presentation, sidebarSurface })}
         />
       ) : null}
 

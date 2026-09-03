@@ -146,14 +146,14 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    // The dock owns the deepest Explorer layer. Its tab rail remains on
-    // surfaceSidebar below, matching the workspace tab gutter.
+    // The dock owns the deepest Explorer layer, including its tab rail. The
+    // native caption strip follows this same token while Explorer is visible.
     backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   tabRail: {
     position: "relative",
     flexShrink: 0,
-    backgroundColor: theme.colors.surfaceSidebar,
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   tabRailDivider: {
     position: "absolute",

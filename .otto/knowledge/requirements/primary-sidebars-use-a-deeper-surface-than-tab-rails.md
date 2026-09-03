@@ -2,16 +2,16 @@
 id: "primary-sidebars-use-a-deeper-surface-than-tab-rails"
 kind: "requirement"
 title: "Primary sidebars use a deeper surface than tab rails"
-status: "confirmed"
+status: "proposed"
 tags: ["theme","sidebar","surface","visual-hierarchy","appearance"]
 created_at: "2026-08-21T15:44:14.513Z"
-updated_at: "2026-08-21T16:36:03.417Z"
+updated_at: "2026-09-03T14:22:56.930Z"
 ---
 # Primary sidebars use a deeper surface than tab rails
 
 <!-- compiled_truth -->
 
-The left workspace sidebar and right explorer sidebar, including compact/mobile presentations and content owned within those sidebar trees, use a dedicated background surface a few shades darker than `surfaceSidebar` in every selectable theme. Tab rows, vertical tab rails, workspace chrome, and unrelated consumers remain on `surfaceSidebar`; the center workspace remains on `surfaceWorkspace`. The resulting hierarchy is deepest primary sidebars, middle tab/chrome layer, and lightest center workspace surface, with stable perceived darkness and separation. Each shade preserves its theme's established spectrum. Daylight remains fundamentally a neutral light theme: its large-area sidebar and tab/gutter surfaces use low-chroma neutrals with a subtle yellow-gold undertone aligned to its golden-sun accent. They must not read peach, orange-beige, cream, or pastel, and saturated gold remains reserved for accents rather than broad backgrounds. Sidebar rows, selected workspaces, and their nested actions follow [[interactive-state-colors-use-one-theme-accent-ladder]]; this page owns only the resting three-layer surface hierarchy and does not define component-specific interaction colors.
+The left workspace sidebar and right Explorer sidebar, including compact/mobile presentations and content owned within those sidebar trees, use a dedicated background surface a few shades darker than `surfaceSidebar` in every selectable theme. Explorer’s own top tab rail and the desktop caption strip painted above it use that same `surfaceSidebarPanel` token while Explorer is visible. Workspace tab rows, vertical tab rails outside Explorer, workspace chrome, and unrelated consumers remain on `surfaceSidebar`; the center workspace remains on `surfaceWorkspace`. The resulting hierarchy is deepest primary sidebars, middle tab/chrome layer, and lightest center workspace surface, with stable perceived darkness and separation. Each shade preserves its theme's established spectrum. Daylight remains fundamentally a neutral light theme: its large-area sidebar and tab/gutter surfaces use low-chroma neutrals with a subtle yellow-gold undertone aligned to its golden-sun accent. They must not read peach, orange-beige, cream, or pastel, and saturated gold remains reserved for accents rather than broad backgrounds. Sidebar rows, selected workspaces, and their nested actions follow [[interactive-state-colors-use-one-theme-accent-ladder]]; this page owns only the resting three-layer surface hierarchy and does not define component-specific interaction colors.
 
 ## Timeline
 
@@ -83,3 +83,23 @@ The left workspace sidebar and right explorer sidebar, including compact/mobile 
   summary: "The user broadened the workspace-row correction into a design-system requirement: hover, selected/open, pressed, and interactive borders must be shared across all UI families rather than tuned independently for sidebar rows."
   source: "User interaction-state system direction on 2026-08-21"
   affects: ["interactive-state-colors-use-one-theme-accent-ladder","sidebar-workspace-tools-fill-and-compact-as-a-row","sidebar-active-team-switcher-is-centered","sidebar-navigation-shortcuts-use-two-columns","sidebar-workspace-tools-use-single-divider"]
+- time: "2026-09-03T14:12:38.904Z"
+  kind: "decision"
+  summary: "The user clarified that the Explorer sidebar’s top tab bar must match the deepest sidebar layer, and that the Windows/OS caption strip must match while Explorer is open. The prior exception for the Explorer tab rail was therefore incorrect. Status returned to proposed for review."
+  source: "User direction and verified implementation on 2026-09-03"
+- time: "2026-09-03T14:12:45.826Z"
+  kind: "evidence"
+  summary: "Changed `packages/app/src/screens/workspace/explorer-sidebar.tsx` so `tabRail` uses `theme.colors.surfaceSidebarPanel`, matching the Explorer dock and content layer. `DesktopWindowControlsSync` already selects that same token when the workspace-owned `explorerSidebarVisible` flag confirms the sidebar is painted, so the Windows/OS caption strip remains synchronized. Verification: targeted formatting, targeted lint, `npm run typecheck --workspace=@otto-code/app`, and `git diff --check` passed."
+  source: "Implementation verified on 2026-09-03"
+- time: "2026-09-03T14:16:45.454Z"
+  kind: "evidence"
+  summary: "The screenshot showed the native fallback Explorer tab row still painting the shallower `surfaceSidebar` (`#191a1f`) while the panel used `surfaceSidebarPanel` (`#16171c`). `packages/app/src/components/compact-explorer-sidebar.tsx` now explicitly paints `nativeDockContent`, `sidebarContent`, `header`, and the visible `tabsContainer` with `surfaceSidebarPanel`; the split-pane Explorer rail uses that token as well. The existing root chrome synchronization continues to select the same token when Explorer is visibly open. Verification: targeted formatting and lint, app typecheck, `compact-explorer-sidebar.test.ts` (3 tests), and `git diff --check` passed."
+  source: "Explorer tab-row paint verification on 2026-09-03"
+- time: "2026-09-03T14:20:07.468Z"
+  kind: "evidence"
+  summary: "Correction to the earlier screenshot investigation: its visible rail is the split-pane `ExplorerSidebarTabRail`, whose `styles.track` directly painted `theme.colors.surfaceSidebar` and covered its correctly themed wrappers. Changed that direct fill in `packages/app/src/screens/workspace/explorer-sidebar-tab-rail.tsx` to `theme.colors.surfaceSidebarPanel`; this is the element that paints Files, Changes, Search, and Diff. Removed the speculative compact-fallback background changes. Verification: targeted formatting, targeted lint, app typecheck, and `git diff --check` passed. The nearest `workspace-tabs/explorer-sidebar.test.ts` cannot currently load because it throws `SyntaxError: Unexpected token 'typeof'` before registering tests."
+  source: "Direct Explorer rail correction verified on 2026-09-03"
+- time: "2026-09-03T14:22:56.930Z"
+  kind: "evidence"
+  summary: "Explorer-hosted Changes and commit-Diff panes previously reused the main `PaneContentToolbar` background because Changes inferred its surface from presentation rather than the pane host. `packages/app/src/panels/diff-panel.tsx` now passes `host === \"explorer\"` to `ChangesSurface` and applies `surfaceSidebarPanel` to Explorer’s commit-Diff toolbar; `packages/app/src/git/diff-pane.tsx` applies that override to the Changes toolbar. Main panes retain their existing background. Verification: targeted formatting and lint, app typecheck, `pane-context.test.ts` (3 tests), and `git diff --check` passed."
+  source: "Explorer diff-toolbar correction verified on 2026-09-03"
