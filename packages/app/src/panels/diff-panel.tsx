@@ -86,8 +86,16 @@ function resolveChangesPresentation(
 
 function ChangesPanel() {
   const { t } = useTranslation();
-  const { serverId, workspaceId, paneId, tabId, target, openPreferredTarget, openTargetToSide } =
-    usePaneContext();
+  const {
+    host,
+    serverId,
+    workspaceId,
+    paneId,
+    tabId,
+    target,
+    openPreferredTarget,
+    openTargetToSide,
+  } = usePaneContext();
   const [changesState, setChangesState] = usePanelState(changesStateSchema, defaultChangesState);
   const { preferences } = useChangesPreferences();
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
@@ -136,6 +144,7 @@ function ChangesPanel() {
           cwd={cwd}
           enabled={isActive}
           presentation={presentation}
+          surface={host === "explorer" ? "explorer" : "workspace"}
           modeScope={tabId}
           focusPath={target.kind === "working_diff" ? target.focusPath : undefined}
           focusRequestId={target.kind === "working_diff" ? target.focusRequestId : undefined}
@@ -154,7 +163,7 @@ function ChangesPanel() {
 
 function CommitDiffPanel() {
   const { t } = useTranslation();
-  const { serverId, workspaceId, target } = usePaneContext();
+  const { host, serverId, workspaceId, target } = usePaneContext();
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
   const panelPreferences = useDiffPanelPreferences();
   invariant(target.kind === "commit_diff", "CommitDiffPanel requires commit_diff target");
@@ -198,7 +207,11 @@ function CommitDiffPanel() {
   return (
     <View style={styles.container} testID="commit-diff-panel">
       {panelPreferences.canUseSplitLayout ? (
-        <PaneContentToolbar style={styles.toolbar} testID="commit-diff-header">
+        <PaneContentToolbar
+          style={styles.toolbar}
+          surface={host === "explorer" ? "explorer" : "workspace"}
+          testID="commit-diff-header"
+        >
           <View style={styles.toolbarActions} testID="commit-diff-toolbar">
             <DiffLayoutToggle
               layout={panelPreferences.preferences.layout}
