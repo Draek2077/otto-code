@@ -117,4 +117,18 @@ describe("terminal row model", () => {
     ]);
     expect(row.runs.map((run) => run.text).join("")).toBe(mascot);
   });
+
+  test("uses Otto's symbol face for Nerd Font private-use cells only", () => {
+    const resolver = createTerminalCellStyleResolver(DEFAULT_TERMINAL_THEME);
+    const [row] = buildRows({
+      grid: [[cell("A"), cell("\uf120"), cell("B")]],
+      resolver,
+    });
+
+    expect(row.runs.map((run) => [run.text, run.renderKind])).toEqual([
+      ["A", "text"],
+      ["\uf120", "symbol-font"],
+      ["B", "text"],
+    ]);
+  });
 });

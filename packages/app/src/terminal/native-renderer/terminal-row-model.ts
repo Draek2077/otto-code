@@ -31,12 +31,17 @@ export interface TerminalTextRun extends TerminalRunBase {
   renderKind: "text";
 }
 
+/** A Nerd Font private-use glyph rendered with Otto's bundled symbols face. */
+export interface TerminalSymbolFontRun extends TerminalRunBase {
+  renderKind: "symbol-font";
+}
+
 export interface TerminalCustomGlyphRun extends TerminalRunBase {
   renderKind: "custom-glyph";
   glyphs: TerminalCustomGlyphCell[];
 }
 
-export type TerminalRun = TerminalCustomGlyphRun | TerminalTextRun;
+export type TerminalRun = TerminalCustomGlyphRun | TerminalSymbolFontRun | TerminalTextRun;
 
 export interface TerminalCustomGlyphCell {
   key: string;
@@ -96,6 +101,29 @@ function terminalCellCount(cells: TerminalRenderableCell[], col: number, char: s
   return 1;
 }
 
+function isNerdFontPrivateUseSymbol(text: string): boolean {
+  for (const char of text) {
+    const codePoint = char.codePointAt(0);
+    if (codePoint !== undefined && codePoint >= 0xe000 && codePoint <= 0xf8ff) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function resolveRenderKind(input: {
+  customGlyph: TerminalCustomGlyph | null;
+  symbolFont: boolean;
+}): TerminalRun["renderKind"] {
+  if (input.customGlyph) {
+    return "custom-glyph";
+  }
+  if (input.symbolFont) {
+    return "symbol-font";
+  }
+  return "text";
+}
+
 function appendRun(input: {
   runs: TerminalRun[];
   text: string;
@@ -104,9 +132,10 @@ function appendRun(input: {
   style: TextStyle;
   foregroundColor: string;
   customGlyph: TerminalCustomGlyph | null;
+  symbolFont: boolean;
   col: number;
 }): void {
-  const renderKind = input.customGlyph ? "custom-glyph" : "text";
+  const renderKind = resolveRenderKind(input);
   const previousRun = input.runs[input.runs.length - 1];
   if (
     previousRun &&
@@ -140,6 +169,10 @@ function appendRun(input: {
       renderKind: "custom-glyph",
       glyphs: [{ key: `${input.col}:${input.text}`, offset: 0, glyph: input.customGlyph }],
     });
+    return;
+  }
+  if (input.symbolFont) {
+    input.runs.push({ ...baseRun, renderKind: "symbol-font" });
     return;
   }
   input.runs.push({ ...baseRun, renderKind: "text" });
@@ -194,6 +227,7 @@ function buildRowModel(input: {
     const resolvedStyle = input.resolver.resolve(cell);
     const cellCount = terminalCellCount(input.cells, col, text);
     const customGlyph = resolveTerminalCustomGlyph(text);
+    const symbolFont = !customGlyph && isNerdFontPrivateUseSymbol(text);
     const selection = input.selection;
     let styleKey = resolvedStyle.key;
     let style = resolvedStyle.style;
@@ -223,12 +257,13 @@ function buildRowModel(input: {
       style,
       foregroundColor,
       customGlyph,
+      symbolFont,
       col,
     });
     hash = hashStringPart(hash, text);
     hash = hashStringPart(hash, String(cellCount));
     hash = hashStringPart(hash, styleKey);
-    hash = hashStringPart(hash, customGlyph ? "custom-glyph" : "text");
+    hash = hashStringPart(hash, resolveRenderKind({ customGlyph, symbolFont }));
 
     if (cellCount > 1) {
       col += 1;

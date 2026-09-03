@@ -35,6 +35,7 @@ import {
   type TerminalRun,
 } from "./terminal-row-model";
 import type { TerminalSelectionRange } from "./terminal-selection";
+import { BUNDLED_NERD_SYMBOLS_FONT_FAMILY } from "../runtime/terminal-font";
 
 const MEASURE_TEXT = "mmmmmmmmmm";
 const DEFAULT_FONT_SIZE = 12;
@@ -112,8 +113,12 @@ function TerminalGridRun({ run, cellWidth, cellHeight, textStyle }: TerminalGrid
     [cellHeight, cellWidth, run.cellCount, run.style.backgroundColor],
   );
   const runTextStyle = useMemo<StyleProp<TextStyle>>(
-    () => [textStyle, run.style],
-    [run.style, textStyle],
+    () => [
+      textStyle,
+      run.style,
+      run.renderKind === "symbol-font" && { fontFamily: BUNDLED_NERD_SYMBOLS_FONT_FAMILY },
+    ],
+    [run.renderKind, run.style, textStyle],
   );
 
   return (

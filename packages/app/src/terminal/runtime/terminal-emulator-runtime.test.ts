@@ -590,7 +590,7 @@ describe("terminal-emulator-runtime", () => {
 
     runtime.setFont({ fontFamily: "  Menlo  ", fontSize: 18 });
 
-    expect(terminal.options?.fontFamily).toBe("Menlo");
+    expect(terminal.options?.fontFamily).toMatch(/^Menlo, OttoNerdSymbols, /);
     expect(terminal.options?.fontSize).toBe(18);
     expect(fitAndEmitResize).toHaveBeenCalledWith({
       forceRefresh: true,

@@ -1475,7 +1475,13 @@ export default function RootLayout() {
   // gutter-press test in the web stream strategy has no real gutter to measure.
   // No-op on native.
   useEffect(() => installWebScrollbarStyles(), []);
-  const [fontsLoaded] = useFonts({ Inter_400Regular, JetBrainsMono_400Regular });
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    JetBrainsMono_400Regular,
+    // Nerd Fonts v3.5.1, Symbols Only (MIT). The terminal resolves this after
+    // its text face so external CLIs' PUA icons work without host setup.
+    OttoNerdSymbols: require("../../assets/fonts/SymbolsNerdFontMono-Regular.ttf"),
+  });
 
   if (!fontsLoaded) {
     return null;
