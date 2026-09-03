@@ -102,7 +102,7 @@ import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { useMoveChatMenu } from "@/workspace/use-move-chat-menu";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
-import { useBrowserStore } from "@/stores/browser-store";
+import { useBrowserStore } from "@/desktop/browser/store";
 import { ArtifactOpenMenu } from "@/components/artifacts/artifact-open-menu";
 import { panelTargetSupportsHost } from "@/plugins/workspace-panels/locations";
 import {

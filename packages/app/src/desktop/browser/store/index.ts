@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BrowserAutomationBrowserIdSchema } from "@otto-code/protocol/browser-automation/rpc-schemas";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
@@ -107,6 +108,28 @@ export const useBrowserStore = create<BrowserStoreState>()(
     },
   ),
 );
+
+/**
+ * Browser panes create webviews as a mount side effect. Wait for the persisted
+ * browser records before mounting one, otherwise its fallback URL can win the
+ * race against hydration and overwrite the URL we meant to restore.
+ */
+export function useBrowserStoreHydrated(): boolean {
+  const [hasHydrated, setHasHydrated] = useState(() => useBrowserStore.persist.hasHydrated());
+
+  useEffect(() => {
+    if (useBrowserStore.persist.hasHydrated()) {
+      setHasHydrated(true);
+      return;
+    }
+
+    return useBrowserStore.persist.onFinishHydration(() => {
+      setHasHydrated(true);
+    });
+  }, []);
+
+  return hasHydrated;
+}
 
 export function getBrowserRecord(browserId: string): BrowserRecord | null {
   const normalizedBrowserId = trimNonEmpty(browserId);

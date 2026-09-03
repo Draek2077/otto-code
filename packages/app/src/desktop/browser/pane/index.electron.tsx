@@ -58,6 +58,7 @@ import {
   normalizeWorkspaceBrowserUrl,
   RESPONSIVE_BROWSER_VIEWPORT,
   useBrowserStore,
+  useBrowserStoreHydrated,
 } from "@/desktop/browser/store";
 import {
   applyInactiveBrowserWebviewViewport,
@@ -663,22 +664,38 @@ function rememberResolvedBrowserWebviewSize(browserId: string, webview: HTMLElem
   rememberBrowserWebviewSize({ browserId, width: bounds.width, height: bounds.height });
 }
 
-// eslint-disable-next-line complexity
-export function BrowserPane({
-  browserId,
-  serverId,
-  workspaceId,
-  cwd,
-  isInteractive,
-  onFocusPane,
-}: {
+interface BrowserPaneProps {
   browserId: string;
   serverId: string;
   workspaceId: string;
   cwd: string | null;
   isInteractive?: boolean;
   onFocusPane?: () => void;
-}) {
+}
+
+export function BrowserPane(props: BrowserPaneProps) {
+  const hasHydratedBrowserStore = useBrowserStoreHydrated();
+
+  if (!hasHydratedBrowserStore) {
+    return (
+      <View style={styles.restoring}>
+        <LoadingSpinner />
+      </View>
+    );
+  }
+
+  return <BrowserPaneContents {...props} />;
+}
+
+// eslint-disable-next-line complexity
+function BrowserPaneContents({
+  browserId,
+  serverId,
+  workspaceId,
+  cwd,
+  isInteractive,
+  onFocusPane,
+}: BrowserPaneProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const browser = useBrowserStore((state) => state.browsersById[browserId] ?? null);
@@ -2156,6 +2173,12 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
     minHeight: 0,
+    backgroundColor: theme.colors.surface0,
+  },
+  restoring: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: theme.colors.surface0,
   },
   chromeRow: {

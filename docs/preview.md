@@ -141,12 +141,12 @@ they do and must survive future changes:
 A preview tab is a normal Otto browser tab with extra bookkeeping, not a
 separate tab type:
 
-| Field (`packages/app/src/stores/browser-store/state.ts`) | Purpose                                                                                                                                        |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `isPreview: true`                                        | Tab icon is always the Play icon instead of the page favicon, so a preview tab is visually unmistakable from a tab the user opened themselves. |
-| `previewServerName`, `previewCwd`                        | The `.claude/launch.json` entry and working directory needed to restart the server after a daemon or app restart.                              |
-| `previewServerId`                                        | The running server's id (or `ext:<port>` when Otto detected an already-running server on that port instead of one it spawned).                 |
-| `previewStatus`                                          | `idle` \| `starting` \| `ready` \| `error` \| `needs-start` - drives the tab's watermark/spinner until the server responds.                    |
+| Field (`packages/app/src/desktop/browser/store/state.ts`) | Purpose                                                                                                                                        |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `isPreview: true`                                         | Tab icon is always the Play icon instead of the page favicon, so a preview tab is visually unmistakable from a tab the user opened themselves. |
+| `previewServerName`, `previewCwd`                         | The `.claude/launch.json` entry and working directory needed to restart the server after a daemon or app restart.                              |
+| `previewServerId`                                         | The running server's id (or `ext:<port>` when Otto detected an already-running server on that port instead of one it spawned).                 |
+| `previewStatus`                                           | `idle` \| `starting` \| `ready` \| `error` \| `needs-start` - drives the tab's watermark/spinner until the server responds.                    |
 
 What this buys you, concretely:
 

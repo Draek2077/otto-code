@@ -6,6 +6,7 @@ import {
   createBrowserRecord,
   normalizeBrowserIndexState,
   normalizeBrowserUrl,
+  rehydrateBrowserRecord,
   removeBrowserFromIndex,
   sanitizeBrowsersForPersist,
 } from "./state";
@@ -80,6 +81,28 @@ describe("createBrowserRecord", () => {
 
     expect(record.isPreview).toBe(true);
     expect(record.previewServerId).toBe("srv_1");
+  });
+});
+
+describe("rehydrateBrowserRecord", () => {
+  it("keeps the last URL from the retired browser store", () => {
+    const original = createBrowserRecord({
+      browserId: "b1",
+      initialUrl: "https://otto-code.me/docs",
+      now: 1000,
+    });
+    const persisted = sanitizeBrowsersForPersist({
+      browsersById: {
+        b1: { ...original, isLoading: true, lastError: "connection refused" },
+      },
+    });
+    const { viewport: _legacyViewport, ...legacyRecord } = persisted.browsersById.b1!;
+    const record = rehydrateBrowserRecord("b1", legacyRecord);
+
+    expect(record.url).toBe("https://otto-code.me/docs");
+    expect(record.isLoading).toBe(false);
+    expect(record.lastError).toBe(null);
+    expect(record.viewport).toEqual({ mode: "responsive" });
   });
 });
 

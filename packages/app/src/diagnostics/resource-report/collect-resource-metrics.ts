@@ -8,7 +8,7 @@
 import { queryClient } from "@/data/query-client";
 import { isWeb } from "@/constants/platform";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { useBrowserStore } from "@/stores/browser-store";
+import { useBrowserStore } from "@/desktop/browser/store";
 import { useContextUsageCacheStore } from "@/stores/context-usage-cache-store";
 import { useDownloadStore } from "@/stores/download-store";
 import { useDraftStore } from "@/stores/draft-store";

@@ -16,7 +16,7 @@ import {
 } from "@/screens/workspace/terminals/state";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
-import { createWorkspaceBrowser } from "@/stores/browser-store";
+import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { markScriptTerminalPending } from "@/stores/script-terminal-pending-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";

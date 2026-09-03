@@ -29,7 +29,7 @@ import type { PreviewConfiguredServer, PreviewRunningServer } from "@otto-code/p
 import { useSessionStore } from "@/stores/session-store";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
-import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
+import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
 import {
   usePreviewRunningServersStore,
   useHasRunningPreviewServer,
