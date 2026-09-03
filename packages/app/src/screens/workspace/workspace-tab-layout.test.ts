@@ -3,7 +3,6 @@ import {
   computeWorkspaceTabLayout,
   computeWorkspaceTabRailWidth,
   retainWorkspaceTabMeasuredWidth,
-  TAB_ICON_ONLY_WIDTH,
 } from "@/screens/workspace/workspace-tab-layout";
 
 const metrics = {
@@ -99,23 +98,6 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.requiresHorizontalScrollFallback).toBe(true);
     expect(result.items.map((item) => item.width)).toEqual([96, 96, 96, 96]);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
-  });
-
-  it("uses icon-only chips when label compaction is active", () => {
-    const result = computeWorkspaceTabLayout({
-      viewportWidth: 400,
-      tabLabelWidths: [98, 98, 98, 98],
-      metrics,
-      compactLabels: true,
-    });
-
-    expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items).toEqual([
-      { width: TAB_ICON_ONLY_WIDTH, showLabel: false },
-      { width: TAB_ICON_ONLY_WIDTH, showLabel: false },
-      { width: TAB_ICON_ONLY_WIDTH, showLabel: false },
-      { width: TAB_ICON_ONLY_WIDTH, showLabel: false },
-    ]);
   });
 
   it("returns empty layout details when there are no tabs", () => {

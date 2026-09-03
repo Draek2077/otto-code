@@ -49,7 +49,6 @@ interface LayoutSegmentInput {
   items: StreamItem[];
   timingByAssistantId: Map<string, TurnTiming>;
   auxiliaryTurnFooter: TurnFooterHost | null;
-  hasAuxiliaryFooter: boolean;
   frameOrder: StreamFrameChildOrder;
   boundaryIndex: number | null;
   boundaryAboveItem: StreamItem | null;
@@ -270,7 +269,6 @@ function layoutSegment(input: LayoutSegmentInput): StreamLayoutItem[] {
       item,
       aboveItem,
       belowItem,
-      hasFooterBelow: completedFooter !== null || (input.hasAuxiliaryFooter && belowItem === null),
     });
 
     return {
@@ -337,7 +335,6 @@ export function layoutStream(input: StreamLayoutInput): StreamLayout {
         items: input.history,
         timingByAssistantId: input.timingByAssistantId,
         auxiliaryTurnFooter,
-        hasAuxiliaryFooter,
         frameOrder,
         boundaryIndex: historyBoundaryIndex,
         boundaryAboveItem: null,
@@ -357,7 +354,6 @@ export function layoutStream(input: StreamLayoutInput): StreamLayout {
     items: input.liveHead,
     timingByAssistantId: input.timingByAssistantId,
     auxiliaryTurnFooter,
-    hasAuxiliaryFooter,
     frameOrder,
     boundaryIndex: liveHeadBoundaryIndex,
     boundaryAboveItem: historyBoundaryItem,

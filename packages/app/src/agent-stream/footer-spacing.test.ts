@@ -90,24 +90,24 @@ function layoutFor(input: { platform: "web" | "native"; isTurnActive: boolean })
 
 describe("turn footer spacing", () => {
   it.each(["web", "native"] as const)(
-    "compacts the last assistant against the completed footer on %s",
+    "keeps the last assistant rounded above the completed footer on %s",
     (platform) => {
       const { assistant, layout } = layoutFor({ platform, isTurnActive: false });
       const assistantLayout = layout.history.find((item) => item.item.id === assistant.id);
 
       expect(layout.auxiliaryTurnFooter?.itemId).toBe(assistant.id);
-      expect(assistantLayout?.assistantSpacing).toBe("compactBottom");
+      expect(assistantLayout?.assistantSpacing).toBe("default");
     },
   );
 
   it.each(["web", "native"] as const)(
-    "keeps the same compact edge while the footer is running on %s",
+    "keeps the last assistant rounded while the footer is running on %s",
     (platform) => {
       const { assistant, layout } = layoutFor({ platform, isTurnActive: true });
       const assistantLayout = layout.history.find((item) => item.item.id === assistant.id);
 
       expect(layout.auxiliaryTurnFooter).toBeNull();
-      expect(assistantLayout?.assistantSpacing).toBe("compactBottom");
+      expect(assistantLayout?.assistantSpacing).toBe("default");
     },
   );
 
@@ -117,7 +117,7 @@ describe("turn footer spacing", () => {
     ["native", false],
     ["native", true],
   ] as const)(
-    "compacts both edges of the final split paragraph on %s when active=%s",
+    "rounds the final split paragraph below the turn footer on %s when active=%s",
     (platform, isTurnActive) => {
       const strategy = strategyFor(platform);
       const first = assistantBlock("first", 0);
@@ -133,7 +133,7 @@ describe("turn footer spacing", () => {
       const lastLayout = layout.liveHead.find((item) => item.item.id === last.id);
 
       expect(firstLayout?.assistantSpacing).toBe("compactBottom");
-      expect(lastLayout?.assistantSpacing).toBe("compactBoth");
+      expect(lastLayout?.assistantSpacing).toBe("compactTop");
     },
   );
 });

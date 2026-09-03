@@ -14,11 +14,11 @@ import {
 } from "@/screens/workspace/workspace-tab-icon";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
-import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import type { ClearableSubagentRow } from "./clear-completed-subagents";
 import type { SubagentRow } from "./select";
 import {
   buildSubagentRowPresentationData,
+  buildSubagentPillPresentation,
   formatCompactTokenCount,
   formatSubagentCurrentTool,
   formatSubagentElapsed,
@@ -60,14 +60,13 @@ export function SubagentsPillTrack(props: SubagentsTrackProps): ReactElement | n
 
   if (rows.length === 0) return null;
 
-  const segmentText = t("subagents.pillLabelMany", { count: rows.length });
-  const segments = [{ bucket: aggregateBucket(rows), text: segmentText }];
+  const pill = buildSubagentPillPresentation(t, rows);
   return (
     <ComposerTrackPill
       testID="subagents-pill-track"
-      segments={segments}
+      segments={pill.segments}
       panelTitle={t("subagents.title")}
-      accessibilityLabel={t("subagents.title") + `: ${segmentText}`}
+      accessibilityLabel={t("subagents.title") + `: ${pill.accessibilityLabel}`}
     >
       {completed.length > 0 ? (
         <ComposerTrackActions>
@@ -101,14 +100,6 @@ export function SubagentsPillTrack(props: SubagentsTrackProps): ReactElement | n
       ))}
     </ComposerTrackPill>
   );
-}
-
-function aggregateBucket(rows: readonly SubagentRow[]): SidebarStateBucket | null {
-  const buckets = new Set(rows.map((row) => buildSubagentRowPresentationData(row).statusBucket));
-  if (buckets.has("failed") || buckets.has("attention")) return "failed";
-  if (buckets.has("needs_input")) return "needs_input";
-  if (buckets.has("running")) return "running";
-  return null;
 }
 
 function SubagentsPillRow({
@@ -152,6 +143,19 @@ function SubagentsPillRow({
   // offer a timeline/tab, but they are not independent Otto runtimes to stop,
   // detach, or archive through the managed-agent APIs.
   const allowManagedAction = row.kind === "otto";
+  const managedAction = running
+    ? {
+        label: t("subagents.stopTooltip"),
+        testID: `subagents-pill-stop-${row.id}`,
+        icon: "stop" as const,
+        onPress: stop,
+      }
+    : {
+        label: t("subagents.archiveTooltip"),
+        testID: `subagents-pill-archive-${row.id}`,
+        icon: "archive" as const,
+        onPress: archive,
+      };
 
   return (
     <ComposerTrackRow
@@ -192,15 +196,14 @@ function SubagentsPillRow({
               pointerEvents={active || isNative || isCompact ? "auto" : "none"}
             >
               {allowDetach ? (
-                <PillAction label={t("subagents.detachTooltip")} icon="detach" onPress={detach} />
-              ) : null}
-              {allowManagedAction ? (
                 <PillAction
-                  label={running ? t("subagents.stopTooltip") : t("subagents.archiveTooltip")}
-                  icon={running ? "stop" : "archive"}
-                  onPress={running ? stop : archive}
+                  label={t("subagents.detachTooltip")}
+                  testID={`subagents-pill-detach-${row.id}`}
+                  icon="detach"
+                  onPress={detach}
                 />
               ) : null}
+              {allowManagedAction ? <PillAction {...managedAction} /> : null}
             </View>
           ) : null}
         </>
@@ -211,10 +214,12 @@ function SubagentsPillRow({
 
 function PillAction({
   label,
+  testID,
   icon,
   onPress,
 }: {
   label: string;
+  testID: string;
   icon: "archive" | "detach" | "stop";
   onPress: () => void;
 }): ReactElement {
@@ -224,6 +229,7 @@ function PillAction({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={label}
+          testID={testID}
           onPress={onPress}
           style={styles.actionButton}
           hitSlop={8}

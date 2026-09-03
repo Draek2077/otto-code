@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { i18n } from "@/i18n/i18next";
 import type { OttoSubagentRow, ProviderSubagentRow, SubagentRow } from "./select";
 import {
   buildSubagentRowPresentationData,
+  buildSubagentPillPresentation,
   formatCompactTokenCount,
   countFinishedSubagents,
   formatHeaderLabel,
@@ -38,6 +40,36 @@ function row(overrides: Partial<OttoSubagentRow> & Pick<OttoSubagentRow, "id">):
     personalitySpinner: overrides.personalitySpinner,
   };
 }
+
+describe("buildSubagentPillPresentation", () => {
+  beforeAll(async () => {
+    if (!i18n.isInitialized) {
+      await i18n.init();
+    }
+    await i18n.changeLanguage("en");
+  });
+
+  const pill = (rows: SubagentRow[]) => buildSubagentPillPresentation(i18n.t, rows);
+
+  it("uses the singular label for one completed subagent", () => {
+    expect(pill([row({ id: "one" })])).toEqual({
+      segments: [{ bucket: null, text: "1 subagent" }],
+      accessibilityLabel: "1 subagent",
+    });
+  });
+
+  it("keeps every active state visible instead of collapsing to the most urgent one", () => {
+    expect(
+      pill([row({ id: "failed", status: "error" }), row({ id: "running", status: "running" })]),
+    ).toEqual({
+      segments: [
+        { bucket: "failed", text: "1 failed" },
+        { bucket: "running", text: "1 working" },
+      ],
+      accessibilityLabel: "1 failed, 1 working",
+    });
+  });
+});
 
 describe("formatHeaderLabel", () => {
   it("uses singular 'active sub-agent' for a single active row", () => {

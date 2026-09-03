@@ -134,21 +134,39 @@ export async function seedParentWithCrossWorkspaceSubagent(
  * its own whenever a row navigates away, so a flow that comes back to the parent reopens it.
  */
 export async function openSubagentsTrack(page: Page): Promise<void> {
-  const panel = page.getByTestId("subagents-track-header-panel");
-  if ((await panel.count()) === 0) {
-    await page.getByTestId("subagents-track-header").click();
+  const pillTrigger = page.getByTestId("subagents-pill-track");
+  if ((await pillTrigger.count()) > 0) {
+    const panel = page.getByTestId("subagents-pill-track-panel");
+    if ((await panel.count()) === 0) {
+      await pillTrigger.click();
+    }
+    await expect(panel).toBeVisible({ timeout: 30_000 });
+    return;
   }
-  await expect(panel).toBeVisible({ timeout: 30_000 });
+
+  // Panels are an inline expander, not a popover. React Native Web does not
+  // reliably expose this Pressable's testID, so target its accessible label.
+  const panelTrigger = page.getByRole("button", { name: /sub-agent/i });
+  await expect(panelTrigger).toBeVisible({ timeout: 30_000 });
+  await panelTrigger.click();
 }
 
 export async function expectSubagentRowVisible(page: Page, childId: string): Promise<void> {
-  await expect(page.getByTestId(`subagents-track-row-${childId}`)).toBeVisible({
+  await expect(
+    page.locator(
+      `[data-testid="subagents-track-row-${childId}"], [data-testid="subagents-pill-row-${childId}"]`,
+    ),
+  ).toBeVisible({
     timeout: 30_000,
   });
 }
 
 export async function expectSubagentRowGone(page: Page, childId: string): Promise<void> {
-  await expect(page.getByTestId(`subagents-track-row-${childId}`)).toHaveCount(0, {
+  await expect(
+    page.locator(
+      `[data-testid="subagents-track-row-${childId}"], [data-testid="subagents-pill-row-${childId}"]`,
+    ),
+  ).toHaveCount(0, {
     timeout: 30_000,
   });
 }
@@ -295,11 +313,15 @@ function archiveRequestId(message: WebSocketMessage, subagentId: string): string
 }
 
 export async function detachSubagentFromTrack(page: Page, childId: string): Promise<void> {
-  const row = page.getByTestId(`subagents-track-row-${childId}`);
+  const pillRow = page.getByTestId(`subagents-pill-row-${childId}`);
+  const isPill = (await pillRow.count()) > 0;
+  const row = isPill ? pillRow : page.getByTestId(`subagents-track-row-${childId}`);
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.hover();
 
-  const detachButton = page.getByTestId(`subagents-track-detach-${childId}`);
+  const detachButton = page.getByTestId(
+    isPill ? `subagents-pill-detach-${childId}` : `subagents-track-detach-${childId}`,
+  );
   await expect(detachButton).toBeVisible({ timeout: 30_000 });
   await detachButton.click();
 

@@ -17,15 +17,15 @@ export function getAssistantBlockSpacing(params: {
   item: StreamItem;
   aboveItem: StreamItem | null | undefined;
   belowItem: StreamItem | null | undefined;
-  hasFooterBelow?: boolean;
 }): "default" | "compactTop" | "compactBottom" | "compactBoth" {
   if (params.item.kind !== "assistant_message") {
     return "default";
   }
   const compactTop = isSameAssistantBlockGroup({ item: params.item, other: params.aboveItem });
-  const compactBottom =
-    params.hasFooterBelow ||
-    isSameAssistantBlockGroup({ item: params.item, other: params.belowItem });
+  // Only another segment of the same reply shares this bubble's lower edge.
+  // A turn footer follows the bubble; it must not square off the final outer
+  // corners just to sit nearby.
+  const compactBottom = isSameAssistantBlockGroup({ item: params.item, other: params.belowItem });
   if (compactTop && compactBottom) return "compactBoth";
   if (compactTop) return "compactTop";
   if (compactBottom) return "compactBottom";

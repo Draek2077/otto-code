@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { RetainedPanel } from "@/components/retained-panel";
 import { useModifiedPanelTabIds } from "@/panels/panel-instance-attributes";
+import { PaneSurfaceProvider, type PaneSurface } from "@/panels/pane-context";
 import {
   WorkspacePaneContent,
   type WorkspacePaneContentModel,
@@ -14,6 +15,8 @@ import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import { RenderProfile } from "@/utils/render-profiler";
 
 interface WorkspacePanelHostProps {
+  /** The physical host owns the visual surface inherited by every mounted pane. */
+  surface?: PaneSurface;
   paneId: string;
   tabs: WorkspaceTabDescriptor[];
   activeTabId: string | null;
@@ -93,6 +96,7 @@ function useStableTabs(tabs: WorkspaceTabDescriptor[]) {
 
 /** Mounts panel implementations behind the shared host contract and retains modified tabs. */
 export function WorkspacePanelHost({
+  surface = "workspace",
   paneId,
   tabs,
   activeTabId,
@@ -129,21 +133,25 @@ export function WorkspacePanelHost({
     [mountedTabIds, tabIds],
   );
 
-  return mountedIds.map((tabId) => {
-    const tab = stableTabs.get(tabId);
-    if (!tab) return null;
-    const visible = tabId === activeTabId;
-    return (
-      <MountedTab
-        key={tabId}
-        tab={tab}
-        paneId={paneId}
-        visible={visible}
-        interactive={isPaneFocused && visible}
-        isWorkspaceFocused={isWorkspaceFocused}
-        onFocusPane={onFocusPane}
-        buildPaneContentModel={buildPaneContentModel}
-      />
-    );
-  });
+  return (
+    <PaneSurfaceProvider surface={surface}>
+      {mountedIds.map((tabId) => {
+        const tab = stableTabs.get(tabId);
+        if (!tab) return null;
+        const visible = tabId === activeTabId;
+        return (
+          <MountedTab
+            key={tabId}
+            tab={tab}
+            paneId={paneId}
+            visible={visible}
+            interactive={isPaneFocused && visible}
+            isWorkspaceFocused={isWorkspaceFocused}
+            onFocusPane={onFocusPane}
+            buildPaneContentModel={buildPaneContentModel}
+          />
+        );
+      })}
+    </PaneSurfaceProvider>
+  );
 }

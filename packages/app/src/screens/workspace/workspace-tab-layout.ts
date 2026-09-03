@@ -12,16 +12,11 @@ export const TAB_HORIZONTAL_PADDING = 8;
 // The chip's icon-to-label gap (theme.spacing[1] in styles.tab). Part of the
 // chrome width, so label room is over-estimated without it.
 export const TAB_CONTENT_GAP = 4;
-// Matches the `xs` tab label in workspace-desktop-tabs-row.tsx. Keep this
+// Matches the `sm` tab label in workspace-desktop-tabs-row.tsx. Keep this
 // estimate aligned with the rendered type so tabs do not reserve phantom width.
-export const TAB_ESTIMATED_CHAR_WIDTH = 6;
+export const TAB_ESTIMATED_CHAR_WIDTH = 7;
 export const TAB_CLOSE_BUTTON_WIDTH = 22;
 export const TAB_MAX_WIDTH = 200;
-// Once labels no longer fit across the strip, chips keep their icon, close
-// affordance, and horizontal padding. This is the last readable horizontal
-// shape before tabs themselves have to move into the overflow menu.
-export const TAB_ICON_ONLY_WIDTH =
-  TAB_ICON_WIDTH + TAB_HORIZONTAL_PADDING * 2 + TAB_CLOSE_BUTTON_WIDTH;
 // The narrowest a horizontal tab chip is allowed to get before the strip stops
 // squeezing and starts overflowing tabs into the menu instead. Wide enough to
 // keep the icon plus a few characters of label readable (icon + padding + close
@@ -51,8 +46,6 @@ export interface WorkspaceTabLayoutInput {
   viewportWidth: number;
   tabLabelWidths: number[];
   metrics: WorkspaceTabLayoutMetrics;
-  /** The row could not keep every tab at its readable labelled minimum. */
-  compactLabels?: boolean;
 }
 
 export interface WorkspaceTabLayoutItem {
@@ -100,16 +93,6 @@ export function computeWorkspaceTabLayout(
     input.metrics.tabContentGap +
     input.metrics.tabHorizontalPadding * 2 +
     input.metrics.closeButtonWidth;
-  if (input.compactLabels) {
-    return {
-      items: input.tabLabelWidths.map(() => ({
-        width: TAB_ICON_ONLY_WIDTH,
-        showLabel: false,
-      })),
-      closeButtonPolicy: "all",
-      requiresHorizontalScrollFallback: availableTabsWidth < TAB_ICON_ONLY_WIDTH * tabCount,
-    };
-  }
   const naturalWidths = input.tabLabelWidths.map((labelWidth) =>
     clamp(tabChromeWidth + labelWidth, input.metrics.minTabWidth, input.metrics.maxTabWidth),
   );

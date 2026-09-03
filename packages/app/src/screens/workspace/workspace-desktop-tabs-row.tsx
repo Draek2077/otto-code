@@ -1360,7 +1360,6 @@ function useWorkspaceTabOverflow({
   visibleTabs: WorkspaceDesktopTabRowItem[];
   hiddenTabs: WorkspaceDesktopTabRowItem[];
   hasHiddenTabs: boolean;
-  compactLabels: boolean;
   /** Width to reserve for the overflow control (0 when no tabs are hidden). */
   overflowReservedWidth: number;
   handleSelectHiddenTab: (tabId: string) => void;
@@ -1373,10 +1372,6 @@ function useWorkspaceTabOverflow({
     contentWidth > 0
       ? Math.max(0, contentWidth - ORIENTATION_TOGGLE_RESERVED_WIDTH - toolsStripWidth - 8)
       : 0;
-  // Preserve labels for as long as every tab can retain its readable minimum.
-  // Once that is no longer possible, compact the visible tab chips. Overflow
-  // continues to use its established capacity and selection behavior.
-  const compactLabels = availableWidth > 0 && availableWidth < tabs.length * TAB_MIN_WIDTH;
   const cap = computeVisibleTabCount({
     totalTabs: tabs.length,
     availableWidth,
@@ -1420,7 +1415,6 @@ function useWorkspaceTabOverflow({
     visibleTabs: split.visible,
     hiddenTabs: split.hidden,
     hasHiddenTabs,
-    compactLabels,
     overflowReservedWidth: hasHiddenTabs ? TAB_OVERFLOW_CONTROL_WIDTH : 0,
     handleSelectHiddenTab,
   };
@@ -1513,11 +1507,10 @@ export function WorkspaceDesktopTabsRow({
     updateMeasuredWidth(setTabsActionsWidth, event);
   }, []);
 
-  // Labels collapse on the visible chips once the existing tab-capacity
-  // calculation is under pressure. The active tab remains visible (see
-  // splitTabsForOverflow); the full list still drives pane facts and
-  // select-to-swap reordering.
-  const { visibleTabs, hiddenTabs, compactLabels, overflowReservedWidth, handleSelectHiddenTab } =
+  // The active tab remains visible (see splitTabsForOverflow); the full list
+  // still drives pane facts and select-to-swap reordering. Visible chips retain
+  // their readable labelled minimum; excess tabs belong in the overflow menu.
+  const { visibleTabs, hiddenTabs, overflowReservedWidth, handleSelectHiddenTab } =
     useWorkspaceTabOverflow({
       tabs,
       focusedTab,
@@ -1608,7 +1601,6 @@ export function WorkspaceDesktopTabsRow({
     tabLabelWidths,
     viewportWidthOverride: contentWidth > 0 ? contentWidth : null,
     metrics: layoutMetrics,
-    compactLabels,
   });
 
   const handleDragEnd = useCallback(
@@ -2374,9 +2366,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
-    // Tabs are compact navigation chrome. The smaller text leaves their
-    // centered pill geometry intact while giving the workspace more breathing room.
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     userSelect: "none",
   },

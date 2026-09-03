@@ -1,5 +1,7 @@
+import type { TFunction } from "i18next";
+import type { ComposerTrackPillSegment } from "@/composer/tracks";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
+import { deriveSidebarStateBucket, STATUS_BUCKET_ORDER } from "@/utils/sidebar-agent-state";
 import { formatDuration } from "@/utils/time";
 import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
 import type { SubagentRow } from "./select";
@@ -58,6 +60,73 @@ export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowP
       requiresAttention: false,
     }),
   };
+}
+
+type ActiveStatusBucket = Exclude<SidebarStateBucket, "done">;
+
+/** The sidebar's list order, minus the state that earns no pill mark. */
+const ACTIVE_STATUS_BUCKET_ORDER = STATUS_BUCKET_ORDER.filter(
+  (bucket): bucket is ActiveStatusBucket => bucket !== "done",
+);
+
+interface SubagentStatusCount {
+  bucket: ActiveStatusBucket;
+  count: number;
+}
+
+/** Everything the compact pill draws, including its spoken equivalent. */
+export interface SubagentPillPresentation {
+  segments: ComposerTrackPillSegment[];
+  accessibilityLabel: string;
+}
+
+/**
+ * Summarize the same normalized rows used by Otto's richer panel without
+ * collapsing a mixed fan-out to only its most urgent state. Each visible mark
+ * therefore stays paired with the count it describes.
+ */
+export function buildSubagentPillPresentation(
+  t: TFunction,
+  rows: readonly SubagentRow[],
+): SubagentPillPresentation {
+  const counts = summarizeSubagentStatus(rows);
+  if (counts.length === 0) {
+    const label = totalLabel(t, rows.length);
+    return { segments: [{ bucket: null, text: label }], accessibilityLabel: label };
+  }
+
+  const labels = counts.map(({ bucket, count }) => statusLabel(t, bucket, count));
+  return {
+    segments: counts.map(({ bucket }, index) => ({ bucket, text: labels[index] ?? "" })),
+    accessibilityLabel: labels.join(", "),
+  };
+}
+
+function statusLabel(t: TFunction, bucket: ActiveStatusBucket, count: number): string {
+  switch (bucket) {
+    case "running":
+      return t("subagents.pillLabelWorking", { count });
+    case "failed":
+      return t("subagents.pillLabelFailed", { count });
+    case "needs_input":
+      return count === 1
+        ? t("subagents.pillLabelNeedsInputOne")
+        : t("subagents.pillLabelNeedsInputMany", { count });
+    case "attention":
+      return t("subagents.pillLabelReadyToReview", { count });
+  }
+}
+
+function totalLabel(t: TFunction, total: number): string {
+  return total === 1 ? t("subagents.pillLabelOne") : t("subagents.pillLabelMany", { count: total });
+}
+
+function summarizeSubagentStatus(rows: readonly SubagentRow[]): SubagentStatusCount[] {
+  const buckets = rows.map((row) => buildSubagentRowPresentationData(row).statusBucket);
+  return ACTIVE_STATUS_BUCKET_ORDER.flatMap((bucket) => {
+    const count = buckets.filter((candidate) => candidate === bucket).length;
+    return count > 0 ? [{ bucket, count }] : [];
+  });
 }
 
 /**

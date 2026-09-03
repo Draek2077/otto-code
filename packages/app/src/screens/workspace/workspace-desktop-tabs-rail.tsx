@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -45,6 +46,7 @@ import type { WorkspaceTabMenuLabels } from "@/screens/workspace/workspace-tab-m
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useResizeHandleHighlight } from "@/components/use-resize-handle-highlight";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import type { TerminalProfile } from "@otto-code/protocol/messages";
 
 interface WorkspaceDesktopTabsRailProps {
@@ -182,6 +184,8 @@ export function WorkspaceDesktopTabsRail({
 }: WorkspaceDesktopTabsRailProps) {
   const { t } = useTranslation();
   const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: isWeb });
   // Reveals the hide-until-hover tools strip (see WorkspaceTabRowExtras'
   // rowHovered) while the pointer is anywhere over the rail - chips included -
   // mirroring the row, whose reveal region is the whole tab bar.
@@ -466,24 +470,32 @@ export function WorkspaceDesktopTabsRail({
           />
           <View pointerEvents="none" style={styles.headerBottomHairline} />
         </View>
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          <SortableInlineList
-            data={tabs}
-            keyExtractor={tabKeyExtractor}
-            useDragHandle
-            disabled={!externalDndContext && tabs.length < 2}
-            onDragEnd={handleDragEnd}
-            externalDndContext={externalDndContext}
-            activeId={activeDragTabId}
-            getItemData={getTabDragData}
-            renderItem={renderTab}
-            orientation="vertical"
-          />
-        </ScrollView>
+        <View style={styles.scrollRegion}>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            onLayout={scrollbar.onLayout}
+            onScroll={scrollbar.onScroll}
+            onContentSizeChange={scrollbar.onContentSizeChange}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={!isWeb}
+          >
+            <SortableInlineList
+              data={tabs}
+              keyExtractor={tabKeyExtractor}
+              useDragHandle
+              disabled={!externalDndContext && tabs.length < 2}
+              onDragEnd={handleDragEnd}
+              externalDndContext={externalDndContext}
+              activeId={activeDragTabId}
+              getItemData={getTabDragData}
+              renderItem={renderTab}
+              orientation="vertical"
+            />
+          </ScrollView>
+          {scrollbar.overlay}
+        </View>
       </View>
     </Animated.View>
   );
@@ -684,6 +696,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   scroll: {
     flex: 1,
+  },
+  scrollRegion: {
+    flex: 1,
+    minHeight: 0,
   },
   content: {
     // Left inset only - chips run flush to the rail's right edge so the active

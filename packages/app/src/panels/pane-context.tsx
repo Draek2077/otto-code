@@ -73,12 +73,7 @@ export function PaneProvider({
   value: PaneContextValue;
   children: ReactNode;
 }) {
-  const surface: PaneSurface = value.host === "explorer" ? "explorer" : "workspace";
-  return (
-    <PaneSurfaceContext.Provider value={surface}>
-      <PaneContext.Provider value={value}>{children}</PaneContext.Provider>
-    </PaneSurfaceContext.Provider>
-  );
+  return <PaneContext.Provider value={value}>{children}</PaneContext.Provider>;
 }
 
 /** Supplies the host-owned surface to standalone pane compositions. */

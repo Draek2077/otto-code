@@ -124,6 +124,7 @@ export function ExplorerSidebarDock({
           </WindowChromeSafeArea>
           <View style={styles.content}>
             <WorkspacePanelHost
+              surface="explorer"
               paneId={pane.id}
               tabs={tabs}
               activeTabId={activeTabId}

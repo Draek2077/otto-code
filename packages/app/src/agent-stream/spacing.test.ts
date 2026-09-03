@@ -74,16 +74,15 @@ describe("getAssistantBlockSpacing", () => {
     expect(getAssistantBlockSpacing({ item: a, aboveItem: null, belowItem: null })).toBe("default");
   });
 
-  it("compacts the bottom edge when the turn footer follows the assistant block", () => {
+  it("keeps the bottom edge rounded when the turn footer follows the assistant block", () => {
     const a = assistantBlock({ id: "a", blockGroupId: "group-1", blockIndex: 0 });
     expect(
       getAssistantBlockSpacing({
         item: a,
         aboveItem: null,
         belowItem: null,
-        hasFooterBelow: true,
       }),
-    ).toBe("compactBottom");
+    ).toBe("default");
   });
 
   it("returns compactTop when the item above is in the same block group", () => {
