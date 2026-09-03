@@ -6,7 +6,6 @@ import {
   CopyPlus,
   Download,
   FilePlus,
-  FileText,
   FolderOpen,
   FolderPlus,
   ListChevronsDownUp,
@@ -51,13 +50,12 @@ function optionalFileAction(
 interface FileActionsContextMenuContentProps {
   fileKind: "file" | "directory";
   fileExists?: boolean;
-  onOpenFile?: () => void;
+  /** Opens the file according to its source's preferred main/side placement. */
+  onEditFile?: () => void;
   onOpenToSide?: () => void;
   /** Rendered above the actions, separated: the explorer shows file size and
    *  modified time here. */
   header?: ReactNode;
-  /** Opens the file's tab in editor view - the same action the Changes menu offers. */
-  onEditFile?: () => void;
   onCopyPath?: () => void;
   onCopyRelativePath?: () => void;
   onReveal?: () => void;
@@ -83,10 +81,9 @@ interface FileActionsContextMenuContentProps {
 export function FileActionsContextMenuContent({
   fileKind,
   fileExists = true,
-  onOpenFile,
+  onEditFile,
   onOpenToSide,
   header,
-  onEditFile,
   onCopyPath,
   onCopyRelativePath,
   onReveal,
@@ -106,12 +103,12 @@ export function FileActionsContextMenuContent({
   const actions = useMemo<FileAction[]>(() => {
     const availableFile = fileKind === "file" && fileExists;
     const specs: Array<FileAction | null> = [
-      availableFile && onOpenFile
+      availableFile && onEditFile
         ? {
-            key: "open-file",
-            label: t("workspace.fileActions.openFile"),
-            icon: FileText,
-            onSelect: onOpenFile,
+            key: "edit-file",
+            label: t("workspace.fileActions.editFile"),
+            icon: SquarePen,
+            onSelect: onEditFile,
             group: "open",
           }
         : null,
@@ -146,15 +143,6 @@ export function FileActionsContextMenuContent({
             label: t("workspace.fileActions.collapseFolder"),
             icon: ListChevronsDownUp,
             onSelect: onCollapseFolder,
-          }
-        : null,
-      availableFile && onEditFile
-        ? {
-            key: "edit-file",
-            label: t("workspace.fileActions.editFile"),
-            icon: SquarePen,
-            onSelect: onEditFile,
-            group: "manage",
           }
         : null,
       onRename
@@ -253,7 +241,6 @@ export function FileActionsContextMenuContent({
     onEditFile,
     onNewFile,
     onNewFolder,
-    onOpenFile,
     onOpenToSide,
     onRename,
     onReveal,

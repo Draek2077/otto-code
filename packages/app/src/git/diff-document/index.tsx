@@ -3,6 +3,7 @@ import { withUnistyles } from "react-native-unistyles";
 import { RenderProfile } from "@/utils/render-profiler";
 import { createDiffPalette, retainDiffPalette } from "./palette";
 import { DiffSurface } from "./surface";
+import { StructuralDiffDocument } from "./structural-document";
 import type { DiffDocumentProps, DiffPalette } from "./types";
 
 export type { DiffDocumentProps, WorkingDiffMode } from "./types";
@@ -50,7 +51,11 @@ const StyledDiffDocument = withUnistyles(ThemedDiffDocument, (theme) => ({
 export function DiffDocument(props: DiffDocumentProps) {
   return (
     <RenderProfile id="DiffDocument">
-      <StyledDiffDocument {...props} />
+      {props.presentation === "structural" ? (
+        <StructuralDiffDocument {...props} />
+      ) : (
+        <StyledDiffDocument {...props} />
+      )}
     </RenderProfile>
   );
 }

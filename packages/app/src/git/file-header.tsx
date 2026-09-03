@@ -156,7 +156,7 @@ function FileHeaderMenu({
     <FileActionsContextMenuContent
       fileKind="file"
       fileExists={!file.isDeleted}
-      onOpenFile={onOpenFile ? openFile : undefined}
+      onEditFile={onOpenFile ? openFile : undefined}
       onOpenToSide={onOpenToSide ? openToSide : undefined}
       onCopyPath={onCopyPath ? copyPath : undefined}
       onCopyRelativePath={onCopyRelativePath ? copyRelativePath : undefined}

@@ -2057,6 +2057,7 @@ export function ChangesSurface({
         files={files}
         collapseState={collapseState}
         displayPreferences={sharedDisplayPreferences}
+        presentation={preferences.presentation}
         mode={workingMode}
       />
     </DiffBodyContent>

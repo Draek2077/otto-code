@@ -104,7 +104,6 @@ import {
 } from "@/components/file-explorer-entries";
 import { SolutionTreePane } from "@/solution/solution-tree-pane";
 import { useSolutionsQuery } from "@/solution/use-solution-queries";
-import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
 
 const SORT_OPTIONS: { value: SortOption }[] = [
   { value: "name" },
@@ -158,7 +157,7 @@ interface TreeRowItemProps {
   isSelected: boolean;
   loading: boolean;
   onEntryPress: (entry: ExplorerEntry) => void;
-  onEditEntry?: (entry: ExplorerEntry) => void;
+  onOpenEntry?: (entry: ExplorerEntry) => void;
   onSelectEntry: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void;
   onCopyRelativePath: (path: string) => void;
@@ -298,7 +297,7 @@ function TreeRowItem({
   isSelected,
   loading,
   onEntryPress,
-  onEditEntry,
+  onOpenEntry,
   onSelectEntry,
   onCopyPath,
   onCopyRelativePath,
@@ -337,8 +336,8 @@ function TreeRowItem({
   }, [entry, onSelectEntry]);
 
   const handleEdit = useCallback(() => {
-    onEditEntry?.(entry);
-  }, [entry, onEditEntry]);
+    onOpenEntry?.(entry);
+  }, [entry, onOpenEntry]);
   const accessibilityState = useMemo(() => ({ selected: isSelected }), [isSelected]);
 
   const pressableStyle = useCallback(
@@ -454,7 +453,7 @@ function TreeRowItem({
       </ContextMenuTrigger>
       <FileActionsContextMenuContent
         fileKind={entry.kind}
-        onEditFile={onEditEntry ? handleEdit : undefined}
+        onEditFile={onOpenEntry ? handleEdit : undefined}
         onCopyPath={handleCopy}
         onCopyRelativePath={handleCopyRelativePath}
         onReveal={onRevealEntry ? handleReveal : undefined}
@@ -494,7 +493,6 @@ export function FileExplorerPane({
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
-  const canEditFiles = useTextEditorFeature(serverId);
 
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
   const workspaceStateKey = useMemo(
@@ -711,19 +709,6 @@ export function FileExplorerPane({
       onOpenFile?.(entry.path);
     },
     [hasWorkspaceScope, onOpenFile],
-  );
-
-  // "Edit file" opens the same file tab the row press opens, but in editor view -
-  // matching the Changes pane's menu item.
-  const handleEditEntry = useCallback(
-    (entry: ExplorerEntry) => {
-      if (!hasWorkspaceScope) {
-        return;
-      }
-      selectExplorerEntry(entry.path);
-      onOpenFile?.(entry.path, { edit: true });
-    },
-    [hasWorkspaceScope, onOpenFile, selectExplorerEntry],
   );
 
   const handleOpenSolutionFile = useCallback(
@@ -1179,7 +1164,7 @@ export function FileExplorerPane({
           selectedEntryPath={selectedEntryPath}
           isDirectoryLoading={isDirectoryLoading}
           onEntryPress={handleEntryPress}
-          onEditEntry={canEditFiles ? handleEditEntry : undefined}
+          onOpenEntry={onOpenFile ? handleOpenFile : undefined}
           onSelectEntry={handleSelectEntry}
           onCopyPath={handleCopyPath}
           onCopyRelativePath={handleCopyRelativePath}
@@ -1208,16 +1193,16 @@ export function FileExplorerPane({
       handleDraftCommit,
       handleDuplicateEntry,
       handleEditCancel,
-      handleEditEntry,
       handleEntryPress,
+      handleOpenFile,
       handleNewEntry,
       handleRenameCommit,
       handleRenameEntry,
       handleRevealEntry,
       handleSelectEntry,
       isDirectoryLoading,
+      onOpenFile,
       onOpenFileToSide,
-      canEditFiles,
       fileManagerTarget,
       selectedEntryPath,
       effectiveOnAddToChat,
@@ -1679,7 +1664,7 @@ function TreeRowDispatcher({
   selectedEntryPath,
   isDirectoryLoading,
   onEntryPress,
-  onEditEntry,
+  onOpenEntry,
   onSelectEntry,
   onCopyPath,
   onCopyRelativePath,
@@ -1702,7 +1687,7 @@ function TreeRowDispatcher({
   selectedEntryPath: string | null;
   isDirectoryLoading: (path: string) => boolean;
   onEntryPress: (entry: ExplorerEntry) => void;
-  onEditEntry?: (entry: ExplorerEntry) => void;
+  onOpenEntry?: (entry: ExplorerEntry) => void;
   onSelectEntry: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void | Promise<void>;
   onCopyRelativePath: (path: string) => void | Promise<void>;
@@ -1735,7 +1720,7 @@ function TreeRowDispatcher({
       isSelected={isSelected}
       loading={loading}
       onEntryPress={onEntryPress}
-      onEditEntry={onEditEntry}
+      onOpenEntry={onOpenEntry}
       onSelectEntry={onSelectEntry}
       onCopyPath={onCopyPath}
       onCopyRelativePath={onCopyRelativePath}

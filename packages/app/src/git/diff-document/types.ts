@@ -1,9 +1,12 @@
 import type { ParsedDiffFile } from "@otto-code/protocol/messages";
 import type { InlineReviewActions } from "@/review";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
+import type { DiffPresentation } from "@/utils/diff-document";
 
 interface DiffDocumentBaseProps {
   files: ParsedDiffFile[];
+  /** The shared review presentation selected in Appearance. */
+  presentation?: DiffPresentation;
   displayPreferences: {
     layout: "unified" | "split";
     wrapLines: boolean;

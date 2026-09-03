@@ -189,6 +189,7 @@ function CommitDiffPanel() {
       <DiffDocument
         files={files}
         displayPreferences={panelPreferences.displayPreferences}
+        presentation={panelPreferences.preferences.presentation}
         mode={mode}
       />
     );
