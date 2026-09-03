@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Image } from "react-native";
 import { Globe, Play } from "@/components/icons/material-icons";
 import invariant from "tiny-invariant";
@@ -8,6 +8,7 @@ import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useBrowserStore } from "@/desktop/browser/store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { withIconSizeToken } from "@/components/icons/icon-size";
+import { getBrowserTabIconKind } from "./tab-icon-state";
 
 function getBrowserLabel(input: { title: string; url: string }): string {
   const title = input.title.trim();
@@ -25,17 +26,27 @@ function getBrowserLabel(input: { title: string; url: string }): string {
 
 function createBrowserTabIcon(input: { faviconUrl: string | null; isPreview: boolean }) {
   function BrowserTabIcon({ size, color }: { size: number; color?: string }) {
+    const [faviconFailed, setFaviconFailed] = useState(false);
     const source = useMemo(() => (input.faviconUrl ? { uri: input.faviconUrl } : undefined), []);
     const imageStyle = useMemo(() => ({ width: size, height: size, borderRadius: 3 }), [size]);
+    const iconKind = getBrowserTabIconKind({ ...input, faviconFailed });
+    const handleFaviconError = useCallback(() => setFaviconFailed(true), []);
 
     // Preview tabs always show Play, even once a favicon loads, so they stay
     // visually distinct from tabs the user opened themselves.
-    if (input.isPreview) {
+    if (iconKind === "preview") {
       return <Play size={size} color={color} />;
     }
 
-    if (input.faviconUrl) {
-      return <Image accessibilityIgnoresInvertColors source={source} style={imageStyle} />;
+    if (iconKind === "favicon") {
+      return (
+        <Image
+          accessibilityIgnoresInvertColors
+          onError={handleFaviconError}
+          source={source}
+          style={imageStyle}
+        />
+      );
     }
 
     return <Globe size={size} color={color} />;
