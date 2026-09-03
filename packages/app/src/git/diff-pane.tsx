@@ -2240,7 +2240,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingLeft: theme.spacing[2],
   },
   changesToolbarSidebar: {
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.background,
   },
   changesToolbarIdentity: {
     flex: 1,

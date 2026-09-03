@@ -2989,7 +2989,7 @@ const styles = StyleSheet.create((theme) => {
       backgroundColor: theme.colors.surfaceWorkspace,
     },
     containerExplorer: {
-      backgroundColor: theme.colors.surfaceSidebarPanel,
+      backgroundColor: theme.colors.background,
     },
     centerState: {
       flex: 1,

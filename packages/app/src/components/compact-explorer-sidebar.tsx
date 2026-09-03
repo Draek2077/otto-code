@@ -577,14 +577,14 @@ const PrTabContent = PullRequestContent;
 
 const styles = StyleSheet.create((theme) => ({
   mobileSidebar: {
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.background,
   },
   nativeDock: {
     position: "relative",
     height: "100%",
     minHeight: 0,
     overflow: "hidden",
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.background,
   },
   nativeDockContent: {
     position: "relative",

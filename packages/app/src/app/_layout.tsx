@@ -849,8 +849,8 @@ function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   // immediately).
   const explorerSidebarVisible = usePanelStore((state) => state.explorerSidebarVisible);
   // In focus mode the desktop tab row is the top strip under the window controls;
-  // its gutter retains surfaceSidebar, while the explorer uses the deeper
-  // sidebar-only surface. The caption strip follows whichever one is painted.
+  // its gutter retains surfaceSidebar, while Explorer is a single background
+  // canvas. The caption strip follows whichever one is painted.
   const focusModeTabStripVisible = usePanelStore((state) => state.focusModeTabStripVisible);
   // These routes deliberately use a borderless ScreenHeader so the page owns one continuous
   // surface. The native caption buttons still sit above that header, so their backing strip must
@@ -862,7 +862,7 @@ function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
     backgroundColor = theme.colors.surfaceSidebar;
   }
   if (explorerSidebarVisible) {
-    backgroundColor = theme.colors.surfaceSidebarPanel;
+    backgroundColor = theme.colors.background;
   }
   const foreground = theme.colors.foreground;
 

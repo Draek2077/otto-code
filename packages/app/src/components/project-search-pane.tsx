@@ -1603,11 +1603,9 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     // Collapsed, the row takes the panel's own surface and reads flat against
-    // the pane - the way a collapsed file reads in Changes, whose header row
-    // carries no fill of its own. It is painted rather than left transparent
-    // because these rows are sticky headers, and a transparent one would show
-    // the code well scrolling underneath it.
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    // Explorer is one canvas, but this sticky row still needs that exact canvas
+    // fill so scrolling code cannot show through it.
+    backgroundColor: theme.colors.background,
     paddingLeft: 10,
     paddingRight: theme.spacing[2],
     paddingVertical: WORKSPACE_FILE_ROW_VERTICAL_PADDING,

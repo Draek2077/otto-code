@@ -146,14 +146,14 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    // The dock owns the deepest Explorer layer, including its tab rail. The
-    // native caption strip follows this same token while Explorer is visible.
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    // Explorer is one uninterrupted canvas. Its tab rail, toolbars, and native
+    // caption strip all use the same background token rather than a panel fill.
+    backgroundColor: theme.colors.background,
   },
   tabRail: {
     position: "relative",
     flexShrink: 0,
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.background,
   },
   tabRailDivider: {
     position: "absolute",
@@ -166,6 +166,6 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.background,
   },
 }));
