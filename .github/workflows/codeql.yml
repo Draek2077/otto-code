@@ -17,7 +17,10 @@ jobs:
   analyze-javascript-typescript:
     name: Analyze JavaScript and TypeScript
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The initial repository scan exceeded 20 minutes while CodeQL was still
+    # analyzing the shipped TypeScript corpus. Keep a firm ceiling, but allow
+    # enough time for a complete result to replace legacy Default-setup data.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7.0.1
 
