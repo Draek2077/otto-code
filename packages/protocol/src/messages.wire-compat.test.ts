@@ -117,6 +117,36 @@ describe("wire schema compatibility", () => {
     });
   });
 
+  test("user timeline image references remain optional on the wire", () => {
+    expect(
+      AgentTimelineItemPayloadSchema.parse({
+        type: "user_message",
+        text: "old daemon shape",
+      }),
+    ).toEqual({ type: "user_message", text: "old daemon shape" });
+    expect(
+      AgentTimelineItemPayloadSchema.parse({
+        type: "user_message",
+        text: "new daemon shape",
+        images: [
+          {
+            path: "/otto/sent-attachments/image.png",
+            mimeType: "image/png",
+          },
+        ],
+      }),
+    ).toEqual({
+      type: "user_message",
+      text: "new daemon shape",
+      images: [
+        {
+          path: "/otto/sent-attachments/image.png",
+          mimeType: "image/png",
+        },
+      ],
+    });
+  });
+
   test("error timeline details are optional on the wire", () => {
     expect(
       AgentTimelineItemPayloadSchema.parse({

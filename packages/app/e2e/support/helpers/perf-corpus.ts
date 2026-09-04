@@ -78,7 +78,7 @@ export async function loadPerfCorpus(): Promise<PerfCorpusModule> {
   if (cached) {
     return cached;
   }
-  const repoRoot = path.resolve(__dirname, "../../../..");
+  const repoRoot = path.resolve(__dirname, "../../../../..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/perf-corpus.mjs")).href;
   cached = (await import(moduleUrl)) as PerfCorpusModule;
   return cached;

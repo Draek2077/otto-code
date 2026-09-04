@@ -11,6 +11,7 @@ import {
 } from "@/diagnostics/resource-report/performance-capture";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { useBottomSafeAreaPadding } from "@/hooks/use-bottom-safe-area-padding";
 import { resolveResourceBarLayout } from "@/components/client-resource-bar.layout";
 import { compactUp, SPACING } from "@/styles/theme";
 import { metricSeverity, type MetricSeverity } from "@/diagnostics/resource-report/metric-severity";
@@ -34,6 +35,7 @@ export function ClientResourceBar(): ReactElement | null {
   const capture = usePerformanceCapture();
   const isCompact = useIsCompactFormFactor();
   const isDeveloperMode = useIsDeveloperMode();
+  const bottomSafeAreaPadding = useBottomSafeAreaPadding();
   // Measured on the bar itself, so the strip reacts to the window rather than to
   // a breakpoint: a half-width desktop window gets the same treatment a small one
   // does. Padding is subtracted here because the layout estimate is content-only.
@@ -74,7 +76,7 @@ export function ClientResourceBar(): ReactElement | null {
 
   if (!running && samples === 0) {
     return (
-      <View style={styles.bar}>
+      <View style={[styles.bar, bottomSafeAreaPadding]}>
         <Text style={styles.offText}>
           Performance monitoring is off. Enable it in Settings › Diagnostics to record frame timing,
           retained state and daemon traffic.
@@ -85,7 +87,7 @@ export function ClientResourceBar(): ReactElement | null {
 
   if (!latest) {
     return (
-      <View style={styles.bar}>
+      <View style={[styles.bar, bottomSafeAreaPadding]}>
         <Text style={styles.offText}>Collecting the first resource sample…</Text>
       </View>
     );
@@ -124,7 +126,7 @@ export function ClientResourceBar(): ReactElement | null {
   const isShort = layout.labelMode === "short";
 
   return (
-    <View style={styles.bar} onLayout={handleBarLayout}>
+    <View style={[styles.bar, bottomSafeAreaPadding]} onLayout={handleBarLayout}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}

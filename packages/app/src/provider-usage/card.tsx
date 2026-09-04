@@ -143,11 +143,7 @@ const styles = StyleSheet.create((theme) => ({
   name: {
     flexShrink: 1,
     color: theme.colors.foreground,
-    // Explicit compact bump (not left to the ambient theme-patch scale).
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
   },
   headerSpacer: {
     flex: 1,
@@ -171,10 +167,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   statusLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
   },
   bars: {
     gap: theme.spacing[3],
@@ -190,31 +183,19 @@ const styles = StyleSheet.create((theme) => ({
   detailLabel: {
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
   },
   detailValue: {
     color: theme.colors.foreground,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
   },
   error: {
     color: theme.colors.palette.red[300],
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     lineHeight: theme.fontSize.xs * 1.4,
   },
   footer: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
   },
 }));

@@ -183,6 +183,8 @@ import {
   ProjectKnowledgeListResponseMessageSchema,
   ProjectKnowledgeGetRequestMessageSchema,
   ProjectKnowledgeGetResponseMessageSchema,
+  ProjectKnowledgeRootGetRequestMessageSchema,
+  ProjectKnowledgeRootGetResponseMessageSchema,
   ProjectKnowledgeCreateRequestMessageSchema,
   ProjectKnowledgeCreateResponseMessageSchema,
   ProjectKnowledgeApplyRequestMessageSchema,
@@ -1503,6 +1505,11 @@ const ToolCallTimelineItemPayloadSchema: z.ZodType<ToolCallTimelineItem, unknown
     ToolCallCanceledPayloadSchema,
   ]);
 
+const AgentTimelineImageAttachmentSchema = z.object({
+  path: z.string(),
+  mimeType: z.string(),
+});
+
 // zod-aot 0.20.4 miscompiles this as a nested discriminated union by omitting
 // the inner tool_call branch from the generated outer dispatch.
 export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknown> = z.union([
@@ -1511,6 +1518,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
     text: z.string(),
     messageId: z.string().optional(),
     clientMessageId: z.string().optional(),
+    images: z.array(AgentTimelineImageAttachmentSchema).optional(),
   }),
   z.object({
     type: z.literal("assistant_message"),
@@ -4639,6 +4647,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ContextPromptPreviewGetRequestMessageSchema,
   ProjectKnowledgeListRequestMessageSchema,
   ProjectKnowledgeGetRequestMessageSchema,
+  ProjectKnowledgeRootGetRequestMessageSchema,
   ProjectKnowledgeCreateRequestMessageSchema,
   ProjectKnowledgeApplyRequestMessageSchema,
   ProjectKnowledgeStatusRequestMessageSchema,
@@ -5297,6 +5306,10 @@ export const ServerInfoStatusPayloadSchema = z
         personalityMemory: z.boolean().optional(),
         // COMPAT(projectKnowledge): added in v0.8.5, drop the gate when daemon floor >= v0.8.5.
         projectKnowledge: z.boolean().optional(),
+        // COMPAT(projectKnowledgeDeferredRootBodies): added in v0.9.1, remove
+        // after 2027-03-04. A new client asks the catalog for root summaries
+        // and fetches the selected root body separately.
+        projectKnowledgeDeferredRootBodies: z.boolean().optional(),
         // COMPAT(projectKnowledgeRefinement): added in v0.8.19, drop the gate
         // when floor >= v0.8.19.
         projectKnowledgeRefinement: z.boolean().optional(),
@@ -9242,6 +9255,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ContextPromptPreviewGetResponseMessageSchema,
   ProjectKnowledgeListResponseMessageSchema,
   ProjectKnowledgeGetResponseMessageSchema,
+  ProjectKnowledgeRootGetResponseMessageSchema,
   ProjectKnowledgeCreateResponseMessageSchema,
   ProjectKnowledgeApplyResponseMessageSchema,
   ProjectKnowledgeStatusResponseMessageSchema,

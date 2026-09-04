@@ -13,21 +13,14 @@ export const settingsStyles = StyleSheet.create((theme) => ({
   },
   sectionTitle: {
     color: theme.colors.foregroundMuted,
-    // Explicit compact bump (not left to the ambient theme-patch scale).
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     marginBottom: theme.spacing[3],
     marginLeft: theme.spacing[1],
   },
   sectionHeaderTitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
   },
   sectionHeaderLink: {
@@ -37,10 +30,7 @@ export const settingsStyles = StyleSheet.create((theme) => ({
   },
   sectionHeaderLinkText: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
   },
   card: {
     backgroundColor: theme.colors.surface1,
@@ -102,26 +92,16 @@ export const settingsStyles = StyleSheet.create((theme) => ({
   },
   rowTitle: {
     color: theme.colors.foreground,
-    // Explicit compact bump (not left to the ambient theme-patch scale).
-    fontSize: {
-      xs: theme.fontSize.base + 2,
-      md: theme.fontSize.base,
-    },
+    fontSize: theme.fontSize.base,
   },
   rowHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
   },
   rowError: {
     color: theme.colors.statusDanger,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
   },
 }));

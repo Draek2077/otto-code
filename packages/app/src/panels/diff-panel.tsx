@@ -6,7 +6,8 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { PaneContentToolbar } from "@/components/ui/pane-content-toolbar";
+import { resolveCompactFontSize } from "@/appearance/apply";
+import { PaneContentToolbar, ToolbarControls } from "@/components/ui/pane-content-toolbar";
 import { isWeb } from "@/constants/platform";
 import { DiffDocument } from "@/git/diff-document";
 import { ChangesSurface, DiffLayoutToggle, resolveDiffLayout } from "@/git/diff-pane";
@@ -35,10 +36,16 @@ function useDiffPanelPreferences() {
     () => ({
       layout: effectiveLayout,
       wrapLines: preferences.wrapLines,
-      codeFontSize: settings.codeFontSize,
+      codeFontSize: resolveCompactFontSize(settings.codeFontSize, isCompact),
       monoFontFamily: settings.monoFontFamily,
     }),
-    [effectiveLayout, preferences.wrapLines, settings.codeFontSize, settings.monoFontFamily],
+    [
+      effectiveLayout,
+      isCompact,
+      preferences.wrapLines,
+      settings.codeFontSize,
+      settings.monoFontFamily,
+    ],
   );
   const toggleLayout = useCallback(() => {
     void updatePreferences({ layout: preferences.layout === "unified" ? "split" : "unified" });
@@ -199,14 +206,14 @@ function CommitDiffPanel() {
     <View style={styles.container} testID="commit-diff-panel">
       {panelPreferences.canUseSplitLayout ? (
         <PaneContentToolbar style={styles.toolbar} testID="commit-diff-header">
-          <View style={styles.toolbarActions} testID="commit-diff-toolbar">
+          <ToolbarControls style={styles.toolbarActions} testID="commit-diff-toolbar">
             <DiffLayoutToggle
               layout={panelPreferences.preferences.layout}
               isMobile={panelPreferences.isCompact}
               testID="commit-diff-toggle-layout"
               onToggle={panelPreferences.toggleLayout}
             />
-          </View>
+          </ToolbarControls>
         </PaneContentToolbar>
       ) : null}
       <View style={styles.body}>{body}</View>
@@ -270,10 +277,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[2],
   },
   toolbarActions: {
-    flexDirection: "row",
-    alignItems: "center",
     justifyContent: "flex-end",
-    gap: theme.spacing[1],
   },
   body: {
     flex: 1,

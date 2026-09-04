@@ -200,10 +200,7 @@ const styles = StyleSheet.create((theme) => ({
     // Explicit compact bump (not left to the ambient theme-patch scale) - this
     // row renders inside a bottom sheet, which can hold onto stale sizing (see
     // docs/unistyles.md's "Hidden Sheet Content" gotcha).
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
   optionTrailingSlot: {

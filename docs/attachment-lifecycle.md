@@ -1,15 +1,16 @@
 # Attachment lifecycle
 
-Agents produce image bytes - browser screenshots, `Read` of a PNG, a chart a tool rendered - and
-those bytes have to become a file before anything can show them. Three different stores end up
-holding them, with three different owners and three different rules. Getting the tier wrong is how
+Agents and people produce image bytes - browser screenshots, `Read` of a PNG, a chart a tool
+rendered, or a photo sent from a phone - and those bytes have to become a file before every client
+can show them. Four different stores end up holding them, with different owners and rules. Getting the tier wrong is how
 you either leak disk forever or delete something the user was still looking at; both have happened.
 
-| Tier                   | Where                                   | Owner  | Rule                                                                       |
-| ---------------------- | --------------------------------------- | ------ | -------------------------------------------------------------------------- |
-| **Materialized image** | `$OTTO_HOME/attachments/<sha256>.<ext>` | daemon | The record. Aged out by policy, never by reference count.                  |
-| **Preview attachment** | app attachment store, id `preview_*`    | app    | A cache of the tier above. Pinned while live, collected when it is not.    |
-| **Sent attachment**    | app attachment store, id `att_*`        | app    | The user's own content. Referenced by drafts and messages. Never aged out. |
+| Tier                   | Where                                        | Owner  | Rule                                                                       |
+| ---------------------- | -------------------------------------------- | ------ | -------------------------------------------------------------------------- |
+| **Materialized image** | `$OTTO_HOME/attachments/<sha256>.<ext>`      | daemon | The record. Aged out by policy, never by reference count.                  |
+| **Sent-image record**  | `$OTTO_HOME/sent-attachments/<sha256>.<ext>` | daemon | Cross-client record of user image content. Never aged out.                 |
+| **Preview attachment** | app attachment store, id `preview_*`         | app    | A cache of the tier above. Pinned while live, collected when it is not.    |
+| **Sent attachment**    | app attachment store, id `att_*`             | app    | The user's own content. Referenced by drafts and messages. Never aged out. |
 
 ## Tier 1 - materialized images are the record, not a cache
 
@@ -55,6 +56,17 @@ either bound.
 The startup pass also removes the retired `otto-attachments-*` temp directories, but only ones with
 no file written in the last week - this repo runs installed and dev daemons side by side, and a
 directory a live older daemon is still writing to is left alone.
+
+### User-sent images have their own durable record
+
+The sending device's `att_*` attachment remains local, which is useful for offline composition but
+cannot render a message on another device. When the daemon records a submitted structured image
+prompt, `materializeSentImageAttachment` writes the bytes to `$OTTO_HOME/sent-attachments` and the
+canonical user timeline row carries only its path and MIME type. Other clients lazy-read that path
+through the existing file RPC and persist their own preview cache.
+
+This directory is deliberately outside the provider-image sweep. A sent image is user content, so
+losing it after thirty days while the chat still exists would be data loss, not cache reclamation.
 
 ## Tier 2 - preview attachments are a cache, and must be pinned
 
@@ -102,8 +114,9 @@ record you can:
 | Cached copies on this device | the app store's `usage()` / `clearPreviews()` | A plain action. Every byte is a copy of the row above, so the worst case is a refetch. |
 
 Sent attachments are shown only as context inside the preview row's hint - their size, and the fact
-that clearing never touches them. Offering to sweep the user's own content from a disk-space screen
-would be the wrong default even with a confirm.
+that clearing never touches them. The daemon's replicated sent-image record is also excluded from
+the reclaim controls. Offering to sweep the user's own content from a disk-space screen would be the
+wrong default even with a confirm.
 
 **The clear RPC follows `history.agents.clear_archived` exactly**: `dryRun: true` by default,
 `olderThanDays: 0` meaning _everything_. That last point is a real trap, and why

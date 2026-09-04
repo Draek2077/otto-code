@@ -7,24 +7,20 @@ import { TreeChevron } from "@/components/tree-primitives";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { isWeb } from "@/constants/platform";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
-import { compactFont, compactUp } from "@/styles/theme";
+import { compactUp } from "@/styles/theme";
 
 /**
  * The shared row vocabulary for the code-results tabs (Find references, Rename).
  *
  * Both tabs show the same thing - a file heading with source lines under it - so they share
  * one implementation rather than two that drift. The rows are deliberately the *diff
- * viewer's* rows: same `fontSize.code` / `lineHeight.diff` metrics, same compact bumps, same
+ * viewer's* rows: same `fontSize.code` / `lineHeight.diff` metrics, same compact scale, same
  * syntax colours. Those two tokens are the user's Code font size setting; the earlier
  * `fontSize.xs` here was on the UI ramp instead, so these panels ignored that setting and
  * read a size smaller than every other code surface in the app.
  *
  * Strings are literal English pending the pre-release i18n sweep.
  */
-
-/** Mirrors the diff viewer's compact bumps - see `revision-diff-body.tsx`. */
-const COMPACT_CODE_FONT_BUMP = 2;
-const COMPACT_LINE_HEIGHT_BUMP = 6;
 
 export type CodeResultGutterWidth = "line" | "lineColumn";
 
@@ -277,18 +273,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   groupName: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
     flexShrink: 0,
   },
   groupDir: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     flexShrink: 1,
   },
   groupCount: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
     flexShrink: 0,
   },
@@ -299,7 +295,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[3],
     paddingHorizontal: theme.spacing[3],
-    minHeight: compactFont(theme.lineHeight.diff, COMPACT_LINE_HEIGHT_BUMP),
+    minHeight: theme.lineHeight.diff,
     ...(isWeb ? ({ cursor: "pointer" } as object) : {}),
   },
   rowActive: {
@@ -310,8 +306,8 @@ const styles = StyleSheet.create((theme) => ({
   gutter: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: compactFont(theme.fontSize.code, COMPACT_CODE_FONT_BUMP),
-    lineHeight: compactFont(theme.lineHeight.diff, COMPACT_LINE_HEIGHT_BUMP),
+    fontSize: theme.fontSize.code,
+    lineHeight: theme.lineHeight.diff,
     fontVariant: ["tabular-nums"],
     textAlign: "right",
     flexShrink: 0,
@@ -328,8 +324,8 @@ const styles = StyleSheet.create((theme) => ({
   code: {
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: compactFont(theme.fontSize.code, COMPACT_CODE_FONT_BUMP),
-    lineHeight: compactFont(theme.lineHeight.diff, COMPACT_LINE_HEIGHT_BUMP),
+    fontSize: theme.fontSize.code,
+    lineHeight: theme.lineHeight.diff,
     flexShrink: 1,
   },
 }));

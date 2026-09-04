@@ -394,7 +394,6 @@ export {
   DEFAULT_FONT_CONTRAST,
   accentFillInk,
   baseColors,
-  compactFont,
   compactUp,
   resolveInkOverrides,
 } from "./theme-palettes";

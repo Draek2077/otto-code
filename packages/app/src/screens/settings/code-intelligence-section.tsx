@@ -686,10 +686,7 @@ const styles = StyleSheet.create((theme) => ({
   // same padding a real row would rather than sitting flush against the border.
   emptyRow: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     paddingVertical: theme.spacing[4],
     paddingHorizontal: theme.spacing[4],
   },

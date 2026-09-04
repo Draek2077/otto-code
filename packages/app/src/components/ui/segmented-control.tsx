@@ -331,25 +331,12 @@ const styles = StyleSheet.create((theme) => {
     },
     labelXs: {
       ...geometry.segmentedLabelXs,
-      fontSize: {
-        xs: geometry.segmentedLabelXs.fontSize + 2,
-        md: geometry.segmentedLabelXs.fontSize,
-      },
     },
     labelSm: {
       ...geometry.segmentedLabelSm,
-      // Explicit compact bump (not left to the ambient theme-patch scale).
-      fontSize: {
-        xs: geometry.segmentedLabelSm.fontSize + 2,
-        md: geometry.segmentedLabelSm.fontSize,
-      },
     },
     labelMd: {
       ...geometry.segmentedLabelMd,
-      fontSize: {
-        xs: geometry.segmentedLabelMd.fontSize + 2,
-        md: geometry.segmentedLabelMd.fontSize,
-      },
     },
     labelSelected: {
       color: theme.colors.foreground,

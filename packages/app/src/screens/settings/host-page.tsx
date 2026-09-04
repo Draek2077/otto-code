@@ -2394,10 +2394,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   statusText: {
     // Explicit compact bump (not left to the ambient theme-patch scale).
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
   },
   badgePill: {
@@ -2413,10 +2410,7 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: 200,
   },
   badgeText: {
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,

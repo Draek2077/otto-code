@@ -141,6 +141,7 @@ import type {
   PersonalityMemoryStatsResponseMessage,
   ProjectKnowledgeListResponseMessage,
   ProjectKnowledgeGetResponseMessage,
+  ProjectKnowledgeRootGetResponseMessage,
   ProjectKnowledgeCreateResponseMessage,
   ProjectKnowledgeApplyResponseMessage,
   ProjectKnowledgeStatusResponseMessage,
@@ -6951,11 +6952,15 @@ export class DaemonClient {
 
   async listProjectKnowledge(
     workspaceId: string,
-    requestId?: string,
+    options?: { includeRootBodies?: boolean; requestId?: string },
   ): Promise<ProjectKnowledgeListResponseMessage["payload"]> {
     return this.sendNamespacedCorrelatedSessionRequest({
-      requestId,
-      message: { type: "project.knowledge.list.request", workspaceId },
+      requestId: options?.requestId,
+      message: {
+        type: "project.knowledge.list.request",
+        workspaceId,
+        ...(options?.includeRootBodies === false ? { includeRootBodies: false } : {}),
+      },
     });
   }
   async getProjectKnowledge(
@@ -6965,6 +6970,15 @@ export class DaemonClient {
     return this.sendNamespacedCorrelatedSessionRequest({
       requestId,
       message: { type: "project.knowledge.get.request", ...input },
+    });
+  }
+  async getProjectKnowledgeRoot(
+    input: { workspaceId: string; slug: string },
+    requestId?: string,
+  ): Promise<ProjectKnowledgeRootGetResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "project.knowledge.root.get.request", ...input },
     });
   }
   async createProjectKnowledge(

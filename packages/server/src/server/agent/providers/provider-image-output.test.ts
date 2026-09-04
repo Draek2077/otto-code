@@ -14,7 +14,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import { withTemporaryOttoHome } from "../../../test-utils/temp-otto-home.js";
 import {
   clearMaterializedProviderImages,
+  getSentImageAttachmentDir,
   isProviderImageMarkdown,
+  materializeSentImageAttachment,
   materializeProviderImage,
   readMaterializedImageStats,
   reclaimLegacyProviderImageDirs,
@@ -29,6 +31,10 @@ const getOttoHome = withTemporaryOttoHome("otto-home-image-test");
 
 function attachmentsDir(): string {
   return path.join(getOttoHome(), "attachments");
+}
+
+function sentAttachmentsDir(): string {
+  return path.join(getOttoHome(), "sent-attachments");
 }
 
 function writeStoredImage(name: string, sizeBytes: number, ageMs: number): void {
@@ -123,6 +129,7 @@ describe("isProviderImageMarkdown", () => {
 describe("materializeProviderImage", () => {
   afterEach(() => {
     rmSync(attachmentsDir(), { recursive: true, force: true });
+    rmSync(sentAttachmentsDir(), { recursive: true, force: true });
   });
 
   test("writes into the OTTO_HOME attachment store", () => {
@@ -148,6 +155,21 @@ describe("materializeProviderImage", () => {
 
     expect(second.path).toBe(first.path);
     expect(readdirSync(attachmentsDir())).toHaveLength(1);
+  });
+
+  test("keeps sent images outside the sweepable provider cache", () => {
+    const materialized = materializeSentImageAttachment({
+      data: "YWJjMTIz",
+      mimeType: "image/png",
+    });
+
+    expect(path.dirname(materialized.path)).toBe(sentAttachmentsDir());
+    expect(getSentImageAttachmentDir()).toBe(sentAttachmentsDir());
+    expect(existsSync(materialized.path)).toBe(true);
+
+    const result = sweepMaterializedProviderImages({ ottoHome: getOttoHome() });
+    expect(result.deleted).toBe(0);
+    expect(existsSync(materialized.path)).toBe(true);
   });
 });
 

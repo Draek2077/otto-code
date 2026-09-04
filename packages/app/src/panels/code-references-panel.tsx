@@ -9,7 +9,7 @@ import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
-import { compactFont } from "@/styles/theme";
+
 import {
   CodeResultExpandToggle,
   CodeResultGroupHeader,
@@ -388,13 +388,13 @@ const styles = StyleSheet.create((theme) => ({
   symbolText: {
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
     flexShrink: 0,
   },
   countText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     flexShrink: 1,
   },
   provisionalChip: {
@@ -406,7 +406,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   provisionalText: {
     color: theme.colors.statusWarning,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   staleChip: {
     borderWidth: 1,
@@ -417,11 +417,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   staleText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   tooltipText: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   listHost: {
     flex: 1,
@@ -443,12 +443,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   mutedText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
   errorText: {
     color: theme.colors.destructive,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
 }));

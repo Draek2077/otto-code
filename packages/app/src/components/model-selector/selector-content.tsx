@@ -1182,18 +1182,12 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   personalityName: {
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
     flexShrink: 0,
   },
   personalitySubtitle: {
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },
@@ -1312,7 +1306,9 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   virtualizedModelListContent: {
-    paddingHorizontal: theme.spacing[2],
+    // Model rows and Agent Profile rows share the sheet's leading rail. The
+    // FlatList is native-only, so giving its content an extra inset shifted
+    // every model glyph and label beyond the profiles above it.
     paddingTop: theme.spacing[1],
     paddingBottom: theme.spacing[8],
   },

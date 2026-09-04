@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import { View } from "react-native";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { useAppSettings } from "@/hooks/use-settings";
+import { useChatRenderSettings } from "@/components/chat-render-settings-context";
 import type { Theme } from "@/styles/theme";
 
 // Peak alpha of the white sheen at its anchor corner. The bubble surfaces are
@@ -144,12 +144,12 @@ const sheenOpacityMapping = (theme: Theme) => ({
  * needs overflow: "hidden" so the square clips to the rounded corners.
  */
 export function BubbleCornerSheen({ corner, offsetTop }: BubbleCornerSheenProps) {
-  const { settings } = useAppSettings();
+  const { blackTabBackground } = useChatRenderSettings();
   return (
     <ThemedSheenOverlay
       corner={corner}
       offsetTop={offsetTop}
-      forceDark={settings.blackTabBackground}
+      forceDark={blackTabBackground}
       uniProps={sheenOpacityMapping}
     />
   );

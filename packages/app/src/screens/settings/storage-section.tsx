@@ -230,7 +230,7 @@ function PreviewCacheRow({ withBorder }: { withBorder: boolean }) {
 
   return (
     <View
-      style={withBorder ? ROW_WITH_BORDER : settingsStyles.row}
+      style={withBorder ? [settingsStyles.row, settingsStyles.rowBorder] : settingsStyles.row}
       testID="storage-preview-cache-row"
     >
       <View style={settingsStyles.rowContent}>
@@ -302,8 +302,8 @@ function RetentionCard({ serverId }: { serverId: string }) {
   );
 
   return (
-    <View style={RETENTION_CARD} testID="storage-retention-card">
-      <View style={settingsStyles.row}>
+    <View style={[settingsStyles.card, styles.retentionSpacing]} testID="storage-retention-card">
+      <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.host.storage.maxAge")}</Text>
           <Text style={settingsStyles.rowHint}>{t("settings.host.storage.maxAgeHint")}</Text>
@@ -318,7 +318,7 @@ function RetentionCard({ serverId }: { serverId: string }) {
           testID="storage-retention-max-age"
         />
       </View>
-      <View style={ROW_WITH_BORDER}>
+      <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.host.storage.maxTotal")}</Text>
           <Text style={settingsStyles.rowHint}>{t("settings.host.storage.maxTotalHint")}</Text>
@@ -358,6 +358,3 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: theme.spacing[3],
   },
 }));
-
-const RETENTION_CARD = [settingsStyles.card, styles.retentionSpacing];
-const ROW_WITH_BORDER = [settingsStyles.row, settingsStyles.rowBorder];

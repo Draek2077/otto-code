@@ -720,7 +720,7 @@ function RoomMessageBubble({
   const renderReplyIcon = useCallback(
     ({ active }: { active: boolean }) => (
       <ThemedCornerDownLeft
-        size="md"
+        size="chromeXs"
         uniProps={active ? foregroundIconMapping : mutedIconMapping}
       />
     ),
@@ -729,7 +729,7 @@ function RoomMessageBubble({
   const renderThreadToggleIcon = useCallback(
     ({ active }: { active: boolean }) => {
       const Icon = repliesExpanded ? ThemedListChevronsDownUp : ThemedListChevronsUpDown;
-      return <Icon size="md" uniProps={active ? foregroundIconMapping : mutedIconMapping} />;
+      return <Icon size="chromeXs" uniProps={active ? foregroundIconMapping : mutedIconMapping} />;
     },
     [repliesExpanded],
   );

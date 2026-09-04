@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { GitFileHistoryEntry } from "@otto-code/protocol/messages";
 import { Button } from "@/components/ui/button";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { compactFont, compactUp } from "@/styles/theme";
+import { compactUp } from "@/styles/theme";
 import { formatTimeAgo } from "@/utils/time";
 import {
   COLUMN_WIDTH_AUTHOR,
@@ -161,25 +161,25 @@ const styles = StyleSheet.create((theme) => ({
   headerShaCell: {
     width: COLUMN_WIDTH_SHA,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontWeight: "600",
   },
   headerDateCell: {
     width: COLUMN_WIDTH_DATE,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontWeight: "600",
   },
   headerAuthorCell: {
     width: COLUMN_WIDTH_AUTHOR,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontWeight: "600",
   },
   headerMessageCell: {
     flex: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontWeight: "600",
   },
   // Full-bleed row: selection paints edge to edge like a real list, so the
@@ -200,19 +200,19 @@ const styles = StyleSheet.create((theme) => ({
   shaCell: {
     width: COLUMN_WIDTH_SHA,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
   },
   dateCell: {
     width: COLUMN_WIDTH_DATE,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   authorCell: {
     width: COLUMN_WIDTH_AUTHOR,
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   messageCell: {
     flex: 1,
@@ -224,12 +224,12 @@ const styles = StyleSheet.create((theme) => ({
   messageText: {
     flexShrink: 1,
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   tag: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(10),
-    lineHeight: compactFont(14, 3),
+    fontSize: 10,
+    lineHeight: 14,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.sm,

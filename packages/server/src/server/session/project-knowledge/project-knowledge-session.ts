@@ -88,6 +88,8 @@ export class ProjectKnowledgeSession {
         return this.handleProjectKnowledgeListRequest(msg);
       case "project.knowledge.get.request":
         return this.handleProjectKnowledgeGetRequest(msg);
+      case "project.knowledge.root.get.request":
+        return this.handleProjectKnowledgeRootGetRequest(msg);
       case "project.knowledge.create.request":
         return this.handleProjectKnowledgeCreateRequest(msg);
       case "project.knowledge.apply.request":
@@ -166,7 +168,10 @@ export class ProjectKnowledgeSession {
         // Full Markdown and timeline stay pull-on-demand through get. A real
         // charter corpus is otherwise large enough to time out the list RPC.
         records: view.records,
-        rootPages: view.rootPages,
+        rootPages:
+          msg.includeRootBodies === false
+            ? view.rootPages.map(({ body: _body, ...summary }) => summary)
+            : view.rootPages,
         findings: view.findings,
         brief: view.brief.text,
         briefTokens: view.brief.estTokens,
@@ -187,6 +192,19 @@ export class ProjectKnowledgeSession {
           this.projectKnowledge && cwd
             ? await this.projectKnowledge.get(cwd, msg.id, { includeInactive: true })
             : null,
+      },
+    });
+  }
+  private async handleProjectKnowledgeRootGetRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.knowledge.root.get.request" }>,
+  ): Promise<void> {
+    const cwd = await this.projectKnowledgeCwd(msg.workspaceId);
+    this.host.emit({
+      type: "project.knowledge.root.get.response",
+      payload: {
+        requestId: msg.requestId,
+        page:
+          this.projectKnowledge && cwd ? await this.projectKnowledge.getRoot(cwd, msg.slug) : null,
       },
     });
   }

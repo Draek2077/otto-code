@@ -425,10 +425,7 @@ const styles = StyleSheet.create((theme) => ({
   rowName: {
     flexShrink: 1,
     color: theme.colors.foreground,
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
   },
   suffix: {
     flexDirection: "row",
@@ -438,17 +435,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   suffixText: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
   },
   outsideBadge: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.full,

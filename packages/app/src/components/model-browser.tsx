@@ -1256,7 +1256,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: isWeb ? theme.spacing[3] : theme.spacing[6],
   },
   browserRowLeading: {
-    width: 16,
+    // The icon itself follows the compact token ladder. Its slot must follow
+    // it too, or the doubled phone glyph crowds the model name.
+    width: theme.iconSize.sm,
     alignItems: "center",
     justifyContent: "center",
   },

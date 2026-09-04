@@ -7,10 +7,12 @@ import { MarkdownRenderer } from "@/components/markdown/renderer";
 import { isMarkdownPath } from "@/editor/markdown/markdown-path";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { resolveCompactFontSize } from "@/appearance/apply";
+import { useAppSettingValue } from "@/hooks/use-settings";
 import { isWeb } from "@/constants/platform";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
-import { compactFont } from "@/styles/theme";
+
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { DiffLine, ParsedDiffFile } from "@/git/use-diff-query";
 import { buildNumberedDiffHunks, type NumberedDiffLine } from "@/utils/diff-layout";
@@ -41,6 +43,8 @@ export interface RevisionDiffBodyProps {
   /** Raw code view supplied by the shared renderer; formatted Markdown stays local. */
   renderRawDiff?: () => ReactNode;
 }
+
+const selectCodeFontSize = (settings: { codeFontSize: number }) => settings.codeFontSize;
 
 interface DiffRow {
   key: string;
@@ -128,6 +132,7 @@ export function RevisionDiffBody({
   renderRawDiff,
 }: RevisionDiffBodyProps) {
   const isCompact = useIsCompactFormFactor();
+  const configuredCodeFontSize = useAppSettingValue(selectCodeFontSize);
   const [formatted, setFormatted] = useState(false);
   const [scrollWidth, setScrollWidth] = useState(0);
   const verticalScrollRef = useRef<ScrollView>(null);
@@ -146,7 +151,7 @@ export function RevisionDiffBody({
   const rows = useMemo(() => buildRows(file), [file]);
   // Gutter columns are sized in pixels from the code font, which grows on compact
   // - measuring with the desktop size there would clip the widest line number.
-  const codeFontSize = isCompact ? CODE_FONT_SIZE + COMPACT_CODE_FONT_BUMP : CODE_FONT_SIZE;
+  const codeFontSize = resolveCompactFontSize(configuredCodeFontSize, isCompact);
   const oldNumberWidth = useMemo(
     () => numberColumnWidth(highestOldLineNumber(rows), codeFontSize),
     [rows, codeFontSize],
@@ -450,17 +455,6 @@ function lineBackgroundStyle(type: DiffLine["type"]) {
   return styles.contextLine;
 }
 
-// The gutter width math runs before styles resolve, so these cannot come from
-// the theme object here. CODE_FONT_SIZE mirrors theme.fontSize.code.
-const CODE_FONT_SIZE = 12;
-/** Compact bump for the code font - mirrors `compactFont`'s default. */
-const COMPACT_CODE_FONT_BUMP = 2;
-/**
- * Compact bump for the line box. Larger than the font bump: the row heights are
- * also the diff's touch targets, and a line box that only grows by the font's
- * two points leaves the bigger glyphs with no leading at all.
- */
-const COMPACT_LINE_HEIGHT_BUMP = 6;
 /**
  * Padding on **each side** of a gutter column's text, added twice when sizing
  * the column. It has to be symmetric: the numbers are right-aligned, so padding
@@ -539,14 +533,14 @@ const styles = StyleSheet.create((theme) => ({
   // per-line padding - padded diff lines drift out of step with the editor and
   // read as double-spaced.
   codeMetrics: {
-    fontSize: compactFont(theme.fontSize.code, COMPACT_CODE_FONT_BUMP),
-    lineHeight: compactFont(theme.lineHeight.diff, COMPACT_LINE_HEIGHT_BUMP),
+    fontSize: theme.fontSize.code,
+    lineHeight: theme.lineHeight.diff,
     fontFamily: theme.fontFamily.mono,
   },
   gutterRow: {
     flexDirection: "row",
     alignItems: "stretch",
-    minHeight: compactFont(theme.lineHeight.diff, COMPACT_LINE_HEIGHT_BUMP),
+    minHeight: theme.lineHeight.diff,
   },
   gutterCell: {
     justifyContent: "flex-start",
@@ -595,7 +589,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   codeRow: {
     minWidth: "100%",
-    minHeight: compactFont(theme.lineHeight.diff, COMPACT_LINE_HEIGHT_BUMP),
+    minHeight: theme.lineHeight.diff,
     paddingLeft: theme.spacing[2],
   },
   codeText: {

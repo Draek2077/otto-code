@@ -6,7 +6,6 @@ import type { GitFileHistoryEntry } from "@otto-code/protocol/messages";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { compactFont } from "@/styles/theme";
 
 /**
  * The selected commit's full message, pinned along the bottom of the pane.
@@ -102,28 +101,28 @@ const styles = StyleSheet.create((theme) => ({
   },
   sha: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
   },
   author: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontWeight: "600",
   },
   email: {
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   date: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   rename: {
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontStyle: "italic",
   },
   messageScrollHost: {
@@ -138,12 +137,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   subject: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
   },
   body: {
     marginTop: theme.spacing[1],
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
-    lineHeight: compactFont(18, 3),
+    fontSize: theme.fontSize.xs,
+    lineHeight: theme.lineHeight.diff,
   },
 }));

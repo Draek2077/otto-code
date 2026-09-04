@@ -24,6 +24,16 @@ const cases: Array<
   ],
   [
     {
+      type: "project.knowledge.root.get.request",
+      requestId: "r",
+      workspaceId: "w",
+      slug: "background",
+    },
+    "project.knowledge.root.get.response",
+    { pushes: false },
+  ],
+  [
+    {
       type: "project.knowledge.create.request",
       requestId: "r",
       workspaceId: "w",
@@ -132,6 +142,12 @@ function buildSession(overrides: Partial<ProjectKnowledgeSessionOptions> = {}) {
       brief: { text: "", estTokens: 0, includedIds: [], omittedCount: 0 },
     })),
     get: vi.fn(async () => record),
+    getRoot: vi.fn(async () => ({
+      slug: "background",
+      title: "Background",
+      path: ".otto/knowledge/background.md",
+      body: "# Background",
+    })),
     record: vi.fn(async () => record),
     updateTruth: vi.fn(async () => ({ record })),
     applyReviewedRefinement: vi.fn(async () => ({ record, demoted: false })),
@@ -206,6 +222,70 @@ describe("ProjectKnowledgeSession", () => {
     expect(emitted[0]).toMatchObject({
       type: "project.knowledge.list.response",
       payload: { requestId: "r", records: [], brief: "", omittedCount: 0 },
+    });
+  });
+
+  it("omits root Markdown only for a capable client that requests the compact catalog", async () => {
+    const { session, emitted, projectKnowledge } = buildSession();
+    projectKnowledge.catalogViewAtStore.mockResolvedValueOnce({
+      records: [],
+      rootPages: [
+        {
+          slug: "background",
+          title: "Background",
+          path: ".otto/knowledge/background.md",
+          body: "# Background",
+        },
+      ],
+      findings: [],
+      brief: { text: "", estTokens: 0, includedIds: [], omittedCount: 0 },
+    });
+
+    await session.dispatch({
+      type: "project.knowledge.list.request",
+      requestId: "r",
+      workspaceId: "w",
+      includeRootBodies: false,
+    });
+
+    expect(emitted[0]).toMatchObject({
+      type: "project.knowledge.list.response",
+      payload: {
+        rootPages: [
+          { slug: "background", title: "Background", path: ".otto/knowledge/background.md" },
+        ],
+      },
+    });
+    expect(
+      (emitted[0] as { payload: { rootPages: Array<{ body?: string }> } }).payload.rootPages[0],
+    ).not.toHaveProperty("body");
+  });
+
+  it("keeps root Markdown in the legacy list response", async () => {
+    const { session, emitted, projectKnowledge } = buildSession();
+    projectKnowledge.catalogViewAtStore.mockResolvedValueOnce({
+      records: [],
+      rootPages: [
+        {
+          slug: "background",
+          title: "Background",
+          path: ".otto/knowledge/background.md",
+          body: "# Background",
+        },
+      ],
+      findings: [],
+      brief: { text: "", estTokens: 0, includedIds: [], omittedCount: 0 },
+    });
+
+    await session.dispatch({
+      type: "project.knowledge.list.request",
+      requestId: "r",
+      workspaceId: "w",
+    });
+
+    expect(emitted[0]).toMatchObject({
+      type: "project.knowledge.list.response",
+      payload: { rootPages: [{ slug: "background", body: "# Background" }] },
     });
   });
 

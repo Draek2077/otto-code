@@ -1,3 +1,4 @@
+import { COMPACT_FONT_SIZE_BUMP } from "@/appearance/apply";
 import { DEFAULT_MONO_FONT_STACK, DEFAULT_UI_FONT_STACK, FONT_SIZE } from "@/styles/theme";
 
 /** Payload of the shell-level `otto-appearance` message (see the appearance
@@ -14,7 +15,7 @@ export interface VisualizerAppearance {
  * Resolve the appearance settings into what the Visualizer guest needs,
  * mirroring `appearance/apply.ts`: empty families fall back to the default
  * stacks and chat prose renders at `fontSize.sm` (markdown-styles.ts body),
- * scaled from the authored ramp by `uiFontSize / FONT_SIZE.base`.
+ * scaled from the authored ramp by the same effective UI size as the app.
  */
 export function resolveVisualizerAppearance(input: {
   uiFontFamily: string;
@@ -25,6 +26,9 @@ export function resolveVisualizerAppearance(input: {
   return {
     uiFontFamily: input.uiFontFamily.trim() || DEFAULT_UI_FONT_STACK,
     codeFontFamily: input.monoFontFamily.trim() || DEFAULT_MONO_FONT_STACK,
-    chatFontSize: Math.round(FONT_SIZE.sm * (input.uiFontSize / FONT_SIZE.base)),
+    chatFontSize: Math.round(
+      FONT_SIZE.sm *
+        ((input.uiFontSize + (input.isCompact ? COMPACT_FONT_SIZE_BUMP : 0)) / FONT_SIZE.base),
+    ),
   };
 }

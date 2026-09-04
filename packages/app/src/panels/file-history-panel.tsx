@@ -10,7 +10,7 @@ import { ResizeHandle } from "@/components/resize-handle";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
-import { compactFont, compactUp, type Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { usePaneContext } from "@/panels/pane-context";
 import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
@@ -496,11 +496,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   tooltipText: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   scopeChip: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.sm,
@@ -510,7 +510,7 @@ const styles = StyleSheet.create((theme) => ({
   originText: {
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   stack: {
     flex: 1,
@@ -546,12 +546,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   mutedText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
   errorText: {
     color: theme.colors.destructive,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
 }));

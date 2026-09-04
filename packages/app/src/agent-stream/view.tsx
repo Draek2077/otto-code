@@ -890,6 +890,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             findQuery={messageFindQuery}
             findActiveMatchIndex={getActiveFindMatchIndex(item)}
             images={item.images}
+            remoteImages={item.remoteImages}
             attachments={item.attachments}
             timestamp={item.timestamp.getTime()}
             capabilities={context.capabilities}

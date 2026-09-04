@@ -3027,21 +3027,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   aboutValue: {
     color: theme.colors.foregroundMuted,
-    // Explicit compact bump (not left to the ambient theme-patch scale).
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
   },
   aboutVersionColumn: {
     alignItems: "flex-end",
   },
   aboutBaseVersion: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
   },
   aboutVersionMismatch: {
@@ -3049,10 +3042,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   aboutErrorText: {
     color: theme.colors.palette.red[300],
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
   },
   aboutCommunity: {

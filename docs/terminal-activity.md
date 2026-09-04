@@ -109,9 +109,14 @@ The installed hook command keeps the config portable and resolves the CLI at run
 
 Codex also receives the Windows equivalent:
 
-```bat
-if defined OTTO_TERMINAL_ID (if defined OTTO_HOOK_CLI ("%OTTO_HOOK_CLI%" hooks codex <event>) else (otto hooks codex <event>))
+```text
+powershell.exe -NoProfile -NonInteractive -EncodedCommand <UTF-16LE base64 script>
 ```
+
+The encoded script contains the same terminal-id gate and CLI invocation. Naming the inbox Windows
+PowerShell executable makes execution independent of the user's current shell and of whether
+PowerShell 7 is installed; encoding keeps the nested command and path quoting intact through both
+`cmd.exe` and PowerShell launchers.
 
 Otto injects `OTTO_HOOK_CLI` so Codex's hook shell cannot pick up a stale global `otto` before the current one. The command still falls back to bare `otto` if the env is missing, and it still no-ops outside Otto terminals because the `OTTO_TERMINAL_ID` gate remains first. Otto also prepends the CLI binary directory to each terminal `PATH` as a secondary fallback. All other behavior lives in `otto hooks`: read the env, map the event, POST activity, and no-op/fail-open when anything is missing or unavailable.
 

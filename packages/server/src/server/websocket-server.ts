@@ -2261,6 +2261,9 @@ export class VoiceAssistantWebSocketServer {
         personalityMemory: this.personalityMemoryService !== null,
         // COMPAT(projectKnowledge): added in v0.8.5, drop the gate when daemon floor >= v0.8.5.
         projectKnowledge: this.projectKnowledgeService !== null,
+        // COMPAT(projectKnowledgeDeferredRootBodies): added in v0.9.1, remove
+        // after 2027-03-04.
+        projectKnowledgeDeferredRootBodies: this.projectKnowledgeService !== null,
         // COMPAT(projectKnowledgeRefinement): added in v0.8.19, drop the gate
         // when floor >= v0.8.19.
         projectKnowledgeRefinement: this.projectKnowledgeService !== null,

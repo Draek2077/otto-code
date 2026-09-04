@@ -2223,7 +2223,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   stackedMeta: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs + 2,
+    fontSize: theme.fontSize.xs,
   },
   stackedActions: {
     flexDirection: "row",
@@ -2233,7 +2233,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   stackedUnavailable: {
     color: theme.colors.destructive,
-    fontSize: theme.fontSize.xs + 2,
+    fontSize: theme.fontSize.xs,
   },
   rolePills: {
     flexDirection: "row",

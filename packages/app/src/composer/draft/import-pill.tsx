@@ -63,10 +63,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   label: {
     color: theme.colors.foreground,
-    // Explicit compact bump (not left to the ambient theme-patch scale).
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
   },
 }));

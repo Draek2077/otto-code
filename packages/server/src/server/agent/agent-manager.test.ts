@@ -1,8 +1,8 @@
 import { expect, test, vi } from "vitest";
 import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
@@ -52,6 +52,9 @@ import type { OttoToolCatalog } from "./tools/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import { STALL_GUARD_DEFAULT_THRESHOLD } from "@otto-code/protocol/provider-config";
+import { withTemporaryOttoHome } from "../../test-utils/temp-otto-home.js";
+
+const getAgentManagerOttoHome = withTemporaryOttoHome("otto-home-agent-manager-test");
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -9675,6 +9678,50 @@ test("authoritative timeline records a daemon-handled submitted prompt before it
     await startAgentRun(manager, snapshot.id, "/handled", logger, {
       runOptions: { clientMessageId: "msg-client-daemon-handled" },
     });
+  } finally {
+    await manager.flush().catch(() => undefined);
+    await storage.flush().catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+test("authoritative timeline mirrors a submitted image into durable sent-attachment storage", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-submitted-image-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000404",
+  });
+
+  try {
+    const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    await startAgentRun(
+      manager,
+      snapshot.id,
+      [
+        { type: "text", text: "Analyze this image" },
+        { type: "image", data: "YWJjMTIz", mimeType: "image/png" },
+      ],
+      logger,
+      { runOptions: { clientMessageId: "msg-client-image" } },
+    );
+    await manager.waitForAgentRunStart(snapshot.id);
+
+    const item = manager
+      .getTimeline(snapshot.id)
+      .find(
+        (entry): entry is Extract<AgentTimelineItem, { type: "user_message" }> =>
+          entry.type === "user_message" && entry.clientMessageId === "msg-client-image",
+      );
+    expect(item?.images).toHaveLength(1);
+    const image = item?.images?.[0];
+    expect(image?.mimeType).toBe("image/png");
+    expect(dirname(image?.path ?? "")).toBe(join(getAgentManagerOttoHome(), "sent-attachments"));
+    expect(existsSync(image?.path ?? "")).toBe(true);
   } finally {
     await manager.flush().catch(() => undefined);
     await storage.flush().catch(() => undefined);

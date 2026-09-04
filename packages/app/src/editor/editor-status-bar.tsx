@@ -14,10 +14,12 @@ import {
 } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
+import { useContainerWidth } from "@/hooks/use-container-width";
 import { type Theme } from "@/styles/theme";
 import { formatFileSize, utf8ByteSize } from "@/utils/format-file-size";
 import type { EditorBufferState } from "./editor-buffer-state";
 import type { EditorCursorPosition, EditorVimMode } from "./editor-contract";
+import { resolveEditorStatusBarLayout } from "./editor-status-bar-layout";
 
 // The strip along the bottom of the editor: what the file is on the left, how
 // it is encoded and where the caret sits on the right. Read-only - every item
@@ -39,9 +41,9 @@ const ThemedTextSelectStart = withUnistyles(TextSelectStart);
 const ThemedImage = withUnistyles(ImageIcon);
 
 /** Ln/Col, plus a selection summary when there is one - VS Code's phrasing. */
-function formatCursor(cursor: EditorCursorPosition): string {
+function formatCursor(cursor: EditorCursorPosition, showSelection: boolean): string {
   const position = `Ln ${cursor.line}, Col ${cursor.column}`;
-  if (cursor.selectedChars === 0) {
+  if (!showSelection || cursor.selectedChars === 0) {
     return position;
   }
   if (cursor.selectedLines > 1) {
@@ -188,9 +190,15 @@ export function EditorStatusBar({
   const language = useMemo(() => getLanguageDisplayName(path), [path]);
   const size = useMemo(() => formatFileSize({ size: byteSize }), [byteSize]);
   const totals = useMemo(() => diagnosticTotals(diagnostics ?? []), [diagnostics]);
+  const { onLayout, width } = useContainerWidth();
+  const layout = resolveEditorStatusBarLayout(width);
+  const visibleTotals = useMemo(
+    () => totals.filter((entry) => layout.diagnosticSeverities.includes(entry.severity)),
+    [layout.diagnosticSeverities, totals],
+  );
 
   return (
-    <View style={styles.container} testID="editor-status-bar">
+    <View style={styles.container} testID="editor-status-bar" onLayout={onLayout}>
       <View style={styles.group}>
         <View style={styles.item}>
           <ThemedDataObject size="xs" uniProps={mutedIconColor} />
@@ -198,22 +206,24 @@ export function EditorStatusBar({
             {language}
           </Text>
         </View>
-        <View style={styles.item}>
-          <ThemedHardDrive size="xs" uniProps={mutedIconColor} />
-          <Text style={styles.text} numberOfLines={1}>
-            {size}
-          </Text>
-        </View>
+        {layout.showFileSize ? (
+          <View style={styles.item}>
+            <ThemedHardDrive size="xs" uniProps={mutedIconColor} />
+            <Text style={styles.text} numberOfLines={1}>
+              {size}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <View style={styles.group}>
         {/* Problems lead the right-hand group, ahead of the divider: they are a fact about
             the file's health, and the encoding/caret readouts stay rightmost because that is
             where the eye already goes for them. */}
-        {totals.map((entry) => (
+        {visibleTotals.map((entry) => (
           <SeverityTotal key={entry.severity} severity={entry.severity} count={entry.count} />
         ))}
-        {totals.length > 0 ? <View style={styles.divider} /> : null}
-        {imageDimensions ? (
+        {visibleTotals.length > 0 ? <View style={styles.divider} /> : null}
+        {layout.showImageDimensions && imageDimensions ? (
           <View style={styles.item}>
             <ThemedImage size="xs" uniProps={mutedIconColor} />
             <Text style={styles.numericText} numberOfLines={1}>
@@ -221,7 +231,7 @@ export function EditorStatusBar({
             </Text>
           </View>
         ) : null}
-        {eol ? (
+        {layout.showEol && eol ? (
           <View style={styles.item}>
             <ThemedPilcrow size="xs" uniProps={mutedIconColor} />
             <Text style={styles.text} numberOfLines={1}>
@@ -229,7 +239,7 @@ export function EditorStatusBar({
             </Text>
           </View>
         ) : null}
-        {isText ? (
+        {layout.showEncoding && isText ? (
           <View style={styles.item}>
             <ThemedAbc size="xs" uniProps={mutedIconColor} />
             <Text style={styles.text} numberOfLines={1}>
@@ -271,7 +281,7 @@ export function EditorStatusBar({
           >
             <ThemedTextSelectStart size="xs" uniProps={mutedIconColor} />
             <Text style={styles.numericText} numberOfLines={1}>
-              {formatCursor(cursor)}
+              {formatCursor(cursor, layout.showSelection)}
             </Text>
           </View>
         ) : null}

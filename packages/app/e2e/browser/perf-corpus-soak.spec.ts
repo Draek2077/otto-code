@@ -6,6 +6,7 @@ import {
   type SeededCorpus,
 } from "../support/helpers/perf-corpus";
 import { connectSeedClient, type SeedDaemonClient } from "../support/helpers/seed-client";
+import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { getServerId } from "../support/helpers/server-id";
 import { selectWorkspaceInSidebar } from "../support/helpers/sidebar";
 import { createTempGitRepo, type TempDirectory } from "../support/helpers/workspace";
@@ -51,6 +52,8 @@ import { buildHostAgentDetailRoute } from "../../src/utils/host-routes";
 //   OTTO_CORPUS_PROJECTS / _WORKSPACES / _CHATS / _TURNS / _ITEMS  (scale knobs)
 //   OTTO_CORPUS_CONCURRENCY=24    (seeding parallelism, default 24 here)
 const RUN_SOAK = process.env.OTTO_CORPUS_SOAK_E2E === "1";
+const CAPTURE_CPU_PROFILE = process.env.OTTO_CORPUS_CPU_PROFILE === "1";
+const MOUNTED_RECENT_ITEMS_OVERRIDE = Number(process.env.OTTO_CORPUS_MOUNTED_RECENT_ITEMS);
 const soakDescribe = RUN_SOAK ? test.describe : test.describe.skip;
 
 // A soak-sized default, deliberately below the dev script's. The full corpus is
@@ -68,8 +71,10 @@ const SOAK_SCALE: CorpusScale = {
   itemsPerTurn: 30,
 };
 
-function formatSeries(label: string, values: number[]): string {
-  return `  ${label.padEnd(22)} ${values.map((value) => String(value).padStart(6)).join("")}`;
+function formatSeries(label: string, values: Array<number | null>): string {
+  return `  ${label.padEnd(22)} ${values
+    .map((value) => (value === null ? "-" : String(value)).padStart(6))
+    .join("")}`;
 }
 
 function summarize(label: string, values: number[]): string {
@@ -81,8 +86,103 @@ function summarize(label: string, values: number[]): string {
   return `  ${label}: median ${median}ms, worst ${sorted[sorted.length - 1]}ms`;
 }
 
+interface CpuProfile {
+  nodes: Array<{
+    id: number;
+    callFrame: { functionName: string; url: string; lineNumber: number };
+  }>;
+  samples?: number[];
+  timeDeltas?: number[];
+}
+
+function summarizeCpuProfile(profile: CpuProfile): string {
+  const nodes = new Map(profile.nodes.map((node) => [node.id, node]));
+  const selfTimeByNodeId = new Map<number, number>();
+  for (let index = 0; index < (profile.samples?.length ?? 0); index += 1) {
+    const nodeId = profile.samples?.[index];
+    const elapsedUs = profile.timeDeltas?.[index] ?? 0;
+    if (nodeId === undefined) continue;
+    selfTimeByNodeId.set(nodeId, (selfTimeByNodeId.get(nodeId) ?? 0) + elapsedUs);
+  }
+  const rows = [...selfTimeByNodeId]
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, 12)
+    .map(([nodeId, elapsedUs]) => {
+      const frame = nodes.get(nodeId)?.callFrame;
+      const source = frame?.url ? frame.url.split("/").at(-1) : "native";
+      const name = frame?.functionName || "(anonymous)";
+      return `  ${Math.round(elapsedUs / 1_000)
+        .toString()
+        .padStart(4)}ms  ${name} (${source}:${(frame?.lineNumber ?? -1) + 1})`;
+    });
+  return `CPU profile, top self time\n${rows.join("\n")}`;
+}
+
+interface SessionMessage {
+  type?: unknown;
+  payload?: unknown;
+}
+
+function readSessionMessage(frame: string | Buffer): SessionMessage | null {
+  try {
+    const envelope = JSON.parse(typeof frame === "string" ? frame : frame.toString()) as {
+      type?: unknown;
+      message?: SessionMessage;
+    };
+    // Playwright exposes both direct Session frames and relay-wrapped ones.
+    // The envelope tag differs, but the actual protocol message is always in
+    // `message` when the frame is wrapped.
+    return envelope.message ?? envelope;
+  } catch {
+    return null;
+  }
+}
+
+/** Measures the full WebSocket round trip, including daemon work, for a timeline page. */
+async function observeTimelineFetchLatency(page: Page) {
+  const startedAtByRequestId = new Map<string, { agentId: string; startedAt: number }>();
+  const completed: Array<{ agentId: string; elapsedMs: number }> = [];
+
+  await page.routeWebSocket(daemonWsRoutePattern(), (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((frame) => {
+      const message = readSessionMessage(frame);
+      if (message?.type === "fetch_agent_timeline_request") {
+        const request = message as SessionMessage & { agentId?: unknown; requestId?: unknown };
+        if (typeof request.agentId === "string" && typeof request.requestId === "string") {
+          startedAtByRequestId.set(request.requestId, {
+            agentId: request.agentId,
+            startedAt: Date.now(),
+          });
+        }
+      }
+      server.send(frame);
+    });
+    server.onMessage((frame) => {
+      const message = readSessionMessage(frame);
+      if (message?.type === "fetch_agent_timeline_response") {
+        const response = message.payload as { requestId?: unknown } | undefined;
+        if (typeof response?.requestId === "string") {
+          const started = startedAtByRequestId.get(response.requestId);
+          if (started) {
+            startedAtByRequestId.delete(response.requestId);
+            completed.push({ agentId: started.agentId, elapsedMs: Date.now() - started.startedAt });
+          }
+        }
+      }
+      socket.send(frame);
+    });
+  });
+
+  return {
+    mark: () => completed.length,
+    findForAgentSince: (agentId: string, mark: number): number | null =>
+      completed.slice(mark).findLast((timing) => timing.agentId === agentId)?.elapsedMs ?? null,
+  };
+}
+
 /**
- * Switches to a chat and returns the milliseconds until it is the active one.
+ * Switches to a chat and returns both the active-tab and history-ready timings.
  *
  * Chats in a workspace are **tabs**, not sidebar rows. Past a handful the tab
  * strip overflows, and the rest are reachable only through the overflow menu -
@@ -92,10 +192,16 @@ function summarize(label: string, values: number[]): string {
  * The completion signal is the target tab's own `aria-selected`, deliberately
  * not `agent-chat-scroll` being visible: that container belongs to whichever
  * chat is showing and stays visible right through a switch, so waiting on it
- * returns immediately and reports every switch as free.
+ * returns immediately and reports every switch as free. The spinner is the
+ * stronger second boundary: on a fresh chat, it covers the panel until the
+ * authoritative timeline has been applied.
  */
-async function openChatAndTime(page: Page, agentId: string): Promise<number> {
+async function openChatAndTime(
+  page: Page,
+  agentId: string,
+): Promise<{ selectedMs: number; historyReadyMs: number }> {
   const tab = page.getByTestId(`workspace-tab-agent_${agentId}`);
+  const visibleHistoryOverlay = page.locator('[data-testid="agent-history-overlay"]:visible');
   const startedAt = Date.now();
 
   if ((await tab.count()) > 0) {
@@ -108,7 +214,9 @@ async function openChatAndTime(page: Page, agentId: string): Promise<number> {
   // Selecting from the overflow promotes the chat into the visible strip, so the
   // same locator is the right one to wait on in both branches.
   await expect(tab.first()).toHaveAttribute("aria-selected", "true", { timeout: 60_000 });
-  return Date.now() - startedAt;
+  const selectedMs = Date.now() - startedAt;
+  await expect(visibleHistoryOverlay).toHaveCount(0, { timeout: 60_000 });
+  return { selectedMs, historyReadyMs: Date.now() - startedAt };
 }
 
 async function readMountedWorkspaceTreeCount(page: Page): Promise<number> {
@@ -177,6 +285,14 @@ soakDescribe("Loaded-corpus soak", () => {
     expect(seeded, "corpus was not seeded").not.toBeNull();
     const workspace = seeded!.projects[0].workspaces[0];
     expect(workspace.agentIds.length).toBeGreaterThan(1);
+    const timelineFetchLatency = await observeTimelineFetchLatency(page);
+    if (Number.isSafeInteger(MOUNTED_RECENT_ITEMS_OVERRIDE) && MOUNTED_RECENT_ITEMS_OVERRIDE > 0) {
+      await page.addInitScript((mountedRecentItems) => {
+        (
+          globalThis as typeof globalThis & { __OTTO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS?: number }
+        ).__OTTO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS = mountedRecentItems;
+      }, MOUNTED_RECENT_ITEMS_OVERRIDE);
+    }
 
     // The single allowed navigation.
     await page.goto(
@@ -198,10 +314,32 @@ soakDescribe("Loaded-corpus soak", () => {
     // transcript is virtualized (`agent-chat-scroll-web-dom-virtualized`), so a
     // 300-message chat renders only its visible window. A flat DOM series here
     // is virtualization working, not evidence that history is free.
-    const openMs: number[] = [];
+    const selectionMs: number[] = [];
+    const historyReadyMs: number[] = [];
+    const timelineFetchMs: Array<number | null> = [];
     const domNodes: number[] = [];
-    for (const agentId of workspace.agentIds) {
-      openMs.push(await openChatAndTime(page, agentId));
+    const profileTargetIndex = Math.min(7, workspace.agentIds.length - 1);
+    let cpuProfile: CpuProfile | null = null;
+    for (const [index, agentId] of workspace.agentIds.entries()) {
+      const latencyMark = timelineFetchLatency.mark();
+      let timing: Awaited<ReturnType<typeof openChatAndTime>>;
+      if (CAPTURE_CPU_PROFILE && index === profileTargetIndex) {
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send("Profiler.enable");
+        await cdp.send("Profiler.start");
+        try {
+          timing = await openChatAndTime(page, agentId);
+          const stopped = (await cdp.send("Profiler.stop")) as unknown as { profile: CpuProfile };
+          cpuProfile = stopped.profile;
+        } finally {
+          await cdp.detach();
+        }
+      } else {
+        timing = await openChatAndTime(page, agentId);
+      }
+      selectionMs.push(timing.selectedMs);
+      historyReadyMs.push(timing.historyReadyMs);
+      timelineFetchMs.push(timelineFetchLatency.findForAgentSince(agentId, latencyMark));
       await takeResourceSample(page);
       const samples = await readResourceSamples(page);
       domNodes.push(samples[samples.length - 1]?.metrics["dom.nodes"] ?? 0);
@@ -212,7 +350,12 @@ soakDescribe("Loaded-corpus soak", () => {
     // costs much more means eviction is throwing away work the user is about to
     // ask for again. Reported, not asserted - the right value is a trade-off,
     // and pinning it here would just freeze today's behavior as correct.
-    const revisitMs = await openChatAndTime(page, workspace.agentIds[0]);
+    const revisitLatencyMark = timelineFetchLatency.mark();
+    const revisitTiming = await openChatAndTime(page, workspace.agentIds[0]);
+    const revisitTimelineFetchMs = timelineFetchLatency.findForAgentSince(
+      workspace.agentIds[0],
+      revisitLatencyMark,
+    );
     await takeResourceSample(page);
 
     const trend = await readResourceTrend(page);
@@ -221,17 +364,39 @@ soakDescribe("Loaded-corpus soak", () => {
 
     console.log(
       `\nLoaded-chat walk: ${workspace.agentIds.length} chats of ` +
-        `~${seeded!.scale.turnsPerChat * seeded!.scale.itemsPerTurn} items each`,
+        `~${seeded!.scale.turnsPerChat * seeded!.scale.itemsPerTurn} items each` +
+        (Number.isSafeInteger(MOUNTED_RECENT_ITEMS_OVERRIDE) && MOUNTED_RECENT_ITEMS_OVERRIDE > 0
+          ? `, ${MOUNTED_RECENT_ITEMS_OVERRIDE} recent rows mounted`
+          : ""),
     );
-    console.log(formatSeries("open ms", openMs));
+    console.log(formatSeries("tab selected ms", selectionMs));
+    console.log(formatSeries("history ready ms", historyReadyMs));
+    console.log(formatSeries("timeline round trip ms", timelineFetchMs));
     console.log(formatSeries("dom.nodes", domNodes));
-    console.log(summarize("chat open", openMs));
-    console.log(`  first-chat revisit after cap eviction: ${revisitMs}ms`);
+    console.log(summarize("chat tab selected", selectionMs));
+    console.log(summarize("chat history ready", historyReadyMs));
+    console.log(
+      summarize(
+        "timeline round trip",
+        timelineFetchMs.filter((value): value is number => value !== null),
+      ),
+    );
+    console.log(
+      `  first-chat revisit after cap eviction: selected ${revisitTiming.selectedMs}ms, ` +
+        `history ready ${revisitTiming.historyReadyMs}ms, ` +
+        `timeline round trip ` +
+        (revisitTimelineFetchMs === null ? "not observed" : `${revisitTimelineFetchMs}ms`),
+    );
     console.log(formatTrendTable(trend));
     console.log(`\n${report}`);
+    if (cpuProfile) console.log(`\n${summarizeCpuProfile(cpuProfile)}`);
 
     await testInfo.attach("loaded-chat-open-ms", {
-      body: JSON.stringify({ openMs, revisitMs }, null, 2),
+      body: JSON.stringify(
+        { selectionMs, historyReadyMs, timelineFetchMs, revisitTiming, revisitTimelineFetchMs },
+        null,
+        2,
+      ),
       contentType: "application/json",
     });
     await testInfo.attach("loaded-chat-trend", {
@@ -239,6 +404,12 @@ soakDescribe("Loaded-corpus soak", () => {
       contentType: "application/json",
     });
     await testInfo.attach("loaded-chat-report", { body: report, contentType: "text/plain" });
+    if (cpuProfile) {
+      await testInfo.attach("loaded-chat-cpu-profile", {
+        body: JSON.stringify(cpuProfile),
+        contentType: "application/json",
+      });
+    }
 
     // Same contract as the sibling soak: the only hard assertion is that the
     // instrument produced a usable series. A growth budget guessed in advance

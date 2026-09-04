@@ -15,6 +15,7 @@ import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { DEFAULT_MONO_FONT_STACK } from "@/styles/theme";
 import { isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { resolveCompactFontSize } from "@/appearance/apply";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useAppSettings } from "@/hooks/use-settings";
 import { usePaneContext } from "@/panels/pane-context";
@@ -100,6 +101,7 @@ function GitLogPanel() {
   const scrollRef = useRef<ScrollView>(null);
   const pinnedToBottomRef = useRef(true);
   const isMobile = useIsCompactFormFactor();
+  const codeFontSize = resolveCompactFontSize(settings.codeFontSize, isMobile);
   const showDesktopWebScrollbar = isWeb && !isMobile;
   const {
     onScroll: onScrollbarScroll,
@@ -132,8 +134,8 @@ function GitLogPanel() {
   const monoFontFamily = settings.monoFontFamily.trim() || DEFAULT_MONO_FONT_STACK;
   const levelStyles = useMemo(() => {
     const lineTextStyle = {
-      fontSize: settings.codeFontSize,
-      lineHeight: Math.round(settings.codeFontSize * 1.5),
+      fontSize: codeFontSize,
+      lineHeight: Math.round(codeFontSize * 1.5),
       fontFamily: monoFontFamily,
     };
     return {
@@ -141,7 +143,7 @@ function GitLogPanel() {
       output: [styles.line, lineTextStyle],
       error: [styles.line, lineTextStyle, styles.lineError],
     };
-  }, [monoFontFamily, settings.codeFontSize]);
+  }, [codeFontSize, monoFontFamily]);
 
   if (entries.length === 0) {
     return (

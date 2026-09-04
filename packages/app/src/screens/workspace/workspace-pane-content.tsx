@@ -1,5 +1,6 @@
 import React, { useMemo, type ComponentType } from "react";
 import invariant from "tiny-invariant";
+import { View } from "react-native";
 import {
   createPaneFocusContextValue,
   PaneFocusProvider,
@@ -7,6 +8,7 @@ import {
   type PaneContextValue,
 } from "@/panels/pane-context";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { useBottomSafeAreaPadding } from "@/hooks/use-bottom-safe-area-padding";
 import { getPanelRegistration } from "@/panels/panel-registry";
 import { ensurePanelsRegistered } from "@/panels/register-panels";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
@@ -95,6 +97,13 @@ export interface WorkspacePaneContentProps {
   onFocusPane?: () => void;
 }
 
+function paneOwnsBottomSafeArea(target: WorkspaceTabDescriptor["target"]): boolean {
+  // Agent composer and terminal keyboard stacks already reserve the system
+  // obstruction themselves. A second reservation here creates a visibly empty
+  // gesture band below their controls.
+  return target.kind === "agent" || target.kind === "draft" || target.kind === "terminal";
+}
+
 export function WorkspacePaneContent({
   content,
   isWorkspaceFocused,
@@ -103,6 +112,7 @@ export function WorkspacePaneContent({
   onFocusPane,
 }: WorkspacePaneContentProps) {
   const { Component, key, paneContextValue } = content;
+  const bottomSafeAreaPadding = useBottomSafeAreaPadding();
   const openTab = useStableEvent(paneContextValue.openTab);
   const openPreferredTarget = useStableEvent(paneContextValue.openPreferredTarget);
   const openTargetToSide = useStableEvent(paneContextValue.openTargetToSide ?? (() => undefined));
@@ -160,6 +170,13 @@ export function WorkspacePaneContent({
       }),
     [isPaneFocused, isVisible, isWorkspaceFocused, onFocusPane],
   );
+  const paneContentStyle = useMemo(
+    () => [
+      paneContainerStyle,
+      paneOwnsBottomSafeArea(paneContextValue.target) ? null : bottomSafeAreaPadding,
+    ],
+    [bottomSafeAreaPadding, paneContextValue.target],
+  );
 
   return (
     <RenderProfile
@@ -167,9 +184,13 @@ export function WorkspacePaneContent({
     >
       <PaneProvider value={stablePaneContextValue}>
         <PaneFocusProvider value={paneFocusValue}>
-          <Component key={key} />
+          <View style={paneContentStyle}>
+            <Component key={key} />
+          </View>
         </PaneFocusProvider>
       </PaneProvider>
     </RenderProfile>
   );
 }
+
+const paneContainerStyle = { flex: 1, minHeight: 0 } as const;

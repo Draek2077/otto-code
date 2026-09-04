@@ -1085,16 +1085,8 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
   },
   splitButtonText: {
-    // Mirrors the git Commit split button's label geometry (including its
-    // compact bump) so both controls share the same natural height.
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
-    lineHeight: {
-      xs: (theme.fontSize.sm + 2) * 1.5,
-      md: theme.fontSize.sm * 1.5,
-    },
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
@@ -1106,10 +1098,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1.5],
     // The label's line height is the content minimum, so the icon-only state
     // keeps the same natural height as the labeled one.
-    minHeight: {
-      xs: (theme.fontSize.sm + 2) * 1.5,
-      md: theme.fontSize.sm * 1.5,
-    },
+    minHeight: theme.fontSize.sm * 1.5,
   },
   scriptList: {
     paddingVertical: theme.spacing[1],
@@ -1131,10 +1120,7 @@ const styles = StyleSheet.create((theme) => ({
     },
   },
   groupHeaderText: {
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
@@ -1144,10 +1130,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
   },
   groupHeaderCount: {
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     fontVariant: ["tabular-nums"],
   },
@@ -1167,10 +1150,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     padding: 0,
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
     // The row already draws the chrome; the field itself is just the caret.
     outlineWidth: 0,
@@ -1180,10 +1160,7 @@ const styles = StyleSheet.create((theme) => ({
   emptyText: {
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   scriptItem: {
@@ -1200,11 +1177,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   scriptName: {
-    // Compact bump: +2px on mobile for the scripts dropdown.
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     lineHeight: {
       xs: 22,
@@ -1242,10 +1215,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   hostLabel: {
     flexShrink: 1,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     lineHeight: {
       xs: 18,
       md: 14,
@@ -1258,10 +1228,7 @@ const styles = StyleSheet.create((theme) => ({
   // A command is code, so it takes the code font size like every other code
   // surface (docs/design.md).
   commandLabel: {
-    fontSize: {
-      xs: theme.fontSize.code + 2,
-      md: theme.fontSize.code,
-    },
+    fontSize: theme.fontSize.code,
     lineHeight: {
       xs: 18,
       md: 14,

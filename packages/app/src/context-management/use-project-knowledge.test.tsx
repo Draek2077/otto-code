@@ -9,6 +9,7 @@ import { useProjectKnowledge } from "./use-project-knowledge";
 const SERVER_ID = "server-1";
 const WORKSPACE_ID = "workspace-1";
 const listProjectKnowledge = vi.fn();
+const getProjectKnowledgeRoot = vi.fn();
 
 const view = {
   records: [],
@@ -22,10 +23,11 @@ const view = {
 
 beforeEach(() => {
   listProjectKnowledge.mockReset();
+  getProjectKnowledgeRoot.mockReset();
   useSessionStore.setState({
     sessions: {
       [SERVER_ID]: {
-        client: { listProjectKnowledge },
+        client: { listProjectKnowledge, getProjectKnowledgeRoot },
         serverInfo: { features: { projectKnowledge: true } },
       },
     },
@@ -118,5 +120,28 @@ describe("useProjectKnowledge", () => {
     });
 
     expect(listProjectKnowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it("requests root summaries only when the connected host advertises support", async () => {
+    listProjectKnowledge.mockResolvedValueOnce(view);
+    useSessionStore.setState({
+      sessions: {
+        [SERVER_ID]: {
+          client: { listProjectKnowledge, getProjectKnowledgeRoot },
+          serverInfo: {
+            features: { projectKnowledge: true, projectKnowledgeDeferredRootBodies: true },
+          },
+        },
+      },
+    } as never);
+
+    renderHook(() => useProjectKnowledge(SERVER_ID, WORKSPACE_ID));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(listProjectKnowledge).toHaveBeenCalledWith(WORKSPACE_ID, {
+      includeRootBodies: false,
+    });
   });
 });

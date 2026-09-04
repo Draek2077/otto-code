@@ -16,6 +16,7 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { resolveCompactFontSize } from "@/appearance/apply";
 import {
   AlignJustify,
   ChevronDown,
@@ -335,10 +336,13 @@ export function DiffLayoutToggle({
           style={toggleStyle ?? defaultToggleStyle}
         >
           {layout === "unified" ? (
-            <ThemedColumns2 size={isMobile ? 18 : 14} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedColumns2
+              size={paneContentToolbarIconSize(isMobile)}
+              uniProps={foregroundMutedIconColorMapping}
+            />
           ) : (
             <ThemedAlignJustify
-              size={isMobile ? 18 : 14}
+              size={paneContentToolbarIconSize(isMobile)}
               uniProps={foregroundMutedIconColorMapping}
             />
           )}
@@ -1709,7 +1713,7 @@ export function ChangesSurface({
     const layout = preferences.layout === "unified" ? "split" : "unified";
     void updatePreferences({ layout });
   }, [preferences.layout, updatePreferences]);
-  const codeFontSize = appSettings.codeFontSize;
+  const codeFontSize = resolveCompactFontSize(appSettings.codeFontSize, isMobile);
 
   const toast = useToast();
   const isLocalDaemon = useIsLocalDaemon(serverId);

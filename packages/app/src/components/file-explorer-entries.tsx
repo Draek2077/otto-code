@@ -705,11 +705,7 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[4],
   },
   sortTriggerText: {
-    // Explicit compact bump matching the Changes pane's mode trigger.
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
   },
   treePane: {

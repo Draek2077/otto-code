@@ -174,13 +174,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   title: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize["2xl"] + 2, md: theme.fontSize["2xl"] },
+    fontSize: theme.fontSize["2xl"],
     fontWeight: theme.fontWeight.semibold,
     letterSpacing: -0.4,
   },
   subtitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.base + 2, md: theme.fontSize.base },
+    fontSize: theme.fontSize.base,
     lineHeight: { xs: 24, md: 22 },
   },
   loading: {
@@ -191,11 +191,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   loadingText: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.base + 2, md: theme.fontSize.base },
+    fontSize: theme.fontSize.base,
   },
   empty: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.base + 2, md: theme.fontSize.base },
+    fontSize: theme.fontSize.base,
     lineHeight: { xs: 24, md: 22 },
   },
   list: {
@@ -225,12 +225,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   rowLabel: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.lg + 2, md: theme.fontSize.lg },
+    fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.medium,
   },
   rowStatus: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
   },
   radio: {
     width: 22,

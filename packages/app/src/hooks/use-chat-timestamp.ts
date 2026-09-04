@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAppSettings } from "@/hooks/use-settings";
+import { useChatRenderSettings } from "@/components/chat-render-settings-context";
 import { formatMessageTimestamp, formatTimeAgo } from "@/utils/time";
 
 // Coarse refresh keeps relative labels ("5m ago") from going stale while a
@@ -11,7 +11,7 @@ const RELATIVE_REFRESH_MS = 60_000;
  * appearance setting: exact clock time ("10:11 PM") or relative ("5m ago").
  */
 export function useChatTimestampLabel(timestampMs: number | undefined): string {
-  const display = useAppSettings().settings.chatTimestampDisplay;
+  const { chatTimestampDisplay: display } = useChatRenderSettings();
   const isRelative = display === "relative";
   const [nowMs, setNowMs] = useState(() => Date.now());
 

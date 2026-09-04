@@ -55,6 +55,7 @@ import {
   useOverlayFlatListScrollbar,
   type OverlayFlatListScrollbar,
 } from "@/components/ui/overlay-scrollbar/use-overlay-flat-list-scrollbar";
+import { ToolbarButton, ToolbarControls } from "@/components/ui/pane-content-toolbar";
 import { compactUp, type Theme } from "@/styles/theme";
 import { usePaneSurface } from "@/panels/pane-context";
 import type {
@@ -180,10 +181,6 @@ function sortTriggerStyle({
   pressed,
 }: PressableStateCallbackType & { hovered?: boolean }) {
   return [styles.sortTrigger, (Boolean(hovered) || pressed) && styles.sortTriggerHovered];
-}
-
-function iconButtonStyle({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) {
-  return [styles.iconButton, (Boolean(hovered) || pressed) && styles.iconButtonHovered];
 }
 
 type ExplorerListRow =
@@ -1267,7 +1264,7 @@ export function FileExplorerPane({
         handleBackFromError={handleBackFromError}
         handleRetry={handleRetry}
         sortTriggerStyle={sortTriggerStyle}
-        iconButtonStyle={iconButtonStyle}
+        isCompact={isCompact}
         solutions={solutions}
         viewMode={viewMode}
         selectedSolutionPath={selectedSolutionPath}
@@ -1348,7 +1345,7 @@ interface FileExplorerPaneContentProps {
   handleBackFromError: () => void;
   handleRetry: () => void;
   sortTriggerStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
-  iconButtonStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
+  isCompact: boolean;
   solutions: readonly SolutionRef[];
   viewMode: ExplorerViewMode;
   selectedSolutionPath: string | null;
@@ -1377,7 +1374,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     handleBackFromError,
     handleRetry,
     sortTriggerStyle: sortTriggerStyleProp,
-    iconButtonStyle: iconButtonStyleProp,
+    isCompact,
     solutions,
     viewMode,
     selectedSolutionPath,
@@ -1401,17 +1398,6 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
   const emptyLabel = showHiddenFiles
     ? t("workspace.fileExplorer.empty.noFiles")
     : t("workspace.fileExplorer.empty.noVisibleFiles");
-  const hiddenFilesToggleStyle = useCallback(
-    (state: PressableStateCallbackType) => [
-      iconButtonStyleProp(state),
-      !showHiddenFiles && styles.iconButtonActive,
-    ],
-    [showHiddenFiles, iconButtonStyleProp],
-  );
-  const hiddenFilesToggleAccessibilityState = useMemo(
-    () => ({ selected: !showHiddenFiles }),
-    [showHiddenFiles],
-  );
   const isSolutionLens = viewMode === "solution";
 
   if (error && !isSolutionLens) {
@@ -1472,39 +1458,33 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
             </Pressable>
           )}
         </View>
-        <View style={styles.headerActions}>
+        <ToolbarControls style={styles.headerActions}>
           {!isSolutionLens && onNewEntryAtRoot ? (
             <>
-              <Pressable
+              <ToolbarButton
                 onPress={handleNewFileAtRoot}
-                hitSlop={8}
-                style={iconButtonStyleProp}
-                accessibilityRole="button"
-                accessibilityLabel={t("workspace.fileActions.newFile")}
+                compact={isCompact}
+                label={t("workspace.fileActions.newFile")}
                 testID="files-new-file"
               >
                 <ThemedFilePlus size="sm" uniProps={foregroundMutedColorMapping} />
-              </Pressable>
-              <Pressable
+              </ToolbarButton>
+              <ToolbarButton
                 onPress={handleNewFolderAtRoot}
-                hitSlop={8}
-                style={iconButtonStyleProp}
-                accessibilityRole="button"
-                accessibilityLabel={t("workspace.fileActions.newFolder")}
+                compact={isCompact}
+                label={t("workspace.fileActions.newFolder")}
                 testID="files-new-folder"
               >
                 <ThemedFolderPlus size="sm" uniProps={foregroundMutedColorMapping} />
-              </Pressable>
+              </ToolbarButton>
             </>
           ) : null}
           {isSolutionLens ? null : (
-            <Pressable
+            <ToolbarButton
               onPress={handleToggleHiddenFiles}
-              hitSlop={8}
-              style={hiddenFilesToggleStyle}
-              accessibilityRole="button"
-              accessibilityLabel={hiddenFilesToggleAccessibilityLabel}
-              accessibilityState={hiddenFilesToggleAccessibilityState}
+              compact={isCompact}
+              label={hiddenFilesToggleAccessibilityLabel}
+              selected={!showHiddenFiles}
               testID="files-hidden-toggle"
             >
               {showHiddenFiles ? (
@@ -1512,15 +1492,13 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
               ) : (
                 <ThemedEyeOff size="sm" uniProps={foregroundMutedColorMapping} />
               )}
-            </Pressable>
+            </ToolbarButton>
           )}
-          <Pressable
+          <ToolbarButton
             onPress={handleRefresh}
+            compact={isCompact}
             disabled={isRefreshFetching}
-            hitSlop={8}
-            style={iconButtonStyleProp}
-            accessibilityRole="button"
-            accessibilityLabel={
+            label={
               isRefreshFetching
                 ? t("workspace.fileExplorer.actions.refreshing")
                 : t("workspace.fileExplorer.actions.refresh")
@@ -1534,8 +1512,8 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
                 <ThemedRotateCw size="sm" uniProps={foregroundMutedColorMapping} />
               )}
             </View>
-          </Pressable>
-        </View>
+          </ToolbarButton>
+        </ToolbarControls>
       </View>
       {isSolutionLens ? (
         renderSolutionPane()
@@ -1953,9 +1931,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
+    flexShrink: 0,
   },
   treeList: {
     flex: 1,
@@ -2093,19 +2069,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
-  },
-  iconButton: {
-    width: 22,
-    height: 22,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconButtonHovered: {
-    backgroundColor: theme.colors.surface2,
-  },
-  iconButtonActive: {
-    backgroundColor: theme.colors.surface2,
   },
   refreshIcon: {
     // Reserves the glyph's slot so the row does not twitch when the spinner swaps in,

@@ -45,7 +45,7 @@ import type { RefineFileProposal, RefineSetFile, RefineSetStats } from "@/refine
 import { RefineHunkDecision } from "@/refine/refine-hunk-decision";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
-import { compactFont, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 import type { DiffPresentation } from "@/utils/diff-document";
 
 /**
@@ -941,21 +941,21 @@ const styles = StyleSheet.create((theme) => ({
   fileName: {
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
     flexShrink: 0,
   },
   fileDir: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     flexShrink: 1,
   },
   // Shrinks before the file name does - the document being refined is what
   // identifies the tab, so it is the last thing that should be truncated.
   impactText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     flexShrink: 2,
   },
   // A full-width strip rather than a line squeezed into the toolbar: a failed
@@ -969,7 +969,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorBannerText: {
     color: theme.colors.destructive,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
   },
   workingSet: {
     gap: theme.spacing[2],
@@ -980,7 +980,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   stripLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
   },
   chipRow: {
     flexDirection: "row",
@@ -1006,16 +1006,16 @@ const styles = StyleSheet.create((theme) => ({
   },
   chipLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   chipLabelWritable: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.semibold,
   },
   tooltipText: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   instructionBar: {
     gap: theme.spacing[2],
@@ -1027,7 +1027,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   presetNote: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontStyle: "italic",
   },
   instructionRow: {
@@ -1053,7 +1053,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[2],
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
   },
   instructionActions: {
     flexDirection: "row",
@@ -1080,7 +1080,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   keptCount: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   outcomeRow: {
@@ -1097,26 +1097,26 @@ const styles = StyleSheet.create((theme) => ({
   },
   outcomeName: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
     flexShrink: 0,
   },
   outcomeDir: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     flexShrink: 1,
   },
   outcomeReason: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     paddingLeft: theme.spacing[3],
   },
   dotGood: { width: 7, height: 7, borderRadius: 999, backgroundColor: theme.colors.statusSuccess },
   dotWarn: { width: 7, height: 7, borderRadius: 999, backgroundColor: theme.colors.statusWarning },
   dotBad: { width: 7, height: 7, borderRadius: 999, backgroundColor: theme.colors.statusDanger },
-  statusGood: { color: theme.colors.statusSuccess, fontSize: compactFont(theme.fontSize.sm) },
-  statusWarn: { color: theme.colors.statusWarning, fontSize: compactFont(theme.fontSize.sm) },
-  statusBad: { color: theme.colors.statusDanger, fontSize: compactFont(theme.fontSize.sm) },
+  statusGood: { color: theme.colors.statusSuccess, fontSize: theme.fontSize.sm },
+  statusWarn: { color: theme.colors.statusWarning, fontSize: theme.fontSize.sm },
+  statusBad: { color: theme.colors.statusDanger, fontSize: theme.fontSize.sm },
   centered: {
     flex: 1,
     alignItems: "center",
@@ -1126,13 +1126,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   mutedText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
     maxWidth: 520,
   },
   errorText: {
     color: theme.colors.destructive,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
     maxWidth: 520,
   },

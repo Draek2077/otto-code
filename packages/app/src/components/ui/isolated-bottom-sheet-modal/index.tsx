@@ -5,6 +5,7 @@ import {
 import React from "react";
 import { forwardRef, useCallback, useEffect, useMemo, useRef } from "react";
 import { FLOATING_LAYER_NO_DRAG_STYLE } from "@/components/desktop/app-region";
+import { BottomSheetInputContext } from "@/components/ui/bottom-sheet-input-context";
 import type { ElementRef, ReactNode } from "react";
 import {
   type BottomSheetController,
@@ -85,7 +86,9 @@ export const IsolatedBottomSheetModal = forwardRef<
       enableDismissOnClose
       stackBehavior={presentation}
     >
-      {contextBridge ? contextBridge(children) : children}
+      <BottomSheetInputContext.Provider value>
+        {contextBridge ? contextBridge(children) : children}
+      </BottomSheetInputContext.Provider>
     </GorhomBottomSheetModal>
   );
 

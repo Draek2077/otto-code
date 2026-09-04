@@ -9,6 +9,7 @@ import {
 import { UnistylesRuntime } from "react-native-unistyles";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useAppSettings } from "@/hooks/use-settings";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import {
   rememberPluginThemeHost,
   usePluginThemeCatalog,
@@ -30,6 +31,7 @@ const ContributedThemesContext = createContext<ContributedThemes | null>(null);
 /** Paseo's single application-level appearance lifecycle, extended by Otto data. */
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const { settings, updateSettings, isLoading } = useAppSettings();
+  const isCompact = useIsCompactFormFactor();
   const options = usePluginThemeCatalog();
   const osColorScheme = useColorScheme();
   const selected = useMemo(
@@ -85,6 +87,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       codeFontSize: settings.codeFontSize,
       syntaxTheme: settings.syntaxTheme,
       chatWidth: settings.chatWidth,
+      isCompact,
     });
     syncBlackChatScopeVars();
   }, [
@@ -96,6 +99,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     settings.syntaxTheme,
     settings.uiFontFamily,
     settings.uiFontSize,
+    isCompact,
   ]);
 
   const select = useCallback(

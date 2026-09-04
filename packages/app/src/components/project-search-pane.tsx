@@ -75,6 +75,7 @@ import { useToast } from "@/contexts/toast-context";
 import { isEditorBufferDirty } from "@/editor/editor-buffer-store";
 import { useSessionStore } from "@/stores/session-store";
 import { usePanelStore } from "@/stores/panel-store";
+import { usePaneSurface } from "@/panels/pane-context";
 import {
   useWorkspaceAttachments,
   useWorkspaceAttachmentScopeKey,
@@ -251,6 +252,7 @@ export function ProjectSearchPane({
   const { t } = useTranslation();
   const toast = useToast();
   const isCompact = useIsCompactFormFactor();
+  const paneSurface = usePaneSurface();
   const showDesktopWebScrollbar = isWeb && !isCompact;
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
@@ -917,10 +919,12 @@ export function ProjectSearchPane({
     ],
     [replaceOpen, showReplaceControls],
   );
+  const toolbarSurfaceStyle =
+    paneSurface === "explorer" ? styles.toolbarExplorer : styles.toolbarWorkspace;
 
   return (
     <View style={styles.container} testID="project-search-pane">
-      <View style={searchHeaderStyle}>
+      <View style={[searchHeaderStyle, toolbarSurfaceStyle]}>
         <View style={styles.queryRow}>
           {showReplaceControls ? (
             <Pressable
@@ -1022,7 +1026,7 @@ export function ProjectSearchPane({
       </View>
 
       <View
-        style={styles.toolbarRow}
+        style={[styles.toolbarRow, toolbarSurfaceStyle]}
         onPointerEnter={handleToolbarPointerEnter}
         onPointerLeave={handleToolbarPointerLeave}
         testID="project-search-toolbar"
@@ -1417,17 +1421,30 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   searchHeader: {
-    paddingBottom: theme.spacing[1],
+    // Search's query bar is Explorer chrome, not a content-sized form. Pin it
+    // to the shared toolbar token so moving among Files, Search, and Changes
+    // never shifts the content start.
+    height: PANE_TOOLBAR_HEIGHT,
+    flexShrink: 0,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
   searchHeaderReplaceOpen: {
-    // The replace band (styles.replaceRow) owns its own vertical rhythm - a full
-    // pane-toolbar-height row with the input centered - so the header drops its
-    // own bottom padding when open and lets the band govern the lower edge.
-    paddingBottom: 0,
+    // The query bar stays one shared toolbar tall; the replace controls add a
+    // deliberate second band beneath it.
+    height: PANE_TOOLBAR_HEIGHT * 2 + 3.75,
+  },
+  // Search may render in either a workspace pane or the Explorer. The host
+  // owns that distinction; both of Search's toolbar bands must paint the host
+  // surface explicitly instead of inheriting the compact overlay canvas.
+  toolbarWorkspace: {
+    backgroundColor: theme.colors.surfaceWorkspace,
+  },
+  toolbarExplorer: {
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   queryRow: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
@@ -1438,10 +1455,6 @@ const styles = StyleSheet.create((theme) => ({
       md: theme.spacing[2] - 5,
     },
     paddingRight: theme.spacing[2] + 5,
-    // Paired with searchHeader's paddingBottom: collapsed, these two are the
-    // whole band, so they stay equal to keep the field centered. Changing one
-    // without the other tilts the bar.
-    paddingTop: theme.spacing[1],
   },
   // The replace band mirrors the search row's horizontal geometry but forms its
   // own full pane-toolbar-height row with the input vertically centered (no
@@ -1460,9 +1473,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[2] + 5,
     // A touch taller than a bare pane-toolbar row, with the input centered in
     // the band (alignItems: "center"). This height alone governs how far the
-    // expanded header's lower divider sits below the collapsed one, because
-    // searchHeader drops its paddingBottom while open - so tune the open band
-    // here, and leave queryRow's paddingTop to the collapsed bar.
+    // expanded header's lower divider sits below the collapsed one, so tune the
+    // extra open band here and leave the shared query-bar geometry alone.
     height: PANE_TOOLBAR_HEIGHT + 3.75,
   },
   queryInput: {
@@ -1514,17 +1526,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   summaryText: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
   },
   truncatedText: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
   },
   iconButton: {
     padding: theme.spacing[1],
@@ -1627,20 +1633,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   fileName: {
     color: theme.colors.foreground,
-    // Explicit compact bump matching the Files tree's row labels.
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
     flexShrink: 0,
     userSelect: "none",
   },
   fileDir: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
     flexShrink: 1,
     minWidth: 0,
     userSelect: "none",
@@ -1651,10 +1650,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   fileCount: {
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     // Held to the tree's icon frame so the count cannot make a header row
     // taller than the file rows it sits among.
     height: WORKSPACE_TREE_ICON_FRAME_SIZE,

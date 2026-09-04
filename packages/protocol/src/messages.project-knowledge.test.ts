@@ -7,6 +7,8 @@ import {
   ProjectKnowledgeRecordSchema,
   ProjectKnowledgeReferenceApplyRequestMessageSchema,
   ProjectKnowledgeRootApplyRequestMessageSchema,
+  ProjectKnowledgeRootGetRequestMessageSchema,
+  ProjectKnowledgeRootGetResponseMessageSchema,
 } from "./messages.js";
 
 describe("project knowledge protocol", () => {
@@ -165,6 +167,30 @@ describe("project knowledge protocol", () => {
         workspaceId: "workspace-1",
         slug: "mindmap",
         body: "# Mindmap\n\n- [[daemon-owns-memory]]",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("lets capable clients defer root Markdown while keeping legacy root pages parseable", () => {
+    expect(
+      ProjectKnowledgeRootGetRequestMessageSchema.safeParse({
+        type: "project.knowledge.root.get.request",
+        requestId: "request-root",
+        workspaceId: "workspace-1",
+        slug: "architecture",
+      }).success,
+    ).toBe(true);
+    expect(
+      ProjectKnowledgeRootGetResponseMessageSchema.safeParse({
+        type: "project.knowledge.root.get.response",
+        payload: {
+          requestId: "request-root",
+          page: {
+            slug: "architecture",
+            title: "Architecture",
+            path: ".otto/knowledge/architecture.md",
+          },
+        },
       }).success,
     ).toBe(true);
   });

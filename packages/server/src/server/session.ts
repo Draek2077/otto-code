@@ -3177,11 +3177,17 @@ export class Session {
       try {
         let startedAgentId: string | undefined;
         if (mode === "in_session") {
+          // Starting a suggested task in the current chat is never permission to
+          // interrupt what that chat is doing. In particular, a compaction
+          // rewrites provider context and must finish before the task prompt can
+          // enter the session. Queue unconditionally so the ordinary busy-turn
+          // behavior and the compaction boundary use the same safe path.
           await sendPromptToAgent({
             agentManager: this.agentManager,
             agentStorage: this.agentStorage,
             agentId: parentAgentId,
             prompt: buildAgentPrompt(task.prompt),
+            delivery: "queue",
             logger: this.sessionLogger,
           });
         } else {

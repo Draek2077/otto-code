@@ -103,6 +103,7 @@ import {
   type SeedAgentTimelineOptions,
 } from "./agent-timeline-store.js";
 import { limitAgentTimelineItemContent } from "./agent-timeline-content.js";
+import { materializeSentImageAttachment } from "./providers/provider-image-output.js";
 import { estimateContextComposition } from "./context-composition.js";
 import type {
   AgentTimelineFetchOptions,
@@ -7618,8 +7619,37 @@ export class AgentManager {
       text: submittedPromptText(prompt),
       clientMessageId,
       ...(options?.messageId ? { messageId: options.messageId } : {}),
+      ...this.materializeSubmittedPromptImages(prompt),
     };
     this.recordAndDispatchTimelineItem(agent.id, item, agent.provider, options?.turnId, options);
+  }
+
+  /**
+   * Phone attachment stores are intentionally device-local. Mirror submitted
+   * prompt images into the daemon-owned image store so timeline readers on
+   * every client can lazily fetch the same bytes.
+   */
+  private materializeSubmittedPromptImages(
+    prompt: AgentPromptInput,
+  ): Pick<Extract<AgentTimelineItem, { type: "user_message" }>, "images"> {
+    if (typeof prompt === "string") return {};
+    const images = prompt.flatMap((block) => {
+      if (block.type !== "image") return [];
+      try {
+        return [
+          {
+            path: materializeSentImageAttachment({ data: block.data, mimeType: block.mimeType })
+              .path,
+            mimeType: block.mimeType,
+          },
+        ];
+      } catch (error) {
+        // Preview persistence must not prevent the provider receiving a prompt.
+        this.logger.warn({ err: error }, "Failed to materialize user image attachment");
+        return [];
+      }
+    });
+    return images.length > 0 ? { images } : {};
   }
 
   private reconcileSubmittedPromptEcho(

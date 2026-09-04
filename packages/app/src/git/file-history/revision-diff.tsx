@@ -6,7 +6,9 @@ import type { GitBlameCommit } from "@otto-code/protocol/messages";
 import { DiffViewer, type DiffLeadingGutter } from "@/components/diff-viewer";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { isMarkdownPath } from "@/editor/markdown/markdown-path";
-import { compactFont, compactUp } from "@/styles/theme";
+import { compactUp } from "@/styles/theme";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { resolveCompactFontSize } from "@/appearance/apply";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import type { DiffLine } from "@/utils/tool-call-parsers";
 import { countDifferences } from "./diff-stats";
@@ -64,7 +66,8 @@ function useHistoryBlameGutter(
   blameByLine: ReadonlyMap<number, GitBlameCommit>,
   onSelectBlameCommit: ((commit: GitBlameCommit) => void) | undefined,
 ): DiffLeadingGutter | undefined {
-  const codeFontSize = useAppSettingValue(selectCodeFontSize);
+  const configuredCodeFontSize = useAppSettingValue(selectCodeFontSize);
+  const codeFontSize = resolveCompactFontSize(configuredCodeFontSize, useIsCompactFormFactor());
   return useMemo(() => {
     if (!file || blameByLine.size === 0) return undefined;
     const numberedLines = buildNumberedDiffHunks(file).flatMap((hunk) => hunk.lines);
@@ -397,25 +400,25 @@ const styles = StyleSheet.create((theme) => ({
   },
   headerSha: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
   },
   headerPath: {
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
   },
   headerArrow: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   // Pushed to the trailing edge, where a count belongs - it describes the pane,
   // it is not part of the revision pair.
   headerCount: {
     marginLeft: "auto",
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   diffHost: {
@@ -436,7 +439,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
   },
   placeholder: {
     flex: 1,
@@ -446,11 +449,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   mutedText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
   },
   errorText: {
     color: theme.colors.destructive,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
 }));

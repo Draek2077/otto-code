@@ -448,8 +448,20 @@ export interface AgentTaskItem {
   activeForm?: string;
 }
 
+/** A daemon-materialized user image. Timeline rows carry this reference, not bytes. */
+export interface AgentTimelineImageAttachment {
+  path: string;
+  mimeType: string;
+}
+
 export type AgentTimelineItem =
-  | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
+  | {
+      type: "user_message";
+      text: string;
+      messageId?: string;
+      clientMessageId?: string;
+      images?: AgentTimelineImageAttachment[];
+    }
   | { type: "assistant_message"; text: string; messageId?: string }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem

@@ -110,7 +110,10 @@ export const ProjectKnowledgeRootPageSchema = z.object({
   // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18. See the same field
   // on ProjectKnowledgeRecordSchema.
   absolutePath: z.string().optional(),
-  body: z.string(),
+  // COMPAT(projectKnowledgeDeferredRootBodies): added in v0.9.1; legacy list
+  // responses keep sending this. New clients request root summaries and fetch
+  // the one selected document through project.knowledge.root.get.request.
+  body: z.string().optional(),
   /** Conditional-write precondition for a reviewed root-page refinement. */
   bodyDigest: z.string().optional(),
 });
@@ -119,6 +122,9 @@ export const ProjectKnowledgeListRequestMessageSchema = z.object({
   type: z.literal("project.knowledge.list.request"),
   requestId: z.string(),
   workspaceId: z.string(),
+  // A catalog normally needs root titles and paths, not six full Markdown
+  // documents. Optional so older clients keep receiving the original shape.
+  includeRootBodies: z.boolean().optional(),
 });
 
 export const ProjectKnowledgeListResponseMessageSchema = z.object({
@@ -145,6 +151,18 @@ export const ProjectKnowledgeGetRequestMessageSchema = z.object({
 export const ProjectKnowledgeGetResponseMessageSchema = z.object({
   type: z.literal("project.knowledge.get.response"),
   payload: z.object({ requestId: z.string(), record: ProjectKnowledgeRecordSchema.nullable() }),
+});
+
+export const ProjectKnowledgeRootGetRequestMessageSchema = z.object({
+  type: z.literal("project.knowledge.root.get.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  slug: z.string(),
+});
+
+export const ProjectKnowledgeRootGetResponseMessageSchema = z.object({
+  type: z.literal("project.knowledge.root.get.response"),
+  payload: z.object({ requestId: z.string(), page: ProjectKnowledgeRootPageSchema.nullable() }),
 });
 
 export const ProjectKnowledgeCreateRequestMessageSchema = z.object({
@@ -368,6 +386,9 @@ export type ProjectKnowledgeListResponseMessage = z.infer<
 
 export type ProjectKnowledgeGetResponseMessage = z.infer<
   typeof ProjectKnowledgeGetResponseMessageSchema
+>;
+export type ProjectKnowledgeRootGetResponseMessage = z.infer<
+  typeof ProjectKnowledgeRootGetResponseMessageSchema
 >;
 
 export type ProjectKnowledgeCreateResponseMessage = z.infer<

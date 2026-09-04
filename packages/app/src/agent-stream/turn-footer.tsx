@@ -5,7 +5,7 @@ import { formatLiveTokenCount } from "@/components/context-window-meter.utils";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { useAppSettings } from "@/hooks/use-settings";
+import { useChatRenderSettings } from "@/components/chat-render-settings-context";
 import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
 import {
@@ -104,7 +104,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   onForkAssistantTurn?: AssistantTurnForkHandler;
   revealed?: boolean;
 }) {
-  const hideDetails = useAppSettings().settings.hideChatMessageDetails;
+  const { hideChatMessageDetails: hideDetails } = useChatRenderSettings();
   const isCompact = useIsCompactFormFactor();
   const [selfHovered, setSelfHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setSelfHovered(true), []);

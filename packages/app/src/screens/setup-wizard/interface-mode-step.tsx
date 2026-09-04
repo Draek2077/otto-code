@@ -123,13 +123,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   title: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize["2xl"] + 2, md: theme.fontSize["2xl"] },
+    fontSize: theme.fontSize["2xl"],
     fontWeight: theme.fontWeight.semibold,
     letterSpacing: -0.4,
   },
   subtitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.base + 2, md: theme.fontSize.base },
+    fontSize: theme.fontSize.base,
   },
   cards: {
     gap: theme.spacing[4],
@@ -155,12 +155,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   cardTitle: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.xl + 2, md: theme.fontSize.xl },
+    fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.semibold,
   },
   cardTagline: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.base + 2, md: theme.fontSize.base },
+    fontSize: theme.fontSize.base,
     lineHeight: { xs: 24, md: 22 },
   },
   bullets: {
@@ -168,7 +168,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   bullet: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
     lineHeight: { xs: 22, md: 20 },
   },
   radio: {

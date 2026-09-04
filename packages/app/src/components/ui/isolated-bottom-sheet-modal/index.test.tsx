@@ -58,6 +58,7 @@ vi.mock("@gorhom/bottom-sheet", async () => {
 });
 
 import { IsolatedBottomSheetModal, type ContextBridge } from ".";
+import { useBottomSheetInput } from "@/components/ui/bottom-sheet-input-context";
 
 /** Renders whatever the portal is currently holding, from its own place in the tree. */
 function PortalHostProbe() {
@@ -69,6 +70,10 @@ const LabelContext = createContext("unbridged");
 
 function Label() {
   return <div data-label={useContext(LabelContext)} />;
+}
+
+function BottomSheetInputLabel() {
+  return <div data-bottom-sheet-input={String(useBottomSheetInput())} />;
 }
 
 describe("IsolatedBottomSheetModal presentation", () => {
@@ -173,5 +178,22 @@ describe("IsolatedBottomSheetModal context bridging", () => {
       <LabelContext.Provider value="from callsite">{children}</LabelContext.Provider>
     );
     expect(renderSheet(bridge)).toBe("from callsite");
+  });
+
+  it("marks portal content as bottom-sheet-owned", () => {
+    act(() => {
+      root.render(
+        <>
+          <IsolatedBottomSheetModal contextBridge={null}>
+            <BottomSheetInputLabel />
+          </IsolatedBottomSheetModal>
+          <PortalHostProbe />
+        </>,
+      );
+    });
+
+    expect(
+      container.querySelector("[data-bottom-sheet-input]")?.getAttribute("data-bottom-sheet-input"),
+    ).toBe("true");
   });
 });

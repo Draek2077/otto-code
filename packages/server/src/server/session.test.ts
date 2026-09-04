@@ -54,6 +54,9 @@ import type {
 import type { GitHubForgeSpecificStatusFacts } from "../services/github-facts.js";
 
 interface SessionHandlerInternals {
+  handleStartSuggestedTaskRequest(
+    msg: Extract<SessionInboundMessage, { type: "tasks.suggested.start.request" }>,
+  ): Promise<void>;
   handleSendAgentMessage(
     agentId: string,
     text: string,
@@ -400,6 +403,74 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     daemonRuntimeConfig: options.daemonRuntimeConfig,
   });
 }
+
+test("queues an in-session suggested task instead of interrupting compaction", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const parentAgent = { id: "parent-agent", provider: "codex" } as never;
+  const enqueueSteerMessage = vi.fn(() => ({
+    queued: true,
+    entry: {
+      id: "queued-1",
+      prompt: "Finish the follow-up after compaction.",
+      enqueuedAt: "2026-09-04T00:00:00.000Z",
+      source: "user" as const,
+    },
+  }));
+  const replaceAgentRun = vi.fn(() => (async function* noop() {})());
+  const markSuggestedTaskStarted = vi.fn();
+  const session = createSessionForTest({
+    messages,
+    agentManager: {
+      getAgent: vi.fn(() => parentAgent),
+      getSuggestedTaskEntry: vi.fn(() => ({
+        id: "task-1",
+        parentAgentId: "parent-agent",
+        title: "Finish the follow-up",
+        prompt: "Finish the follow-up after compaction.",
+        tldr: "Completes the deferred follow-up in this chat.",
+        state: "pending",
+        createdAt: "2026-09-04T00:00:00.000Z",
+        updatedAt: "2026-09-04T00:00:00.000Z",
+      })),
+      beginSuggestedTaskStart: vi.fn(() => true),
+      endSuggestedTaskStart: vi.fn(),
+      markSuggestedTaskStarted,
+      waitForAgentClose: vi.fn(async () => {}),
+      tryRunOutOfBand: vi.fn(() => false),
+      hasInFlightRun: vi.fn(() => true),
+      isBusyOnlyWithOutOfBandRun: vi.fn(() => true),
+      enqueueSteerMessage,
+      replaceAgentRun,
+    },
+  });
+
+  await asSessionInternals(session).handleStartSuggestedTaskRequest({
+    type: "tasks.suggested.start.request",
+    requestId: "start-task",
+    parentAgentId: "parent-agent",
+    taskIds: ["task-1"],
+    mode: "in_session",
+  });
+
+  expect(enqueueSteerMessage).toHaveBeenCalledWith(
+    "parent-agent",
+    "Finish the follow-up after compaction.",
+    {},
+  );
+  expect(replaceAgentRun).not.toHaveBeenCalled();
+  expect(markSuggestedTaskStarted).toHaveBeenCalledWith({ taskId: "task-1", mode: "in_session" });
+  expect(messages).toContainEqual({
+    type: "tasks.suggested.start.response",
+    payload: {
+      requestId: "start-task",
+      parentAgentId: "parent-agent",
+      accepted: true,
+      succeeded: 1,
+      failed: 0,
+      error: null,
+    },
+  });
+});
 
 test("routes host-scoped agent skills requests through the daemon owner", async () => {
   const messages: SessionOutboundMessage[] = [];

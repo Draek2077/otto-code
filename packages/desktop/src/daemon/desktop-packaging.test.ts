@@ -15,6 +15,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+// electron-builder lifecycle hooks are CommonJS scripts, so exercise their
+// exported packaging assertions directly rather than duplicating the check in
+// a declarative-config test.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { verifyBundledZoomRecorder } = require("../../scripts/after-pack.js") as {
+  verifyBundledZoomRecorder: (appOutDir: string, platform: NodeJS.Platform, arch: string) => void;
+};
+
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function writeExecutable(filePath: string, contents: string): void {
@@ -167,6 +175,24 @@ describe("desktop packaging", () => {
     expect(buildRuntime).toContain('system not in {"Linux", "Windows"}');
     expect(buildRuntime).toContain("smoke_test(executable)");
     expect(buildRuntime).toContain('("--version",), ("status",)');
+  });
+
+  it("rejects a supported package when its Zoom Recorder helper is missing", () => {
+    const appOutDir = mkdtempSync(join(tmpdir(), "otto-recorder-package-test-"));
+    try {
+      expect(() => verifyBundledZoomRecorder(appOutDir, "win32", "x64")).toThrow(
+        "Bundled Zoom Recorder helper is missing",
+      );
+
+      const helperPath = join(appOutDir, "resources", "zoom-recorder", "otto-zoom-recorder.exe");
+      mkdirSync(dirname(helperPath), { recursive: true });
+      writeFileSync(helperPath, "frozen helper");
+
+      expect(() => verifyBundledZoomRecorder(appOutDir, "win32", "x64")).not.toThrow();
+      expect(() => verifyBundledZoomRecorder(appOutDir, "win32", "arm64")).not.toThrow();
+    } finally {
+      rmSync(appOutDir, { recursive: true, force: true });
+    }
   });
 
   it("excludes package debug/source files from the packaged app", () => {

@@ -62,7 +62,7 @@ const successIcon = (theme: Theme) => ({
 });
 const favoriteIcon = (theme: Theme) => ({
   color: theme.colors.palette.amber[500],
-  size: 14,
+  size: theme.iconSize.sm,
 });
 
 const downloadIcon = <ThemedDownload uniProps={foregroundIcon} />;
@@ -1901,7 +1901,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   searchInput: {
     flex: 1,
-    height: 36,
+    // The compact font scale needs enough vertical room for Android's input
+    // metrics; a desktop-height field clips its placeholder at the top.
+    height: { xs: 48, md: 36 },
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
@@ -1909,6 +1911,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+    textAlignVertical: "center",
   },
   searchLoading: {
     paddingVertical: theme.spacing[3],

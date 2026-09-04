@@ -176,19 +176,10 @@ const styles = StyleSheet.create((theme) => {
     text: {
       color: theme.colors.foreground,
       ...geometry.buttonText,
-      // Explicit compact bump (not left to the ambient theme-patch scale).
-      fontSize: {
-        xs: geometry.buttonText.fontSize + 2,
-        md: geometry.buttonText.fontSize,
-      },
       fontWeight: theme.fontWeight.normal,
     },
     textXs: {
       ...geometry.buttonTextXs,
-      fontSize: {
-        xs: geometry.buttonTextXs.fontSize + 2,
-        md: geometry.buttonTextXs.fontSize,
-      },
     },
     textDefault: {
       color: theme.colors.accentForeground,

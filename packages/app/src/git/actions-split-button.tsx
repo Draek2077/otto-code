@@ -286,16 +286,8 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.6,
   },
   splitButtonText: {
-    // Explicit compact bump matching the branch switcher's label so the two
-    // header combos read at the same size on mobile.
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
-    lineHeight: {
-      xs: (theme.fontSize.sm + 2) * 1.5,
-      md: theme.fontSize.sm * 1.5,
-    },
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
@@ -311,17 +303,11 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     // Icon-only content (16px) is shorter than the label's line height - pin
     // the same minimum so all three workspace-tools split buttons match.
-    minHeight: {
-      xs: (theme.fontSize.sm + 2) * 1.5,
-      md: theme.fontSize.sm * 1.5,
-    },
+    minHeight: theme.fontSize.sm * 1.5,
   },
   splitButtonSpinnerOnly: {
     transform: [{ scale: 0.8 }],
-    minHeight: {
-      xs: (theme.fontSize.sm + 2) * 1.5,
-      md: theme.fontSize.sm * 1.5,
-    },
+    minHeight: theme.fontSize.sm * 1.5,
   },
   splitButtonCaret: {
     // 1.5x on compact to wrap the caret icon's compact upscale.

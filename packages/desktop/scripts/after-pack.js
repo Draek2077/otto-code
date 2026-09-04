@@ -21,6 +21,35 @@ function getResourcesDir(appOutDir, platform) {
     : path.join(appOutDir, "resources");
 }
 
+function verifyBundledZoomRecorder(appOutDir, platform, arch) {
+  // The helper is a native binary frozen on its target architecture. It is
+  // deliberately absent from unsupported targets, where the renderer hides
+  // Recorder instead of shipping an executable that cannot run.
+  if (arch !== "x64" || (platform !== "linux" && platform !== "win32")) {
+    return;
+  }
+
+  const executableName = platform === "win32" ? "otto-zoom-recorder.exe" : "otto-zoom-recorder";
+  const executablePath = path.join(
+    getResourcesDir(appOutDir, platform),
+    "zoom-recorder",
+    executableName,
+  );
+  if (!fs.existsSync(executablePath)) {
+    throw new Error(`Bundled Zoom Recorder helper is missing: ${executablePath}`);
+  }
+
+  const stat = fs.statSync(executablePath);
+  if (!stat.isFile() || stat.size === 0) {
+    throw new Error(`Bundled Zoom Recorder helper is invalid: ${executablePath}`);
+  }
+  if (platform !== "win32") {
+    fs.accessSync(executablePath, fs.constants.X_OK);
+  }
+
+  console.log(`Verified bundled Zoom Recorder helper: ${executableName}`);
+}
+
 function verifyBundledWakeWordModel(appOutDir, platform) {
   const modelDir = path.join(getResourcesDir(appOutDir, platform), "wake-word");
   const manifestPath = path.join(modelDir, "model.json");
@@ -165,6 +194,7 @@ exports.default = async function afterPack(context) {
   const platform = context.electronPlatformName;
   const arch = ARCH_MAP[context.arch] || process.arch;
 
+  verifyBundledZoomRecorder(context.appOutDir, platform, arch);
   verifyBundledWakeWordModel(context.appOutDir, platform);
   pruneNativeModules(context.appOutDir, platform, arch);
 
@@ -180,6 +210,7 @@ exports.default = async function afterPack(context) {
 };
 
 exports.verifyBundledWakeWordModel = verifyBundledWakeWordModel;
+exports.verifyBundledZoomRecorder = verifyBundledZoomRecorder;
 
 async function smokeUnpackedAppIfRequested(appOutDir) {
   if (process.env.OTTO_DESKTOP_SMOKE !== "1") {

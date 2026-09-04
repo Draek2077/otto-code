@@ -7,7 +7,7 @@ import { TreeChevron } from "@/components/tree-primitives";
 import { Switch } from "@/components/ui/switch";
 import { isWeb } from "@/constants/platform";
 import type { RefineHunk } from "@/refine/hunks";
-import { compactFont } from "@/styles/theme";
+
 import type { DiffPresentation } from "@/utils/diff-document";
 
 /**
@@ -116,17 +116,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   name: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
   },
   stat: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.xs),
+    fontSize: theme.fontSize.xs,
     fontVariant: ["tabular-nums"],
   },
   spacer: { flex: 1 },
-  kept: { color: theme.colors.statusSuccess, fontSize: compactFont(theme.fontSize.sm) },
-  dropped: { color: theme.colors.foregroundMuted, fontSize: compactFont(theme.fontSize.sm) },
+  kept: { color: theme.colors.statusSuccess, fontSize: theme.fontSize.sm },
+  dropped: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   body: { backgroundColor: theme.colors.surfaceCode },
   bodyDropped: { opacity: 0.45 },
 }));

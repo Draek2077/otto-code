@@ -89,6 +89,12 @@ export type StreamItem =
 
 export type UserMessageImageAttachment = AttachmentMetadata;
 
+/** A daemon-owned prompt image that this device retrieves only when it renders. */
+export interface RemoteUserMessageImageAttachment {
+  path: string;
+  mimeType: string;
+}
+
 export interface UserMessageItem {
   kind: "user_message";
   id: string;
@@ -100,6 +106,7 @@ export interface UserMessageItem {
   timestamp: Date;
   optimistic?: true;
   images?: UserMessageImageAttachment[];
+  remoteImages?: RemoteUserMessageImageAttachment[];
   attachments?: AgentAttachment[];
 }
 
@@ -112,6 +119,7 @@ export interface UserMessageInput {
   text: string;
   timestamp: Date;
   images?: UserMessageImageAttachment[];
+  remoteImages?: RemoteUserMessageImageAttachment[];
   attachments?: AgentAttachment[];
 }
 
@@ -130,6 +138,9 @@ export function createUserMessage(input: UserMessageInput): UserMessageItem {
     text: input.text,
     timestamp: input.timestamp,
     ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
+    ...(input.remoteImages && input.remoteImages.length > 0
+      ? { remoteImages: input.remoteImages }
+      : {}),
     ...(input.attachments && input.attachments.length > 0
       ? { attachments: input.attachments }
       : {}),
@@ -247,6 +258,23 @@ interface UserMessageProductionResult {
   matched: boolean;
 }
 
+function hasSameUserMessagePresentation(
+  existing: UserMessageItem,
+  merged: UserMessageItem,
+): boolean {
+  return (
+    existing.id === merged.id &&
+    existing.clientMessageId === merged.clientMessageId &&
+    existing.messageId === merged.messageId &&
+    existing.timelineCursor === merged.timelineCursor &&
+    existing.text === merged.text &&
+    existing.timestamp === merged.timestamp &&
+    existing.images === merged.images &&
+    existing.remoteImages === merged.remoteImages &&
+    existing.attachments === merged.attachments
+  );
+}
+
 function produceUserMessage(
   items: StreamItem[],
   incoming: UserMessageItem,
@@ -276,17 +304,9 @@ function produceUserMessage(
     messageId: incoming.messageId ?? existing.messageId,
     turnId: incoming.turnId ?? existing.turnId,
     timelineCursor: incoming.timelineCursor ?? existing.timelineCursor,
+    remoteImages: incoming.remoteImages ?? existing.remoteImages,
   });
-  if (
-    existing.id === merged.id &&
-    existing.clientMessageId === merged.clientMessageId &&
-    existing.messageId === merged.messageId &&
-    existing.timelineCursor === merged.timelineCursor &&
-    existing.text === merged.text &&
-    existing.timestamp === merged.timestamp &&
-    existing.images === merged.images &&
-    existing.attachments === merged.attachments
-  ) {
+  if (hasSameUserMessagePresentation(existing, merged)) {
     return { items, index, message: existing, matched: true };
   }
   const next = [...items];
@@ -688,6 +708,7 @@ export interface OptimisticUserMessageInput {
   text: string;
   timestamp: Date;
   images?: UserMessageImageAttachment[];
+  remoteImages?: RemoteUserMessageImageAttachment[];
   attachments?: AgentAttachment[];
 }
 
@@ -895,6 +916,9 @@ export function buildOptimisticUserMessage(input: OptimisticUserMessageInput): U
     timestamp: input.timestamp,
     optimistic: true,
     ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
+    ...(input.remoteImages && input.remoteImages.length > 0
+      ? { remoteImages: input.remoteImages }
+      : {}),
     ...(input.attachments && input.attachments.length > 0
       ? { attachments: input.attachments }
       : {}),
@@ -951,6 +975,7 @@ function appendUserMessage(
   clientMessageId?: string,
   timelineCursor?: TimelinePosition,
   turnId?: string,
+  remoteImages?: RemoteUserMessageImageAttachment[],
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!hasContent) {
@@ -974,6 +999,7 @@ function appendUserMessage(
     turnId,
     text: chunk,
     timestamp,
+    remoteImages,
   });
   if (optimistic) {
     const next = [...state];
@@ -982,6 +1008,7 @@ function appendUserMessage(
       messageId,
       clientMessageId: clientMessageId ?? optimistic.clientMessageId,
       timelineCursor,
+      ...(remoteImages && remoteImages.length > 0 ? { remoteImages } : {}),
     });
     return next;
   }
@@ -1800,6 +1827,7 @@ function reduceTimelineEvent(
           item.clientMessageId,
           timelineCursor,
           event.turnId,
+          item.images,
         ),
       );
     case "assistant_message":
@@ -2330,6 +2358,7 @@ function applyCanonicalUserMessageEvent(params: {
     timelineCursor,
     text: normalized.chunk,
     timestamp,
+    remoteImages: event.item.images,
   });
 
   if (unmatchedInsert === "head") {

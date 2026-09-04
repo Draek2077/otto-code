@@ -1139,7 +1139,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   stackedMeta: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs + 2,
+    fontSize: theme.fontSize.xs,
     textAlign: "center",
   },
   rowBorder: {

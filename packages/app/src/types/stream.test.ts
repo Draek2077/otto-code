@@ -1317,6 +1317,52 @@ describe("stream reducer canonical tool calls", () => {
     assert.strictEqual(message.timestamp.getTime(), submittedTimestamp.getTime());
   });
 
+  it("adds the daemon image reference when reconciling a submitted user image", () => {
+    const messageId = "msg-user-remote-image";
+    const remoteImages = [
+      {
+        path: "/otto/sent-attachments/image.png",
+        mimeType: "image/png",
+      },
+    ];
+    const state = reduceStreamUpdate(
+      [
+        {
+          kind: "user_message",
+          id: messageId,
+          clientMessageId: messageId,
+          text: "Analyze this image",
+          timestamp: new Date("2025-01-01T11:10:00Z"),
+          images: [
+            {
+              id: "att-submitted",
+              mimeType: "image/png",
+              storageType: "native-file",
+              storageKey: "/tmp/submitted.png",
+              createdAt: Date.now(),
+            },
+          ],
+        },
+      ],
+      {
+        type: "timeline",
+        provider: "claude",
+        item: {
+          type: "user_message",
+          text: "Analyze this image",
+          messageId,
+          clientMessageId: messageId,
+          images: remoteImages,
+        },
+      },
+      new Date("2025-01-01T11:10:01Z"),
+    );
+
+    const message = state.find((item) => item.kind === "user_message");
+    assert.ok(message);
+    assert.deepStrictEqual(message.remoteImages, remoteImages);
+  });
+
   it("keeps canonical assistant/user/assistant order during replay", () => {
     const state: StreamItem[] = [
       {

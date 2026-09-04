@@ -89,18 +89,16 @@ interface MessagePlaybackButtonProps {
 
 const ThemedVolume2 = withUnistyles(Volume2);
 const ThemedStop = withUnistyles(Stop);
-const ThemedSpinner = withUnistyles(LoadingSpinner);
 
 // Match the neighboring copy/fork glyphs: muted at rest, foreground on hover,
 // accent while it is actively speaking so the state reads at a glance.
 const idleIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const hoveredIconMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const activeIconMapping = (theme: Theme) => ({ color: theme.colors.accent });
-const spinnerMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 type PlaybackStatus = "idle" | "loading" | "playing";
 
-const PLAYBACK_ICON_SIZE = 16;
+const PLAYBACK_ICON_SIZE = "chromeXs" as const;
 
 export function MessagePlaybackButton({
   serverId,
@@ -271,7 +269,7 @@ export function MessagePlaybackButton({
         // Give ActivityIndicator the slot's actual size. Using the platform
         // "small" preset can leave a larger intrinsic box on some renderers,
         // even when a transform makes the painted spinner look smaller.
-        icon = <ThemedSpinner uniProps={spinnerMapping} size={PLAYBACK_ICON_SIZE} />;
+        icon = <LoadingSpinner size={PLAYBACK_ICON_SIZE} />;
       } else if (isSpeaking) {
         icon = <ThemedStop uniProps={activeIconMapping} size={PLAYBACK_ICON_SIZE} />;
       } else {
@@ -320,11 +318,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
     opacity: theme.opacity[50],
   },
   // Every icon state renders inside this fixed square so switching to the
-  // spinner never resizes the footer row. overflow: hidden clips the scaled
-  // spinner to the exact glyph footprint.
+  // spinner never resizes the footer row. The slot follows the same token as
+  // the glyph, including the compact-form-factor increase.
   iconSlot: {
-    width: PLAYBACK_ICON_SIZE,
-    height: PLAYBACK_ICON_SIZE,
+    width: theme.iconSize.chromeXs,
+    height: theme.iconSize.chromeXs,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",

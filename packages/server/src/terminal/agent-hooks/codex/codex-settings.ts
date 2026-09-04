@@ -129,9 +129,18 @@ function commandContainsMarker(hook: CodexCommandHook, marker: string): boolean 
 
 function windowsCommandContainsMarker(hook: CodexCommandHook, marker: string): boolean {
   return (
-    commandFieldContainsMarker(hook.commandWindows, marker) ||
-    commandFieldContainsMarker(hook.command_windows, marker)
+    windowsCommandFieldContainsMarker(hook.commandWindows, marker) ||
+    windowsCommandFieldContainsMarker(hook.command_windows, marker)
   );
+}
+
+function windowsCommandFieldContainsMarker(value: unknown, marker: string): boolean {
+  if (commandFieldContainsMarker(value, marker)) return true;
+  if (typeof value !== "string") return false;
+  const encoded = value.match(
+    /^powershell\.exe -NoProfile -NonInteractive -EncodedCommand ([A-Za-z0-9+/=]+)$/,
+  )?.[1];
+  return encoded ? Buffer.from(encoded, "base64").toString("utf16le").includes(marker) : false;
 }
 
 function commandFieldContainsMarker(value: unknown, marker: string): boolean {

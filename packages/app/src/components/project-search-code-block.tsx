@@ -10,6 +10,8 @@ import {
 } from "@/components/project-search-code-lines";
 import { findHighlightStyles } from "@/components/find-highlight-styles";
 import { isNative, isWeb } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { resolveCompactFontSize } from "@/appearance/apply";
 import { useAppSettings, useAppSettingValue } from "@/hooks/use-settings";
 import {
   getInlineReviewThreadState,
@@ -202,8 +204,9 @@ export const SearchCodeBlock = memo(function SearchCodeBlock({
   expectedHeight,
   onHeightChange,
 }: SearchCodeBlockProps) {
-  const codeFontSize = useAppSettingValue(selectCodeFontSize);
+  const configuredCodeFontSize = useAppSettingValue(selectCodeFontSize);
   const { settings } = useAppSettings();
+  const codeFontSize = resolveCompactFontSize(configuredCodeFontSize, useIsCompactFormFactor());
   const codeLineHeight = searchCodeLineHeight(codeFontSize);
   const typography = useMemo(() => {
     const monoFontFamily = settings.monoFontFamily.trim();

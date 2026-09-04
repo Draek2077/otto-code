@@ -35,6 +35,7 @@ import { CommandCenterRootActions } from "@/command-center/root-registration";
 import { CommandCenterProvider } from "@/command-center/provider";
 import { CommandCenterWorkspaceActions } from "@/command-center/workspace-registration";
 import { AddProjectFlowHost } from "@/components/add-project-flow-host";
+import { ChatRenderSettingsProvider } from "@/components/chat-render-settings-context";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
@@ -810,29 +811,31 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AppearanceProvider>
-      <VoiceProvider>
-        <DesktopWindowControlsSync enabled={!settingsLoading} />
-        <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
-        <HostSessionManager />
-        <FaviconStatusSync />
-        <AppearanceStyleBoundary>
-          {/* Agent voice cues are a notification channel, so playback lives here -
+    <ChatRenderSettingsProvider>
+      <AppearanceProvider>
+        <VoiceProvider>
+          <DesktopWindowControlsSync enabled={!settingsLoading} />
+          <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
+          <HostSessionManager />
+          <FaviconStatusSync />
+          <AppearanceStyleBoundary>
+            {/* Agent voice cues are a notification channel, so playback lives here -
           app-global, above the router - and is independent of the Visualizer
           entirely. Headless: it fires the cue audio and renders nothing. */}
-          <AgentVoiceCuesHost />
-          {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
+            <AgentVoiceCuesHost />
+            {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
           for the same two reasons as the cues: the shared audio engine resolves
           inside VoiceProvider, and a route change must not cut a queue short. */}
-          <AutoSpeechHost />
-          <ZoomRecorderHost />
-          {/* Headless: binds the resource monitor started above the router to the
+            <AutoSpeechHost />
+            <ZoomRecorderHost />
+            {/* Headless: binds the resource monitor started above the router to the
           `resourceMonitorEnabled` setting, so the telemetry can be turned off. */}
-          <ResourceMonitorHost />
-          {children}
-        </AppearanceStyleBoundary>
-      </VoiceProvider>
-    </AppearanceProvider>
+            <ResourceMonitorHost />
+            {children}
+          </AppearanceStyleBoundary>
+        </VoiceProvider>
+      </AppearanceProvider>
+    </ChatRenderSettingsProvider>
   );
 }
 

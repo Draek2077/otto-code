@@ -62,11 +62,18 @@ interface ExplorerSidebarProps {
   onOpenFile?: (filePath: string, options?: { edit?: boolean; lineStart?: number }) => void;
 }
 
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+  size: theme.iconSize.sm,
+});
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
 });
-const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
+const accentColorMapping = (theme: Theme) => ({
+  color: theme.colors.accent,
+  size: theme.iconSize.sm,
+});
 const ThemedCloseIcon = withUnistyles(X);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedSearch = withUnistyles(Search);
@@ -142,7 +149,10 @@ export function CompactExplorerSidebar({
         paddingBottom: usePanelKeyboardPadding ? 0 : insets.bottom,
       }),
       styles.mobileSidebar,
-      mobileKeyboardInsetStyle,
+      // A disabled padding animation resolves to `paddingBottom: 0`, which
+      // would erase Changes' safe-area inset. It only owns the bottom edge
+      // while the Files/Search keyboard path is active.
+      usePanelKeyboardPadding ? mobileKeyboardInsetStyle : null,
     ],
     [insets.bottom, insets.top, mobileKeyboardInsetStyle, usePanelKeyboardPadding],
   );
@@ -292,10 +302,10 @@ function ExplorerTabIcon({
   pullRequestProvider,
 }: Pick<ExplorerTabButtonProps, "tab" | "active" | "pullRequestProvider">) {
   const uniProps = active ? accentColorMapping : foregroundMutedColorMapping;
-  if (tab === "changes") return <ThemedSourceControl size={14} uniProps={uniProps} />;
-  if (tab === "files") return <ThemedFolderOpen size={14} uniProps={uniProps} />;
-  if (tab === "search") return <ThemedSearch size={14} uniProps={uniProps} />;
-  return <ThemedPullRequestTabIcon provider={pullRequestProvider} size={13} uniProps={uniProps} />;
+  if (tab === "changes") return <ThemedSourceControl uniProps={uniProps} />;
+  if (tab === "files") return <ThemedFolderOpen uniProps={uniProps} />;
+  if (tab === "search") return <ThemedSearch uniProps={uniProps} />;
+  return <ThemedPullRequestTabIcon provider={pullRequestProvider} uniProps={uniProps} />;
 }
 
 function ExplorerTabButton({
@@ -469,7 +479,6 @@ function ExplorerSidebarContent({
           >
             {({ hovered, pressed }) => (
               <ThemedCloseIcon
-                size={18}
                 uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
               />
             )}
@@ -502,12 +511,14 @@ function ExplorerSidebarContent({
         ) : null}
         {mountedTabIds.has("search") ? (
           <RetainedPanel active={resolvedTab === "search"}>
-            <ProjectSearchPane
-              serverId={serverId}
-              workspaceId={workspaceId}
-              workspaceRoot={workspaceRoot}
-              onOpenFile={onOpenFile}
-            />
+            <PaneSurfaceProvider surface="explorer">
+              <ProjectSearchPane
+                serverId={serverId}
+                workspaceId={workspaceId}
+                workspaceRoot={workspaceRoot}
+                onOpenFile={onOpenFile}
+              />
+            </PaneSurfaceProvider>
           </RetainedPanel>
         ) : null}
         {mountedTabIds.has("pr") ? (

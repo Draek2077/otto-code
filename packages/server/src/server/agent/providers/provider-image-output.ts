@@ -41,6 +41,10 @@ export interface MaterializedProviderImage {
 const PROVIDER_IMAGE_ATTACHMENT_DIR = "otto-attachments";
 const PROVIDER_IMAGE_ATTACHMENT_DIR_PREFIX = `${PROVIDER_IMAGE_ATTACHMENT_DIR}-`;
 const MATERIALIZED_IMAGE_DIR_NAME = "attachments";
+// A sent image is user content, unlike provider screenshots and tool output.
+// It must survive the cache's age/size sweep so another client can render the
+// message for as long as the chat itself exists.
+const SENT_IMAGE_ATTACHMENT_DIR_NAME = "sent-attachments";
 const PRIVATE_ATTACHMENT_DIR_MODE = 0o700;
 const MATERIALIZED_IMAGE_FILE_MODE = 0o600;
 
@@ -55,7 +59,16 @@ const MATERIALIZED_IMAGE_FILE = /^[0-9a-f]{64}\.[a-z0-9]+$/;
  * caching-then-validating.
  */
 export function getMaterializedImageAttachmentDir(ottoHome?: string): string {
-  const dir = path.join(ottoHome ?? resolveOttoHome(), MATERIALIZED_IMAGE_DIR_NAME);
+  return ensurePrivateAttachmentDir(MATERIALIZED_IMAGE_DIR_NAME, ottoHome);
+}
+
+/** The daemon-owned record for images the user sends in a prompt. */
+export function getSentImageAttachmentDir(ottoHome?: string): string {
+  return ensurePrivateAttachmentDir(SENT_IMAGE_ATTACHMENT_DIR_NAME, ottoHome);
+}
+
+function ensurePrivateAttachmentDir(directoryName: string, ottoHome?: string): string {
+  const dir = path.join(ottoHome ?? resolveOttoHome(), directoryName);
   fsSync.mkdirSync(dir, { recursive: true, mode: PRIVATE_ATTACHMENT_DIR_MODE });
   try {
     fsSync.chmodSync(dir, PRIVATE_ATTACHMENT_DIR_MODE);
@@ -103,7 +116,25 @@ export function materializeProviderImage(image: {
   data: string;
   mimeType: string | null;
 }): MaterializedProviderImage {
-  const attachmentsDir = getMaterializedImageAttachmentDir();
+  return materializeImage(image, getMaterializedImageAttachmentDir());
+}
+
+/**
+ * Mirrors a user-submitted image into durable daemon storage. This deliberately
+ * does not share the provider-image retention policy: a timeline reference to
+ * user content must not silently expire while the message remains in history.
+ */
+export function materializeSentImageAttachment(image: {
+  data: string;
+  mimeType: string | null;
+}): MaterializedProviderImage {
+  return materializeImage(image, getSentImageAttachmentDir());
+}
+
+function materializeImage(
+  image: { data: string; mimeType: string | null },
+  attachmentsDir: string,
+): MaterializedProviderImage {
   const normalized = normalizeImageData(image.mimeType ?? "image/png", image.data);
   const bytes = Buffer.from(normalized.data, "base64");
   const extension = getImageExtension(normalized.mimeType);

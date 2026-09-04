@@ -5,7 +5,7 @@ title: "Performance and efficiency audit: where Otto burns CPU, memory, and toke
 status: "confirmed"
 tags: ["finding","performance-efficiency-audit"]
 created_at: "2026-08-16T22:16:11.495Z"
-updated_at: "2026-09-02T12:13:03.674Z"
+updated_at: "2026-09-04T16:56:49.698Z"
 ---
 # Performance and efficiency audit: where Otto burns CPU, memory, and tokens a user feels
 
@@ -336,3 +336,8 @@ sits behind the final-chunk path).
   summary: "**Explorer sidebar resize regression (verified, fixed):** The desktop Explorer dock introduced in `118d34c39` kept `previewExplorerSidebarWidth` in React state. Every pointer frame during `workspace-explorer-sidebar-resize-handle` drag therefore re-rendered `SplitContainer` and its dense Explorer tree. Ordinary split panes already update `flexGrow` through a Reanimated shared value. `split-container.tsx` now drives the Explorer dock width through `explorerSidebarResizeWidth` and persists only on drag completion, so drag frames no longer enter React's render path. Focused lint, app typecheck, and `resize-handle-drag.test.ts` passed."
   source: "Local code inspection and targeted verification, 2026-09-02"
   affects: ["upstream-subagent-convergence"]
+- time: "2026-09-04T16:56:49.698Z"
+  kind: "evidence"
+  summary: "**Android relay measurement (verified, no remediation shipped):** On the installed `0.9.0` daemon, trusted relay requests from the Android client were logged by `ws_slow_request` (timer surrounds `Session.handleMessage`, so this excludes post-handler network delivery). Across recent sampled calls: `subscribe_checkout_diff_request` n=32, 0.599–237.464 s, mean 28.626 s; `project.knowledge.list.request` n=16, 3.152–14.992 s, mean 6.857 s; and `checkout_status_request` n=11, 0.600–21.195 s, mean 7.143 s. This proves the primary delay is daemon work and Git-path contention, before relay WAN/encryption cost.\n\nThe structural causes match F3. Changes subscribes by requesting `includeStructured: true`; `computeCheckoutDiffSnapshot` then emits every parsed file with highlighted token arrays plus complete eligible `beforeSource`/`afterSource` snapshots. `parseAndHighlightDiff` reads and highlights all changed files concurrently. The 2 MB raw-patch guard does not cap the expanded structured payload. Project Knowledge catalog loading reads and parses every page, computes health, and returns all six full root Markdown bodies on each list; the first list after a daemon process starts also calls `ensureCurrentLayout`, which can sweep, upgrade and reindex the store. Relay further increases user-visible completion time because normal RPC JSON remains text: its E2EE path encrypts it with main-loop TweetNaCl and base64-encodes ciphertext (about 33% wire expansion), while negotiated binary ciphertext only applies to `ArrayBuffer` payloads.\n\nLocal baseline on the same checkout was not raw Git itself: `git status --porcelain` 369 ms, complete unified diff generation 229 ms, numstat 793 ms for 104 paths / 1,737 additions / 1,077 deletions. Prioritize request-stage and payload-byte instrumentation, then lazy/file-scoped diff delivery and a cached, metadata-only Project Knowledge catalog over relay."
+  source: "Relay-host daemon.log and local source trace, 2026-09-04"
+  affects: ["project-knowledge-context-management","diff-review-experience"]

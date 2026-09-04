@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { FileViewMode } from "@/stores/file-view-store";
 import { compactUp, type Theme } from "@/styles/theme";
 import type { IconSizeProp } from "@/components/icons/icon-size";
+import { useIsCompactFormFactor } from "@/constants/layout";
 
 // The file tab's three-way view switch: editor, editor+preview split,
 // preview. Icon-only with tooltips; exactly one mode is selected.
@@ -34,6 +35,8 @@ function FileViewModeButton({
   label,
   Icon,
   iconSize,
+  showLabel,
+  compact,
   selected,
   onChange,
 }: {
@@ -41,6 +44,8 @@ function FileViewModeButton({
   label: string;
   Icon: ModeIcon;
   iconSize: IconSizeProp;
+  showLabel: boolean;
+  compact: boolean;
   selected: boolean;
   onChange: (mode: FileViewMode) => void;
 }) {
@@ -50,10 +55,11 @@ function FileViewModeButton({
   const buttonStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.modeButton,
+      compact && styles.modeButtonCompact,
       (Boolean(hovered) || pressed) && styles.modeButtonHovered,
       selected && styles.modeButtonSelected,
     ],
-    [selected],
+    [compact, selected],
   );
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   return (
@@ -70,6 +76,9 @@ function FileViewModeButton({
           size={iconSize}
           uniProps={selected ? selectedIconColorMapping : mutedIconColorMapping}
         />
+        {showLabel ? (
+          <Text style={[styles.modeLabel, selected && styles.modeLabelSelected]}>{label}</Text>
+        ) : null}
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
         <Text style={styles.tooltipText}>{label}</Text>
@@ -107,21 +116,26 @@ export interface FileViewModeBarProps {
 function FormattedButton({
   label,
   iconSize,
+  showLabel,
+  compact,
   formatted,
 }: {
   label: string;
   iconSize: IconSizeProp;
+  showLabel: boolean;
+  compact: boolean;
   formatted: FileViewFormattedToggle;
 }) {
   const { on, disabled, onToggle } = formatted;
   const buttonStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.modeButton,
+      compact && styles.modeButtonCompact,
       !disabled && (Boolean(hovered) || pressed) && styles.modeButtonHovered,
       on && styles.modeButtonSelected,
       disabled && styles.modeButtonDisabled,
     ],
-    [disabled, on],
+    [compact, disabled, on],
   );
   const accessibilityState = useMemo(() => ({ disabled, selected: on }), [disabled, on]);
   return (
@@ -139,6 +153,9 @@ function FormattedButton({
           size={iconSize}
           uniProps={on ? selectedIconColorMapping : mutedIconColorMapping}
         />
+        {showLabel ? (
+          <Text style={[styles.modeLabel, on && styles.modeLabelSelected]}>{label}</Text>
+        ) : null}
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
         <Text style={styles.tooltipText}>{label}</Text>
@@ -149,15 +166,19 @@ function FormattedButton({
 
 export function FileViewModeBar({ mode, showSplit, onChange, formatted }: FileViewModeBarProps) {
   const { t } = useTranslation();
-  // Doubled on compact, like every other icon-only control. The literal 16 this
-  // used to pass is ICON_SIZE.md, so the desktop size is unchanged.
+  const isCompact = useIsCompactFormFactor();
+  // This is compact chrome, not content: the chrome ladder preserves the 16px
+  // desktop glyph while growing it to 24px, rather than the ordinary ladder's
+  // visually dominant 32px compact size. The touch targets stay thumb-sized.
   return (
-    <View style={styles.bar} testID="file-view-mode-bar">
+    <View style={[styles.bar, isCompact && styles.barCompact]} testID="file-view-mode-bar">
       <FileViewModeButton
         mode="editor"
         label={t("editor.viewMode.editor")}
         Icon={ThemedSquarePen}
-        iconSize="md"
+        iconSize="chromeMd"
+        showLabel={isCompact}
+        compact={isCompact}
         selected={mode === "editor"}
         onChange={onChange}
       />
@@ -166,7 +187,9 @@ export function FileViewModeBar({ mode, showSplit, onChange, formatted }: FileVi
           mode="split"
           label={t("editor.viewMode.split")}
           Icon={ThemedColumns2}
-          iconSize="md"
+          iconSize="chromeMd"
+          showLabel={isCompact}
+          compact={isCompact}
           selected={mode === "split"}
           onChange={onChange}
         />
@@ -175,7 +198,9 @@ export function FileViewModeBar({ mode, showSplit, onChange, formatted }: FileVi
         mode="preview"
         label={t("editor.viewMode.preview")}
         Icon={ThemedEye}
-        iconSize="md"
+        iconSize="chromeMd"
+        showLabel={isCompact}
+        compact={isCompact}
         selected={mode === "preview"}
         onChange={onChange}
       />
@@ -187,7 +212,9 @@ export function FileViewModeBar({ mode, showSplit, onChange, formatted }: FileVi
           <View style={styles.axisDivider} />
           <FormattedButton
             label={t("editor.viewMode.formatted")}
-            iconSize="md"
+            iconSize="chromeMd"
+            showLabel={false}
+            compact={isCompact}
             formatted={formatted}
           />
         </>
@@ -209,9 +236,27 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
   },
+  barCompact: {
+    width: "100%",
+  },
   modeButton: {
     padding: compactUp(theme.spacing[1]),
     borderRadius: compactUp(6),
+  },
+  modeButtonCompact: {
+    flex: 1,
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[1],
+  },
+  modeLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  modeLabelSelected: {
+    color: theme.colors.foreground,
   },
   modeButtonHovered: {
     backgroundColor: theme.colors.surfaceHover,

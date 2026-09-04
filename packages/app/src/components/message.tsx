@@ -83,7 +83,12 @@ import { colorMarkdownLinkChildren } from "@/components/markdown/link-children";
 import { createAssistantMarkdownParser } from "@/components/markdown/assistant-parser";
 import { applyMath, MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "@/components/markdown/math";
 import { MathFormula } from "@/components/markdown/math-formula";
-import type { TaskActivity, TodoEntry, UserMessageImageAttachment } from "@/types/stream";
+import type {
+  RemoteUserMessageImageAttachment,
+  TaskActivity,
+  TodoEntry,
+  UserMessageImageAttachment,
+} from "@/types/stream";
 import { TodoTaskList, useTodoCounts } from "@/components/todo-task-list";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
 import type { AgentUsage, ToolCallDetail } from "@otto-code/protocol/agent-types";
@@ -105,17 +110,9 @@ import { formatDuration } from "@/utils/time";
 export { LiveElapsed } from "@/components/live-elapsed";
 import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { useChatTimestampLabel } from "@/hooks/use-chat-timestamp";
-import { useAppSettingValue, type AppSettings } from "@/hooks/use-settings";
+import { useChatRenderSettings } from "@/components/chat-render-settings-context";
 import { sliceAtSafeBoundary } from "@/agent-stream/turn-reveal";
 import { ExpandCollapseControls } from "@/components/expand-collapse-controls";
-
-// Module-level selectors for useAppSettingValue so memoized message components
-// subscribe narrowly: they re-render when these specific values change, not on
-// every settings write.
-const selectChatBubbleGradient = (settings: AppSettings) => settings.chatBubbleGradient;
-const selectHideChatMessageDetails = (settings: AppSettings) => settings.hideChatMessageDetails;
-const selectAnimationsEnabled = (settings: AppSettings) => settings.animationsEnabled;
-const selectWrapToolCallText = (settings: AppSettings) => settings.wrapToolCallText;
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
 import {
@@ -191,6 +188,7 @@ interface UserMessageProps {
   messageId?: string;
   message: string;
   images?: UserMessageImageAttachment[];
+  remoteImages?: RemoteUserMessageImageAttachment[];
   attachments?: AgentAttachment[];
   timestamp: number;
   capabilities?: AgentCapabilityFlags;
@@ -489,7 +487,7 @@ export function ChatMessageBubble({
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
 }) {
-  const showBubbleGradient = useAppSettingValue(selectChatBubbleGradient);
+  const { chatBubbleGradient: showBubbleGradient } = useChatRenderSettings();
   return (
     <View
       accessibilityLabel={accessibilityLabel}
@@ -598,6 +596,7 @@ export const UserMessage = memo(function UserMessage({
   messageId,
   message,
   images = [],
+  remoteImages = [],
   attachments = [],
   timestamp,
   capabilities,
@@ -617,11 +616,15 @@ export const UserMessage = memo(function UserMessage({
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const hasText = message.trim().length > 0;
   const hasImages = images.length > 0;
+  // The sending device already owns a local attachment preview. Render the
+  // daemon copy only on peers that do not, otherwise its own message would
+  // display the same image twice after canonical reconciliation.
+  const hasRemoteImages = remoteImages.length > 0 && !hasImages;
   const hasAttachments = attachments.length > 0;
   // Hover-to-reveal is an appearance preference; with it off, details are
   // always visible. Hover doesn't exist on native/compact, so those always
   // show the row either way.
-  const hideMessageDetails = useAppSettingValue(selectHideChatMessageDetails);
+  const { hideChatMessageDetails: hideMessageDetails } = useChatRenderSettings();
   const showTrailingRow = hasText && (!hideMessageDetails || isCompact || isNative || isHovered);
   const formattedTimestamp = useChatTimestampLabel(timestamp);
   const rewindMutation = useRewindAgentMutation({ serverId, agentId, client, messageId });
@@ -656,9 +659,11 @@ export const UserMessage = memo(function UserMessage({
   const imagePreviewContainerStyle = useMemo(
     () => [
       userMessageStylesheet.imagePreviewContainer,
-      hasText || hasAttachments ? userMessageStylesheet.imagePreviewSpacing : undefined,
+      hasText || hasAttachments || hasRemoteImages
+        ? userMessageStylesheet.imagePreviewSpacing
+        : undefined,
     ],
-    [hasAttachments, hasText],
+    [hasAttachments, hasRemoteImages, hasText],
   );
   const attachmentPreviewContainerStyle = useMemo(
     () => [
@@ -694,6 +699,20 @@ export const UserMessage = memo(function UserMessage({
                     image={image}
                     onOpen={setLightboxMetadata}
                     accessibilityLabel={t("composer.attachments.openImage")}
+                  />
+                ))}
+              </View>
+            ) : null}
+            {hasRemoteImages ? (
+              <View style={imagePreviewContainerStyle}>
+                {remoteImages.map((image) => (
+                  <AssistantMarkdownImage
+                    key={image.path}
+                    source={image.path}
+                    alt={t("composer.attachments.openImage")}
+                    hasLeadingContent={false}
+                    client={client}
+                    serverId={serverId}
                   />
                 ))}
               </View>
@@ -1493,13 +1512,13 @@ export const TurnCopyButton = memo(function TurnCopyButton({
         const iconColor = hovered
           ? turnCopyButtonStylesheet.iconHoveredColor.color
           : turnCopyButtonStylesheet.iconColor.color;
-        // `chromeMd`, not `md`: a per-turn action that sits under dense transcript text
-        // stays on the chrome ladder, so it grows by half on compact rather than
-        // doubling. Desktop pixels are unchanged.
+        // Match the compact action glyphs in tool-call rows. The chrome ladder
+        // keeps the footer affordance legible on compact layouts without making
+        // its dense transcript chrome compete with message content.
         return copied ? (
-          <Check size="chromeMd" color={iconColor} />
+          <Check size="chromeXs" color={iconColor} />
         ) : (
-          <Copy size="chromeMd" color={iconColor} />
+          <Copy size="chromeXs" color={iconColor} />
         );
       }}
     </Pressable>
@@ -2004,7 +2023,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   findQuery,
   findActiveMatchIndex,
 }: AssistantMessageProps) {
-  const showBubbleGradient = useAppSettingValue(selectChatBubbleGradient);
+  const { chatBubbleGradient: showBubbleGradient } = useChatRenderSettings();
   const displayMessage =
     revealBudget === undefined || revealBudget >= message.length
       ? message
@@ -3200,7 +3219,7 @@ export const TodoListCard = memo(function TodoListCard({
   disableOuterSpacing,
 }: TodoListCardProps) {
   const { t } = useTranslation();
-  const animationsEnabled = useAppSettingValue(selectAnimationsEnabled);
+  const { animationsEnabled } = useChatRenderSettings();
   const { completedCount, total } = useTodoCounts(items);
   const activityLabel = useMemo(() => {
     if (activity.type === "created") {
@@ -3861,7 +3880,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   testID,
 }: ExpandableBadgeProps) {
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
-  const wrapToolCallText = useAppSettingValue(selectWrapToolCallText);
+  const { wrapToolCallText } = useChatRenderSettings();
   const textLayout = resolveToolCallTextLayout(wrapToolCallText);
   const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);

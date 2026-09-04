@@ -230,6 +230,62 @@ test("sendPromptToAgent forwards the client message id as run options", async ()
   });
 });
 
+test("sendPromptToAgent queues an explicit queue delivery instead of replacing a busy run", async () => {
+  const agent: ManagedAgent = Object.create(null);
+  Reflect.set(agent, "id", "agent-1");
+  Reflect.set(agent, "provider", "codex");
+
+  const enqueueSteerMessage = vi.fn(() => ({
+    queued: true,
+    entry: {
+      id: "queued-1",
+      prompt: "follow up after compaction",
+      enqueuedAt: "2026-09-04T00:00:00.000Z",
+      source: "user" as const,
+    },
+  }));
+  const streamAgent = vi.fn(() => (async function* noop() {})());
+  const replaceAgentRun = vi.fn(() => (async function* noop() {})());
+  const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  Reflect.set(
+    agentManager,
+    "waitForAgentClose",
+    vi.fn(async () => {}),
+  );
+  Reflect.set(
+    agentManager,
+    "getAgent",
+    vi.fn(() => agent),
+  );
+  Reflect.set(agentManager, "tryRunOutOfBand", vi.fn().mockReturnValue(false));
+  Reflect.set(agentManager, "hasInFlightRun", vi.fn().mockReturnValue(true));
+  Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", vi.fn().mockReturnValue(false));
+  Reflect.set(agentManager, "enqueueSteerMessage", enqueueSteerMessage);
+  Reflect.set(agentManager, "streamAgent", streamAgent);
+  Reflect.set(agentManager, "replaceAgentRun", replaceAgentRun);
+
+  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
+  Reflect.set(
+    agentStorage,
+    "get",
+    vi.fn(async () => null),
+  );
+
+  const result = await sendPromptToAgent({
+    agentManager,
+    agentStorage,
+    agentId: "agent-1",
+    prompt: "follow up after compaction",
+    delivery: "queue",
+    logger: createTestLogger(),
+  });
+
+  expect(result).toEqual({ disposition: "queued", queuedMessageId: "queued-1" });
+  expect(enqueueSteerMessage).toHaveBeenCalledWith("agent-1", "follow up after compaction", {});
+  expect(replaceAgentRun).not.toHaveBeenCalled();
+  expect(streamAgent).not.toHaveBeenCalled();
+});
+
 test("finish notifications tell the parent the child's last assistant message", async () => {
   const scenario = createFinishNotificationScenario({
     childLastAssistantMessage: "Implemented the cleanup and all checks pass.",

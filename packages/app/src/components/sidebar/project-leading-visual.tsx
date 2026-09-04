@@ -293,10 +293,8 @@ const styles = StyleSheet.create((theme) => {
       width: theme.iconSize.md,
       height: theme.iconSize.md,
     },
-    // Sized off the icon box rather than the font ramp: it is the letter *inside* the icon,
-    // so it has to grow with the doubled box or the initial rattles around in it.
     projectIconFallbackText: {
-      fontSize: compactUp(9),
+      fontSize: theme.fontSize.xs,
     },
     // The shell the alert and dot statuses share. It straddles the icon's bottom-right corner
     // (half in, half out) so the lettered project box stays readable. The shell is a knockout:

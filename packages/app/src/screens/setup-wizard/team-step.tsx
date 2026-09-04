@@ -648,18 +648,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   title: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize["2xl"] + 2, md: theme.fontSize["2xl"] },
+    fontSize: theme.fontSize["2xl"],
     fontWeight: theme.fontWeight.semibold,
     letterSpacing: -0.4,
   },
   subtitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.base + 2, md: theme.fontSize.base },
+    fontSize: theme.fontSize.base,
     lineHeight: { xs: 24, md: 22 },
   },
   note: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
     lineHeight: { xs: 22, md: 20 },
   },
   cards: {
@@ -706,12 +706,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   cardName: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.lg + 2, md: theme.fontSize.lg },
+    fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.medium,
   },
   cardTagline: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
     lineHeight: { xs: 20, md: 18 },
   },
   previewCard: {
@@ -730,12 +730,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   previewTitle: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.lg + 2, md: theme.fontSize.lg },
+    fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
   },
   previewMeta: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
   },
   roster: {
     gap: theme.spacing[2],
@@ -755,12 +755,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   memberName: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.base + 2, md: theme.fontSize.base },
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
   },
   memberRoles: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
   },
   previewActions: {
     flexDirection: "row",
@@ -775,12 +775,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   builderLabel: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   builderInput: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.base + 2, md: theme.fontSize.base },
+    fontSize: theme.fontSize.base,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
@@ -826,12 +826,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   coverageHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
     lineHeight: { xs: 22, md: 20 },
   },
   addedHint: {
     color: theme.colors.accent,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
 }));

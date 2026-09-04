@@ -101,6 +101,28 @@ describe("collectImageFilesFromClipboardData", () => {
     expect(files).toEqual([{ file: imagePng, mimeType: "image/png" }]);
   });
 
+  it("uses the pasted file MIME when Windows leaves the clipboard item MIME empty", () => {
+    const imagePng = new File([new Uint8Array([0, 1, 2, 3])], "paste.png", {
+      type: "image/png",
+    });
+
+    expect(
+      collectImageFilesFromClipboardData({
+        items: [createClipboardItem({ kind: "file", type: "", file: imagePng })],
+      }),
+    ).toEqual([{ file: imagePng, mimeType: "image/png" }]);
+  });
+
+  it("falls back to clipboard files when it exposes no items", () => {
+    const imagePng = new File([new Uint8Array([0, 1, 2, 3])], "paste.png", {
+      type: "image/png",
+    });
+
+    expect(collectImageFilesFromClipboardData({ files: [imagePng] })).toEqual([
+      { file: imagePng, mimeType: "image/png" },
+    ]);
+  });
+
   it("ignores SVG clipboard files", () => {
     const svgFile = new File(["<svg />"], "logo.svg", {
       type: "image/svg+xml",

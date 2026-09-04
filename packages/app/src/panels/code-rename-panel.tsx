@@ -8,7 +8,7 @@ import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
-import { compactFont } from "@/styles/theme";
+
 import {
   CodeResultExpandToggle,
   CodeResultGroupHeader,
@@ -577,18 +577,18 @@ const styles = StyleSheet.create((theme) => ({
   oldName: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textDecorationLine: "line-through",
     flexShrink: 1,
   },
   arrow: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
   },
   newName: {
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     fontWeight: "600",
     flexShrink: 1,
   },
@@ -596,7 +596,7 @@ const styles = StyleSheet.create((theme) => ({
   // the tab, so it is the last thing that should be truncated.
   impactText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     flexShrink: 2,
   },
   listHost: {
@@ -619,13 +619,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   mutedText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
     maxWidth: 520,
   },
   errorText: {
     color: theme.colors.destructive,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
     maxWidth: 520,
   },
@@ -643,24 +643,24 @@ const styles = StyleSheet.create((theme) => ({
   },
   outcomeName: {
     color: theme.colors.foreground,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
     flexShrink: 0,
   },
   outcomeDir: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     flexShrink: 1,
   },
   outcomeReason: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     paddingLeft: theme.spacing[3],
   },
   dotGood: { width: 7, height: 7, borderRadius: 999, backgroundColor: theme.colors.statusSuccess },
   dotWarn: { width: 7, height: 7, borderRadius: 999, backgroundColor: theme.colors.statusWarning },
   dotBad: { width: 7, height: 7, borderRadius: 999, backgroundColor: theme.colors.statusDanger },
-  statusGood: { color: theme.colors.statusSuccess, fontSize: compactFont(theme.fontSize.sm) },
-  statusWarn: { color: theme.colors.statusWarning, fontSize: compactFont(theme.fontSize.sm) },
-  statusBad: { color: theme.colors.statusDanger, fontSize: compactFont(theme.fontSize.sm) },
+  statusGood: { color: theme.colors.statusSuccess, fontSize: theme.fontSize.sm },
+  statusWarn: { color: theme.colors.statusWarning, fontSize: theme.fontSize.sm },
+  statusBad: { color: theme.colors.statusDanger, fontSize: theme.fontSize.sm },
 }));

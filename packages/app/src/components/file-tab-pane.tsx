@@ -139,6 +139,10 @@ import {
 } from "@/components/file-split-sync";
 import { defaultFileViewMode, renderedDocumentKind } from "@/components/file-pane-render-mode";
 import { ResizeHandle } from "@/components/resize-handle";
+import {
+  CompactFileToolbar,
+  type CompactFileToolbarAction,
+} from "@/components/compact-file-toolbar";
 import { usePaneContext, usePaneSurface, type PaneSurface } from "@/panels/pane-context";
 import { useFileViewMode, useFileViewStore, type FileViewMode } from "@/stores/file-view-store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
@@ -512,6 +516,10 @@ function PreviewFindStrip({
   );
 }
 
+// The file pane intentionally owns the desktop and compact interaction models
+// beside the preview/editor lifecycle. Splitting either out would scatter the
+// mode-specific command availability across the file buffer contract.
+// oxlint-disable-next-line complexity
 function PreviewOnlyView({
   serverId,
   workspaceId,
@@ -554,6 +562,7 @@ function PreviewOnlyView({
   onAddToChat: (() => void) | null;
 }) {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const paneSurface = usePaneSurface();
   const draftOverride = useDraftOverride({ serverId, workspaceId, path: location.path });
   // Preview has no selection to scope by, so it always investigates the file.
@@ -689,72 +698,190 @@ function PreviewOnlyView({
     return `${activeMatchIndex + 1}/${total}`;
   })();
 
+  const compactPrimaryActions: CompactFileToolbarAction[] = findAvailable
+    ? [
+        {
+          id: "find",
+          label: t("editor.find.open"),
+          Icon: ThemedSearch,
+          onPress: find.open ? closeFind : openFind,
+          selected: find.open,
+        },
+      ]
+    : [];
+  const compactMoreActions: CompactFileToolbarAction[] = [
+    ...(handleOpenHistory
+      ? [
+          {
+            id: "history",
+            label: t("gitFileHistory.open"),
+            Icon: ThemedHistory,
+            onPress: handleOpenHistory,
+          },
+        ]
+      : []),
+    ...(onNavigateToFile
+      ? [
+          {
+            id: "navigate-to-file",
+            label: t("workspace.fileExplorer.context.findInFiles"),
+            Icon: ThemedFolderOpen,
+            onPress: onNavigateToFile,
+          },
+        ]
+      : []),
+    ...(onViewChanges
+      ? [
+          {
+            id: "view-changes",
+            label: t("workspace.git.diff.viewChanges"),
+            Icon: ThemedSourceControl,
+            onPress: onViewChanges,
+          },
+        ]
+      : []),
+    ...(onAddToChat
+      ? [
+          {
+            id: "add-to-chat",
+            label: t("editor.addToChat.file"),
+            Icon: ThemedMessageSquarePlus,
+            onPress: onAddToChat,
+            separatorBefore: Boolean(handleOpenHistory || onNavigateToFile || onViewChanges),
+          },
+        ]
+      : []),
+    ...(onRefine
+      ? [
+          {
+            id: "refine",
+            label: t("refine.open"),
+            Icon: ThemedRobot,
+            onPress: onRefine,
+          },
+        ]
+      : []),
+    ...(onExportHtml
+      ? [
+          {
+            id: "export-html",
+            label: t("editor.exportHtml.action"),
+            Icon: ThemedDownload,
+            onPress: onExportHtml,
+          },
+        ]
+      : []),
+    ...(onExportPdf
+      ? [
+          {
+            id: "export-pdf",
+            label: t("editor.exportPdf.action"),
+            Icon: ThemedFileText,
+            onPress: onExportPdf,
+            loading: exportPdfPending,
+          },
+        ]
+      : []),
+    ...(hasCodeIndex
+      ? [
+          {
+            id: "outline",
+            label: t("codeOutline.open"),
+            Icon: ThemedList,
+            onPress: openOutline,
+            separatorBefore: Boolean(onAddToChat || onRefine || onExportHtml || onExportPdf),
+          },
+        ]
+      : []),
+    ...(wrapAvailable
+      ? [
+          {
+            id: "word-wrap",
+            label: t("editor.wordWrap"),
+            Icon: ThemedWrapText,
+            onPress: toggleWordWrap,
+            selected: wordWrap,
+          },
+        ]
+      : []),
+  ];
+
   return (
     <View
       style={[styles.container, fileTabPaneContainerSurface(paneSurface)]}
       testID="workspace-file-tab-pane"
     >
-      {/* Same shape as the editor toolbar: file actions, a separator, then the
-          navigate-within-the-file tools - so the two views don't move the
-          buttons around under the user when they switch mode. */}
-      <View style={styles.previewToolbar} onLayout={collapse.onToolbarLayout}>
-        <View style={styles.toolbarGroup} onLayout={collapse.onLeadingGroupLayout}>
-          <FileGitToolbarGroup
-            onOpenHistory={handleOpenHistory}
-            onNavigateToFile={collapse.keep("findInFiles", onNavigateToFile)}
-            onViewChanges={collapse.keep("viewChanges", onViewChanges)}
-            showLeadingSeparator={false}
-          />
-          <FileAiToolbarGroup
-            onAddToChat={onAddToChat}
-            onRefine={collapse.keep("refine", onRefine)}
-            showLeadingSeparator={Boolean(handleOpenHistory || onViewChanges)}
-          />
-          <FileExportToolbarGroup
-            onExportHtml={collapse.keep("exportHtml", onExportHtml)}
-            onExportPdf={collapse.keep("exportPdf", onExportPdf)}
-            exportPdfPending={exportPdfPending}
-          />
-          <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
-          <ToolbarSeparator />
-          {collapse.keep(
-            "outline",
-            hasCodeIndex ? (
-              <ToolbarIconButton
-                label={t("codeOutline.open")}
-                testID="preview-outline-toggle"
-                Icon={ThemedList}
-                onPress={openOutline}
-              />
-            ) : null,
-          )}
-          {findAvailable ? (
-            <ToolbarIconButton
-              label={t("editor.find.open")}
-              testID="preview-find-toggle"
-              Icon={ThemedSearch}
-              onPress={find.open ? closeFind : openFind}
-              selected={find.open}
+      {isCompact ? (
+        <CompactFileToolbar
+          primaryActions={compactPrimaryActions}
+          moreActions={compactMoreActions}
+          moreActionsLabel={t("workspace.fileActions.moreActions")}
+          modeBar={modeBarProps}
+          accessory={toolbarLeadingSlot}
+        />
+      ) : (
+        /* Same shape as the editor toolbar: file actions, a separator, then the
+            navigate-within-the-file tools - so the two views don't move the
+            buttons around under the user when they switch mode. */
+        <View style={styles.previewToolbar} onLayout={collapse.onToolbarLayout}>
+          <View style={styles.toolbarGroup} onLayout={collapse.onLeadingGroupLayout}>
+            <FileGitToolbarGroup
+              onOpenHistory={handleOpenHistory}
+              onNavigateToFile={collapse.keep("findInFiles", onNavigateToFile)}
+              onViewChanges={collapse.keep("viewChanges", onViewChanges)}
+              showLeadingSeparator={false}
             />
-          ) : null}
-        </View>
-        <View style={styles.toolbarSpacer} />
-        <View style={styles.toolbarGroup} onLayout={collapse.onTrailingGroupLayout}>
-          {collapse.keep(
-            "wordWrap",
-            wrapAvailable ? (
+            <FileAiToolbarGroup
+              onAddToChat={onAddToChat}
+              onRefine={collapse.keep("refine", onRefine)}
+              showLeadingSeparator={Boolean(handleOpenHistory || onViewChanges)}
+            />
+            <FileExportToolbarGroup
+              onExportHtml={collapse.keep("exportHtml", onExportHtml)}
+              onExportPdf={collapse.keep("exportPdf", onExportPdf)}
+              exportPdfPending={exportPdfPending}
+            />
+            <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
+            <ToolbarSeparator />
+            {collapse.keep(
+              "outline",
+              hasCodeIndex ? (
+                <ToolbarIconButton
+                  label={t("codeOutline.open")}
+                  testID="preview-outline-toggle"
+                  Icon={ThemedList}
+                  onPress={openOutline}
+                />
+              ) : null,
+            )}
+            {findAvailable ? (
               <ToolbarIconButton
-                label={t("editor.wordWrap")}
-                testID="preview-wordwrap-toggle"
-                Icon={ThemedWrapText}
-                onPress={toggleWordWrap}
-                selected={wordWrap}
+                label={t("editor.find.open")}
+                testID="preview-find-toggle"
+                Icon={ThemedSearch}
+                onPress={find.open ? closeFind : openFind}
+                selected={find.open}
               />
-            ) : null,
-          )}
-          {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
+            ) : null}
+          </View>
+          <View style={styles.toolbarSpacer} />
+          <View style={styles.toolbarGroup} onLayout={collapse.onTrailingGroupLayout}>
+            {collapse.keep(
+              "wordWrap",
+              wrapAvailable ? (
+                <ToolbarIconButton
+                  label={t("editor.wordWrap")}
+                  testID="preview-wordwrap-toggle"
+                  Icon={ThemedWrapText}
+                  onPress={toggleWordWrap}
+                  selected={wordWrap}
+                />
+              ) : null,
+            )}
+            {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
+          </View>
         </View>
-      </View>
+      )}
       {findAvailable && find.open ? (
         <PreviewFindStrip find={find} matchCountLabel={matchCountLabel} handlers={findHandlers} />
       ) : null}
@@ -1369,6 +1496,10 @@ function ExternalEditorToolbarButton({
   );
 }
 
+// The editor lifecycle and its two explicit command layouts must stay together:
+// the compact toolbar needs the same buffer, Git, AI, and export capabilities
+// as the desktop toolbar without introducing a parallel editor state contract.
+// oxlint-disable-next-line complexity
 function EditorModeView({
   serverId,
   workspaceId,
@@ -1418,6 +1549,7 @@ function EditorModeView({
   externalEditorLabel: string | null;
 }) {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const paneSurface = usePaneSurface();
   const path = location.path;
   const {
@@ -2113,93 +2245,235 @@ function EditorModeView({
     />
   );
 
+  const compactPrimaryActions: CompactFileToolbarAction[] = [
+    {
+      id: "save",
+      label: t("editor.save"),
+      Icon: ThemedSave,
+      onPress: handleSavePress,
+      disabled: !buffer.dirty || buffer.saving || buffer.conflict !== null,
+      loading: buffer.saving,
+    },
+    {
+      id: "revert",
+      label: t("editor.revert"),
+      Icon: ThemedUndo2,
+      onPress: handleRevertPress,
+      disabled: !buffer.dirty || buffer.saving,
+    },
+    {
+      id: "find",
+      label: t("editor.find.open"),
+      Icon: ThemedSearch,
+      onPress: find.open ? closeFind : openFind,
+      selected: find.open,
+    },
+  ];
+  const compactMoreActions: CompactFileToolbarAction[] = [
+    ...(handleOpenHistory
+      ? [
+          {
+            id: "history",
+            label: t("gitFileHistory.open"),
+            Icon: ThemedHistory,
+            onPress: handleOpenHistory,
+          },
+        ]
+      : []),
+    ...(onNavigateToFile
+      ? [
+          {
+            id: "navigate-to-file",
+            label: t("workspace.fileExplorer.context.findInFiles"),
+            Icon: ThemedFolderOpen,
+            onPress: onNavigateToFile,
+          },
+        ]
+      : []),
+    ...(onViewChanges
+      ? [
+          {
+            id: "view-changes",
+            label: t("workspace.git.diff.viewChanges"),
+            Icon: ThemedSourceControl,
+            onPress: onViewChanges,
+          },
+        ]
+      : []),
+    ...(onOpenExternalEditor && externalEditorLabel
+      ? [
+          {
+            id: "open-external",
+            label: externalEditorLabel,
+            Icon: ThemedTerminal,
+            onPress: onOpenExternalEditor,
+            separatorBefore: Boolean(handleOpenHistory || onNavigateToFile || onViewChanges),
+          },
+        ]
+      : []),
+    ...(onAddToChat
+      ? [
+          {
+            id: "add-to-chat",
+            label: t("editor.addToChat.file"),
+            Icon: ThemedMessageSquarePlus,
+            onPress: onAddToChat,
+            separatorBefore: Boolean(
+              handleOpenHistory || onNavigateToFile || onViewChanges || onOpenExternalEditor,
+            ),
+          },
+        ]
+      : []),
+    ...(onRefine
+      ? [
+          {
+            id: "refine",
+            label: t("refine.open"),
+            Icon: ThemedRobot,
+            onPress: onRefine,
+          },
+        ]
+      : []),
+    ...(onExportHtml
+      ? [
+          {
+            id: "export-html",
+            label: t("editor.exportHtml.action"),
+            Icon: ThemedDownload,
+            onPress: onExportHtml,
+          },
+        ]
+      : []),
+    ...(onExportPdf
+      ? [
+          {
+            id: "export-pdf",
+            label: t("editor.exportPdf.action"),
+            Icon: ThemedFileText,
+            onPress: onExportPdf,
+            loading: exportPdfPending,
+          },
+        ]
+      : []),
+    ...(hasCodeIndex
+      ? [
+          {
+            id: "outline",
+            label: t("codeOutline.open"),
+            Icon: ThemedList,
+            onPress: openOutline,
+            separatorBefore: Boolean(
+              onAddToChat || onRefine || onExportHtml || onExportPdf || onOpenExternalEditor,
+            ),
+          },
+        ]
+      : []),
+    {
+      id: "word-wrap",
+      label: t("editor.wordWrap"),
+      Icon: ThemedWrapText,
+      onPress: toggleWordWrap,
+      selected: wordWrap,
+    },
+  ];
+
   return (
     <View
       style={[styles.container, fileTabPaneContainerSurface(paneSurface)]}
       testID="workspace-file-tab-pane"
     >
-      <View style={styles.toolbar} onLayout={collapse.onToolbarLayout}>
-        <View style={styles.toolbarGroup} onLayout={collapse.onLeadingGroupLayout}>
-          <ToolbarIconButton
-            label={t("editor.save")}
-            testID="editor-save"
-            Icon={ThemedSave}
-            onPress={handleSavePress}
-            disabled={!buffer.dirty || buffer.saving || buffer.conflict !== null}
-            loading={buffer.saving}
-            shortcut={shortcutHints.save}
-            shortcutDiscoveryAction="editor.save"
-          />
-          <ToolbarIconButton
-            label={t("editor.revert")}
-            testID="editor-revert"
-            Icon={ThemedUndo2}
-            onPress={handleRevertPress}
-            disabled={!buffer.dirty || buffer.saving}
-          />
-          <FileGitToolbarGroup
-            onOpenHistory={handleOpenHistory}
-            onNavigateToFile={collapse.keep("findInFiles", onNavigateToFile)}
-            onViewChanges={collapse.keep("viewChanges", onViewChanges)}
-            showLeadingSeparator
-          />
-          <ExternalEditorToolbarButton
-            buffer={buffer}
-            label={externalEditorLabel}
-            onOpen={onOpenExternalEditor}
-          />
-          <FileAiToolbarGroup
-            onAddToChat={onAddToChat}
-            onRefine={collapse.keep("refine", onRefine)}
-            showLeadingSeparator
-          />
-          <FileExportToolbarGroup
-            onExportHtml={collapse.keep("exportHtml", onExportHtml)}
-            onExportPdf={collapse.keep("exportPdf", onExportPdf)}
-            exportPdfPending={exportPdfPending}
-          />
-          <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
-          {/* Save/revert/history act on the FILE; outline and find navigate WITHIN
+      {isCompact ? (
+        <CompactFileToolbar
+          primaryActions={compactPrimaryActions}
+          moreActions={compactMoreActions}
+          moreActionsLabel={t("workspace.fileActions.moreActions")}
+          modeBar={modeBarProps}
+          accessory={toolbarLeadingSlot}
+        />
+      ) : (
+        <View style={styles.toolbar} onLayout={collapse.onToolbarLayout}>
+          <View style={styles.toolbarGroup} onLayout={collapse.onLeadingGroupLayout}>
+            <ToolbarIconButton
+              label={t("editor.save")}
+              testID="editor-save"
+              Icon={ThemedSave}
+              onPress={handleSavePress}
+              disabled={!buffer.dirty || buffer.saving || buffer.conflict !== null}
+              loading={buffer.saving}
+              shortcut={shortcutHints.save}
+              shortcutDiscoveryAction="editor.save"
+            />
+            <ToolbarIconButton
+              label={t("editor.revert")}
+              testID="editor-revert"
+              Icon={ThemedUndo2}
+              onPress={handleRevertPress}
+              disabled={!buffer.dirty || buffer.saving}
+            />
+            <FileGitToolbarGroup
+              onOpenHistory={handleOpenHistory}
+              onNavigateToFile={collapse.keep("findInFiles", onNavigateToFile)}
+              onViewChanges={collapse.keep("viewChanges", onViewChanges)}
+              showLeadingSeparator
+            />
+            <ExternalEditorToolbarButton
+              buffer={buffer}
+              label={externalEditorLabel}
+              onOpen={onOpenExternalEditor}
+            />
+            <FileAiToolbarGroup
+              onAddToChat={onAddToChat}
+              onRefine={collapse.keep("refine", onRefine)}
+              showLeadingSeparator
+            />
+            <FileExportToolbarGroup
+              onExportHtml={collapse.keep("exportHtml", onExportHtml)}
+              onExportPdf={collapse.keep("exportPdf", onExportPdf)}
+              exportPdfPending={exportPdfPending}
+            />
+            <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
+            {/* Save/revert/history act on the FILE; outline and find navigate WITHIN
               it. The separator is the line between those two jobs, and both groups
               stay left where the eye starts. */}
-          <ToolbarSeparator />
-          {collapse.keep(
-            "outline",
-            hasCodeIndex ? (
-              <ToolbarIconButton
-                label={t("codeOutline.open")}
-                testID="editor-outline-toggle"
-                Icon={ThemedList}
-                onPress={openOutline}
-              />
-            ) : null,
-          )}
-          <ToolbarIconButton
-            label={t("editor.find.open")}
-            testID="editor-find-toggle"
-            Icon={ThemedSearch}
-            onPress={find.open ? closeFind : openFind}
-            selected={find.open}
-            shortcut={shortcutHints.find}
-            shortcutDiscoveryAction="editor.find"
-          />
-        </View>
-        <View style={styles.toolbarSpacer} />
-        <View style={styles.toolbarGroup} onLayout={collapse.onTrailingGroupLayout}>
-          {/* Word wrap is a view setting, so it lives with the view-mode bar. */}
-          {collapse.keep(
-            "wordWrap",
+            <ToolbarSeparator />
+            {collapse.keep(
+              "outline",
+              hasCodeIndex ? (
+                <ToolbarIconButton
+                  label={t("codeOutline.open")}
+                  testID="editor-outline-toggle"
+                  Icon={ThemedList}
+                  onPress={openOutline}
+                />
+              ) : null,
+            )}
             <ToolbarIconButton
-              label={t("editor.wordWrap")}
-              testID="editor-wordwrap-toggle"
-              Icon={ThemedWrapText}
-              onPress={toggleWordWrap}
-              selected={wordWrap}
-            />,
-          )}
-          {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
+              label={t("editor.find.open")}
+              testID="editor-find-toggle"
+              Icon={ThemedSearch}
+              onPress={find.open ? closeFind : openFind}
+              selected={find.open}
+              shortcut={shortcutHints.find}
+              shortcutDiscoveryAction="editor.find"
+            />
+          </View>
+          <View style={styles.toolbarSpacer} />
+          <View style={styles.toolbarGroup} onLayout={collapse.onTrailingGroupLayout}>
+            {/* Word wrap is a view setting, so it lives with the view-mode bar. */}
+            {collapse.keep(
+              "wordWrap",
+              <ToolbarIconButton
+                label={t("editor.wordWrap")}
+                testID="editor-wordwrap-toggle"
+                Icon={ThemedWrapText}
+                onPress={toggleWordWrap}
+                selected={wordWrap}
+              />,
+            )}
+            {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
+          </View>
         </View>
-      </View>
+      )}
 
       {find.open ? (
         <EditorFindStrip

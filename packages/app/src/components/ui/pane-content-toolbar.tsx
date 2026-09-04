@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/icon-button-chrome";
 import { WORKSPACE_PANE_TRAILING_GLYPH_RAIL } from "@/components/tree-primitives";
 import { usePaneSurface } from "@/panels/pane-context";
+import { paneToolbarActionGap } from "@/components/ui/pane-toolbar-geometry";
 
 /** Shared chrome at the boundary between a workspace pane's tabs and content. */
 export function PaneContentToolbar({
@@ -203,7 +204,7 @@ const styles = StyleSheet.create((theme) => ({
   controls: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 1,
+    gap: paneToolbarActionGap(theme.spacing[1]),
   },
   tooltipRow: {
     flexDirection: "row",

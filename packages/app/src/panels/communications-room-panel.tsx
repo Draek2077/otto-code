@@ -7,7 +7,6 @@ import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useHostFeature } from "@/runtime/host-features";
 import { useSessionStore } from "@/stores/session-store";
 import { CommunicationsRoom } from "@/screens/workspace/communications-room";
-import { compactFont } from "@/styles/theme";
 
 function useCommunicationsRoomDescriptor(target: {
   kind: "communicationsRoom";
@@ -83,7 +82,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   mutedText: {
     color: theme.colors.foregroundMuted,
-    fontSize: compactFont(theme.fontSize.sm),
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
 }));

@@ -333,16 +333,8 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.6,
   },
   splitButtonText: {
-    // Mirrors the git Commit split button's label geometry (including its
-    // compact bump) so both controls share the same natural height.
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
-    lineHeight: {
-      xs: (theme.fontSize.sm + 2) * 1.5,
-      md: theme.fontSize.sm * 1.5,
-    },
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
@@ -359,17 +351,11 @@ const styles = StyleSheet.create((theme) => ({
     // Icon-only content (16px) is shorter than the label's line height, so
     // the content keeps the label's line height as its minimum. That is what
     // lets the icon-only state come out the same height as the labeled one.
-    minHeight: {
-      xs: (theme.fontSize.sm + 2) * 1.5,
-      md: theme.fontSize.sm * 1.5,
-    },
+    minHeight: theme.fontSize.sm * 1.5,
   },
   splitButtonSpinnerOnly: {
     transform: [{ scale: 0.8 }],
-    minHeight: {
-      xs: (theme.fontSize.sm + 2) * 1.5,
-      md: theme.fontSize.sm * 1.5,
-    },
+    minHeight: theme.fontSize.sm * 1.5,
   },
   splitButtonCaret: {
     width: {

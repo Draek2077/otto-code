@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ICON_SIZE, REGISTERED_THEMES } from "@/styles/theme";
+import { ICON_SIZE, ICON_SIZE_COMPACT, REGISTERED_THEMES } from "@/styles/theme";
 import { applyAppearance } from "./apply";
 
 const { runtime, updateTheme } = vi.hoisted(() => {
@@ -37,7 +37,7 @@ function fakeTheme(colorScheme: "light" | "dark" = "dark") {
 describe("applyAppearance", () => {
   beforeEach(() => updateTheme.mockClear());
 
-  it("patches every registered theme and keeps the icon ladder authored on compact screens", () => {
+  it("patches every registered theme with one compact typography and icon scale", () => {
     applyAppearance({
       uiFontFamily: "",
       monoFontFamily: "",
@@ -46,16 +46,46 @@ describe("applyAppearance", () => {
       codeFontSize: 14,
       syntaxTheme: "default",
       chatWidth: "wide",
+      isCompact: true,
     });
     expect(updateTheme).toHaveBeenCalledTimes(Object.keys(REGISTERED_THEMES).length);
     const updater = updateTheme.mock.calls[0]?.[1] as (
       theme: ReturnType<typeof fakeTheme>,
     ) => ReturnType<typeof fakeTheme>;
     const result = updater(fakeTheme());
-    expect(result.fontSize.content).toBe(21);
-    expect(result.fontSize.code).toBe(14);
-    expect(result.iconSize).toEqual(ICON_SIZE);
+    expect(result.fontSize).toMatchObject({
+      xs: 14,
+      sm: 16,
+      base: 18,
+      content: 23,
+      lg: 20,
+      xl: 23,
+      "2xl": 25,
+      "3xl": 29,
+      "4xl": 38,
+      code: 16,
+    });
+    expect(result.lineHeight.diff).toBe(24);
+    expect(result.iconSize).toEqual(ICON_SIZE_COMPACT);
     expect(result.layout.chatMaxWidth).toBe(1200);
+  });
+
+  it("keeps the authored icon ladder on non-compact screens", () => {
+    applyAppearance({
+      uiFontFamily: "",
+      monoFontFamily: "",
+      uiFontSize: 16,
+      contentFontSize: 17,
+      codeFontSize: 12,
+      syntaxTheme: "default",
+      chatWidth: "default",
+      isCompact: false,
+    });
+    const updater = updateTheme.mock.calls[0]?.[1] as (
+      theme: ReturnType<typeof fakeTheme>,
+    ) => ReturnType<typeof fakeTheme>;
+    expect(updater(fakeTheme()).iconSize).toEqual(ICON_SIZE);
+    expect(updater(fakeTheme()).fontSize).toMatchObject({ sm: 14, content: 17, code: 12 });
   });
 
   it("removes the chat cap for the full-width setting", () => {
@@ -67,6 +97,7 @@ describe("applyAppearance", () => {
       codeFontSize: 12,
       syntaxTheme: "default",
       chatWidth: "full",
+      isCompact: false,
     });
     const updater = updateTheme.mock.calls[0]?.[1] as (
       theme: ReturnType<typeof fakeTheme>,

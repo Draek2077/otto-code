@@ -540,19 +540,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   sidebarLabel: {
     flexShrink: 1,
-    fontSize: {
-      xs: theme.fontSize.base + 2,
-      md: theme.fontSize.base,
-    },
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
   sidebarLabelHighlighted: {
     flexShrink: 1,
-    fontSize: {
-      xs: theme.fontSize.base + 2,
-      md: theme.fontSize.base,
-    },
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
   },
@@ -620,15 +614,15 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   swatchTextLg: {
-    fontSize: compactUp(10),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.semibold,
-    lineHeight: compactUp(12),
+    lineHeight: theme.fontSize.xs,
     textAlign: "center",
   },
   swatchTextSm: {
-    fontSize: compactUp(9),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.semibold,
-    lineHeight: compactUp(11),
+    lineHeight: theme.fontSize.xs,
     textAlign: "center",
   },
   swatchTextEmpty: {

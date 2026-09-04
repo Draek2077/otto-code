@@ -175,7 +175,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   title: {
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
     fontWeight: "600",
     flexShrink: 1,
     minWidth: 0,

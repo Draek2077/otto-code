@@ -55,6 +55,8 @@ export function useProjectKnowledge(
   load: () => void;
   reload: () => void;
   readRecord: (id: string) => Promise<ProjectKnowledgeRecord | null>;
+  /** Reads one selected root document when the host returned a summary catalog. */
+  readRoot: (slug: string) => Promise<ProjectKnowledgeRootPage | null>;
   /** Apply the canonical response from an already-completed mutation in place. */
   replaceRecord: (record: ProjectKnowledgeRecord) => void;
   /** Apply the canonical response from an already-completed root mutation in place. */
@@ -110,6 +112,10 @@ export function useProjectKnowledge(
 } {
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const enabled = useProjectKnowledgeEnabled(serverId);
+  const deferredRootBodies = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeDeferredRootBodies === true,
+  );
   const [view, setView] = useState<ProjectKnowledgePayload | null>(null);
   const [loading, setLoading] = useState(() => !options?.deferInitialLoad);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +132,14 @@ export function useProjectKnowledge(
       if (!client) return null;
       const result = await client.getProjectKnowledge({ workspaceId, id });
       return result.record;
+    },
+    [client, workspaceId],
+  );
+  const readRoot = useCallback(
+    async (slug: string) => {
+      if (!client) return null;
+      const result = await client.getProjectKnowledgeRoot({ workspaceId, slug });
+      return result.page;
     },
     [client, workspaceId],
   );
@@ -167,7 +181,10 @@ export function useProjectKnowledge(
     setLoading(true);
     setError(null);
     void client
-      .listProjectKnowledge(workspaceId)
+      .listProjectKnowledge(
+        workspaceId,
+        deferredRootBodies ? { includeRootBodies: false } : undefined,
+      )
       .then((result) => {
         if (!cancelled) {
           retryAttemptRef.current = 0;
@@ -192,7 +209,7 @@ export function useProjectKnowledge(
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [client, enabled, nonce, reload, shouldLoad, workspaceId]);
+  }, [client, deferredRootBodies, enabled, nonce, reload, shouldLoad, workspaceId]);
   const setStatus = useCallback(
     async (id: string, status: "proposed" | "confirmed" | "superseded") => {
       if (!client) return "Not connected.";
@@ -338,6 +355,7 @@ export function useProjectKnowledge(
       load,
       reload,
       readRecord,
+      readRoot,
       replaceRecord,
       replaceRoot,
       setStatus,
@@ -356,6 +374,7 @@ export function useProjectKnowledge(
       loading,
       reload,
       readRecord,
+      readRoot,
       replaceRecord,
       replaceRoot,
       setStatus,

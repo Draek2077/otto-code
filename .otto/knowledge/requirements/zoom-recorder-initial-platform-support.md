@@ -3,11 +3,10 @@ id: "zoom-recorder-initial-platform-support"
 kind: "requirement"
 title: "Zoom Recorder initially supports Windows x64 and Linux x64"
 status: "confirmed"
-tags: ["zoom", "recorder", "desktop", "platform"]
+tags: ["zoom","recorder","desktop","platform"]
 created_at: "2026-08-13T23:42:40.919Z"
-updated_at: "2026-08-14T16:07:48.144Z"
+updated_at: "2026-09-04T17:17:49.398Z"
 ---
-
 # Zoom Recorder initially supports Windows x64 and Linux x64
 
 <!-- compiled_truth -->
@@ -38,3 +37,7 @@ The first Otto Zoom Recorder release supports only Windows x64 and Linux x64. Th
   kind: "evidence"
   summary: "Recorder ownership control now distinguishes watcher-lock conflicts (exit code 73), reports the owning helper PID through desktop status, and exposes an explicit Take control operation that terminates the recorded owner before starting the current watcher. The UI presents Take control in the Meeting Notes popup when another Otto instance owns the recorder."
   source: "recorder ownership control implementation"
+- time: "2026-09-04T17:17:49.398Z"
+  kind: "evidence"
+  summary: "Installed Otto 0.9.0 x64 on Windows x64 reported Recorder unavailable because `resources/zoom-recorder/otto-zoom-recorder.exe` was absent. The checkout and the prior 0.8.19 x64 unpacked package both contained the 50 MB helper. The 0.9.0 x64 installer is therefore missing its required runtime payload, not running on an unsupported platform. Desktop packaging now verifies the post-pack x64 Windows/Linux helper path and fails the build when it is absent."
+  source: "Local installed-release audit, 2026-09-04"

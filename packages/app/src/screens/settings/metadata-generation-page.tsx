@@ -135,7 +135,7 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
           />
         </View>
         {mode === "preferred" ? (
-          <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>{t("settings.metadataGeneration.model")}</Text>
               <Text style={settingsStyles.rowHint}>

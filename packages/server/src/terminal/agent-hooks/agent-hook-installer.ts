@@ -145,8 +145,10 @@ export function buildAgentHookWindowsCommand<TConfig>(
   provider: AgentHookProvider<TConfig>,
   event: AgentHookEventDefinition,
 ): string {
-  const hookArgs = `hooks ${windowsToken(provider.id)} ${windowsToken(event.event)}`;
-  return `if defined OTTO_TERMINAL_ID (if defined OTTO_HOOK_CLI ("%OTTO_HOOK_CLI%" ${hookArgs}) else (otto ${hookArgs})) else (exit /b 0)`;
+  const hookArgs = `hooks ${powershellToken(provider.id)} ${powershellToken(event.event)}`;
+  const script = `if ($env:OTTO_TERMINAL_ID) { if ($env:OTTO_HOOK_CLI) { & $env:OTTO_HOOK_CLI ${hookArgs} } else { & otto ${hookArgs} } }`;
+  const encodedScript = Buffer.from(script, "utf16le").toString("base64");
+  return `powershell.exe -NoProfile -NonInteractive -EncodedCommand ${encodedScript}`;
 }
 
 function installAgentHookPluginFile(
@@ -239,9 +241,9 @@ function shellToken(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function windowsToken(value: string): string {
+function powershellToken(value: string): string {
   if (/^[A-Za-z0-9_./:-]+$/.test(value)) {
     return value;
   }
-  return `"${value.replaceAll('"', '\\"')}"`;
+  return `'${value.replaceAll("'", "''")}'`;
 }

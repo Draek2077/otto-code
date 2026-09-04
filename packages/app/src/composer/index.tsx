@@ -2890,7 +2890,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   queueTrack: {
     flexDirection: "column",
-    gap: theme.spacing[2],
+    // ComposerFrame's content gap is outside ChatWidthBounds' inset wrapper,
+    // so it cannot separate this stack from the input. Keep that boundary with
+    // the queue itself, including when it contains its first and only row.
+    gap: theme.spacing[1],
+    marginBottom: theme.spacing[1],
   },
   queueItem: {
     flexDirection: "row",

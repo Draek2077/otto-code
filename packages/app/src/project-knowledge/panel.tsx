@@ -48,6 +48,7 @@ import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { usePaneContext } from "@/panels/pane-context";
@@ -69,6 +70,7 @@ import { ArchitecturalViewHtml } from "@/components/architectural-views/architec
 import { KnowledgeMarkdownEditor } from "./knowledge-markdown-editor";
 import { KnowledgeReviewProposalView } from "./knowledge-review-proposal";
 import { KnowledgeReviewSurface } from "./knowledge-review-surface";
+import { useCompactDetailNavigation } from "./use-compact-detail-navigation";
 import { allHunkIds, applyRefineDecisions, buildRefineDiff, type RefineDiff } from "@/refine/hunks";
 import {
   applyDirectReplacements,
@@ -114,10 +116,20 @@ export function ProjectKnowledgePanel(): ReactElement {
   const replaceKnowledgeRecord = knowledge.replaceRecord;
   const replaceKnowledgeRoot = knowledge.replaceRoot;
   const animationsEnabled = useAnimationsEnabled();
+  const isCompact = useIsCompactFormFactor();
+  const {
+    showsDetail: compactShowsDetail,
+    openDetail: openCompactDetail,
+    goBack: handleCompactBack,
+  } = useCompactDetailNavigation(isCompact);
   const readRecord = knowledge.readRecord;
+  const readRoot = knowledge.readRoot;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [recordDetail, setRecordDetail] = useState<KnowledgeRecord | null>(null);
   const [selectedRootSlug, setSelectedRootSlug] = useState<string | null>(null);
+  const [rootDetail, setRootDetail] = useState<
+    NonNullable<NonNullable<typeof knowledge.view>["rootPages"]>[number] | null
+  >(null);
   const [scope, setScope] = useState<"knowledge" | "projects" | "references">("knowledge");
   const [filter, setFilter] = useState<"all" | "proposed" | "confirmed" | "superseded">("all");
   const [query, setQuery] = useState("");
@@ -171,12 +183,12 @@ export function ProjectKnowledgePanel(): ReactElement {
     Math.min(MAX_SIDEBAR_WIDTH, viewportWidth - MIN_VIEWER_WIDTH),
   );
   useEffect(() => {
-    if (knowledgeSidebarWidth > maxSidebarWidth) {
+    if (!isCompact && knowledgeSidebarWidth > maxSidebarWidth) {
       setKnowledgeSidebarWidth(maxSidebarWidth);
       return;
     }
     resizeWidth.value = knowledgeSidebarWidth;
-  }, [knowledgeSidebarWidth, maxSidebarWidth, resizeWidth, setKnowledgeSidebarWidth]);
+  }, [isCompact, knowledgeSidebarWidth, maxSidebarWidth, resizeWidth, setKnowledgeSidebarWidth]);
   const resizeGesture = useMemo(
     () =>
       Gesture.Pan()
@@ -218,10 +230,12 @@ export function ProjectKnowledgePanel(): ReactElement {
       ),
     [knowledge.view, scope],
   );
-  const selectedRoot =
+  const selectedRootSummary =
     scope === "knowledge"
       ? (knowledge.view?.rootPages?.find((page) => page.slug === selectedRootSlug) ?? null)
       : null;
+  const detailedRoot = rootDetail?.slug === selectedRootSlug ? rootDetail : null;
+  const selectedRoot = detailedRoot ?? selectedRootSummary;
   let selectedSummary: KnowledgeRecord | null = null;
   if (!selectedRoot) {
     selectedSummary = selectedId
@@ -314,6 +328,27 @@ export function ProjectKnowledgePanel(): ReactElement {
       cancelled = true;
     };
   }, [ensureKnowledgeLoaded, readRecord, selectedId]);
+  useEffect(() => {
+    if (!selectedRootSummary || typeof selectedRootSummary.body === "string") {
+      setRootDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setRootDetail(null);
+    void readRoot(selectedRootSummary.slug)
+      .then((page) => {
+        if (cancelled || !page) return undefined;
+        replaceKnowledgeRoot(page);
+        setRootDetail(page);
+        return undefined;
+      })
+      .catch(() => {
+        if (!cancelled) setRootDetail(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [readRoot, replaceKnowledgeRoot, selectedRootSummary]);
   const summary = useMemo(
     () => summarizeProjectKnowledge(knowledge.view?.records ?? []),
     [knowledge.view?.records],
@@ -321,7 +356,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   let document =
     "# Project knowledge\n\nSelect a root page or record to inspect its Markdown-backed current truth.";
   if (selectedRoot) {
-    document = rootDocumentBody(selectedRoot.body);
+    document = rootDocumentBody(selectedRoot.body ?? "");
   } else if (selected) {
     document = recordMarkdown(
       selected,
@@ -475,6 +510,7 @@ export function ProjectKnowledgePanel(): ReactElement {
           setRecordDetail(payload.record);
         } else if ("page" in payload && payload.page) {
           replaceKnowledgeRoot(payload.page);
+          setRootDetail(payload.page);
         }
         setReviewProposal(null);
       } finally {
@@ -566,7 +602,8 @@ export function ProjectKnowledgePanel(): ReactElement {
     else setKind("decision");
     setFormError(null);
     setCreating(true);
-  }, [scope]);
+    openCompactDetail();
+  }, [openCompactDetail, scope]);
   const create = useCallback(async () => {
     setFormError(null);
     let progress: { completed: number; total: number; unit: string } | undefined;
@@ -863,35 +900,44 @@ export function ProjectKnowledgePanel(): ReactElement {
       </View>
     );
   } else if (selectedRoot) {
-    viewer = (
-      <View style={styles.documentContent}>
-        {reviewProposal ? (
-          <KnowledgeReviewProposalView
-            proposal={reviewProposal}
-            diff={reviewDiff ?? EMPTY_REVIEW_DIFF}
-            keptHunks={reviewKeptHunks}
-            onToggleHunk={toggleReviewHunk}
-            wrap={changesPreferences.wrapLines}
+    let rootViewer: ReactElement;
+    if (typeof selectedRoot.body !== "string") {
+      rootViewer = (
+        <View style={styles.empty} testID="project-knowledge-root-loading">
+          <LoadingSpinner size="small" />
+          <Text style={styles.description}>Loading Knowledge document…</Text>
+        </View>
+      );
+    } else if (reviewProposal) {
+      rootViewer = (
+        <KnowledgeReviewProposalView
+          proposal={reviewProposal}
+          diff={reviewDiff ?? EMPTY_REVIEW_DIFF}
+          keptHunks={reviewKeptHunks}
+          onToggleHunk={toggleReviewHunk}
+          wrap={changesPreferences.wrapLines}
+        />
+      );
+    } else {
+      rootViewer = (
+        <>
+          <Text style={styles.documentContentTitle}>{selectedRoot.title}</Text>
+          <KnowledgeReviewSurface
+            source={document}
+            directiveSource={reviewContent ?? ""}
+            directives={reviewDirectives}
+            enabled={reviewSupported}
+            onAdd={addReviewDirective}
+            onUpdate={updateReviewDirective}
+            onRemove={(id) =>
+              setReviewDirectives((current) => current.filter((item) => item.id !== id))
+            }
+            onSelectionError={setFormError}
           />
-        ) : (
-          <>
-            <Text style={styles.documentContentTitle}>{selectedRoot.title}</Text>
-            <KnowledgeReviewSurface
-              source={document}
-              directiveSource={reviewContent ?? ""}
-              directives={reviewDirectives}
-              enabled={reviewSupported}
-              onAdd={addReviewDirective}
-              onUpdate={updateReviewDirective}
-              onRemove={(id) =>
-                setReviewDirectives((current) => current.filter((item) => item.id !== id))
-              }
-              onSelectionError={setFormError}
-            />
-          </>
-        )}
-      </View>
-    );
+        </>
+      );
+    }
+    viewer = <View style={styles.documentContent}>{rootViewer}</View>;
   } else if (editingTags && selected) {
     const suggestions = scopedTags.filter((tag) => !parseTagInput(tags).includes(tag)).slice(0, 16);
     viewer = (
@@ -1119,328 +1165,354 @@ export function ProjectKnowledgePanel(): ReactElement {
       style={styles.root}
       testID="project-knowledge-panel"
     >
-      <Animated.View style={sidebarShellStyle}>
-        <View style={styles.sidebar}>
-          <View style={styles.summary}>
-            <SegmentedControl
-              size="sm"
-              stretch
-              value={scope}
-              onValueChange={(value) => {
-                setScope(value);
-                setSelectedId(null);
-                setSelectedRootSlug(null);
-                setCreating(false);
-                setQuery("");
-                setTypeFilter([...KNOWLEDGE_ARTICLE_KINDS]);
-                setTagFilter([]);
-              }}
-              options={[
-                { value: "knowledge", label: "Knowledge" },
-                { value: "projects", label: "Projects" },
-                { value: "references", label: "References" },
-              ]}
-            />
-            <Text style={styles.summaryStats}>
-              {scopeSummary(scope, summary, knowledge.view?.briefTokens ?? 0)}
-            </Text>
-            <Button size="sm" onPress={startCreate}>
-              {newButtonLabel}
-            </Button>
-          </View>
-          <>
-            {scope === "knowledge" ? (
-              <View style={styles.filters}>
-                <Text style={styles.fieldLabel}>Knowledge map</Text>
-                <View style={styles.rootPages}>
-                  {(knowledge.view?.rootPages ?? []).map((page) => (
-                    <Button
-                      key={page.slug}
-                      variant={selectedRoot?.slug === page.slug ? "secondary" : "outline"}
-                      size="sm"
-                      onPress={() => {
-                        setSelectedRootSlug(page.slug);
-                        setSelectedId(null);
-                      }}
-                    >
-                      {page.title}
-                    </Button>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-            <View style={styles.searchBox}>
-              <ThemedSearch uniProps={searchIconProps} />
-              <ThemedTextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder={`Search ${scope}`}
-                accessibilityLabel={`Search ${scope}`}
-                testID="project-knowledge-search-input"
-                uniProps={searchInputProps}
-                // @ts-expect-error - outlineStyle is web-only
-                style={[styles.searchInput, isWeb && { outlineStyle: "none" }]}
-              />
-              {query ? <SearchClearButton onPress={() => setQuery("")} /> : null}
-            </View>
-            {scope === "knowledge" ? (
-              <ThemedKnowledgeTypeFilter selectedTypes={typeFilter} onChange={setTypeFilter} />
-            ) : null}
-            {scopedTags.length > 0 ? (
-              <ThemedKnowledgeTagFilter
-                tags={scopedTags}
-                selectedTags={tagFilter}
-                onChange={setTagFilter}
-              />
-            ) : null}
-            <View style={styles.statusFilters}>
+      {!isCompact || !compactShowsDetail ? (
+        <Animated.View style={[sidebarShellStyle, isCompact && styles.compactSidebarShell]}>
+          <View style={[styles.sidebar, isCompact && styles.compactSidebar]}>
+            <View style={styles.summary}>
               <SegmentedControl
                 size="sm"
                 stretch
-                value={filter}
-                onValueChange={setFilter}
+                value={scope}
+                onValueChange={(value) => {
+                  setScope(value);
+                  setSelectedId(null);
+                  setSelectedRootSlug(null);
+                  setCreating(false);
+                  handleCompactBack();
+                  setQuery("");
+                  setTypeFilter([...KNOWLEDGE_ARTICLE_KINDS]);
+                  setTagFilter([]);
+                }}
                 options={[
-                  { value: "all", label: "All" },
-                  { value: "proposed", label: "Proposed" },
-                  { value: "confirmed", label: "Confirmed" },
-                  { value: "superseded", label: "History" },
+                  { value: "knowledge", label: "Knowledge" },
+                  { value: "projects", label: "Projects" },
+                  { value: "references", label: "References" },
                 ]}
               />
+              <Text style={styles.summaryStats}>
+                {scopeSummary(scope, summary, knowledge.view?.briefTokens ?? 0)}
+              </Text>
+              <Button size="sm" onPress={startCreate}>
+                {newButtonLabel}
+              </Button>
             </View>
-            {knowledge.loading && !knowledge.view ? (
-              <View style={styles.catalogLoading} testID="project-knowledge-catalog-loading">
-                <LoadingSpinner size="small" />
-                <Text style={styles.muted}>Loading project knowledge…</Text>
-              </View>
-            ) : (
-              <ScrollView style={styles.browser} contentContainerStyle={styles.browserContent}>
-                {scope === "knowledge" && allArchitecturalViews.views.length > 0 ? (
-                  <View style={styles.architecturalViewsSection}>
-                    <Text style={styles.sectionLabel}>Architectural Views</Text>
-                    {allArchitecturalViews.views.map((view) => (
-                      <ArchitecturalViewRow
-                        key={view.id}
-                        view={view}
-                        onSelect={() => openTab({ kind: "architecturalView", viewId: view.id })}
-                      />
+            <>
+              {scope === "knowledge" ? (
+                <View style={styles.filters}>
+                  <Text style={styles.fieldLabel}>Knowledge map</Text>
+                  <View style={styles.rootPages}>
+                    {(knowledge.view?.rootPages ?? []).map((page) => (
+                      <Button
+                        key={page.slug}
+                        variant={selectedRoot?.slug === page.slug ? "secondary" : "outline"}
+                        size="sm"
+                        onPress={() => {
+                          setSelectedRootSlug(page.slug);
+                          setSelectedId(null);
+                          openCompactDetail();
+                        }}
+                      >
+                        {page.title}
+                      </Button>
                     ))}
                   </View>
+                </View>
+              ) : null}
+              <View style={styles.searchBox}>
+                <ThemedSearch uniProps={searchIconProps} />
+                <ThemedTextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder={`Search ${scope}`}
+                  accessibilityLabel={`Search ${scope}`}
+                  testID="project-knowledge-search-input"
+                  uniProps={searchInputProps}
+                  // @ts-expect-error - outlineStyle is web-only
+                  style={[styles.searchInput, isWeb && { outlineStyle: "none" }]}
+                />
+                {query ? <SearchClearButton onPress={() => setQuery("")} /> : null}
+              </View>
+              {scope === "knowledge" ? (
+                <ThemedKnowledgeTypeFilter selectedTypes={typeFilter} onChange={setTypeFilter} />
+              ) : null}
+              {scopedTags.length > 0 ? (
+                <ThemedKnowledgeTagFilter
+                  tags={scopedTags}
+                  selectedTags={tagFilter}
+                  onChange={setTagFilter}
+                />
+              ) : null}
+              <View style={styles.statusFilters}>
+                <SegmentedControl
+                  size="sm"
+                  stretch
+                  value={filter}
+                  onValueChange={setFilter}
+                  options={[
+                    { value: "all", label: "All" },
+                    { value: "proposed", label: "Proposed" },
+                    { value: "confirmed", label: "Confirmed" },
+                    { value: "superseded", label: "History" },
+                  ]}
+                />
+              </View>
+              {knowledge.loading && !knowledge.view ? (
+                <View style={styles.catalogLoading} testID="project-knowledge-catalog-loading">
+                  <LoadingSpinner size="small" />
+                  <Text style={styles.muted}>Loading project knowledge…</Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.browser} contentContainerStyle={styles.browserContent}>
+                  {scope === "knowledge" && allArchitecturalViews.views.length > 0 ? (
+                    <View style={styles.architecturalViewsSection}>
+                      <Text style={styles.sectionLabel}>Architectural Views</Text>
+                      {allArchitecturalViews.views.map((view) => (
+                        <ArchitecturalViewRow
+                          key={view.id}
+                          view={view}
+                          onSelect={() => openTab({ kind: "architecturalView", viewId: view.id })}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                  {records.map((record) => (
+                    <KnowledgeRecordRow
+                      key={record.id}
+                      record={record}
+                      selected={record.id === selected?.id}
+                      onSelect={() => {
+                        setSelectedRootSlug(null);
+                        setSelectedId(record.id);
+                        openCompactDetail();
+                      }}
+                    />
+                  ))}
+                </ScrollView>
+              )}
+            </>
+          </View>
+          {!isCompact ? (
+            <GestureDetector gesture={resizeGesture}>
+              <View
+                style={[styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)]}
+                testID="project-knowledge-splitter"
+              />
+            </GestureDetector>
+          ) : null}
+        </Animated.View>
+      ) : null}
+      {!isCompact || compactShowsDetail ? (
+        <View style={styles.viewer}>
+          {isCompact ? (
+            <View style={styles.compactDetailHeader}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onPress={handleCompactBack}
+                testID="project-knowledge-back"
+              >
+                Back to Knowledge
+              </Button>
+            </View>
+          ) : null}
+          {selectedRoot || selected ? (
+            <View style={styles.documentHeader}>
+              <View style={styles.documentIdentity}>
+                <Text style={styles.muted}>{documentIdentity}</Text>
+              </View>
+              <View style={styles.documentToolbar}>
+                {architecturalViews.views.length > 0 ? (
+                  <>
+                    <SegmentedControl
+                      size="xs"
+                      value={documentMode}
+                      onValueChange={setDocumentMode}
+                      options={[
+                        { value: "article", label: "Article" },
+                        { value: "architectural-view", label: "Architectural View" },
+                      ]}
+                    />
+                    {showArchitecturalView && architecturalViews.views.length > 1 ? (
+                      <ArchitecturalViewPicker
+                        views={architecturalViews.views}
+                        selectedViewId={architecturalViews.selectedView?.id ?? null}
+                        onSelect={architecturalViews.selectView}
+                      />
+                    ) : null}
+                    <ToolbarSeparator />
+                  </>
                 ) : null}
-                {records.map((record) => (
-                  <KnowledgeRecordRow
-                    key={record.id}
-                    record={record}
-                    selected={record.id === selected?.id}
-                    onSelect={() => {
-                      setSelectedRootSlug(null);
-                      setSelectedId(record.id);
-                    }}
+                {markdownPath ? (
+                  <ToolbarIconButton
+                    label="Open in Markdown editor"
+                    Icon={ThemedFolderOpen}
+                    onPress={openMarkdown}
                   />
-                ))}
+                ) : null}
+                {reviewProposal ? (
+                  <>
+                    {markdownPath ? <ToolbarSeparator /> : null}
+                    <ToolbarIconButton
+                      label="Discard proposal"
+                      Icon={ThemedX}
+                      onPress={() => {
+                        setReviewProposal(null);
+                        setFormError(null);
+                      }}
+                      disabled={reviewApplying}
+                    />
+                    <ToolbarIconButton
+                      label={reviewAllKept ? "Drop all changes" : "Keep all changes"}
+                      Icon={ThemedCheckSquare}
+                      onPress={toggleAllReviewHunks}
+                      selected={reviewAllKept}
+                      disabled={reviewApplying || !reviewDiff || reviewDiff.hunks.length === 0}
+                    />
+                    <ToolbarSeparator />
+                    <ToolbarIconButton
+                      label={changesPreferences.wrapLines ? "Scroll long lines" : "Wrap long lines"}
+                      Icon={ThemedWrapText}
+                      onPress={toggleReviewWrap}
+                      selected={changesPreferences.wrapLines}
+                      disabled={reviewApplying}
+                    />
+                    <ToolbarSeparator />
+                    <ToolbarIconButton
+                      label="Apply kept changes"
+                      Icon={ThemedCheck}
+                      onPress={applyKeptReviewProposal}
+                      tone="accent"
+                      loading={reviewApplying}
+                      disabled={!reviewDiff || reviewKeptHunks.size === 0}
+                    />
+                  </>
+                ) : null}
+                {!editingTruth &&
+                !editingMetadata &&
+                !editingTags &&
+                !creating &&
+                !reviewProposal &&
+                runnableReviewDirectives.length > 0 ? (
+                  <ToolbarIconButton
+                    label={
+                      reviewGenerating
+                        ? "Generating Knowledge refinement"
+                        : `Refine ${runnableReviewDirectives.length} review note${runnableReviewDirectives.length === 1 ? "" : "s"} with AI`
+                    }
+                    Icon={ThemedRobot}
+                    onPress={startKnowledgeRefine}
+                    disabled={!reviewSupported || !reviewContent}
+                    loading={reviewGenerating}
+                  />
+                ) : null}
+                {selected &&
+                !editingTruth &&
+                !editingMetadata &&
+                !editingTags &&
+                !creating &&
+                !reviewProposal ? (
+                  <>
+                    {markdownPath ? <ToolbarSeparator /> : null}
+                    <ToolbarIconButton
+                      label="Edit current truth"
+                      Icon={ThemedPencil}
+                      onPress={() => {
+                        setStatement(selected.statement);
+                        setTruthReason("");
+                        setEditingTruth(true);
+                      }}
+                    />
+                    {tagEditingSupported ? (
+                      <ToolbarIconButton
+                        label="Edit tags"
+                        Icon={ThemedSettings2}
+                        onPress={() => {
+                          setTags(selected.tags.join(", "));
+                          setFormError(null);
+                          setEditingTags(true);
+                        }}
+                      />
+                    ) : null}
+                    {selected.kind === "project" || selected.kind === "reference" ? (
+                      <ToolbarIconButton
+                        label={`Edit ${selected.kind === "project" ? "delivery" : "evaluation"}`}
+                        Icon={ThemedSquarePen}
+                        onPress={() => {
+                          setDeliveryStatus(selected.deliveryStatus ?? "charter");
+                          setProgressCompleted(
+                            selected.progress ? String(selected.progress.completed) : "",
+                          );
+                          setProgressTotal(
+                            selected.progress ? String(selected.progress.total) : "",
+                          );
+                          setProgressUnit(selected.progress?.unit ?? "milestones");
+                          setReferenceDisposition(selected.referenceDisposition ?? "unevaluated");
+                          setSourceUrl(selected.sourceUrl ?? "");
+                          setMetadataReason("");
+                          setFormError(null);
+                          setEditingMetadata(true);
+                        }}
+                      />
+                    ) : null}
+                    {selected.status !== "confirmed" ? (
+                      <ToolbarIconButton
+                        label="Confirm project knowledge"
+                        Icon={ThemedCheck}
+                        onPress={() => void setStatus("confirmed")}
+                      />
+                    ) : null}
+                    {selected.status !== "superseded" ? (
+                      <ToolbarIconButton
+                        label="Supersede project knowledge"
+                        Icon={ThemedArchive}
+                        onPress={() => void setStatus("superseded")}
+                      />
+                    ) : null}
+                    <ToolbarIconButton
+                      label={purgeLabel(selected.kind)}
+                      Icon={ThemedTrash2}
+                      onPress={() => void deleteRecord()}
+                      tone="destructive"
+                      testID="project-knowledge-delete"
+                    />
+                  </>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+          <View style={styles.documentCanvas}>
+            {showArchitecturalView ? (
+              <ArchitecturalViewCanvas
+                html={architecturalViews.html}
+                loading={architecturalViews.loading}
+                error={architecturalViews.error}
+              />
+            ) : (
+              <ScrollView
+                contentContainerStyle={
+                  reviewProposal ? styles.viewerProposalContent : styles.viewerContent
+                }
+              >
+                {viewer}
               </ScrollView>
             )}
-          </>
-        </View>
-        <GestureDetector gesture={resizeGesture}>
-          <View
-            style={[styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)]}
-            testID="project-knowledge-splitter"
-          />
-        </GestureDetector>
-      </Animated.View>
-      <View style={styles.viewer}>
-        {selectedRoot || selected ? (
-          <View style={styles.documentHeader}>
-            <View style={styles.documentIdentity}>
-              <Text style={styles.muted}>{documentIdentity}</Text>
-            </View>
-            <View style={styles.documentToolbar}>
-              {architecturalViews.views.length > 0 ? (
-                <>
-                  <SegmentedControl
-                    size="xs"
-                    value={documentMode}
-                    onValueChange={setDocumentMode}
-                    options={[
-                      { value: "article", label: "Article" },
-                      { value: "architectural-view", label: "Architectural View" },
-                    ]}
-                  />
-                  {showArchitecturalView && architecturalViews.views.length > 1 ? (
-                    <ArchitecturalViewPicker
-                      views={architecturalViews.views}
-                      selectedViewId={architecturalViews.selectedView?.id ?? null}
-                      onSelect={architecturalViews.selectView}
-                    />
-                  ) : null}
-                  <ToolbarSeparator />
-                </>
-              ) : null}
-              {markdownPath ? (
-                <ToolbarIconButton
-                  label="Open in Markdown editor"
-                  Icon={ThemedFolderOpen}
-                  onPress={openMarkdown}
-                />
-              ) : null}
-              {reviewProposal ? (
-                <>
-                  {markdownPath ? <ToolbarSeparator /> : null}
-                  <ToolbarIconButton
-                    label="Discard proposal"
-                    Icon={ThemedX}
-                    onPress={() => {
-                      setReviewProposal(null);
-                      setFormError(null);
-                    }}
-                    disabled={reviewApplying}
-                  />
-                  <ToolbarIconButton
-                    label={reviewAllKept ? "Drop all changes" : "Keep all changes"}
-                    Icon={ThemedCheckSquare}
-                    onPress={toggleAllReviewHunks}
-                    selected={reviewAllKept}
-                    disabled={reviewApplying || !reviewDiff || reviewDiff.hunks.length === 0}
-                  />
-                  <ToolbarSeparator />
-                  <ToolbarIconButton
-                    label={changesPreferences.wrapLines ? "Scroll long lines" : "Wrap long lines"}
-                    Icon={ThemedWrapText}
-                    onPress={toggleReviewWrap}
-                    selected={changesPreferences.wrapLines}
-                    disabled={reviewApplying}
-                  />
-                  <ToolbarSeparator />
-                  <ToolbarIconButton
-                    label="Apply kept changes"
-                    Icon={ThemedCheck}
-                    onPress={applyKeptReviewProposal}
-                    tone="accent"
-                    loading={reviewApplying}
-                    disabled={!reviewDiff || reviewKeptHunks.size === 0}
-                  />
-                </>
-              ) : null}
-              {!editingTruth &&
-              !editingMetadata &&
-              !editingTags &&
-              !creating &&
-              !reviewProposal &&
-              runnableReviewDirectives.length > 0 ? (
-                <ToolbarIconButton
-                  label={
-                    reviewGenerating
-                      ? "Generating Knowledge refinement"
-                      : `Refine ${runnableReviewDirectives.length} review note${runnableReviewDirectives.length === 1 ? "" : "s"} with AI`
-                  }
-                  Icon={ThemedRobot}
-                  onPress={startKnowledgeRefine}
-                  disabled={!reviewSupported || !reviewContent}
-                  loading={reviewGenerating}
-                />
-              ) : null}
-              {selected &&
-              !editingTruth &&
-              !editingMetadata &&
-              !editingTags &&
-              !creating &&
-              !reviewProposal ? (
-                <>
-                  {markdownPath ? <ToolbarSeparator /> : null}
-                  <ToolbarIconButton
-                    label="Edit current truth"
-                    Icon={ThemedPencil}
-                    onPress={() => {
-                      setStatement(selected.statement);
-                      setTruthReason("");
-                      setEditingTruth(true);
-                    }}
-                  />
-                  {tagEditingSupported ? (
-                    <ToolbarIconButton
-                      label="Edit tags"
-                      Icon={ThemedSettings2}
-                      onPress={() => {
-                        setTags(selected.tags.join(", "));
-                        setFormError(null);
-                        setEditingTags(true);
-                      }}
-                    />
-                  ) : null}
-                  {selected.kind === "project" || selected.kind === "reference" ? (
-                    <ToolbarIconButton
-                      label={`Edit ${selected.kind === "project" ? "delivery" : "evaluation"}`}
-                      Icon={ThemedSquarePen}
-                      onPress={() => {
-                        setDeliveryStatus(selected.deliveryStatus ?? "charter");
-                        setProgressCompleted(
-                          selected.progress ? String(selected.progress.completed) : "",
-                        );
-                        setProgressTotal(selected.progress ? String(selected.progress.total) : "");
-                        setProgressUnit(selected.progress?.unit ?? "milestones");
-                        setReferenceDisposition(selected.referenceDisposition ?? "unevaluated");
-                        setSourceUrl(selected.sourceUrl ?? "");
-                        setMetadataReason("");
-                        setFormError(null);
-                        setEditingMetadata(true);
-                      }}
-                    />
-                  ) : null}
-                  {selected.status !== "confirmed" ? (
-                    <ToolbarIconButton
-                      label="Confirm project knowledge"
-                      Icon={ThemedCheck}
-                      onPress={() => void setStatus("confirmed")}
-                    />
-                  ) : null}
-                  {selected.status !== "superseded" ? (
-                    <ToolbarIconButton
-                      label="Supersede project knowledge"
-                      Icon={ThemedArchive}
-                      onPress={() => void setStatus("superseded")}
-                    />
-                  ) : null}
-                  <ToolbarIconButton
-                    label={purgeLabel(selected.kind)}
-                    Icon={ThemedTrash2}
-                    onPress={() => void deleteRecord()}
-                    tone="destructive"
-                    testID="project-knowledge-delete"
-                  />
-                </>
-              ) : null}
-            </View>
           </View>
-        ) : null}
-        <View style={styles.documentCanvas}>
-          {showArchitecturalView ? (
-            <ArchitecturalViewCanvas
-              html={architecturalViews.html}
-              loading={architecturalViews.loading}
-              error={architecturalViews.error}
-            />
-          ) : (
-            <ScrollView
-              contentContainerStyle={
-                reviewProposal ? styles.viewerProposalContent : styles.viewerContent
-              }
-            >
-              {viewer}
-            </ScrollView>
-          )}
+          {selectedRoot || selected || formError ? (
+            <View style={formError ? styles.documentStatusError : styles.documentStatusBar}>
+              <Text
+                numberOfLines={1}
+                style={formError ? styles.statusErrorLabel : styles.pathLabel}
+              >
+                {formError ??
+                  (showArchitecturalView
+                    ? (architecturalViews.selectedView?.htmlPath ?? architecturalViews.error)
+                    : markdownPath) ??
+                  "Markdown source unavailable"}
+              </Text>
+            </View>
+          ) : null}
         </View>
-        {selectedRoot || selected || formError ? (
-          <View style={formError ? styles.documentStatusError : styles.documentStatusBar}>
-            <Text numberOfLines={1} style={formError ? styles.statusErrorLabel : styles.pathLabel}>
-              {formError ??
-                (showArchitecturalView
-                  ? (architecturalViews.selectedView?.htmlPath ?? architecturalViews.error)
-                  : markdownPath) ??
-                "Markdown source unavailable"}
-            </Text>
-          </View>
-        ) : null}
-      </View>
+      ) : null}
     </Animated.View>
   );
 }
@@ -1861,10 +1933,10 @@ function addTagToInput(value: string, tag: string): string {
 }
 
 function reviewContentForSelection(
-  root: { body: string } | null,
+  root: { body?: string } | null,
   record: KnowledgeRecord | null,
 ): string | null {
-  if (root) return rootDocumentBody(root.body);
+  if (root?.body) return rootDocumentBody(root.body);
   if (record) return recordReviewContent(record.statement, record.evidence);
   return null;
 }
@@ -2080,12 +2152,14 @@ const REFERENCE_OPTIONS: { value: ProjectReferenceDisposition; label: string }[]
 ];
 const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, flexDirection: "row" },
+  compactSidebarShell: { flex: 1, width: "100%" },
   sidebar: {
     flex: 1,
     minWidth: 0,
     borderRightWidth: theme.borderWidth[1],
     borderRightColor: theme.colors.border,
   },
+  compactSidebar: { borderRightWidth: 0 },
   resizeHandle: {
     position: "absolute",
     right: -5,
@@ -2263,6 +2337,12 @@ const styles = StyleSheet.create((theme) => ({
   viewMeta: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
   staleView: { color: theme.colors.statusWarning, fontSize: theme.fontSize.xs },
   viewer: { flex: 1, minWidth: 0, minHeight: 0, backgroundColor: theme.colors.surface0 },
+  compactDetailHeader: {
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
+  },
   // Articles share the Text Editor's content well; the surrounding header and
   // footer deliberately remain on surface0 as pane chrome.
   documentCanvas: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surfaceCode },

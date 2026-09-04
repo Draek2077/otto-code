@@ -138,6 +138,7 @@ import {
 } from "@/workspace-tabs/launcher";
 import type { NewTabSelection } from "@/workspace-tabs/new-tab";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { isMobileWorkspaceSwitcherTarget } from "@/workspace-tabs/mobile-switcher";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useAppSettingValue, useSettings, type AppSettings } from "@/hooks/use-settings";
@@ -3504,12 +3505,14 @@ function WorkspaceScreenContent({
   // shows it - so only the *list* needs widening, not the mount/select paths.
   const mobileSwitcherTabs = useMemo<WorkspaceTabDescriptor[]>(
     () =>
-      visibleUiTabs.map((tab) => ({
-        key: tab.tabId,
-        tabId: tab.tabId,
-        kind: tab.target.kind,
-        target: tab.target,
-      })),
+      visibleUiTabs
+        .filter((tab) => isMobileWorkspaceSwitcherTarget(tab.target))
+        .map((tab) => ({
+          key: tab.tabId,
+          tabId: tab.tabId,
+          kind: tab.target.kind,
+          target: tab.target,
+        })),
     [visibleUiTabs],
   );
   const mobileTabByKey = useMemo(() => {
@@ -5710,10 +5713,7 @@ const styles = StyleSheet.create((theme) => ({
     // Matches the +2 the switcher's own option rows already carry
     // (workspace-tab-presentation.tsx `optionLabel`) - the collapsed trigger
     // shows the same label and had been left at the base size.
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
   },
   headerMenuProfileIconWrapper: {
     width: compactUp(16),

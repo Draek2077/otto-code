@@ -35,7 +35,7 @@ import { useHosts, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useAgentTeamsFeature } from "@/screens/settings/agent-teams-section";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { deriveAvatarAcronym, readableTextColor } from "@/utils/avatar-badge";
-import { compactUp, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 
 const NO_TEAM_OPTION_ID = "__no-team__";
 const EDIT_TEAMS_OPTION_ID = "__edit-teams__";
@@ -532,19 +532,13 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     // Match the workspace list's project header font size (sidebar-workspace-list
     // `projectTitle`) so the top-left team control reads at the same scale.
-    fontSize: {
-      xs: theme.fontSize.base + 2,
-      md: theme.fontSize.base,
-    },
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
   },
   sidebarLabelHighlighted: {
     flexShrink: 1,
-    fontSize: {
-      xs: theme.fontSize.base + 2,
-      md: theme.fontSize.base,
-    },
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
   },
@@ -596,11 +590,9 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
   },
   sidebarAvatarText: {
-    // Explicit compact bump (like the project icon fallback text) since the
-    // iconSize.lg circle doubles on compact but fontSize tokens don't.
-    fontSize: compactUp(10),
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.semibold,
-    lineHeight: compactUp(12),
+    lineHeight: theme.fontSize.xs,
     textAlign: "center",
   },
 }));

@@ -236,12 +236,14 @@ export function ContextManagementPanel(): ReactElement {
   // A narrower window can invalidate a persisted width, so reconcile before
   // mirroring the store into the shared value the pane actually renders from.
   useEffect(() => {
-    if (contextSidebarWidth > maxSidebarWidth) {
+    // The compact drill-down never renders this width. Do not let a phone
+    // viewport overwrite the desktop preference it will restore later.
+    if (!isCompact && contextSidebarWidth > maxSidebarWidth) {
       setContextSidebarWidth(maxSidebarWidth);
       return;
     }
     resizeWidth.value = contextSidebarWidth;
-  }, [contextSidebarWidth, maxSidebarWidth, resizeWidth, setContextSidebarWidth]);
+  }, [contextSidebarWidth, isCompact, maxSidebarWidth, resizeWidth, setContextSidebarWidth]);
 
   const resizeGesture = useMemo(
     () =>
@@ -885,9 +887,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   backLabel: {
     color: theme.colors.foreground,
-    // This header only renders on compact, but the breakpoint form keeps the
-    // +2 bump explicit rather than baking it into a bare number.
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
     flex: 1,
     minWidth: 0,
   },
@@ -909,7 +909,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     color: theme.colors.foreground,
-    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+    fontSize: theme.fontSize.sm,
   },
   bannerDismiss: {
     color: theme.colors.mutedForeground,

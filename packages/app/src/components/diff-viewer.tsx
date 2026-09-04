@@ -13,6 +13,7 @@ import { type InlineReviewActions } from "@/review";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { resolveCompactFontSize } from "@/appearance/apply";
 import { useAppSettingValue, useAppSettings } from "@/hooks/use-settings";
 import { type DiffDocument, type DiffPresentation } from "@/utils/diff-document";
 import {
@@ -106,8 +107,10 @@ export function DiffViewer({
   const [scrollViewWidth, setScrollViewWidth] = React.useState(0);
   const [surfaceWidth, setSurfaceWidth] = React.useState(0);
   const [reviewGutterWidth, setReviewGutterWidth] = React.useState(0);
-  const codeFontSize = useAppSettingValue(selectCodeFontSize);
+  const configuredCodeFontSize = useAppSettingValue(selectCodeFontSize);
   const { settings } = useAppSettings();
+  const isCompact = useIsCompactFormFactor();
+  const codeFontSize = resolveCompactFontSize(configuredCodeFontSize, isCompact);
   // Changes owns wrapping. A shared viewer must never inherit that surface's
   // preference merely because it happens to render a diff.
   const resolvedWrap = wrap ?? false;
@@ -169,7 +172,6 @@ export function DiffViewer({
     return { targets, reviewActions: suppliedReviewActions, onLineContextMenu, leadingGutter };
   }, [diffPresentation.document.hunks, leadingGutter, onLineContextMenu, suppliedReviewActions]);
   const resolvedEmptyLabel = emptyLabel ?? t("diffViewer.empty");
-  const isCompact = useIsCompactFormFactor();
   const showDesktopWebScrollbar = isWeb && !isCompact;
   const verticalScrollRef = React.useRef<RNScrollView>(null);
   const verticalScrollbar = useWebScrollViewScrollbar(verticalScrollRef, {

@@ -59,7 +59,10 @@ import { WorkspaceLabelDot } from "@/workspace-labels/swatch";
 import { WorkspaceLabelManagerModal } from "@/workspace-labels/manager-modal";
 import { compactUp } from "@/styles/theme";
 
-const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const mutedIconMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
 
 const ThemedSettings2 = withUnistyles(Settings2);
 /** CI's mark: the subject of the checks row, and the shape the icon-only option leaves behind. */
@@ -292,7 +295,7 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
           accessibilityLabel={t("sidebar.display.trigger")}
           testID="sidebar-display-preferences-menu"
         >
-          <ThemedSettings2 size={14} uniProps={mutedIconMapping} />
+          <ThemedSettings2 uniProps={mutedIconMapping} />
         </MenuTrigger>
         <MenuSurface
           align="end"
