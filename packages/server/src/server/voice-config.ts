@@ -89,13 +89,10 @@ export function wrapSpokenInput(text: string): string {
   return `<spoken-input>\n${text}\n</spoken-input>\n<instruction>This message was spoken by the user. Reply only through the speak tool; do not also write a normal assistant message. The user only hears speech, so any text reply is invisible and just wastes tokens.</instruction>`;
 }
 
-// Matches the full `wrapSpokenInput` envelope - the `<spoken-input>` body plus
-// its trailing `<instruction>` block - anchored so incidental user text that
-// merely mentions the tag is never rewritten. Whitespace is tolerated because
-// providers may re-emit the prompt through their own transcript with the edges
-// trimmed or re-indented.
-const SPOKEN_INPUT_ENVELOPE_PATTERN =
-  /^\s*<spoken-input>\s*([\s\S]*?)\s*<\/spoken-input>\s*<instruction>[\s\S]*?<\/instruction>\s*$/;
+const SPOKEN_INPUT_START = "<spoken-input>";
+const SPOKEN_INPUT_END = "</spoken-input>";
+const SPOKEN_INPUT_INSTRUCTION_START = "<instruction>";
+const SPOKEN_INPUT_INSTRUCTION_END = "</instruction>";
 
 /**
  * Recover the words the user actually spoke from a `wrapSpokenInput` envelope,
@@ -106,11 +103,25 @@ const SPOKEN_INPUT_ENVELOPE_PATTERN =
  * envelope, otherwise the text unchanged (idempotent - safe to run on anything).
  */
 export function unwrapSpokenInput(text: string): string {
-  const match = text.match(SPOKEN_INPUT_ENVELOPE_PATTERN);
-  if (!match) {
+  // This is user-derived text after a provider may have re-emitted the prompt.
+  // Marker parsing preserves the full-envelope contract without a multiline
+  // backtracking expression on arbitrary input.
+  const envelope = text.trim();
+  if (!envelope.startsWith(SPOKEN_INPUT_START)) return text;
+
+  const bodyStart = SPOKEN_INPUT_START.length;
+  const bodyEnd = envelope.indexOf(SPOKEN_INPUT_END, bodyStart);
+  if (bodyEnd < 0) return text;
+
+  const instruction = envelope.slice(bodyEnd + SPOKEN_INPUT_END.length).trimStart();
+  if (
+    !instruction.startsWith(SPOKEN_INPUT_INSTRUCTION_START) ||
+    !instruction.endsWith(SPOKEN_INPUT_INSTRUCTION_END)
+  ) {
     return text;
   }
-  return match[1] ?? text;
+
+  return envelope.slice(bodyStart, bodyEnd).trim();
 }
 
 export function buildVoiceAgentMcpServerConfig(params: {
