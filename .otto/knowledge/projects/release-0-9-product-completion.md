@@ -2,14 +2,14 @@
 id: "release-0-9-product-completion"
 kind: "project"
 title: "0.9 release plan — product completion train toward 1.0"
-status: "confirmed"
+status: "proposed"
 tags: ["release","v0.9","v1.0","orchestration","artifacts","schedules","kanban","project-knowledge","context-management","brain"]
 delivery_status: "in_build"
 progress_completed: 0
 progress_total: 8
 progress_unit: "release-train milestones"
 created_at: "2026-08-26T23:24:52.003Z"
-updated_at: "2026-08-30T02:36:07.680Z"
+updated_at: "2026-09-04T01:05:28.407Z"
 ---
 # 0.9 release plan — product completion train toward 1.0
 
@@ -19,7 +19,9 @@ updated_at: "2026-08-30T02:36:07.680Z"
 
 ## Outcome
 
-Version 0.9 completes Otto’s last major operational surfaces before 1.0:
+The **0.9.x release train** advances Otto’s remaining major operational surfaces toward 1.0. **0.9.0 is the first stable waypoint in that train, not the single-version completion gate**. Individual modules may continue through later 0.9.x releases; 1.0.0 is the release that requires their completed user journeys and reliability proof.
+
+The train covers:
 
 1. **Workflows** — Otto’s explicit, safe, observable way to run a multi-agent plan, not a hidden daemon capability.
 2. **Artifacts** — a project-scoped, inspectable, refreshable deliverable lifecycle.
@@ -37,7 +39,7 @@ This is a **release train**, not a promise to collapse every adjacent charter in
 - A visible screen is not a finished module. Every module needs explicit entry points, capability/upgrade handling, empty/loading/error states, mutations, recovery, and a tested core journey.
 - Brain is deliberately simple in product shape: **Otto → Brain → runtime driver**. Each driver must implement the same applicable generalized functionality: model loading/unloading, queueing, settings, calibration, benchmarking, logs, templates, queries, and recovery. Runtime-specific gaps are implementation work inside a driver, to be tackled as each runtime is integrated. They do not change the generalized Brain product contract.
 - Never add a degraded legacy path for a new feature. Capability detection remains centralized and old hosts present the upgrade boundary.
-- The 1.0 candidate does not start until the user-facing module journeys and their reliability proofs are complete. It is acceptable for 0.9 to take additional builds; it is not acceptable to declare completion without proof.
+- **0.9.0 is stability-gated, not module-completion-gated.** It ships the coherent, stable work available at the first 0.9 waypoint. Subsequent 0.9.x releases continue the completion train. **1.0.0** does not ship until the user-facing module journeys and their reliability proofs are complete.
 
 ## Module completion contract
 
@@ -481,3 +483,161 @@ A feature’s delivery metric is evidence-led: it advances only for a completed,
 - time: "2026-08-30T02:36:07.680Z"
   kind: "evidence"
   summary: "2026-08-29: Partial Workflow storage evidence added, not release closure: independent Workflow settings, project-stamped graph/template/run writers, durable verified transfer receipts, collision/source-retention recovery, and targeted protocol/server/app checks are now in place. End-user aggregate browsing and repair/export proof remain open, so neither Workflows nor 0.9 is complete."
+- time: "2026-09-04T00:43:48.414Z"
+  kind: "evidence"
+  summary: "Release-readiness evaluation at `origin/main` commit `530fdef35e86ba8ab3f34d555954828f4b1bf785`: the checkout is clean and aligned with origin, but the required CI run 33807528943 is red. Fifteen jobs failed, including lint, app tests, desktop tests on Ubuntu and Windows, server tests, one CLI shard, the desktop-overlay Playwright job, and seven browser Playwright shards. The lint job fails before dependency installation because the live E2E coverage matrix has one stale `sidebar-resize-handle.spec.ts` row and eighteen unclaimed spec files. The app-test failure includes deterministic assertion drift in Settings storage and workspace-pane tests, plus a missing headless-shell browser in the Vitest browser provider. `npm run acp:version-drift:check` reports 12 stale package-runner catalog pins; release policy requires each to be updated or explicitly classified as intentional. No `0.9` changelog entry exists. The seven-module completion matrix remains the release gate: each named module is still in build or partial with required end-user/T1/T2/T3 proof outstanding. This is release-blocking evidence, not a change to scope or delivery status."
+  source: "Release-readiness evaluation, 2026-09-03; origin/main 530fdef35e86ba8ab3f34d555954828f4b1bf785; GitHub Actions run 33807528943; npm run acp:version-drift:check."
+  affects: ["e2e-qa-coverage","workflows","artifacts","schedules","kanban","project-knowledge-context-management","connectors","managed-model-server-runtimes"]
+
+## Timeline
+
+- time: "2026-08-26T23:24:52.003Z"
+  kind: "decision"
+  summary: "Knowledge page created."
+  affects: ["agent-orchestration","graph-templates","managed-model-server-runtimes","brain-model-bundles","brain-coding-capabilities","e2e-qa-coverage"]
+- time: "2026-08-26T23:24:52.003Z"
+  kind: "evidence"
+  summary: "User requested a realistic 0.9 version plan on 2026-08-26, covering the final operational modules (Workflows/Orchestrations, Artifacts, Schedules, Kanban), Project Knowledge, Context Management, and additional Otto Brain runtimes. The plan was reconciled with the active project-charter inventory and is intentionally recorded as proposed pending user review."
+- time: "2026-08-26T23:28:34.495Z"
+  kind: "decision"
+  summary: "User clarified on 2026-08-26 that Workflows is the new product name; this corrects the release plan’s terminology and scopes provider-native naming collision protection."
+  source: "User direction, 2026-08-26"
+- time: "2026-08-26T23:36:49.218Z"
+  kind: "decision"
+  summary: "User added Connectors as a 0.9 completion commitment after Project Knowledge and requested a concrete inventory of the known project outcomes and work. The proposed release plan now defines connector completion and inserts it before Brain."
+  source: "User direction, 2026-08-26"
+- time: "2026-08-26T23:54:53.431Z"
+  kind: "decision"
+  summary: "User confirmed 0.9 includes both AI and visual Graph Workflows; schedules must run agents, saved Workflows, and artifact updates that preserve artifact design; every catalog Connector needs tool, scope, test, and integration-ownership coverage."
+  source: "User direction, 2026-08-26"
+- time: "2026-08-27T00:09:03.611Z"
+  kind: "decision"
+  summary: "User clarified artifact storage ownership, Kanban’s minimal practical editing scope, evidence-backed architectural-document initialization, and cross-platform local or remote Brain operation."
+  source: "User direction, 2026-08-26"
+  affects: ["connectors","managed-model-server-runtimes"]
+- time: "2026-08-27T00:22:06.438Z"
+  kind: "decision"
+  summary: "User decided Forge and Kanban remain controlled/gated and separate from free-form Connectors; confirmed Kanban’s practical editable-field baseline; clarified artifacts are not moved between projects; and simplified Brain to one generalized Otto → Brain → runtime-driver contract."
+  source: "User direction, 2026-08-26"
+  affects: ["connectors","managed-model-server-runtimes","brain-host-control","brain-console"]
+- time: "2026-08-27T00:24:54.165Z"
+  kind: "decision"
+  summary: "User clarified that runtime-specific complexity belongs inside the vLLM and SGLang driver work and should be tackled during implementation, without complicating Otto Brain’s generalized product contract."
+  source: "User direction, 2026-08-26"
+  affects: ["managed-model-server-runtimes"]
+- time: "2026-08-27T00:28:06.092Z"
+  kind: "decision"
+  summary: "User clarified that AI versus Graph Workflows is an execution-control distinction, not a visual distinction: AI Workflows are open-ended agentic orchestration using Otto MCP tools, while Graph Workflows are predetermined deterministic graphs. Both require Workflow visualizers."
+  source: "User direction, 2026-08-26"
+  affects: ["agent-orchestration","graph-templates"]
+- time: "2026-08-27T00:30:59.644Z"
+  kind: "decision"
+  summary: "User clarified the authoring boundary: AI Workflows use a basic dialog editor for prompt and configuration but have no graph editor; deterministic Graph Workflows have the graph editor. Both use Workflow visualizers."
+  source: "User direction, 2026-08-26"
+  affects: ["agent-orchestration","graph-templates"]
+- time: "2026-08-27T00:35:43.554Z"
+  kind: "decision"
+  summary: "User established the 0.9 master charter as the release command center and requested one linked feature charter per 0.9 module."
+  source: "User direction, 2026-08-26"
+  affects: ["workflows","artifacts","schedules","kanban","project-knowledge-context-management","connectors","managed-model-server-runtimes","e2e-qa-coverage"]
+- time: "2026-08-27T00:35:44.359Z"
+  kind: "note"
+  summary: "User explicitly approved this charter as the official 0.9 release plan and command center. New status: confirmed."
+- time: "2026-08-27T02:00:57.528Z"
+  kind: "decision"
+  summary: "User directed the 0.9 plan to define completion through an end-user capability contract for every module, so the release can answer whether its plan and documented product surface are complete."
+  source: "User direction, 2026-08-26; reconciled with the existing 0.9 completion inventory and [[e2e-qa-coverage]] proof model."
+- time: "2026-08-27T02:07:02.800Z"
+  kind: "decision"
+  summary: "User requested the project charters absorb the capability-evaluation and testing insights. The master charter now requires each module to pass a current-state claim audit before end-user acceptance proof, and distinguishes a complete plan from a proven feature."
+- time: "2026-08-27T02:07:06.328Z"
+  kind: "decision"
+  summary: "The user requested a charter-level testing standard. Added release evidence governance so every 0.9 module measures completion through user journeys, T1/T2/platform proof, compatibility checks, and documentation traceability."
+  source: "User direction, 2026-08-26; docs/testing.md; feature-charter completion-ledger review."
+- time: "2026-08-27T02:15:07.651Z"
+  kind: "decision"
+  summary: "Phase 1 audit added the executable 0.9 completion matrix, tying every module’s core journey to verified baseline evidence, required proof, recovery behavior, and an explicit non-green verdict."
+  source: "Phase 1 release-completion audit, 2026-08-27"
+  affects: ["workflows","artifacts","schedules","kanban","project-knowledge-context-management","connectors","managed-model-server-runtimes","e2e-qa-coverage"]
+- time: "2026-08-27T02:16:13.995Z"
+  kind: "note"
+  summary: "Phase 1 completion matrix and QA proof map are implemented and the existing coverage checker is green, but the required new T1/T2/T3 journeys and non-legacy coverage-matrix migration remain open; no release milestone is yet complete."
+  affects: ["release-0-9-product-completion"]
+- time: "2026-08-28T04:05:31.069Z"
+  kind: "decision"
+  summary: "Remove a wiki link to a proposed decision from confirmed release truth while preserving the provider-neutral capability-parity requirement."
+  source: "Knowledge link integrity repair, 2026-08-27"
+- time: "2026-08-29T14:02:43.156Z"
+  kind: "decision"
+  summary: "The product owner clarified the cross-module contract: Knowledge, Artifacts, Schedules, and Workflows each have independent global defaults and project overrides, backed by shared storage-resolution infrastructure. Status returned to proposed for review."
+  source: "Product-owner clarification, 2026-08-29."
+  affects: ["artifacts","schedules","workflows","project-knowledge-context-management"]
+- time: "2026-08-29T14:02:53.325Z"
+  kind: "note"
+  summary: "The product owner explicitly corrected and confirmed the cross-module storage policy for Knowledge, Artifacts, Schedules, and Workflows. New status: confirmed."
+- time: "2026-08-29T18:55:39.282Z"
+  kind: "decision"
+  summary: "The Workflow charter now has verified browser lifecycle evidence and a controlled real-provider AI declaration/fan-out proof; the release matrix must no longer call the entire product journey unproven. Status returned to proposed for review."
+  source: "[[workflows]] evidence, verified 2026-08-29; controlled isolated Sonnet 5 low-effort run run_mteqm9v7_1c6a9cc6."
+  affects: ["workflows","e2e-qa-coverage"]
+- time: "2026-08-29T18:55:46.056Z"
+  kind: "evidence"
+  summary: "The Workflow release row now has a controlled real-provider proof in addition to focused T1 browser coverage: an isolated temporary daemon ran a Claude Sonnet 5 low-effort conductor that used `start_workflow` to declare one `fanOut: 2` research phase. Durable run `run_mteqm9v7_1c6a9cc6` completed with two managed workers. This advances the row from wholly unproven to partially proven; it does not meet the 0.9 completion bar because AI gate/deliver, provider-failure recovery, normal external-daemon proof, storage/settings, and sharing/import remain open."
+  source: "2026-08-29 Workflow controlled provider proof"
+  affects: ["workflows","e2e-qa-coverage"]
+- time: "2026-08-29T18:56:29.553Z"
+  kind: "note"
+  summary: "The release-row correction accurately reflects the confirmed Workflow evidence while retaining all remaining completion gates. The owner authorized confirmation of truthful verified facts. New status: confirmed."
+- time: "2026-08-29T20:20:42.261Z"
+  kind: "evidence"
+  summary: "Wave 2A passed the AI Workflow provider-failure reliability proof with deterministic mocks only: post-declaration provider failure is durable, actionable in Runs, and proven through an external client-to-daemon WebSocket plus browser UI journey. This is not a paid-provider certification or a general recovery/retry implementation."
+  source: "Wave 2A targeted verification, 2026-08-29"
+  affects: ["workflows"]
+- time: "2026-08-29T22:49:12.564Z"
+  kind: "evidence"
+  summary: "Wave 4B evidence: saved Graph Workflow Schedule adapter verified. It resolves only the selected project’s definitions directory, rejects legacy/global, starter, missing, host/project-provenance-mismatched, unavailable, unsupported, and failed-start targets with repairable history; it launches the ordinary graph Workflow path with schedule source and audit fingerprint/linkage. Targeted server/app typechecks, lint, and six focused Vitest files (151 tests) passed. This is narrow adapter evidence only, not a release-wide completion claim."
+  source: "Wave 4B source and targeted executable verification, 2026-08-29"
+  affects: ["workflows","schedules"]
+- time: "2026-08-29T22:54:07.103Z"
+  kind: "decision"
+  summary: "Reconciled the release matrix with verified Waves 2A, 3A, 4A, and 4B evidence. The rows now distinguish the proven saved-Graph Schedule slice and project-store Graph sharing from remaining storage, target, routing, and provider work. Status returned to proposed for review."
+  source: "Cross-wave integration audit and targeted verification, 2026-08-29"
+  affects: ["workflows","schedules","e2e-qa-coverage"]
+- time: "2026-08-29T22:54:30.524Z"
+  kind: "note"
+  summary: "The product owner previously authorized confirmation of verified Workflow facts. This reconciliation records only source-audited and targeted-test-backed Wave 2A/3A/4A/4B outcomes and leaves remaining work explicit. New status: confirmed."
+- time: "2026-08-29T22:55:02.751Z"
+  kind: "evidence"
+  summary: "Wave 4B final verification correction, 2026-08-29: the completed saved-Graph Workflow Schedule adapter pass ran 7 focused Vitest files with 158 tests, superseding the earlier provisional 151-test count in the Wave 4B evidence. Targeted format/lint and app typecheck passed. Server typecheck remains blocked by unrelated dirty `packages/server/src/server/session.ts:11543` (`Logger` missing), which this slice did not modify."
+  source: "Wave 4B final agent report, 2026-08-29"
+  affects: ["workflows","schedules","release-0-9-product-completion"]
+- time: "2026-08-29T23:07:44.519Z"
+  kind: "evidence"
+  summary: "## WAVE 5B — verified Workflow provider/runtime matrix\n\nThe new [[workflow-provider-proof-matrix]] documentation record has been reconciled with the current profile and adapter capability model.\n\nVerified rows only:\n\n| Release assertion | Evidence | Verdict |\n| --- | --- | --- |\n| Profile-backed role resolution, managed worker spawn, human gate, cancellation, no-plan error, and daemon-restart recovery | Focused deterministic server tests passed on 2026-08-29 | Proven mechanics |\n| Claude Graph authority | Focused adapter tests plus previously recorded controlled Sonnet fan-out proof | Representative live path proven |\n| Codex Graph authority | Focused adapter tests plus previously recorded controlled Luna attended-gate proof | Representative live path proven; `none` access is refused |\n| Native OpenAI-compatible/local authority | Focused adapter tests passed | Mechanically supported; controlled local Workflow declaration remains unproven |\n| ACP, Pi, OpenCode, and OMP Workflow runtimes | Capability inspection | Explicitly capability-limited or unproven; no provider-native fallback |\n\nNo paid-provider command ran during this wave. The broad provider/runtime requirement in the [[workflows]] release row remains partial until the local controlled Workflow fixture and named ACP/native runtime proofs exist. An attempted isolated Chromium rerun stalled before test execution, so it did not upgrade the existing history/Visualizer evidence."
+  source: "WAVE 5B Workflow provider/runtime proof matrix, 2026-08-29"
+  affects: ["workflows","e2e-qa-coverage"]
+- time: "2026-08-29T23:18:17.907Z"
+  kind: "decision"
+  summary: "Final Artifact 0.9 audit corrected the release matrix to distinguish the verified browser preview-security proof from the still-unproven lifecycle journey and controlled generation evidence. Status returned to proposed for review."
+  source: "Artifact 0.9 final release audit, 2026-08-29"
+  affects: ["artifacts","e2e-qa-coverage"]
+- time: "2026-08-29T23:18:48.696Z"
+  kind: "note"
+  summary: "User explicitly requested this final verified release audit. The release matrix correction only distinguishes existing Artifact preview-security proof from still-open lifecycle proof. New status: confirmed."
+- time: "2026-08-30T01:18:05.541Z"
+  kind: "evidence"
+  summary: "Workflow storage advanced with targeted evidence only: independent gated Host/Project settings, stable project-scope provenance, durable pre-launch run snapshots, pinned follow-up writes, legacy-source visibility, and remote-host remediation copy are implemented and tested. Project-scoped template/definition writers, cross-store aggregation, verified transfer receipts, and corruption repair remain incomplete. The 0.9 release remains in build and is not complete."
+  source: "Workflow storage vertical slice, 2026-08-29"
+  affects: ["workflows","schedules","artifacts"]
+- time: "2026-08-30T02:36:07.680Z"
+  kind: "evidence"
+  summary: "2026-08-29: Partial Workflow storage evidence added, not release closure: independent Workflow settings, project-stamped graph/template/run writers, durable verified transfer receipts, collision/source-retention recovery, and targeted protocol/server/app checks are now in place. End-user aggregate browsing and repair/export proof remain open, so neither Workflows nor 0.9 is complete."
+- time: "2026-09-04T00:43:48.414Z"
+  kind: "evidence"
+  summary: "Release-readiness evaluation at `origin/main` commit `530fdef35e86ba8ab3f34d555954828f4b1bf785`: the checkout is clean and aligned with origin, but the required CI run 33807528943 is red. Fifteen jobs failed, including lint, app tests, desktop tests on Ubuntu and Windows, server tests, one CLI shard, the desktop-overlay Playwright job, and seven browser Playwright shards. The lint job fails before dependency installation because the live E2E coverage matrix has one stale `sidebar-resize-handle.spec.ts` row and eighteen unclaimed spec files. The app-test failure includes deterministic assertion drift in Settings storage and workspace-pane tests, plus a missing headless-shell browser in the Vitest browser provider. `npm run acp:version-drift:check` reports 12 stale package-runner catalog pins; release policy requires each to be updated or explicitly classified as intentional. No `0.9` changelog entry exists. The seven-module completion matrix remains the release gate: each named module is still in build or partial with required end-user/T1/T2/T3 proof outstanding. This is release-blocking evidence, not a change to scope or delivery status."
+  source: "Release-readiness evaluation, 2026-09-03; origin/main 530fdef35e86ba8ab3f34d555954828f4b1bf785; GitHub Actions run 33807528943; npm run acp:version-drift:check."
+  affects: ["e2e-qa-coverage","workflows","artifacts","schedules","kanban","project-knowledge-context-management","connectors","managed-model-server-runtimes"]
+- time: "2026-09-04T01:05:28.407Z"
+  kind: "decision"
+  summary: "User clarified on 2026-09-03 that 0.9.0 is the first stable release in the 0.9.x completion train; every planned module is not required in 0.9.0, and the full completion bar belongs to 1.0.0. Status returned to proposed for review."
+  source: "User direction, 2026-09-03."

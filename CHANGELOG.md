@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0 - 2026-09-03
+
+### Changed
+
+- Save reusable AI and Graph Workflow definitions in project-scoped storage, with durable launch records and Graph Workflow schedules
+- Keep Artifacts durable in their owning project while preserving structured data updates and provenance
+- Create designable architecture views from Project Knowledge
+- Make Explorer a first-class workspace pane with project search, a keyboard-first new-tab launcher, and consistent pane-host behavior
+- Add Fable 5.1 and Astra to the available model catalog
+
+### Fixed
+
+- Keep queued prompts available through compaction and send them when the agent is ready
+- Keep the Visualizer following chats created during a session
+- Preserve browser tab URLs and icons while navigation completes
+- Keep workspace tabs, diff indicators, file-edit actions, pull-request tabs, Composer tracks, and terminal symbols stable through the Explorer migration
+- Restore upstream workspace behavior without dropping Otto-owned features
+
 ## 0.8.19 - 2026-08-27
 
 ### Changed
