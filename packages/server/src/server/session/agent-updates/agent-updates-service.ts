@@ -362,6 +362,7 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
           const matches = matchesAgentUpdatesFilter({
             agent: payload,
             project,
+            filter: sub.filter,
           });
 
           if (matches) {

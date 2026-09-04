@@ -17,6 +17,7 @@ someone to run it by hand.
 
 | Behavior                                                                                                         | Status | Specs / plan                                  | Tier | Pri |
 | ---------------------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------- | ---- | --- |
+| New tab startup lands on the workspace shell                                                                     | ✅     | `new-tab-startup.spec.ts`                     | T1   | -   |
 | Cold start with empty state renders sessions screen                                                              | ✅     | `sessions-empty.spec.ts`                      | T1   | -   |
 | Startup loading states, no blank flash                                                                           | ✅     | `startup-loading.spec.ts`                     | T1   | -   |
 | Startup wire metrics / connection bring-up                                                                       | ✅     | `startup-wire-metrics.spec.ts`                | T1   | -   |
@@ -29,7 +30,6 @@ someone to run it by hand.
 | Animations toggle disables page-fade veil (durations 0 when off, no flash on re-enable)                          | ✅     | `appearance-theme-animations.spec.ts`         | T1   | -   |
 | Command center lists and opens workspaces                                                                        | 🟡     | `command-center-workspaces.spec.ts`           | T1   | -   |
 | Sidebar help entry point                                                                                         | ✅     | `sidebar-help.spec.ts`                        | T1   | -   |
-| Sidebar resize handle (drag, persisted width)                                                                    | ✅     | `sidebar-resize-handle.spec.ts`               | T1   | -   |
 | Workspace focus mode (Ctrl+Shift+F chrome collapse)                                                              | 🟡     | `workspace-focus-mode.spec.ts`                | T1   | -   |
 | Compact-layout kebab menus open as action sheets (project and workspace actions)                                 | ✅     | `sidebar-mobile-menu-sheets.spec.ts`          | T1   | -   |
 | Command center scroll keeps its first result fully visible while opening                                         | ✅     | `command-center-scroll.spec.ts`               | T1   | -   |
@@ -56,6 +56,8 @@ someone to run it by hand.
 
 | Behavior                                                                                     | Status | Specs / plan                                                           | Tier | Pri                                               |
 | -------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------- | ---- | ------------------------------------------------- |
+| Sidebar project filter narrows the workspace list                                            | ✅     | `sidebar-project-filter.spec.ts`                                       | T1   | -                                                 |
+| Workspace labels (assign, render, filter)                                                    | ✅     | `workspace-labels.spec.ts`                                             | T1   | -                                                 |
 | New workspace creation (form, validation)                                                    | ✅     | `new-workspace.spec.ts`, `new-workspace-entry.spec.ts`                 | T1   | -                                                 |
 | New workspace provider/model preselect (last-used)                                           | ✅     | `new-workspace-preselect.spec.ts`                                      | T1   | -                                                 |
 | New workspace isolation memory                                                               | ✅     | `new-workspace-isolation-memory.spec.ts`                               | T1   | -                                                 |
@@ -101,6 +103,10 @@ someone to run it by hand.
 
 | Behavior                                                                               | Status | Specs / plan                                                                        | Tier | Pri |
 | -------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- | ---- | --- |
+| Agent timeline sync retry after a dropped update                                       | ✅     | `agent-timeline-sync-retry.spec.ts`                                                 | T1   | -   |
+| Composer diff stat pill reflects workspace changes                                     | ✅     | `composer-diff-stat.spec.ts`                                                        | T1   | -   |
+| Composer whitespace handling on submit                                                 | ✅     | `composer-whitespace.spec.ts`                                                       | T1   | -   |
+| Compact overview sheet for tool calls                                                  | ✅     | `tool-call-overview-sheet.spec.ts`                                                  | T1   | -   |
 | Composer attachments (files, images)                                                   | ✅     | `composer-attachments.spec.ts`                                                      | T1   | -   |
 | Composer @-autocomplete                                                                | ✅     | `composer-autocomplete.spec.ts`                                                     | T1   | -   |
 | Client slash commands                                                                  | ✅     | `client-slash-commands.spec.ts`                                                     | T1   | -   |
@@ -142,6 +148,8 @@ someone to run it by hand.
 
 | Behavior                                                                                                     | Status | Specs / plan                                                                                                                                                               | Tier | Pri |
 | ------------------------------------------------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --- |
+| Archive finished subagents from the tracks panel                                                             | ✅     | `archive-finished-subagents.spec.ts`                                                                                                                                       | T1   | -   |
+| Composer steer supersedes a pending plan approval                                                            | ✅     | `permission-steer.real.spec.ts`                                                                                                                                            | T3   | -   |
 | Model switch requires/handles restart                                                                        | ✅     | `workspace-model-restart.spec.ts`                                                                                                                                          | T1   | -   |
 | Sidebar model display                                                                                        | ✅     | `sidebar-model-b.spec.ts`                                                                                                                                                  | T1   | -   |
 | Codex plan approval flow                                                                                     | ✅     | `codex-plan-approval.spec.ts`                                                                                                                                              | T1   | -   |
@@ -205,22 +213,25 @@ someone to run it by hand.
 
 ## 8. Terminal
 
-| Behavior                                   | Status | Specs / plan                            | Tier | Pri |
-| ------------------------------------------ | ------ | --------------------------------------- | ---- | --- |
-| Rendering performance pipeline             | ✅     | `terminal-performance.spec.ts`          | T1   | -   |
-| Keystroke stress / latency                 | ✅     | `terminal-keystroke-stress.spec.ts`     | T1   | -   |
-| Activity indicators (agent hook reporting) | ✅     | `terminal-activity-indicators.spec.ts`  | T1   | -   |
-| Alternate screen (TUI apps)                | ✅     | `terminal-alternate-screen.spec.ts`     | T1   | -   |
-| Terminal compatibility diagnostic          | ✅     | `settings-host-page.spec.ts`            | T1   | -   |
-| Protocol queries (OSC etc.)                | ✅     | `terminal-protocol-query.spec.ts`       | T1   | -   |
-| Split + resize                             | ✅     | `terminal-split-resize.spec.ts`         | T1   | -   |
-| Terminal tab rename                        | ✅     | `workspace-terminal-tab-rename.spec.ts` | T1   | -   |
-| Terminal recovers from a stuck size        | 🟡     | `terminal-stuck-size.spec.ts`           | T1   | -   |
+| Behavior                                            | Status | Specs / plan                                      | Tier | Pri |
+| --------------------------------------------------- | ------ | ------------------------------------------------- | ---- | --- |
+| Direct terminal shortcut opens in the expected pane | ✅     | `direct-terminal-shortcut-pane-placement.spec.ts` | T1   | -   |
+| Retained terminal tab streams survive a tab switch  | ✅     | `terminal-retained-tab-stream.spec.ts`            | T1   | -   |
+| Rendering performance pipeline                      | ✅     | `terminal-performance.spec.ts`                    | T1   | -   |
+| Keystroke stress / latency                          | ✅     | `terminal-keystroke-stress.spec.ts`               | T1   | -   |
+| Activity indicators (agent hook reporting)          | ✅     | `terminal-activity-indicators.spec.ts`            | T1   | -   |
+| Alternate screen (TUI apps)                         | ✅     | `terminal-alternate-screen.spec.ts`               | T1   | -   |
+| Terminal compatibility diagnostic                   | ✅     | `settings-host-page.spec.ts`                      | T1   | -   |
+| Protocol queries (OSC etc.)                         | ✅     | `terminal-protocol-query.spec.ts`                 | T1   | -   |
+| Split + resize                                      | ✅     | `terminal-split-resize.spec.ts`                   | T1   | -   |
+| Terminal tab rename                                 | ✅     | `workspace-terminal-tab-rename.spec.ts`           | T1   | -   |
+| Terminal recovers from a stuck size                 | 🟡     | `terminal-stuck-size.spec.ts`                     | T1   | -   |
 
 ## 9. Files, editor & search
 
 | Behavior                                                                                                               | Status | Specs / plan                                                                                                                                                           | Tier | Pri |
 | ---------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --- |
+| File target transitions between tab kinds                                                                              | ✅     | `file-transition.spec.ts`                                                                                                                                              | T1   | -   |
 | Text editor (CM6): open, edit, save via daemon RPCs                                                                    | ✅     | `text-editor.spec.ts`                                                                                                                                                  | T1   | -   |
 | In-app Vim mode: opt-in setting, NORMAL/INSERT feedback, cursor position, and a configured Space-leader action mapping | ✅     | `file-editing.spec.ts`                                                                                                                                                 | T1   | -   |
 | File finder (quick open)                                                                                               | ✅     | `file-finder.spec.ts`                                                                                                                                                  | T1   | -   |
@@ -260,6 +271,10 @@ someone to run it by hand.
 
 | Behavior                                                                                  | Status | Specs / plan                                              | Tier | Pri |
 | ----------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------- | ---- | --- |
+| Host agent skills settings                                                                | ✅     | `agent-skills-settings.spec.ts`                           | T1   | -   |
+| Plugin management (install, enable, disable, remove)                                      | ✅     | `plugin-management.spec.ts`                               | T1   | -   |
+| Plugin-supplied theme applies to the shell                                                | ✅     | `plugin-theme.spec.ts`                                    | T1   | -   |
+| Plugin workspace panels and Command Center entries                                        | ✅     | `plugin-workspace-panels.spec.ts`                         | T1   | -   |
 | Settings navigation                                                                       | ✅     | `settings-navigation.spec.ts`                             | T1   | -   |
 | Settings sidebar scroll                                                                   | ✅     | `packages/desktop/e2e/settings-sidebar-scroll.spec.ts`    | DT   | -   |
 | Settings i18n (all locales render)                                                        | ✅     | `settings-i18n.spec.ts`                                   | T1   | -   |
@@ -311,6 +326,7 @@ invariants have unit coverage. Browser-level management workflows remain explici
 
 | Behavior                                                                                                                                      | Status | Specs / plan                                                                                                                                                                    | Tier | Pri |
 | --------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --- |
+| Saved Workflow schedule creation                                                                                                              | ✅     | `schedule-saved-workflow.spec.ts`                                                                                                                                               | T1   | -   |
 | Schedule edit form model hydration                                                                                                            | ✅     | `schedules-edit-model-hydration.spec.ts`                                                                                                                                        | T1   | -   |
 | Schedule project targeting                                                                                                                    | ✅     | `schedules-project-target.spec.ts`                                                                                                                                              | T1   | -   |
 | Schedule create full flow (form → daemon record → card → delete)                                                                              | ✅     | `schedule-create-flow.spec.ts`                                                                                                                                                  | T1   | -   |
@@ -364,6 +380,7 @@ diagnoses already.
 
 | Instrument                                                          | Status | Specs / plan                                                                                                                                          | Tier | Pri |
 | ------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --- |
+| Diff rendering performance instrument (`OTTO_DIFF_PERF_E2E`)        | ✅     | `diff-performance.spec.ts`                                                                                                                            | T1   | -   |
 | Client resource retention across repeated chat + navigation cycles  | 📊     | `client-resource-soak.spec.ts` - `OTTO_RESOURCE_SOAK_E2E=1`; method and traps in `docs/client-performance.md`                                         | T1   | -   |
 | Cost of moving around a heavy install (long chats, many workspaces) | 📊     | `perf-corpus-soak.spec.ts` - `OTTO_CORPUS_SOAK_E2E=1`; seeds a synthetic conversation corpus, then times chat opens and workspace switches against it | T1   | -   |
 | Replica cache write volume during a long stream                     | 📊     | `replica-cache-performance.spec.ts` - `OTTO_REPLICA_CACHE_PERF_E2E=1`; asserts streaming writes stay within the persisted-change bound                | T1   | -   |

@@ -64,7 +64,13 @@ function catalog(modelId: string): Catalog {
 function recordCodexEvent(events: string[]): (entries: ProviderSnapshotEntry[]) => void {
   return (entries) => {
     const codex = entries.find((entry) => entry.provider === "codex");
-    events.push(`${codex?.status}:${codex?.models?.[0]?.id ?? "none"}`);
+    const next = `${codex?.status}:${codex?.models?.[0]?.id ?? "none"}`;
+    // Otto registers more providers than upstream, and every one of them
+    // emits the shared snapshot as its own probe settles. Only Codex's
+    // transitions are under test here, so a repeat of its current state is
+    // another provider's news, not a Codex event.
+    if (events.at(-1) === next) return;
+    events.push(next);
   };
 }
 

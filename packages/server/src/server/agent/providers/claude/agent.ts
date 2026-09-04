@@ -5558,9 +5558,19 @@ class ClaudeAgentSession implements AgentSession {
       this.workflowObservedKeys.add(message.tool_use_id);
       this.armWorkflowWatcher(message.tool_use_id, message.task_id);
     }
+    // A SendMessage to a child the parent already spawned arrives as a second
+    // task_started for the SAME task_id under a NEW tool_use id. That is the
+    // original child resuming, not a sibling: its row keeps the original key,
+    // and the new id must not announce a second card (the task protocol
+    // source aliases the new id back to the original for its sidechain).
+    const existingKey = this.observedKeyByTaskId.get(message.task_id);
+    const isResume = Boolean(
+      existingKey && message.tool_use_id && existingKey !== message.tool_use_id,
+    );
+    const rowKey = isResume ? existingKey : message.tool_use_id;
     this.appendObservedSubagentTaskEvent(message, events, {
       taskId: message.task_id,
-      toolUseId: message.tool_use_id,
+      toolUseId: rowKey,
       subAgentType: isWorkflowStart
         ? readClaudeWorkflowLabel(message.workflow_name)
         : message.subagent_type,
@@ -5569,7 +5579,7 @@ class ClaudeAgentSession implements AgentSession {
       classifiedAsSubagent: isWorkflowStart || isSubagentStart,
     });
     const prompt = readObservedSubagentText(message.prompt);
-    const key = message.tool_use_id ?? this.observedKeyByTaskId.get(message.task_id);
+    const key = rowKey ?? this.observedKeyByTaskId.get(message.task_id);
     if (prompt && key) {
       events.push({
         type: "provider_subagent",
@@ -5581,7 +5591,7 @@ class ClaudeAgentSession implements AgentSession {
         },
       });
     }
-    if (isSubagentStart && !isWorkflowStart && key) {
+    if (isSubagentStart && !isWorkflowStart && !isResume && key) {
       const card = mapClaudeRunningToolCall({
         name: cachedTool?.name ?? "Task",
         callId: key,

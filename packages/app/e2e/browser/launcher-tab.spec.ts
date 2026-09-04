@@ -144,7 +144,7 @@ test.describe("Tab creation", () => {
     await gotoWorkspace(page, workspace.workspaceId);
     const countBefore = await countTabsOfKind(page, "new_tab");
 
-    await page.getByTestId("workspace-new-tab-button").filter({ visible: true }).click();
+    await page.getByTestId("workspace-new-tab-menu-trigger").filter({ visible: true }).click();
 
     await expect(
       page.getByTestId("workspace-new-tab-menu").filter({ visible: true }),
@@ -236,7 +236,7 @@ test.describe("Tab creation", () => {
 
     try {
       await gotoWorkspace(page, workspace.workspaceId);
-      await page.getByTestId("workspace-new-tab-button").filter({ visible: true }).click();
+      await page.getByTestId("workspace-new-tab-menu-trigger").filter({ visible: true }).click();
       await page
         .getByTestId("workspace-new-tab-menu")
         .filter({ visible: true })
@@ -251,7 +251,7 @@ test.describe("Tab creation", () => {
 
   test("terminal profiles are grouped with a settings action", async ({ page }) => {
     await gotoWorkspace(page, workspace.workspaceId);
-    await page.getByTestId("workspace-new-tab-button").filter({ visible: true }).click();
+    await page.getByTestId("workspace-new-tab-menu-trigger").filter({ visible: true }).click();
 
     const menu = page.getByTestId("workspace-new-tab-menu").filter({ visible: true });
     await expect(menu.getByText("Terminal profiles", { exact: true })).toBeVisible();
@@ -275,13 +275,15 @@ test.describe("Tab creation", () => {
 
     const tabRow = page.getByTestId("workspace-tabs-row").filter({ visible: true }).first();
     const scrollArea = tabRow.getByTestId("workspace-tabs-scroll");
-    const newTabButtonInScroll = await scrollArea.getByTestId("workspace-new-tab-button").count();
+    const newTabButtonInScroll = await scrollArea
+      .getByTestId("workspace-new-tab-menu-trigger")
+      .count();
     const scrollShades = await tabRow
       .locator('[data-testid^="workspace-tabs-scroll-shade-"]')
       .count();
 
     expect(newTabButtonInScroll === 0 || scrollShades === 0).toBe(true);
-    await expect(tabRow.getByTestId("workspace-new-tab-button")).toBeVisible();
+    await expect(tabRow.getByTestId("workspace-new-tab-menu-trigger")).toBeVisible();
   });
 });
 

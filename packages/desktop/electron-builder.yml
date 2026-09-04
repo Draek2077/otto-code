@@ -117,8 +117,6 @@ extraResources:
     to: wake-word/model.json
   - from: ../../vendor/agent-flow/LICENSE
     to: wake-word/LICENSE-APACHE-2.0.txt
-  - from: ../../skills
-    to: skills
   - from: assets/tray-icon.png
     to: tray-icon.png
   - from: assets/tray-icon-attention.png

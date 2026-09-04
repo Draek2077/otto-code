@@ -45,7 +45,9 @@ describe("resolveVisualizerAppearance", () => {
     ).toBe(Math.round(14 * (18 / 16)));
   });
 
-  it("bumps the UI size on compact form factors before scaling", () => {
+  it("scales compact form factors from the same ramp as everything else", () => {
+    // The compact UI-size bump left with the upstream appearance convergence;
+    // the visualizer follows the authored ramp regardless of form factor.
     expect(
       resolveVisualizerAppearance({
         uiFontFamily: "",
@@ -53,6 +55,6 @@ describe("resolveVisualizerAppearance", () => {
         uiFontSize: 16,
         isCompact: true,
       }).chatFontSize,
-    ).toBe(Math.round(14 * (18 / 16)));
+    ).toBe(14);
   });
 });

@@ -113,10 +113,16 @@ describe("subagent lifecycle across an interrupt", () => {
     return { channel, session, subagentEvents };
   }
 
+  // Otto re-upserts a running child on every task_updated (title and
+  // description refreshes ride the same upsert), so consecutive repeats of one
+  // status are one lifecycle state here, not a transition.
   function statuses(events: ProviderSubagentInputEvent[], id: string): string[] {
-    return events.flatMap((event) =>
-      event.type === "upsert" && event.id === id && event.status ? [event.status] : [],
-    );
+    const transitions: string[] = [];
+    for (const event of events) {
+      if (event.type !== "upsert" || event.id !== id || !event.status) continue;
+      if (transitions.at(-1) !== event.status) transitions.push(event.status);
+    }
+    return transitions;
   }
 
   test("a backgrounded child settles after the turn that spawned it is canceled", async () => {

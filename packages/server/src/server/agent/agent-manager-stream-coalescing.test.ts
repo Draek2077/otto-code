@@ -1247,7 +1247,13 @@ describe("target coalesced behavior", () => {
       session.pushEvent(terminalEvent("turn_completed", "turn-1"));
       await waitForSessionEventQueue();
 
+      // The manager yields the accepted turn_started itself, before anything
+      // the provider produces; the coalesced timeline row follows it.
       await expect(firstEvent).resolves.toEqual({
+        done: false,
+        value: { type: "turn_started", provider: "codex", turnId: "turn-1" },
+      });
+      await expect(stream.next()).resolves.toEqual({
         done: false,
         value: {
           type: "timeline",
@@ -1267,6 +1273,10 @@ describe("target coalesced behavior", () => {
       expect(getTimelineItems(rows)).toEqual([{ type: "assistant_message", text: "hello world" }]);
       expect(streamEvents[0]).toMatchObject({
         type: "agent_stream",
+        event: { type: "turn_started", provider: "codex", turnId: "turn-1" },
+      });
+      expect(streamEvents[1]).toMatchObject({
+        type: "agent_stream",
         event: {
           type: "timeline",
           provider: "codex",
@@ -1274,7 +1284,7 @@ describe("target coalesced behavior", () => {
           item: { type: "assistant_message", text: "hello world" },
         },
       });
-      expect(streamEvents[1]).toMatchObject({
+      expect(streamEvents[2]).toMatchObject({
         type: "agent_stream",
         event: { type: "turn_completed", provider: "codex", turnId: "turn-1" },
       });

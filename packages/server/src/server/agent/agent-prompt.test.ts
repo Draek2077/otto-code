@@ -11,6 +11,7 @@ import { AgentStorage } from "./agent-storage.js";
 import {
   formatSystemNotificationPrompt,
   isSystemInjectedEnvelope,
+  sendPromptToAgent,
   setupFinishNotification,
   waitForAgentRunStartWithTimeout,
 } from "./agent-prompt.js";
@@ -32,7 +33,6 @@ interface FinishNotificationScenario {
   startWatchingChild(): void;
   finishChildAndReadParentPrompt(): Promise<string>;
   queuedPrompts: string[];
-  closeChildAndReadParentPrompt(): Promise<string>;
   parentPrompts(): string[];
   steerAttemptCount(): number;
   wasParentPrompted(): boolean;
@@ -88,7 +88,27 @@ function createFinishNotificationScenario(
     return options?.childLastAssistantMessage ?? null;
   });
   Reflect.set(agentManager, "tryRunOutOfBand", () => false);
-  Reflect.set(agentManager, "hasInFlightRun", () => Boolean(options?.parentPromptError));
+  Reflect.set(agentManager, "hasInFlightRun", () => Boolean(options?.parentBusy));
+  Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", () => false);
+  // Notify-on-finish sends `delivery: "queue"`, so the enqueue attempt is part
+  // of the path now. An idle parent reports "not queued" and falls through to a
+  // normal dispatch; a busy one takes the prompt.
+  Reflect.set(agentManager, "enqueueSteerMessage", (_agentId: string, prompt: string) => {
+    if (!options?.parentBusy) {
+      return { queued: false };
+    }
+    queuedPrompts.push(prompt);
+    const entry = {
+      id: "queued-1",
+      prompt,
+      enqueuedAt: "2026-07-25T00:00:00.000Z",
+      source: "system",
+    };
+    resolveParentPrompt?.(prompt);
+    return { queued: true, entry };
+  });
+  // An idle parent has no active turn to steer, so the dispatcher falls through
+  // to a fresh stream; the attempt itself is what the tests count.
   Reflect.set(agentManager, "steerOrReplaceActiveTurn", async () => {
     steerAttemptCount += 1;
     return { status: "inactive" };
@@ -96,10 +116,6 @@ function createFinishNotificationScenario(
   Reflect.set(agentManager, "streamAgent", (_agentId: string, prompt: string) => {
     parentPrompted = true;
     parentPrompts.push(prompt);
-    resolveParentPrompt?.(prompt);
-    return { queued: true, entry };
-  });
-  Reflect.set(agentManager, "streamAgent", (_agentId: string, prompt: string) => {
     resolveParentPrompt?.(prompt);
     return (async function* noop() {})();
   });

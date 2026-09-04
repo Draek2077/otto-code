@@ -85,6 +85,7 @@ export function asDaemonConfigStore(stub: {
 export function createDaemonConfigStoreStub(): {
   onApply: () => () => void;
   onChange: () => () => void;
+  onFieldChange: () => () => void;
   get: () => { lsp: Record<string, unknown>; dotnetSolutionManagement: Record<string, unknown> };
 } {
   return {
@@ -93,6 +94,8 @@ export function createDaemonConfigStoreStub(): {
     // call onto undefined at teardown.
     onApply: vi.fn(() => () => {}),
     onChange: vi.fn(() => () => {}),
+    // The LSP pool re-reads its settings through a field subscription.
+    onFieldChange: vi.fn(() => () => {}),
     get: vi.fn(() => ({
       lsp: {
         enabled: true,

@@ -135,11 +135,13 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     name: server-tests (${{ matrix.os }})
-    # A green run finishes in under 16 minutes on the slower of the two
-    # platforms. Without a cap, a suite that prints its results and then fails
-    # to exit on a leaked handle sits here until GitHub's 360-minute default,
-    # which is how one bad merge burned two runners for an afternoon.
-    timeout-minutes: 30
+    # A green Linux run finishes in under 16 minutes. Without a cap, a suite
+    # that prints its results and then fails to exit on a leaked handle sits
+    # here until GitHub's 360-minute default, which is how one bad merge burned
+    # two runners for an afternoon. Windows runs the unit suite on a single
+    # fork, up to twice, then the integration suite: the v0.9.0 run was killed
+    # at 30 minutes as "cancelled" with no test output at all, so it gets 60.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 60 || 30 }}
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:

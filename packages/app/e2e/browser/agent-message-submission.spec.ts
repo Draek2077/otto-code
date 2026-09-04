@@ -34,6 +34,7 @@ import { WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES } from "@/screens/workspace/works
 import { delayBrowserAgentCreatedStatus } from "../support/helpers/new-workspace";
 import { installDaemonWebSocketGate } from "../support/helpers/daemon-websocket-gate";
 import { gotoAppShell, openSettings, selectModel } from "../support/helpers/app";
+import { openSettingsSection } from "../support/helpers/settings";
 import { observeTimelineSubscriptions } from "../support/helpers/timeline-delivery";
 import {
   expectResumeOverflowFallsBackToOneTail,
@@ -294,10 +295,13 @@ async function retryRestoredSubmission(page: Page, prompt: string): Promise<void
   await expect(page.getByTestId("composer-image-attachment-pill")).toHaveCount(0);
 }
 
+// Settings opens to its search-first overview; the send behavior lives in
+// the General section, one sidebar click further in.
 async function configureSteerInSettings(page: Page): Promise<void> {
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
   await page.keyboard.press(`${modifier}+Comma`);
-  await expect(page).toHaveURL(/\/settings\/general$/);
+  await expect(page).toHaveURL(/\/settings$/);
+  await openSettingsSection(page, "general");
   await selectSteerInSettings(page);
 }
 
@@ -309,7 +313,8 @@ async function selectSteerInSettings(page: Page): Promise<void> {
 async function configureInterruptInSettings(page: Page): Promise<void> {
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
   await page.keyboard.press(`${modifier}+Comma`);
-  await expect(page).toHaveURL(/\/settings\/general$/);
+  await expect(page).toHaveURL(/\/settings$/);
+  await openSettingsSection(page, "general");
   await selectSendBehaviorInSettings(page, "Interrupt", "interrupt");
 }
 
@@ -337,6 +342,7 @@ async function replaySteeredSleepTurnInBrowser(
   gate.holdNextShellToolCall("completed");
   await gotoAppShell(page);
   await openSettings(page);
+  await openSettingsSection(page, "general");
   await selectSteerInSettings(page);
   const agent = await startRunningMockAgent(page, {
     prefix: `steer-replay-${shape}-${testInfo.workerIndex}-`,

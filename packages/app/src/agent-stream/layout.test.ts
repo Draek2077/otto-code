@@ -349,7 +349,10 @@ describe("layoutStream", () => {
     });
 
     expect(findLayoutItem(layout, historyBlock.id).assistantSpacing).toBe("compactBottom");
-    expect(findLayoutItem(layout, headBlock.id).assistantSpacing).toBe("compactBoth");
+    // The head block is the reply's last segment: only the edge it shares with
+    // the history block is squared off. The turn footer below it is not a
+    // segment, so the outer bottom corners stay rounded.
+    expect(findLayoutItem(layout, headBlock.id).assistantSpacing).toBe("compactTop");
   });
 
   it.each(["web", "android"] as const)(

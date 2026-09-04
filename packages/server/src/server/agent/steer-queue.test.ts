@@ -261,8 +261,8 @@ async function createCompactingAgent(): Promise<Harness> {
     throw new Error("Expected a created session");
   }
 
-  const result = startAgentRun(manager, agent.id, "/compact", logger);
-  expect(result).toMatchObject({ outOfBand: true, queued: false });
+  const result = await startAgentRun(manager, agent.id, "/compact", logger);
+  expect(result).toMatchObject({ disposition: "out_of_band" });
   await settle();
 
   return { manager, agentId: agent.id, session };
@@ -405,10 +405,10 @@ describe("queued delivery", () => {
   test("a queued message waits for the running turn, then runs as the next one", async () => {
     const { manager, agentId, session } = await createRunningAgent();
 
-    const result = startAgentRun(manager, agentId, "next, run the linter", logger, {
+    const result = await startAgentRun(manager, agentId, "next, run the linter", logger, {
       delivery: "queue",
     });
-    expect(result).toMatchObject({ outOfBand: false, queued: true });
+    expect(result).toMatchObject({ disposition: "queued" });
     // The turn in flight is untouched, and the queue is visible on the snapshot.
     expect(session.prompts).toEqual(["first turn"]);
     expect(toAgentPayload(manager.getAgent(agentId)!).queuedMessages).toMatchObject([
@@ -508,10 +508,12 @@ describe("queued delivery", () => {
     await settle();
     expect(manager.getAgent(agentId)?.lifecycle).toBe("idle");
 
-    const result = startAgentRun(manager, agentId, "do it now", logger, { delivery: "queue" });
+    const result = await startAgentRun(manager, agentId, "do it now", logger, {
+      delivery: "queue",
+    });
     await settle();
 
-    expect(result.queued).toBe(false);
+    expect(result.disposition).toBe("turn_started");
     expect(session.prompts).toEqual(["first turn", "do it now"]);
     expect(manager.getSteerQueue(agentId)).toEqual([]);
   });
@@ -534,7 +536,7 @@ describe("queued delivery", () => {
 
     await settle();
 
-    expect(queuedResult?.queued).toBe(true);
+    expect(await queuedResult).toMatchObject({ disposition: "queued" });
     expect(session.prompts).toEqual(["first turn", "run the follow-up"]);
     expect(manager.getSteerQueue(agentId)).toEqual([]);
   });
@@ -556,10 +558,10 @@ describe("queued delivery", () => {
   test("a message queued during an out-of-band compaction runs when it finishes", async () => {
     const { manager, agentId, session } = await createCompactingAgent();
 
-    const result = startAgentRun(manager, agentId, "now fix the test", logger, {
+    const result = await startAgentRun(manager, agentId, "now fix the test", logger, {
       delivery: "queue",
     });
-    expect(result).toMatchObject({ outOfBand: false, queued: true });
+    expect(result).toMatchObject({ disposition: "queued" });
     // Nothing dispatched into the session while it is still rewriting context.
     expect(session.prompts).toEqual([]);
     expect(toAgentPayload(manager.getAgent(agentId)!).queuedMessages).toMatchObject([
@@ -593,10 +595,10 @@ describe("queued delivery", () => {
 
     // There is no turn to clobber, and the rewrite in flight is exactly what a
     // new turn must not run against - so the interrupt becomes a queue.
-    const result = startAgentRun(manager, agentId, "stop, do this instead", logger, {
+    const result = await startAgentRun(manager, agentId, "stop, do this instead", logger, {
       replaceRunning: true,
     });
-    expect(result).toMatchObject({ outOfBand: false, queued: true });
+    expect(result).toMatchObject({ disposition: "queued" });
     expect(session.prompts).toEqual([]);
 
     session.completeOutOfBand();

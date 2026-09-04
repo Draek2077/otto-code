@@ -801,11 +801,13 @@ describe("workspace-layout-store actions", () => {
     const first = store.openTab({ workspaceKey, target: { kind: "pull_request" }, intent: "new" });
     const second = store.openTab({ workspaceKey, target: { kind: "pull_request" }, intent: "new" });
     expect(first).not.toBe(second);
+    // Explorer seeds one Pull request tab of its own, so two explicit opens
+    // land three instances in total.
     expect(
       collectAllTabs(workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root).filter(
         (tab) => tab.target.kind === "pull_request",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 
   it("preserves same-kind state, clears cross-kind state, and accepts an explicit override", () => {
@@ -2342,7 +2344,7 @@ describe("workspace-layout-store actions", () => {
     expect(layout.focusedPaneId).toBe("main");
     expect(findPaneById(layout.root, paneId)).toMatchObject({
       focusedTabId: targetTabId,
-      tabIds: ["files", "changes_tree", "project_search", targetTabId],
+      tabIds: ["files", "changes_tree", "project_search", "pull_request", targetTabId],
     });
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
     expect(expectGroup(layout.root).group.sizes).toEqual(group.sizes);
@@ -3883,7 +3885,7 @@ describe("workspace-layout-store actions", () => {
     let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     const hiddenPane = findPaneById(layout.root, paneId);
     expect(hiddenPane?.hidden).toBeUndefined();
-    expect(hiddenPane?.tabIds).toHaveLength(1);
+    expect(hiddenPane?.tabIds).toHaveLength(3);
     expect(
       collectAllTabs(layout.root).find((tab) => tab.tabId === hiddenPane?.focusedTabId)?.target,
     ).toEqual({ kind: "changes_tree" });
@@ -3921,7 +3923,12 @@ describe("workspace-layout-store actions", () => {
 
     const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
-    expect(findPaneById(layout.root, paneId)?.tabIds).toEqual(["changes_tree", "working_diff"]);
+    expect(findPaneById(layout.root, paneId)?.tabIds).toEqual([
+      "changes_tree",
+      "project_search",
+      "pull_request",
+      "working_diff",
+    ]);
   });
 
   it("closing Files keeps Changes on screen without removing the final ordinary pane", () => {
@@ -3947,7 +3954,7 @@ describe("workspace-layout-store actions", () => {
     expect(collectAllPanes(layout.root).map((pane) => pane.id)).toEqual(["main", paneId]);
     expect(findPaneById(layout.root, "main")?.tabIds).toHaveLength(1);
     const finalPane = findPaneById(layout.root, paneId);
-    expect(finalPane?.tabIds).toHaveLength(1);
+    expect(finalPane?.tabIds).toHaveLength(3);
     expect(
       collectAllTabs(layout.root).find((tab) => tab.tabId === finalPane?.focusedTabId)?.target,
     ).toEqual({ kind: "changes_tree" });
@@ -4040,7 +4047,7 @@ describe("workspace-layout-store actions", () => {
     const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneContainingTab(layout.root, changesTabId)?.id).toBe("main");
     const sidePane = findPaneById(layout.root, paneId);
-    expect(sidePane?.tabIds).toEqual(["files", "changes_tree", "project_search"]);
+    expect(sidePane?.tabIds).toEqual(["files", "changes_tree", "project_search", "pull_request"]);
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
   });
   it("keeps the final ordinary pane when Explorer is visible", () => {

@@ -807,6 +807,8 @@ describe("loadSettingsFromStorage", () => {
     expect(result).toEqual({
       ...DEFAULT_APP_SETTINGS,
       colorSchemeMode: "light",
+      // The stored `theme` survives alongside its colorSchemeMode migration.
+      theme: "light",
       lightTheme: "daylight",
       hasCompletedTutorial: true,
       hasCompletedSetupWizard: true,
@@ -855,6 +857,8 @@ describe("loadSettingsFromStorage", () => {
     expect(result).toEqual({
       ...DEFAULT_APP_SETTINGS,
       colorSchemeMode: "light",
+      // The stored `theme` survives alongside its colorSchemeMode migration.
+      theme: "light",
       lightTheme: "daylight",
       manageBuiltInDaemon: false,
       releaseChannel: "beta",
@@ -878,6 +882,8 @@ describe("loadSettingsFromStorage", () => {
     expect(result).toEqual({
       ...DEFAULT_APP_SETTINGS,
       colorSchemeMode: "light",
+      // The stored `theme` survives alongside its colorSchemeMode migration.
+      theme: "light",
       lightTheme: "daylight",
       hasCompletedTutorial: true,
       hasCompletedSetupWizard: true,

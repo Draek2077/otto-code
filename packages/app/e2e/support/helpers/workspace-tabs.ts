@@ -139,7 +139,7 @@ export async function openPullRequestPanel(page: Page): Promise<void> {
     await expect(visibleTestId(page, "pr-pane").first()).toBeVisible({ timeout: 15_000 });
     return;
   }
-  const trigger = visibleTestId(page, "workspace-new-tab-button").first();
+  const trigger = visibleTestId(page, "workspace-new-tab-menu-trigger").first();
   await trigger.click();
   await visibleTestId(page, "workspace-new-tab-menu-pull-request").first().click();
   await expect(visibleTestId(page, "pr-pane").first()).toBeVisible({ timeout: 15_000 });
@@ -154,7 +154,7 @@ export async function waitForWorkspaceTabsVisible(page: Page): Promise<void> {
 
 /** Open the pane-local `+` menu and pick Agent. */
 export async function createAgentTabFromMenu(page: Page): Promise<void> {
-  const trigger = visibleTestId(page, "workspace-new-tab-button").first();
+  const trigger = visibleTestId(page, "workspace-new-tab-menu-trigger").first();
   await expect(trigger).toBeVisible({ timeout: 10_000 });
   await trigger.click();
   const item = visibleTestId(page, "workspace-new-tab-menu-agent").first();

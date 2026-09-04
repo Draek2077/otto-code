@@ -269,6 +269,9 @@ jobs:
       # `sample_memory` prints `free -m` into this step's log every 15s so the
       # next silent cancel comes with the numbers this one did not have: the
       # step log streams as it goes, so the samples survive the runner dying.
+      # First sampled run (android-v0.9.0, 2026-09-04): the Hermes pass alone
+      # held ~15.6G RAM plus the entire 24G swapfile for eighteen minutes, with
+      # under 400M available. Standalone it survives; it will not share.
       - name: Bundle the JS and Hermes bytecode
         shell: bash
         working-directory: packages/app/android

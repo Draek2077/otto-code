@@ -4,6 +4,16 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 
+// `npm run browsers:install` (scripts/ensure-browsers.mjs) fills a repo-local
+// cache unless PLAYWRIGHT_BROWSERS_PATH says otherwise. Playwright's own
+// registry has to be told the same place, or a plain `vitest run` installs a
+// browser it never finds and dies with "Executable doesn't exist" under the
+// user's platform cache - which is exactly how CI's app-tests job failed.
+const repoLocalBrowserCache = path.resolve(__dirname, "../../.tmp/otto-playwright-browsers");
+if (!process.env.PLAYWRIGHT_BROWSERS_PATH?.trim() && fs.existsSync(repoLocalBrowserCache)) {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = repoLocalBrowserCache;
+}
+
 const appNodeModules = path.resolve(__dirname, "node_modules");
 const rootNodeModules = path.resolve(__dirname, "../../node_modules");
 const resolvePackageEntry = (packageName: string) => {
@@ -169,6 +179,19 @@ export default defineConfig({
         // warns is a flake vector - and the app's dependency scan can't always
         // find it for itself (it bails when a workspace `dist` isn't built yet).
         optimizeDeps: { include: ["mermaid"] },
+        // expo-router's build output carries JSX in plain `.js` files that the
+        // dependency optimizer cannot parse. Any browser test whose import
+        // graph reaches the router aborted the optimizer mid-run and every file
+        // after that point failed with "Failed to fetch dynamically imported
+        // module". Browser tests exercise components, not navigation.
+        resolve: {
+          alias: [
+            {
+              find: /^expo-router$/,
+              replacement: path.resolve(__dirname, "test-stubs/expo-router.ts"),
+            },
+          ],
+        },
         test: {
           name: "browser",
           fileParallelism: false,

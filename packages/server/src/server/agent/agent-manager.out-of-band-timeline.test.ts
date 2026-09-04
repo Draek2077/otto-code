@@ -152,10 +152,10 @@ async function createHarness() {
 test("an out-of-band command records the user's prompt before the rows it emits", async () => {
   const { manager, agentId, cleanup } = await createHarness();
   try {
-    const result = startAgentRun(manager, agentId, "/compact", logger, {
+    const result = await startAgentRun(manager, agentId, "/compact", logger, {
       runOptions: { clientMessageId: "composer-msg-1" },
     });
-    expect(result.outOfBand).toBe(true);
+    expect(result.disposition).toBe("out_of_band");
 
     // The handler runs on a detached promise; let it settle.
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -179,8 +179,8 @@ test("an out-of-band command records the user's prompt before the rows it emits"
 test("a prompt the provider does not take out of band is left to the normal turn path", async () => {
   const { manager, agentId, cleanup } = await createHarness();
   try {
-    const result = startAgentRun(manager, agentId, "/goal ship it", logger);
-    expect(result.outOfBand).toBe(false);
+    const result = await startAgentRun(manager, agentId, "/goal ship it", logger);
+    expect(result.disposition).not.toBe("out_of_band");
   } finally {
     cleanup();
   }

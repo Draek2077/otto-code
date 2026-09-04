@@ -4099,6 +4099,16 @@ export class AgentManager {
       this.foregroundRuns.addWaiter(agent, turnStream.waiter);
 
       try {
+        // The accepted turn_started is yielded here, by the manager, not
+        // relayed from the provider's echo. A provider that echoes the start
+        // before startTurn resolves has that echo staged and dropped above, so
+        // relying on it left the consumer waiting on an event that never came.
+        const acceptedTurnStartedEvent: AgentStreamEvent = {
+          type: "turn_started",
+          provider: agent.provider,
+          turnId,
+        };
+        yield acceptedTurnStartedEvent;
         for await (const event of turnStream.events(isTurnTerminalEvent)) {
           yield event;
         }
@@ -6843,12 +6853,11 @@ export class AgentManager {
       "agent.manager.turn.started",
     );
     // The run generator already yielded the accepted turn_started for this
-    // turn, so the provider's own echo of it must not reach the wire as a
-    // second start.
-    // Waiters still get notified: Otto's run-start waiters key off this event,
-    // and only its delivery to clients is redundant.
+    // turn, so the provider's own echo of it must reach neither the wire nor
+    // the foreground stream as a second start.
     if (isForegroundEvent) {
       flags.shouldDispatchEvent = false;
+      flags.shouldNotifyWaiters = false;
       return;
     }
     if (eventTurnId) {

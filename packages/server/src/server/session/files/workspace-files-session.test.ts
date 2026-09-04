@@ -42,13 +42,23 @@ function makeDir(prefix: string): string {
   return dir;
 }
 
-function makeSubsystem(options: { hasBinaryChannel?: boolean; allowedRoots?: string[] } = {}) {
+function makeSubsystem(
+  options: {
+    hasBinaryChannel?: boolean;
+    allowedRoots?: string[];
+    /** Observe (and optionally stall) each outbound binary frame. */
+    emitBinary?: (frame: Uint8Array) => Promise<void> | void;
+  } = {},
+) {
   const emitted: SessionOutboundMessage[] = [];
   const binary: Uint8Array[] = [];
   let hasBinary = options.hasBinaryChannel ?? false;
   const host: WorkspaceFilesSessionHost = {
     emit: (msg) => emitted.push(msg),
-    emitBinary: (frame) => binary.push(frame),
+    emitBinary: async (frame) => {
+      binary.push(frame);
+      await options.emitBinary?.(frame);
+    },
     hasBinaryChannel: () => hasBinary,
   };
   const ottoHome = makeDir("workspace-files-home-");

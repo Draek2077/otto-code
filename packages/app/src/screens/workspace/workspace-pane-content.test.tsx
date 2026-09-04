@@ -138,7 +138,7 @@ describe("WorkspacePaneContent", () => {
     });
   });
 
-  it("injects the Explorer surface into its content", () => {
+  it("exposes the pane host to its content and leaves the surface to the panel host", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -154,7 +154,9 @@ describe("WorkspacePaneContent", () => {
     });
 
     expect(snapshots[0]?.paneContextValue.host).toBe("explorer");
-    expect(snapshots[0]?.surface).toBe("explorer");
+    // The physical panel host (workspace-panel-host.tsx) owns the visual
+    // surface; pane content never derives it from its own host value.
+    expect(snapshots[0]?.surface).toBe("workspace");
   });
 
   it("keeps pane content mounted when a draft tab is retargeted in place", () => {

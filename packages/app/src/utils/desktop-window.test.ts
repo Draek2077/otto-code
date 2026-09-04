@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DESKTOP_WINDOW_CONTROLS_HEIGHT } from "@/constants/layout";
 import {
   isTransitionResize,
   resolveOverlayInsets,
@@ -29,7 +30,7 @@ describe("resolveWindowControlsPadding", () => {
     ).toEqual({
       left: 0,
       right: 140,
-      top: 48,
+      top: DESKTOP_WINDOW_CONTROLS_HEIGHT,
     });
   });
 
@@ -54,7 +55,7 @@ describe("resolveWindowControlsPadding", () => {
     ).toEqual({
       left: 0,
       right: 138,
-      top: 48,
+      top: DESKTOP_WINDOW_CONTROLS_HEIGHT,
     });
   });
 

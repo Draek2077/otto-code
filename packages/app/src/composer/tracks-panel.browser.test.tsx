@@ -152,18 +152,18 @@ describe("composer track pill status mark", () => {
     return { mark: segment.firstElementChild, body };
   }
 
-  it("spins the shared ring while a child is running", () => {
+  it("mounts the shared status ring while a child is running", () => {
     const { mark } = mountMark("running");
-    const animated = [...mark.querySelectorAll("*")].filter(
-      (element) => element.getAnimations().length > 0,
-    );
-
-    expect(animated).toHaveLength(1);
-    // The rotation is on the carrier; the quarter arc it turns is the coloured top border inside.
-    const arc = animated[0]?.firstElementChild as HTMLElement;
-    const arcStyle = getComputedStyle(arc);
-    expect(arcStyle.borderTopColor).toBe("rgb(38, 138, 224)");
-    expect(arcStyle.borderLeftColor).toBe("rgba(0, 0, 0, 0)");
+    // The ring is the shared StatusRing frame (a ring layer around a center
+    // dot), not a dot of its own. Its motion is the plasma spinner's, which
+    // is not a DOM animation this harness can count, so presence and shape
+    // are what is asserted here.
+    const frame = mark.firstElementChild;
+    if (!(frame instanceof HTMLElement)) {
+      throw new Error("running mark did not render the status ring frame");
+    }
+    expect(frame.childElementCount).toBeGreaterThanOrEqual(2);
+    expect(mark.querySelector("[data-testid='track-status-dot']")).toBeNull();
   });
 
   it("draws a still dot for every other state", () => {
@@ -173,7 +173,8 @@ describe("composer track pill status mark", () => {
     );
 
     expect(animated).toHaveLength(0);
-    expect(getComputedStyle(mark).backgroundColor).toBe("rgb(241, 46, 47)");
+    // Semantic danger, the same token the sidebar status dots use.
+    expect(getComputedStyle(mark).backgroundColor).toBe("rgb(185, 28, 28)");
   });
 
   it("starts the circle you can see on the pill's own padding, whatever the state", () => {
@@ -192,7 +193,10 @@ describe("composer track pill status mark", () => {
       const edge = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.borderLeftWidth);
       const inset = glyph.getBoundingClientRect().left - body.getBoundingClientRect().left;
 
-      expect(inset).toBeCloseTo(edge, 1);
+      // The ring keeps a one-pixel halo (STATUS_RING_HALO_INSET) that the
+      // mark trims with a negative margin; the visible circle may sit one
+      // pixel either side of the padding edge, never more.
+      expect(Math.abs(inset - edge)).toBeLessThanOrEqual(1);
     }
   });
 
@@ -212,8 +216,12 @@ describe("composer track pill status mark", () => {
 
     const segments = [...container.querySelectorAll('[data-testid^="pill-segment-"]')];
     expect(segments.map((segment) => segment.textContent)).toEqual(["1 failed", "1 working"]);
-    // The ring is the only mark that animates, so its presence proves the second state survived.
-    const animated = segments[1]?.querySelectorAll("*") ?? [];
-    expect([...animated].filter((element) => element.getAnimations().length > 0)).toHaveLength(1);
+    // The running segment carries the shared ring frame (ring layer plus center
+    // dot) where the failed one carries a bare dot, so the frame's presence
+    // proves the second state survived.
+    const runningMark = segments[1]?.firstElementChild?.firstElementChild;
+    expect(runningMark instanceof HTMLElement && runningMark.childElementCount >= 2).toBe(true);
+    const failedMark = segments[0]?.firstElementChild;
+    expect(failedMark instanceof HTMLElement && failedMark.childElementCount).toBe(0);
   });
 });
