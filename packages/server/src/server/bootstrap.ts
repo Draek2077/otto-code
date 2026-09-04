@@ -146,6 +146,7 @@ import { createOttoWorktreeWorkflow } from "./worktree-session.js";
 import { createWorkspaceLabelService } from "./workspace-labels/index.js";
 import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
+import { FixedWindowRateLimiter } from "./request-rate-limiter.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
@@ -2364,6 +2365,13 @@ export async function createOttoDaemon(
   let agentMcpBaseUrl: string | null = null;
   {
     const agentMcpRoute = "/mcp/agents";
+    // Agent MCP requests construct a fresh tool server and transport. Bound the
+    // work a single network peer can force before it reaches authorization or
+    // session construction, without relying on untrusted forwarded headers.
+    const agentMcpRequestLimiter = new FixedWindowRateLimiter({
+      maxRequests: 120,
+      windowMs: 60_000,
+    });
 
     const createAgentMcpSession = async (callerAgentId?: string) => {
       const agentMcpServer = await createAgentMcpServer(
@@ -2474,6 +2482,13 @@ export async function createOttoDaemon(
     };
 
     const handleAgentMcpRequest: express.RequestHandler = (req, res) => {
+      const peer = req.socket.remoteAddress ?? "unknown";
+      const limit = agentMcpRequestLimiter.take(peer);
+      if (!limit.allowed) {
+        res.setHeader("Retry-After", limit.retryAfterSeconds.toString());
+        res.status(429).json({ error: "Too many Agent MCP requests" });
+        return;
+      }
       void runAgentMcpRequest(req, res);
     };
 
