@@ -124,6 +124,11 @@ jobs:
       # native/Hermes pass, same silent-cancel shape. Bumped to 24G - the
       # `df -h` "Before" line has consistently shown ~88G free on this runner
       # image, so 24G still leaves comfortable headroom for the build outputs.
+      #
+      # 24G was not enough for the v0.9.0 tag either (2026-09-04). Swap is not
+      # the lever: the structural fix is running the Hermes pass in its own
+      # Gradle invocation before the native build (see "Bundle the JS and
+      # Hermes bytecode" below). The swapfile stays as a safety margin only.
       - name: Make room for the native build
         shell: bash
         run: |
@@ -242,6 +247,47 @@ jobs:
           fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
 
+      # The JS bundle is built in its OWN Gradle invocation, before any native
+      # module is compiled, and the Gradle daemon is stopped afterwards.
+      #
+      # Why: `createBundleReleaseJsAndAssets` runs Metro, then `hermesc` over the
+      # whole bundle, then `compose-source-maps.js` over two large source maps.
+      # That chain is the memory peak of the build, and inside a single
+      # `assembleRelease` it lands LAST - after the Gradle daemon and the Kotlin
+      # compile daemon have grown their heaps compiling every native module.
+      # The v0.9.0 tag (2026-09-04) died five minutes into that silent pass with
+      # the bare "The operation was canceled." shape, on a 24G swapfile, with a
+      # bundle that had grown 5950 -> 6389 modules since the last green run.
+      # More swap does not fix this: a thrashing runner stops answering its
+      # heartbeat and the service cancels the job. Running the bundle task alone
+      # means the Hermes pass only ever shares the box with a fresh, small
+      # daemon. `assembleRelease` then finds the task UP-TO-DATE (its inputs are
+      # the JS sources and outputs the bundle directories, neither of which the
+      # native build touches) and goes straight to the native and packaging
+      # work, which never needed the extra headroom on its own.
+      #
+      # `sample_memory` prints `free -m` into this step's log every 15s so the
+      # next silent cancel comes with the numbers this one did not have: the
+      # step log streams as it goes, so the samples survive the runner dying.
+      - name: Bundle the JS and Hermes bytecode
+        shell: bash
+        working-directory: packages/app/android
+        run: |
+          set -euo pipefail
+          sample_memory() {
+            while true; do
+              echo "[mem $(date -u +%H:%M:%S)] $(free -m | awk '/^Mem:/{printf "used=%dM avail=%dM", $3, $7} /^Swap:/{printf " swap=%dM/%dM", $3, $2}')"
+              sleep 15
+            done
+          }
+          sample_memory &
+          sampler=$!
+          trap 'kill "$sampler" 2>/dev/null || true' EXIT
+
+          ./gradlew :app:createBundleReleaseJsAndAssets \
+            --no-parallel --max-workers=1
+          ./gradlew --stop
+
       # Mirrors the eas.json production-apk gradleCommand exactly, lint tasks and
       # all. Signing properties are injected (unlike the version code, these do
       # work) and read straight from secrets, so nothing is written to disk or
@@ -255,6 +301,16 @@ jobs:
         working-directory: packages/app/android
         run: |
           set -euo pipefail
+          sample_memory() {
+            while true; do
+              echo "[mem $(date -u +%H:%M:%S)] $(free -m | awk '/^Mem:/{printf "used=%dM avail=%dM", $3, $7} /^Swap:/{printf " swap=%dM/%dM", $3, $2}')"
+              sleep 15
+            done
+          }
+          sample_memory &
+          sampler=$!
+          trap 'kill "$sampler" 2>/dev/null || true' EXIT
+
           ./gradlew :app:assembleRelease \
             --no-parallel --max-workers=1 \
             -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease \
@@ -262,7 +318,15 @@ jobs:
             -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.jks" \
             -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
-            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD" \
+            | tee "$RUNNER_TEMP/assemble.log"
+
+          # The split above only buys headroom if the bundle task is reused
+          # here. If it re-ran, the peak moved back to where it was and this
+          # run surviving proves nothing - say so rather than pass quietly.
+          if ! grep -q ':app:createBundleReleaseJsAndAssets UP-TO-DATE' "$RUNNER_TEMP/assemble.log"; then
+            echo "::warning::createBundleReleaseJsAndAssets was not UP-TO-DATE in assembleRelease; the Hermes pass re-ran under the full native-build memory load."
+          fi
 
       - name: Collect and verify the APK
         id: artifact

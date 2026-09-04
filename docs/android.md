@@ -337,6 +337,8 @@ Keep the excluded npm packages installed. Normal builds use them, while the F-Dr
 
 The EAS `production-apk` profile uses the large Android resource class. Release builds compile the native ABIs and run Hermes bundling in the same Gradle invocation; the default worker can exhaust its remaining memory and kill Hermes with exit code 137 even when Gradle's own heap is correctly sized.
 
+The GitHub runner build (`.github/workflows/android-apk-release.yml`) cannot be resized, so it splits the work instead: `:app:createBundleReleaseJsAndAssets` runs in its own Gradle invocation first, the daemon is stopped, and only then does `:app:assembleRelease` run, finding the bundle task `UP-TO-DATE`. Inside a single `assembleRelease` the Metro, `hermesc`, and `compose-source-maps.js` chain runs last, after the Gradle and Kotlin daemons have grown their heaps compiling every native module. That combined peak is what produces the bare "The operation was canceled." failure on a hosted runner (v0.8.1 at a 12G swapfile, v0.9.0 at 24G): the box thrashes, the runner misses its heartbeat, and the service cancels the job with no annotation. Both Gradle steps print `free -m` samples every fifteen seconds into the step log so the next such failure carries numbers. A 24G swapfile is still created as a margin, but more swap is not the fix.
+
 ### React version lockstep
 
 Keep `react` and `react-dom` pinned to the React version embedded by the current `react-native` release. React Native `0.81.x` embeds `react-native-renderer` `19.1.0`, so `packages/app` must use React `19.1.0`. Bumping React to a newer patch can build successfully but crash at JS startup on Android with `Incompatible React versions`, leaving the app on the native splash screen.
