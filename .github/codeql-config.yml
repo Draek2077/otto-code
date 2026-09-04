@@ -3,7 +3,8 @@ name: Otto CodeQL config
 # Keep analysis focused on shipped/runtime code and security-sensitive
 # automation. The project corpus includes intentionally malformed break
 # overlays used by playbooks and editor diagnostics; they are test inputs, not
-# shipped code.
+# shipped code. The vendored Archify runtime and Agent Flow web render layer
+# are deliberately included because they execute in Otto artifacts.
 paths:
   - packages/**
   - vendor/**
@@ -13,3 +14,15 @@ paths:
 
 paths-ignore:
   - test-documents/**
+  # Test and E2E code is covered by its own execution gates. CodeQL alerts
+  # there do not describe a shipped attack surface.
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  # The app demo is a staging corpus, and the capture harness exists only to
+  # drive desktop E2E. Neither is packaged into Otto.
+  - packages/app/demo/**
+  - packages/desktop/capture-harness/**
+  # Otto embeds Agent Flow's web renderer, not its upstream VS Code extension.
+  - vendor/agent-flow/extension/**
+  # Documentation examples are not part of Archify's shipped renderer.
+  - vendor/archify/docs/**
