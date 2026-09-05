@@ -114,6 +114,39 @@ test("Android native CI compiles and tests the wake-word distribution", () => {
   assert.match(job, /WakeWordHandoffBufferTest/);
 });
 
+test("merge integration checks use full history and the checked-out candidate", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const job = /\n  lint:\n([\s\S]*?)(?=\n  [a-z0-9-]+:|$)/.exec(workflow)?.[1];
+  assert.ok(job, "no lint job found");
+  const steps = job.split(/\n      - /);
+  const checkout = steps.find((step) => step.startsWith("uses: actions/checkout@"));
+  assert.match(checkout ?? "", /fetch-depth: 0/);
+  const installIndex = steps.findIndex((step) =>
+    step.includes("run: node scripts/npm-retry.mjs ci"),
+  );
+  const testsIndex = steps.findIndex((step) =>
+    step.includes("node --test scripts/merge-orphan-guard.test.mjs"),
+  );
+  const guardIndex = steps.findIndex((step) =>
+    step.includes("node scripts/merge-orphan-guard.mjs --integrations"),
+  );
+  assert.ok(
+    installIndex >= 0 && testsIndex > installIndex && guardIndex > testsIndex,
+    "guard tests and the candidate check must execute after parser dependencies are installed",
+  );
+  const guard = steps[guardIndex];
+  assert.match(guard, /--before b6735559a98d0143d0127814696f35a091860845/);
+  assert.match(guard, /--at 20d7efc46a316f5a274b9943a5c43b0322269825/);
+  assert.match(guard, /--after HEAD --json/);
+  for (const step of [steps[testsIndex], guard]) {
+    assert.doesNotMatch(
+      step,
+      /\n\s*(?:if|continue-on-error):|\|\|\s*true/,
+      "the integration gate must run and propagate failures",
+    );
+  }
+});
+
 // GitHub validates the whole workflow before it creates a single job. When it
 // refuses, the run fails in 0s with no jobs, no check runs, and no annotation
 // naming a line: the CI signal disappears without going red anywhere that

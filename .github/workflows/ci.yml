@@ -74,6 +74,8 @@ jobs:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -89,6 +91,18 @@ jobs:
 
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
+
+      - name: Test merge integration guard
+        run: node --test scripts/merge-orphan-guard.test.mjs
+
+      # Advance these pre-merge/upstream pins together when adopting upstream;
+      # docs/upstream-merges.md describes the contract review and baseline.
+      - name: Check merge integration entry points
+        run: >-
+          node scripts/merge-orphan-guard.mjs --integrations
+          --before b6735559a98d0143d0127814696f35a091860845
+          --at 20d7efc46a316f5a274b9943a5c43b0322269825
+          --after HEAD --json
 
       - name: Lint lockfile
         run: npx --yes lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https --validate-integrity
