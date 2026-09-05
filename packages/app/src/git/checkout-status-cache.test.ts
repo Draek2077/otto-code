@@ -142,8 +142,15 @@ describe("fetchCheckoutStatus", () => {
     );
   });
 
-  it("returns a genuine non-git checkout", async () => {
+  it("rejects a not-git error until repository discovery returns an error-free snapshot", async () => {
     const answered = notGitStatus({ error: { code: "NOT_GIT_REPO", message: "not a repo" } });
+    const client = { getCheckoutStatus: vi.fn(async () => answered) };
+
+    await expect(fetchCheckoutStatus({ client, serverId, cwd })).rejects.toThrow("not a repo");
+  });
+
+  it("returns an error-free non-git snapshot as the conclusive answer", async () => {
+    const answered = notGitStatus();
     const client = { getCheckoutStatus: vi.fn(async () => answered) };
 
     await expect(fetchCheckoutStatus({ client, serverId, cwd })).resolves.toEqual(answered);

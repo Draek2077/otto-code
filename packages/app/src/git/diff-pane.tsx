@@ -1170,6 +1170,7 @@ interface DiffBodyContentProps {
   emptyAction: ChangesEmptyAction | null;
   children: ReactElement;
   checkingRepositoryLabel: string;
+  loadingFilesLabel: string;
   notRepositoryLabel: string;
 }
 
@@ -1185,12 +1186,13 @@ function DiffBodyContent({
   emptyAction,
   children,
   checkingRepositoryLabel,
+  loadingFilesLabel,
   notRepositoryLabel,
 }: DiffBodyContentProps) {
   if (isStatusLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ThemedLoadingSpinner size="large" uniProps={foregroundMutedIconColorMapping} />
+        <ThemedLoadingSpinner size="small" uniProps={foregroundMutedIconColorMapping} />
         <Text style={styles.loadingText}>{checkingRepositoryLabel}</Text>
       </View>
     );
@@ -1212,7 +1214,8 @@ function DiffBodyContent({
   if (isDiffLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ThemedLoadingSpinner size="large" uniProps={foregroundMutedIconColorMapping} />
+        <ThemedLoadingSpinner size="small" uniProps={foregroundMutedIconColorMapping} />
+        <Text style={styles.loadingText}>{loadingFilesLabel}</Text>
       </View>
     );
   }
@@ -2055,6 +2058,7 @@ export function ChangesSurface({
       emptyMessage={emptyMessage}
       emptyAction={emptyAction}
       checkingRepositoryLabel={t("workspace.git.diff.checkingRepository")}
+      loadingFilesLabel={t("workspace.fileExplorer.states.loading")}
       notRepositoryLabel={t("workspace.git.diff.notRepository")}
     >
       <DiffDocument
@@ -2289,11 +2293,11 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingTop: theme.spacing[16],
-    gap: theme.spacing[4],
+    padding: theme.spacing[4],
+    gap: theme.spacing[2],
   },
   loadingText: {
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   errorContainer: {

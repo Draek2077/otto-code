@@ -32,11 +32,17 @@ export interface CheckoutStatusClient {
  * Treating it as an answer is what makes the controls vanish and stay vanished: this
  * cache is push-driven with `staleTime: Infinity` and no refetch on mount, focus, or
  * reconnect, so one failed measurement (a git command timeout, a spawn failure, a
- * transient lock) is cached as truth for the life of the app. `NOT_GIT_REPO` is the
- * one code that really is an answer.
+ * transient lock) is cached as truth for the life of the app. A conclusive
+ * non-repository answer is instead the error-free `isGit: false` snapshot the
+ * workspace Git service returns after it has completed repository discovery.
+ *
+ * An error labelled `NOT_GIT_REPO` is not sufficient evidence here. It can come
+ * from a lower-level Git command while discovery is still settling, and its
+ * indistinguishable wire shape must remain retryable rather than paint a false
+ * terminal state in Changes.
  */
 function isFailedMeasurement(payload: CheckoutStatusPayload): boolean {
-  return payload.error != null && payload.error.code !== "NOT_GIT_REPO";
+  return payload.error != null;
 }
 
 export async function fetchCheckoutStatus({

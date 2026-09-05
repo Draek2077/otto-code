@@ -51,7 +51,11 @@ export function useCheckoutStatusQuery({
 
   return {
     status: query.data ?? null,
-    isLoading: query.isLoading,
+    // `isLoading` drops between retries even though the first repository
+    // measurement has not produced an answer yet. Keep consumers in their
+    // loading state until that initial query settles, so a retryable discovery
+    // failure never flashes a terminal "not a repository" message.
+    isLoading: query.isPending,
     isFetching: query.isFetching,
     isError: query.isError,
     error: query.error,
