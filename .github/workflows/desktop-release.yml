@@ -355,7 +355,7 @@ jobs:
         run: node scripts/npm-retry.mjs ci
 
       - name: Setup Python for Zoom Recorder
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -463,7 +463,7 @@ jobs:
         run: node scripts/npm-retry.mjs ci
 
       - name: Setup Python for Zoom Recorder
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
