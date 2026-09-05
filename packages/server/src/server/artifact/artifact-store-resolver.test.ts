@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import pino from "pino";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ArtifactStoreResolver } from "./artifact-store-resolver.js";
 
 function resolverFor(input: {
@@ -31,9 +31,16 @@ function resolverFor(input: {
 }
 
 describe("ArtifactStoreResolver", () => {
+  let fixtureRoot: string;
+  beforeEach(async () => {
+    fixtureRoot = await mkdtemp(path.join(tmpdir(), "artifact-store-resolver-"));
+  });
+  afterEach(async () => {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  });
   it("keeps repository-owned artifacts in the project .otto directory", async () => {
-    const root = path.join("C:", "repos", "otto-code");
-    const resolver = resolverFor({ root, ottoHome: path.join("C:", "otto-home") });
+    const root = path.join(fixtureRoot, "repos", "otto-code");
+    const resolver = resolverFor({ root, ottoHome: path.join(fixtureRoot, "otto-home") });
 
     await expect(resolver.resolveForProjectRoot(root)).resolves.toEqual({
       location: "repository",
@@ -43,8 +50,8 @@ describe("ArtifactStoreResolver", () => {
   });
 
   it("uses its own project override and stable artifact identity for host-local artifacts", async () => {
-    const root = path.join("C:", "repos", "otto-code");
-    const ottoHome = path.join("C:", "otto-home");
+    const root = path.join(fixtureRoot, "repos", "otto-code");
+    const ottoHome = path.join(fixtureRoot, "otto-home");
     const resolver = resolverFor({ root, ottoHome, location: "host" });
 
     await expect(resolver.resolveForProjectRoot(root)).resolves.toEqual({
@@ -55,10 +62,10 @@ describe("ArtifactStoreResolver", () => {
   });
 
   it("does not trust a caller's relative spelling of the project root", async () => {
-    const root = path.join("C:", "repos", "otto-code");
+    const root = path.join(fixtureRoot, "repos", "otto-code");
     let resolvedRoot: string | null = null;
     const resolver = new ArtifactStoreResolver({
-      ottoHome: path.join("C:", "otto-home"),
+      ottoHome: path.join(fixtureRoot, "otto-home"),
       findProjectByRoot: async (projectRoot) => {
         resolvedRoot = projectRoot;
         return null;
@@ -68,7 +75,7 @@ describe("ArtifactStoreResolver", () => {
       logger: pino({ enabled: false }),
     });
 
-    await resolver.resolveForProjectRoot(path.join(root, "..", "otto-code"));
+    await resolver.resolveForProjectRoot(path.relative(process.cwd(), root));
 
     expect(resolvedRoot).toBe(path.resolve(root));
   });
@@ -146,10 +153,10 @@ describe("ArtifactStoreResolver", () => {
   });
 
   it("does not persist a host directory name when only peeking at the host location", async () => {
-    const root = path.join("C:", "repos", "otto-code");
+    const root = path.join(fixtureRoot, "repos", "otto-code");
     const persisted: string[] = [];
     const resolver = new ArtifactStoreResolver({
-      ottoHome: path.join("C:", "otto-home"),
+      ottoHome: path.join(fixtureRoot, "otto-home"),
       findProjectByRoot: async () => ({
         projectId: "prj_1",
         rootPath: root,

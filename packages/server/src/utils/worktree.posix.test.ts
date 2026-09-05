@@ -584,9 +584,20 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
       await expect(
         mergeFromBase(result.worktreePath, { baseRef: "main" }, { ottoHome }),
       ).rejects.toThrow("Base ref not found: refs/remotes/upstream/main");
-      await expect(
-        listCheckoutCommits({ cwd: result.worktreePath, context: { ottoHome } }),
-      ).rejects.toThrow("Base ref not found: refs/remotes/upstream/main");
+      // History deliberately re-infers a deleted saved base so it remains
+      // readable. Mutations and base diffs above still require the exact ref.
+      const fallbackHistory = await listCheckoutCommits({
+        cwd: result.worktreePath,
+        context: { ottoHome },
+      });
+      expect(fallbackHistory.baseRef).toBe("main");
+      expect(
+        fallbackHistory.commits.map(({ subject, isOnBase }) => ({ subject, isOnBase })),
+      ).toEqual([
+        { subject: "advance again", isOnBase: false },
+        { subject: "advance upstream main", isOnBase: false },
+        { subject: "initial", isOnBase: true },
+      ]);
     });
 
     it("records Git-valid characters in a remote base branch", async () => {

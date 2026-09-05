@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { windowsShortPath } from "../../test-utils/windows-short-path.js";
 import {
   createFileObserver,
   type FileChange,
@@ -21,6 +22,24 @@ afterEach(async () => {
   await Promise.all([...roots].map((root) => rm(root, { recursive: true, force: true })));
   roots.clear();
 });
+
+test.skipIf(process.platform !== "win32")(
+  "observes a Windows short-path root without changing delivered paths",
+  async (context) => {
+    const root = await createRoot();
+    const shortRoot = windowsShortPath(root);
+    if (!shortRoot.includes("~")) context.skip("Fixture volume does not expose 8.3 names");
+    const events: FileChange[] = [];
+    const subscription = await subscribeToFileChanges(shortRoot, (error, batch) => {
+      expect(error).toBeNull();
+      events.push(...batch);
+    });
+    const target = join(shortRoot, "short-path-file.txt");
+    await writeFile(target, "observed");
+    await expect.poll(() => events.map((event) => event.path)).toContain(target);
+    await subscription.unsubscribe();
+  },
+);
 
 test("observes nested files while pruning excluded directories", async () => {
   const root = await createRoot();
