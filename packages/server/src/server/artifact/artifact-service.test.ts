@@ -290,6 +290,7 @@ describe("ArtifactService storage routing", () => {
   it("preserves an explicitly requested provider-marked bypass mode", async () => {
     const createAgent = vi.fn(async () => ({ id: "bypass-agent-1" }));
     const runAgent = vi.fn(async () => undefined);
+    const closeAgent = vi.fn(async () => undefined);
     const listModes = vi.fn(async () => [{ id: "bypassPermissions", isUnattended: true }]);
     const resolveCreateConfig = vi.fn(async () => ({
       modeId: "dontAsk",
@@ -302,7 +303,7 @@ describe("ArtifactService storage routing", () => {
         createAgent,
         runAgent,
         captureRetainedTranscript: vi.fn(),
-        closeAgent: vi.fn(),
+        closeAgent,
       } as unknown as AgentManager,
       undefined,
       { listModes, resolveCreateConfig } as unknown as ProviderSnapshotManager,
@@ -323,6 +324,9 @@ describe("ArtifactService storage routing", () => {
       undefined,
       expect.anything(),
     );
+    // create() returns before the background generator persists its agent/run
+    // records. Wait for its final close before afterEach removes those files.
+    await vi.waitFor(() => expect(closeAgent).toHaveBeenCalledWith("bypass-agent-1"));
   });
 
   it("refuses to turn a metadata edit into a cross-project file move", async () => {

@@ -135,11 +135,18 @@ describe("Codex terminal agent hooks", () => {
           OTTO_TERMINAL_ACTIVITY_URL: recorder.url,
           OTTO_HOOK_CLI: cliPath ?? "",
         },
-        stdio: "ignore",
+        stdio: ["ignore", "pipe", "pipe"],
       });
-      const [exitCode] = (await once(child, "exit")) as [number | null];
+      let output = "";
+      child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+        output += chunk;
+      });
+      child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+        output += chunk;
+      });
+      const [exitCode] = (await once(child, "close")) as [number | null];
 
-      expect(exitCode).toBe(0);
+      expect(exitCode, `${shell} hook output (CLI: ${cliPath}):\n${output}`).toBe(0);
       expect(recorder.posts).toEqual([
         { terminalId: "terminal-id", token: "activity-token", state: "running" },
       ]);

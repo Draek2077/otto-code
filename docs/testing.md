@@ -200,6 +200,13 @@ Browser downloads retry temporary HTTP/network failures at most three times with
 one five-minute download budget. Partial archives are discarded between attempts;
 permanent HTTP failures stop immediately and errors retain the URL and cause.
 
+Server tests that execute terminal hooks need `npm run build:server`, including
+the compiled CLI; `build:server-deps` alone cannot run `bin/otto`. Windows runs
+the server unit suite once with one worker. Native watcher adapters resolve
+Windows 8.3 paths before calling `fs.watch`, while retaining the original paths
+for application identities. The focused `watch-directory.test.ts` regression
+checks actual child-process exits and filesystem notifications for both watcher modes.
+
 - Collocate tests with implementation: `thing.ts` + `thing.test.ts`
 - Extract complex setup into reusable helpers
 - Test bodies should read like plain English

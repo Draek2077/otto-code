@@ -154,10 +154,8 @@ jobs:
     name: server-tests (${{ matrix.os }})
     # A green Linux run finishes in under 16 minutes. Without a cap, a suite
     # that prints its results and then fails to exit on a leaked handle sits
-    # here until GitHub's 360-minute default, which is how one bad merge burned
-    # two runners for an afternoon. Windows runs the unit suite on a single
-    # fork, up to twice, then the integration suite: the v0.9.0 run was killed
-    # at 30 minutes as "cancelled" with no test output at all, so it gets 60.
+    # here until GitHub's 360-minute default. Windows runs the unit suite once
+    # on a single worker, then the integration suite.
     timeout-minutes: ${{ matrix.os == 'windows-latest' && 60 || 30 }}
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
@@ -181,8 +179,10 @@ jobs:
       - name: Report OpenCode version
         run: opencode --version
 
-      - name: Build server dependencies
-        run: npm run build:server-deps
+      # Terminal hook integration tests execute bin/otto, which imports the
+      # compiled CLI and server. Dependency declarations alone are insufficient.
+      - name: Build server stack
+        run: npm run build:server
 
       - name: Run server tests
         if: matrix.os != 'windows-latest'
@@ -192,40 +192,20 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
-      # DIAG(windows-fork-crash): the Node 24 fs-event assertion happens as
-      # Vitest tears down one of several fork workers, after every assertion
-      # has passed. The server config deliberately defaults to serial files,
-      # but test:unit's --fileParallelism CLI flag overrides it. Keep the
-      # Windows suite in a single fork instead of retrying the same unsafe
-      # worker topology. Worker threads are not viable either: Node 24 aborts
-      # in fs-event.c while the suite starts its watcher.
+      # Run failures once: native watcher roots are normalized at the OS
+      # boundary, and retries would obscure regressions and double job time.
       - name: Run server tests (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $attempts = 2
-          for ($i = 1; $i -le $attempts; $i++) {
-            npm run test:unit --workspace=@otto-code/server -- --maxWorkers=1
-            if ($LASTEXITCODE -eq 0) { break }
-            if ($i -eq $attempts) { exit $LASTEXITCODE }
-            Write-Host "server test:unit failed (attempt $i/$attempts) - retrying the single-fork runner"
-          }
+          npm run test:unit --workspace=@otto-code/server -- --maxWorkers=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:integration --workspace=@otto-code/server
           exit $LASTEXITCODE
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          NODE_OPTIONS: --require ${{ github.workspace }}\scripts\vitest-kill-diag.cjs
-          OTTO_KILL_DIAG_FILE: ${{ runner.temp }}\kill-diag.jsonl
-
-      # DIAG(windows-fork-crash): dump the ledger so the job log carries it.
-      - name: Print worker kill diagnostics
-        if: always() && matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          $diag = Join-Path $env:RUNNER_TEMP 'kill-diag.jsonl'
-          if (Test-Path $diag) { Get-Content $diag } else { Write-Host 'no kill-diag file was written' }
 
   desktop-tests:
     if: ${{ !cancelled() }}

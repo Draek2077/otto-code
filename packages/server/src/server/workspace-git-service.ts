@@ -1,5 +1,6 @@
 import type { GitHostingProviderId, GitHostingCapabilities } from "@otto-code/protocol/messages";
-import { watch, type FSWatcher } from "node:fs";
+import type { FSWatcher } from "node:fs";
+import { watchDirectory } from "../utils/watch-directory.js";
 import { readFile, readdir } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { LRUCache } from "lru-cache";
@@ -337,7 +338,7 @@ type WorkspaceGitRefreshState =
     };
 
 interface WorkspaceGitServiceDependencies {
-  watch: typeof watch;
+  watch: typeof watchDirectory;
   readdir: typeof readdir;
   getCheckoutSnapshotFacts: typeof getCheckoutSnapshotFacts;
   getCheckoutStatus: typeof getCheckoutStatus;
@@ -499,7 +500,7 @@ function auxiliaryCacheKeyScopesToPath(key: string, canonicalPath: string): bool
 
 function buildDefaultWorkspaceGitServiceDeps(): WorkspaceGitServiceDependencies {
   return {
-    watch,
+    watch: watchDirectory,
     readdir,
     getCheckoutSnapshotFacts,
     getCheckoutStatus,
