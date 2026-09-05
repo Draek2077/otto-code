@@ -72,10 +72,21 @@ export function resolvePreviewActionQueues(input: {
   alternateModifierHeld: boolean;
   canUseAlternateAction: boolean;
 }): boolean {
-  if (!input.alternateModifierHeld || !input.canUseAlternateAction) {
+  if (!resolveUsesAlternateSendAction(input)) {
     return input.defaultActionQueues;
   }
   return !input.defaultActionQueues;
+}
+
+/**
+ * One decision owns both the modifier-preview chrome and a pointer press on
+ * that chrome. A Queue icon must queue when clicked, not merely promise it.
+ */
+export function resolveUsesAlternateSendAction(input: {
+  alternateModifierHeld: boolean;
+  canUseAlternateAction: boolean;
+}): boolean {
+  return input.alternateModifierHeld && input.canUseAlternateAction;
 }
 
 /**

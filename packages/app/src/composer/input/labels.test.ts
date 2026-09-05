@@ -3,6 +3,7 @@ import {
   resolveSendButtonIcon,
   resolveSendTooltipLabel,
   resolveSubmitAccessibilityLabel,
+  resolveUsesAlternateSendAction,
   resolveVoiceAccessibilityLabel,
   resolveVoiceTooltipText,
 } from "./labels";
@@ -235,5 +236,20 @@ describe("composer input labels", () => {
         submitIcon: "arrow",
       }),
     ).toBe("interrupt");
+  });
+
+  it("uses the same modifier condition for the button press and its preview", () => {
+    expect(
+      resolveUsesAlternateSendAction({
+        alternateModifierHeld: true,
+        canUseAlternateAction: true,
+      }),
+    ).toBe(true);
+    expect(
+      resolveUsesAlternateSendAction({
+        alternateModifierHeld: true,
+        canUseAlternateAction: false,
+      }),
+    ).toBe(false);
   });
 });

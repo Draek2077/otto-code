@@ -86,6 +86,7 @@ import {
   resolveSendTooltipLabel,
   resolveSendButtonIcon,
   resolvePreviewActionQueues,
+  resolveUsesAlternateSendAction,
   resolveSubmitAccessibilityLabel,
   resolveVoiceAccessibilityLabel,
   resolveVoiceTooltipText,
@@ -890,7 +891,7 @@ function SendButtonTooltip({
   shouldShow,
   canPressLoadingButton,
   onSubmitLoadingPress,
-  onDefaultSendAction,
+  onSendButtonPress,
   isSendButtonDisabled,
   submitAccessibilityLabel,
   sendButtonCombinedStyle,
@@ -904,7 +905,7 @@ function SendButtonTooltip({
   shouldShow: boolean;
   canPressLoadingButton: boolean;
   onSubmitLoadingPress: (() => void) | undefined;
-  onDefaultSendAction: () => void;
+  onSendButtonPress: () => void;
   isSendButtonDisabled: boolean;
   submitAccessibilityLabel: string;
   sendButtonCombinedStyle: React.ComponentProps<typeof TooltipTrigger>["style"];
@@ -919,7 +920,7 @@ function SendButtonTooltip({
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger
-        onPress={canPressLoadingButton ? onSubmitLoadingPress : onDefaultSendAction}
+        onPress={canPressLoadingButton ? onSubmitLoadingPress : onSendButtonPress}
         disabled={isSendButtonDisabled}
         accessibilityLabel={submitAccessibilityLabel}
         accessibilityRole="button"
@@ -1254,6 +1255,14 @@ function computeSendButtonState(input: SendButtonStateInput): SendButtonStateOut
   const defaultActionQueues =
     input.isAgentRunning && (input.isCompacting || input.defaultSendBehavior === "queue");
   return { canPressLoadingButton, isSendButtonDisabled, defaultActionQueues };
+}
+
+function resolveSendButtonPress(input: {
+  usesAlternateSendAction: boolean;
+  onDefaultSendAction: () => void;
+  onAlternateSendAction: () => void;
+}): () => void {
+  return input.usesAlternateSendAction ? input.onAlternateSendAction : input.onDefaultSendAction;
 }
 
 interface ResolvedMessageInputProps {
@@ -2007,6 +2016,15 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       alternateModifierHeld: isAlternateSendModifierHeld,
       canUseAlternateAction: alternateActionAvailable,
     });
+    const usesAlternateSendAction = resolveUsesAlternateSendAction({
+      alternateModifierHeld: isAlternateSendModifierHeld,
+      canUseAlternateAction: alternateActionAvailable,
+    });
+    const handleSendButtonPress = resolveSendButtonPress({
+      usesAlternateSendAction,
+      onDefaultSendAction: handleDefaultSendAction,
+      onAlternateSendAction: handleAlternateSendAction,
+    });
     useIosHardwareKeyboardSubmit({
       isEnabled: isInputFocused && !isSendButtonDisabled,
       onSubmit: handleDefaultSendAction,
@@ -2254,7 +2272,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     shouldShow
                     canPressLoadingButton={canPressLoadingButton}
                     onSubmitLoadingPress={onSubmitLoadingPress}
-                    onDefaultSendAction={handleDefaultSendAction}
+                    onSendButtonPress={handleSendButtonPress}
                     isSendButtonDisabled={isSendButtonDisabled}
                     submitAccessibilityLabel={submitAccessibilityLabel}
                     sendButtonCombinedStyle={sendButtonCombinedStyle}
