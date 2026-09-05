@@ -2,7 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, ScrollView as RNScrollView } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
-import { StyleSheet } from "react-native-unistyles";
+import { styles } from "./diff-viewer/styles";
 import type { DiffLine } from "@/utils/tool-call-parsers";
 import { highlightDiffLines } from "@/utils/diff-highlight";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -353,51 +353,3 @@ export function DiffViewer({
     </DiffReviewActionsContext.Provider>
   );
 }
-
-const styles = StyleSheet.create((theme) => {
-  return {
-    verticalScroll: {},
-    fillHeight: {
-      flex: 1,
-      minHeight: 0,
-    },
-    verticalContent: {
-      flexGrow: 1,
-    },
-    horizontalContent: {
-      flexDirection: "column" as const,
-    },
-    linesContainer: {
-      alignSelf: "flex-start",
-    },
-    linesContainerWrap: {
-      alignSelf: "stretch",
-    },
-    emptyState: {
-      padding: theme.spacing[4],
-      alignItems: "center" as const,
-      justifyContent: "center" as const,
-    },
-    emptyText: {
-      fontSize: theme.fontSize.base,
-      color: theme.colors.foregroundMuted,
-    },
-    diffSurface: {
-      borderTopColor: theme.colors.border,
-      borderTopWidth: theme.borderWidth[1],
-      borderBottomColor: theme.colors.border,
-      borderBottomWidth: theme.borderWidth[1],
-      backgroundColor: theme.colors.surface1,
-    },
-    diffSurfaceTopOnly: {
-      borderBottomWidth: 0,
-    },
-    diffSurfaceBottomOnly: {
-      borderTopWidth: 0,
-    },
-    diffSurfaceFrameless: {
-      borderTopWidth: 0,
-      borderBottomWidth: 0,
-    },
-  };
-});

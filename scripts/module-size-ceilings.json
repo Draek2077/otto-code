@@ -24,26 +24,26 @@
     "Re-baselined 2026-09-04 for the files the Paseo v0.6.1 merge grew at each file's then-current size. The Paseo v0.6.1 merge (2026-08-31) grew them past the 2026-08-23 numbers before the check was ever green again, so the lint job was red on every run since. Same reasoning as 2026-08-23: a gate nobody can get green gates nothing; the standing refactor backlog (Otto Knowledge finding: oversized-module inventory) is the way down."
   ],
   "ceilings": {
-    "packages/protocol/src/messages.ts": 10049,
-    "packages/server/src/server/session.ts": 12254,
-    "packages/client/src/daemon-client.ts": 10628,
-    "packages/app/src/screens/workspace/workspace-screen.tsx": 5836,
-    "packages/server/src/server/agent/agent-manager.ts": 8429,
+    "packages/protocol/src/messages.ts": 10024,
+    "packages/server/src/server/session.ts": 12240,
+    "packages/client/src/daemon-client.ts": 10626,
+    "packages/app/src/screens/workspace/workspace-screen.tsx": 5825,
+    "packages/server/src/server/agent/agent-manager.ts": 8413,
     "packages/server/src/server/agent/providers/claude/agent.ts": 8204,
     "packages/server/src/server/agent/tools/otto-tools.ts": 6460,
-    "packages/app/src/git/diff-pane.tsx": 5150,
-    "packages/app/src/components/combined-model-selector.tsx": 745,
+    "packages/app/src/git/diff-pane.tsx": 2330,
+    "packages/app/src/components/combined-model-selector.tsx": 718,
     "packages/app/src/components/provider-diagnostic-sheet.tsx": 1213,
     "packages/app/src/hooks/use-settings/storage.ts": 465,
-    "packages/app/src/styles/theme.ts": 407,
+    "packages/app/src/styles/theme.ts": 406,
     "packages/server/src/server/session/files/workspace-files-session.ts": 957,
-    "packages/app/src/components/diff-viewer.tsx": 401,
+    "packages/app/src/components/diff-viewer.tsx": 355,
     "packages/server/src/server/daemon-config-store.ts": 1063,
     "packages/desktop/src/features/browser-automation/service.ts": 1814,
     "packages/server/src/server/file-explorer/service.ts": 704,
     "packages/app/src/keyboard/keyboard-shortcuts.ts": 2149,
-    "packages/app/src/screens/settings-screen.tsx": 3220,
-    "packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx": 2823,
-    "packages/app/src/components/file-explorer-pane.tsx": 2180
+    "packages/app/src/screens/settings-screen.tsx": 3210,
+    "packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx": 2520,
+    "packages/app/src/components/file-explorer-pane.tsx": 2143
   }
 }
