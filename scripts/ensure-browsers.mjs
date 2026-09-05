@@ -10,12 +10,11 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
-import { createWriteStream } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { finished } from "node:stream/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { downloadArchive } from "./browser-download.mjs";
 
 const BROWSER = "chromium";
 const INSTALL_TIMEOUT_MS = 5 * 60_000;
@@ -105,36 +104,6 @@ async function acquireInstallLock() {
       throw new Error(`Timed out waiting for Otto's Playwright installer lock at ${installLock}.`);
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-}
-
-async function downloadArchive(url, destination) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS) });
-  if (!response.ok || !response.body) {
-    throw new Error(`Download failed (${response.status} ${response.statusText}) for ${url}`);
-  }
-  const expectedBytes = Number(response.headers.get("content-length"));
-  const output = createWriteStream(destination, { flags: "wx" });
-  let receivedBytes = 0;
-  try {
-    for await (const chunk of response.body) {
-      receivedBytes += chunk.length;
-      if (!output.write(chunk)) await new Promise((resolve) => output.once("drain", resolve));
-      // Some CDN connections keep the response open after exactly the declared
-      // archive length. The archive is complete at that point; stop waiting for
-      // a connection close that may never arrive.
-      if (Number.isFinite(expectedBytes) && receivedBytes >= expectedBytes) break;
-    }
-    output.end();
-    await finished(output);
-  } catch (error) {
-    output.destroy();
-    throw error;
-  } finally {
-    await response.body.cancel().catch(() => undefined);
-  }
-  if (Number.isFinite(expectedBytes) && receivedBytes !== expectedBytes) {
-    throw new Error(`Downloaded ${receivedBytes} bytes, expected ${expectedBytes}, from ${url}`);
   }
 }
 

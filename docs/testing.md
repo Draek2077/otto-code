@@ -170,6 +170,36 @@ for inspection.
 
 ## Test organization
 
+### Focused CI diagnosis
+
+Start with `npm run ci:preflight`: module-size ceilings, E2E coverage registration,
+and CI workflow validation. It performs no dependency installation or heavy test run.
+Normal lint and typecheck remain separate required checks.
+
+Use the same focused command locally and in the manually dispatched **CI diagnostic**
+workflow. It requires one existing repository-relative test file and uses one worker:
+
+```bash
+npm run ci:diagnose -- --suite app-unit --file packages/app/src/composer/input/labels.test.ts
+npm run ci:diagnose -- --suite app-browser --file packages/app/src/runtime/expo-platform.browser.test.ts
+npm run ci:diagnose -- --suite playwright --file packages/app/e2e/browser/file-editing.spec.ts --test-name "large"
+```
+
+The tiers are `app-unit`, `app-browser`, `server`, `playwright`, and `desktop`
+(desktop renderer overlay). Build the owning workspace dependencies before testing;
+browser tiers also need `npm run browsers:install`. The workflow performs these setup
+steps and lets the caller choose Ubuntu or Windows. Provider-dependent tests and
+packaged Electron smoke retain their dedicated harnesses. Globs, directories and
+unknown tiers fail before test launch. `--dry-run` validates and prints the selection.
+
+Diagnose a setup failure separately from an assertion failure. Preserve the failing
+output, repair its root cause, then run the same focused case. Full CI remains the
+acceptance matrix; a successful diagnostic run does not replace it.
+
+Browser downloads retry temporary HTTP/network failures at most three times within
+one five-minute download budget. Partial archives are discarded between attempts;
+permanent HTTP failures stop immediately and errors retain the URL and cause.
+
 - Collocate tests with implementation: `thing.ts` + `thing.test.ts`
 - Extract complex setup into reusable helpers
 - Test bodies should read like plain English

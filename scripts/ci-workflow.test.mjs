@@ -4,6 +4,29 @@ import test from "node:test";
 
 const workflowPath = new URL("../.github/workflows/ci.yml", import.meta.url);
 
+test("module ceilings fail before dependency installation", () => {
+  const source = readFileSync(workflowPath, "utf8");
+  const lint = source.slice(source.indexOf("  lint:"), source.indexOf("  typecheck:"));
+  assert.match(lint, /npm run size:ceilings:check/);
+  assert.ok(
+    lint.indexOf("npm run size:ceilings:check") < lint.indexOf("node scripts/npm-retry.mjs ci"),
+  );
+});
+
+test("diagnostic selections use environment data instead of shell interpolation", () => {
+  const source = readFileSync(
+    new URL("../.github/workflows/ci-diagnostic.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /workflow_dispatch:/);
+  assert.doesNotMatch(source, /run:.*\$\{\{\s*inputs\./);
+  assert.ok(
+    source.indexOf("node scripts/ci-diagnose.mjs --dry-run") <
+      source.indexOf("node scripts/npm-retry.mjs ci"),
+  );
+  assert.match(source, /run: npm run ci:diagnose/);
+});
+
 function jobBlocks(source) {
   const jobs = new Map();
   let currentJob;

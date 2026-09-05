@@ -1,0 +1,75 @@
+name: CI diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: One test tier (does not replace full CI)
+        required: true
+        type: choice
+        options: [app-unit, app-browser, server, playwright, desktop]
+      file:
+        description: Exact repository-relative test file, without globs
+        required: true
+        type: string
+      test_name:
+        description: Optional test title pattern
+        type: string
+      runner:
+        description: Host platform
+        type: choice
+        options: [ubuntu-latest, windows-latest]
+        default: ubuntu-latest
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    env:
+      ONNXRUNTIME_NODE_INSTALL: skip
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      CI_DIAG_SUITE: ${{ inputs.suite }}
+      CI_DIAG_FILE: ${{ inputs.file }}
+      CI_DIAG_TEST_NAME: ${{ inputs.test_name }}
+      E2E_GLOBAL_TIMEOUT_MINUTES: "15"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Validate exact test selection before installing
+        run: node scripts/ci-diagnose.mjs --dry-run
+      - name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+      - name: Build workspace dependencies
+        if: ${{ inputs.suite == 'app-unit' || inputs.suite == 'app-browser' }}
+        run: npm run build:app-deps
+      - name: Build server for daemon tests
+        if: ${{ inputs.suite == 'server' || inputs.suite == 'playwright' || inputs.suite == 'desktop' }}
+        run: npm run build:server
+      - name: Build audio dependency for renderer tests
+        if: ${{ inputs.suite == 'playwright' || inputs.suite == 'desktop' }}
+        run: npm run build --workspace=@otto-code/expo-two-way-audio
+      - name: Install browser
+        if: ${{ inputs.suite == 'app-browser' || inputs.suite == 'playwright' || inputs.suite == 'desktop' }}
+        run: npm run browsers:install
+      - name: Run selected test with one worker
+        run: npm run ci:diagnose
+      - name: Retain diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: diagnostic-${{ inputs.suite }}-${{ inputs.runner }}
+          path: |
+            packages/app/test-results/
+            packages/app/playwright-report/
+            packages/app/e2e-report/
+            packages/app/.vitest-screenshots/
+            packages/desktop/test-results/
+            packages/desktop/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -64,7 +64,7 @@ jobs:
       # rejected the file, every push since produced zero jobs and a 0s
       # failure, and nothing said so louder than a red X.
       - name: Validate CI workflow
-        run: node --test scripts/ci-workflow.test.mjs
+        run: node --test scripts/ci-workflow.test.mjs scripts/ci-diagnose.test.mjs scripts/browser-download.test.mjs
 
   lint:
     if: ${{ !cancelled() }}
@@ -89,6 +89,9 @@ jobs:
       - name: Check E2E coverage matrix
         run: npm run e2e:coverage
 
+      - name: Check module size ceilings
+        run: npm run size:ceilings:check
+
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
 
@@ -112,9 +115,6 @@ jobs:
 
       - name: Lint
         run: npm run lint
-
-      - name: Check module size ceilings
-        run: npm run size:ceilings:check
 
   typecheck:
     if: ${{ !cancelled() }}
@@ -331,7 +331,7 @@ jobs:
       - name: Build app dependencies
         run: npm run build:app-deps
 
-      - name: Run app unit tests
+      - name: Run app unit and browser tests
         run: npm run test --workspace=@otto-code/app
 
   android-native-tests:

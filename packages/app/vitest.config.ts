@@ -140,6 +140,21 @@ function resolveBrowserExecutablePath(): string | null {
 }
 
 const browserExecutablePath = resolveBrowserExecutablePath();
+const webExtensions = [
+  ".web.mjs",
+  ".web.js",
+  ".web.mts",
+  ".web.ts",
+  ".web.jsx",
+  ".web.tsx",
+  ".mjs",
+  ".js",
+  ".mts",
+  ".ts",
+  ".jsx",
+  ".tsx",
+  ".json",
+];
 
 export default defineConfig({
   test: {
@@ -236,6 +251,10 @@ export default defineConfig({
   optimizeDeps: {
     include: ["react/jsx-runtime"],
     exclude: ["react-native-reanimated"],
+    // Vite's resolver and esbuild's dependency optimizer are separate. Both
+    // must select Expo's web files; the native requireNativeModule imports
+    // TurboModuleRegistry, which correctly does not exist in react-native-web.
+    esbuildOptions: { resolveExtensions: webExtensions },
   },
   // The globals a React Native bundler defines, which esbuild is no longer there to supply for
   // the package excluded above.
@@ -245,21 +264,7 @@ export default defineConfig({
     global: "globalThis",
   },
   resolve: {
-    extensions: [
-      ".web.mjs",
-      ".web.js",
-      ".web.mts",
-      ".web.ts",
-      ".web.jsx",
-      ".web.tsx",
-      ".mjs",
-      ".js",
-      ".mts",
-      ".ts",
-      ".jsx",
-      ".tsx",
-      ".json",
-    ],
+    extensions: webExtensions,
     alias: [
       {
         find: /^@otto-code\/relay\/e2ee$/,
