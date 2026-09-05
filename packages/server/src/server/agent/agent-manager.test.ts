@@ -50,6 +50,7 @@ import type {
 } from "./agent-sdk-types.js";
 import type { OttoToolCatalog } from "./tools/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
+import { wrapSessionProvider } from "./provider-registry.js";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import { STALL_GUARD_DEFAULT_THRESHOLD } from "@otto-code/protocol/provider-config";
 import { withTemporaryOttoHome } from "../../test-utils/temp-otto-home.js";
@@ -713,6 +714,27 @@ test("retries provider history hydration after a stream failure", async () => {
     });
   } finally {
     if (agentId) await manager.closeAgent(agentId).catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+test("provider-wrapped sessions steer the active turn without interruption", async () => {
+  const session = new SteeringTestSession({ provider: "codex", cwd: process.cwd() });
+  const wrapped = wrapSessionProvider("codex", session);
+  const { manager, agentId, workdir } = await startAndSteerThroughManager(wrapped);
+  try {
+    expect(session.steerCount).toBe(1);
+    expect(session.interruptCount).toBe(0);
+    expect(session.startCount).toBe(1);
+    expect(
+      manager
+        .getTimeline(agentId)
+        .filter(
+          (item) => item.type === "user_message" && item.clientMessageId === "replacement-client",
+        ),
+    ).toEqual([expect.objectContaining({ type: "user_message", text: "replacement" })]);
+  } finally {
+    await manager.closeAgent(agentId);
     rmSync(workdir, { recursive: true, force: true });
   }
 });

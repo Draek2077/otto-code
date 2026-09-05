@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import type {
   AgentCapabilityFlags,
@@ -6,6 +6,8 @@ import type {
   AgentSession,
   AgentStreamEvent,
   AgentRuntimeInfo,
+  SteerActiveTurnOptions,
+  SteerResult,
 } from "./agent-sdk-types.js";
 import { wrapSessionProvider } from "./provider-registry.js";
 
@@ -168,6 +170,51 @@ async function* emptyHistory(): AsyncGenerator<AgentStreamEvent> {
 }
 
 describe("wrapSessionProvider", () => {
+  test.each(["accepted", "unavailable"] as const)(
+    "preserves the active-turn steering receiver, inputs, and %s result",
+    async (status) => {
+      const result: SteerResult = { status };
+      const session = Object.assign(new FakeSession(), {
+        async steerActiveTurn(
+          this: FakeSession,
+          prompt: AgentPromptInput,
+          options: SteerActiveTurnOptions,
+        ) {
+          expect(this).toBe(session);
+          expect(prompt).toBe(input);
+          expect(options).toBe(steerOptions);
+          return result;
+        },
+      });
+      const input = "Continue with this correction";
+      const steerOptions: SteerActiveTurnOptions = {
+        expectedTurnId: "turn-1",
+        clearPendingPermissions: true,
+      };
+      const wrapped = wrapSessionProvider("custom-claude", session);
+
+      expect(await wrapped.steerActiveTurn?.(input, steerOptions)).toBe(result);
+    },
+  );
+
+  test("propagates steering errors without turning them into unavailability", async () => {
+    const error = new Error("steering failed");
+    const session = Object.assign(new FakeSession(), {
+      steerActiveTurn: vi.fn().mockRejectedValue(error),
+    });
+    const wrapped = wrapSessionProvider("custom-claude", session);
+
+    await expect(
+      wrapped.steerActiveTurn?.("correction", { expectedTurnId: "turn-1" }),
+    ).rejects.toBe(error);
+  });
+
+  test("keeps steering unavailable when the underlying provider does not expose it", () => {
+    const wrapped = wrapSessionProvider("custom-claude", new FakeSession());
+
+    expect(wrapped.steerActiveTurn).toBeUndefined();
+  });
+
   test("forwards every optional AgentSession method", async () => {
     const session = new FakeSession();
     const wrapped = wrapSessionProvider("custom-claude", session);
