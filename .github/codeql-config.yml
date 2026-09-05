@@ -22,7 +22,11 @@ paths-ignore:
   # drive desktop E2E. Neither is packaged into Otto.
   - packages/app/demo/**
   - packages/desktop/capture-harness/**
+  - packages/server/src/server/daemon-e2e/**
   # Otto embeds Agent Flow's web renderer, not its upstream VS Code extension.
   - vendor/agent-flow/extension/**
+  # Archify's root-level gallery and guide generators are upstream build tools;
+  # Otto ships only the runtime copied from vendor/archify/archify.
+  - vendor/archify/scripts/**
   # Documentation examples are not part of Archify's shipped renderer.
   - vendor/archify/docs/**

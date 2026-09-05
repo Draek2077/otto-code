@@ -78,13 +78,19 @@ export function buildTodoNudgeReminder(todo: TodoTimelineItem): string {
   return `<system-reminder>\nYou have ${openCount} unfinished item(s) on your task list. As you work, keep it current: mark items completed the moment you finish them rather than in a batch at the end.\n</system-reminder>`;
 }
 
-// The trailing todo-nudge block, with any whitespace that precedes it. Matched by
-// the nudge's own opening sentence - NOT any `<system-reminder>` - so a user
-// message that legitimately ends with (or merely contains) reminder-shaped markup
-// isn't truncated in the timeline. Anchored to the end because the nudge is always
-// appended last; keep this wording in sync with buildTodoNudgeReminder.
-const TRAILING_TODO_NUDGE_PATTERN =
-  /\s*<system-reminder>\s*You have \d+ unfinished item\(s\) on your task list\.[\s\S]*?<\/system-reminder>\s*$/;
+const SYSTEM_REMINDER_START = "<system-reminder>";
+const SYSTEM_REMINDER_END = "</system-reminder>";
+const TODO_NUDGE_HEADER = "You have ";
+const TODO_NUDGE_COUNT_SUFFIX = " unfinished item(s) on your task list.";
+
+function isAsciiDigits(value: string): boolean {
+  if (value.length === 0) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 48 || code > 57) return false;
+  }
+  return true;
+}
 
 /**
  * Append the passive nudge to an outgoing prompt (string or content blocks).
@@ -109,5 +115,25 @@ export function appendTodoNudgeToPrompt(
  * Otto's timeline projection. Idempotent and a no-op when no nudge is present.
  */
 export function stripTrailingTodoNudge(text: string): string {
-  return text.replace(TRAILING_TODO_NUDGE_PATTERN, "");
+  // Use bounded marker parsing instead of a broad multiline regex. This text
+  // originates with a user message after it has passed through a provider, so
+  // the cleanup path must stay linear even when the message is adversarial.
+  const withoutTrailingWhitespace = text.trimEnd();
+  if (!withoutTrailingWhitespace.endsWith(SYSTEM_REMINDER_END)) return text;
+
+  const endStart = withoutTrailingWhitespace.length - SYSTEM_REMINDER_END.length;
+  const start = withoutTrailingWhitespace.lastIndexOf(SYSTEM_REMINDER_START, endStart);
+  if (start < 0) return text;
+
+  const body = withoutTrailingWhitespace
+    .slice(start + SYSTEM_REMINDER_START.length, endStart)
+    .trimStart();
+  if (!body.startsWith(TODO_NUDGE_HEADER)) return text;
+
+  const suffixIndex = body.indexOf(TODO_NUDGE_COUNT_SUFFIX, TODO_NUDGE_HEADER.length);
+  if (suffixIndex < TODO_NUDGE_HEADER.length) return text;
+  const count = body.slice(TODO_NUDGE_HEADER.length, suffixIndex);
+  if (!isAsciiDigits(count)) return text;
+
+  return text.slice(0, start).trimEnd();
 }
