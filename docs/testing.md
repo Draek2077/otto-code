@@ -146,6 +146,28 @@ Run it locally with the same command owned by the Ubuntu `desktop-tests` require
 npm run test:e2e:browser-tabs --workspace=@otto-code/desktop
 ```
 
+### Desktop skill selection upgrade regression
+
+After `npm run build:server`, run
+`npm run test:e2e:skill-selection-upgrade --workspace=@otto-code/desktop`.
+The default `attached` case launches a real managed daemon before Electron and checks
+that a partial installation stays partial while a real legacy-file read error prevents
+import. Repairing that file must trigger the mounted migration's retry, durable import,
+source removal, and selected-only maintenance. Set `OTTO_SKILL_UPGRADE_MODE=cold` to
+exercise daemon launch through the normal renderer startup IPC. Both cases reload the
+renderer and verify the persisted selection and daemon identity.
+
+| Behavior                                                                                                                                                   | Covering harness                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Local desktop skill selection survives cold startup, managed-daemon attachment, read failure/retry, and renderer reload without installing excluded skills | `packages/desktop/scripts/skill-selection-upgrade.e2e.mjs` |
+
+The harness isolates OS `HOME`/`USERPROFILE`, Electron user data, daemon home, and
+ephemeral ports under repository `.tmp/agent-02/`. Provider catalogs are disabled through
+persisted configuration. It uses the registered Electron IPC handlers and the real
+WebSocket import path. Logs, a screenshot, and result JSON remain as evidence; successful
+runtime fixtures are removed after owned processes stop, while failed fixtures remain
+for inspection.
+
 ## Test organization
 
 - Collocate tests with implementation: `thing.ts` + `thing.test.ts`

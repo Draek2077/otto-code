@@ -22,6 +22,7 @@
     "dev": "./scripts/dev.sh",
     "dev:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
     "test:e2e:browser-tab-bridge": "npm run build:main && node ./scripts/browser-tab-bridge.e2e.mjs",
+    "test:e2e:skill-selection-upgrade": "npm run build:main && node ./scripts/skill-selection-upgrade.e2e.mjs",
     "pretest:e2e:renderer": "npm --prefix ../.. run browsers:install",
     "test:e2e:renderer": "cross-env E2E_DESKTOP_RUNTIME=1 node ../../scripts/run-playwright.mjs test --config=playwright.config.ts --project=desktop",
     "test:e2e:browser-tabs": "npm run build:main && node ./e2e/browser-tabs.e2e.mjs",

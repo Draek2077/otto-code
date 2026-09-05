@@ -211,7 +211,11 @@ import { createAgentStructuredTextGeneration } from "./session/checkout/git-meta
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { ConnectorOAuthBroker, type ConnectorAuthStore } from "./connectors/connector-oauth.js";
 import { setConnectorAuthStore } from "./connectors/connector-auth-store.js";
-import { createOrchestrationSkills } from "./orchestration-skills/index.js";
+import {
+  createStartupOrchestrationSkills,
+  SkillMaintenanceStoppedError,
+} from "./orchestration-skills/startup.js";
+import type { SkillTargets } from "./orchestration-skills/internal/operations.js";
 import {
   DEFAULT_APP_BASE_URL,
   resolveConfigFromPersisted,
@@ -607,6 +611,7 @@ export interface OttoDaemon {
 }
 
 export interface OttoDaemonDependencies {
+  resolveSkillTargets?: () => SkillTargets;
   hubRelationshipRemote?: HubRelationshipRemote;
   hubRelationshipClock?: HubRelationshipClock;
   hubRelationshipRetryPolicy?: HubRelationshipRetryPolicy;
@@ -1112,8 +1117,13 @@ export async function createOttoDaemon(
   };
   setConnectorAuthStore(connectorAuthStore);
   const connectorOAuthBroker = new ConnectorOAuthBroker({ store: connectorAuthStore, logger });
-  const orchestrationSkills = createOrchestrationSkills(daemonConfigStore);
+  const orchestrationSkills = createStartupOrchestrationSkills(daemonConfigStore, {
+    desktopManaged: config.desktopManaged === true,
+    logger,
+    resolveTargets: dependencies.resolveSkillTargets,
+  });
   void orchestrationSkills.autoUpdate().catch((error) => {
+    if (error instanceof SkillMaintenanceStoppedError) return;
     logger.error({ err: error }, "Failed to maintain orchestration skills at startup");
   });
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
@@ -2844,6 +2854,7 @@ export async function createOttoDaemon(
   };
 
   const stop = async () => {
+    await orchestrationSkills.dispose();
     await pluginRuntime.stopAllPlugins();
     await hubRelationships.stop();
     workspaceReconciliation.dispose();

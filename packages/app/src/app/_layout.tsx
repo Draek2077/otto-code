@@ -181,6 +181,7 @@ import { AgentVoiceCuesHost } from "@/voice/agent-voice-cues-host";
 import { AutoSpeechHost } from "@/voice/auto-speech-host";
 import { ZoomRecorderHost } from "@/desktop/zoom-recorder-host";
 import { PluginCatalogSync } from "@/plugins";
+import { LegacyAgentSkillsMigration } from "@/agent-skills/legacy-migration";
 
 polyfillNavigator();
 polyfillCrypto();
@@ -719,6 +720,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <DownloadToast />
       <RosettaCalloutSource />
       <UpdateCalloutSource />
+      <LegacyAgentSkillsMigration />
       <WorktreeSetupCalloutSource />
       <CommandCenterRootActions />
       <CommandCenterWorkspaceActions />
