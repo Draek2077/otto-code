@@ -36,7 +36,7 @@ jobs:
       CI_DIAG_TEST_NAME: ${{ inputs.test_name }}
       E2E_GLOBAL_TIMEOUT_MINUTES: "15"
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
