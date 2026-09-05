@@ -985,6 +985,8 @@ interface ComposerProps {
   blurOnSubmit?: boolean;
   value: string;
   onChangeText: (text: string) => void;
+  /** Programmatic replacement that must not race a stale native/web input event. */
+  replaceText?: (text: string) => void;
   /** Changes when the draft's text is replaced programmatically, so the input
    *  remounts instead of fighting the caret. See AgentInputDraft.replaceText. */
   textReplacementKey: string;
@@ -1221,6 +1223,7 @@ export function Composer({
   blurOnSubmit = false,
   value,
   onChangeText,
+  replaceText,
   attachments,
   attachmentScopeKeys = EMPTY_ATTACHMENT_SCOPE_KEYS,
   attachmentWriteScopeKey,
@@ -1294,6 +1297,10 @@ export function Composer({
   const messagePlaceholder = resolveMessagePlaceholder(inputMode, isDesktopLayout, t, placeholder);
   const userInput = value;
   const setUserInput = onChangeText;
+  // Sending is a programmatic replacement, not typing. The replacement path
+  // remounts the native/web input so a late change event from the old surface
+  // cannot restore a message that has already reached the timeline.
+  const replaceUserInput = replaceText ?? setUserInput;
   const workspaceAttachments = useWorkspaceAttachmentsForScopes(attachmentScopeKeys);
   const {
     selectedAttachments,
@@ -1362,7 +1369,7 @@ export function Composer({
 
       dismissKeyboardOnSubmit();
       clearDraft("sent");
-      setUserInput("");
+      replaceUserInput("");
       setSelectedAttachments([]);
       resetSuppression();
       setSendError(null);
@@ -1383,7 +1390,7 @@ export function Composer({
       onClientSlashCommand,
       resetSuppression,
       setSelectedAttachments,
-      setUserInput,
+      replaceUserInput,
     ],
   );
 
@@ -1598,11 +1605,15 @@ export function Composer({
 
       // Clear optimistically: the row appears from the queue controller either
       // way, and a failed enqueue surfaces as a send error like any other.
-      setUserInput("");
+      replaceUserInput("");
       setSelectedAttachments([]);
       resetSuppression();
       clearSentAttachments(queuedAttachments);
       void messageQueue.enqueue(trimmed, queuedAttachments).catch((error: unknown) => {
+        // A queue send is still a send: restoring only an error while discarding
+        // its attachment makes a transient attachment-store failure destructive.
+        replaceUserInput(queuedMessage);
+        setSelectedAttachments(composerWorkspaceAttachment.userAttachmentsOnly(queuedAttachments));
         setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
       });
     },
@@ -1612,7 +1623,7 @@ export function Composer({
       onMessageSent,
       resetSuppression,
       setSelectedAttachments,
-      setUserInput,
+      replaceUserInput,
       t,
     ],
   );
@@ -1680,7 +1691,7 @@ export function Composer({
           await submitMessage(submitText, submitAttachments);
         },
         clearDraft,
-        setUserInput,
+        setUserInput: replaceUserInput,
         setAttachments: (nextAttachments) => {
           setSelectedAttachments(composerWorkspaceAttachment.userAttachmentsOnly(nextAttachments));
         },
@@ -1727,7 +1738,7 @@ export function Composer({
       serverId,
       setAgentPromptSuggestion,
       setSelectedAttachments,
-      setUserInput,
+      replaceUserInput,
       submitBehavior,
       submitMessage,
       t,

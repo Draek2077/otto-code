@@ -5,7 +5,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QueuedAgentMessagePayload } from "@otto-code/protocol/messages";
 
-import type { ComposerAttachment } from "@/attachments/types";
+import type { AttachmentMetadata, ComposerAttachment } from "@/attachments/types";
 import { useSessionStore } from "@/stores/session-store";
 import type { DaemonClient } from "@otto-code/client";
 import { useComposerQueue, type ComposerQueueItem } from "./queue";
@@ -69,13 +69,18 @@ function broadcastQueueEntries(entries: QueuedAgentMessagePayload[]): void {
   })) as never);
 }
 
-function renderQueue(client: Partial<DaemonClient>) {
+function renderQueue(
+  client: Partial<DaemonClient>,
+  encodeImages: (
+    images: AttachmentMetadata[],
+  ) => Promise<Array<{ data: string; mimeType: string }>> = async () => [],
+) {
   return renderHook(() =>
     useComposerQueue({
       serverId: SERVER_ID,
       agentId: AGENT_ID,
       client: client as DaemonClient,
-      encodeImages: async () => [],
+      encodeImages,
     }),
   );
 }
@@ -128,6 +133,24 @@ afterEach(() => {
 });
 
 describe("useComposerQueue - the daemon broadcast beats the sidecar write", () => {
+  it("does not queue a text-only message when image preparation fails", async () => {
+    seedSession({ steerQueue: true });
+    const attachmentError = new Error("Attachment bytes are unavailable");
+    const sendAgentMessage = vi.fn();
+    const { result } = renderQueue({ sendAgentMessage }, async () => {
+      throw attachmentError;
+    });
+
+    await expect(result.current.enqueue("look at this", [IMAGE_ATTACHMENT])).rejects.toBe(
+      attachmentError,
+    );
+
+    expect(sendAgentMessage).not.toHaveBeenCalled();
+    expect(
+      useSessionStore.getState().sessions[SERVER_ID]?.queuedMessages.get(AGENT_ID),
+    ).toBeUndefined();
+  });
+
   it("still sends a row whose attachments have not reached the sidecar yet", async () => {
     seedSession({ steerQueue: true });
     const send = installRacingSend([ENTRY_ID]);

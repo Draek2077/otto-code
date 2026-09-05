@@ -515,11 +515,14 @@ describe("useAgentInputDraft live contract", () => {
       getLatest().setAttachments([{ kind: "image", metadata: image }]);
     });
 
+    const replacementKeyBeforeClear = getLatest().textReplacementKey;
+
     await act(async () => {
       getLatest().clear("sent");
     });
 
     expect(getLatest().text).toBe("");
+    expect(getLatest().textReplacementKey).not.toBe(replacementKeyBeforeClear);
     expect(getLatest().attachments).toEqual([]);
     expect(useDraftStore.getState().drafts["draft:clear"]?.input).toEqual({
       text: "",

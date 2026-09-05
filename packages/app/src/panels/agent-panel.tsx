@@ -2261,6 +2261,7 @@ function ActiveAgentComposer({
             value={agentInputDraft.text}
             textReplacementKey={agentInputDraft.textReplacementKey}
             onChangeText={agentInputDraft.setText}
+            replaceText={agentInputDraft.replaceText}
             attachments={agentInputDraft.attachments}
             attachmentScopeKeys={attachmentScopeKeys}
             attachmentWriteScopeKey={workspaceAttachmentScopeKey}

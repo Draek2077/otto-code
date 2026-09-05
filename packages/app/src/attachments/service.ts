@@ -106,28 +106,35 @@ export async function encodeAttachmentsForSend(
   }
 
   const store = await getAttachmentStore();
-  const encoded = await Promise.all(
+  const encoded = await Promise.allSettled(
     attachments.map(async (attachment) => {
-      try {
-        const data = await store.encodeBase64({ attachment });
-        return {
-          data,
-          mimeType: attachment.mimeType,
-        };
-      } catch (error) {
-        console.error("[attachments] Failed to encode attachment for send", {
-          id: attachment.id,
-          error,
-        });
-        return null;
-      }
+      const data = await store.encodeBase64({ attachment });
+      return {
+        data,
+        mimeType: attachment.mimeType,
+      };
     }),
   );
 
-  const valid = encoded.filter(
-    (entry): entry is { data: string; mimeType: string } => entry !== null,
-  );
-  return valid.length > 0 ? valid : undefined;
+  const failures = encoded.filter((entry) => entry.status === "rejected");
+  if (failures.length > 0) {
+    console.error("[attachments] Failed to encode attachment for send", {
+      attachmentIds: attachments
+        .filter((_, index) => encoded[index]?.status === "rejected")
+        .map((attachment) => attachment.id),
+      errors: failures.map((failure) => failure.reason),
+    });
+    throw new Error(
+      `Could not prepare ${failures.length} attachment${failures.length === 1 ? "" : "s"} for sending. Your message was not sent.`,
+    );
+  }
+
+  return encoded.map((entry) => {
+    if (entry.status !== "fulfilled") {
+      throw new Error("Expected successful attachment encoding.");
+    }
+    return entry.value;
+  });
 }
 
 export async function resolveAttachmentPreviewUrl(attachment: AttachmentMetadata): Promise<string> {

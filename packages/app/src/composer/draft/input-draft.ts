@@ -293,6 +293,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       textEditedRef.current = false;
       textRef.current = "";
       setTextState("");
+      setTextReplacementRevision((revision) => revision + 1);
       useDraftStore.getState().clearDraftInput({ draftKey, lifecycle });
     },
     [draftKey],

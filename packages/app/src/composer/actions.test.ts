@@ -482,6 +482,28 @@ describe("dispatchComposerAgentMessage", () => {
     expect(stream.tail.get("agent") ?? []).toEqual([]);
   });
 
+  it("does not send a text-only message when image preparation fails", async () => {
+    const attachmentError = new Error("Attachment bytes are unavailable");
+    const client = createFakeSendClient();
+    const stream = createFakeStream();
+
+    await expect(
+      dispatchComposerAgentMessage({
+        client,
+        agentId: "agent",
+        text: "message with an image",
+        attachments: [{ kind: "image", metadata: imageWithId("missing-image") }],
+        encodeImages: async () => {
+          throw attachmentError;
+        },
+        submission: stream,
+      }),
+    ).rejects.toBe(attachmentError);
+
+    expect(client.calls).toEqual([]);
+    expect(stream.tail.get("agent") ?? []).toEqual([]);
+  });
+
   it("rolls back an already-running force send when its RPC fails", async () => {
     const stream = createFakeStream();
     const transportError = new Error("Force send failed while the prior turn was running");

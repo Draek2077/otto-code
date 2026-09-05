@@ -49,10 +49,6 @@ import { useSessionStore } from "@/stores/session-store";
 import { useVoiceOptional, useVoiceAudioEngineOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
-import {
-  collectImageFilesFromClipboardData,
-  filesToImageAttachments,
-} from "@/utils/image-attachments-from-files";
 import type { ComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/composer/types";
 import { focusWithRetries } from "@/utils/web-focus";
@@ -98,6 +94,7 @@ import { applyDictationTranscript } from "./dictation-delivery";
 import { playDictationStartCue } from "@/voice/dictation-start-cue";
 import type { IconSizeProp, IconSizeToken } from "@/components/icons/icon-size";
 import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
+import { usePasteImagesEffect, type TextAreaHandle } from "./paste-images";
 const COMPOSER_INPUT_DATASET = { composerInput: "" } as const;
 
 export interface AttachmentMenuItem {
@@ -248,19 +245,6 @@ function canUseAlternateSendAction(
   onQueue: ((payload: MessagePayload) => void) | undefined,
 ): boolean {
   return isAgentRunning && !isCompacting && Boolean(onQueue);
-}
-
-interface TextAreaHandle {
-  scrollHeight?: number;
-  clientHeight?: number;
-  offsetHeight?: number;
-  scrollTop?: number;
-  selectionStart?: number | null;
-  selectionEnd?: number | null;
-  style?: {
-    height?: string;
-    overflowY?: string;
-  } & Record<string, unknown>;
 }
 
 function AttachButtonIcon({
@@ -563,77 +547,6 @@ function getTextInputNativeElement(
   return native instanceof HTMLElement ? native : null;
 }
 
-interface PasteImagesEffectArgs {
-  getWebTextArea: () => TextAreaHandle | null;
-  isConnected: boolean;
-  disabled: boolean;
-  isDictating: boolean;
-  isRealtimeVoiceForCurrentAgent: boolean;
-  onAddImages: ((images: ImageAttachment[]) => void) | undefined;
-}
-
-function usePasteImagesEffect(args: PasteImagesEffectArgs): void {
-  const {
-    getWebTextArea,
-    isConnected,
-    disabled,
-    isDictating,
-    isRealtimeVoiceForCurrentAgent,
-    onAddImages,
-  } = args;
-
-  useEffect(() => {
-    if (!isWeb || !onAddImages) return;
-
-    const textarea = getWebTextArea() as
-      | (TextAreaHandle & {
-          addEventListener?: (type: string, listener: (e: ClipboardEvent) => void) => void;
-          removeEventListener?: (type: string, listener: (e: ClipboardEvent) => void) => void;
-        })
-      | null;
-    if (
-      !textarea ||
-      typeof textarea.addEventListener !== "function" ||
-      typeof textarea.removeEventListener !== "function"
-    ) {
-      return;
-    }
-
-    let disposed = false;
-    const handlePaste = (event: ClipboardEvent) => {
-      if (!isConnected || disabled || isDictating || isRealtimeVoiceForCurrentAgent) return;
-
-      const imageFiles = collectImageFilesFromClipboardData(event.clipboardData);
-      if (imageFiles.length === 0) return;
-
-      event.preventDefault();
-
-      void filesToImageAttachments(imageFiles)
-        .then((pastedAttachments) => {
-          if (disposed || pastedAttachments.length === 0) return;
-          onAddImages(pastedAttachments);
-          return;
-        })
-        .catch((error) => {
-          console.error("[MessageInput] Failed to process pasted images:", error);
-        });
-    };
-
-    textarea.addEventListener("paste", handlePaste);
-    return () => {
-      disposed = true;
-      textarea.removeEventListener?.("paste", handlePaste);
-    };
-  }, [
-    disabled,
-    getWebTextArea,
-    isConnected,
-    isDictating,
-    isRealtimeVoiceForCurrentAgent,
-    onAddImages,
-  ]);
-}
-
 function useAutoFocusOnWebEffect(
   textInputRef: React.MutableRefObject<
     TextInput | (TextInput & { getNativeRef?: () => unknown }) | null
@@ -759,6 +672,7 @@ function FocusHint({
 }
 
 interface ComposerTextSurfaceProps {
+  textReplacementKey: string | undefined;
   readOnly: boolean;
   value: string;
   textInputRef: React.Ref<TextInput>;
@@ -799,6 +713,7 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
   return (
     <View style={styles.textInputScrollWrapper}>
       <ThemedTextInput
+        key={props.textReplacementKey}
         ref={props.textInputRef}
         {...({ dataSet: COMPOSER_INPUT_DATASET } as Record<string, unknown>)}
         value={props.value}
@@ -1317,6 +1232,7 @@ interface ResolvedMessageInputProps {
   attachmentSlot: React.ReactNode;
   inputMode: ComposerInputMode;
   readOnly: boolean;
+  textReplacementKey: string | undefined;
   submitLabel: string | undefined;
 }
 
@@ -1370,6 +1286,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     attachmentSlot: props.attachmentSlot,
     inputMode: props.inputMode ?? "chat",
     readOnly: props.readOnly ?? false,
+    textReplacementKey: props.textReplacementKey,
     submitLabel: props.submitLabel,
   };
 }
@@ -1431,6 +1348,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       attachmentSlot,
       inputMode,
       readOnly,
+      textReplacementKey,
       submitLabel,
     } = resolveMessageInputProps(props);
     const mode = resolveComposerInputMode(inputMode);
@@ -1816,6 +1734,25 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       voiceServerId,
     ]);
 
+    const getWebTextArea = useCallback(
+      (): TextAreaHandle | null => getWebTextAreaImpl(textInputRef.current),
+      [],
+    );
+    const handlePasteImageError = useCallback(() => {
+      toast.error(t("errors.pasteImageFailed"));
+    }, [t, toast]);
+
+    const isPastingImages = usePasteImagesEffect({
+      getWebTextArea,
+      inputReplacementKey: textReplacementKey,
+      isConnected,
+      disabled,
+      isDictating,
+      isRealtimeVoiceForCurrentAgent,
+      onAddImages,
+      onPasteError: handlePasteImageError,
+    });
+
     const minimizeInputHeight = useCallback(() => {
       inputHeightRef.current = MIN_INPUT_HEIGHT;
       setInputHeight(MIN_INPUT_HEIGHT);
@@ -1863,6 +1800,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
 
     const handleDefaultSendAction = useCallback(() => {
+      if (isPastingImages) return;
       runDefaultSendAction({
         defaultSendBehavior,
         isAgentRunning,
@@ -1875,12 +1813,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       defaultSendBehavior,
       isAgentRunning,
       isCompacting,
+      isPastingImages,
       onQueue,
       handleQueueMessage,
       handleSendMessage,
     ]);
 
     const handleAlternateSendAction = useCallback(() => {
+      if (isPastingImages) return;
       runAlternateSendAction({
         defaultSendBehavior,
         isAgentRunning,
@@ -1893,15 +1833,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       defaultSendBehavior,
       isAgentRunning,
       isCompacting,
+      isPastingImages,
       handleSendMessage,
       handleQueueMessage,
       onQueue,
     ]);
-
-    const getWebTextArea = useCallback(
-      (): TextAreaHandle | null => getWebTextAreaImpl(textInputRef.current),
-      [],
-    );
 
     const webTextareaRef = useRef<HTMLElement | null>(null);
 
@@ -1909,19 +1845,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       if (isWeb) {
         webTextareaRef.current = getWebTextArea() as HTMLElement | null;
       }
-    }, [getWebTextArea]);
+    }, [getWebTextArea, textReplacementKey]);
 
     const inputScrollbar = useWebElementScrollbar(webTextareaRef, {
       enabled: isWeb,
-    });
-
-    usePasteImagesEffect({
-      getWebTextArea,
-      isConnected,
-      disabled,
-      isDictating,
-      isRealtimeVoiceForCurrentAgent,
-      onAddImages,
     });
 
     const setBoundedInputHeight = useCallback(
@@ -1979,7 +1906,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         onQueue,
         isSubmitDisabled,
         isSubmitLoading,
-        disabled,
+        disabled: disabled || isPastingImages,
         handleAlternateSendAction,
         handleDefaultSendAction,
       });
@@ -1998,7 +1925,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     });
     const { canPressLoadingButton, isSendButtonDisabled, defaultActionQueues } =
       computeSendButtonState({
-        disabled,
+        disabled: disabled || isPastingImages,
         isSubmitDisabled,
         isSubmitLoading,
         onSubmitLoadingPress,
@@ -2192,6 +2119,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           {attachmentSlot}
           {/* Text input */}
           <ComposerTextSurface
+            textReplacementKey={textReplacementKey}
             readOnly={readOnly}
             value={value}
             textInputRef={textInputRef}
