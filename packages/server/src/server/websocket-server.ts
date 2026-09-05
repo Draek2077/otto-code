@@ -2244,6 +2244,7 @@ export class VoiceAssistantWebSocketServer {
           this.workflowStoreRegistry !== null,
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         suggestedTasks: true,
+        suggestedTaskModelSelection: true,
         // COMPAT(steerQueue): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         steerQueue: true,
         // COMPAT(steerQueueReorder): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.

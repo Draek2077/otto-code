@@ -7387,7 +7387,8 @@ export class AgentManager {
 
   // --- Suggested tasks (suggest_task / dismiss_task chips) ------------------
 
-  private currentSuggestedTasksFor(parentAgentId: string): SuggestedTaskInfo[] {
+  /** Client-safe pending snapshot, shared by live updates and chat hydration. */
+  currentSuggestedTasksFor(parentAgentId: string): SuggestedTaskInfo[] {
     const tasks: SuggestedTaskInfo[] = [];
     for (const entry of this.suggestedTasks.values()) {
       if (entry.parentAgentId !== parentAgentId || entry.state !== "pending") {

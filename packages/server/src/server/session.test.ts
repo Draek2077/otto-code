@@ -23,6 +23,8 @@ import {
   type FileTransferFrame,
 } from "@otto-code/protocol/binary-frames/index";
 import { Session } from "./session.js";
+import * as createAgentCommands from "./agent/create-agent/create.js";
+import type { ManagedAgent } from "./agent/agent-manager.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
 import { createPersistedProjectRecord, type PersistedProjectRecord } from "./workspace-registry.js";
@@ -54,6 +56,7 @@ import type {
 import type { GitHubForgeSpecificStatusFacts } from "../services/github-facts.js";
 
 interface SessionHandlerInternals {
+  agentUpdates: { forwardLiveAgent(agent: ManagedAgent): Promise<void> };
   handleStartSuggestedTaskRequest(
     msg: Extract<SessionInboundMessage, { type: "tasks.suggested.start.request" }>,
   ): Promise<void>;
@@ -469,6 +472,203 @@ test("queues an in-session suggested task instead of interrupting compaction", a
       failed: 0,
       error: null,
     },
+  });
+});
+
+test("restores suggested tasks on timeline reload and clears them on reconnect", async () => {
+  const source = {};
+  const targetedMessages: Array<{ source: object; message: SessionOutboundMessage }> = [];
+  const messages: SessionOutboundMessage[] = [];
+  const pending = [
+    {
+      taskId: "pending-task",
+      parentAgentId: "parent",
+      title: "Follow up",
+      tldr: "Existing suggestion before refresh",
+      state: "pending" as const,
+      createdAt: "2026-09-05T00:00:00.000Z",
+      updatedAt: "2026-09-05T00:00:00.000Z",
+    },
+  ];
+  const currentSuggestedTasksFor = vi.fn(() => pending);
+  const session = createSessionForTest({
+    messages,
+    targetedMessages,
+    agentManager: {
+      getObservedSubagentPayload: vi.fn(() => ({ id: "parent", provider: "claude" })),
+      fetchTimeline: vi.fn(() => ({
+        rows: [],
+        epoch: "epoch",
+        reset: false,
+        staleCursor: false,
+        gap: false,
+        window: { minSeq: 0, maxSeq: 0, nextSeq: 1 },
+        hasOlder: false,
+        hasNewer: false,
+      })),
+      currentSuggestedTasksFor,
+    },
+  });
+  const request = {
+    type: "fetch_agent_timeline_request" as const,
+    agentId: "parent",
+    requestId: "refresh",
+  };
+  // No task mutation occurs after the new client connects.
+  await session.handleMessage(request, source);
+  expect(currentSuggestedTasksFor).toHaveBeenCalledWith("parent");
+  expect(targetedMessages).toContainEqual({
+    source,
+    message: {
+      type: "suggested_tasks_changed",
+      payload: { parentAgentId: "parent", tasks: pending },
+    },
+  });
+  expect(messages).toEqual([]);
+
+  // Tasks resolved while disconnected must clear the reconnecting client's map.
+  currentSuggestedTasksFor.mockReturnValue([]);
+  targetedMessages.length = 0;
+  await session.handleMessage({ ...request, requestId: "reconnect" }, source);
+  expect(targetedMessages).toContainEqual({
+    source,
+    message: { type: "suggested_tasks_changed", payload: { parentAgentId: "parent", tasks: [] } },
+  });
+  await session.cleanup();
+});
+
+describe("suggested task model selection", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  test.each(["new_chat", "subagent", "worktree"] as const)(
+    "launches %s using the selected provider without source adapter settings",
+    async (mode) => {
+      const messages: SessionOutboundMessage[] = [];
+      const config = {
+        provider: "codex",
+        cwd: "/project",
+        title: "Source title",
+        model: "source-model",
+        thinkingOptionId: "xhigh",
+        modeId: "full-auto",
+        featureValues: { sourceOnly: true },
+        approvalPolicy: "never",
+        sandboxMode: "danger-full-access",
+        providerOptions: { codex: {} },
+        extra: { codex: { sourceOnly: true } },
+        systemPrompt: "Keep project conventions.",
+        workspaceAccess: "read",
+        toolPolicy: { allow: ["Read"] },
+      };
+      const parent = { id: "source", provider: "codex", cwd: "/project", config } as ManagedAgent;
+      const markSuggestedTaskStarted = vi.fn();
+      const session = createSessionForTest({
+        messages,
+        agentManager: {
+          getAgent: vi.fn(() => parent),
+          getSuggestedTaskEntry: vi.fn(() => ({
+            parentAgentId: "source",
+            title: "Follow up",
+            prompt: "Complete this exact task.",
+            cwd: "/other-project",
+            state: "pending",
+          })),
+          beginSuggestedTaskStart: vi.fn(() => true),
+          endSuggestedTaskStart: vi.fn(),
+          markSuggestedTaskStarted,
+        },
+      });
+      const created = { id: "destination" } as ManagedAgent;
+      const create = vi
+        .spyOn(createAgentCommands, "createAgentCommand")
+        .mockResolvedValue({ snapshot: created } as Awaited<
+          ReturnType<typeof createAgentCommands.createAgentCommand>
+        >);
+      vi.spyOn(asSessionInternals(session).agentUpdates, "forwardLiveAgent").mockResolvedValue();
+      await asSessionInternals(session).handleStartSuggestedTaskRequest({
+        type: "tasks.suggested.start.request",
+        requestId: "launch",
+        parentAgentId: "source",
+        taskIds: ["task"],
+        mode,
+        launch: { provider: "openai-compatible", model: "local/model" },
+      });
+      const input = create.mock.calls[0]?.[1];
+      expect(input).toMatchObject({
+        kind: "mcp",
+        provider: "openai-compatible/local/model",
+        title: "Follow up",
+        initialPrompt: "Complete this exact task.",
+        cwd: "/other-project",
+        callerAgentId: "source",
+        detached: mode !== "subagent",
+      });
+      expect(input?.config).toEqual({
+        provider: "codex",
+        cwd: "/project",
+        systemPrompt: "Keep project conventions.",
+        workspaceAccess: "read",
+        toolPolicy: { allow: ["Read"] },
+      });
+      expect(input?.kind === "mcp" ? input.worktree : null).toEqual(
+        mode === "worktree" ? { action: "branch-off" } : undefined,
+      );
+      expect(config.model).toBe("source-model");
+      expect(config.thinkingOptionId).toBe("xhigh");
+      expect(markSuggestedTaskStarted).toHaveBeenCalledWith({
+        taskId: "task",
+        mode,
+        startedAgentId: "destination",
+      });
+      expect(messages.at(-1)).toMatchObject({ payload: { succeeded: 1, failed: 0 } });
+    },
+  );
+
+  test("keeps a failed launch pending and releases its start claim", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const markSuggestedTaskStarted = vi.fn();
+    const endSuggestedTaskStart = vi.fn();
+    const session = createSessionForTest({
+      messages,
+      agentManager: {
+        getAgent: vi.fn(() => ({
+          id: "source",
+          provider: "codex",
+          cwd: "/project",
+          config: { provider: "codex", cwd: "/project", model: "source-model" },
+        })),
+        getSuggestedTaskEntry: vi.fn(() => ({
+          parentAgentId: "source",
+          title: "Follow up",
+          prompt: "Task",
+          state: "pending",
+        })),
+        beginSuggestedTaskStart: vi.fn(() => true),
+        endSuggestedTaskStart,
+        markSuggestedTaskStarted,
+      },
+    });
+    vi.spyOn(createAgentCommands, "createAgentCommand").mockRejectedValue(
+      new Error("Selected provider is unavailable"),
+    );
+    await asSessionInternals(session).handleStartSuggestedTaskRequest({
+      type: "tasks.suggested.start.request",
+      requestId: "launch",
+      parentAgentId: "source",
+      taskIds: ["task"],
+      mode: "new_chat",
+      launch: { provider: "local", model: "model" },
+    });
+    expect(markSuggestedTaskStarted).not.toHaveBeenCalled();
+    expect(endSuggestedTaskStart).toHaveBeenCalledWith("task");
+    expect(messages.at(-1)).toMatchObject({
+      payload: {
+        accepted: false,
+        succeeded: 0,
+        failed: 1,
+        error: "Follow up: Selected provider is unavailable",
+      },
+    });
   });
 });
 

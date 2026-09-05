@@ -4,6 +4,8 @@ import { View, Text, Pressable, type PressableStateCallbackType } from "react-na
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
+import { SplitButton, SplitButtonPrimary } from "@/components/ui/split-button";
+import { ChevronDown } from "@/components/icons/material-icons";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
@@ -41,6 +43,7 @@ const EMPTY_FAVORITE_KEYS = new Set<string>();
 
 function noop() {}
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const ThemedChevronDown = withUnistyles(ChevronDown);
 
 const foregroundMutedMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -64,6 +67,8 @@ interface CombinedModelSelectorProps {
     hovered: boolean;
     pressed: boolean;
   }) => React.ReactNode;
+  /** Compact filled control using the same button primitive as adjacent launch actions. */
+  triggerVariant?: "default" | "compact-filled";
   onOpen?: () => void;
   onClose?: () => void;
   onRetryProvider?: (provider: AgentProvider) => void;
@@ -131,6 +136,7 @@ export function CombinedModelSelector({
   onToggleFavorite,
   onEditProfiles,
   renderTrigger,
+  triggerVariant = "default",
   iconOnly = false,
   onOpen,
   onClose,
@@ -563,9 +569,46 @@ export function CombinedModelSelector({
     t,
   ]);
 
-  return (
-    <>
-      {renderTrigger ? (
+  function renderSelectorTrigger() {
+    if (triggerVariant === "compact-filled")
+      return (
+        <SplitButton filled hasMenu={false} style={styles.compactFrame}>
+          <SplitButtonPrimary
+            ref={anchorRef}
+            collapsable={false}
+            disabled={disabled}
+            open={isOpen}
+            onPress={handleTriggerPress}
+            style={styles.compactButton}
+            accessibilityRole="button"
+            accessibilityLabel={t("modelSelector.selectedModel", { model: selectedModelLabel })}
+            testID="combined-model-selector"
+          >
+            {({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => (
+              <>
+                <ProviderGlyph
+                  provider={selectedProvider}
+                  size="xs"
+                  tone={hovered || pressed ? "foreground" : "muted"}
+                />
+                <Text
+                  style={[styles.compactLabel, (hovered || pressed) && styles.compactLabelActive]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {triggerLabel}
+                </Text>
+                <ThemedChevronDown
+                  size="xs"
+                  uniProps={hovered || pressed ? foregroundMapping : foregroundMutedMapping}
+                />
+              </>
+            )}
+          </SplitButtonPrimary>
+        </SplitButton>
+      );
+    if (renderTrigger)
+      return (
         <Pressable
           ref={anchorRef}
           collapsable={false}
@@ -587,31 +630,37 @@ export function CombinedModelSelector({
             })
           }
         </Pressable>
-      ) : (
-        <ComboboxTrigger
-          ref={anchorRef}
-          collapsable={false}
-          disabled={disabled}
-          onPress={handleTriggerPress}
-          style={triggerStyle}
-          accessibilityRole="button"
-          accessibilityLabel={t("modelSelector.selectedModel", { model: selectedModelLabel })}
-          testID="combined-model-selector"
-          chevron={triggerChevron}
-        >
-          {triggerLoading ? (
-            <ThemedLoadingSpinner size="md" uniProps={foregroundMutedMapping} />
-          ) : (
-            <TriggerLeadingIcon
-              personality={selectedPersonality}
-              provider={hasSelectedProvider ? selectedProvider : null}
-              family={selectedModelFamily}
-              size="md"
-            />
-          )}
-          {triggerLabelNode}
-        </ComboboxTrigger>
-      )}
+      );
+    return (
+      <ComboboxTrigger
+        ref={anchorRef}
+        collapsable={false}
+        disabled={disabled}
+        onPress={handleTriggerPress}
+        style={triggerStyle}
+        accessibilityRole="button"
+        accessibilityLabel={t("modelSelector.selectedModel", { model: selectedModelLabel })}
+        testID="combined-model-selector"
+        chevron={triggerChevron}
+      >
+        {triggerLoading ? (
+          <ThemedLoadingSpinner size="md" uniProps={foregroundMutedMapping} />
+        ) : (
+          <TriggerLeadingIcon
+            personality={selectedPersonality}
+            provider={hasSelectedProvider ? selectedProvider : null}
+            family={selectedModelFamily}
+            size="md"
+          />
+        )}
+        {triggerLabelNode}
+      </ComboboxTrigger>
+    );
+  }
+
+  return (
+    <>
+      {renderSelectorTrigger()}
       <Combobox
         options={EMPTY_COMBOBOX_OPTIONS}
         value=""
@@ -659,6 +708,23 @@ export function CombinedModelSelector({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  compactFrame: { minWidth: 0, alignSelf: "stretch" },
+  compactButton: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+  },
+  compactLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+  },
+  compactLabelActive: { color: theme.colors.foreground },
   mobileBrowserContent: {
     paddingHorizontal: 0,
   },

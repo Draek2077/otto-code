@@ -69,6 +69,10 @@ class InMemoryAgentManager {
     });
   }
 
+  currentSuggestedTasksFor() {
+    return [];
+  }
+
   getAgent(id?: string) {
     // Only the live root agent resolves as a ManagedAgent; observed subagents
     // deliberately have none so the fetch path falls through to the registry.

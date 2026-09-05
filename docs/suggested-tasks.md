@@ -47,7 +47,11 @@ Only **one** links the new agent to the parent. The whole switch is the `detache
 
 `callerAgentId` stays set even when detached, so the new agent still inherits the parent's cwd/workspace/brain - only the label is dropped. `notifyOnFinish` tracks `detached` (a detached chat isn't watchable via the track). A worktree _must_ have its own branch, so `branch-off` auto-creates a fresh one off HEAD; the user never picks a branch and the parent's branch is never reused.
 
-Starting a suggested task reuses the same commands the MCP tools and the app's own create flows already use - there is **no parallel chat creator**. Since `create_chat` requires an explicit provider/personality with no silent inheritance, the start handler resolves the parent chat's settings and passes them explicitly, so a started task feels like a continuation of the chat that suggested it.
+Starting a suggested task reuses the same commands the MCP tools and the app's own create flows already use. The suggested-task panel includes the shared provider/model picker beside the start button. It offers the selected host's configured providers, including local providers, independently of the suggesting chat's provider. The source provider and model are initially selected; the user can choose another model and start directly from the panel. **New chat**, **Sub-agent**, and **Worktree** use this selection. Bulk start applies it to each task separately. **This session** queues directly into the current chat and ignores the picker.
+
+The start request carries an optional `launch: { provider, model }`. When omitted by an older client, the daemon retains source-chat configuration. An explicit model change clears the source thinking option; a provider change also clears provider-specific modes, features, and adapter options so the ordinary create-chat pipeline resolves destination defaults. Task prompt, directory, instructions, and workspace-access constraints remain intact. Failed tasks stay pending, and the panel retains the selection for retry and displays an inline error.
+
+The picker requires `server_info.features.suggestedTaskModelSelection`. An older host shows **Update the host to choose a model** and disables new-chat launch modes rather than ignoring the user's selection. **This session** remains available.
 
 Start-mode labels follow the glossary - **New chat / Sub-agent / Worktree / In session** - never "checkout". The device-local `suggestedTasksDefaultMode` setting (default `new_chat`) picks the split-button primary; bulk start falls back to `new_chat` when the default is `in_session`.
 
@@ -59,9 +63,15 @@ The emitted list carries only **`pending`** tasks - resolved entries stay in the
 
 `SuggestedTaskInfoSchema` omits `prompt` entirely - it is never sent to the client. `suggested_tasks_changed` is a full-list reconciliation push, mirroring the `BackgroundShellTask*` block.
 
+Every successful chat timeline fetch also sends the current pending suggestions to the requesting socket. This hydrates the card after a page refresh or reconnect without waiting for another task mutation. The snapshot is read after timeline loading and includes empty lists, so tasks resolved while disconnected disappear from the client too. This survives client refreshes while the daemon remains running; daemon-restart persistence remains deferred.
+
 ## The card
 
-Top-anchored over the stream (bottom-anchoring hid the text being read), with a title-bar X that dismisses the whole visible queue and a per-row split button - primary half fires the user's default mode, the caret opens the other modes plus a destructive **Dismiss**. A header "Start all" split button appears when 2+ are queued (`in_session` excluded from bulk).
+The compact model trigger uses the same filled `SplitButton` and `SplitButtonPrimary` primitives as the start control, inheriting its border, focus, hover, and pressed states. Only text/icon size and layout are specific to the compact variant. The picker has a bounded width independent of the model name, which truncates with an ellipsis. Its desktop popup has an independent 360px minimum width, bounded by the viewport. Task rows place the start action at the top right beside the wrapping title; the description spans the full content width underneath.
+
+The collapsed header uses one row when the summary, model picker, and start controls fit. The measured header width moves the two controls onto a second row below 440px, while dismiss stays at the top right beside the summary. This panel alone uses the compact filled model-picker variant with `fontSize.xs`, matching the start button's text size while retaining normal weight, and `xs` provider and chevron icons. Other model-picker instances keep their standard sizing. The bounded task list uses the shared auto-hiding scrollbar on web and the native scroll indicator on mobile platforms. The thumb appears while scrolling and fades when idle.
+
+Top-anchored over the stream (bottom-anchoring hid the text being read), with a title-bar X that dismisses the whole visible queue and a per-row split button. The primary half starts in the user's default mode; the caret opens the other modes plus a destructive **Dismiss**. The provider/model picker sits directly beside the primary start control, including when task details are collapsed. A header "Start all" split button appears when 2+ are queued (`in_session` excluded from bulk).
 
 The card takes the **info tone** - a `statusInfo` ring around a `statusInfoSurface`-washed header and body - rather than the theme accent. Deliberate: accent is the CTA colour and already paints the Start button inside the card, so an accent wash would read as more of the same chrome; and on monochrome variants (Graphite, Midnight) `accentBright` is near-white, so an "accent tint" would carry no hue at all. Blue reads as _suggestion_ in every variant. Documented in [design.md](design.md) §12.
 

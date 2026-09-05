@@ -6,6 +6,7 @@ import {
   useMemo,
   useState,
   type PropsWithChildren,
+  type Ref,
 } from "react";
 import {
   Pressable,
@@ -87,12 +88,13 @@ type PrimaryStyleProp =
 export function SplitButtonPrimary({
   style,
   disabled,
+  open = false,
   onFocus,
   onBlur,
   onPressIn,
   onPressOut,
   ...props
-}: Omit<PressableProps, "style"> & { style?: PrimaryStyleProp }) {
+}: Omit<PressableProps, "style"> & { style?: PrimaryStyleProp; ref?: Ref<View>; open?: boolean }) {
   const preview = useControlStatePreview();
   const { hasMenu, focusedSegment, setFocusedSegment, setPrimaryPressed } =
     useSplitButtonContext("SplitButtonPrimary");
@@ -112,10 +114,11 @@ export function SplitButtonPrimary({
         typeof style === "function" ? style({ ...state, pressed }) : style,
         !disabled && hovered && !pressed ? styles.segmentHovered : null,
         !disabled && pressed ? styles.segmentPressed : null,
+        open && styles.segmentOpen,
         (preview?.focused || focusedSegment === "primary") && styles.focused,
       ];
     },
-    [disabled, focusedSegment, hasMenu, preview, style],
+    [disabled, focusedSegment, hasMenu, open, preview, style],
   );
   const handleFocus = useCallback<NonNullable<PressableProps["onFocus"]>>(
     (event) => {

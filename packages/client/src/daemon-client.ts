@@ -3440,6 +3440,7 @@ export class DaemonClient {
     parentAgentId: string,
     taskIds: readonly string[],
     mode: TasksSuggestedStartMode,
+    launch?: { provider: string; model: string },
   ): Promise<{ succeeded: number; failed: number }> {
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"tasks.suggested.start.response">({
@@ -3448,6 +3449,7 @@ export class DaemonClient {
           parentAgentId,
           taskIds: [...taskIds],
           mode,
+          launch,
         },
       });
     if (!payload.accepted) {

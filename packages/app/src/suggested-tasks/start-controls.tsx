@@ -101,7 +101,7 @@ export interface SplitStartButtonProps {
 }
 
 /**
- * A split button: the primary half runs the caller's default mode immediately;
+ * A split button: the primary half selects the caller's default launch mode;
  * the attached caret opens the remaining modes (and optionally Dismiss). Mirrors
  * git/actions-split-button.tsx so the two read the same. Shared by the roomy
  * overlay and the collapsed compact card so both offer exactly the same actions.
@@ -133,6 +133,9 @@ export function SplitStartButton({
   return (
     <SplitButton filled style={styles.splitButton}>
       <SplitButtonPrimary
+        disabled={
+          actions.starting || (primaryMode !== "in_session" && actions.canStartNewChat === false)
+        }
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         testID={`${testIdBase}-primary`}
@@ -150,13 +153,14 @@ export function SplitStartButton({
               style={hovered || pressed ? styles.primaryTextActive : styles.primaryText}
               numberOfLines={1}
             >
-              {primaryLabel}
+              {actions.starting ? "Starting…" : primaryLabel}
             </Text>
           </>
         )}
       </SplitButtonPrimary>
       <DropdownMenu>
         <SplitButtonMenuTrigger
+          disabled={actions.starting}
           accessibilityRole="button"
           accessibilityLabel={`More start options: ${accessibilityLabel}`}
           testID={`${testIdBase}-caret`}
@@ -183,6 +187,9 @@ export function SplitStartButton({
         <DropdownMenuContent align="end" width={240} testID={`${testIdBase}-menu`}>
           {secondaryModes.map((mode) => (
             <StartMenuItem
+              disabled={
+                actions.starting || (mode !== "in_session" && actions.canStartNewChat === false)
+              }
               key={mode}
               mode={mode}
               testID={`${testIdBase}-${mode}`}
@@ -211,18 +218,20 @@ export function SplitStartButton({
 const DISMISS_LEADING = <ThemedTrash2 size="sm" uniProps={destructiveColorMapping} />;
 
 interface StartMenuItemProps {
+  disabled?: boolean;
   mode: TasksSuggestedStartMode;
   testID: string;
   onSelectMode: (mode: TasksSuggestedStartMode) => void;
 }
 
-function StartMenuItem({ mode, testID, onSelectMode }: StartMenuItemProps): ReactElement {
+function StartMenuItem({ mode, testID, onSelectMode, disabled }: StartMenuItemProps): ReactElement {
   const handleSelect = useCallback(() => {
     onSelectMode(mode);
   }, [onSelectMode, mode]);
   const meta = MODE_META[mode];
   return (
     <DropdownMenuItem
+      disabled={disabled}
       leading={meta.leading}
       description={meta.description}
       onSelect={handleSelect}
@@ -257,6 +266,7 @@ export function DismissButton({
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild>
         <Pressable
+          disabled={actions.starting}
           accessibilityRole="button"
           accessibilityLabel={accessibilityLabel}
           testID={testID}

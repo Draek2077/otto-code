@@ -3194,6 +3194,7 @@ export class Session {
           startedAgentId = await this.createAgentForSuggestedTask({
             parent,
             mode,
+            launch: msg.launch,
             title: task.title,
             prompt: task.prompt,
             ...(task.cwd ? { cwd: task.cwd } : {}),
@@ -3233,9 +3234,8 @@ export class Session {
   /**
    * Create a new agent for a started suggested task, reusing the MCP branch of
    * createAgentCommand (worktree provisioning + workspace resolution baked in).
-   * The new agent inherits the parent agent's brain - provider/model plus its
-   * full config (personality snapshot, mode, features) minus the parent's
-   * title - so a started task reads as a continuation of the suggesting agent.
+   * Source configuration supplies defaults; the task panel can override the
+   * provider/model without carrying incompatible adapter settings across.
    *
    * Only `subagent` links the new agent to the parent (bound child in the
    * Subagents track, archive-cascades). `new_chat` and `worktree` are `detached`
@@ -3249,12 +3249,29 @@ export class Session {
     title: string;
     prompt: string;
     cwd?: string;
+    launch?: { provider: string; model: string };
   }): Promise<string> {
     const { parent, mode } = params;
     const detached = mode !== "subagent";
     const passthroughConfig: Partial<AgentSessionConfig> = { ...parent.config };
     // The parent's title would win over the task title in buildMcpSessionConfig.
     delete passthroughConfig.title;
+    const provider = params.launch?.provider ?? parent.provider;
+    const model = params.launch?.model ?? parent.config.model;
+    if (provider !== parent.provider || model !== parent.config.model) {
+      delete passthroughConfig.model;
+      delete passthroughConfig.thinkingOptionId;
+    }
+    if (provider !== parent.provider) {
+      // Mode ids and adapter options belong to the source provider. Resolve
+      // the destination's defaults through the normal create-chat pipeline.
+      delete passthroughConfig.modeId;
+      delete passthroughConfig.featureValues;
+      delete passthroughConfig.providerOptions;
+      delete passthroughConfig.extra;
+      delete passthroughConfig.approvalPolicy;
+      delete passthroughConfig.sandboxMode;
+    }
     const result = await createAgentCommand(
       {
         agentManager: this.agentManager,
@@ -3277,7 +3294,7 @@ export class Session {
       },
       {
         kind: "mcp",
-        provider: formatProviderModel(parent.provider, parent.config.model),
+        provider: formatProviderModel(provider, model),
         config: passthroughConfig,
         title: params.title,
         initialPrompt: params.prompt,
@@ -11381,6 +11398,19 @@ export class Session {
               return payloadEntry;
             }),
             error: null,
+          },
+        },
+        source,
+      );
+      // Live task events alone cannot hydrate a refreshed client. Read after
+      // the awaited timeline load so this reconciliation includes any task
+      // changes during loading; an empty list also clears stale reconnect state.
+      this.emitForSource(
+        {
+          type: "suggested_tasks_changed",
+          payload: {
+            parentAgentId: msg.agentId,
+            tasks: this.agentManager.currentSuggestedTasksFor(msg.agentId),
           },
         },
         source,

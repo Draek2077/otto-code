@@ -69,6 +69,8 @@ export const TasksSuggestedStartRequestMessageSchema = z.object({
   parentAgentId: z.string(),
   taskIds: z.array(z.string()),
   mode: TasksSuggestedStartModeSchema,
+  // Omitted by older clients, which retain the source chat's configuration.
+  launch: z.object({ provider: z.string(), model: z.string() }).optional(),
   requestId: z.string(),
 });
 

@@ -8,12 +8,14 @@ import {
   COMPOSER_TRACK_FLY_OUT_DURATION_MS,
 } from "@/constants/animation";
 import type { TasksSuggestedStartMode } from "@otto-code/protocol/messages";
-import { CompactSuggestedTasksCard } from "./compact-card";
+import { SuggestedTaskLaunchCard } from "./launch-card";
 import type { SuggestedTaskRow } from "./select";
 import { ALL_MODES, BULK_MODES } from "./start-controls";
 import type { SuggestedTaskActions } from "./use-suggested-task-actions";
 
 export interface SuggestedTasksOverlayProps {
+  serverId: string;
+  parentAgentId: string;
   rows: SuggestedTaskRow[];
   actions: SuggestedTaskActions;
 }
@@ -41,6 +43,8 @@ const flyOut = FadeOutDown.duration(COMPOSER_TRACK_FLY_OUT_DURATION_MS);
 // The queue uses the same collapsible form on every device (see compact-card.tsx)
 // so the user can keep it visible without letting it take over the transcript.
 export function SuggestedTasksOverlay({
+  serverId,
+  parentAgentId,
   rows,
   actions,
 }: SuggestedTasksOverlayProps): ReactElement | null {
@@ -74,7 +78,9 @@ export function SuggestedTasksOverlay({
       style={styles.card}
       testID="suggested-tasks-overlay"
     >
-      <CompactSuggestedTasksCard
+      <SuggestedTaskLaunchCard
+        serverId={serverId}
+        parentAgentId={parentAgentId}
         rows={rows}
         actions={actions}
         defaultMode={defaultMode}

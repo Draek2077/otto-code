@@ -10,9 +10,15 @@ export interface UseSuggestedTaskActionsInput {
 }
 
 export interface SuggestedTaskActions {
+  starting?: boolean;
+  canStartNewChat?: boolean;
   // One id starts a single chip; the whole pending queue starts them all,
   // applying the same mode to each (one agent/chat each - no combining).
-  startTasks: (taskIds: readonly string[], mode: TasksSuggestedStartMode) => Promise<void>;
+  startTasks: (
+    taskIds: readonly string[],
+    mode: TasksSuggestedStartMode,
+    launch?: { provider: string; model: string },
+  ) => Promise<boolean | void>;
   dismissTasks: (taskIds: readonly string[]) => void;
 }
 
@@ -43,9 +49,13 @@ export function useSuggestedTaskActions(input: UseSuggestedTaskActionsInput): Su
   const toast = useToast();
 
   const startTasks = useCallback(
-    async (taskIds: readonly string[], mode: TasksSuggestedStartMode): Promise<void> => {
+    async (
+      taskIds: readonly string[],
+      mode: TasksSuggestedStartMode,
+      launch?: { provider: string; model: string },
+    ): Promise<boolean> => {
       if (taskIds.length === 0) {
-        return;
+        return true;
       }
       try {
         if (!client) {
@@ -55,17 +65,20 @@ export function useSuggestedTaskActions(input: UseSuggestedTaskActionsInput): Su
           parentAgentId,
           taskIds,
           mode,
+          launch,
         );
         if (failed > 0) {
           toast.error(`${failed} ${pluralize(failed, "task")} could not start`);
-          return;
+          return false;
         }
         const message = startSuccessMessage(succeeded, mode);
         if (message) {
           toast.show(message, { variant: "success" });
         }
+        return true;
       } catch (error) {
         toast.error(toErrorMessage(error));
+        return false;
       }
     },
     [client, parentAgentId, toast],

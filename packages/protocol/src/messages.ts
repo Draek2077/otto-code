@@ -5262,6 +5262,7 @@ export const ServerInfoStatusPayloadSchema = z
         retainedTranscripts: z.boolean().optional(),
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         suggestedTasks: z.boolean().optional(),
+        suggestedTaskModelSelection: z.boolean().optional(),
         // COMPAT(steerQueue): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         // Daemon owns a per-agent queue of steering messages, accepts
         // `delivery: "queue"` on send, reports `queuedMessages` on the agent

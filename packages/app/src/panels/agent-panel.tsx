@@ -1513,7 +1513,12 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           first; the ambient checklist sits under it. */}
       <ChatTopOverlayStack>
         {hasSuggestedTasks ? (
-          <SuggestedTasksOverlay rows={suggestedTaskRows} actions={suggestedTaskActions} />
+          <SuggestedTasksOverlay
+            serverId={serverId}
+            parentAgentId={agentId}
+            rows={suggestedTaskRows}
+            actions={suggestedTaskActions}
+          />
         ) : null}
         {pinnedTaskList.item ? (
           <PinnedTaskListOverlay

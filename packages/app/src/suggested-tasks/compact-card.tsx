@@ -1,5 +1,14 @@
-import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import {
+  FlatList,
+  Pressable,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type ListRenderItemInfo,
+} from "react-native";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { isWeb } from "@/constants/platform";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, ChevronRight, Lightbulb } from "@/components/icons/material-icons";
 import type { Theme } from "@/styles/theme";
@@ -21,8 +30,10 @@ const COMPACT_LIST_MAX_HEIGHT = 260;
 
 const EXPANDED_STATE = { expanded: true } as const;
 const COLLAPSED_STATE = { expanded: false } as const;
+const taskKey = (row: SuggestedTaskRow) => row.taskId;
 
 export interface CompactSuggestedTasksCardProps {
+  modelControl?: ReactNode;
   rows: SuggestedTaskRow[];
   actions: SuggestedTaskActions;
   defaultMode: TasksSuggestedStartMode;
@@ -43,6 +54,7 @@ export interface CompactSuggestedTasksCardProps {
  * and its own start button, since "start all" of one thing is just "start it".
  */
 export function CompactSuggestedTasksCard({
+  modelControl,
   rows,
   actions,
   defaultMode,
@@ -51,6 +63,23 @@ export function CompactSuggestedTasksCard({
   bulkSecondaryModes,
 }: CompactSuggestedTasksCardProps): ReactElement {
   const [expanded, setExpanded] = useState(false);
+  const [compact, setCompact] = useState(true);
+  const handleHeaderLayout = useCallback((event: LayoutChangeEvent) => {
+    setCompact(event.nativeEvent.layout.width < 440);
+  }, []);
+  const scrollRef = useRef<FlatList<SuggestedTaskRow>>(null);
+  const scrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: isWeb && expanded });
+  const renderTask = useCallback(
+    ({ item }: ListRenderItemInfo<SuggestedTaskRow>) => (
+      <CompactSuggestedTaskItem
+        row={item}
+        actions={actions}
+        defaultMode={defaultMode}
+        secondaryModes={rowSecondaryModes}
+      />
+    ),
+    [actions, defaultMode, rowSecondaryModes],
+  );
   const allTaskIds = useMemo(() => rows.map((row) => row.taskId), [rows]);
   const toggle = useCallback(() => {
     setExpanded((previous) => !previous);
@@ -65,14 +94,14 @@ export function CompactSuggestedTasksCard({
 
   return (
     <>
-      <View style={styles.row}>
+      <View style={[styles.row, compact && styles.rowCompact]} onLayout={handleHeaderLayout}>
         <Pressable
           accessibilityRole="button"
           accessibilityState={expanded ? EXPANDED_STATE : COLLAPSED_STATE}
           accessibilityLabel={summary}
           testID="suggested-tasks-compact-toggle"
           onPress={toggle}
-          style={styles.toggle}
+          style={[styles.toggle, compact && styles.toggleCompact]}
         >
           {expanded ? (
             <ThemedChevronDown size="md" uniProps={foregroundMutedColorMapping} />
@@ -84,47 +113,55 @@ export function CompactSuggestedTasksCard({
             {summary}
           </Text>
         </Pressable>
-        <SplitStartButton
-          primaryMode={isBulk ? bulkPrimaryMode : defaultMode}
-          secondaryModes={isBulk ? bulkSecondaryModes : rowSecondaryModes}
-          primaryLabel={isBulk ? "Start all" : MODE_META[defaultMode].primaryLabel}
-          accessibilityLabel={
-            isBulk ? "Start all suggested tasks" : `Start suggested task: ${summary}`
-          }
-          testIdBase={
-            isBulk
-              ? "suggested-tasks-overlay-start-all"
-              : `suggested-tasks-overlay-start-${singleRow?.taskId ?? "none"}`
-          }
-          taskIds={allTaskIds}
-          actions={actions}
-          showDismiss={!isBulk}
-        />
-        <DismissButton
-          taskIds={allTaskIds}
-          actions={actions}
-          accessibilityLabel={isBulk ? "Dismiss all suggested tasks" : "Dismiss suggested task"}
-          tooltip={isBulk ? "Dismiss all" : "Dismiss"}
-          testID="suggested-tasks-overlay-dismiss-all"
-        />
+        <View style={[styles.controls, compact && styles.controlsCompact]}>
+          <View style={styles.modelControl} testID="suggested-task-model-picker">
+            {modelControl}
+          </View>
+          <SplitStartButton
+            primaryMode={isBulk ? bulkPrimaryMode : defaultMode}
+            secondaryModes={isBulk ? bulkSecondaryModes : rowSecondaryModes}
+            primaryLabel={isBulk ? "Start all" : MODE_META[defaultMode].primaryLabel}
+            accessibilityLabel={
+              isBulk ? "Start all suggested tasks" : `Start suggested task: ${summary}`
+            }
+            testIdBase={
+              isBulk
+                ? "suggested-tasks-overlay-start-all"
+                : `suggested-tasks-overlay-start-${singleRow?.taskId ?? "none"}`
+            }
+            taskIds={allTaskIds}
+            actions={actions}
+            showDismiss={!isBulk}
+          />
+        </View>
+        <View style={styles.dismiss}>
+          <DismissButton
+            taskIds={allTaskIds}
+            actions={actions}
+            accessibilityLabel={isBulk ? "Dismiss all suggested tasks" : "Dismiss suggested task"}
+            tooltip={isBulk ? "Dismiss all" : "Dismiss"}
+            testID="suggested-tasks-overlay-dismiss-all"
+          />
+        </View>
       </View>
       {expanded ? (
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled
-        >
-          {rows.map((row) => (
-            <CompactSuggestedTaskItem
-              key={row.taskId}
-              row={row}
-              actions={actions}
-              defaultMode={defaultMode}
-              secondaryModes={rowSecondaryModes}
-            />
-          ))}
-        </ScrollView>
+        <View style={styles.listFrame}>
+          <FlatList
+            ref={scrollRef}
+            data={rows}
+            keyExtractor={taskKey}
+            renderItem={renderTask}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            onLayout={scrollbar.onLayout}
+            onScroll={scrollbar.onScroll}
+            onContentSizeChange={scrollbar.onContentSizeChange}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={!isWeb}
+            nestedScrollEnabled
+          />
+          {scrollbar.overlay}
+        </View>
       ) : null}
     </>
   );
@@ -137,9 +174,7 @@ interface CompactSuggestedTaskItemProps {
   secondaryModes: readonly TasksSuggestedStartMode[];
 }
 
-// Stacked rather than side-by-side: at phone width a title, a two-line summary
-// and a split button on one line leaves the text about eighty pixels, which
-// truncates every suggestion into uselessness. The button drops below instead.
+// Keep the action beside the wrapping title; the summary owns the full row below.
 function CompactSuggestedTaskItem({
   row,
   actions,
@@ -149,13 +184,8 @@ function CompactSuggestedTaskItem({
   const taskIds = useMemo(() => [row.taskId], [row.taskId]);
   return (
     <View style={styles.task} testID={`suggested-tasks-overlay-row-${row.taskId}`}>
-      <Text style={styles.taskTitle} numberOfLines={2}>
-        {row.title}
-      </Text>
-      <Text style={styles.taskTldr} numberOfLines={3}>
-        {row.tldr}
-      </Text>
-      <View style={styles.taskActions}>
+      <View style={styles.taskHeading}>
+        <Text style={styles.taskTitle}>{row.title}</Text>
         <SplitStartButton
           primaryMode={defaultMode}
           secondaryModes={secondaryModes}
@@ -167,11 +197,31 @@ function CompactSuggestedTaskItem({
           showDismiss
         />
       </View>
+      <Text style={styles.taskTldr}>{row.tldr}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
+  controls: {
+    flexDirection: "row",
+    flexBasis: 216,
+    marginRight: theme.iconSize.md + theme.spacing[2] + theme.spacing[2],
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    maxWidth: "100%",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  controlsCompact: { flexBasis: "auto", width: "100%", marginRight: 0 },
+  rowCompact: { flexDirection: "column", alignItems: "stretch" },
+  toggleCompact: {
+    paddingRight: theme.iconSize.md + theme.spacing[2] + theme.spacing[2],
+  },
+  dismiss: { position: "absolute", right: theme.spacing[2], top: theme.spacing[2] },
+  // The model name never participates in the row's intrinsic width or wrap gate.
+  modelControl: { flexBasis: 108, flexGrow: 1, flexShrink: 1, minWidth: 0, maxWidth: 180 },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -182,7 +232,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
   },
   toggle: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    maxWidth: "100%",
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
@@ -196,13 +248,14 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: "600",
     color: theme.colors.foreground,
   },
-  list: {
+  listFrame: {
     maxHeight: COMPACT_LIST_MAX_HEIGHT,
     // Same wash as the collapsed row, so the card reads as one tinted object.
     backgroundColor: theme.colors.statusInfoSurface,
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
   },
+  list: { maxHeight: COMPACT_LIST_MAX_HEIGHT },
   listContent: {
     paddingVertical: theme.spacing[1],
   },
@@ -212,6 +265,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   taskTitle: {
+    flex: 1,
+    minWidth: 0,
     fontSize: theme.fontSize.sm,
     fontWeight: "600",
     color: theme.colors.foreground,
@@ -221,9 +276,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     lineHeight: theme.fontSize.xs * 1.4,
   },
-  taskActions: {
+  taskHeading: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    paddingTop: theme.spacing[1],
+    alignItems: "flex-start",
+    gap: theme.spacing[2],
   },
 }));
