@@ -101,10 +101,14 @@ async function selectFileView(page: Page, view: "Preview" | "Source"): Promise<v
   await expect(option).toHaveAttribute("aria-selected", "true");
 }
 
-async function selectMainFilePreview(page: Page, filename: string): Promise<void> {
+async function selectMainFileTab(page: Page, filename: string): Promise<void> {
   const mainFileTab = page.getByTestId(`workspace-tab-file_${filename}`).first();
   await expect(mainFileTab).toBeVisible();
   await mainFileTab.click();
+}
+
+async function selectMainFilePreview(page: Page, filename: string): Promise<void> {
+  await selectMainFileTab(page, filename);
   const preview = page.getByTestId("file-view-mode-preview");
   await expect(preview).toBeVisible();
   await preview.click();
@@ -166,7 +170,7 @@ test.describe("CodeMirror workspace file editing", () => {
 
       await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
       await expect(page.getByTestId("message-input-root")).toBeVisible();
-      await selectMainFilePreview(page, "package-lock.json");
+      await selectMainFileTab(page, "package-lock.json");
       await expectReadonlySourcePreview(page);
     } finally {
       await session.cleanup();
@@ -198,7 +202,7 @@ test.describe("CodeMirror workspace file editing", () => {
 
       await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
       await expect(page.getByTestId("message-input-root")).toBeVisible();
-      await selectMainFilePreview(page, "plain.txt");
+      await selectMainFileTab(page, "plain.txt");
       await expectReadonlySourcePreview(page);
       await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(1);
     } finally {
@@ -232,7 +236,7 @@ test.describe("CodeMirror workspace file editing", () => {
 
       await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
       await expect(page.getByTestId("message-input-root")).toBeVisible();
-      await selectMainFilePreview(page, "too-large.txt");
+      await selectMainFileTab(page, "too-large.txt");
       await expect(page.getByTestId("file-source-too-large")).toBeVisible();
       await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(0);
       await expect(page.getByTestId("file-source-editor")).toHaveCount(0);
