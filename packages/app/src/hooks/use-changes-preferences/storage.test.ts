@@ -33,7 +33,7 @@ describe("loadChangesPreferencesFromStorage", () => {
       wrapLines: true,
       hideWhitespace: false,
       pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
-      inlineDiff: false,
+      inlineDiff: true,
       commitsCollapsed: true,
       commitType: "none",
     });
@@ -60,7 +60,7 @@ describe("loadChangesPreferencesFromStorage", () => {
       hideWhitespace: true,
       wrapLines: false,
       pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
-      inlineDiff: false,
+      inlineDiff: true,
       commitsCollapsed: true,
       commitType: "none",
     });
@@ -140,8 +140,8 @@ describe("changes preferences commitType", () => {
 });
 
 describe("changes preferences inlineDiff", () => {
-  it("keeps inline diff disabled by default", () => {
-    expect(DEFAULT_CHANGES_PREFERENCES.inlineDiff).toBe(false);
+  it("opens Changes with inline diff by default", () => {
+    expect(DEFAULT_CHANGES_PREFERENCES.inlineDiff).toBe(true);
   });
 
   it("round-trips the inline diff preference", async () => {

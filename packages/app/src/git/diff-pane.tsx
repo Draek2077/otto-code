@@ -427,6 +427,10 @@ export function DiffModeMenu({
 
 type ChangesPresentation = "combined" | "tree" | "diff";
 
+function defaultChangesPresentation(inlineDiff: boolean): ChangesPresentation {
+  return inlineDiff ? "combined" : "tree";
+}
+
 interface ChangesToolbarRefreshAction {
   isRefreshing: boolean;
   onRefresh: () => void;
@@ -1671,7 +1675,7 @@ export function ChangesSurface({
   workspaceId,
   cwd,
   enabled,
-  presentation = "combined",
+  presentation: suppliedPresentation,
   modeScope,
   defaultPaneId,
   focusPath,
@@ -1685,6 +1689,7 @@ export function ChangesSurface({
 }: ChangesSurfaceProps) {
   const { settings: appSettings } = useAppSettings();
   const { preferences, updatePreferences } = useChangesPreferences();
+  const presentation = suppliedPresentation ?? defaultChangesPresentation(preferences.inlineDiff);
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
   const canUseSplitLayout = isWeb && !isMobile;

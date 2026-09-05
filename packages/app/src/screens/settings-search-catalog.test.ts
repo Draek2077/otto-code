@@ -73,7 +73,7 @@ function readInventoryRows() {
 
 describe("Settings search catalog", () => {
   it("assigns every entry a unique id and a real settings scope", () => {
-    expect(SETTINGS_SEARCH_ITEMS).toHaveLength(432);
+    expect(SETTINGS_SEARCH_ITEMS).toHaveLength(433);
     expect(new Set(SETTINGS_SEARCH_ITEMS.map((item) => item.id)).size).toBe(
       SETTINGS_SEARCH_ITEMS.length,
     );

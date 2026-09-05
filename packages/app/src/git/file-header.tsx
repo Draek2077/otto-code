@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useFileHeaderInteraction } from "@/git/file-header-interaction";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
+import { usePaneSurface, type PaneSurface } from "@/panels/pane-context";
 
 export interface FileHeaderProps {
   file: ParsedDiffFile;
@@ -105,9 +106,11 @@ function fileHeaderPressFeedbackStyle(showsBodyState: boolean) {
   return showsBodyState ? styles.documentPressFeedback : workspaceTreeRowStyles.active;
 }
 
-function fileHeaderContainerStyle(showsBodyState: boolean) {
+function fileHeaderSurfaceStyle(showsBodyState: boolean, surface: PaneSurface) {
   if (!showsBodyState) return null;
-  return styles.documentContainer;
+  return surface === "explorer"
+    ? styles.documentContainerExplorer
+    : styles.documentContainerWorkspace;
 }
 
 function fileHeaderNameStyle(showsBodyState: boolean, isHovered: boolean) {
@@ -193,6 +196,7 @@ export const FileHeader = memo(function FileHeader({
   testID,
   ...actions
 }: FileHeaderProps) {
+  const surface = usePaneSurface();
   const hover = useFileHeaderHover(interactive);
   const dragSourceRef = useWorkspaceFileDragSource({
     enabled: interactive,
@@ -298,7 +302,11 @@ export const FileHeader = memo(function FileHeader({
   }
   return (
     <View
-      style={[styles.container, fileHeaderContainerStyle(showsBodyState)]}
+      style={[
+        styles.container,
+        showsBodyState && styles.documentContainer,
+        fileHeaderSurfaceStyle(showsBodyState, surface),
+      ]}
       onLayout={interaction.onLayout}
       onPointerEnter={hover.handlePointerEnter}
       onPointerLeave={hover.handlePointerLeave}
@@ -330,9 +338,14 @@ const styles = StyleSheet.create((theme) => ({
   container: { width: "100%", overflow: "hidden", userSelect: "none" },
   documentContainer: {
     height: 30,
-    backgroundColor: theme.colors.surface0,
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.borderAccent,
+  },
+  documentContainerWorkspace: {
+    backgroundColor: theme.colors.surfaceWorkspace,
+  },
+  documentContainerExplorer: {
+    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   header: {
     flexDirection: "row",

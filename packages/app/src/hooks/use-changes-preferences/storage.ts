@@ -59,7 +59,7 @@ export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
   wrapLines: false,
   hideWhitespace: false,
   pinnedToolbarItems: DEFAULT_PINNED_CHANGES_TOOLBAR_ITEMS,
-  inlineDiff: false,
+  inlineDiff: true,
   commitsCollapsed: true,
   commitType: NO_COMMIT_TYPE,
 };

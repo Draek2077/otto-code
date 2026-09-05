@@ -4,8 +4,8 @@
 
 ## Summary
 
-- **Total indexed entries:** 432
-- **App surface:** 182
+- **Total indexed entries:** 433
+- **App surface:** 183
 - **Host surface:** 250
 - **Persistence scopes:** App, Desktop, Host, and Project. Surface and persistence scope are intentionally separate because some Host pages contain device-local settings.
 - **Dynamic entries:** A single row documents an unbounded runtime collection, such as one row per installed language server or team member. Finite catalogs and keyboard commands are enumerated individually.
@@ -17,7 +17,7 @@
   - [Appearance (17)](#app-appearance)
   - [Chat (24)](#app-chat)
   - [Diagnostics (7)](#app-diagnostics)
-  - [Editor (11)](#app-editor)
+  - [Editor (12)](#app-editor)
   - [General (15)](#app-general)
   - [Integrations (18)](#app-integrations)
   - [Layout (7)](#app-layout)
@@ -209,11 +209,12 @@
 
 #### Diff review
 
-| Setting                 | What it does                                                                      | Scope | Kind       | Choices / actions       | Default   | Audience  | Conditions                         | Persistence                       | Source                                                                                                        |
-| ----------------------- | --------------------------------------------------------------------------------- | ----- | ---------- | ----------------------- | --------- | --------- | ---------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Compact replacements    | Chooses how structural replacement spans are presented.                           | App   | Preference | New token; Before/after | New token | Developer | Structural diff capability         | structuralReplacementPresentation | [diff-presentation-section.tsx:88](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L88) |
-| Formatting-only changes | Shows whitespace-only changes in a neutral diff color; off hides them.            | App   | Preference | On; Off                 | On        | Developer | Developer mode                     | formattingDiffHighlights          | [diff-presentation-section.tsx:74](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L74) |
-| Review view             | Chooses the regular line diff or the structural/syntax-aware diff when available. | App   | Preference | Line; Structural        | Line      | Developer | Capability-gated structural option | diff presentation preference      | [diff-presentation-section.tsx:58](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L58) |
+| Setting                 | What it does                                                                      | Scope | Kind       | Choices / actions       | Default     | Audience  | Conditions                         | Persistence                       | Source                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------- | ----- | ---------- | ----------------------- | ----------- | --------- | ---------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Compact replacements    | Chooses how structural replacement spans are presented.                           | App   | Preference | New token; Before/after | New token   | Developer | Structural diff capability         | structuralReplacementPresentation | [diff-presentation-section.tsx:112](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L112) |
+| Default Changes view    | Opens Changes with inline file diffs or a file tree.                              | App   | Preference | Inline diff; File tree  | Inline diff | Developer | Developer mode                     | inlineDiff                        | [diff-presentation-section.tsx:85](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L85)   |
+| Formatting-only changes | Shows whitespace-only changes in a neutral diff color; off hides them.            | App   | Preference | On; Off                 | On          | Developer | Developer mode                     | formattingDiffHighlights          | [diff-presentation-section.tsx:98](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L98)   |
+| Review view             | Chooses the regular line diff or the structural/syntax-aware diff when available. | App   | Preference | Line; Structural        | Line        | Developer | Capability-gated structural option | diff presentation preference      | [diff-presentation-section.tsx:68](../../packages/app/src/screens/settings/diff-presentation-section.tsx#L68)   |
 
 ### App / General
 

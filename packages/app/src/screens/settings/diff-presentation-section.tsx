@@ -16,6 +16,13 @@ import { SettingsSection } from "./settings-section";
 export function DiffPresentationSection() {
   const { preferences, updatePreferences } = useChangesPreferences();
   const { settings, updateSettings } = useAppSettings();
+  const changesViewOptions = useMemo<SegmentedControlOption<"inline" | "tree">[]>(
+    () => [
+      { value: "inline", label: "Inline diff" },
+      { value: "tree", label: "File tree" },
+    ],
+    [],
+  );
   const presentationOptions = useMemo(
     () => [
       { value: "line", label: "Line" },
@@ -38,6 +45,10 @@ export function DiffPresentationSection() {
         void updatePreferences({ presentation });
       }
     },
+    [updatePreferences],
+  );
+  const handleChangesViewChange = useCallback(
+    (value: "inline" | "tree") => void updatePreferences({ inlineDiff: value === "inline" }),
     [updatePreferences],
   );
   const handleFormattingDiffHighlightsChange = useCallback(
@@ -67,6 +78,21 @@ export function DiffPresentationSection() {
             onValueChange={handlePresentationChange}
             options={presentationOptions}
             testID="settings-diff-presentation"
+          />
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Default Changes view</Text>
+            <Text style={settingsStyles.rowHint}>
+              Open Changes with inline file diffs or a file tree.
+            </Text>
+          </View>
+          <SegmentedControl
+            size="sm"
+            value={preferences.inlineDiff ? "inline" : "tree"}
+            onValueChange={handleChangesViewChange}
+            options={changesViewOptions}
+            testID="settings-changes-default-view"
           />
         </View>
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
