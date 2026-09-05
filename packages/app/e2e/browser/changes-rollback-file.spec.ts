@@ -17,6 +17,8 @@ const cleanupTasks: CleanupTask[] = [];
 
 const ALPHA_BEFORE = "export const alpha = 1;\n";
 const ALPHA_AFTER = "export const alpha = 2;\n";
+const BETA_BEFORE = "export const beta = 1;\n";
+const BETA_AFTER = "export const beta = 2;\n";
 
 test.afterEach(async () => {
   for (const task of cleanupTasks.splice(0)) {
@@ -34,6 +36,24 @@ async function seedDirtyAlphaWorkspace(repoPrefix: string) {
   // Dirty the tracked file out of band, then force the daemon to recompute its
   // snapshot so the write is authoritative before UI assertions.
   await writeFile(path.join(workspace.repoPath, "src/alpha.ts"), ALPHA_AFTER);
+  await workspace.client.checkoutRefresh(workspace.repoPath);
+  return workspace;
+}
+
+async function seedDirtyAlphaAndBetaWorkspace(repoPrefix: string) {
+  const workspace = await seedWorkspace({
+    repoPrefix,
+    repo: {
+      files: [
+        { path: "src/alpha.ts", content: ALPHA_BEFORE },
+        { path: "src/beta.ts", content: BETA_BEFORE },
+      ],
+    },
+  });
+  cleanupTasks.push({ run: () => workspace.cleanup() });
+
+  await writeFile(path.join(workspace.repoPath, "src/alpha.ts"), ALPHA_AFTER);
+  await writeFile(path.join(workspace.repoPath, "src/beta.ts"), BETA_AFTER);
   await workspace.client.checkoutRefresh(workspace.repoPath);
   return workspace;
 }
@@ -99,4 +119,45 @@ test("cancelling the rollback confirm keeps the change", async ({ page }) => {
   // The Changes view stages selected files, so the porcelain index column
   // varies; the point is that the edit survives the cancel (still a change).
   expect(gitOutput(workspace.repoPath, ["status", "--porcelain"])).toContain("src/alpha.ts");
+});
+
+test("Changes checkboxes choose the files included in the bulk rollback", async ({ page }) => {
+  const workspace = await seedDirtyAlphaAndBetaWorkspace("changes-rollback-selected-");
+  await openWorkspaceChanges(page, {
+    workspaceId: workspace.workspaceId,
+    expectFileName: "alpha.ts",
+  });
+  await expect(fileRowContaining(page, "beta.ts")).toBeVisible();
+
+  const alphaCheckbox = page.getByTestId("changes-selection-src/alpha.ts");
+  const betaCheckbox = page.getByTestId("changes-selection-src/beta.ts");
+  await expect(alphaCheckbox).toHaveAttribute("aria-checked", "true");
+  await expect(betaCheckbox).toHaveAttribute("aria-checked", "true");
+
+  // Deselecting beta changes the bulk action count. Selecting it again restores
+  // the two-file rollback action, which is offered from any changed-file row.
+  await betaCheckbox.click();
+  await expect(betaCheckbox).toHaveAttribute("aria-checked", "false");
+  await fileRowContaining(page, "alpha.ts")
+    .locator('[data-testid$="-toggle"]')
+    .click({ button: "right" });
+  await expect(page.getByTestId("changes-context-menu-rollback-selected")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await betaCheckbox.click();
+  await expect(betaCheckbox).toHaveAttribute("aria-checked", "true");
+  await fileRowContaining(page, "beta.ts")
+    .locator('[data-testid$="-toggle"]')
+    .click({ button: "right" });
+  const rollbackSelected = page.getByTestId("changes-context-menu-rollback-selected");
+  await expect(rollbackSelected).toBeVisible();
+  await expect(rollbackSelected).toContainText("Rollback 2 files");
+  await rollbackSelected.click();
+
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toContainText("Roll back 2 files?");
+  await page.getByTestId("confirm-dialog-confirm").click();
+  await expect(fileRowContaining(page, "alpha.ts")).toHaveCount(0, { timeout: 30_000 });
+  await expect(fileRowContaining(page, "beta.ts")).toHaveCount(0);
+  expect(gitOutput(workspace.repoPath, ["status", "--porcelain"])).toBe("");
 });

@@ -116,6 +116,7 @@ function StructuralDiffFile({
     [file.path, onFileLayout],
   );
   const working = documentProps.mode.kind === "working" ? documentProps.mode : null;
+  const selectionProps = resolveWorkingSelectionProps(working, file.path);
   let body = null;
   if (!isCollapsed) {
     if (file.status === "binary" || file.status === "too_large") {
@@ -162,11 +163,22 @@ function StructuralDiffFile({
         onDownload={working?.onDownload}
         onDuplicate={working?.onDuplicate}
         onRevert={working?.onRevert}
+        {...selectionProps}
         testID={`diff-file-${fileIndex}`}
       />
       {body}
     </View>
   );
+}
+
+function resolveWorkingSelectionProps(
+  working: Extract<DiffDocumentProps["mode"], { kind: "working" }> | null,
+  path: string,
+) {
+  return {
+    selectionControl: working?.renderSelectionControl?.(path),
+    contextMenuAfter: working?.contextMenuAfter,
+  };
 }
 
 const styles = StyleSheet.create((theme) => ({

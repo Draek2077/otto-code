@@ -1,4 +1,4 @@
-import { memo, type ReactElement, useCallback, useMemo, useState } from "react";
+import { memo, type ReactElement, type ReactNode, useCallback, useMemo, useState } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useWorkspaceFileDragSource } from "@/attachments/use-workspace-file-drag-source";
@@ -44,6 +44,8 @@ export interface FileHeaderProps {
   onDownload?: (path: string) => void;
   onDuplicate?: (path: string) => void;
   onRevert?: (path: string, oldPath?: string) => void;
+  selectionControl?: ReactNode;
+  contextMenuAfter?: ReactNode;
   onHeaderHeightChange?: (path: string, height: number) => void;
   testID?: string;
 }
@@ -135,6 +137,7 @@ function FileHeaderMenu({
   onDownload,
   onDuplicate,
   onRevert,
+  contextMenuAfter,
   testID,
 }: FileHeaderProps) {
   const openFile = useCallback(() => onOpenFile?.(file.path), [file.path, onOpenFile]);
@@ -166,6 +169,7 @@ function FileHeaderMenu({
       onAddToChat={onAddToChat ? addToChat : undefined}
       onDuplicate={!file.isDeleted && onDuplicate ? duplicate : undefined}
       onRevert={onRevert ? revert : undefined}
+      afterActions={contextMenuAfter}
       testIDPrefix={testID}
     />
   );
@@ -184,6 +188,8 @@ export const FileHeader = memo(function FileHeader({
   onActivate,
   onSelect,
   onHeaderHeightChange,
+  selectionControl,
+  contextMenuAfter,
   testID,
   ...actions
 }: FileHeaderProps) {
@@ -240,6 +246,7 @@ export const FileHeader = memo(function FileHeader({
       testID={testID ? `${testID}-header-content` : undefined}
     >
       <View ref={dragSourceRef} style={showDir ? styles.left : [styles.left, styles.leftTree]}>
+        {selectionControl}
         {showDir ? null : (
           <View style={styles.icon}>
             <MaterialFileIcon fileName={fileName} size={WORKSPACE_TREE_ICON_SIZE} />
@@ -306,7 +313,13 @@ export const FileHeader = memo(function FileHeader({
           </TooltipContent>
         </Tooltip>
         {interactive ? (
-          <FileHeaderMenu file={file} testID={testID} {...actions} bodyVisible={bodyVisible} />
+          <FileHeaderMenu
+            file={file}
+            testID={testID}
+            contextMenuAfter={contextMenuAfter}
+            {...actions}
+            bodyVisible={bodyVisible}
+          />
         ) : null}
       </ContextMenu>
     </View>

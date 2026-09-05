@@ -2,6 +2,7 @@ import type { ParsedDiffFile } from "@otto-code/protocol/messages";
 import type { InlineReviewActions } from "@/review";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
 import type { DiffPresentation } from "@/utils/diff-document";
+import type { ReactNode } from "react";
 
 interface DiffDocumentBaseProps {
   files: ParsedDiffFile[];
@@ -32,6 +33,8 @@ export interface WorkingDiffMode {
   onDownload?: (path: string) => void;
   onDuplicate?: (path: string) => void;
   onRevert?: (path: string, oldPath?: string) => void;
+  renderSelectionControl?: (path: string) => ReactNode;
+  contextMenuAfter?: ReactNode;
 }
 
 export type DiffDocumentProps = DiffDocumentBaseProps &

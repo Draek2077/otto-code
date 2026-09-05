@@ -75,6 +75,7 @@ import { buildForgeSignInCommand, getForgePresentation, type Forge } from "@/git
 import { parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
 import type { ForgeAuthState } from "@otto-code/protocol/messages";
 import { CheckoutGitRollbackFailedError, useCheckoutGitActionsStore } from "@/git/actions-store";
+import { useChangesSelectionAddon } from "@/git/changes-selection-addon";
 import { resolveRunningAgentLabels } from "@/git/running-agent-labels";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
@@ -136,6 +137,13 @@ function computeSelectedDiffStat(
     }),
     { additions: 0, deletions: 0 },
   );
+}
+
+function shouldEnableChangesSelection(
+  diffMode: "uncommitted" | "base",
+  rollbackSupported: boolean,
+): boolean {
+  return diffMode === "uncommitted" && rollbackSupported;
 }
 
 function useDiscardChangesAction({
@@ -1451,6 +1459,8 @@ function ChangedFilesTree({
           onDownload={mode.onDownload}
           onDuplicate={mode.onDuplicate}
           onRevert={mode.onRevert}
+          selectionControl={mode.renderSelectionControl?.(item.file.path)}
+          contextMenuAfter={mode.contextMenuAfter}
           testID={`diff-tree-file-${item.fileIndex}`}
         />
       );
@@ -1889,6 +1899,15 @@ export function ChangesSurface({
     [client, cwd, t, toast],
   );
   const onRevertPath = useDiscardChangesAction({ serverId, cwd, diffMode });
+  const rollbackSelectionSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitRollback === true,
+  );
+  const changesSelection = useChangesSelectionAddon({
+    serverId,
+    cwd,
+    files,
+    enabled: shouldEnableChangesSelection(diffMode, rollbackSelectionSupported),
+  });
   const [localFocusRequest, setLocalFocusRequest] = useState<{
     path: string;
     revision: number;
@@ -1932,6 +1951,10 @@ export function ChangesSurface({
       onDownload: handleDownloadPath,
       onDuplicate: fsEntryDuplicateEnabled ? handleDuplicatePath : undefined,
       onRevert: onRevertPath,
+      renderSelectionControl: changesSelection.enabled
+        ? changesSelection.renderSelectionControl
+        : undefined,
+      contextMenuAfter: changesSelection.bulkRollbackMenuItem,
     }),
     [
       reviewActions,
@@ -1950,6 +1973,9 @@ export function ChangesSurface({
       fileManagerTarget,
       fsEntryDuplicateEnabled,
       onRevertPath,
+      changesSelection.enabled,
+      changesSelection.renderSelectionControl,
+      changesSelection.bulkRollbackMenuItem,
     ],
   );
 

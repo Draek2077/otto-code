@@ -71,6 +71,8 @@ interface FileActionsContextMenuContentProps {
    *  delete rather than with the edit actions. */
   onRevert?: () => void;
   onDelete?: () => void;
+  /** Additive owner-specific actions after the shared destructive group. */
+  afterActions?: ReactNode;
   testIDPrefix?: string;
 }
 
@@ -97,6 +99,7 @@ export function FileActionsContextMenuContent({
   onDuplicate,
   onRevert,
   onDelete,
+  afterActions,
   testIDPrefix,
 }: FileActionsContextMenuContentProps): ReactElement | null {
   const { t } = useTranslation();
@@ -270,6 +273,7 @@ export function FileActionsContextMenuContent({
           <FileActionMenuItem action={action} />
         </Fragment>
       ))}
+      {afterActions}
     </ContextMenuContent>
   );
 }
