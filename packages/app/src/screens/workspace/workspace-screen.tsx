@@ -5209,7 +5209,10 @@ function WorkspaceScreenContent({
   );
   const exitFocusMode = usePanelStore((state) => state.exitFocusMode);
   const desktopSplitContent = useMemo(() => {
-    if (!canRenderDesktopPaneSplits || !workspaceLayout || !persistenceKey) {
+    // SplitContainer is a desktop layout surface. Web remains capable of
+    // mounting it, but compact web must use the mobile tab switcher and keep
+    // the workspace header in the center column.
+    if (!canRenderDesktopPaneSplits || isMobile || !workspaceLayout || !persistenceKey) {
       return null;
     }
     return (
@@ -5256,6 +5259,7 @@ function WorkspaceScreenContent({
     );
   }, [
     canRenderDesktopPaneSplits,
+    isMobile,
     workspaceLayout,
     persistenceKey,
     normalizedServerId,

@@ -1,10 +1,12 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import { View } from "react-native";
 import { Compartment, EditorState } from "@codemirror/state";
 import { Decoration, EditorView, lineNumbers } from "@codemirror/view";
 import { getLanguageForFile } from "@otto-code/highlight";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { EditorVisualTheme } from "../editor/extensions.web";
 import { editorTheme } from "../editor/extensions.web";
+import { LargeFileNotice } from "@/components/large-file-notice";
 import { selectSourcePresentation, type SourcePresentation } from "./presentation";
 import type {
   FileSourceViewHandle,
@@ -45,19 +47,22 @@ export const FileSourceView = forwardRef<FileSourceViewHandle, FileSourceViewPro
       );
     }
     return (
-      <ReadonlyCodeMirror
-        content={content}
-        filename={filename}
-        location={location}
-        navigationRevision={navigationRevision}
-        presentation={presentation}
-        theme={theme}
-        findMatches={findMatches}
-        wrapLines={wrapLines}
-        onScrolledSync={onScrolledSync}
-        onPointerDownSync={onPointerDownSync}
-        ref={ref}
-      />
+      <View style={SOURCE_CONTAINER_STYLE}>
+        <LargeFileNotice visible={presentation === "plain"} />
+        <ReadonlyCodeMirror
+          content={content}
+          filename={filename}
+          location={location}
+          navigationRevision={navigationRevision}
+          presentation={presentation}
+          theme={theme}
+          findMatches={findMatches}
+          wrapLines={wrapLines}
+          onScrolledSync={onScrolledSync}
+          onPointerDownSync={onPointerDownSync}
+          ref={ref}
+        />
+      </View>
     );
   },
 );
@@ -303,6 +308,7 @@ function languageFor(input: {
 }
 
 const HOST_STYLE = { flex: 1, minHeight: 0, overflow: "hidden" } as const;
+const SOURCE_CONTAINER_STYLE = { flex: 1, minHeight: 0 } as const;
 const UNSUPPORTED_STYLE = {
   alignItems: "center",
   display: "flex",

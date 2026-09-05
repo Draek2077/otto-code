@@ -23,6 +23,7 @@ import { seedAppSettings } from "../support/helpers/settings";
 import { getServerId } from "../support/helpers/server-id";
 import { openHomeWithProject } from "../support/helpers/workspace-setup";
 import { selectWorkspaceInSidebar } from "../support/helpers/sidebar";
+import { moneyShot } from "../support/helpers/evidence";
 
 // This spec retains the active checks that are specific to the unified file tab:
 // opening an assistant file link at its referenced line and the live Vim mode
@@ -142,6 +143,7 @@ test.describe("CodeMirror workspace file editing", () => {
       await openWorkspaceFile(page, "package-lock.json");
 
       await expect(page.getByTestId("file-source-editor")).toBeVisible();
+      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(0);
       await expect(editor(page)).toContainText('"package-0"');
       await expect.poll(() => page.locator(".cm-line").count()).toBeLessThan(200);
     } finally {
@@ -165,8 +167,11 @@ test.describe("CodeMirror workspace file editing", () => {
       await openAgentRoute(page, session);
       await openWorkspaceFile(page, "plain.txt");
       await expect(page.getByTestId("file-source-editor")).toBeVisible();
+      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(1);
+      await expect(page.getByTestId("file-source-highlight-disabled")).toBeVisible();
       await expect(editor(page)).toContainText("plain source");
       await expect.poll(() => page.locator(".cm-line").count()).toBeLessThan(200);
+      await moneyShot(page, "plain large source remains readable with highlighting disabled");
 
       await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
       await expect(page.getByTestId("message-input-root")).toBeVisible();
@@ -197,6 +202,7 @@ test.describe("CodeMirror workspace file editing", () => {
       await expect(page.getByTestId("file-source-too-large")).toContainText(
         "This file is too large to display",
       );
+      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(0);
 
       await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
       await expect(page.getByTestId("message-input-root")).toBeVisible();

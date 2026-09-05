@@ -270,6 +270,11 @@ skip inside a spec:
 The default project ignores the `*.local.spec.ts` and `*.real.spec.ts` suffixes, so CI needs no
 credentials.
 
+The workspace pane mounting coverage includes a compact-layout regression case in
+`e2e/browser/workspace-pane-remount.spec.ts`: it saves a split pane on a wide viewport, reloads at
+compact width, verifies the workspace header and menu remain usable, then returns to the wide
+viewport and verifies the saved panes are restored.
+
 **The E2E host starts with an empty personality roster.** A fresh `OTTO_HOME` is seeded with the
 shipped starter team, and every apply-now form surface then auto-binds its role's first available
 personality: the ladder in `useFormRolePersonality` puts a team or personality above the device's

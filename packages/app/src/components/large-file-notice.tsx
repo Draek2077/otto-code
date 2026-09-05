@@ -1,3 +1,4 @@
+import React from "react";
 import { Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -13,7 +14,11 @@ export function LargeFileNotice({ visible }: { visible: boolean }) {
   if (!visible) {
     return null;
   }
-  return <Text style={styles.notice}>{t("panels.file.largeFileHighlightDisabled")}</Text>;
+  return (
+    <Text testID="file-source-highlight-disabled" style={styles.notice}>
+      {t("panels.file.largeFileHighlightDisabled")}
+    </Text>
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({

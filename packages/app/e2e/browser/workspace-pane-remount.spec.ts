@@ -9,12 +9,16 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { clickSettingsBackToWorkspace, openCompactSettings } from "../support/helpers/settings";
 import { openSettings } from "../support/helpers/app";
+import { moneyShot } from "../support/helpers/evidence";
 import {
   clickFirstTerminalTab,
   splitPaneFromCatalogMenu,
   waitForWorkspaceTabsVisible,
 } from "../support/helpers/workspace-tabs";
 import { expectTerminalSurfaceVisible } from "../support/helpers/terminal-perf";
+
+const WIDE_VIEWPORT = { width: 1280, height: 900 };
+const COMPACT_VIEWPORT = { width: 390, height: 844 };
 
 async function captureRenderedNode(locator: Locator) {
   await expect(locator).toBeVisible({ timeout: 30_000 });
@@ -158,6 +162,44 @@ test.describe("Workspace pane mounting", () => {
       await page.goBack();
       await waitForWorkspaceRoute(page, workspaceRoute);
       await expectSameRenderedNode(originalComposer, composer);
+    } finally {
+      await workspace.cleanup();
+    }
+  });
+
+  test("compact workspace keeps its header after reload and restores saved panes", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const workspace = await seedWorkspace({ repoPrefix: "compact-workspace-header-" });
+
+    try {
+      await page.setViewportSize(WIDE_VIEWPORT);
+      await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId));
+      await waitForWorkspaceTabsVisible(page);
+      await splitPaneFromCatalogMenu(page, "right");
+      const visiblePanes = page
+        .locator('[data-testid^="workspace-pane-"]')
+        .filter({ visible: true });
+      await expect(visiblePanes).toHaveCount(2);
+
+      await page.setViewportSize(COMPACT_VIEWPORT);
+      await page.reload();
+      await expect(
+        page.getByTestId("workspace-header-title").filter({ visible: true }),
+      ).toBeVisible();
+      const menuButton = page.getByRole("button", { name: "Open menu", exact: true }).first();
+      await expect(menuButton).toBeVisible();
+      await menuButton.click();
+      await expect(page.getByTestId("sidebar-command-center-search")).toBeVisible();
+      await page.keyboard.press("Escape");
+
+      await page.setViewportSize(WIDE_VIEWPORT);
+      await expect(visiblePanes).toHaveCount(2);
+      await moneyShot(
+        page,
+        "compact reload preserves the workspace header and restores saved panes",
+      );
     } finally {
       await workspace.cleanup();
     }
