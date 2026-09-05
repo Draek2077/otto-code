@@ -214,25 +214,128 @@ upstream file, so resolving that file to THEIRS leaves the module on disk,
 compiling, passing its own tests, and reachable from nothing. Typecheck is
 silent, lint is silent, and UI loss has no compile signal at all.
 
-`scripts/merge-orphan-guard.mjs` snapshots which Otto-only modules have live
-importers, then re-checks after the merge. **The baseline must be captured
-before you merge**; taken afterwards it records the damage as normal.
+`scripts/merge-orphan-guard.mjs` provides two complementary checks: the existing
+Otto-only importer snapshot and a small contract of verified integration owners.
+An import alone cannot prove that a component is mounted. New upstream modules
+also fall outside an Otto-only snapshot. The contract checks cover those gaps
+for the plugin and desktop skill integrations identified in the v0.6.1 audit.
+
+**Capture the importer baseline before merging.** The familiar commands remain:
 
 ```bash
 node scripts/merge-orphan-guard.mjs --baseline --at v0.6.1   # clean tree, before merging
 node scripts/merge-orphan-guard.mjs --check                  # after resolving conflicts
 ```
 
-Every reported module is an Otto feature whose call site left with a THEIRS
-resolution. Re-attach it to upstream's new structure, or record dropping it in
-the ledger table - a wholesale resolution is a decision either way.
+The baseline requires a clean tracked tree. It refuses a baseline which already
+contains the target. A late capture cannot normalize an already broken merge.
+For a historical review, supply the actual premerge ref explicitly; this reads
+Git objects without changing the checkout or incorporating dirty files:
 
-The "Otto-only" set is computed as present in HEAD, absent from the target, and
-absent from the merge base. That last clause is what makes it rename-proof:
-without it every file upstream renamed inside the merge window reads as an Otto
-invention. `explorer-sidebar.tsx` at v0.6.1 is exactly that case, an upstream
-file renamed to `compact-explorer-sidebar.tsx`, whose edits git carries across
-the rename and which needs no guarding.
+```bash
+node scripts/merge-orphan-guard.mjs --baseline \
+  --before b6735559a98d0143d0127814696f35a091860845 \
+  --at 20d7efc46a316f5a274b9943a5c43b0322269825 \
+  --baseline-file .tmp/paseo-061-importers.json
+node scripts/merge-orphan-guard.mjs --check --after HEAD \
+  --baseline-file .tmp/paseo-061-importers.json
+```
+
+`--check` without `--after` reads resolved tracked worktree files, including
+staged merge resolutions. With `--after` it reads only that commit. The output
+records the actual refs and whether worktree content was included. Missing,
+malformed and older unversioned snapshots fail with an explicit recapture
+instruction; recapture from the original premerge commit, never the candidate.
+
+Importer losses are **review candidates**, not proof that a feature is broken.
+The snapshot still exits nonzero when a previously imported Otto module is
+deleted or loses every recognized production importer. Read the replacement
+path and record a deliberate retirement, or restore the live owner. Test-only
+imports do not preserve a production edge. Unresolved import forms are printed
+separately and are outside that heuristic's guarantee.
+Hand-authored `test-documents/`, fixture directories, declarations and E2E/test
+sources are excluded. Valid string literals containing NUL separators remain
+source; invalid UTF-8 and TypeScript parser errors in production inputs fail.
+
+The Otto-only set is present before the merge, absent from the target and absent
+from their unique merge base. This keeps an existing upstream file renamed in
+the merge window from being classified as an Otto invention. Recognized Git
+renames also carry snapshot module identity into the candidate. Renames below
+Git's similarity threshold and ambiguous copies still need review; this is not
+semantic rename inference.
+
+### Check the verified integration owners
+
+Run this from the repaired candidate. It compares the supplied Git refs without
+checking them out and does not create or overwrite a baseline snapshot:
+
+```bash
+node scripts/merge-orphan-guard.mjs --integrations \
+  --before b6735559a98d0143d0127814696f35a091860845 \
+  --at 20d7efc46a316f5a274b9943a5c43b0322269825 \
+  --after HEAD --json
+node --test scripts/merge-orphan-guard.test.mjs
+```
+
+For the historical negative check, replace `HEAD` with initial merge
+`4b279544f967f58b39df1aaf30bd1e722e8fceb9` or reviewed broken candidate
+`7457ca46ec3f4fe0ae329d9f1bcd945954423525`. The missing mounts and missing guarded
+startup owner are integration violations. An actual unresolved import or parser
+error is an analysis error; the other obligations still receive their results.
+
+`--at v0.6.1` resolves only `refs/upstream-tags/v0.6.1`. A full upstream commit SHA
+or an explicit upstream namespace ref is also accepted. Otto's colliding
+`refs/tags/v0.6.1` is rejected. Before/after refs resolve to full commit SHAs in
+the report. Missing objects, shallow history, ambiguous merge bases and an
+after commit which does not contain both supplied parents fail explicitly.
+
+The contract in `scripts/merge-integration-contracts.mjs` preserves four distinct
+plugin mounts: per-host catalog under SessionProvider, Command Center actions
+under CommandCenterProvider, compact sidebar entries and wide sidebar entries.
+It also preserves the renderer migration/controller edge, daemon startup
+wrapper and disposal calls, and the config-change-to-maintenance handoff.
+Removing one sidebar mount cannot be hidden by retaining the other. The skill
+mount alone cannot satisfy the daemon startup obligations.
+
+The analyzer parses only modules needed for these named owner chains. It follows
+import aliases, explicit named exports through the reviewed plugin barrel,
+local render wrappers, immutable returned
+JSX variables, fragments, createElement and returned map/useMemo expressions.
+Unused helpers, type-only imports and constant-false branches do not satisfy a
+mount. Provider ancestry is checked in the returned composition. Conditional
+paths are marked as conditional; no runtime condition is assumed true. Unknown
+render calls containing a required integration, unresolved required imports and
+unsupported export forms produce analysis errors. Arbitrary higher-order
+components, dynamic module loading, package export resolution and a universal
+React call graph are outside its scope. A materially different owner needs a
+reviewed contract update and behavioral evidence, not a broad allowlist.
+
+Path comparison uses the ordered rebrand rules without modifying source files.
+Git-detected module renames can relocate an owner; normalized path collisions
+and ambiguous platform resolution are errors. Binding checks do not prove
+runtime host identity, persistence ordering, lifecycle cardinality, teardown or
+callback behavior. Keep the plugin browser and real desktop skill-upgrade smoke
+tests. The release barrier's focused daemon tests remain its timing proof.
+
+Output separates passes, required-edge violations and analysis errors. Exit
+codes are 0 for a completed clear check, 1 for required-edge/import-survival
+violations, and 2 for invalid input or incomplete required analysis. JSON includes
+the contract version/hash, full refs, owner/target edges and source locations.
+The explicit exclusions are printed with reasons: Hub's permanently disabled
+runtime boundary, deferred plugin theme application, the superseded desktop
+editor module and the plugin child-process entry. They do not waive plugin
+catalog/command/sidebar obligations. Hub's compiled graph check in step 3 remains
+mandatory; a static integration pass does not certify that graph.
+
+CI runs the focused guard tests and the explicit integration command in the
+lint job after installing dependencies, with full checkout history. It does not
+turn every historical orphan candidate into a permanent CI failure. **At the
+next upstream merge, review the contract against that target, capture the actual
+premerge ref, and deliberately update the lint job's `--before`/`--at` pins and
+the corresponding `scripts/ci-workflow.test.mjs` expectations in the same change.**
+Do not silently keep a postmerge baseline or infer the target from moving
+upstream/main. Feature owners supply relocation/exclusion evidence; the guard
+maintainer updates the bounded predicates and their synthetic regression cases.
 
 ## Script gotchas (learned the hard way)
 

@@ -177,6 +177,7 @@ export class WorkflowService {
     string,
     {
       run: Run;
+      ready: Promise<boolean>;
       resume: () => Promise<Run>;
       resolve: (run: Run) => void;
     }
@@ -495,12 +496,20 @@ export class WorkflowService {
     const settled = new Promise<Run>((resolve) => {
       resolveSettled = resolve;
     });
-    const persist = this.persistInitialAndEmit(paused);
+    const ready = this.persistInitialAndEmit(paused).then(
+      () => true,
+      (error) => {
+        this.pendingStartConfirmations.delete(paused.id);
+        resolveSettled(this.rejectUnpersistedLaunch(paused, error, input.existing));
+        return false;
+      },
+    );
     this.pendingStartConfirmations.set(paused.id, {
       run: paused,
+      ready,
       resolve: resolveSettled,
       resume: async () => {
-        await persist;
+        if (!(await ready)) return settled;
         const resumed: Run = {
           ...input.run,
           status: "pending",
@@ -510,10 +519,6 @@ export class WorkflowService {
         this.onActivity?.("runsOrchestrated");
         return this.settleExecution(resumed.id, resumed, Promise.resolve().then(input.start));
       },
-    });
-    void persist.catch((error) => {
-      this.pendingStartConfirmations.delete(paused.id);
-      resolveSettled(this.rejectUnpersistedLaunch(paused, error, input.existing));
     });
     return { run: structuredClone(paused), settled };
   }
@@ -919,22 +924,28 @@ export class WorkflowService {
         error: "Workflow start was rejected.",
         updatedAt: this.clock(),
       };
-      void this.persistAndEmit(canceled);
-      pending.resolve(canceled);
+      // The initial paused snapshot may still be writing when the owner rejects.
+      // Preserve write/emission order and await the cancellation save attempt.
+      void pending.ready.then(async (ready) => {
+        if (!ready) return undefined;
+        await this.persistAndEmit(canceled);
+        pending.resolve(canceled);
+        return undefined;
+      });
       this.cancelAiConductor(input.runId);
       return true;
     }
     void pending
       .resume()
       .then(pending.resolve)
-      .catch((error) => {
+      .catch(async (error) => {
         const failed: Run = {
           ...run,
           status: "failed",
           error: error instanceof Error ? error.message : String(error),
           updatedAt: this.clock(),
         };
-        void this.persistAndEmit(failed);
+        await this.persistAndEmit(failed);
         pending.resolve(failed);
       });
     return true;

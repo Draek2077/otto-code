@@ -23,6 +23,7 @@ import { seedAppSettings } from "../support/helpers/settings";
 import { getServerId } from "../support/helpers/server-id";
 import { openHomeWithProject } from "../support/helpers/workspace-setup";
 import { selectWorkspaceInSidebar } from "../support/helpers/sidebar";
+import { moneyShot } from "../support/helpers/evidence";
 
 // This spec retains the active checks that are specific to the unified file tab:
 // opening an assistant file link at its referenced line and the live Vim mode
@@ -100,6 +101,26 @@ async function selectFileView(page: Page, view: "Preview" | "Source"): Promise<v
   await expect(option).toHaveAttribute("aria-selected", "true");
 }
 
+async function selectMainFileTab(page: Page, filename: string): Promise<void> {
+  const mainFileTab = page.getByTestId(`workspace-tab-file_${filename}`).first();
+  await expect(mainFileTab).toBeVisible();
+  await mainFileTab.click();
+}
+
+async function selectMainFilePreview(page: Page, filename: string): Promise<void> {
+  await selectMainFileTab(page, filename);
+  const preview = page.getByTestId("file-view-mode-preview");
+  await expect(preview).toBeVisible();
+  await preview.click();
+}
+
+async function expectReadonlySourcePreview(page: Page) {
+  const source = page.getByTestId("file-source-editor");
+  await expect(source).toBeVisible();
+  await expect(source.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
+  return source;
+}
+
 function watchRequestsTo(page: Page, origin: string): string[] {
   const requests: string[] = [];
   page.on("request", (request) => {
@@ -141,9 +162,16 @@ test.describe("CodeMirror workspace file editing", () => {
       await openAgentRoute(page, session);
       await openWorkspaceFile(page, "package-lock.json");
 
-      await expect(page.getByTestId("file-source-editor")).toBeVisible();
-      await expect(editor(page)).toContainText('"package-0"');
-      await expect.poll(() => page.locator(".cm-line").count()).toBeLessThan(200);
+      await selectMainFilePreview(page, "package-lock.json");
+      const source = await expectReadonlySourcePreview(page);
+      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(0);
+      await expect(source).toContainText('"package-0"');
+      await expect.poll(() => source.locator(".cm-line").count()).toBeLessThan(200);
+
+      await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
+      await expect(page.getByTestId("message-input-root")).toBeVisible();
+      await selectMainFileTab(page, "package-lock.json");
+      await expectReadonlySourcePreview(page);
     } finally {
       await session.cleanup();
     }
@@ -164,14 +192,19 @@ test.describe("CodeMirror workspace file editing", () => {
     try {
       await openAgentRoute(page, session);
       await openWorkspaceFile(page, "plain.txt");
-      await expect(page.getByTestId("file-source-editor")).toBeVisible();
-      await expect(editor(page)).toContainText("plain source");
-      await expect.poll(() => page.locator(".cm-line").count()).toBeLessThan(200);
+      await selectMainFilePreview(page, "plain.txt");
+      const source = await expectReadonlySourcePreview(page);
+      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(1);
+      await expect(page.getByTestId("file-source-highlight-disabled")).toBeVisible();
+      await expect(source).toContainText("plain source");
+      await expect.poll(() => source.locator(".cm-line").count()).toBeLessThan(200);
+      await moneyShot(page, "plain large source remains readable with highlighting disabled");
 
       await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
       await expect(page.getByTestId("message-input-root")).toBeVisible();
-      await page.getByTestId("workspace-tab-file_plain.txt").first().click();
-      await expect(page.getByTestId("file-source-editor")).toBeVisible();
+      await selectMainFileTab(page, "plain.txt");
+      await expectReadonlySourcePreview(page);
+      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(1);
     } finally {
       await session.cleanup();
     }
@@ -187,21 +220,61 @@ test.describe("CodeMirror workspace file editing", () => {
     });
     await writeFile(
       path.join(session.cwd, "too-large.txt"),
-      Buffer.alloc(51 * 1024 * 1024),
+      Buffer.alloc(51 * 1024 * 1024, "x"),
       "utf8",
     );
 
     try {
       await openAgentRoute(page, session);
       await openWorkspaceFile(page, "too-large.txt");
+      await selectMainFilePreview(page, "too-large.txt");
       await expect(page.getByTestId("file-source-too-large")).toContainText(
         "This file is too large to display",
       );
+      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(0);
+      await expect(page.getByTestId("file-source-editor")).toHaveCount(0);
 
       await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
       await expect(page.getByTestId("message-input-root")).toBeVisible();
-      await page.getByTestId("workspace-tab-file_too-large.txt").first().click();
+      await selectMainFileTab(page, "too-large.txt");
       await expect(page.getByTestId("file-source-too-large")).toBeVisible();
+      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(0);
+      await expect(page.getByTestId("file-source-editor")).toHaveCount(0);
+    } finally {
+      await session.cleanup();
+    }
+  });
+
+  test("opens a fresh Explorer file in Main and preserves an explicitly moved file in Explorer", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const session = await seedMockAgentWorkspace({
+      repoPrefix: "file-placement-",
+      title: "File placement",
+      initialPrompt: "Generate a title and a git branch name. Return JSON only.",
+    });
+    await writeFile(path.join(session.cwd, "target.ts"), "export const target = true;\n", "utf8");
+
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await openAgentRoute(page, session);
+      await openWorkspaceFile(page, "target.ts");
+
+      const mainFileTab = page.getByTestId("workspace-tab-file_target.ts").first();
+      await expect(mainFileTab).toBeVisible();
+      await mainFileTab.click({ button: "right" });
+      const mainTabMenu = page.getByTestId("workspace-tab-context-file_target.ts");
+      await expect(mainTabMenu).toBeVisible();
+      await page.getByTestId("workspace-tab-context-file_target.ts-move-to-explorer").click();
+
+      await expect(page.getByTestId("workspace-tab-file_target.ts")).toHaveCount(0);
+      await expect(page.getByTestId("explorer-sidebar-tab-file_target.ts")).toBeVisible();
+
+      await openFileExplorer(page);
+      await openFileFromExplorer(page, "target.ts");
+      await expect(page.getByTestId("explorer-sidebar-tab-file_target.ts")).toBeVisible();
+      await expect(page.getByTestId("workspace-tab-file_target.ts")).toHaveCount(0);
     } finally {
       await session.cleanup();
     }

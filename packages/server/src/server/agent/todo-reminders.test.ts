@@ -125,6 +125,11 @@ describe("append + strip round-trip", () => {
     const withNudge = appendTodoNudgeToPrompt(original, STALE as never) as string;
     expect(stripTrailingTodoNudge(withNudge)).toBe(original);
   });
+
+  test("does not backtrack through a large non-nudge message", () => {
+    const text = `${"<system-reminder>You have x unfinished item(s) on your task list.".repeat(10_000)}</system-reminder>`;
+    expect(stripTrailingTodoNudge(text)).toBe(text);
+  });
 });
 
 describe("buildTodoReconcileMessage", () => {

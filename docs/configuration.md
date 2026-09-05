@@ -55,6 +55,26 @@ This file is also where _server-side capability data_ lives that shapes agents a
 custom provider definitions (extending `openai-compatible` or ACP), agent personalities and teams
 (snapshotted onto each agent at spawn — later edits don't mutate running agents).
 
+### Desktop skill selection upgrade
+
+The daemon persists the selected bundled skills at `agents.skills.selection`. An explicit
+daemon selection wins over the legacy Electron `userData/skill-selection.json`, including
+`{ "mode": "custom", "skills": [] }`. The desktop imports the legacy selection only into
+the running local managed daemon identified by desktop IPC and the matching connected
+server ID. Other connected hosts do not receive the local preference.
+
+A managed daemon with no persisted selection defers automatic skill maintenance until a
+selection has been persisted. The daemon remains reachable, and explicit skill operations
+can proceed. The desktop resolves an absent legacy file as `all`; a successful import
+removes an existing legacy file only after the daemon acknowledges persistence. Read,
+connection, import, and removal failures retain retryability with bounded backoff.
+
+Closing the renderer before selection resolution leaves automatic maintenance deferred
+until a later connection or an explicit skill selection save. Daemon shutdown disposes
+the pending wait. This also covers attaching to an already running daemon with this
+barrier; an older process may already have installed excluded skills before the desktop
+connects. Migration does not undo those earlier installations.
+
 ## Layer 3 — Per-workspace files (repo-authored)
 
 | File                   | Role                                                                                                                                                                                                 |

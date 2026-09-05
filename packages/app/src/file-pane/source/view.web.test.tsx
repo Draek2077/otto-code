@@ -80,9 +80,19 @@ describe("FileSourceView (web)", () => {
     const { host } = mount({ content });
 
     expect(host.querySelector('[data-testid="file-source-editor"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="file-source-highlight-disabled"]')).toBeNull();
     expect(host.querySelector(".cm-content")?.textContent).toContain("export const value");
     expect(host.querySelector(".cm-content")?.textContent?.length).toBeLessThan(content.length);
     expect(host.querySelectorAll(".cm-line").length).toBeLessThan(content.split("\n").length);
+  });
+
+  it("explains the plain source presentation without changing its content", () => {
+    const { host } = mount({ content: "plain source", size: 10 * 1024 * 1024 + 1 });
+
+    expect(host.querySelectorAll('[data-testid="file-source-highlight-disabled"]')).toHaveLength(1);
+    expect(host.querySelector('[data-testid="file-source-editor"]')).not.toBeNull();
+    expect(host.querySelector(".cm-content")?.textContent).toBe("plain source");
+    expect(host.querySelector('[data-testid="file-source-too-large"]')).toBeNull();
   });
 
   it("keeps the requested line range visible as a source-level highlight", () => {
@@ -149,5 +159,6 @@ describe("FileSourceView (web)", () => {
     expect(host.querySelector('[data-testid="file-source-too-large"]')?.textContent).toBe(
       "Too large",
     );
+    expect(host.querySelector('[data-testid="file-source-highlight-disabled"]')).toBeNull();
   });
 });

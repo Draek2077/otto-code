@@ -1,4 +1,4 @@
-import { statSync, watch as fsWatch, writeFileSync } from "node:fs";
+import { realpathSync, statSync, watch as fsWatch, writeFileSync } from "node:fs";
 import type { FSWatcher } from "node:fs";
 import { basename, dirname } from "node:path";
 import type { Logger } from "pino";
@@ -349,7 +349,11 @@ export class ArtifactWatcher {
     }
     try {
       const artifactIds = new Set([artifactId]);
-      const watcher = fsWatch(artifactsDir, { persistent: false }, (_event, filename) => {
+      // Windows libuv can abort on an 8.3 watch root (libuv/libuv#5152).
+      // Keep store/event identity unchanged while opening the native long path.
+      const watchRoot =
+        process.platform === "win32" ? realpathSync.native(artifactsDir) : artifactsDir;
+      const watcher = fsWatch(watchRoot, { persistent: false }, (_event, filename) => {
         this.dispatchDirectoryEvent(artifactsDir, artifactIds, filename);
       });
       watcher.on("error", (error) => {

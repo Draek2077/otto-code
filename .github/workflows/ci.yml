@@ -19,6 +19,9 @@ env:
   # CI does not use the CUDA execution provider, and the onnxruntime-node
   # postinstall download from NuGet is large enough to make npm ci flaky.
   ONNXRUNTIME_NODE_INSTALL: skip
+  # Keep wrapper and platform binaries on a published, verified release.
+  # Floating 1.18.29 failed ETARGET during run 33924801496's provider setup.
+  OTTO_CI_OPENCODE_VERSION: "1.18.28"
 
 # Every job runs on every push. There used to be a `changes` job
 # (dorny/paths-filter) gating the rest, and the skip was wired as a per-step
@@ -71,6 +74,8 @@ jobs:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -86,6 +91,18 @@ jobs:
 
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
+
+      - name: Test merge integration guard
+        run: node --test scripts/merge-orphan-guard.test.mjs
+
+      # Advance these pre-merge/upstream pins together when adopting upstream;
+      # docs/upstream-merges.md describes the contract review and baseline.
+      - name: Check merge integration entry points
+        run: >-
+          node scripts/merge-orphan-guard.mjs --integrations
+          --before b6735559a98d0143d0127814696f35a091860845
+          --at 20d7efc46a316f5a274b9943a5c43b0322269825
+          --after HEAD --json
 
       - name: Lint lockfile
         run: npx --yes lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https --validate-integrity
@@ -160,7 +177,9 @@ jobs:
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
       - name: Install agent CLIs for provider tests
-        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code opencode-ai
+        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code opencode-ai@${{ env.OTTO_CI_OPENCODE_VERSION }}
+      - name: Report OpenCode version
+        run: opencode --version
 
       - name: Build server dependencies
         run: npm run build:server-deps
@@ -444,7 +463,10 @@ jobs:
 
       - name: Install agent CLIs for provider tests
         if: ${{ !matrix.desktop }}
-        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
+        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai@${{ env.OTTO_CI_OPENCODE_VERSION }}
+      - name: Report OpenCode version
+        if: ${{ !matrix.desktop }}
+        run: opencode --version
 
       - name: Run Playwright E2E tests
         if: ${{ !matrix.desktop }}
@@ -521,7 +543,9 @@ jobs:
         run: npm run build:server
 
       - name: Install agent CLIs for provider tests
-        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
+        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai@${{ env.OTTO_CI_OPENCODE_VERSION }}
+      - name: Report OpenCode version
+        run: opencode --version
 
       - name: Run CLI tests
         run: npm run test --workspace=@otto-code/cli

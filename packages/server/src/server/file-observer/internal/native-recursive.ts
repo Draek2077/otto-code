@@ -1,5 +1,5 @@
 import { type Dirent, type FSWatcher, watch } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { BackendDiagnostics, ObservationBackend, ObservationHost } from "./contracts.js";
 import type { ObserverPaths } from "./paths.js";
@@ -65,7 +65,12 @@ class NativeRecursiveBackend implements ObservationBackend {
   ) {}
 
   async start(): Promise<void> {
-    this.watchRoot();
+    // libuv compares the watched root with long event paths on Windows. An
+    // 8.3 root can abort Node before JavaScript receives an error (#5152).
+    // Canonicalize only the native handle; events retain the caller's root.
+    const watchRoot =
+      process.platform === "win32" ? await realpath(this.host.root) : this.host.root;
+    this.watchRoot(watchRoot);
     this.fullAuditRequested = true;
     this.auditQueued = true;
     await this.enqueueAudit(false, this.generation);
@@ -113,8 +118,8 @@ class NativeRecursiveBackend implements ObservationBackend {
     this.entries.clear();
   }
 
-  private watchRoot(): void {
-    const watcher = watch(this.host.root, { recursive: true }, (eventType, filename) => {
+  private watchRoot(watchRoot: string): void {
+    const watcher = watch(watchRoot, { recursive: true }, (eventType, filename) => {
       if (!this.host.isActive()) return;
       this.host.metrics.nativeEventCount += 1;
       if (!filename) {

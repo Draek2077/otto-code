@@ -263,6 +263,101 @@ describe("WorkflowService", () => {
     expect(cancelConductor).toHaveBeenCalledOnce();
   });
 
+  test("rejection waits for paused and canceled persistence before settling", async () => {
+    const aiRun = await service.createAiRun({ title: "Reject while saving" });
+    const cancelConductor = vi.fn(async () => {});
+    await service.bindAiRunConductor({
+      runId: aiRun.id,
+      conductorAgentId: "agent_planner",
+      cancelConductor,
+    });
+    let releasePaused!: () => void;
+    let releaseCanceled!: () => void;
+    const pausedGate = new Promise<void>((resolve) => {
+      releasePaused = resolve;
+    });
+    const canceledGate = new Promise<void>((resolve) => {
+      releaseCanceled = resolve;
+    });
+    const save = store.save.bind(store);
+    const saves: string[] = [];
+    vi.spyOn(store, "save").mockImplementation(async (run) => {
+      saves.push(run.status);
+      if (run.status === "paused") await pausedGate;
+      if (run.status === "canceled") await canceledGate;
+      await save(run);
+    });
+    const emissions: string[] = [];
+    service.onChange((run) => emissions.push(run.status));
+    const spawn = vi.fn(fakeSpawnPort().spawn);
+    const execution = service.startWorkflow({
+      runId: aiRun.id,
+      conductorAgentId: "agent_planner",
+      plan: simplePlan,
+      spawnPort: fakeSpawnPort({ spawn }),
+      requireStartConfirmation: true,
+    });
+    let settled = false;
+    void execution.settled.then(() => {
+      settled = true;
+      return undefined;
+    });
+    try {
+      expect(service.respondToStartConfirmation({ runId: aiRun.id, approved: false })).toBe(true);
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      expect(saves).toEqual(["paused"]);
+      expect(spawn).not.toHaveBeenCalled();
+      expect(cancelConductor).toHaveBeenCalledOnce();
+
+      releasePaused();
+      await waitFor(() => saves.includes("canceled"));
+      expect(settled).toBe(false);
+      expect(emissions).toEqual(["paused"]);
+      releaseCanceled();
+      await expect(execution.settled).resolves.toMatchObject({ status: "canceled" });
+      expect(emissions).toEqual(["paused", "canceled"]);
+      expect(service.getRun(aiRun.id)?.status).toBe("canceled");
+      expect((await store.get(aiRun.id))?.status).toBe("canceled");
+      expect(spawn).not.toHaveBeenCalled();
+    } finally {
+      releasePaused();
+      releaseCanceled();
+      await execution.settled;
+    }
+  });
+
+  test.each([true, false])(
+    "initial confirmation save failure remains final after response %s",
+    async (approved) => {
+      const aiRun = await service.createAiRun({ title: "Cannot save confirmation" });
+      let rejectSave!: (error: Error) => void;
+      const pendingSave = new Promise<void>((_resolve, reject) => {
+        rejectSave = reject;
+      });
+      const save = vi.spyOn(store, "save").mockImplementation(() => pendingSave);
+      const changes = vi.fn();
+      service.onChange(changes);
+      const spawn = vi.fn(fakeSpawnPort().spawn);
+      const execution = service.startWorkflow({
+        runId: aiRun.id,
+        plan: simplePlan,
+        spawnPort: fakeSpawnPort({ spawn }),
+        requireStartConfirmation: true,
+      });
+      expect(service.respondToStartConfirmation({ runId: aiRun.id, approved })).toBe(true);
+      rejectSave(new Error("disk full"));
+      const final = await execution.settled;
+      expect(final.status).toBe("failed");
+      expect(final.error).toContain("initial snapshot could not be persisted");
+      expect(save).toHaveBeenCalledOnce();
+      expect(spawn).not.toHaveBeenCalled();
+      expect(changes).not.toHaveBeenCalled();
+      expect(service.getRun(aiRun.id)?.status).toBe("pending");
+      expect(service.respondToStartConfirmation({ runId: aiRun.id, approved: true })).toBe(false);
+    },
+  );
+
   test("refuses a declared initial shape that already exceeds the hard cap", () => {
     const capped = new WorkflowService({
       store,

@@ -99,4 +99,9 @@ describe("spoken-input envelope", () => {
     const clean = unwrapSpokenInput(wrapSpokenInput("hello"));
     expect(unwrapSpokenInput(clean)).toBe(clean);
   });
+
+  test("does not backtrack through a large malformed envelope", () => {
+    const text = `<spoken-input>${"</spoken-input><instruction>".repeat(10_000)}`;
+    expect(unwrapSpokenInput(text)).toBe(text);
+  });
 });

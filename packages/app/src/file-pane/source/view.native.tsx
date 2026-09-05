@@ -11,6 +11,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { highlightCode, type HighlightToken } from "@otto-code/highlight";
 import { findHighlightStyles } from "@/components/find-highlight-styles";
 import { splitTokensForMatches } from "@/components/file-preview-find";
+import { LargeFileNotice } from "@/components/large-file-notice";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import { selectSourcePresentation } from "./presentation";
@@ -51,16 +52,19 @@ export const FileSourceView = forwardRef<FileSourceViewHandle, FileSourceViewPro
       );
     }
     return (
-      <VirtualizedSource
-        content={content}
-        filename={filename}
-        location={location}
-        navigationRevision={navigationRevision}
-        presentation={presentation}
-        findMatches={findMatches}
-        onScrolledSync={onScrolledSync}
-        ref={ref}
-      />
+      <View style={styles.container}>
+        <LargeFileNotice visible={presentation === "plain"} />
+        <VirtualizedSource
+          content={content}
+          filename={filename}
+          location={location}
+          navigationRevision={navigationRevision}
+          presentation={presentation}
+          findMatches={findMatches}
+          onScrolledSync={onScrolledSync}
+          ref={ref}
+        />
+      </View>
     );
   },
 );
@@ -257,6 +261,7 @@ function isLineHighlighted(line: number, location: WorkspaceFileLocation): boole
 const renderSourceLine: ListRenderItem<SourceLine> = ({ item }) => <SourceLineView line={item} />;
 
 const styles = StyleSheet.create((theme) => ({
+  container: { flex: 1, minHeight: 0 },
   unsupported: {
     flex: 1,
     alignItems: "center",

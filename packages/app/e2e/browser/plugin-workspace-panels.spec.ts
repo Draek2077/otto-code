@@ -140,6 +140,7 @@ test.describe("plugin workspace panels and Command Center", () => {
         serverId: secondaryDaemon.serverId,
         workspaceId: secondary.workspaceId,
       });
+      let agentId = "";
 
       await test.step("workspace context opens the real wide panel bridge", async () => {
         await switchWorkspaceViaSidebar({
@@ -205,6 +206,7 @@ test.describe("plugin workspace panels and Command Center", () => {
           model: "ten-second-stream",
           modeId: "load-test",
         });
+        agentId = agent.id;
         await page.goto(buildAgentRoute(primary.workspaceId, agent.id));
         await page.waitForURL(isSettledWorkspaceUrl, { timeout: 60_000 });
         await page.setViewportSize(COMPACT_VIEWPORT);
@@ -219,6 +221,29 @@ test.describe("plugin workspace panels and Command Center", () => {
         await expect(page.getByText(`Host ${getServerId()}`, { exact: true })).toBeVisible();
         await expect(page.getByText("Layout compact", { exact: true })).toBeVisible();
         await capture(page, testInfo, "plugin-agent-panel-compact");
+      });
+
+      await test.step("disabling the active plugin cleans up its catalog contributions", async () => {
+        await primaryClient.disablePlugin(PLUGIN_ID);
+        await expect(
+          page.getByText("This plugin panel is unavailable.", { exact: true }),
+        ).toBeVisible({
+          timeout: 30_000,
+        });
+        await capture(page, testInfo, "plugin-panel-disabled");
+        await openCompactSidebar(page);
+        await expectCommandUnavailable(page, "Plugin global action");
+      });
+
+      await test.step("re-enabling the plugin refreshes its catalog contributions", async () => {
+        await primaryClient.enablePlugin(PLUGIN_ID);
+        await expectCommandAvailable(page, "Plugin global action");
+        await expect(page.getByText(`Agent bridge ${agentId}`)).toBeVisible({
+          timeout: 30_000,
+        });
+        await closeMobileAgentSidebar(page);
+        await expectMobileAgentSidebarHidden(page);
+        await capture(page, testInfo, "plugin-panel-reenabled");
       });
 
       await test.step("removing the active plugin renders the panel unavailable", async () => {

@@ -9,6 +9,7 @@ import { ArtifactService } from "./artifact-service.js";
 import { ArtifactStore } from "./artifact-store.js";
 import { ArtifactStoreRegistry } from "./artifact-store-registry.js";
 import { ArtifactStoreResolver } from "./artifact-store-resolver.js";
+import { windowsShortPath } from "../../test-utils/windows-short-path.js";
 
 describe("ArtifactService storage routing", () => {
   let root: string;
@@ -72,6 +73,26 @@ describe("ArtifactService storage routing", () => {
     service.stop();
     await rm(root, { recursive: true, force: true });
   });
+
+  it.skipIf(process.platform !== "win32")(
+    "generates an artifact beneath a Windows short-path project",
+    async (context) => {
+      const shortRoot = windowsShortPath(root);
+      if (!shortRoot.includes("~")) context.skip("Fixture volume does not expose 8.3 names");
+      const project = path.join(shortRoot, "repository-project");
+      const artifact = await service.create({
+        name: "Short path artifact",
+        description: "test",
+        projectId: project,
+        provider: "mock",
+      });
+      expect(artifact.filePath).toBe(
+        path.join(project, ".otto", "artifacts", `${artifact.id}.html`),
+      );
+      await writeFile(artifact.filePath, "<!doctype html><html><body>Short path</body></html>");
+      await expect.poll(async () => (await service.inspect(artifact.id)).status).toBe("ready");
+    },
+  );
 
   it("creates repository and host-owned artifacts in their resolved project stores", async () => {
     const repository = await service.create({

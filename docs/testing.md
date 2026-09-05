@@ -146,6 +146,28 @@ Run it locally with the same command owned by the Ubuntu `desktop-tests` require
 npm run test:e2e:browser-tabs --workspace=@otto-code/desktop
 ```
 
+### Desktop skill selection upgrade regression
+
+After `npm run build:server`, run
+`npm run test:e2e:skill-selection-upgrade --workspace=@otto-code/desktop`.
+The default `attached` case launches a real managed daemon before Electron and checks
+that a partial installation stays partial while a real legacy-file read error prevents
+import. Repairing that file must trigger the mounted migration's retry, durable import,
+source removal, and selected-only maintenance. Set `OTTO_SKILL_UPGRADE_MODE=cold` to
+exercise daemon launch through the normal renderer startup IPC. Both cases reload the
+renderer and verify the persisted selection and daemon identity.
+
+| Behavior                                                                                                                                                   | Covering harness                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Local desktop skill selection survives cold startup, managed-daemon attachment, read failure/retry, and renderer reload without installing excluded skills | `packages/desktop/scripts/skill-selection-upgrade.e2e.mjs` |
+
+The harness isolates OS `HOME`/`USERPROFILE`, Electron user data, daemon home, and
+ephemeral ports under repository `.tmp/agent-02/`. Provider catalogs are disabled through
+persisted configuration. It uses the registered Electron IPC handlers and the real
+WebSocket import path. Logs, a screenshot, and result JSON remain as evidence; successful
+runtime fixtures are removed after owned processes stop, while failed fixtures remain
+for inspection.
+
 ## Test organization
 
 - Collocate tests with implementation: `thing.ts` + `thing.test.ts`
@@ -247,6 +269,15 @@ skip inside a spec:
 
 The default project ignores the `*.local.spec.ts` and `*.real.spec.ts` suffixes, so CI needs no
 credentials.
+
+The workspace pane mounting coverage includes a compact-layout regression case in
+`e2e/browser/workspace-pane-remount.spec.ts`: it saves a split pane on a wide viewport, reloads at
+compact width, verifies the workspace header and menu remain usable, then returns to the wide
+viewport and verifies the saved panes are restored.
+
+The file-editing coverage also verifies Explorer placement in
+`e2e/browser/file-editing.spec.ts`: a fresh ordinary file opens in Main, while an existing file
+that the user moved to Explorer remains there when selected again.
 
 **The E2E host starts with an empty personality roster.** A fresh `OTTO_HOME` is seeded with the
 shipped starter team, and every apply-now form surface then auto-binds its role's first available

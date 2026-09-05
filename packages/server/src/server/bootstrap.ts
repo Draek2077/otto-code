@@ -146,6 +146,7 @@ import { createOttoWorktreeWorkflow } from "./worktree-session.js";
 import { createWorkspaceLabelService } from "./workspace-labels/index.js";
 import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
+import { FixedWindowRateLimiter } from "./request-rate-limiter.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
@@ -210,7 +211,11 @@ import { createAgentStructuredTextGeneration } from "./session/checkout/git-meta
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { ConnectorOAuthBroker, type ConnectorAuthStore } from "./connectors/connector-oauth.js";
 import { setConnectorAuthStore } from "./connectors/connector-auth-store.js";
-import { createOrchestrationSkills } from "./orchestration-skills/index.js";
+import {
+  createStartupOrchestrationSkills,
+  SkillMaintenanceStoppedError,
+} from "./orchestration-skills/startup.js";
+import type { SkillTargets } from "./orchestration-skills/internal/operations.js";
 import {
   DEFAULT_APP_BASE_URL,
   resolveConfigFromPersisted,
@@ -606,6 +611,7 @@ export interface OttoDaemon {
 }
 
 export interface OttoDaemonDependencies {
+  resolveSkillTargets?: () => SkillTargets;
   hubRelationshipRemote?: HubRelationshipRemote;
   hubRelationshipClock?: HubRelationshipClock;
   hubRelationshipRetryPolicy?: HubRelationshipRetryPolicy;
@@ -1111,8 +1117,13 @@ export async function createOttoDaemon(
   };
   setConnectorAuthStore(connectorAuthStore);
   const connectorOAuthBroker = new ConnectorOAuthBroker({ store: connectorAuthStore, logger });
-  const orchestrationSkills = createOrchestrationSkills(daemonConfigStore);
+  const orchestrationSkills = createStartupOrchestrationSkills(daemonConfigStore, {
+    desktopManaged: config.desktopManaged === true,
+    logger,
+    resolveTargets: dependencies.resolveSkillTargets,
+  });
   void orchestrationSkills.autoUpdate().catch((error) => {
+    if (error instanceof SkillMaintenanceStoppedError) return;
     logger.error({ err: error }, "Failed to maintain orchestration skills at startup");
   });
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
@@ -2364,6 +2375,13 @@ export async function createOttoDaemon(
   let agentMcpBaseUrl: string | null = null;
   {
     const agentMcpRoute = "/mcp/agents";
+    // Agent MCP requests construct a fresh tool server and transport. Bound the
+    // work a single network peer can force before it reaches authorization or
+    // session construction, without relying on untrusted forwarded headers.
+    const agentMcpRequestLimiter = new FixedWindowRateLimiter({
+      maxRequests: 120,
+      windowMs: 60_000,
+    });
 
     const createAgentMcpSession = async (callerAgentId?: string) => {
       const agentMcpServer = await createAgentMcpServer(
@@ -2474,6 +2492,13 @@ export async function createOttoDaemon(
     };
 
     const handleAgentMcpRequest: express.RequestHandler = (req, res) => {
+      const peer = req.socket.remoteAddress ?? "unknown";
+      const limit = agentMcpRequestLimiter.take(peer);
+      if (!limit.allowed) {
+        res.setHeader("Retry-After", limit.retryAfterSeconds.toString());
+        res.status(429).json({ error: "Too many Agent MCP requests" });
+        return;
+      }
       void runAgentMcpRequest(req, res);
     };
 
@@ -2829,6 +2854,7 @@ export async function createOttoDaemon(
   };
 
   const stop = async () => {
+    await orchestrationSkills.dispose();
     await pluginRuntime.stopAllPlugins();
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
