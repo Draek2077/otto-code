@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveImmediateSendAction,
   resolveSendButtonIcon,
   resolveSendTooltipLabel,
   resolveSubmitAccessibilityLabel,
@@ -30,6 +31,21 @@ const translations: Record<string, string> = {
 const t = ((key: string) => translations[key] ?? key) as never;
 
 describe("composer input labels", () => {
+  it("resolves immediate queue delivery to the active-turn action", () => {
+    expect(
+      resolveImmediateSendAction({ defaultSendBehavior: "queue", isAgentRunning: false }),
+    ).toBe("send");
+    expect(resolveImmediateSendAction({ defaultSendBehavior: "steer", isAgentRunning: true })).toBe(
+      "steer",
+    );
+    expect(resolveImmediateSendAction({ defaultSendBehavior: "queue", isAgentRunning: true })).toBe(
+      "interrupt",
+    );
+    expect(
+      resolveImmediateSendAction({ defaultSendBehavior: "interrupt", isAgentRunning: true }),
+    ).toBe("interrupt");
+  });
+
   it("resolves submit accessibility labels from translations", () => {
     expect(
       resolveSubmitAccessibilityLabel({

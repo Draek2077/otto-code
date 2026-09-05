@@ -65,6 +65,11 @@ import {
   type MessageInputRef,
 } from "./input/input";
 import { resolveActiveSendBehavior } from "./input/state";
+import {
+  resolveImmediateSendAction,
+  resolveSendTooltipLabel,
+  type ImmediateSendAction,
+} from "./input/labels";
 import type { ImageAttachment, MessagePayload } from "./types";
 import { compactUp, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
@@ -400,6 +405,8 @@ interface RenderQueueTrackArgs {
   editLabel: string;
   sendNowLabel: string;
   sendAllLabel: string;
+  sendAllActionLabel: string;
+  sendAllAction: ImmediateSendAction;
   moveUpLabel: string;
   moveDownLabel: string;
   /** Pluralized "N attachments" for the row's leading count badge. */
@@ -416,6 +423,8 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
     editLabel,
     sendNowLabel,
     sendAllLabel,
+    sendAllActionLabel,
+    sendAllAction,
     moveUpLabel,
     moveDownLabel,
     formatAttachmentCount,
@@ -443,6 +452,8 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
           editLabel={editLabel}
           sendNowLabel={sendNowLabel}
           sendAllLabel={sendAllLabel}
+          sendAllActionLabel={sendAllActionLabel}
+          sendAllAction={sendAllAction}
           moveUpLabel={moveUpLabel}
           moveDownLabel={moveDownLabel}
           formatAttachmentCount={formatAttachmentCount}
@@ -580,6 +591,8 @@ interface QueuedMessageRowProps {
   editLabel: string;
   sendNowLabel: string;
   sendAllLabel: string;
+  sendAllActionLabel: string;
+  sendAllAction: ImmediateSendAction;
   moveUpLabel: string;
   moveDownLabel: string;
   formatAttachmentCount: (count: number) => string;
@@ -596,6 +609,8 @@ function QueuedMessageRow({
   editLabel,
   sendNowLabel,
   sendAllLabel,
+  sendAllActionLabel,
+  sendAllAction,
   moveUpLabel,
   moveDownLabel,
   formatAttachmentCount,
@@ -699,13 +714,13 @@ function QueuedMessageRow({
             <TooltipTrigger
               onPress={onSendAll}
               style={styles.queueActionButton}
-              accessibilityLabel={sendAllLabel}
+              accessibilityLabel={`${sendAllLabel}: ${sendAllActionLabel}`}
               accessibilityRole="button"
             >
-              <ThemedPublish size="sm" uniProps={iconForegroundMapping} />
+              <ThemedPublish size="sm" uniProps={resolveSendAllIconMapping(sendAllAction)} />
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{sendAllLabel}</Text>
+              <Text style={styles.tooltipText}>{sendAllActionLabel}</Text>
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -1297,7 +1312,7 @@ export function Composer({
   const messagePlaceholder = resolveMessagePlaceholder(inputMode, isDesktopLayout, t, placeholder);
   const userInput = value;
   const setUserInput = onChangeText;
-  // Sending is a programmatic replacement, not typing. The replacement path
+  // Sending is a programmatic replacement, not typing.  The replacement path
   // remounts the native/web input so a late change event from the old surface
   // cannot restore a message that has already reached the timeline.
   const replaceUserInput = replaceText ?? setUserInput;
@@ -1589,6 +1604,10 @@ export function Composer({
     appSettings.sendBehavior,
     hasPendingPermission,
   );
+  const sendAllAction = resolveImmediateSendAction({
+    defaultSendBehavior: activeSendBehavior,
+    isAgentRunning,
+  });
   const hasAgent = agentState.status !== null;
 
   const queueMessage = useCallback(
@@ -2106,7 +2125,7 @@ export function Composer({
     const sendable = await messageQueue.listSendable();
     const ids = sendable.map((item) => item.id);
     if (ids.length === 0) return;
-    if (isAgentRunning) {
+    if (sendAllAction === "interrupt") {
       const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
         serverId,
         parentAgentId: agentId,
@@ -2148,9 +2167,9 @@ export function Composer({
     }
   }, [
     agentId,
-    isAgentRunning,
     isCompacting,
     messageQueue,
+    sendAllAction,
     serverId,
     setSelectedAttachments,
     setUserInput,
@@ -2618,6 +2637,14 @@ export function Composer({
         editLabel: t("composer.attachments.editQueuedMessage"),
         sendNowLabel: t("composer.attachments.sendQueuedMessageNow"),
         sendAllLabel: t("composer.attachments.sendAllQueuedMessages"),
+        sendAllActionLabel: resolveSendTooltipLabel({
+          submitButtonAccessibilityLabel: undefined,
+          defaultActionQueues: false,
+          defaultSendBehavior: activeSendBehavior,
+          isAgentRunning,
+          t,
+        }),
+        sendAllAction,
         moveUpLabel: t("composer.attachments.moveQueuedMessageUp"),
         moveDownLabel: t("composer.attachments.moveQueuedMessageDown"),
         formatAttachmentCount: (count: number) =>
@@ -2629,7 +2656,10 @@ export function Composer({
       handleSendAllQueued,
       handleSendQueuedNow,
       isCompacting,
+      activeSendBehavior,
+      isAgentRunning,
       queuedMessages,
+      sendAllAction,
       t,
     ],
   );
@@ -3015,3 +3045,12 @@ const ThemedGithub = withUnistyles(Github);
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const iconAccentForegroundMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
+const iconAccentMapping = (theme: Theme) => ({ color: theme.colors.accent });
+const iconWarningMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
+const iconDestructiveMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+
+function resolveSendAllIconMapping(action: ImmediateSendAction) {
+  if (action === "steer") return iconWarningMapping;
+  if (action === "interrupt") return iconDestructiveMapping;
+  return iconAccentMapping;
+}

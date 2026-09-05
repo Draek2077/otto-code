@@ -1,6 +1,21 @@
 import type { TFunction } from "i18next";
 import type { SendBehavior } from "@/hooks/use-settings/storage";
 
+export type ImmediateSendAction = "send" | "steer" | "interrupt";
+
+/**
+ * Any action that delivers immediately, including a queued-message "Send all",
+ * follows the same active-turn contract as the composer primary button. Queue
+ * is not an immediate delivery behavior, so it resolves to Interrupt here.
+ */
+export function resolveImmediateSendAction(input: {
+  defaultSendBehavior: SendBehavior;
+  isAgentRunning: boolean;
+}): ImmediateSendAction {
+  if (!input.isAgentRunning) return "send";
+  return input.defaultSendBehavior === "steer" ? "steer" : "interrupt";
+}
+
 export function resolveSubmitAccessibilityLabel(input: {
   submitButtonAccessibilityLabel: string | undefined;
   canPressLoadingButton: boolean;
@@ -59,12 +74,8 @@ export function resolveSendTooltipLabel(input: {
 }): string {
   if (input.submitButtonAccessibilityLabel) return input.submitButtonAccessibilityLabel;
   if (input.defaultActionQueues) return input.t("composer.input.queue");
-  if (input.isAgentRunning) {
-    return input.defaultSendBehavior === "steer"
-      ? input.t("composer.input.steer")
-      : input.t("composer.input.interrupt");
-  }
-  return input.t("composer.input.send");
+  const action = resolveImmediateSendAction(input);
+  return input.t(`composer.input.${action}`);
 }
 
 export function resolvePreviewActionQueues(input: {
@@ -107,8 +118,6 @@ export function resolveSendButtonIcon(input: {
   if (input.canPressLoadingButton) return "arrow";
   const actionQueues = resolvePreviewActionQueues(input);
   if (actionQueues) return "return";
-  if (input.isAgentRunning) {
-    return input.defaultSendBehavior === "steer" ? "steer" : "interrupt";
-  }
-  return input.submitIcon;
+  const action = resolveImmediateSendAction(input);
+  return action === "send" ? input.submitIcon : action;
 }
