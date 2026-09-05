@@ -149,6 +149,8 @@ export const fr: TranslationResources = {
       sendAndInterrupt: "Envoyer et interrompre",
       sendMessage: "Envoyer un message",
       queue: "File d'attente",
+      steer: "Guider",
+      interrupt: "Interrompre",
       send: "Envoyer",
       add: "Ajouter du contexte",
       sendAndSteer: "Envoyer et guider",

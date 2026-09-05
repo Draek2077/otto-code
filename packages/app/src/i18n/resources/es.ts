@@ -147,6 +147,8 @@ export const es: TranslationResources = {
       sendAndInterrupt: "Enviar e interrumpir",
       sendMessage: "enviar mensaje",
       queue: "Cola",
+      steer: "Orientar",
+      interrupt: "Interrumpir",
       send: "Enviar",
       add: "Agregar contexto",
       sendAndSteer: "Enviar y orientar",

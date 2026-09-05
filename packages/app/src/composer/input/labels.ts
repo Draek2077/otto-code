@@ -12,9 +12,12 @@ export function resolveSubmitAccessibilityLabel(input: {
   if (input.submitButtonAccessibilityLabel) return input.submitButtonAccessibilityLabel;
   if (input.canPressLoadingButton) return input.t("composer.input.interruptAgent");
   if (input.defaultActionQueues) return input.t("composer.input.queueMessage");
-  // Otto's send-behavior setting is interrupt-or-queue; the queue case is
-  // already answered above by `defaultActionQueues`, so a run in flight here
-  // always means interrupt. (Upstream also offers a `steer` default.)
+  // Queueing, including compaction's forced queue, wins above. Otherwise name
+  // the active-turn action explicitly: Steer is the default and must not read
+  // like an ordinary send or an interrupt.
+  if (input.isAgentRunning && input.defaultSendBehavior === "steer") {
+    return input.t("composer.input.sendAndSteer");
+  }
   if (input.isAgentRunning) return input.t("composer.input.sendAndInterrupt");
   return input.t("composer.input.sendMessage");
 }
@@ -50,12 +53,18 @@ export function resolveVoiceTooltipText(input: {
 export function resolveSendTooltipLabel(input: {
   submitButtonAccessibilityLabel: string | undefined;
   defaultActionQueues: boolean;
+  defaultSendBehavior: SendBehavior;
+  isAgentRunning: boolean;
   t: TFunction;
 }): string {
   if (input.submitButtonAccessibilityLabel) return input.submitButtonAccessibilityLabel;
-  return input.defaultActionQueues
-    ? input.t("composer.input.queue")
-    : input.t("composer.input.send");
+  if (input.defaultActionQueues) return input.t("composer.input.queue");
+  if (input.isAgentRunning) {
+    return input.defaultSendBehavior === "steer"
+      ? input.t("composer.input.steer")
+      : input.t("composer.input.interrupt");
+  }
+  return input.t("composer.input.send");
 }
 
 export function resolvePreviewActionQueues(input: {
@@ -71,7 +80,9 @@ export function resolvePreviewActionQueues(input: {
 
 /**
  * The primary button mirrors the action Enter will take while a turn is live:
- * queue uses the return/Enter glyph; interrupt keeps the send arrow.
+ * queue uses the return/Enter glyph, Steer uses the branch glyph, and both
+ * Send and Interrupt use the up arrow. The distinct `interrupt` result lets
+ * the renderer apply its destructive tint without inventing a second arrow.
  */
 export function resolveSendButtonIcon(input: {
   canPressLoadingButton: boolean;
@@ -79,11 +90,14 @@ export function resolveSendButtonIcon(input: {
   alternateModifierHeld: boolean;
   canUseAlternateAction: boolean;
   isAgentRunning: boolean;
+  defaultSendBehavior: SendBehavior;
   submitIcon: "arrow" | "return";
-}): "arrow" | "return" {
+}): "arrow" | "return" | "steer" | "interrupt" {
   if (input.canPressLoadingButton) return "arrow";
   const actionQueues = resolvePreviewActionQueues(input);
   if (actionQueues) return "return";
-  if (input.isAgentRunning) return "arrow";
+  if (input.isAgentRunning) {
+    return input.defaultSendBehavior === "steer" ? "steer" : "interrupt";
+  }
   return input.submitIcon;
 }

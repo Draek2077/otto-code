@@ -144,6 +144,8 @@ export const en = {
       sendAndInterrupt: "Send and interrupt",
       sendMessage: "Send message",
       queue: "Queue",
+      steer: "Steer",
+      interrupt: "Interrupt",
       send: "Send",
       add: "Add context",
       sendAndSteer: "Send and steer",

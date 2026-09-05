@@ -147,6 +147,8 @@ export const ko: TranslationResources = {
       sendAndInterrupt: "보내고 중단",
       sendMessage: "메시지 보내기",
       queue: "대기열",
+      steer: "지시",
+      interrupt: "중단",
       send: "보내기",
       add: "Add context",
       sendAndSteer: "보내고 지시 추가",

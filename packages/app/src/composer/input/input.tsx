@@ -25,6 +25,7 @@ import { useTranslation } from "react-i18next";
 import { compactUp, type Theme } from "@/styles/theme";
 import {
   ArrowUp,
+  Split,
   Mic,
   MicOff,
   CornerDownLeft,
@@ -412,7 +413,7 @@ function SendButtonContent({
   buttonIconSize,
 }: {
   isSubmitLoading: boolean;
-  submitIcon: "arrow" | "return";
+  submitIcon: "arrow" | "return" | "steer" | "interrupt";
   submitLabel: string | undefined;
   buttonIconSize: IconSizeProp;
 }) {
@@ -424,6 +425,12 @@ function SendButtonContent({
   }
   if (submitIcon === "return") {
     return <ThemedCornerDownLeft size={buttonIconSize} uniProps={iconAccentMapping} />;
+  }
+  if (submitIcon === "steer") {
+    return <ThemedSplit size={buttonIconSize} uniProps={iconWarningMapping} />;
+  }
+  if (submitIcon === "interrupt") {
+    return <ThemedArrowUp size={buttonIconSize} uniProps={iconDestructiveMapping} />;
   }
   return <ThemedArrowUp size={buttonIconSize} uniProps={iconAccentMapping} />;
 }
@@ -902,7 +909,7 @@ function SendButtonTooltip({
   submitAccessibilityLabel: string;
   sendButtonCombinedStyle: React.ComponentProps<typeof TooltipTrigger>["style"];
   isSubmitLoading: boolean;
-  submitIcon: "arrow" | "return";
+  submitIcon: "arrow" | "return" | "steer" | "interrupt";
   submitLabel: string | undefined;
   submitButtonTestID: string | undefined;
   buttonIconSize: IconSizeProp;
@@ -2029,6 +2036,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const sendTooltipLabel = resolveSendTooltipLabel({
       submitButtonAccessibilityLabel,
       defaultActionQueues: previewActionQueues,
+      defaultSendBehavior,
+      isAgentRunning,
       t,
     });
     const actionSubmitIcon = resolveSendButtonIcon({
@@ -2037,6 +2046,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       alternateModifierHeld: isAlternateSendModifierHeld,
       canUseAlternateAction: alternateActionAvailable,
       isAgentRunning,
+      defaultSendBehavior,
       submitIcon,
     });
 
@@ -2493,6 +2503,7 @@ const ThemedMic = withUnistyles(Mic);
 const ThemedMicOff = withUnistyles(MicOff);
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedCornerDownLeft = withUnistyles(CornerDownLeft);
+const ThemedSplit = withUnistyles(Split);
 const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 const ThemedTextInput = withUnistyles(TextInput);
 
@@ -2501,6 +2512,8 @@ const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.fore
 // The send button has no background fill (a "normal" icon button), so its icon
 // is colored with the accent itself rather than the accent's contrast color.
 const iconAccentMapping = (theme: Theme) => ({ color: theme.colors.accent });
+const iconWarningMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
+const iconDestructiveMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 const textInputPlaceholderColorMapping = (theme: Theme) => ({
   placeholderTextColor: theme.colors.surface4,
 });

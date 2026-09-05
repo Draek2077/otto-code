@@ -147,6 +147,8 @@ export const ar: TranslationResources = {
       sendAndInterrupt: "إرسال ومقاطعة",
       sendMessage: "أرسل رسالة",
       queue: "طابور",
+      steer: "توجيه",
+      interrupt: "مقاطعة",
       send: "يرسل",
       add: "إضافة سياق",
       sendAndSteer: "إرسال وتوجيه",

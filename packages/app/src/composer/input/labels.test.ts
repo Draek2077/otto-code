@@ -14,6 +14,8 @@ const translations: Record<string, string> = {
   "composer.input.sendAndSteer": "Send and steer",
   "composer.input.sendMessage": "Send message",
   "composer.input.queue": "Queue",
+  "composer.input.steer": "Steer",
+  "composer.input.interrupt": "Interrupt",
   "composer.input.send": "Send",
   "composer.voice.unmuteVoiceMode": "Unmute Voice mode",
   "composer.voice.muteVoiceMode": "Mute Voice mode",
@@ -58,6 +60,16 @@ describe("composer input labels", () => {
         t,
       }),
     ).toBe("Send and interrupt");
+    expect(
+      resolveSubmitAccessibilityLabel({
+        submitButtonAccessibilityLabel: undefined,
+        canPressLoadingButton: false,
+        defaultActionQueues: false,
+        defaultSendBehavior: "steer",
+        isAgentRunning: true,
+        t,
+      }),
+    ).toBe("Send and steer");
     expect(
       resolveSubmitAccessibilityLabel({
         submitButtonAccessibilityLabel: undefined,
@@ -130,6 +142,8 @@ describe("composer input labels", () => {
       resolveSendTooltipLabel({
         submitButtonAccessibilityLabel: undefined,
         defaultActionQueues: true,
+        defaultSendBehavior: "steer",
+        isAgentRunning: true,
         t,
       }),
     ).toBe("Queue");
@@ -137,12 +151,32 @@ describe("composer input labels", () => {
       resolveSendTooltipLabel({
         submitButtonAccessibilityLabel: undefined,
         defaultActionQueues: false,
+        defaultSendBehavior: "interrupt",
+        isAgentRunning: false,
         t,
       }),
     ).toBe("Send");
+    expect(
+      resolveSendTooltipLabel({
+        submitButtonAccessibilityLabel: undefined,
+        defaultActionQueues: false,
+        defaultSendBehavior: "steer",
+        isAgentRunning: true,
+        t,
+      }),
+    ).toBe("Steer");
+    expect(
+      resolveSendTooltipLabel({
+        submitButtonAccessibilityLabel: undefined,
+        defaultActionQueues: false,
+        defaultSendBehavior: "interrupt",
+        isAgentRunning: true,
+        t,
+      }),
+    ).toBe("Interrupt");
   });
 
-  it("uses the Enter glyph for Queue and the arrow for Interrupt", () => {
+  it("distinguishes Queue, Steer, and Interrupt while an agent is running", () => {
     expect(
       resolveSendButtonIcon({
         canPressLoadingButton: false,
@@ -150,6 +184,7 @@ describe("composer input labels", () => {
         alternateModifierHeld: false,
         canUseAlternateAction: true,
         isAgentRunning: true,
+        defaultSendBehavior: "queue",
         submitIcon: "arrow",
       }),
     ).toBe("return");
@@ -160,9 +195,21 @@ describe("composer input labels", () => {
         alternateModifierHeld: false,
         canUseAlternateAction: true,
         isAgentRunning: true,
+        defaultSendBehavior: "interrupt",
         submitIcon: "return",
       }),
-    ).toBe("arrow");
+    ).toBe("interrupt");
+    expect(
+      resolveSendButtonIcon({
+        canPressLoadingButton: false,
+        defaultActionQueues: false,
+        alternateModifierHeld: false,
+        canUseAlternateAction: true,
+        isAgentRunning: true,
+        defaultSendBehavior: "steer",
+        submitIcon: "arrow",
+      }),
+    ).toBe("steer");
   });
 
   it("previews the alternate Enter action while Ctrl or Cmd is held", () => {
@@ -173,6 +220,7 @@ describe("composer input labels", () => {
         alternateModifierHeld: true,
         canUseAlternateAction: true,
         isAgentRunning: true,
+        defaultSendBehavior: "steer",
         submitIcon: "arrow",
       }),
     ).toBe("return");
@@ -183,8 +231,9 @@ describe("composer input labels", () => {
         alternateModifierHeld: true,
         canUseAlternateAction: true,
         isAgentRunning: true,
+        defaultSendBehavior: "queue",
         submitIcon: "arrow",
       }),
-    ).toBe("arrow");
+    ).toBe("interrupt");
   });
 });
