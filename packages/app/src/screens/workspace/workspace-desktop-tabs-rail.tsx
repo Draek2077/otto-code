@@ -330,11 +330,12 @@ export function WorkspaceDesktopTabsRail({
     router.push(buildSettingsHostSectionRoute(normalizedServerId, "terminals") as Href);
   }, [normalizedServerId, router]);
 
-  const { focusedAgentId, paneHasEditableAgentTab, paneHasPreviewTab } = usePaneTabAgentFacts({
-    tabs,
-    focusedTab,
-    normalizedServerId,
-  });
+  const { focusedAgentId, focusedPreviewCwd, paneHasEditableAgentTab, paneHasPreviewTab } =
+    usePaneTabAgentFacts({
+      tabs,
+      focusedTab,
+      normalizedServerId,
+    });
   const terminalDisabled = disableCreateTerminal || isWaitingOnTerminalReadiness;
 
   const renderTab = useCallback(
@@ -452,9 +453,10 @@ export function WorkspaceDesktopTabsRail({
             normalizedWorkspaceId={normalizedWorkspaceId}
             paneId={paneId}
             focusedAgentId={focusedAgentId}
+            focusedPreviewCwd={focusedPreviewCwd}
             showCreateBrowserTab={showCreateBrowserTab}
             showPreviewButton={
-              showCreateBrowserTab && !paneHasPreviewTab && paneHasEditableAgentTab
+              showCreateBrowserTab && (paneHasEditableAgentTab || paneHasPreviewTab)
             }
             terminalDisabled={terminalDisabled}
             onSplitRight={onSplitRight}

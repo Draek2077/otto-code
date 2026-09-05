@@ -10,6 +10,7 @@ import {
   findPaneById,
 } from "@/stores/workspace-layout-actions";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
 type BrowserAutomationExecuteRequest = Extract<
@@ -310,6 +311,7 @@ describe("mountBrowserAutomationHandler", () => {
     browserAutomationStorage.clear();
     useBrowserStore.setState({ browsersById: {} });
     useWorkspaceLayoutStore.setState({ layoutByWorkspace: {} });
+    usePreviewRunningServersStore.setState({ runningServerIdsBySessionAndCwd: {} });
   });
 
   test("browser_new_tab creates a workspace browser tab without stealing focus", async () => {
@@ -441,6 +443,11 @@ describe("mountBrowserAutomationHandler", () => {
       previewCwd: "/repo",
       previewStatus: "ready",
     });
+    expect(
+      usePreviewRunningServersStore.getState().runningServerIdsBySessionAndCwd["server-1"]?.[
+        "/repo"
+      ],
+    ).toEqual(new Set(["srv_1"]));
   });
 
   test("new_tab without preview metadata creates a plain browser tab", async () => {

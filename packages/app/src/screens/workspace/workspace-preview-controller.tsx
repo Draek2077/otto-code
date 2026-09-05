@@ -5,7 +5,13 @@
 // control. The row-item type rides a type-only import back (erased at
 // runtime, no cycle).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+  type GestureResponderEvent,
+  type PressableStateCallbackType,
+} from "react-native";
 import { PlayFilled, X } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -101,6 +107,8 @@ interface WorkspacePreviewControllerInput {
   normalizedWorkspaceId: string;
   paneId?: string;
   focusedAgentId: string | null;
+  /** The active Preview tab retains its server cwd after focus leaves its chat. */
+  focusedPreviewCwd?: string | null;
   /** False when this pane offers no preview tool at all - skips the poll. */
   enabled: boolean;
 }
@@ -111,6 +119,7 @@ export interface WorkspacePreviewController {
   hasFocusedAgent: boolean;
   pickerOpen: boolean;
   pickerServers: PreviewConfiguredServer[];
+  stopError: string | null;
   hasRunningPreviewServer: boolean;
   isServerRunning: (serverName: string) => boolean;
   runPreviewFlow: () => Promise<void>;
@@ -134,6 +143,7 @@ export function useWorkspacePreviewController({
   normalizedWorkspaceId,
   paneId,
   focusedAgentId,
+  focusedPreviewCwd = null,
   enabled,
 }: WorkspacePreviewControllerInput): WorkspacePreviewController {
   const { config: daemonConfig } = useDaemonConfig(normalizedServerId);
@@ -142,6 +152,7 @@ export function useWorkspacePreviewController({
   const [isBusy, setIsBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerServers, setPickerServers] = useState<PreviewConfiguredServer[]>([]);
+  const [stopError, setStopError] = useState<string | null>(null);
   const runningServersRef = useRef<Map<string, PreviewRunningServer>>(new Map());
   const hasRunningPreviewServer = useHasRunningPreviewServer(normalizedServerId);
 
@@ -207,7 +218,7 @@ export function useWorkspacePreviewController({
   );
 
   const startAndOpenPreview = useCallback(
-    async (agentId: string, cwd: string, serverName: string) => {
+    async (agentId: string | null, cwd: string, serverName: string) => {
       const client = useSessionStore.getState().sessions[normalizedServerId]?.client ?? null;
       if (!client) {
         return;
@@ -223,14 +234,16 @@ export function useWorkspacePreviewController({
           previewStatus: "error",
           lastError: started.error ?? "unknown error",
         });
-        await client
-          .sendAgentMessage(
-            agentId,
-            `I tried to start the "${serverName}" preview server but it failed: ${
-              started.error ?? "unknown error"
-            }`,
-          )
-          .catch(() => undefined);
+        if (agentId) {
+          await client
+            .sendAgentMessage(
+              agentId,
+              `I tried to start the "${serverName}" preview server but it failed: ${
+                started.error ?? "unknown error"
+              }`,
+            )
+            .catch(() => undefined);
+        }
         return;
       }
 
@@ -254,7 +267,20 @@ export function useWorkspacePreviewController({
         return;
       }
 
-      await client.previewStop(serverId).catch(() => undefined);
+      let stopped;
+      try {
+        stopped = await client.previewStop(serverId);
+      } catch (error) {
+        setStopError(error instanceof Error ? error.message : String(error));
+        setPickerOpen(true);
+        return;
+      }
+      if (!stopped.success) {
+        setStopError(stopped.error ?? `Could not stop "${serverName}".`);
+        setPickerOpen(true);
+        return;
+      }
+      setStopError(null);
       usePreviewRunningServersStore.getState().markStopped(normalizedServerId, serverId);
 
       // Close only the preview tab(s) bound to this specific server, not every browser tab.
@@ -302,9 +328,6 @@ export function useWorkspacePreviewController({
   );
 
   const runPreviewFlow = useCallback(async () => {
-    if (!focusedAgentId) {
-      return;
-    }
     // Hard gate, not a hint: with the Browser tools master off the agent has no
     // preview_*/browser_* tools, so a preview it can neither start nor look at
     // is not worth opening. Offer the switch instead. Deliberately never
@@ -320,7 +343,8 @@ export function useWorkspacePreviewController({
     }
     const session = useSessionStore.getState().sessions[normalizedServerId];
     const client = session?.client ?? null;
-    const cwd = session?.agents.get(focusedAgentId)?.cwd ?? null;
+    const cwd =
+      (focusedAgentId ? session?.agents.get(focusedAgentId)?.cwd : null) ?? focusedPreviewCwd;
     if (!client || !cwd) {
       return;
     }
@@ -329,7 +353,9 @@ export function useWorkspacePreviewController({
     try {
       const config = await fetchAndRecordRunningServers(cwd);
       if (!config || !config.configured || config.servers.length === 0) {
-        await client.sendAgentMessage(focusedAgentId, PREVIEW_BOOTSTRAP_PROMPT);
+        if (focusedAgentId) {
+          await client.sendAgentMessage(focusedAgentId, PREVIEW_BOOTSTRAP_PROMPT);
+        }
         return;
       }
 
@@ -359,6 +385,7 @@ export function useWorkspacePreviewController({
     daemonConfig,
     fetchAndRecordRunningServers,
     focusedAgentId,
+    focusedPreviewCwd,
     normalizedServerId,
     openBrowserToolsSettings,
     startAndOpenPreview,
@@ -389,10 +416,10 @@ export function useWorkspacePreviewController({
   // user having to open the picker first. Regaining focus or visibility re-runs
   // the effect, whose first poll is immediate, so the icon is fresh on return.
   useEffect(() => {
-    if (!enabled || !focusedAgentCwd || !isPanelActive || !isAppVisible) {
+    const cwd = focusedAgentCwd ?? focusedPreviewCwd;
+    if (!enabled || !cwd || !isPanelActive || !isAppVisible) {
       return;
     }
-    const cwd = focusedAgentCwd;
 
     const poll = () => {
       void fetchAndRecordRunningServers(cwd).catch(() => undefined);
@@ -400,7 +427,14 @@ export function useWorkspacePreviewController({
     poll();
     const intervalId = setInterval(poll, PREVIEW_SERVER_POLL_INTERVAL_MS);
     return () => clearInterval(intervalId);
-  }, [enabled, fetchAndRecordRunningServers, focusedAgentCwd, isAppVisible, isPanelActive]);
+  }, [
+    enabled,
+    fetchAndRecordRunningServers,
+    focusedAgentCwd,
+    focusedPreviewCwd,
+    isAppVisible,
+    isPanelActive,
+  ]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -433,12 +467,10 @@ export function useWorkspacePreviewController({
         }
       }
 
-      if (!focusedAgentId) {
-        return;
-      }
-      const cwd = useSessionStore
-        .getState()
-        .sessions[normalizedServerId]?.agents.get(focusedAgentId)?.cwd;
+      const cwd =
+        (focusedAgentId
+          ? useSessionStore.getState().sessions[normalizedServerId]?.agents.get(focusedAgentId)?.cwd
+          : null) ?? focusedPreviewCwd;
       if (!cwd) {
         return;
       }
@@ -455,6 +487,7 @@ export function useWorkspacePreviewController({
     [
       attachToRunningPreview,
       focusedAgentId,
+      focusedPreviewCwd,
       normalizedServerId,
       normalizedWorkspaceId,
       startAndOpenPreview,
@@ -472,7 +505,7 @@ export function useWorkspacePreviewController({
     [stopServer],
   );
 
-  const disabled = !focusedAgentId || isBusy;
+  const disabled = (!focusedAgentId && !focusedPreviewCwd) || isBusy;
   const isServerRunning = useCallback(
     (serverName: string) => runningServersRef.current.has(serverName),
     [],
@@ -485,6 +518,7 @@ export function useWorkspacePreviewController({
       hasFocusedAgent: focusedAgentId !== null,
       pickerOpen,
       pickerServers,
+      stopError,
       hasRunningPreviewServer,
       isServerRunning,
       runPreviewFlow,
@@ -504,6 +538,7 @@ export function useWorkspacePreviewController({
       pickerOpen,
       pickerServers,
       runPreviewFlow,
+      stopError,
     ],
   );
 }
@@ -513,6 +548,9 @@ function WorkspacePreviewMenuContent({ controller }: { controller: WorkspacePrev
   return (
     <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={200}>
       <DropdownMenuLabel>{t("workspace.tabs.actions.previewPickServer")}</DropdownMenuLabel>
+      {controller.stopError ? (
+        <Text style={styles.previewServerStopError}>{controller.stopError}</Text>
+      ) : null}
       {controller.pickerServers.map((server) => (
         <PreviewServerMenuItem
           key={server.name}
@@ -610,7 +648,15 @@ function PreviewServerMenuItem({
 }) {
   const { t } = useTranslation();
   const handleSelect = useCallback(() => onSelect(server.name), [onSelect, server.name]);
-  const handleStop = useCallback(() => onStop?.(server.name), [onStop, server.name]);
+  const handleStop = useCallback(
+    (event: GestureResponderEvent) => {
+      // The running row itself reopens the preview. A nested stop must not
+      // bubble into that action or it can hide the result of a failed stop.
+      event.stopPropagation();
+      onStop?.(server.name);
+    },
+    [onStop, server.name],
+  );
   const idleDot = useMemo(() => <View style={styles.previewServerIdleDot} />, []);
 
   // Not started yet: a normal menu item that starts the server on click. The
@@ -745,5 +791,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   previewServerStopButtonActive: {
     backgroundColor: theme.colors.surface2,
+  },
+  previewServerStopError: {
+    color: theme.colors.destructive,
+    fontSize: theme.fontSize.xs,
+    paddingHorizontal: theme.spacing[3],
+    paddingBottom: theme.spacing[2],
   },
 }));

@@ -112,6 +112,7 @@ import {
 } from "@/stores/workspace-tabs-store";
 
 import {
+  WorkspacePreviewButton,
   WorkspacePreviewCollapsedAnchor,
   useWorkspacePreviewController,
 } from "./workspace-preview-controller";
@@ -200,6 +201,7 @@ export interface WorkspaceTabRowExtrasProps {
   normalizedWorkspaceId: string;
   paneId?: string;
   focusedAgentId: string | null;
+  focusedPreviewCwd: string | null;
   showCreateBrowserTab: boolean;
   showPreviewButton: boolean;
   terminalDisabled: boolean;
@@ -244,6 +246,7 @@ export function WorkspaceTabRowExtras({
   normalizedWorkspaceId,
   paneId,
   focusedAgentId,
+  focusedPreviewCwd,
   showCreateBrowserTab,
   showPreviewButton,
   terminalDisabled,
@@ -273,6 +276,7 @@ export function WorkspaceTabRowExtras({
     normalizedWorkspaceId,
     paneId,
     focusedAgentId,
+    focusedPreviewCwd,
     enabled: showPreviewButton,
   });
   const [artifactsOpen, setArtifactsOpen] = useState(false);
@@ -339,6 +343,9 @@ export function WorkspaceTabRowExtras({
               <Text style={styles.newTabTooltipText}>{t("workspace.tabs.actions.newBrowser")}</Text>
             </TooltipContent>
           </Tooltip>
+        ) : null}
+        {showPreviewButton && isDeveloperMode ? (
+          <WorkspacePreviewButton controller={previewController} />
         ) : null}
       </View>
       {showPreviewButton && isDeveloperMode ? (
@@ -617,6 +624,11 @@ export function usePaneTabAgentFacts({
     );
   });
   const browsersById = useBrowserStore((state) => state.browsersById);
+  const focusedPreviewCwd =
+    focusedTab?.target.kind === "browser" &&
+    browsersById[focusedTab.target.browserId]?.isPreview === true
+      ? (browsersById[focusedTab.target.browserId]?.previewCwd ?? null)
+      : null;
   const paneHasPreviewTab = useMemo(
     () =>
       tabs.some(
@@ -626,7 +638,7 @@ export function usePaneTabAgentFacts({
       ),
     [browsersById, tabs],
   );
-  return { focusedAgentId, paneHasEditableAgentTab, paneHasPreviewTab };
+  return { focusedAgentId, focusedPreviewCwd, paneHasEditableAgentTab, paneHasPreviewTab };
 }
 
 export interface WorkspaceDesktopTabRowItem {
@@ -1585,11 +1597,12 @@ export function WorkspaceDesktopTabsRow({
       }),
     [fallbackTabLabels, visibleTabs],
   );
-  const { focusedAgentId, paneHasEditableAgentTab, paneHasPreviewTab } = usePaneTabAgentFacts({
-    tabs,
-    focusedTab,
-    normalizedServerId,
-  });
+  const { focusedAgentId, focusedPreviewCwd, paneHasEditableAgentTab, paneHasPreviewTab } =
+    usePaneTabAgentFacts({
+      tabs,
+      focusedTab,
+      normalizedServerId,
+    });
 
   // The row estimates label width from character count rather than measuring;
   // `estimatedCharWidth` is the conversion the rail's sizing already uses.
@@ -1799,8 +1812,9 @@ export function WorkspaceDesktopTabsRow({
         normalizedWorkspaceId={normalizedWorkspaceId}
         paneId={paneId}
         focusedAgentId={focusedAgentId}
+        focusedPreviewCwd={focusedPreviewCwd}
         showCreateBrowserTab={showCreateBrowserTab}
-        showPreviewButton={showCreateBrowserTab && !paneHasPreviewTab && paneHasEditableAgentTab}
+        showPreviewButton={showCreateBrowserTab && (paneHasEditableAgentTab || paneHasPreviewTab)}
         terminalDisabled={terminalDisabled}
         onSplitRight={onSplitRight}
         onSplitDown={onSplitDown}

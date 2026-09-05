@@ -18,6 +18,7 @@ import {
   normalizeLayout,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
+import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
 type BrowserAutomationExecuteRequest = Extract<
@@ -416,6 +417,12 @@ async function openBrowserTabForRequest(params: {
         }
       : {}),
   });
+  if (preview) {
+    // Agent-driven preview_start reaches the toolbar through this renderer
+    // bridge. Mark it immediately rather than making the user wait for the
+    // toolbar's reconciliation poll to discover the server.
+    usePreviewRunningServersStore.getState().markRunning(serverId, preview.cwd, preview.serverId);
+  }
   const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
   if (!workspaceKey) {
     return browserAutomationFailure({
