@@ -241,6 +241,8 @@ test.describe("plugin workspace panels and Command Center", () => {
         await expect(page.getByText(`Agent bridge ${agentId}`)).toBeVisible({
           timeout: 30_000,
         });
+        await closeMobileAgentSidebar(page);
+        await expectMobileAgentSidebarHidden(page);
         await capture(page, testInfo, "plugin-panel-reenabled");
       });
 

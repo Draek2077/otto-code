@@ -275,6 +275,10 @@ The workspace pane mounting coverage includes a compact-layout regression case i
 compact width, verifies the workspace header and menu remain usable, then returns to the wide
 viewport and verifies the saved panes are restored.
 
+The file-editing coverage also verifies Explorer placement in
+`e2e/browser/file-editing.spec.ts`: a fresh ordinary file opens in Main, while an existing file
+that the user moved to Explorer remains there when selected again.
+
 **The E2E host starts with an empty personality roster.** A fresh `OTTO_HOME` is seeded with the
 shipped starter team, and every apply-now form surface then auto-binds its role's first available
 personality: the ladder in `useFormRolePersonality` puts a team or personality above the device's

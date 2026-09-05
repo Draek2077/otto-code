@@ -213,6 +213,41 @@ test.describe("CodeMirror workspace file editing", () => {
     }
   });
 
+  test("opens a fresh Explorer file in Main and preserves an explicitly moved file in Explorer", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const session = await seedMockAgentWorkspace({
+      repoPrefix: "file-placement-",
+      title: "File placement",
+      initialPrompt: "Generate a title and a git branch name. Return JSON only.",
+    });
+    await writeFile(path.join(session.cwd, "target.ts"), "export const target = true;\n", "utf8");
+
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await openAgentRoute(page, session);
+      await openWorkspaceFile(page, "target.ts");
+
+      const mainFileTab = page.getByTestId("workspace-tab-file_target.ts").first();
+      await expect(mainFileTab).toBeVisible();
+      await mainFileTab.click({ button: "right" });
+      const mainTabMenu = page.getByTestId("workspace-tab-context-file_target.ts");
+      await expect(mainTabMenu).toBeVisible();
+      await page.getByTestId("workspace-tab-context-file_target.ts-move-to-explorer").click();
+
+      await expect(page.getByTestId("workspace-tab-file_target.ts")).toHaveCount(0);
+      await expect(page.getByTestId("explorer-sidebar-tab-file_target.ts")).toBeVisible();
+
+      await openFileExplorer(page);
+      await openFileFromExplorer(page, "target.ts");
+      await expect(page.getByTestId("explorer-sidebar-tab-file_target.ts")).toBeVisible();
+      await expect(page.getByTestId("workspace-tab-file_target.ts")).toHaveCount(0);
+    } finally {
+      await session.cleanup();
+    }
+  });
+
   test("opens an assistant file link at its referenced line", async ({ page }) => {
     test.setTimeout(120_000);
     // Side-pane placement is a desktop-web behaviour (see

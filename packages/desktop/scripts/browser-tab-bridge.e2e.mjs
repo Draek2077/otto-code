@@ -277,9 +277,17 @@ async function readGuest(page, browserId) {
     if (!(webview instanceof HTMLElement) || typeof webview.getWebContentsId !== "function") {
       return null;
     }
+    const surface = webview.parentElement;
+    const surfaceRect = surface?.getBoundingClientRect();
     return {
       webContentsId: webview.getWebContentsId(),
-      parentId: webview.parentElement?.id ?? null,
+      parentId: surface?.id ?? null,
+      surfaceId: surface?.getAttribute("data-otto-browser-surface") ?? null,
+      surfaceParentId: surface?.parentElement?.id ?? null,
+      surfaceAriaHidden: surface?.getAttribute("aria-hidden") ?? null,
+      surfacePointerEvents: surface instanceof HTMLElement ? surface.style.pointerEvents : null,
+      surfaceWidth: surfaceRect ? Math.round(surfaceRect.width) : null,
+      surfaceHeight: surfaceRect ? Math.round(surfaceRect.height) : null,
     };
   }, browserId);
 }
@@ -301,13 +309,33 @@ async function runRegression({ page, client, serverId, targetUrl }) {
   await page.waitForFunction(
     (id) => {
       const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
-      return webview && webview.parentElement?.id !== "otto-browser-resident-webviews";
+      const surface = webview?.parentElement;
+      const rect = surface?.getBoundingClientRect();
+      return (
+        webview &&
+        surface?.getAttribute("data-otto-browser-surface") === id &&
+        surface.parentElement?.id === "otto-browser-resident-webviews" &&
+        surface.getAttribute("aria-hidden") === "false" &&
+        rect &&
+        rect.width > 1 &&
+        rect.height > 1 &&
+        surface.style.pointerEvents === "auto"
+      );
     },
     browserId,
     { timeout: timeoutMs },
   );
   const firstGuest = await readGuest(page, browserId);
   assert(firstGuest, "Original browser guest was not attached to its workspace pane");
+  assert(
+    firstGuest.surfaceId === browserId &&
+      firstGuest.surfaceParentId === "otto-browser-resident-webviews" &&
+      firstGuest.surfaceAriaHidden === "false" &&
+      firstGuest.surfaceWidth > 1 &&
+      firstGuest.surfaceHeight > 1 &&
+      firstGuest.surfacePointerEvents === "auto",
+    `Original browser guest did not have a presented permanent surface: ${JSON.stringify(firstGuest)}`,
+  );
 
   for (const workspaceId of workspaceIds.slice(1)) {
     await page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`).click();
@@ -317,18 +345,38 @@ async function runRegression({ page, client, serverId, targetUrl }) {
   }
 
   await page.waitForFunction(
-    (id) => {
-      const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+    ({ id, webContentsId }) => {
+      const host = document.getElementById("otto-browser-resident-webviews");
+      const surface = host?.querySelector(`[data-otto-browser-surface="${id}"]`);
+      const webview = surface?.querySelector(`[data-otto-browser-id="${id}"]`);
+      const rect = surface?.getBoundingClientRect();
       return (
-        webview?.parentElement?.id === "otto-browser-resident-webviews" &&
-        typeof webview.getWebContentsId === "function"
+        surface &&
+        webview &&
+        surface.parentElement === host &&
+        surface.getAttribute("aria-hidden") === "true" &&
+        surface.style.pointerEvents === "none" &&
+        rect?.width === 1 &&
+        rect?.height === 1 &&
+        typeof webview.getWebContentsId === "function" &&
+        webview.getWebContentsId() === webContentsId
       );
     },
-    browserId,
+    { id: browserId, webContentsId: firstGuest.webContentsId },
     { timeout: timeoutMs },
   );
   const parkedGuest = await readGuest(page, browserId);
   assert(parkedGuest, "Browser guest was not parked after workspace eviction");
+  assert(
+    parkedGuest.surfaceId === browserId &&
+      parkedGuest.surfaceParentId === "otto-browser-resident-webviews" &&
+      parkedGuest.surfaceAriaHidden === "true" &&
+      parkedGuest.surfacePointerEvents === "none" &&
+      parkedGuest.surfaceWidth === 1 &&
+      parkedGuest.surfaceHeight === 1 &&
+      parkedGuest.webContentsId === firstGuest.webContentsId,
+    `Parked browser guest did not retain its permanent surface or identity: ${JSON.stringify(parkedGuest)}`,
+  );
 
   const listed = await callBrowserTool(client, "browser_list_tabs");
   assert(

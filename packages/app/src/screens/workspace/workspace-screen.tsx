@@ -4698,10 +4698,15 @@ function WorkspaceScreenContent({
   });
 
   const buildDesktopPaneContentModel = useCallback(
-    function buildDesktopPaneContentModel(input: { paneId: string; tab: WorkspaceTabDescriptor }) {
+    function buildDesktopPaneContentModel(input: {
+      paneId: string;
+      tab: WorkspaceTabDescriptor;
+      host?: PaneHost;
+    }) {
       return buildPaneContentModel({
         tab: input.tab,
         paneId: input.paneId,
+        host: input.host,
         focusPaneBeforeOpen: true,
       });
     },
