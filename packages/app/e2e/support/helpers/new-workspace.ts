@@ -21,6 +21,8 @@ type NewWorkspaceDaemonClient = Pick<
   | "fetchWorkspaces"
   | "getOttoWorktreeList"
   | "getDaemonConfig"
+  | "enablePlugin"
+  | "disablePlugin"
   | "installDirectoryPlugin"
   | "inspectWorkspaceRecovery"
   | "listProjects"

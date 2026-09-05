@@ -91,6 +91,7 @@ import { SidebarSeamShadow } from "./sidebar-seam-shadow";
 import { SidebarResizeHandle } from "./sidebar-resize-handle";
 import { resolveDesktopSidebarWidth } from "./desktop-sidebar-layout";
 import { type SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
+import { PluginSidebarItems } from "@/plugins";
 
 // How much to shave off the window-controls top spacer: the DESKTOP_* height
 // constants are one-size guesses that read as surplus space above the sidebar
@@ -751,6 +752,7 @@ function MobileSidebar({
             onViewSchedules={handleViewSchedules}
             onViewKanban={handleViewKanban}
           />
+          <PluginSidebarItems onBeforeNavigate={closeSidebar} />
         </View>
         <WorkspacesSectionHeader
           onAddProject={handleOpenProject}
@@ -979,6 +981,7 @@ function DesktopSidebar({
               onViewSchedules={handleViewSchedules}
               onViewKanban={handleViewKanban}
             />
+            <PluginSidebarItems />
           </View>
         </View>
         <WorkspacesSectionHeader

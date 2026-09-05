@@ -34,6 +34,7 @@ import { CommandCenter } from "@/command-center/command-center";
 import { CommandCenterRootActions } from "@/command-center/root-registration";
 import { CommandCenterProvider } from "@/command-center/provider";
 import { CommandCenterWorkspaceActions } from "@/command-center/workspace-registration";
+import { PluginCommandCenterActions } from "@/plugins/command-center/registration";
 import { AddProjectFlowHost } from "@/components/add-project-flow-host";
 import { ChatRenderSettingsProvider } from "@/components/chat-render-settings-context";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
@@ -179,6 +180,7 @@ import {
 import { AgentVoiceCuesHost } from "@/voice/agent-voice-cues-host";
 import { AutoSpeechHost } from "@/voice/auto-speech-host";
 import { ZoomRecorderHost } from "@/desktop/zoom-recorder-host";
+import { PluginCatalogSync } from "@/plugins";
 
 polyfillNavigator();
 polyfillCrypto();
@@ -327,6 +329,7 @@ function ManagedDaemonSession({ daemon }: { daemon: HostProfile }) {
   return (
     <SessionProvider key={daemon.serverId} serverId={daemon.serverId} client={client}>
       <LegacyFavoriteProfileMigrationBootstrap serverId={daemon.serverId} client={client} />
+      <PluginCatalogSync serverId={daemon.serverId} client={client} />
     </SessionProvider>
   );
 }
@@ -719,6 +722,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <WorktreeSetupCalloutSource />
       <CommandCenterRootActions />
       <CommandCenterWorkspaceActions />
+      <PluginCommandCenterActions />
       <CommandCenter />
       <AddProjectFlowHost />
       <HostChooserModal />
