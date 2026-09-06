@@ -88,7 +88,7 @@ export async function openSettingsSection(page: Page, section: SettingsSection):
   await expect(sidebar).toBeVisible();
 
   await sidebar.getByRole("button", { name: SECTION_LABELS[section], exact: true }).click();
-  await expectAppRoute(page, buildSettingsSectionRoute(section));
+  await expect.poll(() => new URL(page.url()).pathname).toBe(buildSettingsSectionRoute(section));
 }
 
 export async function openSettingsHost(page: Page, serverId: string): Promise<void> {

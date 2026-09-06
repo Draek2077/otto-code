@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { test, expect, type Page } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import {
-  expectOpenedProject,
+  expectExistingProjectOpened,
   openExistingProjectFolder,
   openNewProjectPage,
 } from "../support/helpers/project-picker-ui";
@@ -97,7 +97,7 @@ test.describe("New project folder search", () => {
     // Open action, because a folder is only one of the fields on it.
     await page.getByTestId("new-project-submit").click();
 
-    const projectId = await expectOpenedProject(page, projectPickerFixture.projectName);
+    const projectId = await expectExistingProjectOpened(page, projectPickerFixture);
     projectPickerFixture.rememberProjectId(projectId);
   });
 

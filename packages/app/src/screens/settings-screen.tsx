@@ -2524,7 +2524,9 @@ export default function SettingsScreen({
   const handleSelectSection = useCallback(
     (section: SettingsSectionSlug | null) => {
       guardProjectSettingsExit(() => {
-        const target = section ? buildSettingsSectionRoute(section) : "/settings";
+        const target = section
+          ? buildSettingsSectionRoute(section, activeHostServerId ?? undefined)
+          : "/settings";
         if (isCompactLayout) {
           router.push(target);
         } else {
@@ -2532,7 +2534,7 @@ export default function SettingsScreen({
         }
       });
     },
-    [guardProjectSettingsExit, isCompactLayout, router],
+    [activeHostServerId, guardProjectSettingsExit, isCompactLayout, router],
   );
 
   const handleSelectSearchItem = useCallback(
@@ -2544,8 +2546,12 @@ export default function SettingsScreen({
       guardProjectSettingsExit(() => {
         const target = item.host
           ? buildSettingsHostSectionRoute(activeHostServerId!, item.section as HostSectionSlug)
-          : buildSettingsSectionRoute(item.section as SettingsSectionSlug);
-        const destination = `${target}?setting=${encodeURIComponent(item.id)}` as Href;
+          : buildSettingsSectionRoute(
+              item.section as SettingsSectionSlug,
+              activeHostServerId ?? undefined,
+            );
+        const destination =
+          `${target}${target.includes("?") ? "&" : "?"}setting=${encodeURIComponent(item.id)}` as Href;
         if (isCompactLayout) {
           router.push(destination);
         } else {

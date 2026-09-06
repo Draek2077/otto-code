@@ -178,7 +178,7 @@ test.describe("Settings - compact master-detail", () => {
     await openCompactSettings(page, buildOpenProjectRoute());
 
     await openSettingsSection(page, "diagnostics");
-    await expectAppRoute(page, buildSettingsSectionRoute("diagnostics"));
+    await expectAppRoute(page, buildSettingsSectionRoute("diagnostics", getServerId()));
     await expectDiagnosticsContent(page);
     await expectSettingsSidebarHidden(page);
     await expectSettingsBackButton(page);
@@ -189,7 +189,7 @@ test.describe("Settings - compact master-detail", () => {
     await openCompactSettings(page, buildOpenProjectRoute());
 
     await openSettingsSection(page, "about");
-    await expectAppRoute(page, buildSettingsSectionRoute("about"));
+    await expectAppRoute(page, buildSettingsSectionRoute("about", getServerId()));
 
     await goBackInSettings(page);
     await expectCompactSettingsList(page);

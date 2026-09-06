@@ -1,4 +1,29 @@
 import { expect, type Page } from "@playwright/test";
+import path from "node:path";
+import { connectSeedClient } from "./seed-client";
+
+export async function expectExistingProjectOpened(
+  page: Page,
+  project: { projectPath: string; projectName: string },
+): Promise<string> {
+  // Opening an existing folder registers it and returns to the previous page.
+  // Only scaffolding a new folder hands off to New workspace.
+  await expect(page).toHaveURL(/\/open-project$/u, { timeout: 30_000 });
+  const row = page
+    .locator('[data-testid^="sidebar-project-row-"]:visible')
+    .filter({ hasText: project.projectName });
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  const client = await connectSeedClient();
+  try {
+    const registered = (await client.listProjects()).projects.find(
+      (entry) => path.resolve(entry.projectRootPath) === path.resolve(project.projectPath),
+    );
+    expect(registered, "the selected folder is registered on the host").toBeDefined();
+    return registered!.projectId;
+  } finally {
+    await client.close();
+  }
+}
 
 export async function expectOpenedProject(page: Page, _projectName?: string): Promise<string> {
   await expect(page).toHaveURL(/\/new\?.*projectId=/u, { timeout: 30_000 });

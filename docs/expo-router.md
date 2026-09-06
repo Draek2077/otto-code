@@ -49,6 +49,12 @@ dynamic params exist before any nested workspace leaf is selected.
 
 ## App-Wide Route Hops
 
+Settings section navigation carries the selected host in the `host` query
+parameter, including navigation from search results. App sections such as
+Integrations use that host for daemon-backed controls. Dropping the parameter
+can silently retarget skill installation to the local host when the new section
+mounts.
+
 When app-wide routes such as `/new`, `/settings`, or `/sessions` navigate back
 into a host workspace, use `navigateToWorkspace()`. Do not make the caller
 branch on its current route.

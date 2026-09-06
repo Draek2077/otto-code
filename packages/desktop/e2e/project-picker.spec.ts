@@ -1,7 +1,7 @@
 import { test, expect } from "../../app/e2e/support/fixtures";
 import { gotoAppShell } from "../../app/e2e/support/helpers/app";
 import {
-  expectOpenedProject,
+  expectExistingProjectOpened,
   openExistingProjectFolder,
   openNewProjectPage,
 } from "../../app/e2e/support/helpers/project-picker-ui";
@@ -44,7 +44,7 @@ test("Browse fills the directory field with the folder the desktop dialog return
 
   await page.getByTestId("new-project-submit").click();
 
-  const projectId = await expectOpenedProject(page, projectPickerFixture.projectName);
+  const projectId = await expectExistingProjectOpened(page, projectPickerFixture);
   projectPickerFixture.rememberProjectId(projectId);
 });
 
@@ -96,6 +96,6 @@ test("the New project page opens an existing folder", async ({ page, projectPick
   await openNewProjectPage(page, "sidebar-add-project");
   await openExistingProjectFolder(page, projectPickerFixture.projectPath);
 
-  const projectId = await expectOpenedProject(page, projectPickerFixture.projectName);
+  const projectId = await expectExistingProjectOpened(page, projectPickerFixture);
   projectPickerFixture.rememberProjectId(projectId);
 });

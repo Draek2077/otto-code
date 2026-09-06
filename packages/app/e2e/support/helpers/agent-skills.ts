@@ -2,18 +2,20 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { expect, type Dialog, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import type { DaemonClient as InternalDaemonClient } from "@otto-code/client/internal/daemon-client";
 import type { AgentSkillSelection } from "@otto-code/protocol/messages";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
 import { gotoAppShell, openSettings } from "./app";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { startIsolatedHostDaemon, type IsolatedHostDaemon } from "./isolated-host-daemon";
+import { installDesktopRuntime } from "../../../../desktop/e2e/support/runtime";
+import { getServerId } from "./server-id";
 import {
   addDirectHostFromSettings,
   goBackInSettings,
   openCompactSettings,
-  openHostSection,
+  openSettingsSection,
   selectSettingsHost,
 } from "./settings";
 
@@ -50,6 +52,7 @@ export async function startAgentSkillsSandbox(): Promise<AgentSkillsSandbox> {
   const daemon = await startIsolatedHostDaemon(`agent-skills-${randomUUID()}`, {
     environment: {
       HOME: home,
+      USERPROFILE: home,
       NODE_ENV: "development",
       CLAUDE_CONFIG_DIR: path.join(root, "ignored-claude-config"),
       CODEX_HOME: path.join(root, "ignored-codex-home"),
@@ -121,6 +124,9 @@ export async function openAgentSkillsSettings(
   sandbox: AgentSkillsSandbox,
   options: { compact?: boolean } = {},
 ): Promise<void> {
+  // Skills are a desktop Integrations surface. Exercise the desktop bridge
+  // contract while keeping all skill writes on the isolated host.
+  await installDesktopRuntime(page, { serverId: getServerId(), manageBuiltInDaemon: false });
   await gotoAppShell(page);
   if (options.compact) {
     await openCompactSettings(page, buildOpenProjectRoute());
@@ -133,7 +139,10 @@ export async function openAgentSkillsSettings(
   });
   if (options.compact) await goBackInSettings(page);
   await selectSettingsHost(page, sandbox.daemon.serverId);
-  await openHostSection(page, sandbox.daemon.serverId, "agents");
+  await openSettingsSection(page, "integrations");
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("host"))
+    .toBe(sandbox.daemon.serverId);
   await expect(page.getByTestId("host-agent-skills-card")).toBeVisible();
 }
 
@@ -177,16 +186,18 @@ export async function toggleSkill(page: Page, name: string): Promise<void> {
   await page.getByRole("checkbox", { name, exact: true }).click();
 }
 
-export function answerNextRemovalWarning(
+export async function answerNextRemovalWarning(
   page: Page,
   answer: "accept" | "dismiss",
-): Promise<Dialog> {
-  return new Promise((resolve) => {
-    page.once("dialog", (dialog) => {
-      resolve(dialog);
-      void (answer === "accept" ? dialog.accept() : dialog.dismiss());
-    });
-  });
+): Promise<string> {
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible();
+  const message = await dialog.innerText();
+  await page
+    .getByTestId(answer === "accept" ? "confirm-dialog-confirm" : "confirm-dialog-cancel")
+    .click();
+  await expect(dialog).toHaveCount(0);
+  return message;
 }
 
 export async function expectInstalledSkills(
