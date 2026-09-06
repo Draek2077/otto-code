@@ -151,13 +151,12 @@ function ChangesSelectionControl({
     },
     [path, togglePath],
   );
-  const accessibilityState = useMemo(() => ({ checked: selected }), [selected]);
   return (
     <Pressable
       style={selected ? styles.checkboxSelected : styles.checkbox}
       onPress={handlePress}
       accessibilityRole="checkbox"
-      accessibilityState={accessibilityState}
+      aria-checked={selected}
       accessibilityLabel={label}
       testID={`changes-selection-${path}`}
       hitSlop={6}

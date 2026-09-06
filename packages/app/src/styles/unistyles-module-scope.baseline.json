@@ -30,7 +30,6 @@
   "screens/settings/otto-tools-section.tsx",
   "screens/settings/settings-volume-row.tsx",
   "screens/settings/speech-settings-cards.tsx",
-  "screens/settings/storage-section.tsx",
   "screens/workspace/workspace-desktop-tabs-row.tsx",
   "screens/workspace/workspace-screen.tsx",
   "screens/workspace/workspace-scripts-button.tsx"

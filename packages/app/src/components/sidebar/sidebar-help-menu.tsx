@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import { Activity, CircleHelp, Gift, Keyboard } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";

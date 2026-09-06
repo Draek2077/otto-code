@@ -104,6 +104,7 @@ export async function openChangesTreePanel(page: Page): Promise<void> {
 
 export async function openChangesPanel(page: Page): Promise<void> {
   await openChangesTreePanel(page);
+  await showChangesFileTree(page);
   const changedFile = page
     .locator('[data-testid^="diff-tree-file-"][data-testid$="-toggle"]')
     .filter({ visible: true })
@@ -113,6 +114,20 @@ export async function openChangesPanel(page: Page): Promise<void> {
   await expect(visibleTestId(page, "working-diff-panel").first()).toBeVisible({
     timeout: 30_000,
   });
+}
+
+/** Select the file-only presentation explicitly; fresh installs show inline diffs. */
+export async function showChangesFileTree(page: Page): Promise<void> {
+  const panel = visibleTestId(page, "changes-tree-panel").first();
+  await panel.getByTestId("changes-options-menu").click();
+  const inlineDiff = page.getByTestId("changes-toggle-inline-diff");
+  await expect(inlineDiff).toBeVisible();
+  if ((await inlineDiff.getAttribute("aria-checked")) === "true") {
+    await inlineDiff.click();
+  } else {
+    await page.keyboard.press("Escape");
+  }
+  await expect(panel.getByTestId("changes-file-tree")).toBeVisible();
 }
 
 export async function openFilesPanel(page: Page): Promise<void> {

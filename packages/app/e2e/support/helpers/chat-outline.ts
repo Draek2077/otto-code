@@ -45,10 +45,10 @@ export async function splitCurrentPanelRight(page: Page): Promise<void> {
   await runWorkspaceActionFromCommandCenter(page, "Split pane right");
 }
 
-export async function disableChatOutlineFromAppearance(page: Page): Promise<void> {
+export async function disableChatOutlineFromChatSettings(page: Page): Promise<void> {
   const timelineUrl = page.url();
   await openSettings(page);
-  await openSettingsSection(page, "appearance");
+  await openSettingsSection(page, "chat");
   await page.getByRole("switch", { name: "Chat outline" }).click();
   await page.goto(timelineUrl);
 }
@@ -136,7 +136,7 @@ export async function expectOneActiveChatOutlinePrompt(page: Page): Promise<void
 
 export async function expectActiveChatOutlinePrompt(page: Page, position: number): Promise<void> {
   await expect(chatOutlineRail(page).getByRole("tab", { selected: true })).toHaveAccessibleName(
-    new RegExp(`^${position} of `),
+    new RegExp(`^Prompts ${position} of `),
   );
 }
 
@@ -146,7 +146,7 @@ export async function expectActiveChatOutlinePromptMovedFrom(
 ): Promise<void> {
   const activePrompt = chatOutlineRail(page).getByRole("tab", { selected: true });
   await expect(activePrompt).toHaveCount(1);
-  await expect(activePrompt).not.toHaveAccessibleName(new RegExp(`^${position} of `));
+  await expect(activePrompt).not.toHaveAccessibleName(new RegExp(`^Prompts ${position} of `));
 }
 
 export async function expectLiveTurnPromptAboveFoldAndActive(
@@ -169,7 +169,7 @@ export async function expectLiveTurnPromptAboveFoldAndActive(
           timelineBox &&
           promptBox &&
           promptBox.y + promptBox.height < timelineBox.y &&
-          activeLabel?.startsWith(`${position} of `),
+          activeLabel?.startsWith(`Prompts ${position} of `),
         );
       },
       { timeout: 15_000 },

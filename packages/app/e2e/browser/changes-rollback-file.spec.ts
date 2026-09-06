@@ -4,7 +4,7 @@ import { test, expect, type Page } from "../support/fixtures";
 import { fileRowContaining, gitOutput, openWorkspaceChanges } from "../support/helpers/git-changes";
 import { seedWorkspace } from "../support/helpers/seed-client";
 
-// Right-clicking a changed file in the Changes list offers "Rollback file"
+// Right-clicking a changed file in the Changes list offers "Discard changes"
 // (checkout.git.rollback): a destructive git discard gated behind a confirm
 // dialog. Confirming restores the file on disk and removes the row; cancelling
 // leaves the change untouched.
@@ -61,16 +61,17 @@ async function seedDirtyAlphaAndBetaWorkspace(repoPrefix: string) {
 async function openRollbackConfirmDialog(page: Page) {
   // The context menu handler lives on the row's toggle pressable (web-only
   // onContextMenu), so right-click that element rather than the outer row.
-  await fileRowContaining(page, "alpha.ts")
-    .locator('[data-testid$="-toggle"]')
-    .click({ button: "right" });
-  const contextMenu = page.getByTestId("changes-context-menu");
+  const row = fileRowContaining(page, "alpha.ts");
+  const rowTestId = await row.getAttribute("data-testid");
+  expect(rowTestId).not.toBeNull();
+  await row.locator('[data-testid$="-toggle"]').click({ button: "right" });
+  const contextMenu = page.getByTestId(`${rowTestId}-context-menu`);
   await expect(contextMenu).toBeVisible();
-  await page.getByTestId("changes-context-menu-rollback-file").click();
+  await page.getByTestId(`${rowTestId}-revert`).click();
 
   const dialog = page.getByTestId("confirm-dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("Roll back file?");
+  await expect(dialog).toContainText("Discard changes?");
   await expect(dialog).toContainText("alpha.ts");
   return dialog;
 }

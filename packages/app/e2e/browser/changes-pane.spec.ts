@@ -9,7 +9,10 @@ import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { getServerId } from "../support/helpers/server-id";
 import { connectSeedClient } from "../support/helpers/seed-client";
 import { createTempGitRepo } from "../support/helpers/workspace";
-import { waitForWorkspaceTabsVisible } from "../support/helpers/workspace-tabs";
+import {
+  showChangesFileTree,
+  waitForWorkspaceTabsVisible,
+} from "../support/helpers/workspace-tabs";
 
 interface DirtyWorkspace {
   id: string;
@@ -321,7 +324,7 @@ test("changes file actions open below the right-click without a reserved kebab",
   await expect(page.getByText("Copy path")).toBeVisible();
   await page.getByText("Copy path", { exact: true }).click({ button: "right" });
   await expect(page.getByText("Copy path")).toBeVisible();
-  await expect(page.getByTestId("diff-tree-file-1-open-file")).toHaveCount(0);
+  await expect(page.getByTestId("diff-tree-file-1-edit-file")).toHaveCount(0);
   await page.keyboard.press("Escape");
 
   await page.getByTestId("diff-tree-file-0").click();
@@ -329,16 +332,14 @@ test("changes file actions open below the right-click without a reserved kebab",
   const fileRowBounds = await fileRow.boundingBox();
   expect(fileRowBounds).not.toBeNull();
   await fileRow.click({ button: "right", position: { x: 80, y: 10 } });
-  await expect(page.getByTestId("diff-file-0-open-file")).toBeVisible();
+  await expect(page.getByTestId("diff-file-0-edit-file")).toBeVisible();
   const menuBounds = await page.getByTestId("diff-file-0-context-menu").boundingBox();
   expect(menuBounds).not.toBeNull();
   expect(menuBounds!.x).toBeCloseTo(fileRowBounds!.x + 80, 0);
   expect(menuBounds!.y).toBeGreaterThan(fileRowBounds!.y + 10);
-  await page.getByTestId("diff-file-0-open-file").click();
+  await page.getByTestId("diff-file-0-edit-file").click();
 
-  await expect(
-    page.getByTestId("explorer-sidebar-tab-file_src/use-mounted-tab-set.ts"),
-  ).toBeVisible();
+  await expect(page.getByTestId("workspace-tab-file_src/use-mounted-tab-set.ts")).toBeVisible();
 });
 
 test("changes context menus duplicate files and folders", async ({ page }) => {
@@ -590,8 +591,17 @@ test("changes diff wraps long structural rows inside the pane", async ({ page })
   await useWrappedStructuralDiffLines(page);
   await openWorkspaceChangesForLongLine(page, workspace);
 
-  await expect(page.getByTestId("git-diff-canvas")).toBeVisible();
-  await expect(page.getByTestId("diff-file-0-horizontal-scroll")).toHaveCount(0);
+  const structuralDiff = page.getByTestId("structural-diff");
+  const longLine = structuralDiff.getByText(/^export const banner =/);
+  await expect(longLine).toBeVisible();
+  const geometry = await longLine.evaluate((line) => ({
+    height: line.getBoundingClientRect().height,
+    lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight),
+    width: line.clientWidth,
+    scrollWidth: line.scrollWidth,
+  }));
+  expect(geometry.height).toBeGreaterThan(geometry.lineHeight * 2);
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width + 1);
 });
 
 async function useCodeFont(page: Page, codeFontSize: number): Promise<void> {
@@ -704,9 +714,11 @@ async function openWorkspaceChangesForLongLine(
   await expect(page.getByTestId("explorer-sidebar-tab-changes_tree")).toBeVisible({
     timeout: 30_000,
   });
+  await page.getByTestId("explorer-sidebar-tab-changes_tree").click();
+  await showChangesFileTree(page);
   await expect(page.getByText("banner.ts")).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("diff-tree-file-0").click();
-  await expect(page.getByTestId("diff-file-0-body")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("structural-diff")).toBeVisible({ timeout: 30_000 });
 }
 
 async function createWorkspaceWithMountedTabDiff(
@@ -785,6 +797,7 @@ async function openChangesInVisibleExplorer(page: Page): Promise<void> {
     timeout: 30_000,
   });
   await page.getByTestId("explorer-sidebar-tab-changes_tree").click();
+  await showChangesFileTree(page);
   await expect(
     page.getByTestId(/^diff-tree-file-\d+$/).filter({ hasText: "use-mounted-tab-set.ts" }),
   ).toBeVisible({ timeout: 30_000 });
