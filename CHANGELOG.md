@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.2 - 2026-09-06
+
+### Changed
+
+- Author and save Architectural Views with persisted sequence diagrams, stable source-document identity, and a remembered authoring layout
+- Keep Manage knowledge focused on confirmed, current records with compact status controls
+- Refresh 12 package-runner pins in the Agent Client Protocol catalog
+
+### Fixed
+
+- Keep Chat rename actions, retry handling for refused history loads, and Claude MCP protocol negotiation reliable
+- Preserve Chat and File Editor state through navigation, loading errors, and browser-driven workflows
+
 ## 0.9.0 - 2026-09-03
 
 ### Changed
