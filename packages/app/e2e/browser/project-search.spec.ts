@@ -49,9 +49,9 @@ test.describe("Project search", () => {
     await expect(page.getByTestId("project-search-file-src/alpha.ts")).toBeVisible();
     await expect(page.getByTestId("project-search-file-src/beta.ts")).toBeVisible();
 
-    // A match row opens the file at that line in the Explorer host that owns Search.
+    // Search follows the default file placement in Main while keeping Search in the sidebar.
     await page.getByTestId("project-search-match-src/alpha.ts-1").click();
-    await expect(page.getByTestId("explorer-sidebar-tab-file_src/alpha.ts")).toBeVisible({
+    await expect(page.getByTestId("workspace-tab-file_src/alpha.ts").first()).toBeVisible({
       timeout: 30_000,
     });
     await expect(page.getByTestId("workspace-file-tab-pane")).toBeVisible();

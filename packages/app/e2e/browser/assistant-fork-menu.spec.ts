@@ -2,9 +2,8 @@ import { expect, test as base } from "../support/fixtures";
 import { awaitAssistantMessage } from "../support/helpers/agent-stream";
 import {
   expectChatHistoryAttachment,
-  expectInFlightForkAvailable,
+  expectInFlightForkUnavailable,
   expectLiveAssistantText,
-  forkInFlightTurnToNewTab,
   forkMostRecentAssistantTurnToNewTab,
   forkMostRecentAssistantTurnToNewWorkspace,
   observeForkAttachment,
@@ -73,34 +72,38 @@ test.describe("Assistant fork menu", () => {
     await expectChatHistoryAttachment(page);
   });
 
-  test("forks a streaming assistant turn without interrupting it", async ({
+  test("offers Fork after the assistant turn completes and keeps the running row status-only", async ({
     page,
     seedForkWorkspace,
   }) => {
     const visibleBeforeFork = "where the auto-scroll logic actually lives";
-    const visibleAfterFork = "the first useful step is to read the relevant files";
     const sourceAgentTitle = "Assistant fork in flight";
     const forkAttachment = observeForkAttachment(page);
 
     const session = await seedForkWorkspace({
       repoPrefix: "assistant-fork-in-flight-",
       title: sourceAgentTitle,
-      model: "thirty-minute-stream",
+      model: "ten-second-stream",
     });
 
     await openAgentRoute(page, session);
     await expectComposerVisible(page);
     await submitMessage(page, "Walk me through the scroll anchor behavior.");
 
-    await expectInFlightForkAvailable(page);
+    await expectInFlightForkUnavailable(page);
     await expectLiveAssistantText(page, visibleBeforeFork);
 
-    await forkInFlightTurnToNewTab(page);
+    await session.client.waitForFinish(session.agentId, 30_000);
+    await expect(page.getByTestId("turn-working-indicator")).toHaveCount(0);
+    await forkMostRecentAssistantTurnToNewTab(page);
     await expectChatHistoryAttachment(page);
     expect(await forkAttachment.waitForText()).toContain(visibleBeforeFork);
 
     await page.getByRole("button", { name: sourceAgentTitle }).click();
-    await expectLiveAssistantText(page, visibleAfterFork);
+    await expect(
+      page.getByTestId("assistant-message").filter({ hasText: visibleBeforeFork }).first(),
+    ).toBeVisible();
+    await expect(page.getByTestId("turn-working-indicator")).toHaveCount(0);
   });
 
   test("focuses a forked assistant turn in a new workspace draft tab", async ({

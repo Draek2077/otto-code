@@ -166,6 +166,7 @@ const WorkspaceGitRuntimeSchema = z
     remoteUrl: z.string().nullable().optional(),
     isOttoOwnedWorktree: z.boolean().optional(),
     isDirty: z.boolean().nullable().optional(),
+    baseRef: z.string().nullable().optional(),
     aheadBehind: z.strictObject({ ahead: z.number(), behind: z.number() }).nullable().optional(),
     aheadOfOrigin: z.number().nullable().optional(),
     behindOfOrigin: z.number().nullable().optional(),

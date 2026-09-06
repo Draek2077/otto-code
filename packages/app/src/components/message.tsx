@@ -748,8 +748,14 @@ export const UserMessage = memo(function UserMessage({
             ) : null}
           </ChatMessageBubble>
           {hasText ? (
-            <View style={trailingRowStyle} pointerEvents={showTrailingRow ? "auto" : "none"}>
-              <Text style={userMessageStylesheet.timestampText}>{formattedTimestamp}</Text>
+            <View
+              testID="user-message-trailing-row"
+              style={trailingRowStyle}
+              pointerEvents={showTrailingRow ? "auto" : "none"}
+            >
+              <Text testID="user-message-timestamp" style={userMessageStylesheet.timestampText}>
+                {formattedTimestamp}
+              </Text>
               {capabilities ? (
                 <RewindMenu
                   capabilities={capabilities}
@@ -877,7 +883,7 @@ export const MessageFooter = memo(function MessageFooter({
   // Speak-this-message is available whenever the host can stream speech on
   // demand (the ttsSpeak capability); no live voice session required.
   return (
-    <View style={assistantTurnFooterStylesheet.container}>
+    <View testID="assistant-turn-footer" style={assistantTurnFooterStylesheet.container}>
       <TurnCopyButton
         getContent={getContent}
         containerStyle={assistantTurnFooterStylesheet.copyButton}

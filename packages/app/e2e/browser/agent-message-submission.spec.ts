@@ -41,7 +41,7 @@ import {
   rememberTimelineRequestCounts,
 } from "../support/helpers/timeline-resume";
 import { workspaceDeckEntryLocator } from "../support/helpers/workspace-ui";
-import { expectInFlightForkAvailable } from "../support/helpers/assistant-fork";
+import { expectInFlightForkUnavailable } from "../support/helpers/assistant-fork";
 import {
   scrollTimelineToNewestLoadedEdge,
   scrollTimelineUntilOlderHistoryIsReachable,
@@ -295,13 +295,10 @@ async function retryRestoredSubmission(page: Page, prompt: string): Promise<void
   await expect(page.getByTestId("composer-image-attachment-pill")).toHaveCount(0);
 }
 
-// Settings opens to its search-first overview; the send behavior lives in
-// the General section, one sidebar click further in.
+// Send behavior belongs to Chat settings and uses the shared segmented control.
 async function configureSteerInSettings(page: Page): Promise<void> {
-  const modifier = process.platform === "darwin" ? "Meta" : "Control";
-  await page.keyboard.press(`${modifier}+Comma`);
-  await expect(page).toHaveURL(/\/settings$/);
-  await openSettingsSection(page, "general");
+  await openSettings(page);
+  await openSettingsSection(page, "chat");
   await selectSteerInSettings(page);
 }
 
@@ -311,10 +308,8 @@ async function selectSteerInSettings(page: Page): Promise<void> {
 
 /** Steer is the default, so the interrupt path only gets exercised by opting back into it. */
 async function configureInterruptInSettings(page: Page): Promise<void> {
-  const modifier = process.platform === "darwin" ? "Meta" : "Control";
-  await page.keyboard.press(`${modifier}+Comma`);
-  await expect(page).toHaveURL(/\/settings$/);
-  await openSettingsSection(page, "general");
+  await openSettings(page);
+  await openSettingsSection(page, "chat");
   await selectSendBehaviorInSettings(page, "Interrupt", "interrupt");
 }
 
@@ -323,8 +318,7 @@ async function selectSendBehaviorInSettings(
   behaviorLabel: string,
   stored: string,
 ): Promise<void> {
-  await page.getByRole("button", { name: /^Default send: / }).click();
-  await page.getByRole("menuitem", { name: behaviorLabel, exact: true }).click();
+  await page.getByRole("button", { name: behaviorLabel, exact: true }).click();
   await expect
     .poll(async () => {
       const raw = await page.evaluate(() => localStorage.getItem("@otto:app-settings"));
@@ -342,7 +336,7 @@ async function replaySteeredSleepTurnInBrowser(
   gate.holdNextShellToolCall("completed");
   await gotoAppShell(page);
   await openSettings(page);
-  await openSettingsSection(page, "general");
+  await openSettingsSection(page, "chat");
   await selectSteerInSettings(page);
   const agent = await startRunningMockAgent(page, {
     prefix: `steer-replay-${shape}-${testInfo.workerIndex}-`,
@@ -355,15 +349,15 @@ async function replaySteeredSleepTurnInBrowser(
     await submitMessage(page, "hello");
 
     await expect(page.getByText("hello", { exact: true })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: /^Worked for/ })).toHaveCount(0);
-    await expectInFlightForkAvailable(page);
+    await expect(page.getByTestId("assistant-turn-footer")).toHaveCount(0);
+    await expectInFlightForkUnavailable(page);
 
     await gate.waitForHeldServerMessage();
     gate.releaseHeldServerMessage();
     await agent.client.waitForFinish(agent.agentId, 30_000);
 
     await expect(page.getByText("hello", { exact: true })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: /^Worked for/ })).toHaveCount(1);
+    await expect(page.getByTestId("assistant-turn-footer")).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Fork chat" }).last()).toBeVisible();
   } finally {
     gate.restore();
@@ -1131,7 +1125,7 @@ test.describe("Agent message submission", () => {
     });
     try {
       await configureSteerInSettings(page);
-      await page.goBack();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
       await expectComposerVisible(page);
       await expectAgentReadyToInterrupt(page);
       const sendsBefore = gate.getClientRequestCount("send_agent_message_request");
@@ -1168,14 +1162,14 @@ test.describe("Agent message submission", () => {
     });
     try {
       await configureSteerInSettings(page);
-      await page.goBack();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
       await expectComposerVisible(page);
       await expectAgentReadyToInterrupt(page);
       gate.holdNextServerMessage("send_agent_message_response");
       await submitMessage(page, "hello");
       await gate.waitForHeldServerMessage("send_agent_message_response");
       await expect(page.getByText("hello", { exact: true })).toHaveCount(1);
-      await expect(page.getByText(/^Worked for/)).toHaveCount(0);
+      await expect(page.getByTestId("assistant-turn-footer")).toHaveCount(0);
       gate.releaseHeldServerMessage("send_agent_message_response");
       await expect(page.getByText("hello", { exact: true })).toHaveCount(1);
     } finally {
@@ -1196,7 +1190,7 @@ test.describe("Agent message submission", () => {
     });
     try {
       await configureInterruptInSettings(page);
-      await page.goBack();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
       await expectComposerVisible(page);
       await expectAgentReadyToInterrupt(page);
 

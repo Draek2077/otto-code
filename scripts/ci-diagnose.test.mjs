@@ -44,6 +44,15 @@ test("rejects an unknown tier instead of falling back to the full suite", () => 
   assert.throws(() => diagnosticCommand({ suite: "all" }), /Choose a suite/);
 });
 
+test("retains first-attempt browser failure traces without adding retries", () => {
+  const plan = diagnosticCommand({
+    suite: "playwright",
+    file: "packages/app/e2e/browser/agent-message-submission.spec.ts",
+  });
+  assert.ok(plan.args.includes("--retries=0"));
+  assert.ok(plan.args.includes("--trace=retain-on-failure"));
+});
+
 test("isolated temporary folders cannot discover the enclosing checkout", () => {
   const env = diagnosticEnvironment("server");
   const home = path.resolve(env.HOME);

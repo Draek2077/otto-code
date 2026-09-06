@@ -167,6 +167,37 @@ afterEach(() => {
 });
 
 describe("ReplicaCache", () => {
+  it("restores the focused replica with its workspace git comparison base", async () => {
+    const storage = new MemoryStorage();
+    const writer = new ReplicaCache(storage);
+    writer.setHosts([SERVER_ID]);
+    seedSession();
+    useSessionStore.getState().setWorkspaces(
+      SERVER_ID,
+      new Map([
+        [
+          "workspace-1",
+          normalizeWorkspaceDescriptor({
+            ...workspace(),
+            gitRuntime: { currentBranch: "feature", baseRef: "main", isDirty: false },
+          }),
+        ],
+      ]),
+    );
+    await writer.flush();
+    useSessionStore.getState().clearSession(SERVER_ID);
+    const reader = new ReplicaCache(storage);
+    reader.setHosts([SERVER_ID]);
+    await reader.restore();
+    const restored = useSessionStore.getState().sessions[SERVER_ID];
+    expect(restored?.workspaces.get("workspace-1")?.gitRuntime).toEqual({
+      currentBranch: "feature",
+      baseRef: "main",
+      isDirty: false,
+    });
+    expect(restored?.agentStreamTail.get("agent-1")).toEqual([message("message-1", "Cached")]);
+  });
+
   it("persists focused replica changes without writing transient stream head updates", async () => {
     vi.useFakeTimers();
     const storage = new MemoryStorage();

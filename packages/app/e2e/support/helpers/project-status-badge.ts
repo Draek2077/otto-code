@@ -2,10 +2,12 @@ import { expect, type Page } from "@playwright/test";
 import { gotoAppShell } from "./app";
 import { seedWorkspace, type SeededWorkspace } from "./seed-client";
 import { waitForSidebarHydration } from "./workspace-ui";
+import { getServerId } from "./server-id";
 
 export interface StatusProject {
   seed: SeededWorkspace;
   needsInputWorkspaceId: string;
+  needsInputWorkspaceDirectory: string;
 }
 
 export async function seedStatusProject(): Promise<StatusProject> {
@@ -14,14 +16,23 @@ export async function seedStatusProject(): Promise<StatusProject> {
     title: "Working workspace",
   });
   const created = await seed.client.createWorkspace({
-    source: { kind: "directory", path: seed.repoPath, projectId: seed.projectId },
+    source: {
+      kind: "worktree",
+      cwd: seed.repoPath,
+      projectId: seed.projectId,
+      worktreeSlug: "needs-input",
+    },
     title: "Needs input workspace",
   });
   if (!created.workspace) {
     await seed.cleanup();
     throw new Error(created.error ?? "Failed to create the needs-input workspace");
   }
-  return { seed, needsInputWorkspaceId: created.workspace.id };
+  return {
+    seed,
+    needsInputWorkspaceId: created.workspace.id,
+    needsInputWorkspaceDirectory: created.workspace.workspaceDirectory,
+  };
 }
 
 export async function openAndCollapseStatusProject(
@@ -55,7 +66,7 @@ export async function startWorkingWorkspace(project: StatusProject): Promise<voi
 export async function startNeedsInputWorkspace(project: StatusProject): Promise<void> {
   await project.seed.client.createAgent({
     provider: "mock",
-    cwd: project.seed.repoPath,
+    cwd: project.needsInputWorkspaceDirectory,
     workspaceId: project.needsInputWorkspaceId,
     title: "Needs input agent",
     modeId: "load-test",
@@ -82,11 +93,13 @@ export async function expectProjectStatusHidden(page: Page, project: StatusProje
 
 export async function expectWorkspaceStatus(
   page: Page,
-  workspaceName: string,
+  workspaceId: string,
   status: "running" | "needs_input",
 ): Promise<void> {
   await expect(
-    workspaceRow(page, workspaceName).getByTestId(`workspace-status-indicator-${status}`),
+    page
+      .getByTestId(`sidebar-workspace-row-${getServerId()}:${workspaceId}`)
+      .getByTestId(`workspace-status-indicator-${status}`),
   ).toBeVisible({ timeout: 60_000 });
 }
 

@@ -88,9 +88,10 @@ export async function seedParentWithCrossWorkspaceSubagent(
   });
   const createdWorkspace = await workspace.client.createWorkspace({
     source: {
-      kind: "directory",
-      path: workspace.repoPath,
+      kind: "worktree",
+      cwd: workspace.repoPath,
       projectId: workspace.projectId,
+      worktreeSlug: "subagent",
     },
     title: "Subagent workspace",
   });
@@ -100,7 +101,7 @@ export async function seedParentWithCrossWorkspaceSubagent(
 
   const child = await workspace.client.createAgent({
     provider: "mock",
-    cwd: workspace.repoPath,
+    cwd: createdWorkspace.workspace.workspaceDirectory,
     workspaceId: createdWorkspace.workspace.id,
     title: input.childTitle,
     modeId: "load-test",

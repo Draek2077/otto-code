@@ -99,14 +99,16 @@ async function withOttoOwnedWorktree(
 }
 
 test.describe("Sidebar workspace list", () => {
-  test("project with GitHub remote shows its selected folder name in sidebar", async ({ page }) => {
+  test("project with GitHub remote shows its shared repository name in sidebar", async ({
+    page,
+  }) => {
     const workspace = await seedWorkspace({
       repoPrefix: "sidebar-remote-",
       repo: { withRemote: true, originUrl: GITHUB_REMOTE_URL },
     });
 
     try {
-      const projectName = path.basename(workspace.repoPath);
+      const projectName = "test-owner/test-repo";
       await gotoAppShell(page);
       await waitForSidebarProject(page, projectName);
       await waitForSidebarWorkspace(page, workspace.workspaceId);
@@ -117,7 +119,7 @@ test.describe("Sidebar workspace list", () => {
         .first();
 
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
-      await expect(projectRow).not.toContainText("test-owner/test-repo");
+      await expect(projectRow).not.toContainText(path.basename(workspace.repoPath));
     } finally {
       await workspace.cleanup();
     }
@@ -137,7 +139,7 @@ test.describe("Sidebar workspace list", () => {
     }
   });
 
-  test("workspace header uses the selected folder name instead of its GitHub remote", async ({
+  test("workspace header uses the shared repository name for its GitHub remote", async ({
     page,
   }) => {
     const workspace = await seedWorkspace({
@@ -146,7 +148,7 @@ test.describe("Sidebar workspace list", () => {
     });
 
     try {
-      const projectName = path.basename(workspace.repoPath);
+      const projectName = "test-owner/test-repo";
       await gotoAppShell(page);
       await waitForSidebarProject(page, projectName);
       await waitForSidebarWorkspace(page, workspace.workspaceId);
@@ -239,7 +241,7 @@ test.describe("Half-screen desktop layout", () => {
     const closedToggle = page.getByTestId("menu-button");
     const closedBounds = await closedToggle.boundingBox();
     expect(closedBounds).not.toBeNull();
-    expect(closedBounds?.x).toBeCloseTo(9, 0);
+    expect(closedBounds?.x).toBeCloseTo(8, 0);
     expect(closedBounds?.y).toBe(openBounds?.y);
   });
 

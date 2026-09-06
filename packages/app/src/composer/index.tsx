@@ -1456,13 +1456,6 @@ export function Composer({
   const autocompleteOnKeyPressRef = useRef(autocomplete.onKeyPress);
   autocompleteOnKeyPressRef.current = autocomplete.onKeyPress;
 
-  // Clear send error when user edits the input
-  useEffect(() => {
-    if (sendError && userInput) {
-      setSendError(null);
-    }
-  }, [userInput, sendError]);
-
   useEffect(() => {
     setCursorIndex((current) => Math.min(current, userInput.length));
   }, [userInput.length]);
@@ -2556,6 +2549,8 @@ export function Composer({
   const handleComposerChangeText = useCallback(
     (text: string) => {
       historyNavRef.current = { index: null, stashed: "" };
+      // Restoring a rejected draft must retain its error until a manual edit.
+      setSendError(null);
       setUserInput(text);
     },
     [setUserInput],
@@ -2696,7 +2691,12 @@ export function Composer({
   const messageInputAutoFocus = autoFocus && isDesktopWebBreakpoint;
   const submitLoadingPressHandler = isAgentRunning && !isCompacting ? handleCancelAgent : undefined;
   const sendErrorNode = useMemo(
-    () => (sendError ? <Text style={styles.sendErrorText}>{sendError}</Text> : null),
+    () =>
+      sendError ? (
+        <Text accessibilityRole="alert" style={styles.sendErrorText}>
+          {sendError}
+        </Text>
+      ) : null,
     [sendError],
   );
   const githubEmptyText = githubSearchResultsQuery.isFetching

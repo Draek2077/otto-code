@@ -50,7 +50,14 @@ export function diagnosticCommand({ suite, file, testName }, repoRoot = root) {
   const { cwd, relativeFile, definition } = validateTestFile(suite, file, repoRoot);
   const browser = suite === "playwright" || suite === "desktop";
   const args = browser
-    ? ["test", relativeFile, "--workers=1", "--max-failures=1", "--retries=0"]
+    ? [
+        "test",
+        relativeFile,
+        "--workers=1",
+        "--max-failures=1",
+        "--retries=0",
+        "--trace=retain-on-failure",
+      ]
     : ["run", relativeFile, "--bail=1", "--maxWorkers=1"];
   if (definition.project) args.push("--project", definition.project);
   if (suite === "playwright") args.push("--project=browser");
