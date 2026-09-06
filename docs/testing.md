@@ -193,7 +193,8 @@ packaged Electron smoke retain their dedicated harnesses. Globs, directories and
 unknown tiers fail before test launch. `--dry-run` validates and prints the selection.
 
 Focused daemon and browser runs isolate OS homes, temporary files, and reports under
-`.tmp/ci-diagnostic-*`. Browser runs share only Metro's compilation cache in
+`.tmp/ci-diagnostic-*`. Git discovery stops at that isolated home, so a fixture without
+its own repository cannot accidentally use the enclosing checkout. Browser runs share only Metro's compilation cache in
 `.tmp/ci-metro-cache`, use two compiler workers, and allow five minutes for a cold
 bundle. Windows teardown terminates owned process trees before removing fixture
 homes, including workers spawned by the daemon and Metro.

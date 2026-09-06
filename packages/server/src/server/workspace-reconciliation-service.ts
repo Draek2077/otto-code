@@ -1,4 +1,5 @@
-import { statSync, watch as watchPath } from "node:fs";
+import { statSync } from "node:fs";
+import { watchDirectory } from "../utils/watch-directory.js";
 import type { ProjectCheckoutLitePayload } from "@otto-code/protocol/messages";
 import type pino from "pino";
 import type {
@@ -56,7 +57,7 @@ const systemClock: ReconciliationClock = {
 };
 
 const watchProjectRoot: ProjectRootWatch = (rootPath, options, onChange, onError) => {
-  const watcher = watchPath(rootPath, options, onChange);
+  const watcher = watchDirectory(rootPath, options, onChange);
   watcher.on("error", onError);
   return watcher;
 };

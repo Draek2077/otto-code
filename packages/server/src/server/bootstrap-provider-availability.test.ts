@@ -6,6 +6,7 @@ import pino from "pino";
 import { afterEach, describe, expect, test } from "vitest";
 import { ensureAgentLoaded } from "./agent/agent-loading.js";
 import type { OttoDaemonConfig } from "./bootstrap.js";
+import { windowsShortPath } from "../test-utils/windows-short-path.js";
 
 const originalEnv = {
   PATH: process.env.PATH,
@@ -27,8 +28,16 @@ describe("bootstrap provider availability", () => {
 
   test("loads a persisted Codex record without spawning a missing Codex binary", async () => {
     const { createOttoDaemon } = await import("./bootstrap.js");
-    const root = await mkdtemp(path.join(os.tmpdir(), "otto-bootstrap-provider-"));
-    tempRoots.push(root);
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), "otto-bootstrap-provider-"));
+    tempRoots.push(tempRoot);
+    // Bootstrap installs project-root watchers before checking providers. A
+    // short Windows spelling must not crash libuv during that startup path.
+    const root = process.platform === "win32" ? windowsShortPath(tempRoot) : tempRoot;
+    if (process.platform === "win32") {
+      console.info(
+        root.includes("~") ? "Bootstrap uses an 8.3 root" : "8.3 unavailable; using full root",
+      );
+    }
     const gitPath = execFileSync(process.platform === "win32" ? "where" : "which", ["git"], {
       encoding: "utf8",
     })

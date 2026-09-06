@@ -63,7 +63,7 @@ export function diagnosticCommand({ suite, file, testName }, repoRoot = root) {
   };
 }
 
-function diagnosticEnvironment(suite) {
+export function diagnosticEnvironment(suite) {
   const env = { ...process.env, ...(suite === "desktop" ? { E2E_DESKTOP_RUNTIME: "1" } : {}) };
   if (!["server", "playwright", "desktop"].includes(suite)) return env;
   mkdirSync(path.join(root, ".tmp"), { recursive: true });
@@ -83,6 +83,9 @@ function diagnosticEnvironment(suite) {
     TMP: path.join(home, "temp"),
     TMPDIR: path.join(home, "temp"),
     OTTO_HOME: path.join(home, "otto-home"),
+    GIT_CEILING_DIRECTORIES: [home, env.GIT_CEILING_DIRECTORIES]
+      .filter(Boolean)
+      .join(path.delimiter),
     E2E_OUTPUT_DIR: path.join(home, "reports", "test-results"),
     E2E_HTML_REPORT_DIR: path.join(home, "reports", "playwright-report"),
     E2E_REPORT_DIR: path.join(home, "reports", "qa-report"),
