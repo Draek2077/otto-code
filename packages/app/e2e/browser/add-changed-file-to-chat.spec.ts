@@ -26,40 +26,26 @@ test("adds a changed file to the focused chat without replacing its composer dra
       agentId: workspace.agentId,
     });
 
-    // Otto tags its composer textarea `data-composer-input`; nothing in Otto
-    // ever sets that attribute, so the original locator matched nothing and the
-    // spec died here before reaching what it means to test.
     const agentComposer = composerLocator(page);
     await expect(agentComposer).toBeEditable({ timeout: 30_000 });
     await agentComposer.fill("Preserve this thought");
 
     await openChangesPanel(page);
-    const changedFile = page.getByText("changed file.ts", { exact: true }).first();
-    await expect(changedFile).toBeVisible({ timeout: 30_000 });
+    const changedFile = page.getByTestId("diff-file-0").filter({ visible: true });
+    await expect(changedFile).toContainText("changed file.ts");
 
-    // Otto only offers "Add to context" while a chat is focused
-    // (useDiffContextAttachmentToggle returns null without a focusedAgentId).
-    // Focus follows the focused pane's active tab, not the DOM, so booting
-    // straight onto the agent route is what establishes it - this click is here
-    // to prove the draft survives a real interaction, not to set focus.
+    // Keep the chat selected while interacting with its Explorer diff.
     await agentComposer.click();
-    // Otto's diff panel splits the file row into a `-toggle` child and offers
-    // "Add to chat"; Otto's Changes view puts the context menu on the row itself
-    // and calls the action "add to context". Same affordance, different names.
-    await page.getByTestId("diff-file-0").click({ button: "right" });
-    await page.getByTestId("changes-context-menu-add-to-context").click();
+    await changedFile.click({ button: "right" });
+    await page.getByTestId("diff-file-0-add-to-chat").click();
 
-    // Otto files this as a `file_context` attachment, which has its own pill and
-    // renders the file name over a "File context" subtitle. Otto's "add to
-    // chat" produced a plain workspace-file pill carrying the relative path;
-    // Otto never renders the path here, so there is nothing to assert about it.
-    const attachment = page.getByTestId("composer-file-context-attachment-pill");
+    const attachment = page.getByTestId("composer-workspace-file-attachment-pill");
     await expect(attachment).toContainText("changed file.ts");
-    await expect(attachment).toContainText("File context");
+    await expect(attachment).toContainText(relativePath);
     await expect(agentComposer).toHaveValue("Preserve this thought");
     await moneyShot(
       page,
-      "the changed file rides in the focused chat's composer as a file-context pill, and the draft it already held is still there",
+      "the changed file is attached to the focused chat and its existing draft is preserved",
     );
   } finally {
     await workspace.cleanup();

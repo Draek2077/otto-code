@@ -12,9 +12,8 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 // agent: before running, the client resolves the writer agent the host would
 // use (checkout.git.commit_agent) and confirms it with the user. To keep the
 // resolution deterministic regardless of which provider CLIs exist on the
-// machine, this spec seeds a Writer-role Agent Personality bound to the
-// dev-only mock provider - role-matched personalities are always resolved
-// ahead of the configured/substring/current-selection fallback chain.
+// machine, this spec seeds a Writer-role agent profile bound to the
+// dev-only mock provider and enables profile preference.
 //
 // The flow is asserted up to the confirm dialog and then cancelled: confirming
 // would hand off to the writer agent as an *internal* generation session,
@@ -30,43 +29,39 @@ const cleanupTasks: CleanupTask[] = [];
 
 const ALPHA_BEFORE = "export const alpha = 1;\n";
 const ALPHA_AFTER = "export const alpha = 2;\n";
-const WRITER_PERSONALITY_NAME = "E2E Mock Writer";
+const WRITER_PROFILE_NAME = "E2E Mock Writer";
 
 test.afterEach(async () => {
-  for (const task of cleanupTasks.splice(0)) {
+  for (const task of cleanupTasks.splice(0).toReversed()) {
     await task.run();
   }
 });
 
 test("commit CTA confirms the writer agent before an AI commit", async ({ page }) => {
-  // Seed a Writer personality on the mock provider so the resolved agent is
+  // Seed a Writer profile on the mock provider so the resolved agent is
   // stable, restoring the original roster afterwards.
   const configClient = await connectDaemonConfigClient();
   cleanupTasks.push({ run: () => configClient.close().catch(() => undefined) });
   const { config } = await configClient.getDaemonConfig();
-  const originalPersonalities = config.agentPersonalities?.personalities ?? [];
-  const writerPersonality = {
+  const originalProfiles = config.agentProfiles ?? [];
+  const writerProfile = {
     id: `e2e-writer-mock-${Date.now()}`,
-    name: WRITER_PERSONALITY_NAME,
+    name: WRITER_PROFILE_NAME,
     provider: "mock",
     model: "ten-second-stream",
     roles: ["writer"],
   };
-  // preferWriterPersonalities defaults false, which puts the built-in cheap
-  // ladder ahead of any role-matched Writer - so the seeded writer only ever
-  // won when a builtin happened to be bound to the same provider/model the
-  // ladder picked. Opt in so the personality this spec seeds is genuinely the
-  // one the CTA resolves, which is what the assertion below claims.
+  // Prefer the seeded profile over the built-in cheap model ladder.
   await configClient.patchDaemonConfig({
-    agentPersonalities: { personalities: [...originalPersonalities, writerPersonality] },
+    agentProfiles: [...originalProfiles, writerProfile],
     metadataGeneration: { preferWriterPersonalities: true },
   });
   cleanupTasks.push({
     run: async () => {
       await configClient
         .patchDaemonConfig({
-          agentPersonalities: { personalities: originalPersonalities },
-          metadataGeneration: { preferWriterPersonalities: false },
+          agentProfiles: originalProfiles,
+          metadataGeneration: config.metadataGeneration,
         })
         .catch(() => undefined);
     },
@@ -90,14 +85,11 @@ test("commit CTA confirms the writer agent before an AI commit", async ({ page }
   await expect(cta).toHaveAttribute("aria-label", "Commit");
   await cta.click();
 
-  // The confirm step names the seeded writer personality.
+  // The confirm step names the seeded writer profile.
   const dialog = page.getByTestId("confirm-dialog");
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   await expect(dialog).toContainText("Commit with AI");
-  // With preferWriterPersonalities on, the seeded mock writer is the resolved
-  // author, so name it rather than accepting any roster winner. The dialog
-  // reads "<name> personality (<provider> · <model>) will write …".
-  await expect(dialog).toContainText(`${WRITER_PERSONALITY_NAME} personality`);
+  await expect(dialog).toContainText(`${WRITER_PROFILE_NAME} profile`);
   await expect(dialog).toContainText("will write your commit message");
 
   // Cancel instead of committing (see header comment for why).

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { expect, type Locator, type Page } from "@playwright/test";
+import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 import { buildHostWorkspaceRoute } from "../../../src/utils/host-routes";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { getServerId } from "./server-id";
@@ -39,7 +40,7 @@ export async function openWorkspaceChanges(
 
 /**
  * Minimal typed view over the daemon client for reading/patching mutable
- * daemon config out of band (e.g. seeding an Agent Personality roster so
+ * daemon config out of band (e.g. seeding an agent profile roster so
  * writer-agent resolution is deterministic regardless of which provider CLIs
  * exist on the machine).
  */
@@ -48,9 +49,7 @@ export interface DaemonConfigClient {
   close(): Promise<void>;
   getDaemonConfig(requestId?: string): Promise<{
     requestId: string;
-    config: {
-      agentPersonalities?: { personalities?: Array<Record<string, unknown>> };
-    };
+    config: Pick<MutableDaemonConfig, "agentProfiles" | "metadataGeneration">;
   }>;
   patchDaemonConfig(
     config: Record<string, unknown>,

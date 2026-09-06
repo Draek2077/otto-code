@@ -322,7 +322,12 @@ export default async function globalSetup() {
       console.log("[e2e] Metro stopped");
     };
   } catch (error) {
-    await killProcessTree(metroProcess);
+    const [cleanup] = await Promise.allSettled([killProcessTree(metroProcess)]);
+    if (cleanup.status === "rejected") {
+      throw new Error(`E2E setup failed; cleanup also failed: ${String(cleanup.reason)}`, {
+        cause: error,
+      });
+    }
     throw error;
   }
 }

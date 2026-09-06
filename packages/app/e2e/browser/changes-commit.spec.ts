@@ -6,7 +6,10 @@ import { test, expect } from "../support/fixtures";
 import { getServerId } from "../support/helpers/server-id";
 import { connectSeedClient } from "../support/helpers/seed-client";
 import { createTempGitRepo } from "../support/helpers/workspace";
-import { waitForWorkspaceTabsVisible } from "../support/helpers/workspace-tabs";
+import {
+  openChangesTreePanel,
+  waitForWorkspaceTabsVisible,
+} from "../support/helpers/workspace-tabs";
 
 interface CommitWorkspace {
   id: string;
@@ -32,15 +35,16 @@ test("Changes options open a single Git Commit log tab", async ({ page }) => {
   const workspace = await createWorkspaceWithTwoChanges();
   await openWorkspaceChanges(page, workspace);
 
-  await page.getByTestId("changes-options-menu").click();
+  await page.getByTestId("changes-options-menu").filter({ visible: true }).click();
   await page.getByTestId("changes-open-git-log").click();
-  const gitCommitTab = page.getByRole("button", { name: "Git Commit" });
+  const gitCommitTab = page.getByTestId("explorer-sidebar-tab-gitlog_commit");
   await expect(gitCommitTab).toBeVisible();
   await expect(page.getByText("Nothing logged yet")).toBeVisible();
 
-  // The dock stays mounted while the main-pane log is active. Reopening the
-  // command focuses the singleton instead of creating another tab.
-  await page.getByTestId("changes-options-menu").click();
+  // The log opens in Explorer. Return to Changes to invoke the command again
+  // and verify that it focuses the existing log tab.
+  await openChangesTreePanel(page);
+  await page.getByTestId("changes-options-menu").filter({ visible: true }).click();
   await page.getByTestId("changes-open-git-log").click();
   await expect(gitCommitTab).toHaveCount(1);
 });
@@ -71,10 +75,6 @@ async function openWorkspaceChanges(page: Page, workspace: CommitWorkspace): Pro
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.id));
   await waitForWorkspaceTabsVisible(page);
-  await page.getByRole("button", { name: "Open explorer" }).click();
-  await expect(page.getByTestId("explorer-sidebar-tab-changes_tree")).toBeVisible({
-    timeout: 30_000,
-  });
-  await page.getByTestId("explorer-sidebar-tab-changes_tree").click();
+  await openChangesTreePanel(page);
   await expect(page.getByText("alpha.ts")).toBeVisible({ timeout: 30_000 });
 }
