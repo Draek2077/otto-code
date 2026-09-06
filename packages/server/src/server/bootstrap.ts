@@ -26,6 +26,28 @@ export type ListenTarget =
   | { type: "socket"; path: string }
   | { type: "pipe"; path: string };
 
+const AGENT_MCP_FUTURE_PROTOCOL_VERSION = "2026-07-28";
+const AGENT_MCP_NEGOTIATED_PROTOCOL_VERSION = "2025-11-25";
+
+/**
+ * The installed Claude Agent SDK advertises the next MCP protocol date before
+ * the bundled MCP server SDK has added it to its HTTP allowlist. The MCP server
+ * itself negotiates its supported 2025-11-25 response correctly, but the Hono
+ * adapter reads rawHeaders before that negotiation can happen.
+ */
+function normalizeAgentMcpProtocolVersion(request: IncomingMessage): void {
+  if (request.headers["mcp-protocol-version"] !== AGENT_MCP_FUTURE_PROTOCOL_VERSION) return;
+
+  // COMPAT(agentMcpProtocol20260728): added in v0.9.0 on 2026-09-06; remove by
+  // 2027-03-06 once @modelcontextprotocol/sdk accepts this protocol date.
+  request.headers["mcp-protocol-version"] = AGENT_MCP_NEGOTIATED_PROTOCOL_VERSION;
+  for (let index = 0; index < request.rawHeaders.length; index += 2) {
+    if (request.rawHeaders[index]?.toLowerCase() === "mcp-protocol-version") {
+      request.rawHeaders[index + 1] = AGENT_MCP_NEGOTIATED_PROTOCOL_VERSION;
+    }
+  }
+}
+
 function resolveBoundListenTarget(
   listenTarget: ListenTarget,
   httpServer: ReturnType<typeof createHTTPServer>,
@@ -2431,6 +2453,7 @@ export async function createOttoDaemon(
         res.status(401).json({ error: "Unauthorized" });
         return;
       }
+      normalizeAgentMcpProtocolVersion(req);
       if (config.mcpDebug) {
         logger.debug(
           {
