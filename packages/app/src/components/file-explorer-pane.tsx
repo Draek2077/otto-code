@@ -2,6 +2,7 @@ import { initializeExplorer } from "@/file-explorer/initialize";
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -11,6 +12,7 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import {
   FlatList,
   ListRenderItemInfo,
@@ -227,6 +229,27 @@ function EntryNameInputRow({
   const treeIconSize = useTreeIconSize();
   const [name, setName] = useState(initialName);
   const settledRef = useRef(false);
+  const inputRef = useRef<TextInput | null>(null);
+  const keyboardHandlerId = useId();
+  const cancel = useCallback(() => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onCancel();
+  }, [onCancel]);
+
+  // Escape is dispatched in capture phase, before the input's onKeyPress.
+  // The focused name editor must consume it before the chat interrupt handler.
+  useKeyboardActionHandler({
+    handlerId: keyboardHandlerId,
+    actions: ["agent.interrupt"],
+    enabled: true,
+    priority: 1000,
+    isActive: () => inputRef.current?.isFocused() === true,
+    handle: () => {
+      cancel();
+      return true;
+    },
+  });
 
   const commit = useCallback(() => {
     if (settledRef.current) {
@@ -244,11 +267,10 @@ function EntryNameInputRow({
   const handleKeyPress = useCallback(
     (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
       if (event.nativeEvent.key === "Escape") {
-        settledRef.current = true;
-        onCancel();
+        cancel();
       }
     },
-    [onCancel],
+    [cancel],
   );
 
   return (
@@ -263,6 +285,7 @@ function EntryNameInputRow({
           )}
         </View>
         <TextInput
+          ref={inputRef}
           autoFocus
           value={name}
           onChangeText={setName}

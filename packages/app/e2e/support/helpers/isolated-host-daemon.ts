@@ -106,7 +106,7 @@ export async function startIsolatedHostDaemon(
           "--no-package-lock",
           `@otto-code/server@${options.publishedVersion}`,
         ],
-        { cwd: publishedPackageRoot, stdio: "ignore" },
+        { cwd: publishedPackageRoot, stdio: "pipe" },
       );
     } catch (error) {
       await rm(publishedPackageRoot, { recursive: true, force: true });

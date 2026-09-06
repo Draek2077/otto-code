@@ -25,6 +25,11 @@ supplies only actions above the standard group; the provider owns the clipboard 
 availability, separators, shortcuts, and Select all scope. Browser guests and isolated webviews
 remain native-owned because their selections do not belong to the Otto renderer.
 
+CodeMirror surfaces with a registered editor context menu mark their wrapper with
+`data-otto-editor-context-menu`. The root capture handler yields to that editor, whose menu owns
+Cut, Copy, Paste, Select all, and editor-specific actions such as Add selection to chat. Editors
+without a registered menu retain the root fallback.
+
 ## Two presentations
 
 `MenuRoot` picks one from form factor, never from platform — a tablet in a narrow split view

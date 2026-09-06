@@ -488,6 +488,7 @@ export class StreamResumeGate {
 
   select<Tail, Head>(params: {
     visible: boolean;
+    urgent?: boolean;
     currentTail: Tail;
     currentHead: Head;
     deferredTail: Tail;
@@ -504,7 +505,7 @@ export class StreamResumeGate {
       };
     }
 
-    if (!this.wasVisible) {
+    if (!this.wasVisible || params.urgent) {
       this.pendingFreshSnapshot = true;
     }
     this.wasVisible = true;

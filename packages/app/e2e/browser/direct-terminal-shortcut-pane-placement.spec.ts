@@ -11,32 +11,30 @@ test.describe("Direct terminal shortcut pane placement", () => {
     try {
       await gotoWorkspace(page, workspace.workspaceId);
       await waitForWorkspaceTabsVisible(page);
+      const originalPane = page
+        .locator('[data-testid^="workspace-pane-"]')
+        .filter({ visible: true })
+        .first();
+      const originalPaneId = await originalPane.getAttribute("data-testid");
+      expect(originalPaneId).not.toBeNull();
 
       await runWorkspaceActionFromCommandCenter(page, "Split pane right");
-      const focusedPaneChild = page
-        .getByTestId("split-group-child")
-        .filter({ has: page.getByTestId("workspace-new-tab-panel") });
-      const originalPaneChild = page
-        .getByTestId("split-group-child")
-        .filter({ hasNot: page.getByTestId("workspace-new-tab-panel") });
-      await expect(focusedPaneChild).toBeVisible();
-      const focusedPaneId = await focusedPaneChild
+      // Splitting now seeds a draft. Identify the newly created pane by its
+      // identity, independently of whichever initial surface it contains.
+      const focusedPane = page
         .locator('[data-testid^="workspace-pane-"]')
-        .getAttribute("data-testid");
-      const originalPaneId = await originalPaneChild
-        .locator('[data-testid^="workspace-pane-"]')
-        .getAttribute("data-testid");
-      expect(focusedPaneId).not.toBeNull();
-      expect(originalPaneId).not.toBeNull();
-      const focusedPane = page.getByTestId(focusedPaneId!);
-      const originalPane = page.getByTestId(originalPaneId!);
+        .filter({ visible: true })
+        .and(page.locator(`[data-testid]:not([data-testid="${originalPaneId}"])`));
+      await expect(focusedPane).toHaveCount(1);
 
       await pressDirectNewTabShortcut(page, "t");
 
       await expect(focusedPane.locator('[data-testid^="workspace-tab-terminal_"]')).toHaveCount(1, {
         timeout: 30_000,
       });
-      await expect(originalPane.locator('[data-testid^="workspace-tab-terminal_"]')).toHaveCount(0);
+      await expect(
+        page.getByTestId(originalPaneId!).locator('[data-testid^="workspace-tab-terminal_"]'),
+      ).toHaveCount(0);
     } finally {
       await workspace.cleanup();
     }

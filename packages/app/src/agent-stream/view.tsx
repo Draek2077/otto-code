@@ -719,9 +719,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // instead of replaying the away-period backlog.
     const deferredStreamItems = useDeferredValue(effectiveStreamItems);
     const deferredStreamHead = useDeferredValue(effectiveStreamHead);
+    const deferredTurnPresentation = useDeferredValue(effectiveTurnPresentation);
+    const urgentStreamUpdate = useMemo(
+      () =>
+        pendingMessageSubmissions.length > 0 ||
+        deferredTurnPresentation !== effectiveTurnPresentation,
+      [pendingMessageSubmissions.length, deferredTurnPresentation, effectiveTurnPresentation],
+    );
     const streamResumeGateRef = useRef(new StreamResumeGate(isStreamVisible));
     const displayedStream = streamResumeGateRef.current.select({
       visible: isStreamVisible,
+      // Submitting clears the composer and marks the turn active synchronously.
+      // Paint its prompt in that same update, then hold the fresh stream until
+      // deferral catches up so acknowledgement cannot briefly remove the row.
+      urgent: urgentStreamUpdate,
       currentTail: effectiveStreamItems,
       currentHead: effectiveStreamHead,
       deferredTail: deferredStreamItems,

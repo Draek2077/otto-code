@@ -3,6 +3,7 @@ import { test, expect } from "../support/fixtures";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
+import { seedAppSettings } from "../support/helpers/settings";
 
 type WebSocketMessage = string | Buffer;
 
@@ -140,9 +141,7 @@ async function holdStreamAfterFirstCompletedToolCall(page: Page, agentId: string
 }
 
 async function configureOverviewToolCalls(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    localStorage.setItem("@otto:app-settings", JSON.stringify({ toolCallDetailLevel: "overview" }));
-  });
+  await seedAppSettings(page, { toolCallDetailLevel: "overview", groupConsecutiveActions: true });
 }
 
 async function createOverviewAgent(page: Page, title: string) {

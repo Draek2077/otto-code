@@ -261,6 +261,7 @@ export function CodeEditor(props: CodeEditorProps) {
       style={WRAPPER_STYLE}
       data-pmono=""
       data-testid="code-editor-surface"
+      data-otto-editor-context-menu={props.onContextMenu ? "" : undefined}
       {...(isMarkdownPath(props.path) ? { "data-markdown-editor": "" } : {})}
     >
       <div ref={hostRef} style={HOST_STYLE} />

@@ -253,6 +253,7 @@ async function boxTop(locator: Locator): Promise<number> {
 }
 
 export async function applyProfileFromPicker(page: Page, name: string): Promise<void> {
+  await pickerViewport(page).getByTestId("personality-group-all").click();
   await profilePickerRow(page, name).click();
   await expect(pickerViewport(page)).toHaveCount(0, { timeout: 30_000 });
 }

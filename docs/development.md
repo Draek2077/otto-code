@@ -607,6 +607,10 @@ exact ref also resolves through its stored branch name.
 
 Worktrees inherit committed Git state only; uncommitted source-checkout changes are not copied.
 
+Attaching a pull request in New workspace proposes a checkout through an inline hint. Accepting
+the hint selects the PR as the starting ref; attaching it alone preserves the selected branch.
+The starting-ref picker remains available afterward, so choosing a branch overrides that PR checkout.
+
 ## otto.json service scripts
 
 `worktree.setup` and `worktree.teardown` accept either a multiline shell script or an array

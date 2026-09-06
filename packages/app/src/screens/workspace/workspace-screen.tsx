@@ -244,7 +244,6 @@ import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
 import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
 import { WorkspaceFocusProvider } from "@/workspace/focus";
 import { DiffDocumentWorkspaceCacheProvider } from "@/git/diff-document/workspace-cache";
-import { shouldSeedEmptyWorkspaceDraft } from "@/screens/workspace/workspace-empty-draft-seed";
 import {
   buildBulkCloseConfirmationMessage,
   type BulkCloseConfirmationLabels,
@@ -2533,7 +2532,6 @@ function WorkspaceScreenContent({
     queryKey: terminalsQueryKey,
     removeTerminalFromCache,
     standaloneTerminalIds,
-    terminals,
   } = useWorkspaceTerminals({
     client,
     isConnected,
@@ -3145,7 +3143,6 @@ function WorkspaceScreenContent({
     [navigateToTabId, openWorkspaceTabFocused, persistenceKey, retargetWorkspaceTab, uiTabs],
   );
 
-  const emptyWorkspaceSeedRef = useRef<string | null>(null);
   const autoOpenedSetupTabWorkspaceRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -3165,43 +3162,9 @@ function WorkspaceScreenContent({
     normalizedWorkspaceId,
   ]);
 
-  useEffect(() => {
-    if (
-      !shouldSeedEmptyWorkspaceDraft({
-        isRouteFocused,
-        hasPersistenceKey: Boolean(persistenceKey),
-        hasWorkspaceDirectory: Boolean(workspaceDirectory),
-        hasHydratedWorkspaceLayoutStore,
-        hasHydratedAgents,
-        hasLoadedTerminals: terminalsQuery.isSuccess,
-        activeAgentCount: workspaceAgentVisibility.activeAgentIds.size,
-        terminalCount: terminals.length,
-        tabCount: tabs.length,
-      })
-    ) {
-      emptyWorkspaceSeedRef.current = null;
-      return;
-    }
-    const workspaceKey = `${normalizedServerId}:${normalizedWorkspaceId}`;
-    if (emptyWorkspaceSeedRef.current === workspaceKey) {
-      return;
-    }
-    emptyWorkspaceSeedRef.current = workspaceKey;
-    openWorkspaceDraftTab();
-  }, [
-    normalizedServerId,
-    normalizedWorkspaceId,
-    openWorkspaceDraftTab,
-    persistenceKey,
-    hasHydratedAgents,
-    hasHydratedWorkspaceLayoutStore,
-    isRouteFocused,
-    terminals.length,
-    terminalsQuery.isSuccess,
-    tabs.length,
-    workspaceDirectory,
-    workspaceAgentVisibility.activeAgentIds.size,
-  ]);
+  // reconcileWorkspaceTabs seeds an empty workspace atomically from the live
+  // layout. A second effect using this render's tab count can race that seed
+  // and create two drafts on the same initial entry.
 
   useEffect(() => {
     if (!isRouteFocused) {
@@ -4363,6 +4326,10 @@ function WorkspaceScreenContent({
           handleOpenExplorerTab("search");
           requestProjectSearchFocus();
           return true;
+        case "workspace.tab.target.files":
+          handleOpenExplorerTab("files");
+          return true;
+        case "workspace.tab.target.changes":
         case "sidebar.open.changes":
           handleOpenExplorerTab("changes");
           return true;
@@ -4496,6 +4463,8 @@ function WorkspaceScreenContent({
       "sidebar.open.files",
       "sidebar.open.search",
       "sidebar.open.changes",
+      "workspace.tab.target.files",
+      "workspace.tab.target.changes",
     ] as const,
     enabled: Boolean(isRouteFocused && normalizedServerId && normalizedWorkspaceId),
     priority: 100,

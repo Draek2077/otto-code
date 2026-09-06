@@ -50,7 +50,7 @@ async function assertHeldFileTransition(
     const sample = () => {
       const next = {
         chip: Boolean(document.querySelector(`[data-testid="${tabTestId}"]`)),
-        loading: Boolean(document.querySelector('[data-testid="file-preview-loading"]')),
+        loading: Boolean(document.querySelector('[data-testid="file-editor-loading"]')),
         unavailable: Boolean(document.querySelector('[data-testid="file-preview-unsupported"]')),
       };
       if (JSON.stringify(timeline.at(-1)) !== JSON.stringify(next)) timeline.push(next);
@@ -71,7 +71,7 @@ async function assertHeldFileTransition(
   const targetChip = page.getByTestId(`workspace-tab-file_${targetPath}`).first();
   await expect(targetChip).toBeVisible();
   await expect(targetChip).toContainText(targetPath.split("/").pop() as string);
-  await expect(page.getByTestId("file-preview-loading")).toBeVisible();
+  await expect(page.getByTestId("file-editor-loading")).toBeVisible();
   await expect(page.getByTestId("file-preview-unsupported")).toHaveCount(0);
   await expect(page.getByText("export const sourceA = true;")).toHaveCount(0);
 
@@ -109,7 +109,7 @@ async function assertHeldFileTransition(
 
   gate.release();
   await expect(page.getByText(finalText)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("file-preview-loading")).toHaveCount(0);
+  await expect(page.getByTestId("file-editor-loading")).toHaveCount(0);
   const timeline = await page.evaluate(() => {
     const windowWithTimeline = window as typeof window & {
       __fileTransitionTimeline?: Array<{ chip: boolean; loading: boolean; unavailable: boolean }>;

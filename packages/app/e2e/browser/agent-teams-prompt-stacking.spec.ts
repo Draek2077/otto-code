@@ -74,7 +74,7 @@ test.describe("Agent teams prompt stacking", () => {
       // The born team is frozen onto the agent.
       expect(config.teamSnapshot?.teamId).toBe(team.id);
       expect(config.teamSnapshot?.teamPrompt).toBe(TEAM_PROMPT);
-      expect(config.personalitySnapshot?.personalityId).toBe(personality.id);
+      expect(config.profileSnapshot?.profileId).toBe(personality.id);
 
       // Stack order: team prompt first, personality prompt after it (a
       // role-focus directive may trail - assert order, not the full string).

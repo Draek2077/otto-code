@@ -418,8 +418,11 @@ test.describe("CodeMirror workspace file editing", () => {
           .filter({ hasText: "plan.html" })
           .first(),
       ).toBeVisible();
-      await expect(editor(page)).toBeVisible();
-      await expect(editor(page).locator(".cm-activeLine")).toContainText("Review this source line");
+      const source = page.getByTestId("file-source-editor");
+      await expect(source).toBeVisible();
+      await expect(source.locator(".cm-file-source-line-highlight")).toContainText(
+        "Review this source line",
+      );
       await expect(page.getByTestId("file-html-preview")).toHaveCount(0);
     } finally {
       await session.cleanup();

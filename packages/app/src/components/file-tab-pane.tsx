@@ -11,6 +11,7 @@ import { type LayoutChangeEvent, Pressable, Text, TextInput, View } from "react-
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
+import { FileConflictAlert } from "@/file-pane/conflict-alert";
 import {
   ArrowDown,
   ArrowUp,
@@ -293,6 +294,7 @@ function EditorSyncBanners({
   diskChange,
   hasConflict,
   onDiskReload,
+  onDiskOverwrite,
   onDiskKeepMine,
   onDiskDismiss,
   onConflictReload,
@@ -302,6 +304,7 @@ function EditorSyncBanners({
   diskChange: EditorBufferState["diskChange"];
   hasConflict: boolean;
   onDiskReload: () => void;
+  onDiskOverwrite: () => void;
   onDiskKeepMine: () => void;
   onDiskDismiss: () => void;
   onConflictReload: () => void;
@@ -312,7 +315,7 @@ function EditorSyncBanners({
   return (
     <>
       {diskChange ? (
-        <View style={styles.conflictBanner} testID="editor-disk-banner">
+        <View style={styles.conflictBanner} testID="editor-disk-banner" accessibilityRole="alert">
           <ThemedTriangleAlert size="md" uniProps={warningIconColorMapping} />
           <Text style={styles.conflictText}>
             {diskChange.kind === "deleted"
@@ -332,6 +335,14 @@ function EditorSyncBanners({
               <Button size="sm" variant="ghost" onPress={onDiskKeepMine} testID="editor-disk-keep">
                 {t("editor.diskChange.keepMine")}
               </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onPress={onDiskOverwrite}
+                testID="editor-disk-overwrite"
+              >
+                {t("editor.conflict.overwrite")}
+              </Button>
             </>
           ) : null}
           <Pressable
@@ -347,7 +358,11 @@ function EditorSyncBanners({
       ) : null}
 
       {hasConflict ? (
-        <View style={styles.conflictBanner} testID="editor-conflict-banner">
+        <View
+          style={styles.conflictBanner}
+          testID="editor-conflict-banner"
+          accessibilityRole="alert"
+        >
           <ThemedTriangleAlert size="md" uniProps={warningIconColorMapping} />
           <Text style={styles.conflictText}>{t("editor.conflict.message")}</Text>
           <Button
@@ -1560,11 +1575,19 @@ function EditorModeView({
     revert,
     reloadFromConflict,
     overwriteFromConflict,
+    overwriteFromDiskChange,
     dismissConflict,
     reloadFromDisk,
+    diskCheckFailed,
+    diskCheckPending,
+    retryDiskCheck,
     keepMyChanges,
     dismissDiskChange,
   } = useEditorBuffer({ serverId, workspaceId, workspaceRoot, path, controllerRef });
+  const diskCheckAlertState = useMemo(
+    () => ({ kind: "checkFailed" as const, retrying: diskCheckPending, onRetry: retryDiskCheck }),
+    [diskCheckPending, retryDiskCheck],
+  );
 
   const [find, setFind] = useState<FindStripState>(INITIAL_FIND_STATE);
   const [matchInfo, setMatchInfo] = useState<EditorMatchInfo | null>(null);
@@ -2182,7 +2205,7 @@ function EditorModeView({
         style={[styles.container, fileTabPaneContainerSurface(paneSurface)]}
         testID="workspace-file-tab-pane"
       >
-        <View style={styles.centerState}>
+        <View style={styles.centerState} testID="file-editor-loading">
           <ThemedLoadingSpinner uniProps={foregroundMutedIconColorMapping} />
           <Text style={styles.mutedText}>{t("editor.loading")}</Text>
         </View>
@@ -2484,10 +2507,12 @@ function EditorModeView({
         />
       ) : null}
 
+      {diskCheckFailed ? <FileConflictAlert state={diskCheckAlertState} /> : null}
       <EditorSyncBanners
-        diskChange={buffer.diskChange}
+        diskChange={diskCheckFailed ? null : buffer.diskChange}
         hasConflict={buffer.conflict !== null}
         onDiskReload={handleDiskReload}
+        onDiskOverwrite={overwriteFromDiskChange}
         onDiskKeepMine={handleDiskKeepMine}
         onDiskDismiss={dismissDiskChange}
         onConflictReload={handleConflictReload}

@@ -72,14 +72,9 @@ test.describe("Daemon reconnect", () => {
     // the port to free, and respawns - the outage window is where the app must
     // show its disconnected state.
     const reconnectingToast = page.getByTestId("agent-reconnecting-toast");
-    const restartPromise = restartTestDaemon();
-    try {
+    await restartTestDaemon(async () => {
       await expect(reconnectingToast).toBeVisible({ timeout: 30_000 });
-    } finally {
-      // Always restore the daemon, even if the outage assertion failed -
-      // otherwise every later spec inherits a dead daemon.
-      await restartPromise;
-    }
+    });
 
     // Recovery: the client reconnects on its own; the sticky toast dismisses,
     // and the agent surface comes back (composer editable, workspace listed).

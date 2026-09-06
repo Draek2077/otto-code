@@ -262,9 +262,14 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const handleSelectionContextMenuCapture = (event: globalThis.MouseEvent) => {
       const target = getEventTarget(event);
-      if (isHybridTarget(target)) return;
+      if (
+        isHybridTarget(target) ||
+        getTargetElement(target)?.closest("[data-otto-editor-context-menu]")
+      )
+        return;
       const snapshot = captureTextSelection(target);
-      // Selection and editable controls take priority over local context menus.
+      // Selection and editable controls take priority over local context menus,
+      // except editors that supply their own selection and editing actions.
       // A row may still own an unselected right click through the bubble
       // fallback below, but it must never make selected normal UI text lose
       // Copy just because it happened to be inside that row.

@@ -686,12 +686,14 @@ export const UserMessage = memo(function UserMessage({
 
   return (
     <ChatThemeScope>
-      <View style={containerStyle} testID="user-message" aria-busy={isPending}>
-        <View
-          style={userMessageStylesheet.content}
-          onPointerEnter={handlePointerEnter}
-          onPointerLeave={handlePointerLeave}
-        >
+      <View
+        style={containerStyle}
+        testID="user-message"
+        aria-busy={isPending}
+        onPointerEnter={handlePointerEnter}
+        onPointerLeave={handlePointerLeave}
+      >
+        <View style={userMessageStylesheet.content}>
           <ChatMessageBubble side="outgoing">
             {hasImages ? (
               <View style={imagePreviewContainerStyle}>
@@ -756,7 +758,7 @@ export const UserMessage = memo(function UserMessage({
               <Text testID="user-message-timestamp" style={userMessageStylesheet.timestampText}>
                 {formattedTimestamp}
               </Text>
-              {capabilities ? (
+              {capabilities && messageId ? (
                 <RewindMenu
                   capabilities={capabilities}
                   isPending={rewindMutation.isPending}
@@ -1413,6 +1415,7 @@ interface AssistantMarkdownAstNode extends ASTNode {
 function getMarkdownLinkSource(node: AssistantMarkdownAstNode): AssistantFileLinkSource {
   return {
     href: typeof node.attributes?.href === "string" ? node.attributes.href : "",
+    title: typeof node.attributes?.title === "string" ? node.attributes.title : undefined,
     text: getMarkdownNodeText(node),
     markup: node.markup,
     sourceInfo: node.sourceInfo,

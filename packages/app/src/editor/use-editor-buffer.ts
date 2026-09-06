@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { FileWatchEventPayload } from "@otto-code/client/internal/daemon-client";
 import { getErrorMessage } from "@otto-code/protocol/error-utils";
@@ -8,6 +8,19 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import type { EditorController } from "./editor-contract";
 import { buildEditorBufferKey, useEditorBufferStore } from "./editor-buffer-store";
 import { normalizeToLf, type EditorBufferState } from "./editor-buffer-state";
+
+function registerCheckedDiskIdentity(
+  key: string,
+  state: EditorBufferState,
+  file: { hash: string | null; modifiedAt: string },
+) {
+  const store = useEditorBufferStore.getState();
+  if (file.hash && file.hash === state.baseline?.hash) {
+    store.rebaseline(key, { ...state.baseline, modifiedAt: file.modifiedAt });
+  } else if (file.hash) {
+    store.registerDiskChanged(key, { modifiedAt: file.modifiedAt, hash: file.hash });
+  }
+}
 
 export interface UseEditorBufferInput {
   serverId: string;
@@ -26,8 +39,12 @@ export interface UseEditorBufferResult {
   revert: () => Promise<void>;
   reloadFromConflict: () => Promise<void>;
   overwriteFromConflict: () => Promise<void>;
+  overwriteFromDiskChange: () => Promise<void>;
   dismissConflict: () => void;
   reloadFromDisk: () => Promise<void>;
+  diskCheckFailed: boolean;
+  diskCheckPending: boolean;
+  retryDiskCheck: () => Promise<void>;
   keepMyChanges: () => Promise<void>;
   dismissDiskChange: () => void;
 }
@@ -48,6 +65,19 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
 
   // Guards a slow read landing after the tab was closed and reopened.
   const loadTokenRef = useRef(0);
+  const diskReadTokenRef = useRef(0);
+  const editRevisionRef = useRef(0);
+  const [diskCheckFailed, setDiskCheckFailed] = useState(false);
+  const [diskCheckPending, setDiskCheckPending] = useState(false);
+
+  useEffect(() => {
+    setDiskCheckFailed(false);
+    setDiskCheckPending(false);
+    return () => {
+      loadTokenRef.current += 1;
+      diskReadTokenRef.current += 1;
+    };
+  }, [client, key]);
 
   useEffect(() => {
     if (!client) {
@@ -87,6 +117,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
 
   const onDirtyChanged = useCallback(
     (dirty: boolean) => {
+      editRevisionRef.current += 1;
       useEditorBufferStore.getState().setDirty(key, dirty);
     },
     [key],
@@ -94,6 +125,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
 
   const onDocSync = useCallback(
     (doc: string) => {
+      editRevisionRef.current += 1;
       useEditorBufferStore.getState().setDraft(key, doc);
     },
     [key],
@@ -114,6 +146,8 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
         return;
       }
       const store = useEditorBufferStore.getState();
+      diskReadTokenRef.current += 1;
+      setDiskCheckPending(false);
       store.beginSave(key);
       try {
         const result = await client.writeFile({
@@ -128,6 +162,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
           eol: state.missingOnDisk ? state.baseline?.eol : undefined,
         });
         if (result.status === "ok") {
+          setDiskCheckFailed(false);
           // No "you are clean now" call to the editor: the new baseline reaches
           // it as the `cleanDoc` prop, which also keeps it honest when the user
           // typed while the write was in flight.
@@ -190,26 +225,55 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
     store.dismissConflict(key);
   }, [controllerRef, key, t]);
 
-  /** Replace buffer + baseline with the current disk state. */
-  const reloadFromDisk = useCallback(async () => {
-    const state = useEditorBufferStore.getState().buffers[key];
-    if (!state || !client) {
-      return;
-    }
-    try {
-      const file = await client.readTextFile(state.cwd, path);
-      const content = normalizeToLf(file.content);
-      useEditorBufferStore.getState().finishLoad(key, {
-        content,
-        modifiedAt: file.modifiedAt,
-        hash: file.hash,
-        eol: file.eol,
-      });
-      controllerRef.current?.setDoc(content);
-    } catch (error) {
-      toast.error(getErrorMessage(error));
-    }
-  }, [client, controllerRef, key, path, toast]);
+  // Automatic checks preserve edits. An explicit Reload may replace existing
+  // edits, but neither kind of read may erase typing or a save begun afterward.
+  const readDisk = useCallback(
+    async (replaceEdits: boolean, verifyDeletion = false) => {
+      const state = useEditorBufferStore.getState().buffers[key];
+      if (!state || !client || state.saving) {
+        return;
+      }
+      const token = ++diskReadTokenRef.current;
+      const editRevision = editRevisionRef.current;
+      setDiskCheckPending(true);
+      try {
+        const file = await client.readTextFile(state.cwd, path);
+        if (token !== diskReadTokenRef.current) return;
+        const current = useEditorBufferStore.getState().buffers[key];
+        if (!current || current.saving || current.baseline !== state.baseline) return;
+        setDiskCheckFailed(false);
+        const content = normalizeToLf(file.content);
+        if (editRevisionRef.current !== editRevision || (!replaceEdits && current.dirty)) {
+          registerCheckedDiskIdentity(key, current, file);
+          return;
+        }
+        useEditorBufferStore.getState().finishLoad(key, {
+          content,
+          modifiedAt: file.modifiedAt,
+          hash: file.hash,
+          eol: file.eol,
+        });
+        controllerRef.current?.setDoc(content);
+      } catch (error) {
+        if (token !== diskReadTokenRef.current) return;
+        // The watcher reports absence during atomic replacements too. Confirm
+        // it with a read; other failures (including a directory at this path)
+        // keep the buffer and expose Retry instead of claiming deletion.
+        if (verifyDeletion && /\bENOENT\b/.test(getErrorMessage(error))) {
+          useEditorBufferStore.getState().registerDiskDeleted(key);
+          setDiskCheckFailed(false);
+        } else {
+          setDiskCheckFailed(true);
+        }
+      } finally {
+        if (token === diskReadTokenRef.current) setDiskCheckPending(false);
+      }
+    },
+    [client, controllerRef, key, path],
+  );
+
+  const reloadFromDisk = useCallback(() => readDisk(true), [readDisk]);
+  const retryDiskCheck = useCallback(() => readDisk(false), [readDisk]);
 
   const reloadFromConflict = useCallback(async () => {
     const state = useEditorBufferStore.getState().buffers[key];
@@ -269,7 +333,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
         return;
       }
       if (event.change === "deleted") {
-        useEditorBufferStore.getState().registerDiskDeleted(key);
+        void readDisk(false, true);
         return;
       }
       // A save is in flight; its result carries the fresh identity.
@@ -277,6 +341,9 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
         return;
       }
       if (event.hash && event.hash === state.baseline.hash) {
+        diskReadTokenRef.current += 1;
+        setDiskCheckFailed(false);
+        setDiskCheckPending(false);
         // Same content (our own save echoing back, or a touch/checkout of an
         // identical file) - refresh the identity silently.
         useEditorBufferStore.getState().rebaseline(key, {
@@ -287,17 +354,22 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
       }
       if (!state.dirty) {
         // The agreed policy: an unedited buffer follows the disk silently.
-        void reloadFromDisk();
+        void retryDiskCheck();
         return;
       }
       if (event.modifiedAt && event.hash) {
+        // A newer watcher identity supersedes any in-flight check. Preserve
+        // the edited document and show the newly observed disk version.
+        diskReadTokenRef.current += 1;
+        setDiskCheckPending(false);
+        setDiskCheckFailed(false);
         useEditorBufferStore.getState().registerDiskChanged(key, {
           modifiedAt: event.modifiedAt,
           hash: event.hash,
         });
       }
     },
-    [key, reloadFromDisk],
+    [key, readDisk, retryDiskCheck],
   );
 
   const handleWatchEventRef = useRef(handleWatchEvent);
@@ -324,6 +396,14 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
     await runConditionalWrite({ modifiedAt: conflict.modifiedAt, hash: conflict.hash });
   }, [key, runConditionalWrite]);
 
+  const overwriteFromDiskChange = useCallback(async () => {
+    const change = useEditorBufferStore.getState().buffers[key]?.diskChange;
+    if (change?.kind !== "changed") return;
+    // Overwrite only the disk identity shown by the watcher. A later external
+    // edit must still produce a conflict instead of being silently replaced.
+    await runConditionalWrite({ modifiedAt: change.modifiedAt, hash: change.hash });
+  }, [key, runConditionalWrite]);
+
   const dismissConflict = useCallback(() => {
     useEditorBufferStore.getState().dismissConflict(key);
   }, [key]);
@@ -336,8 +416,12 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
     revert,
     reloadFromConflict,
     overwriteFromConflict,
+    overwriteFromDiskChange,
     dismissConflict,
     reloadFromDisk,
+    diskCheckFailed,
+    diskCheckPending,
+    retryDiskCheck,
     keepMyChanges,
     dismissDiskChange,
   };

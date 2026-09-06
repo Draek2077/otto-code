@@ -180,7 +180,7 @@ export async function stopRegisteredRestartedTestDaemon(): Promise<void> {
  * Restart the isolated E2E daemon. The worker fixture owns the original child
  * handle, so this registers the detached replacement for worker teardown.
  */
-export async function restartTestDaemon(): Promise<void> {
+export async function restartTestDaemon(whileStopped?: () => Promise<void>): Promise<void> {
   const port = getE2EDaemonPort();
   const ottoHome = getEnvOrThrow("E2E_OTTO_HOME");
   // Per-worker T1/T2 harnesses intentionally delete this value because their
@@ -203,12 +203,16 @@ export async function restartTestDaemon(): Promise<void> {
     label: `port ${port} to free`,
   });
 
-  spawnSupervisor({ ottoHome, port, relayPort, metroPort, editorRecordPath });
-
-  await waitUntil(async () => isPortListening(Number(port)), {
-    timeoutMs: 30_000,
-    label: `restarted daemon to listen on port ${port}`,
-  });
-
-  registeredReplacementStop = () => stopRestartedSupervisor({ ottoHome, port });
+  try {
+    // Let callers observe the outage before reconnecting. A quick restart can
+    // legitimately finish before the UI's delayed reconnect indicator appears.
+    await whileStopped?.();
+  } finally {
+    spawnSupervisor({ ottoHome, port, relayPort, metroPort, editorRecordPath });
+    registeredReplacementStop = () => stopRestartedSupervisor({ ottoHome, port });
+    await waitUntil(async () => isPortListening(Number(port)), {
+      timeoutMs: 30_000,
+      label: `restarted daemon to listen on port ${port}`,
+    });
+  }
 }

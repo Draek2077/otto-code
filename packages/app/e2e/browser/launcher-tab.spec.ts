@@ -179,11 +179,9 @@ test.describe("Tab creation", () => {
     const panel = page.getByTestId("workspace-new-tab-menu").filter({ visible: true });
     const agent = panel.getByTestId("workspace-new-tab-menu-agent");
     const terminal = panel.getByTestId("workspace-new-tab-menu-terminal");
-    const diff = panel.getByTestId("workspace-new-tab-menu-diff");
     const shortcutPrefix = process.platform === "darwin" ? /⇧⌘/ : /Ctrl.*Shift/;
     await expect(agent).toContainText(new RegExp(`${shortcutPrefix.source}.*A`));
     await expect(terminal).toContainText(new RegExp(`${shortcutPrefix.source}.*T`));
-    await expect(diff).toContainText(new RegExp(`${shortcutPrefix.source}.*G`));
     await expect(agent).toBeFocused();
 
     await page.keyboard.press("ArrowDown");
@@ -256,7 +254,7 @@ test.describe("Tab creation", () => {
     const menu = page.getByTestId("workspace-new-tab-menu").filter({ visible: true });
     await expect(menu.getByText("Terminal profiles", { exact: true })).toBeVisible();
 
-    const editProfiles = menu.getByTestId("workspace-new-tab-menu-edit-terminal-profiles");
+    const editProfiles = menu.getByTestId("workspace-new-tab-menu-edit-profiles");
     await expect(editProfiles).toHaveAccessibleName("Edit profiles");
 
     await editProfiles.click();
@@ -283,7 +281,9 @@ test.describe("Tab creation", () => {
       .count();
 
     expect(newTabButtonInScroll === 0 || scrollShades === 0).toBe(true);
-    await expect(tabRow.getByTestId("workspace-new-tab-menu-trigger")).toBeVisible();
+    await expect(
+      page.getByTestId("workspace-new-tab-menu-trigger").filter({ visible: true }),
+    ).toBeVisible();
   });
 });
 

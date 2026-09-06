@@ -711,7 +711,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           setAgentInitializing(agentId, true);
         }
         try {
-          const page = await getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, request);
+          const page = await getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, {
+            ...request,
+            includePromptIndex: true,
+          });
           if (shouldInitialize && getInitDeferred(initKey)) {
             refreshAgentInitializationTimeout({ key: initKey, agentId, setAgentInitializing });
           }

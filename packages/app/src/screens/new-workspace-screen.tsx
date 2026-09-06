@@ -54,6 +54,11 @@ import { resolveLaunchTarget, type LaunchTarget } from "@/new-workspace-launch/t
 import { useTerminalComposerState } from "@/new-workspace-launch/composer-state";
 import { runCreateTerminalWorkspace } from "./new-workspace-terminal";
 import {
+  buildTerminalsQueryKey,
+  upsertCreatedTerminalPayload,
+  type ListTerminalsPayload,
+} from "./workspace/terminals/state";
+import {
   useHostRuntimeClient,
   useHostRuntimeConnectionStatuses,
   useHostRuntimeIsConnected,
@@ -1545,7 +1550,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
       <ProjectPickerTrigger
         pickerAnchorRef={project.anchorRef}
         onPress={project.open}
-        disabled={isPending || project.options.length === 0}
+        disabled={isPending}
         badgePressableStyle={badgePressableStyle}
         label={project.triggerLabel}
         tooltipLabel={t("newWorkspace.tooltips.project")}
@@ -2342,6 +2347,7 @@ export function NewWorkspaceScreen({
         const message = toErrorMessage(error);
         setErrorMessage(message);
         toast.error(message);
+        throw error;
       }
     },
     [runSubmitNewWorkspace, selectedServerId, t, toast],
@@ -2372,6 +2378,9 @@ export function NewWorkspaceScreen({
       text: "Create a README.md that documents this project.",
       attachments: [],
       cwd: selectedSourceDirectory ?? "",
+    }).catch(() => {
+      // The submission handler already presents the creation error. This
+      // button has no Composer submission lifecycle to receive the rejection.
     });
   }, [handleSubmitNewWorkspace, selectedSourceDirectory]);
   const handleStartEmptyWorkspace = useCallback(() => {
@@ -2410,7 +2419,23 @@ export function NewWorkspaceScreen({
           if (!createdTerminal.terminal) {
             throw new Error(createdTerminal.error ?? t("newWorkspace.errors.createWorktreeFailed"));
           }
-          return { terminalId: createdTerminal.terminal.id };
+          const terminal = createdTerminal.terminal;
+          const queryKey = buildTerminalsQueryKey(
+            selectedServerId,
+            input.workspaceDirectory,
+            input.workspaceId,
+          );
+          // The destination can already have a cached empty terminal list.
+          // Publish the create response before navigation can reconcile its tabs.
+          await queryClient.cancelQueries({ queryKey });
+          queryClient.setQueryData<ListTerminalsPayload>(queryKey, (current) =>
+            upsertCreatedTerminalPayload({
+              current,
+              terminal,
+              workspaceDirectory: input.workspaceDirectory,
+            }),
+          );
+          return { terminalId: terminal.id };
         },
         sendTerminalInput: (terminalId, data) => {
           withConnectedClient().sendTerminalInput(terminalId, { type: "input", data });
@@ -2428,6 +2453,7 @@ export function NewWorkspaceScreen({
   }, [
     ensureWorkspace,
     launchTarget,
+    queryClient,
     selectedServerId,
     selectedSourceDirectory,
     selectedTerminalProfile,

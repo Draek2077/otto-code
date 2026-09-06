@@ -19,13 +19,6 @@ function getWorkspaceRowTestId(workspaceId: string): string {
   return `sidebar-workspace-row-${getServerId()}:${workspaceId}`;
 }
 
-// Tab alignment defaults to Vertical on a fresh install, so the workspace tab
-// strip is the rail, not the horizontal row. Match either, the way
-// helpers/workspace-tabs.ts does.
-function workspaceTabsStrip(page: import("@playwright/test").Page) {
-  return page.getByTestId("workspace-tabs-row").or(page.getByTestId("workspace-tabs-rail"));
-}
-
 async function openWorkspaceFromSidebar(
   page: import("@playwright/test").Page,
   workspaceId: string,
@@ -272,10 +265,14 @@ test.describe("Half-screen desktop layout", () => {
         page.getByTestId("explorer-sidebar-tab-files").filter({ visible: true }),
       ).toBeVisible();
       await expect(page.getByTestId("workspace-explorer-toggle").first()).toBeVisible();
-      await expect(page.getByTestId("explorer-close")).toBeVisible();
+      await expect(explorerToggle).toHaveAccessibleName("Close Explorer sidebar");
       await expect(page.getByTestId("sidebar-command-center-search")).not.toBeVisible();
 
-      const centerBounds = await workspaceTabsStrip(page).first().boundingBox();
+      const centerPane = page
+        .locator('[data-testid^="workspace-pane-"]')
+        .filter({ visible: true })
+        .first();
+      const centerBounds = await centerPane.boundingBox();
       const headerGlyphBounds = await page.getByTestId("menu-button").boundingBox();
       const tabGlyphBounds = await page
         .locator('[data-testid^="workspace-tab-"]')
@@ -292,7 +289,7 @@ test.describe("Half-screen desktop layout", () => {
       );
 
       await expect
-        .poll(async () => (await workspaceTabsStrip(page).first().boundingBox())?.width ?? 0)
+        .poll(async () => (await centerPane.boundingBox())?.width ?? 0)
         .toBeGreaterThanOrEqual(400);
 
       await explorerToggle.click();

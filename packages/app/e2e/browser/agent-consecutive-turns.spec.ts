@@ -190,33 +190,11 @@ async function recordTurnFrames(page: Page, prompt: string): Promise<void> {
         backgroundColor: style.backgroundColor,
       };
     };
-    const unionRect = (elements: Element[]): FrameRect | null => {
-      if (elements.length === 0) return null;
-      const rects = elements.map(rectOf);
-      const top = Math.min(...rects.map((rect) => rect.top));
-      const right = Math.max(...rects.map((rect) => rect.right));
-      const bottom = Math.max(...rects.map((rect) => rect.bottom));
-      const left = Math.min(...rects.map((rect) => rect.left));
-      return { top, right, bottom, left, width: right - left, height: bottom - top };
-    };
     const spinnerSnapshot = (
       footer: Element | null | undefined,
       clip: Element | null,
-    ): ElementFrame => {
-      const dots = Array.from(footer?.querySelectorAll("*") ?? []).filter((candidate) =>
-        hasColor(getComputedStyle(candidate).backgroundColor),
-      );
-      if (dots.length === 0) return emptyElement();
-      const opacities = dots.map((dot) => Number(getComputedStyle(dot).opacity));
-      return {
-        mounted: true,
-        visible: dots.some((dot) => isVisible(dot, clip)),
-        painted: dots.some((dot, index) => opacities[index] > 0 && isVisible(dot, clip)),
-        rect: unionRect(dots),
-        opacity: Math.max(...opacities),
-        backgroundColor: getComputedStyle(dots[0]).backgroundColor,
-      };
-    };
+    ): ElementFrame =>
+      snapshot(footer?.querySelector('[data-testid="turn-working-spinner"]'), clip);
     const findImageAttachment = (row: Element | undefined) =>
       row?.querySelector('[role="button"][aria-label="Open image attachment"]');
     const findAgentTabState = () => {
@@ -255,7 +233,9 @@ async function recordTurnFrames(page: Page, prompt: string): Promise<void> {
       const interrupt = Array.from(
         composerRoot?.querySelectorAll('[role="button"][aria-label]') ?? [],
       ).find((candidate) =>
-        /stop agent|canceling agent/i.test(candidate.getAttribute("aria-label") ?? ""),
+        /stop agent|canceling agent|interrupt agent/i.test(
+          candidate.getAttribute("aria-label") ?? "",
+        ),
       );
       const primaryActionCount = countPrimaryActions(composerRoot);
       const { agentTab, tabProgress } = findAgentTabState();
@@ -350,7 +330,7 @@ async function installActivityContinuityOracle(page: Page, prompt: string): Prom
         row: Array.from(document.querySelectorAll('[data-testid="user-message"]')).some(
           (candidate) => candidate.textContent?.includes(promptText),
         ),
-        stop: isVisible(document.querySelector('[role="button"][aria-label="Stop agent"]')),
+        stop: isVisible(document.querySelector('[role="button"][aria-label="Interrupt agent"]')),
         footer: isVisible(document.querySelector('[data-testid="turn-working-indicator"]')),
         tabProgress: isVisible(
           visibleAgentTab?.querySelector('[role="progressbar"][aria-label="Agent running"]') ??

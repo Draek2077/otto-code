@@ -262,6 +262,16 @@ export function WorkspaceTabRowExtras({
   onExitFocusMode,
 }: WorkspaceTabRowExtrasProps) {
   const { t } = useTranslation();
+  const newAgentKeys = useShortcutKeys("workspace-tab-target-agent");
+  const newTerminalKeys = useShortcutKeys("workspace-terminal-new");
+  const newAgentShortcut = useMemo(
+    () => (newAgentKeys ? <Shortcut chord={newAgentKeys} /> : undefined),
+    [newAgentKeys],
+  );
+  const newTerminalShortcut = useMemo(
+    () => (newTerminalKeys ? <Shortcut chord={newTerminalKeys} /> : undefined),
+    [newTerminalKeys],
+  );
   const { settings: appSettings } = useAppSettings();
   const { config } = useDaemonConfig(normalizedServerId);
   const isCompact = useIsCompactFormFactor();
@@ -386,10 +396,17 @@ export function WorkspaceTabRowExtras({
             <Text style={styles.newTabTooltipText}>{t("workspace.tabs.actions.moreActions")}</Text>
           </TooltipContent>
         </Tooltip>
-        <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={200}>
+        <DropdownMenuContent
+          side="bottom"
+          align="end"
+          offset={4}
+          minWidth={200}
+          testID="workspace-new-tab-menu"
+        >
           <DropdownMenuItem
             testID="workspace-new-tab-menu-agent"
             leading={MENU_AGENT_ICON}
+            trailing={newAgentShortcut}
             onSelect={onCreateAgentTab}
           >
             {t("workspace.tabs.actions.newAgent")}
@@ -398,6 +415,7 @@ export function WorkspaceTabRowExtras({
             <DropdownMenuItem
               testID="workspace-new-tab-menu-terminal"
               leading={MENU_TERMINAL_ICON}
+              trailing={newTerminalShortcut}
               disabled={terminalDisabled}
               onSelect={terminalDisabled ? undefined : onCreateTerminal}
             >

@@ -139,7 +139,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
 const TurnSpinner = memo(
   function TurnSpinner({ spinner }: { spinner?: PersonalitySpinnerColors }) {
     return (
-      <View style={stylesheet.workingLoader}>
+      <View style={stylesheet.workingLoader} testID="turn-working-spinner">
         {spinner ? (
           <BlobLoader size={18} glowA={spinner.glowA} glowB={spinner.glowB} />
         ) : (

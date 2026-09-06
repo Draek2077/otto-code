@@ -324,16 +324,18 @@ export function AnchoredSurface({
     revision,
   });
 
+  const isPositioned = position !== null;
   useEffect(() => {
-    if (!isWeb || !open || !contentSize || typeof document === "undefined") return undefined;
+    if (!isWeb || !open || !contentSize || !isPositioned || typeof document === "undefined")
+      return undefined;
     const frame = requestAnimationFrame(() => {
       document
         .getElementById(surfaceNativeID)
         ?.querySelector<HTMLElement>('[data-menu-item="true"]:not([data-menu-disabled="true"])')
-        ?.focus();
+        ?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [contentSize, open, surfaceNativeID]);
+  }, [contentSize, isPositioned, open, surfaceNativeID]);
 
   const frameStyle = useMemo<StyleProp<ViewStyle>>(() => {
     const { width: screenWidth } = Dimensions.get("window");

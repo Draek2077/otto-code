@@ -366,15 +366,18 @@ function resolveModelField(input: {
     input;
   if (userModified) return currentModel;
   if (!provider) return "";
-  const isValidModel = (m: string) => availableModels?.some((am) => am.id === m) ?? false;
   const initialModel = normalizeSelectedModelId(initialValues?.model);
   const preferredModel = normalizeSelectedModelId(providerPrefs?.model);
   const defaultModelId = resolveDefaultModelId(availableModels);
   if (initialModel) {
-    return !availableModels || isValidModel(initialModel) ? initialModel : defaultModelId;
+    return !availableModels
+      ? initialModel
+      : (findModelByReference(availableModels, initialModel)?.id ?? defaultModelId);
   }
   if (preferredModel) {
-    return !availableModels || isValidModel(preferredModel) ? preferredModel : defaultModelId;
+    return !availableModels
+      ? preferredModel
+      : (findModelByReference(availableModels, preferredModel)?.id ?? defaultModelId);
   }
   // The provider's own default, materialized into state rather than painted in
   // at label time. It used to return "" here and let resolveSelectedModelLabel
@@ -391,6 +394,7 @@ function resolveThinkingOption(input: {
   modelId: string;
   initialValues: FormInitialValues | undefined;
   providerPrefs: ProviderPrefs | undefined;
+  availableModels: AgentModelDefinition[] | null;
 }): string {
   const { provider, userModified, currentThinkingOptionId, modelId, initialValues, providerPrefs } =
     input;
@@ -406,6 +410,13 @@ function resolveThinkingOption(input: {
     : "";
   if (initialThinkingOptionId.length > 0) return initialThinkingOptionId;
   if (preferredThinking.length > 0) return preferredThinking;
+  // A renamed model retains its remembered effort. Only aliases advertised by
+  // this model qualify; an unavailable unrelated model must not donate its preference.
+  const model = findModelByReference(input.availableModels, effectiveModelId);
+  for (const alias of model?.aliases ?? []) {
+    const remembered = providerPrefs?.thinkingByModel?.[alias]?.trim();
+    if (remembered) return remembered;
+  }
   return "";
 }
 
@@ -457,6 +468,7 @@ export function resolveFormState(
     modelId: result.model,
     initialValues,
     providerPrefs,
+    availableModels,
   });
 
   if (result.provider && availableModels) {

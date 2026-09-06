@@ -267,6 +267,8 @@ export interface BranchSuggestion {
   committerDate: number;
   hasLocal: boolean;
   hasRemote: boolean;
+  localAhead?: number;
+  localBehind?: number;
   /**
    * True when the branch is checked out in a worktree other than the one
    * containing the requesting cwd. Git refuses `git checkout` of such a
@@ -361,6 +363,41 @@ function sortBranchSuggestions(
   });
 }
 
+async function buildBranchSuggestion(
+  cwd: string,
+  name: string,
+  meta: BranchSuggestionMeta | undefined,
+  checkedOutElsewhere: boolean,
+): Promise<BranchSuggestion> {
+  const suggestion: BranchSuggestion = {
+    name,
+    committerDate: meta?.committerDate ?? 0,
+    hasLocal: meta?.hasLocal ?? false,
+    hasRemote: meta?.hasRemote ?? false,
+    checkedOutElsewhere: checkedOutElsewhere,
+  };
+  if (suggestion.hasLocal && suggestion.hasRemote) {
+    // Only compare the bounded result page. Qualified refs keep branch names
+    // unambiguous; a ref deleted since enumeration leaves divergence unknown.
+    const result = await runGitCommand(
+      [
+        "rev-list",
+        "--left-right",
+        "--count",
+        `refs/heads/${name}...refs/remotes/origin/${name}`,
+        "--",
+      ],
+      { cwd, envOverlay: READ_ONLY_GIT_ENV, acceptExitCodes: [0, 128] },
+    );
+    const counts = result.stdout.trim().match(/^(\d+)\s+(\d+)$/);
+    if (result.exitCode === 0 && counts) {
+      suggestion.localAhead = Number(counts[1]);
+      suggestion.localBehind = Number(counts[2]);
+    }
+  }
+  return suggestion;
+}
+
 export async function listBranchSuggestions(
   cwd: string,
   options?: { query?: string; limit?: number },
@@ -419,16 +456,17 @@ export async function listBranchSuggestions(
   }
 
   const ordered = sortBranchSuggestions(filteredNames, branchMeta, query);
-  return ordered.slice(0, limit).map((name) => {
-    const meta = branchMeta.get(name);
-    return {
+  const suggestions: BranchSuggestion[] = [];
+  for (const name of ordered.slice(0, limit)) {
+    const suggestion = await buildBranchSuggestion(
+      cwd,
       name,
-      committerDate: meta?.committerDate ?? 0,
-      hasLocal: meta?.hasLocal ?? false,
-      hasRemote: meta?.hasRemote ?? false,
-      checkedOutElsewhere: checkedOutElsewhereNames.has(name),
-    };
-  });
+      branchMeta.get(name),
+      checkedOutElsewhereNames.has(name),
+    );
+    suggestions.push(suggestion);
+  }
+  return suggestions;
 }
 
 export interface LocalBranchCheckoutResolution {

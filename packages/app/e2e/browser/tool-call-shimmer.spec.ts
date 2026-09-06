@@ -3,6 +3,7 @@ import { test, expect } from "../support/fixtures";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
+import { seedAppSettings } from "../support/helpers/settings";
 
 type WebSocketMessage = string | Buffer;
 
@@ -158,9 +159,7 @@ test("measures an overview heading that becomes loading after its idle mount", a
   page,
 }, testInfo) => {
   test.setTimeout(120_000);
-  await page.addInitScript(() => {
-    localStorage.setItem("@otto:app-settings", JSON.stringify({ toolCallDetailLevel: "overview" }));
-  });
+  await seedAppSettings(page, { toolCallDetailLevel: "overview", groupConsecutiveActions: true });
   const agent = await seedMockAgentWorkspace({
     repoPrefix: "tool-call-shimmer-",
     title: "Tool-call shimmer",

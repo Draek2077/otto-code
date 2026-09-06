@@ -106,8 +106,9 @@ test("reloading a timeline anchors near-tail assistant image growth", async ({
         }
       };
       const inspect = () => {
-        const target = Array.from(document.querySelectorAll('[role="img"]')).find(
-          (element) => element.getAttribute("aria-label") === accessibleName,
+        const target = Array.from(document.querySelectorAll('img, [role="img"]')).find(
+          (element) =>
+            (element.getAttribute("aria-label") ?? element.getAttribute("alt")) === accessibleName,
         );
         if (!target || target === state.target) {
           record();
@@ -123,7 +124,7 @@ test("reloading a timeline anchors near-tail assistant image growth", async ({
         state.mutationObserver = new MutationObserver(inspect);
         state.mutationObserver.observe(document.documentElement, {
           attributes: true,
-          attributeFilter: ["src", "style"],
+          attributeFilter: ["src", "style", "alt", "aria-label"],
           childList: true,
           subtree: true,
         });

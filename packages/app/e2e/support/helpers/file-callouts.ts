@@ -12,7 +12,9 @@ export async function recordFileCallouts(page: Page): Promise<void> {
       for (const mutation of records) {
         if (
           !(mutation.target instanceof Element) ||
-          !mutation.target.closest('[data-testid="workspace-file-pane"]')
+          !mutation.target.closest(
+            '[data-testid="workspace-file-pane"], [data-testid="workspace-file-tab-pane"]',
+          )
         ) {
           continue;
         }

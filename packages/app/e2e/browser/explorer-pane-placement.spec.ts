@@ -31,7 +31,10 @@ function explorerTabRow(page: Page): Locator {
 }
 
 function mainTabRow(page: Page): Locator {
-  return visible(page, "workspace-tabs-row");
+  return page
+    .getByTestId("workspace-tabs-row")
+    .or(page.getByTestId("workspace-tabs-rail"))
+    .filter({ visible: true });
 }
 
 async function selectExplorerChanges(page: Page): Promise<void> {
@@ -166,7 +169,7 @@ test.describe("explorer pane tab placement", () => {
           contentType: "image/png",
         });
         // The split must have taken: agent pane + New main. Explorer keeps its own rail.
-        await expect(visible(page, "workspace-tabs-row")).toHaveCount(2, { timeout: 10_000 });
+        await expect(mainTabRow(page)).toHaveCount(2, { timeout: 10_000 });
         await expect(explorerTabRow(page)).toHaveCount(1);
         await expect(page.getByTestId("workspace-new-tab-panel")).toBeVisible();
       });

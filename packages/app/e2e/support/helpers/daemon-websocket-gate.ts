@@ -28,13 +28,9 @@ interface ClientRequest {
 interface ServerMessage {
   type?: unknown;
   payload?: {
-    initial?: {
-      path?: unknown;
-    };
-    version?: {
-      status?: unknown;
-      path?: unknown;
-    };
+    path?: unknown;
+    ok?: unknown;
+    change?: unknown;
   };
 }
 
@@ -345,13 +341,14 @@ export async function installDaemonWebSocketGate(
   let heldReadyFileUpdatePromise = Promise.resolve();
   const recordFileUpdate = (message: ServerMessage): void => {
     if (
-      message.type !== "fs.file.update" ||
-      typeof message.payload?.version?.status !== "string" ||
-      typeof message.payload.version.path !== "string"
+      message.type !== "file.watch.event" ||
+      typeof message.payload?.change !== "string" ||
+      typeof message.payload.path !== "string"
     ) {
       return;
     }
-    const key = `${message.payload.version.path}:${message.payload.version.status}`;
+    const status = message.payload.change === "deleted" ? "missing" : "ready";
+    const key = `${message.payload.path}:${status}`;
     observedFileUpdates.add(key);
     fileUpdateWaiters.get(key)?.();
     fileUpdateWaiters.delete(key);
@@ -374,10 +371,11 @@ export async function installDaemonWebSocketGate(
 
   const observeFileMessage = (message: ServerMessage | null): void => {
     if (
-      message?.type === "fs.file.subscribe.response" &&
-      typeof message.payload?.initial?.path === "string"
+      message?.type === "file.watch.subscribe.response" &&
+      message.payload?.ok === true &&
+      typeof message.payload.path === "string"
     ) {
-      const path = message.payload.initial.path;
+      const path = message.payload.path;
       subscribedFilePaths.add(path);
       fileSubscriptionWaiters.get(path)?.();
       fileSubscriptionWaiters.delete(path);
@@ -432,9 +430,9 @@ export async function installDaemonWebSocketGate(
     fileMessage: ServerMessage | null,
   ): boolean => {
     if (
-      fileMessage?.type !== "fs.file.update" ||
-      fileMessage.payload?.version?.status !== "ready" ||
-      fileMessage.payload.version.path !== readyFileUpdatePathToHold ||
+      fileMessage?.type !== "file.watch.event" ||
+      (fileMessage.payload?.change !== "changed" && fileMessage.payload?.change !== "recreated") ||
+      fileMessage.payload.path !== readyFileUpdatePathToHold ||
       heldReadyFileUpdate
     ) {
       return false;

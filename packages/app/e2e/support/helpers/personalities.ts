@@ -363,7 +363,7 @@ export interface StoredAgentRecordSlice {
   id?: string;
   config?: {
     systemPrompt?: string;
-    personalitySnapshot?: { personalityId?: string; name?: string; systemPrompt?: string };
+    profileSnapshot?: { profileId?: string; name?: string; systemPrompt?: string };
     teamSnapshot?: { teamId?: string; name?: string; teamPrompt?: string };
   };
 }

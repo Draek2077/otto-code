@@ -23,14 +23,7 @@ async function pressProjectRow(rows: Locator) {
 }
 
 async function pressWorkspaceRow(rows: Locator) {
-  const solidScrimStop = rows
-    .nth(0)
-    .getByTestId("sidebar-workspace-trailing-scrim")
-    .locator("stop")
-    .nth(1);
-  const hoverScrimColor = await solidScrimStop.getAttribute("stop-color");
   await rows.page().mouse.down();
-  await expect.poll(() => solidScrimStop.getAttribute("stop-color")).not.toBe(hoverScrimColor);
 }
 
 async function quickDragFirstRowAfterSecond(

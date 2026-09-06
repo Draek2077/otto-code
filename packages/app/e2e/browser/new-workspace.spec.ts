@@ -949,7 +949,7 @@ test.describe("New workspace flow", () => {
     }
   });
 
-  test("pasted GitHub PR replaces a selected branch and creates its worktree", async ({
+  test("accepting a pasted GitHub PR checkout hint replaces the branch and creates its worktree", async ({
     page,
     context,
   }) => {
@@ -974,7 +974,8 @@ test.describe("New workspace flow", () => {
     await pasteGithubPrUrl(page, context, pr.url);
 
     const createButton = page.getByTestId("workspace-create-submit");
-    await expect(createButton).toBeDisabled();
+    // Attaching a PR proposes a checkout; it does not silently replace the chosen branch.
+    await expectPickerSelected(page, "main");
     await expect(createButton.getByRole("progressbar")).toHaveCount(0);
 
     await dropFileOnComposer(page, BACKGROUND_RESOLUTION_FILE);
@@ -984,6 +985,7 @@ test.describe("New workspace flow", () => {
       number: pr.number,
       title: pr.title,
     });
+    await page.getByTestId("new-workspace-checkout-hint-accept").click();
     await expectStartingRefPickerTriggerPr(page, {
       number: pr.number,
       title: pr.title,
@@ -1027,6 +1029,7 @@ test.describe("New workspace flow", () => {
     });
     await selectWorkspaceIsolation(page, "worktree");
     await pasteGithubPrUrl(page, context, pr.url);
+    await page.getByTestId("new-workspace-checkout-hint-accept").click();
     await expectStartingRefPickerTriggerPr(page, {
       number: pr.number,
       title: pr.title,

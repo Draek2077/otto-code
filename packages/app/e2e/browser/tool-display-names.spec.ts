@@ -21,6 +21,9 @@ test.describe("Tool display names", () => {
     const agent = await seedMockAgentWorkspace({
       repoPrefix: "tool-display-names-",
       title: "Tool display names",
+      // The two-second default can expire during introductory prose, before
+      // the scripted Read/Search/Edit/Shell events under test are emitted.
+      model: "ten-second-stream",
     });
     try {
       await openAgentRoute(page, agent);

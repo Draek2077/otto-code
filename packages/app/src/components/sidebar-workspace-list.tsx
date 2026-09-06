@@ -70,7 +70,8 @@ import {
   type SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
-import { useSidebarViewStore } from "@/stores/sidebar-view-store";
+import { hasActiveSidebarLabelFilter, useSidebarViewStore } from "@/stores/sidebar-view-store";
+import { SidebarFilterEmptyState } from "@/components/sidebar/empty-states";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import {
   ContextMenu,
@@ -2172,6 +2173,9 @@ function ProjectModeList({
   onToggleWorkspacePin: ToggleSidebarWorkspacePin;
 }) {
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
+  const hasActiveLabelFilter = useSidebarViewStore((state) =>
+    hasActiveSidebarLabelFilter(state.labelFilter),
+  );
   const { t } = useTranslation();
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
@@ -2473,8 +2477,11 @@ function ProjectModeList({
           )}
         </View>
       ) : null}
-      {unpinnedProjects.length > 0 || hasActiveHostFilter ? listHeaderComponent : null}
-      {projects.length === 0 ? (
+      {unpinnedProjects.length > 0 || hasActiveHostFilter || hasActiveLabelFilter
+        ? listHeaderComponent
+        : null}
+      {projects.length === 0 && hasActiveLabelFilter ? <SidebarFilterEmptyState /> : null}
+      {projects.length === 0 && !hasActiveLabelFilter ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle} testID="sidebar-project-empty-state">
             {t("sidebar.project.empty.title")}
@@ -2484,7 +2491,8 @@ function ProjectModeList({
             {t("sidebar.actions.addProject")}
           </Button>
         </View>
-      ) : (
+      ) : null}
+      {projects.length > 0 ? (
         <DraggableList
           testID="sidebar-project-list"
           data={unpinnedProjects}
@@ -2499,7 +2507,7 @@ function ProjectModeList({
           gestureHostPresented={dragGestureHostPresented}
           containerStyle={styles.projectListContainer}
         />
-      )}
+      ) : null}
       {listFooterComponent}
     </>
   );

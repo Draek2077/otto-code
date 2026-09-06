@@ -72,7 +72,7 @@ test.describe("Composer control density across tab switches", () => {
       await clickNewChat(page);
 
       const draftTabs = page
-        .locator('[data-testid^="workspace-tab-draft"]')
+        .locator('[data-testid^="workspace-tab-draft"][aria-selected]')
         .filter({ visible: true });
       await expect(draftTabs).toHaveCount(2, { timeout: 30_000 });
       await expect(

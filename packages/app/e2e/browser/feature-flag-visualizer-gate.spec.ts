@@ -52,7 +52,7 @@ test.describe("Feature flag: Visualizer gate", () => {
       // Settings -> Visualizer: the master switch is on and the dependent
       // sections (Rendering etc.) are visible while enabled.
       await toggleSettingsFromUi(page);
-      await expect(page).toHaveURL(/\/settings\//, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/settings(?:\/|$)/, { timeout: 15_000 });
       await openVisualizerSettingsSection(page);
       await expect(page.getByTestId("settings-visualizer-quality")).toBeVisible();
 
@@ -78,7 +78,7 @@ test.describe("Feature flag: Visualizer gate", () => {
 
       // Re-enable from settings.
       await toggleSettingsFromUi(page);
-      await expect(page).toHaveURL(/\/settings\//, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/settings(?:\/|$)/, { timeout: 15_000 });
       await openVisualizerSettingsSection(page);
       await page.getByTestId("settings-visualizer-enable-switch").click();
       await expectPersistedVisualizerFlag(page, true);

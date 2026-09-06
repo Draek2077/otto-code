@@ -9,6 +9,7 @@ import {
   useSessionStore,
   type Agent,
   type AgentTimelineState,
+  type AgentTimelineCursorState,
   type SessionReplica,
   type SessionState,
   type ProjectDescriptor,
@@ -210,6 +211,14 @@ const StoredProjectSchema = z.strictObject({
 const StoredTimelineSchema = z.strictObject({
   agentId: z.string(),
   items: z.array(StoredTimelineItemSchema),
+  cursor: z
+    .strictObject({
+      epoch: z.string(),
+      startSeq: z.number().int().nonnegative(),
+      endSeq: z.number().int().nonnegative(),
+    })
+    .optional(),
+  hasOlder: z.boolean().optional(),
 });
 
 const StoredHostSchema = z.strictObject({
@@ -237,6 +246,8 @@ interface ReplicaInput {
   workspace: WorkspaceDescriptor | undefined;
   project: ProjectDescriptor | undefined;
   timelineItems: StreamItem[] | undefined;
+  timelineRange: AgentTimelineCursorState | null;
+  hasOlder: boolean;
 }
 
 export interface ReplicaCacheStorage {
@@ -256,8 +267,8 @@ function deserializeTimeline(stored: StoredHost["timeline"]): SessionReplica["ti
   return {
     agentId: stored.agentId,
     items: stored.items.map(deserializeTimelineItem),
-    cursor: null,
-    hasOlder: false,
+    cursor: stored.cursor ?? null,
+    hasOlder: stored.hasOlder ?? false,
   };
 }
 
@@ -487,7 +498,9 @@ function replicaInputsEqual(left: ReplicaInput, right: ReplicaInput): boolean {
     left.agent === right.agent &&
     left.workspace === right.workspace &&
     left.project === right.project &&
-    left.timelineItems === right.timelineItems
+    left.timelineItems === right.timelineItems &&
+    left.timelineRange === right.timelineRange &&
+    left.hasOlder === right.hasOlder
   );
 }
 
@@ -502,12 +515,51 @@ function selectReplicaInput(session: SessionState, agentId: string | null): Repl
   const timeline: AgentTimelineState = agentId
     ? selectAgentTimelineState(session, agentId)
     : { status: "cold" };
-  return {
+  const input: ReplicaInput = {
     agent,
     workspace,
     project: workspace ? session.projects.get(workspace.projectId) : undefined,
     timelineItems: timeline.status === "cold" ? undefined : timeline.items,
+    timelineRange:
+      timeline.status === "synced" &&
+      timeline.newer === "none" &&
+      !session.agentStreamHead.get(agentId ?? "")?.length
+        ? timeline.range
+        : null,
+    hasOlder: timeline.status === "synced" && timeline.older === "available",
   };
+  if (!canPersistTimelineRange(input)) input.timelineRange = null;
+  return input;
+}
+
+function canPersistTimelineRange(input: ReplicaInput): boolean {
+  const range = input.timelineRange;
+  const items = input.timelineItems;
+  if (
+    !range ||
+    !items?.length ||
+    items.length > MAX_TIMELINE_ITEMS ||
+    (range.retainedRanges?.length ?? 0) > 1
+  )
+    return false;
+  return items.every((item) => {
+    const position = item.timelineCursor;
+    if (
+      !position ||
+      position.epoch !== range.epoch ||
+      position.seq < range.startSeq ||
+      position.seq > range.endSeq
+    )
+      return false;
+    const stored = serializeTimelineItem(item);
+    if (!stored) return false;
+    const restored = deserializeTimelineItem(stored) as unknown as Record<string, unknown>;
+    // Extra presentation fields (images, attachments, tool data) must survive
+    // the round trip before the cache may certify a complete canonical window.
+    return Object.entries(item).every(
+      ([key, value]) => JSON.stringify(value) === JSON.stringify(restored[key]),
+    );
+  });
 }
 
 function serializeHost(serverId: string, input: ReplicaInput): StoredHost {
@@ -526,6 +578,16 @@ function serializeHost(serverId: string, input: ReplicaInput): StoredHost {
         ? {
             agentId: input.agent.id,
             items: items.slice(-MAX_TIMELINE_ITEMS),
+            ...(input.timelineRange
+              ? {
+                  cursor: {
+                    epoch: input.timelineRange.epoch,
+                    startSeq: input.timelineRange.startSeq,
+                    endSeq: input.timelineRange.endSeq,
+                  },
+                  hasOlder: input.hasOlder,
+                }
+              : {}),
           }
         : null,
   };

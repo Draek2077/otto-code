@@ -1812,10 +1812,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onHeightChange?.(MIN_INPUT_HEIGHT);
     }, [onHeightChange]);
 
+    const readSubmissionText = useCallback(() => {
+      // A paste/input event and a button click can share a render turn. The
+      // visible web input is authoritative until its controlled prop catches up.
+      if (isWeb) {
+        const element = getTextInputNativeElement(textInputRef.current);
+        if (element instanceof HTMLTextAreaElement) return element.value;
+      }
+      return valueRef.current;
+    }, []);
+
     const handleSendMessage = useCallback(
       () =>
         sendMessageImpl({
-          value: valueRef.current,
+          value: readSubmissionText(),
           attachments,
           hasExternalContent,
           allowEmptySubmit,
@@ -1836,20 +1846,21 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         hasExternalContent,
         minimizeInputHeight,
         preserveHeightOnSubmit,
+        readSubmissionText,
       ],
     );
 
     const handleQueueMessage = useCallback(
       () =>
         queueMessageImpl({
-          value: valueRef.current,
+          value: readSubmissionText(),
           attachments,
           cwd,
           onQueue,
           onChangeText,
           onMinimizeHeight: minimizeInputHeight,
         }),
-      [attachments, cwd, onQueue, onChangeText, minimizeInputHeight],
+      [attachments, cwd, onQueue, onChangeText, minimizeInputHeight, readSubmissionText],
     );
 
     const handleDefaultSendAction = useCallback(() => {
@@ -1951,9 +1962,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     function handleDesktopKeyPress(event: WebTextInputKeyPressEvent) {
       if (!shouldHandleWebKeyPress) return;
+      const element = getTextInputNativeElement(textInputRef.current);
+      const liveInput =
+        element instanceof HTMLTextAreaElement
+          ? {
+              text: element.value,
+              selection: { start: element.selectionStart, end: element.selectionEnd },
+            }
+          : { text: value, selection: selectionRef.current };
       handleDesktopKeyPressImpl(event, {
         onKeyPressCallback,
-        input: { text: value, selection: selectionRef.current },
+        input: liveInput,
         submitOnEnter: shouldSubmitOnEnter,
         isAgentRunning,
         onQueue,

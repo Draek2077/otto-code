@@ -37,7 +37,7 @@ import { gotoAppShell, openSettings, selectModel } from "../support/helpers/app"
 import { openSettingsSection } from "../support/helpers/settings";
 import { observeTimelineSubscriptions } from "../support/helpers/timeline-delivery";
 import {
-  expectResumeOverflowFallsBackToOneTail,
+  expectOneResumeTail,
   rememberTimelineRequestCounts,
 } from "../support/helpers/timeline-resume";
 import { workspaceDeckEntryLocator } from "../support/helpers/workspace-ui";
@@ -482,7 +482,7 @@ async function expectHiddenStreamingSubmissionOrderAfterWorkspaceEviction(
     await expect(promptRow).toBeVisible();
     await expect(response).toBeVisible();
     await expectRenderedBefore(promptRow, response);
-    expectResumeOverflowFallsBackToOneTail(gate, requestsBeforeReturn);
+    expectOneResumeTail(gate, requestsBeforeReturn);
   } finally {
     gate.setAgentStreamSuppressed(false);
     gate.restore();
@@ -604,7 +604,7 @@ async function expectStaleCanonicalPagePreservesNewerLiveOutput(
     await openAgentRoute(page, { workspaceId: agent.workspaceId, agentId: agent.agentId });
     await expectComposerVisible(page);
     await agent.client.sendAgentMessage(agent.agentId, "End the snapshot at a tool call.");
-    await awaitToolCall(page, "read");
+    await awaitToolCall(page, "Read");
     await page
       .getByRole("button", {
         name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
@@ -1080,7 +1080,10 @@ test.describe("Agent message submission", () => {
     await composer.fill(prompt);
     await expect(composer).toHaveValue(prompt);
     await expect(
-      page.getByTestId("user-message").filter({ hasText: submissionScenario.existingPrompt }),
+      // The image Markdown renders as an image, so its source syntax is not DOM text.
+      page
+        .getByTestId("user-message")
+        .filter({ hasText: submissionScenario.existingPrompt.split("![", 1)[0].trim() }),
     ).toBeVisible();
     const finishTimelineRowStabilityCheck = await beginTimelineRowStabilityCheck(
       page,
