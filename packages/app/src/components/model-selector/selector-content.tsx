@@ -339,6 +339,7 @@ function ModelRow({
 
   return (
     <ComboboxItem
+      testID={`model-row-${row.provider}-${row.modelId}`}
       label={row.modelLabel}
       description={row.description}
       selected={isSelected}
@@ -660,6 +661,7 @@ function PersonalityRow({
       style={rowStyle}
       accessibilityRole="button"
       accessibilityState={a11yState}
+      aria-selected={isSelected}
       testID={`personality-row-${personality.id}`}
     >
       <PersonalityRowIcon personality={personality} />

@@ -4,6 +4,8 @@
 
 Tests prove behavior, not structure. Every test should answer: "what user-visible or API-visible behavior does this verify?"
 
+The profile-picker journeys follow Otto's [profile lifecycle](agent-profiles.md#resolution--lifecycle): applying a profile keeps its identity while updating the agent's brain, including after reload. An empty roster remains manageable through Host Settings → Teams. The upstream chooser's create-profile modal is deliberately omitted, as recorded in [the merge decisions](upstream-merges.md); tests must not require that retired entry point or the upstream behavior of forgetting an applied profile.
+
 ## Test-driven development
 
 Work in vertical slices: one test, one implementation, repeat. Each test responds to what you learned from the previous cycle.

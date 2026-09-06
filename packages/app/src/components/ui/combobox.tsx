@@ -326,6 +326,7 @@ export function ComboboxItem({
     [labelColor],
   );
 
+  const accessibilityState = useMemo(() => ({ selected, disabled }), [selected, disabled]);
   const item = (
     <Pressable
       testID={testID}
@@ -334,6 +335,8 @@ export function ComboboxItem({
       style={itemPressableStyle}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={accessibilityState}
+      aria-selected={selected}
     >
       {leadingContent}
       <View style={itemContentStyle}>

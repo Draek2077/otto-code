@@ -6,6 +6,7 @@ import {
   buildProjectsSettingsRoute,
   buildSettingsHostSectionRoute,
   buildSettingsRoute,
+  buildSettingsSectionRoute,
   type HostSectionSlug,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
@@ -15,6 +16,17 @@ export type SettingsView =
   | { kind: "section"; section: SettingsSectionSlug }
   | { kind: "host"; serverId: string; section: HostSectionSlug }
   | { kind: "project"; serverId: string; projectId: string };
+
+/** Host search results are navigated only after the caller has selected a host. */
+export function buildSettingsSearchDestination(
+  item: { id: string; host: boolean; section: SettingsSectionSlug | HostSectionSlug },
+  serverId: string | null,
+): Href {
+  const target = item.host
+    ? buildSettingsHostSectionRoute(serverId!, item.section as HostSectionSlug)
+    : buildSettingsSectionRoute(item.section as SettingsSectionSlug, serverId ?? undefined);
+  return `${target}${target.includes("?") ? "&" : "?"}setting=${encodeURIComponent(item.id)}` as Href;
+}
 
 export function openHostOverview(serverId: string): void {
   router.push(buildSettingsHostSectionRoute(serverId, "host"));

@@ -14,7 +14,8 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
+import { buildSettingsSearchDestination } from "@/navigation/settings-navigation";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -2544,14 +2545,7 @@ export default function SettingsScreen({
         return;
       }
       guardProjectSettingsExit(() => {
-        const target = item.host
-          ? buildSettingsHostSectionRoute(activeHostServerId!, item.section as HostSectionSlug)
-          : buildSettingsSectionRoute(
-              item.section as SettingsSectionSlug,
-              activeHostServerId ?? undefined,
-            );
-        const destination =
-          `${target}${target.includes("?") ? "&" : "?"}setting=${encodeURIComponent(item.id)}` as Href;
+        const destination = buildSettingsSearchDestination(item, activeHostServerId);
         if (isCompactLayout) {
           router.push(destination);
         } else {
