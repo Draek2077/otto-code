@@ -207,7 +207,8 @@ test.describe("New project page", () => {
       await expectProjectDirectory(directoryPath);
     } finally {
       await removeCreatedProject(directoryPath, projectId).catch(() => undefined);
-      await rm(parentDirectory, { recursive: true, force: true });
+      // Windows releases directory handles asynchronously after host removal.
+      await rm(parentDirectory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 });

@@ -12,8 +12,7 @@ import {
   type PersonalitiesDaemonClient,
 } from "../support/helpers/personalities";
 
-// The personalities editor lives in the host settings "Agents" section
-// (settings-host-section-agents → AgentPersonalitiesSection).
+// The profile editor lives in the host settings Teams section.
 async function openAgentsSettingsSection(page: Page): Promise<void> {
   await gotoAppShell(page);
   await openSettings(page);
@@ -85,8 +84,8 @@ test.describe("Agent personalities settings CRUD", () => {
       await page.getByTestId("agent-personality-name-input").fill(createdName);
       await page.getByTestId("agent-personality-glow-a-input").fill("#112233");
 
-      // Personality tab: the prompt.
-      await switchEditorTab(page, "Personality");
+      // Profile tab: the prompt.
+      await switchEditorTab(page, "Profile");
       await page
         .getByTestId("agent-personality-prompt-input")
         .fill("You are the settings CRUD e2e personality.");
@@ -122,7 +121,7 @@ test.describe("Agent personalities settings CRUD", () => {
       await expect(page.getByTestId("agent-personality-name-input")).toHaveValue(createdName);
 
       await page.getByTestId("agent-personality-name-input").fill(renamedName);
-      await switchEditorTab(page, "Personality");
+      await switchEditorTab(page, "Profile");
       await page
         .getByTestId("agent-personality-prompt-input")
         .fill("You are the renamed settings CRUD e2e personality.");

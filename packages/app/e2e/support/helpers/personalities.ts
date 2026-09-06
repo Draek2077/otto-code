@@ -40,7 +40,7 @@ export interface E2EAgentTeam {
 }
 
 interface PersonalitiesConfigSlice {
-  agentPersonalities?: { personalities?: E2EAgentPersonality[] };
+  agentProfiles?: E2EAgentPersonality[];
   agentTeams?: { teams?: E2EAgentTeam[]; activeTeamId?: string | null };
 }
 
@@ -191,12 +191,12 @@ export async function seedPersonalities(
   personalities: readonly E2EAgentPersonality[],
 ): Promise<void> {
   const { config } = await client.getDaemonConfig();
-  const current = config.agentPersonalities?.personalities ?? [];
+  const current = config.agentProfiles ?? [];
   const additions = personalities.filter(
     (candidate) => !current.some((entry) => entry.id === candidate.id),
   );
   await client.patchDaemonConfig({
-    agentPersonalities: { personalities: [...current, ...additions] },
+    agentProfiles: [...current, ...additions],
   });
 }
 
@@ -205,10 +205,10 @@ export async function removePersonalitiesById(
   ids: readonly string[],
 ): Promise<void> {
   const { config } = await client.getDaemonConfig();
-  const current = config.agentPersonalities?.personalities ?? [];
+  const current = config.agentProfiles ?? [];
   const next = current.filter((entry) => !ids.includes(entry.id));
   if (next.length !== current.length) {
-    await client.patchDaemonConfig({ agentPersonalities: { personalities: next } });
+    await client.patchDaemonConfig({ agentProfiles: next });
   }
 }
 
@@ -218,10 +218,10 @@ export async function removePersonalitiesByName(
 ): Promise<void> {
   const lowered = new Set(names.map((name) => name.trim().toLowerCase()));
   const { config } = await client.getDaemonConfig();
-  const current = config.agentPersonalities?.personalities ?? [];
+  const current = config.agentProfiles ?? [];
   const next = current.filter((entry) => !lowered.has(entry.name.trim().toLowerCase()));
   if (next.length !== current.length) {
-    await client.patchDaemonConfig({ agentPersonalities: { personalities: next } });
+    await client.patchDaemonConfig({ agentProfiles: next });
   }
 }
 
@@ -289,9 +289,8 @@ export async function findPersonalityByName(
   const { config } = await client.getDaemonConfig();
   const lowered = name.trim().toLowerCase();
   return (
-    (config.agentPersonalities?.personalities ?? []).find(
-      (entry) => entry.name.trim().toLowerCase() === lowered,
-    ) ?? null
+    (config.agentProfiles ?? []).find((entry) => entry.name.trim().toLowerCase() === lowered) ??
+    null
   );
 }
 

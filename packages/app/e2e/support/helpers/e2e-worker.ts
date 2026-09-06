@@ -234,6 +234,12 @@ export async function startE2EWorker(
       preserveHome,
       environment: {
         NODE_ENV: "development",
+        // Scaffolding commits inside the daemon process, so it needs a test
+        // identity even when the isolated OS home has no global Git config.
+        GIT_AUTHOR_NAME: "Otto E2E",
+        GIT_AUTHOR_EMAIL: "e2e@otto.test",
+        GIT_COMMITTER_NAME: "Otto E2E",
+        GIT_COMMITTER_EMAIL: "e2e@otto.test",
         // On Windows the inherited env key is `Path`; adding a second `PATH` key
         // makes the child's resolved PATH unpredictable (git stops resolving), so
         // extend whichever key the parent process actually has.
