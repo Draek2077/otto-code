@@ -19,7 +19,21 @@ async function hasActiveAgentTitled(title: string, client: SeedDaemonClient): Pr
   return agents.entries.some((entry) => entry.agent.title === title);
 }
 
+async function readActiveAgentStatus(client: SeedDaemonClient, agentId: string) {
+  const agents = await client.fetchAgents({ scope: "active" });
+  return agents.entries.find((entry) => entry.agent.id === agentId)?.agent.status;
+}
+
 async function connectGraphPorts(page: Page, from: Locator, to: Locator): Promise<void> {
+  const sourceNodeId = await from
+    .locator("xpath=ancestor::*[contains(@class, 'drawflow-node')]")
+    .getAttribute("id");
+  const targetNodeId = await to
+    .locator("xpath=ancestor::*[contains(@class, 'drawflow-node')]")
+    .getAttribute("id");
+  const output = await from.evaluate((port) =>
+    [...port.classList].find((name) => /^output_\d+$/.test(name)),
+  );
   const sourceBox = await from.boundingBox();
   const targetBox = await to.boundingBox();
   if (!sourceBox || !targetBox) {
@@ -31,6 +45,39 @@ async function connectGraphPorts(page: Page, from: Locator, to: Locator): Promis
     steps: 8,
   });
   await page.mouse.up();
+  await expect(
+    page.locator(`.connection.node_out_${sourceNodeId}.node_in_${targetNodeId}.${output}`),
+  ).toHaveCount(1);
+}
+
+async function arrangeCheckBranches(page: Page, agents: Locator): Promise<void> {
+  // Expanded configuration cards cover nearby ports. Close them and arrange the
+  // nodes through their drag handles before wiring the two branches.
+  await agents.locator(".og-adv[open] > summary").evaluateAll((items) => {
+    for (const item of items) (item as HTMLElement).click();
+  });
+  const canvas = await page.locator(".og-canvas").boundingBox();
+  if (!canvas) throw new Error("Graph canvas not visible.");
+  for (const [node, x, y] of [
+    [agents.nth(1), 650, 330],
+    [agents.nth(0), 650, 30],
+    [page.locator(".drawflow-node.og-check"), 260, 220],
+  ] as const) {
+    const handle = node.locator(".og-title .og-type").first();
+    const bounds = await handle.boundingBox();
+    const nodeBounds = await node.boundingBox();
+    if (!bounds || !nodeBounds) throw new Error("Graph node not visible.");
+    const startX = bounds.x + bounds.width / 2;
+    const startY = bounds.y + bounds.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(
+      canvas.x + x + startX - nodeBounds.x,
+      canvas.y + y + startY - nodeBounds.y,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+  }
 }
 
 async function openAgentAdvanced(agent: Locator): Promise<void> {
@@ -286,6 +333,7 @@ test.describe("Graph Workflow authoring", () => {
       await agents.nth(1).locator('[data-og-field="prompt"]').fill("Recover the failed check.");
       await openAgentAdvanced(agents.nth(1));
       await agents.nth(1).locator('[data-og-field="model"]').fill("mock/ten-second-stream");
+      await arrangeCheckBranches(page, agents);
       await connectGraphPorts(
         page,
         page.locator(".drawflow-node.og-check .output_1"),
@@ -467,6 +515,7 @@ test.describe("Graph Workflow authoring", () => {
       await agents.nth(1).locator('[data-og-field="prompt"]').fill("Repair the rejected result.");
       await openAgentAdvanced(agents.nth(1));
       await agents.nth(1).locator('[data-og-field="model"]').fill("mock/ten-second-stream");
+      await arrangeCheckBranches(page, agents);
       await connectGraphPorts(
         page,
         page.locator(".drawflow-node.og-check .output_1"),
@@ -676,7 +725,7 @@ test.describe("Graph Workflow authoring", () => {
     }
   });
 
-  test("creates a durable AI Workflow planning record before its mock planner fails", async ({
+  test("keeps AI Workflow planning alive until its undeclared planner is archived", async ({
     page,
   }) => {
     const workspace = await seedWorkspace({
@@ -733,6 +782,14 @@ test.describe("Graph Workflow authoring", () => {
       await expect(page.getByTestId(`workspace-tab-visualizer_run_${runId}`)).toBeVisible({
         timeout: 30_000,
       });
+      const planningRun = await findRunByTitle(title, workspace.client);
+      const conductorId = planningRun?.conductorAgentId;
+      if (!conductorId) throw new Error("Planning Workflow has no conductor.");
+      await expect
+        .poll(() => readActiveAgentStatus(workspace.client, conductorId), { timeout: 30_000 })
+        .toBe("idle");
+      expect((await findRunByTitle(title, workspace.client))?.status).toBe("pending");
+      await workspace.client.archiveAgent(conductorId);
       await expect
         .poll(async () => (await findRunByTitle(title, workspace.client))?.status ?? null, {
           timeout: 90_000,

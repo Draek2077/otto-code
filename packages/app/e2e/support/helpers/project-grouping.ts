@@ -90,13 +90,12 @@ export async function createWorkspaceWithoutAgent(page: Page): Promise<void> {
 
 export async function expectProjectWorkspaceCountForHost(
   page: Page,
-  input: { projectName: string; hostName: string; count: number },
+  input: { projectName: string; serverId: string; count: number },
 ): Promise<void> {
   const group = projectGroup(page, input.projectName);
-  await expect(group.getByRole("button").filter({ hasText: input.hostName })).toHaveCount(
-    input.count,
-    { timeout: PROJECT_VISIBILITY_TIMEOUT },
-  );
+  await expect(
+    group.locator(`[data-testid^="sidebar-workspace-row-${input.serverId}:"]`),
+  ).toHaveCount(input.count, { timeout: PROJECT_VISIBILITY_TIMEOUT });
 }
 
 export async function renameProject(page: Page, name: string): Promise<void> {

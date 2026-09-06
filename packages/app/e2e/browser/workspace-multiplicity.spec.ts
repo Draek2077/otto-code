@@ -75,7 +75,7 @@ test.describe("Workspace multiplicity creation flow", () => {
 
     try {
       const project = {
-        projectKey: seeded.projectId,
+        projectKey: seeded.projectKey,
         projectDisplayName: seeded.projectDisplayName,
       };
 

@@ -20,6 +20,7 @@ import {
   startIsolatedHostDaemon,
 } from "../support/helpers/isolated-host-daemon";
 import { connectSeedClient, type SeedDaemonClient } from "../support/helpers/seed-client";
+import { selectWorkspaceIsolation } from "../support/helpers/new-workspace";
 import { getServerId } from "../support/helpers/server-id";
 import { createTempGitRepo } from "../support/helpers/workspace";
 
@@ -411,10 +412,11 @@ test.describe("Sidebar project grouping", () => {
     await openScenario(page, crossHostProject);
     await beginWorkspaceFromProject(page, GROUPED_PROJECT_NAME);
     await selectWorkspaceHost(page, SECONDARY_HOST_LABEL);
+    await selectWorkspaceIsolation(page, "worktree");
     await createWorkspaceWithoutAgent(page);
     await expectProjectWorkspaceCountForHost(page, {
       projectName: GROUPED_PROJECT_NAME,
-      hostName: SECONDARY_HOST_LABEL,
+      serverId: crossHostProject.hosts[0]!.serverId,
       count: 2,
     });
   });
