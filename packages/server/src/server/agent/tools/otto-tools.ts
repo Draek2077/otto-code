@@ -1,8 +1,9 @@
+import { toProviderSummary } from "./provider-summary.js";
 import { z } from "zod";
 import { ensureValidJson } from "../../json-utils.js";
 import type { Logger } from "pino";
 
-import type { AgentMode, AgentModelDefinition, AgentProvider } from "../agent-sdk-types.js";
+import type { AgentModelDefinition, AgentProvider } from "../agent-sdk-types.js";
 import type { AgentManager } from "../agent-manager.js";
 import { resolveEffortOption } from "../effort-levels.js";
 import { resolveProfile, type ResolvedProfileSnapshot } from "../agent-profiles.js";
@@ -299,36 +300,6 @@ function resolveAgentListActivityTime(agent: AgentListItemPayload): number {
     parseTimestamp(agent.archivedAt),
     parseTimestamp(agent.createdAt),
   );
-}
-
-interface ProviderSummary {
-  id: AgentProvider;
-  label: string;
-  description: string;
-  enabled: boolean;
-  modes: AgentMode[];
-  status: string;
-  error?: string;
-}
-
-function toProviderSummary(entry: {
-  provider: AgentProvider;
-  label?: string;
-  description?: string;
-  enabled: boolean;
-  modes?: AgentMode[];
-  status: string;
-  error?: string;
-}): ProviderSummary {
-  return {
-    id: entry.provider,
-    label: entry.label ?? entry.provider,
-    description: entry.description ?? "",
-    enabled: entry.enabled,
-    modes: entry.modes ?? [],
-    status: entry.status === "ready" ? "available" : entry.status,
-    ...(entry.error ? { error: entry.error } : {}),
-  };
 }
 
 function compareAgentListItems(a: AgentListItemPayload, b: AgentListItemPayload): number {

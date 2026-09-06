@@ -1,3 +1,4 @@
+import { resolveSessionArtifactService } from "./session/artifact/session-artifact-service.js";
 import equal from "fast-deep-equal";
 import { v4 as uuidv4 } from "uuid";
 import { lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, stat } from "node:fs/promises";
@@ -251,9 +252,6 @@ import { AgentConfigSession } from "./session/agent-config/agent-config-session.
 import { ArtifactSession } from "./session/artifact/artifact-session.js";
 import { ArchitecturalViewsSession } from "./session/architectural-views/architectural-views-session.js";
 import { ArtifactService } from "./artifact/artifact-service.js";
-import { ArtifactStoreRegistry } from "./artifact/artifact-store-registry.js";
-import { ArtifactStoreResolver } from "./artifact/artifact-store-resolver.js";
-import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
@@ -12185,67 +12183,6 @@ export class Session {
   }
 }
 
-/**
- * A session-scoped ArtifactService for hosts that construct a Session without
- * the daemon-wide one (unit tests). Production sessions never take this path:
- * bootstrap shares its single service, which owns every ready-file watcher.
- */
-function createSessionLocalArtifactService(deps: {
-  ottoHome: string;
-  projectRegistry: ProjectRegistry;
-  workspaceGitService: WorkspaceGitService;
-  daemonConfigStore: DaemonConfigStore;
-  agentManager: AgentManager;
-  providerSnapshotManager: ProviderSnapshotManager;
-  onActivity: SessionOptions["onActivity"];
-  logger: pino.Logger;
-  emit: (msg: SessionOutboundMessage) => void;
-}): ArtifactService {
-  return new ArtifactService({
-    storeRegistry: new ArtifactStoreRegistry({
-      resolver: new ArtifactStoreResolver({
-        ottoHome: deps.ottoHome,
-        findProjectByRoot: async (rootPath) =>
-          (await deps.projectRegistry.list()).find(
-            (project) => !project.archivedAt && areEquivalentPaths(project.rootPath, rootPath),
-          ) ?? null,
-        persistDirectoryName: async ({ projectId, directoryName }) => {
-          await deps.projectRegistry.update(projectId, (record) => ({
-            ...record,
-            artifactDirectoryName: directoryName,
-            updatedAt: new Date().toISOString(),
-          }));
-        },
-        defaultLocation: () =>
-          deps.daemonConfigStore.get().projectArtifacts?.defaultStoreLocation ?? "repository",
-        logger: deps.logger,
-      }),
-      resolveProjectRoot: async (cwd) => {
-        try {
-          return await deps.workspaceGitService.resolveRepoRoot(cwd);
-        } catch {
-          return resolve(cwd);
-        }
-      },
-      listProjectRoots: async () =>
-        (await deps.projectRegistry.list())
-          .filter((project) => !project.archivedAt)
-          .map((project) => project.rootPath),
-      legacyArtifactsDirectory: join(deps.ottoHome, ".otto", "artifacts"),
-    }),
-    logger: deps.logger,
-    agentManager: deps.agentManager,
-    providerSnapshotManager: deps.providerSnapshotManager,
-    broadcastArtifactUpdate: (metadata: ArtifactMetadata) => {
-      deps.emit({
-        type: "artifact.updated.notification",
-        payload: { artifact: metadata },
-      });
-    },
-    onActivity: deps.onActivity,
-  });
-}
-
 function withArchitecturalViewAuthoringBrief(
   config: AgentSessionConfig,
   draft: CreateAgentRequestMessage["architecturalViewDraft"],
@@ -12259,12 +12196,4 @@ function withArchitecturalViewAuthoringBrief(
     "When the user asks to improve the Knowledge itself, use the normal project-knowledge tools and their evidence and confirmation policy; then update the staged visual when those changes affect it. " +
     "update_architectural_view_draft replaces only the staged typed JSON. Publishing the visual remains an explicit user action in the Architectural Views tab.";
   return { ...config, systemPrompt: [config.systemPrompt, brief].filter(Boolean).join("\n\n") };
-}
-
-/** Prefer the daemon-wide service; fall back to a session-local one only when none was provided. */
-function resolveSessionArtifactService(
-  shared: ArtifactService | null | undefined,
-  deps: Parameters<typeof createSessionLocalArtifactService>[0],
-): ArtifactService {
-  return shared ?? createSessionLocalArtifactService(deps);
 }

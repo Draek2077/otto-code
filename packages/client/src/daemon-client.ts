@@ -1,3 +1,4 @@
+import { resolveAgentConfig } from "./create-agent-config.js";
 import type { AgentAttentionNotificationPayload } from "@otto-code/protocol/agent-attention-notification";
 import type { z } from "zod";
 import type { ProjectGithubCloneProtocol } from "@otto-code/protocol/messages";
@@ -10608,39 +10609,4 @@ export class DaemonClient {
       throw new Error("Update the host to use Hub relationship management.");
     }
   }
-}
-
-function resolveAgentConfig(options: CreateAgentRequestOptions): AgentSessionConfig {
-  const {
-    config,
-    provider,
-    cwd,
-    env: _env,
-    workspaceId: _workspaceId,
-    initialPrompt: _initialPrompt,
-    images: _images,
-    git: _git,
-    worktreeName: _worktreeName,
-    requestId: _requestId,
-    labels: _labels,
-    ...overrides
-  } = options;
-
-  const baseConfig: Partial<AgentSessionConfig> = {
-    ...(provider ? { provider } : {}),
-    ...(cwd ? { cwd } : {}),
-    ...overrides,
-  };
-
-  const merged = config ? { ...baseConfig, ...config } : baseConfig;
-
-  if (!merged.provider || !merged.cwd) {
-    throw new Error("createAgent requires provider and cwd");
-  }
-
-  return {
-    ...merged,
-    provider: merged.provider,
-    cwd: merged.cwd,
-  };
 }

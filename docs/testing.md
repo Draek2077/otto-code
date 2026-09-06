@@ -142,12 +142,12 @@ Prefer a `@lezer/*` grammar. When a language only ships inside an editor extensi
 
 ### Desktop browser regression
 
-The desktop browser E2E launches an isolated real daemon, Metro, and Electron app. It forces workspace LRU eviction to reparent the original tab and replace its guest `WebContents`, then makes one MCP call each for tab listing, snapshot, and click against that original browser id. A final MCP wait proves the real target page received the click.
+The desktop browser E2E launches an isolated real daemon, Metro, and Electron app. It visits six workspaces to force LRU eviction, verifies that the original browser keeps its guest `WebContents` in the permanent browser surface, then makes one MCP call each for tab listing, snapshot, and click against that original browser id. A final MCP wait proves the real target page received the click. Initial renderer startup allows five minutes for cold Metro compilation; subsequent bridge actions retain their 90-second timeout.
 
 Run it locally with the same command owned by the Ubuntu `desktop-tests` required check:
 
 ```bash
-npm run test:e2e:browser-tabs --workspace=@otto-code/desktop
+npm run test:e2e:browser-tab-bridge --workspace=@otto-code/desktop
 ```
 
 ### Desktop skill selection upgrade regression

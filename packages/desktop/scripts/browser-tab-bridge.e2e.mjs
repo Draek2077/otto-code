@@ -32,6 +32,9 @@ const workspaceIds = [
   "tab-bridge-evict-five",
 ];
 const timeoutMs = 90_000;
+// Cold Metro compilation is startup work, before any bridge action can run.
+// CI has measured 88s for the bundle alone; retain the 90s action budget below.
+const startupTimeoutMs = 300_000;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -297,7 +300,7 @@ async function runRegression({ page, client, serverId, targetUrl }) {
   const originalWorkspaceRow = page.getByTestId(
     `sidebar-workspace-row-${serverId}:${originalWorkspaceId}`,
   );
-  await originalWorkspaceRow.waitFor({ state: "visible", timeout: timeoutMs });
+  await originalWorkspaceRow.waitFor({ state: "visible", timeout: startupTimeoutMs });
   await originalWorkspaceRow.click();
 
   const created = await callBrowserTool(client, "browser_new_tab", { url: targetUrl });

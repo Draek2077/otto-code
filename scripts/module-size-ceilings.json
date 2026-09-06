@@ -24,13 +24,13 @@
     "Re-baselined 2026-09-04 for the files the Paseo v0.6.1 merge grew at each file's then-current size. The Paseo v0.6.1 merge (2026-08-31) grew them past the 2026-08-23 numbers before the check was ever green again, so the lint job was red on every run since. Same reasoning as 2026-08-23: a gate nobody can get green gates nothing; the standing refactor backlog (Otto Knowledge finding: oversized-module inventory) is the way down."
   ],
   "ceilings": {
-    "packages/protocol/src/messages.ts": 10024,
-    "packages/server/src/server/session.ts": 12240,
-    "packages/client/src/daemon-client.ts": 10626,
+    "packages/protocol/src/messages.ts": 10006,
+    "packages/server/src/server/session.ts": 12199,
+    "packages/client/src/daemon-client.ts": 10612,
     "packages/app/src/screens/workspace/workspace-screen.tsx": 5825,
-    "packages/server/src/server/agent/agent-manager.ts": 8413,
+    "packages/server/src/server/agent/agent-manager.ts": 8411,
     "packages/server/src/server/agent/providers/claude/agent.ts": 8204,
-    "packages/server/src/server/agent/tools/otto-tools.ts": 6460,
+    "packages/server/src/server/agent/tools/otto-tools.ts": 6433,
     "packages/app/src/git/diff-pane.tsx": 2330,
     "packages/app/src/components/combined-model-selector.tsx": 718,
     "packages/app/src/components/provider-diagnostic-sheet.tsx": 1213,
@@ -42,7 +42,7 @@
     "packages/desktop/src/features/browser-automation/service.ts": 1814,
     "packages/server/src/server/file-explorer/service.ts": 704,
     "packages/app/src/keyboard/keyboard-shortcuts.ts": 2149,
-    "packages/app/src/screens/settings-screen.tsx": 3210,
+    "packages/app/src/screens/settings-screen.tsx": 3208,
     "packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx": 2520,
     "packages/app/src/components/file-explorer-pane.tsx": 2143
   }
