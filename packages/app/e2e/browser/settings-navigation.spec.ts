@@ -2,7 +2,6 @@ import { test, expect } from "../support/fixtures";
 import {
   buildHostWorkspaceRoute,
   buildOpenProjectRoute,
-  buildSettingsHostSectionRoute,
   buildSettingsRoute,
   buildSettingsSectionRoute,
 } from "@/utils/host-routes";
@@ -38,6 +37,7 @@ import {
   seedSavedSettingsHosts,
   selectSettingsHost,
   expectSettingsHostPickerLabel,
+  expectHostSettingsUrl,
   openSettingsHostSection,
   removeCurrentHostFromSettings,
 } from "../support/helpers/settings";
@@ -217,7 +217,7 @@ test.describe("Settings - compact master-detail", () => {
     await expectSettingsSidebarVisible(page);
   });
 
-  test("host picker settings opens Overview and backs through the settings list", async ({
+  test("host picker settings opens Connections and backs through the settings list", async ({
     page,
     withWorkspace,
   }) => {
@@ -229,8 +229,8 @@ test.describe("Settings - compact master-detail", () => {
     await page.getByTestId("sidebar-hosts-trigger").click();
     await page.getByRole("button", { name: /Open .* settings/ }).click();
 
-    await expectAppRoute(page, buildSettingsHostSectionRoute(getServerId(), "host"));
-    await expect(page.getByText("Overview", { exact: true })).toBeVisible();
+    await expectHostSettingsUrl(page, getServerId());
+    await expectSettingsHeader(page, "Connections");
 
     await goBackInSettings(page);
     await expectCompactSettingsList(page);

@@ -1,14 +1,19 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test, expect } from "../support/fixtures";
-import { fileRowContaining, gitOutput, openWorkspaceChanges } from "../support/helpers/git-changes";
+import {
+  changedTreeFile,
+  commitFixtureFiles,
+  gitOutput,
+  openWorkspaceChanges,
+} from "../support/helpers/git-changes";
 import { seedWorkspace } from "../support/helpers/seed-client";
 
 // The Git Log tab is the daemon's git *operation* log (checkout.git.get_operation_log
 // backfill + checkout.git.log_appended live stream), not a repository-history
 // browser: it records each git operation Otto runs - heading, the exact git
 // commands, their output, and a "created commit <sha>" outcome line. This spec
-// proves commits made through the Changes UI land in the tab with their
+// proves commits made through the daemon land in the visible tab with their
 // messages and hashes.
 
 interface CleanupTask {
@@ -28,7 +33,7 @@ test.afterEach(async () => {
   }
 });
 
-test("git log tab records UI commits with messages and hashes", async ({ page }) => {
+test("git log tab records daemon commits with messages and hashes", async ({ page }) => {
   const workspace = await seedWorkspace({
     repoPrefix: "git-log-tab-",
     repo: {
@@ -51,22 +56,21 @@ test("git log tab records UI commits with messages and hashes", async ({ page })
     expectFileName: "alpha.ts",
   });
 
-  // Commit only alpha (deselect beta). Leaving beta dirty keeps the commit
-  // section - and the log button inside it - mounted after the commit lands.
-  // The Git Commit log opens as a focused tab over the Changes pane, so the
-  // commit must happen while the Changes view is active, before opening the log.
-  await fileRowContaining(page, "beta.ts").locator('[data-testid$="-checkbox"]').click();
-  await page.getByTestId("changes-commit-message").fill("log commit alpha");
-  await page.getByTestId("changes-commit-button").click();
-  await expect(fileRowContaining(page, "alpha.ts")).toHaveCount(0, { timeout: 30_000 });
+  // Commit only alpha through the real daemon, leaving beta dirty. This
+  // exercises log backfill without invoking an AI message-generation session.
+  const committedSha = await commitFixtureFiles(workspace, ["src/alpha.ts"], "log commit alpha");
+  await expect(changedTreeFile(page, "alpha.ts")).toHaveCount(0, { timeout: 30_000 });
+  await expect(changedTreeFile(page, "beta.ts")).toBeVisible();
 
   const firstSha = gitOutput(workspace.repoPath, ["rev-parse", "HEAD"]);
   expect(firstSha).toMatch(/^[0-9a-f]{40}$/);
+  expect(firstSha).toBe(committedSha);
 
   // Open the Git Commit log tab and assert the commit was recorded with its
   // exact command (message included) and the "created commit <sha>" outcome.
-  await page.getByTestId("changes-commit-log-button").click();
-  const gitCommitTab = page.getByRole("button", { name: "Git Commit" });
+  await page.getByTestId("changes-options-menu").filter({ visible: true }).click();
+  await page.getByTestId("changes-open-git-log").click();
+  const gitCommitTab = page.getByTestId("explorer-sidebar-tab-gitlog_commit");
   await expect(gitCommitTab).toBeVisible();
 
   const logPane = page.getByTestId("git-log-pane");

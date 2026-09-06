@@ -6,6 +6,8 @@ Tests prove behavior, not structure. Every test should answer: "what user-visibl
 
 The profile-picker journeys follow Otto's [profile lifecycle](agent-profiles.md#resolution--lifecycle): applying a profile keeps its identity while updating the agent's brain, including after reload. An empty roster remains manageable through Host Settings → Teams. The upstream chooser's create-profile modal is deliberately omitted, as recorded in [the merge decisions](upstream-merges.md); tests must not require that retired entry point or the upstream behavior of forgetting an applied profile.
 
+Git reconciliation and operation-log journeys commit fixture paths through the real daemon with an explicit message, then assert the Changes UI and the Explorer log. The current Commit action uses AI message generation; its Writer confirmation is covered separately. These journeys do not depend on the removed inline manual-commit form.
+
 ## Test-driven development
 
 Work in vertical slices: one test, one implementation, repeat. Each test responds to what you learned from the previous cycle.

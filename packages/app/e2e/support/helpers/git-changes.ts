@@ -5,6 +5,24 @@ import { buildHostWorkspaceRoute } from "../../../src/utils/host-routes";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { getServerId } from "./server-id";
 import { openChangesTreePanel, waitForWorkspaceTabsVisible } from "./workspace-tabs";
+import type { SeededWorkspace } from "./seed-client";
+
+/** Commit through the real daemon without invoking its AI message generator. */
+export async function commitFixtureFiles(
+  workspace: Pick<SeededWorkspace, "repoPath" | "client">,
+  paths: string[],
+  message: string,
+): Promise<string> {
+  const result = await workspace.client.checkoutGitCommit(workspace.repoPath, { paths, message });
+  expect(result.error).toBeNull();
+  expect(result.success).toBe(true);
+  expect(result.commitSha).toMatch(/^[0-9a-f]{40}$/);
+  return result.commitSha!;
+}
+
+export function changedTreeFile(page: Page, fileName: string): Locator {
+  return page.getByTestId("changes-tree-panel").getByText(fileName, { exact: true });
+}
 
 /** Runs git against the fixture repo and returns trimmed stdout. */
 export function gitOutput(repoPath: string, args: string[]): string {

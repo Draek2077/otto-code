@@ -1,7 +1,12 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test, expect } from "../support/fixtures";
-import { fileRowContaining, gitOutput, openWorkspaceChanges } from "../support/helpers/git-changes";
+import {
+  changedTreeFile,
+  commitFixtureFiles,
+  gitOutput,
+  openWorkspaceChanges,
+} from "../support/helpers/git-changes";
 import { seedWorkspace } from "../support/helpers/seed-client";
 
 // Regression coverage for the vanished git-actions split button: checkout
@@ -50,10 +55,9 @@ test("commit CTA reconciles across commit and re-dirty instead of vanishing", as
   await expect(cta).toBeVisible({ timeout: 30_000 });
   await expect(cta).toHaveAttribute("aria-label", "Commit");
 
-  // Commit through the manual commit box (typed message, no AI handoff).
-  await page.getByTestId("changes-commit-message").fill("reconcile commit");
-  await page.getByTestId("changes-commit-button").click();
-  await expect(fileRowContaining(page, "alpha.ts")).toHaveCount(0, { timeout: 30_000 });
+  // Drive the real daemon commit; the current UI authors messages with AI.
+  await commitFixtureFiles(workspace, ["src/alpha.ts"], "reconcile commit");
+  await expect(changedTreeFile(page, "alpha.ts")).toHaveCount(0, { timeout: 30_000 });
   expect(gitOutput(workspace.repoPath, ["log", "-1", "--pretty=%s"])).toBe("reconcile commit");
 
   // Clean tree on the base branch of a remote-less checkout has no primary
@@ -63,17 +67,10 @@ test("commit CTA reconciles across commit and re-dirty instead of vanishing", as
   // Re-dirty the tree out of band. The uncommitted-diff subscription must heal
   // the push-only checkout-status cache so the Commit CTA returns - the
   // regression was the split button staying vanished at exactly this point.
-  //
-  // NOTE (Windows local): the daemon's git file-watcher fails with EPERM on
-  // Windows, so an out-of-band change is never observed and this assertion
-  // cannot pass on a Windows workstation. On Linux/macOS (and CI) the watcher
-  // detects the write and pushes the diff that reconciles the status. This
-  // spec therefore validates the fix on CI; treat a Windows-local failure here
-  // as the known EPERM-watcher environment gap, not a regression.
   await writeFile(alphaPath, ALPHA_SECOND_EDIT);
   await workspace.client.checkoutRefresh(workspace.repoPath);
 
-  await expect(fileRowContaining(page, "alpha.ts")).toBeVisible({ timeout: 30_000 });
+  await expect(changedTreeFile(page, "alpha.ts")).toBeVisible({ timeout: 30_000 });
   const ctaAfterRedirty = page.getByTestId("changes-primary-cta");
   await expect(ctaAfterRedirty).toBeVisible({ timeout: 30_000 });
   await expect(ctaAfterRedirty).toHaveAttribute("aria-label", "Commit");

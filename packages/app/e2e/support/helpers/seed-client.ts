@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
+import type { DaemonClient as InternalDaemonClient } from "@otto-code/client/internal/daemon-client";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { withProjectOwnership } from "./project-ownership";
 import { createTempDirectory, createTempGitRepo } from "./workspace";
@@ -29,7 +30,7 @@ interface SeedProjectDescriptor {
  * browser. Domain-specific helpers wrap it for their own flows; specs should
  * prefer those wrappers over reaching for this client directly.
  */
-export interface SeedDaemonClient {
+export interface SeedDaemonClient extends Pick<InternalDaemonClient, "checkoutGitCommit"> {
   connect(): Promise<void>;
   close(): Promise<void>;
   addProject(cwd: string): Promise<{
