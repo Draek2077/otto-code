@@ -13,14 +13,97 @@ import type { Model, ModelFeatures, ModelMetadata } from "../types.js";
 
 export const LMSTUDIO_MODELS_DIR = path.join(os.homedir(), ".lmstudio", "models");
 
-// The quant is the terminal GGUF filename suffix, optionally preceded by a
-// source-defined qualifier such as Muse's `UD-`. Matching a known substring
-// truncates newer labels (for example Q2_K_XL -> Q2_K) and misses them when
-// their exact spelling is not in a hard-coded list.
-const QUANT_SUFFIX =
-  /(?:^|[-_])((?:UD-)?(?:IQ[1-4]|Q[2-8])(?:_[A-Z0-9]+)*|NVFP\d+|MXFP\d+|BF16|F16|F32)(?:-(?:MTP|IMATRIX|DISTILL))?(?:-\d{5}-OF-\d{5})?\.GGUF$/i;
-
 const MULTIPART = /-(\d{5})-of-(\d{5})\.gguf$/i;
+
+const QUANT_TRAILING_MARKERS = ["-MTP", "-IMATRIX", "-DISTILL"];
+
+function isDigit(char: string): boolean {
+  return char >= "0" && char <= "9";
+}
+
+function isUppercaseLetterOrDigit(char: string): boolean {
+  return (char >= "A" && char <= "Z") || isDigit(char);
+}
+
+function isQuant(value: string): boolean {
+  if (["BF16", "F16", "F32"].includes(value)) return true;
+
+  if (value.startsWith("IQ")) {
+    return value.length === 3 && value[2] >= "1" && value[2] <= "4";
+  }
+
+  if (value.startsWith("NVFP") || value.startsWith("MXFP")) {
+    const digits = value.slice(4);
+    return digits.length > 0 && [...digits].every(isDigit);
+  }
+
+  if (!value.startsWith("Q") || value.length < 2 || value[1] < "2" || value[1] > "8") {
+    return false;
+  }
+
+  let separatorExpected = false;
+  for (const char of value.slice(2)) {
+    if (char === "_") {
+      if (separatorExpected) return false;
+      separatorExpected = true;
+    } else if (isUppercaseLetterOrDigit(char)) {
+      separatorExpected = false;
+    } else {
+      return false;
+    }
+  }
+  return !separatorExpected;
+}
+
+function startsQuant(value: string, index: number): boolean {
+  const first = value[index]?.toUpperCase();
+  const second = value[index + 1]?.toUpperCase();
+  if (first === "Q") return second >= "2" && second <= "8";
+  if (first === "I") return second === "Q" && value[index + 2] >= "1" && value[index + 2] <= "4";
+  if (first === "N") return value.slice(index, index + 4).toUpperCase() === "NVFP";
+  if (first === "M") return value.slice(index, index + 4).toUpperCase() === "MXFP";
+  if (first === "B") return value.slice(index, index + 4).toUpperCase() === "BF16";
+  if (first === "F") {
+    const prefix = value.slice(index, index + 3).toUpperCase();
+    return prefix === "F16" || prefix === "F32";
+  }
+  return false;
+}
+
+function stripQuantSuffix(filename: string): string | null {
+  let stem = path.basename(filename);
+  if (!stem.toLowerCase().endsWith(".gguf")) return null;
+  stem = stem.slice(0, -".gguf".length);
+
+  const multipart = stem.slice(-15);
+  if (
+    multipart.length === 15 &&
+    multipart[0] === "-" &&
+    multipart[6] === "-" &&
+    multipart.slice(7, 9).toLowerCase() === "of" &&
+    multipart[9] === "-" &&
+    [...multipart.slice(1, 6), ...multipart.slice(10)].every(isDigit)
+  ) {
+    stem = stem.slice(0, -multipart.length);
+  }
+
+  const upperStem = stem.toUpperCase();
+  for (const marker of QUANT_TRAILING_MARKERS) {
+    if (upperStem.endsWith(marker)) {
+      stem = stem.slice(0, -marker.length);
+      break;
+    }
+  }
+
+  let candidateStart = -1;
+  for (let index = 0; index < stem.length; index += 1) {
+    if (index > 0 && stem[index - 1] !== "-" && stem[index - 1] !== "_") continue;
+    if (startsQuant(stem, index)) candidateStart = index;
+  }
+  if (candidateStart === -1) return null;
+  const candidate = stem.slice(candidateStart).toUpperCase();
+  return isQuant(candidate) ? candidate : null;
+}
 
 function walk(dir: string, out: string[] = []): string[] {
   let entries: fs.Dirent[];
@@ -38,9 +121,10 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 export function detectQuant(filename: string): string | null {
-  const match = path.basename(filename).match(QUANT_SUFFIX);
-  // `UD-` is a source filename qualifier, not part of the user-facing quant.
-  return match?.[1]?.replace(/^UD-/i, "").toUpperCase() ?? null;
+  // A source qualifier such as `UD-` is not part of the user-facing quant.
+  // Scan terminal candidates rather than matching a nested filename regex:
+  // model filenames are host input and this remains linear for malformed names.
+  return stripQuantSuffix(filename);
 }
 
 export function isProjectorFile(filename: string): boolean {

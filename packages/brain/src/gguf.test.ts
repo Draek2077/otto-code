@@ -156,3 +156,7 @@ test("quantisation labels use the complete terminal filename suffix", () => {
   assert.equal(models.detectQuant("model-Q2_K_XL-00001-of-00002.gguf"), "Q2_K_XL");
   assert.equal(models.detectQuant("model-with-no-quant.gguf"), null);
 });
+
+test("quantisation suffix parsing remains bounded for malformed filenames", () => {
+  assert.equal(models.detectQuant(`model-${"Q2_".repeat(50_000)}.gguf`), null);
+});

@@ -1,17 +1,25 @@
 /** Stable source and subsystem markers for the one Brain service-session log. */
 export type BrainLogArea = "library" | "model" | "api" | "server";
 
-const TAGGED_LINE = /^\[(?:brain|llama-server)\]/u;
-const SOURCE_AND_AREA =
-  /^(\[(?:brain|llama-server)\])(?:\s+(\[(?:library|model|api|server)\]))?\s*(.*)$/u;
 const LLAMA_SERVER_PREFIX = /^\d+(?:\.\d+){3}\s+[A-Z]\s+\S+\s+(?:\S+:\s+)?(.+)$/u;
+
+const SOURCES = ["brain", "llama-server"] as const;
+const AREAS = ["library", "model", "api", "server"] as const;
+
+function taggedValue(line: string, values: readonly string[]): string | null {
+  for (const value of values) {
+    const tag = `[${value}]`;
+    if (line.startsWith(tag)) return tag;
+  }
+  return null;
+}
 
 /**
  * Every service-owned event carries both its process source and operation area.
  * llama-server output is separately marked by `formatLlamaServerLog`.
  */
 export function formatBrainLog(area: BrainLogArea, message: string): string {
-  return TAGGED_LINE.test(message) ? message : `[brain] [${area}] ${message}`;
+  return taggedValue(message, SOURCES) ? message : `[brain] [${area}] ${message}`;
 }
 
 /**
@@ -25,14 +33,19 @@ export function stripLlamaServerPrefix(message: string): string {
 
 /** Preserve the useful llama.cpp message while making its process boundary explicit. */
 export function formatLlamaServerLog(message: string): string {
-  return TAGGED_LINE.test(message) ? message : `[llama-server] ${stripLlamaServerPrefix(message)}`;
+  return taggedValue(message, SOURCES)
+    ? message
+    : `[llama-server] ${stripLlamaServerPrefix(message)}`;
 }
 
 /** Place source tags ahead of the timestamp so they are scannable in a dense log. */
 export function timestampBrainLogLine(timestamp: string, line: string): string {
   const tagged = formatBrainLog("server", line);
-  const match = SOURCE_AND_AREA.exec(tagged);
-  if (!match) return `${timestamp} ${tagged}`;
-  const [, source, area, message] = match;
+  const source = taggedValue(tagged, SOURCES);
+  if (!source) return `${timestamp} ${tagged}`;
+  let remainder = tagged.slice(source.length).trimStart();
+  const area = taggedValue(remainder, AREAS);
+  if (area) remainder = remainder.slice(area.length).trimStart();
+  const message = remainder;
   return `${source}${area ? ` ${area}` : ""} ${timestamp}${message ? ` ${message}` : ""}`;
 }
