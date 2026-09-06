@@ -1,3 +1,4 @@
+import { initializeExplorer } from "@/file-explorer/initialize";
 import {
   useCallback,
   useEffect,
@@ -49,6 +50,7 @@ import {
   WORKSPACE_TREE_ICON_SIZE,
   WORKSPACE_TREE_LOADING_ICON_SIZE,
   useTreeIconSize,
+  workspaceTreeRowStyles,
 } from "@/components/tree-primitives";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
@@ -85,7 +87,6 @@ import { isHiddenExplorerPath } from "@/file-explorer/visibility";
 import {
   flattenExplorerTree,
   reconcileRestoredExpandedPaths,
-  restoreExpandedDirectories,
   setExpandedDirectoryPath,
   showHiddenFilesAndRestoreExpandedDirectories,
   type ExplorerTreeRow,
@@ -314,6 +315,17 @@ function TreeRowItem({
   const { t } = useTranslation();
   const treeIconSize = useTreeIconSize();
   const isDirectory = entry.kind === "directory";
+  const [isHovered, setIsHovered] = useState(false);
+  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
+  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
+  const entryNameStyle = useMemo(
+    () => [
+      styles.entryName,
+      workspaceTreeRowStyles.name,
+      isHovered && workspaceTreeRowStyles.nameHovered,
+    ],
+    [isHovered],
+  );
   const dragSourceRef = useWorkspaceFileDragSource({
     enabled: !isDirectory,
     serverId,
@@ -423,32 +435,34 @@ function TreeRowItem({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger
-        onPress={handlePress}
-        onLongPress={handleSelect}
-        onContextMenu={handleSelect}
-        style={pressableStyle}
-        accessibilityState={accessibilityState}
-        aria-selected={isSelected}
-        testID={testID}
-      >
-        <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} />
-        <View ref={dragSourceRef} style={styles.entryInfo}>
-          <View style={[styles.entryIcon, isDirectory && styles.directoryEntryIcon]}>
-            {isDirectory ? (
-              <>
-                <DirectoryChevronIcon loading={loading} expanded={isExpanded} />
-                <ThemedFolder size={treeIconSize} uniProps={foregroundMutedColorMapping} />
-              </>
-            ) : (
-              <MaterialFileIcon fileName={entry.name} size={treeIconSize} />
-            )}
+      <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
+        <ContextMenuTrigger
+          onPress={handlePress}
+          onLongPress={handleSelect}
+          onContextMenu={handleSelect}
+          style={pressableStyle}
+          accessibilityState={accessibilityState}
+          aria-selected={isSelected}
+          testID={testID}
+        >
+          <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} />
+          <View ref={dragSourceRef} style={styles.entryInfo}>
+            <View style={[styles.entryIcon, isDirectory && styles.directoryEntryIcon]}>
+              {isDirectory ? (
+                <>
+                  <DirectoryChevronIcon loading={loading} expanded={isExpanded} />
+                  <ThemedFolder size={treeIconSize} uniProps={foregroundMutedColorMapping} />
+                </>
+              ) : (
+                <MaterialFileIcon fileName={entry.name} size={treeIconSize} />
+              )}
+            </View>
+            <Text testID={`${testID}-name`} style={entryNameStyle} numberOfLines={1}>
+              {entry.name}
+            </Text>
           </View>
-          <Text style={styles.entryName} numberOfLines={1}>
-            {entry.name}
-          </Text>
-        </View>
-      </ContextMenuTrigger>
+        </ContextMenuTrigger>
+      </View>
       <FileActionsContextMenuContent
         fileKind={entry.kind}
         onEditFile={onOpenEntry ? handleEdit : undefined}
@@ -1741,65 +1755,6 @@ function replaceExplorerPathPrefix(
   nextPrefix: string,
 ): string {
   return `${nextPrefix}${candidatePath.slice(previousPrefix.length)}`;
-}
-
-async function initializeExplorer({
-  hasWorkspaceScope,
-  hasInitializedRef,
-  workspaceStateKey,
-  persistedExpandedPaths,
-  showHiddenFiles,
-  requestDirectoryListing,
-  setExpandedPathsForWorkspace,
-}: {
-  hasWorkspaceScope: boolean;
-  hasInitializedRef: RefObject<boolean>;
-  workspaceStateKey: string | null;
-  persistedExpandedPaths: ReadonlySet<string>;
-  showHiddenFiles: boolean;
-  requestDirectoryListing: (
-    path: string,
-    opts?: { recordHistory?: boolean; setCurrentPath?: boolean },
-  ) => Promise<ExplorerDirectory | null>;
-  setExpandedPathsForWorkspace: (workspaceStateKey: string, paths: ExpandedPathsUpdate) => void;
-}): Promise<void> {
-  if (!hasWorkspaceScope || hasInitializedRef.current) {
-    return;
-  }
-  hasInitializedRef.current = true;
-  const rootDirectory = await requestDirectoryListing(".", {
-    recordHistory: false,
-    setCurrentPath: false,
-  });
-  if (!rootDirectory) {
-    hasInitializedRef.current = false;
-    return;
-  }
-  if (!workspaceStateKey) {
-    return;
-  }
-
-  const restoredPaths = await restoreExpandedDirectories({
-    rootDirectory,
-    persistedExpandedPaths,
-    showHiddenFiles,
-    requestDirectoryListing: (path) =>
-      requestDirectoryListing(path, {
-        recordHistory: false,
-        setCurrentPath: false,
-      }),
-  });
-  const hiddenPersistedPaths = showHiddenFiles
-    ? []
-    : Array.from(persistedExpandedPaths).filter(isHiddenExplorerPath);
-  const restoredPathsWithHidden = [...restoredPaths, ...hiddenPersistedPaths];
-  setExpandedPathsForWorkspace(workspaceStateKey, (currentPaths) =>
-    reconcileRestoredExpandedPaths({
-      persistedExpandedPaths,
-      currentExpandedPaths: new Set(currentPaths),
-      restoredExpandedPaths: restoredPathsWithHidden,
-    }),
-  );
 }
 
 async function refreshExplorerDirectories({

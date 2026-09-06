@@ -137,7 +137,7 @@ export function TreeIndentGuides({
 export function TreeChevron({ expanded }: { expanded: boolean }) {
   const iconSize = useTreeIconSize();
   return (
-    <View style={expanded ? CHEVRON_EXPANDED_STYLE : styles.chevron}>
+    <View testID="tree-chevron" style={expanded ? CHEVRON_EXPANDED_STYLE : styles.chevron}>
       <ThemedChevronRight size={iconSize} uniProps={foregroundExtraMutedIconColorMapping} />
     </View>
   );

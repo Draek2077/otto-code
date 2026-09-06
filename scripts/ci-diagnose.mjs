@@ -64,7 +64,11 @@ export function diagnosticCommand({ suite, file, testName }, repoRoot = root) {
 }
 
 export function diagnosticEnvironment(suite) {
-  const env = { ...process.env, ...(suite === "desktop" ? { E2E_DESKTOP_RUNTIME: "1" } : {}) };
+  const env = {
+    ...process.env,
+    ...(suite === "playwright" || suite === "desktop" ? { CI: "1" } : {}),
+    ...(suite === "desktop" ? { E2E_DESKTOP_RUNTIME: "1" } : {}),
+  };
   if (!["server", "playwright", "desktop"].includes(suite)) return env;
   mkdirSync(path.join(root, ".tmp"), { recursive: true });
   const home = mkdtempSync(path.join(root, ".tmp/ci-diagnostic-"));

@@ -67,6 +67,7 @@ async function hideContextActionCapabilities(page: Page): Promise<void> {
           fsEntryOps: false,
           fsEntryDuplicate: false,
           checkoutDiscardChanges: false,
+          checkoutGitRollback: false,
         };
       }
       browserSocket.send(JSON.stringify(envelope));
@@ -146,7 +147,7 @@ test("creates, renames, copies, and deletes entries through the file explorer", 
   );
   const extraMutedChevronColor = await draftRow
     .locator("svg")
-    .evaluate((icon) => getComputedStyle(icon).stroke);
+    .evaluate((icon) => getComputedStyle(icon).color);
   expect(placeholderColor).toBe(extraMutedChevronColor);
   await nameInput.press("Tab");
   await expect(nameInput).toBeHidden();
@@ -213,23 +214,15 @@ test("creates, renames, copies, and deletes entries through the file explorer", 
   const fileRow = entry("created.txt").locator(
     "xpath=ancestor::*[starts-with(@data-testid, 'file-explorer-row-')][1]",
   );
-  await expect(folderRow.locator("svg")).toHaveCount(1);
+  await expect(folderRow.locator("svg")).toHaveCount(2);
   await expect(fileRow.locator("svg")).toHaveCount(1);
   const gitRow = entry(".git").locator(
     "xpath=ancestor::*[starts-with(@data-testid, 'file-explorer-row-')][1]",
   );
   const collapsedChevronBounds = await gitRow.locator("svg").first().boundingBox();
   const expandedChevronBounds = await folderRow.locator("svg").first().boundingBox();
-  const collapsedChevronSlotBounds = await gitRow
-    .locator("svg")
-    .first()
-    .locator("xpath=../..")
-    .boundingBox();
-  const expandedChevronSlotBounds = await folderRow
-    .locator("svg")
-    .first()
-    .locator("xpath=../..")
-    .boundingBox();
+  const collapsedChevronSlotBounds = await gitRow.getByTestId("tree-chevron").boundingBox();
+  const expandedChevronSlotBounds = await folderRow.getByTestId("tree-chevron").boundingBox();
   expect(collapsedChevronBounds).not.toBeNull();
   expect(expandedChevronBounds).not.toBeNull();
   expect(collapsedChevronSlotBounds).not.toBeNull();
@@ -249,7 +242,11 @@ test("creates, renames, copies, and deletes entries through the file explorer", 
   const fileLabelBounds = await entry("created.txt").boundingBox();
   expect(folderLabelBounds).not.toBeNull();
   expect(fileLabelBounds).not.toBeNull();
-  expect(fileLabelBounds!.x).toBeCloseTo(folderLabelBounds!.x, 0);
+  // Directories reserve an extra icon frame for their disclosure chevron.
+  expect(folderLabelBounds!.x - fileLabelBounds!.x).toBeCloseTo(
+    collapsedChevronSlotBounds!.width,
+    0,
+  );
 
   await folderRow.click();
   await expect(folderRow).toHaveAttribute("aria-selected", "true");
@@ -312,40 +309,22 @@ test("creates, renames, copies, and deletes entries through the file explorer", 
   const deleteLabelColor = await deleteAction
     .getByText("Delete", { exact: true })
     .evaluate((element) => getComputedStyle(element).color);
-  await expect(deleteAction.locator("svg")).toHaveCSS("stroke", deleteLabelColor);
-  const cancelledConfirmation = new Promise<string>((resolve) => {
-    page.once("dialog", async (dialog) => {
-      const message = dialog.message();
-      await dialog.dismiss();
-      resolve(message);
-    });
-  });
+  await expect(deleteAction.locator("svg")).toHaveCSS("color", deleteLabelColor);
   await page.getByText("Delete", { exact: true }).click();
-  expect(await cancelledConfirmation).toContain("renamed.txt");
+  await expect(page.getByTestId("confirm-dialog")).toContainText("renamed.txt");
+  await page.getByTestId("confirm-dialog-cancel").click();
   await expect(entry("renamed.txt")).toBeVisible();
 
   await entry("renamed.txt").click({ button: "right" });
-  const confirmation = new Promise<string>((resolve) => {
-    page.once("dialog", async (dialog) => {
-      const message = dialog.message();
-      await dialog.accept();
-      resolve(message);
-    });
-  });
   await page.getByText("Delete", { exact: true }).click();
-  expect(await confirmation).toContain("renamed.txt");
+  await expect(page.getByTestId("confirm-dialog")).toContainText("renamed.txt");
+  await page.getByTestId("confirm-dialog-confirm").click();
   await expect(entry("renamed.txt")).toBeHidden();
 
   await entry("renamed-folder").click({ button: "right" });
-  const folderConfirmation = new Promise<string>((resolve) => {
-    page.once("dialog", async (dialog) => {
-      const message = dialog.message();
-      await dialog.accept();
-      resolve(message);
-    });
-  });
   await page.getByText("Delete", { exact: true }).click();
-  expect(await folderConfirmation).toContain("renamed-folder");
+  await expect(page.getByTestId("confirm-dialog")).toContainText("renamed-folder");
+  await page.getByTestId("confirm-dialog-confirm").click();
   await expect(entry("renamed-folder")).toBeHidden();
   await expect(entry("child.txt")).toBeHidden();
 });
@@ -422,14 +401,9 @@ test("keeps an entry visible when deletion fails", async ({ page }) => {
     .getByTestId("file-explorer-tree-scroll")
     .getByText("README.md", { exact: true });
   await readme.click({ button: "right" });
-  const confirmation = new Promise<void>((resolve) => {
-    page.once("dialog", async (dialog) => {
-      await dialog.accept();
-      resolve();
-    });
-  });
   await page.getByText("Delete", { exact: true }).click();
-  await confirmation;
+  await expect(page.getByTestId("confirm-dialog")).toContainText("README.md");
+  await page.getByTestId("confirm-dialog-confirm").click();
 
   await expect(page.getByText("Injected delete failure", { exact: true })).toBeVisible();
   await expect(readme).toBeVisible();

@@ -44,6 +44,6 @@
     "packages/app/src/keyboard/keyboard-shortcuts.ts": 2149,
     "packages/app/src/screens/settings-screen.tsx": 3208,
     "packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx": 2520,
-    "packages/app/src/components/file-explorer-pane.tsx": 2143
+    "packages/app/src/components/file-explorer-pane.tsx": 2098
   }
 }

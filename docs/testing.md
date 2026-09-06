@@ -202,7 +202,8 @@ identity so repository scaffolding can make its initial commit without global Gi
 configuration. Git discovery stops at that isolated home, so a fixture without
 its own repository cannot accidentally use the enclosing checkout. Browser runs share only Metro's compilation cache in
 `.tmp/ci-metro-cache`, use two compiler workers, and allow five minutes for a cold
-bundle. Windows teardown terminates owned process trees before removing fixture
+bundle. Renderer diagnostics set Metro's CI mode so edits in another chat cannot
+trigger a hot reload midway through a test. Windows teardown terminates owned process trees before removing fixture
 homes, including workers spawned by the daemon and Metro.
 
 Diagnose a setup failure separately from an assertion failure. Preserve the failing
