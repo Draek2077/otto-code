@@ -13,6 +13,7 @@ import {
 import { hasActiveExternalFileEditor } from "@/editor/external-file-editor";
 import { i18n } from "@/i18n/i18next";
 import { usePaneContext } from "@/panels/pane-context";
+import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { definePanel } from "@/panels/panel-registry";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { PanelDescriptorContext } from "@/panels/panel-registry";
@@ -25,12 +26,14 @@ const CENTERED_PADDED_STYLE = {
   padding: 16,
 } as const;
 
-function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDescriptorContext) {
-  const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
+function useFilePanelDirty(
+  target: WorkspaceFileTabTarget,
+  context: Pick<PanelDescriptorContext, "serverId" | "workspaceId">,
+) {
   // External tabs key their buffer by the workspace serving the file, not the
   // host pane's, so the dirty indicator must read the same key.
   const bufferWorkspaceId = target.origin?.workspaceId ?? context.workspaceId;
-  const dirty = useEditorBufferStore(
+  return useEditorBufferStore(
     (state) =>
       state.buffers[
         buildEditorBufferKey({
@@ -40,6 +43,11 @@ function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDe
         })
       ]?.dirty ?? false,
   );
+}
+
+function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDescriptorContext) {
+  const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
+  const dirty = useFilePanelDirty(target, context);
   return {
     label: dirty ? `● ${fileName}` : fileName,
     subtitle: target.path,
@@ -86,6 +94,8 @@ function FilePanel() {
   const { serverId, workspaceId, target, fileNavigationRevision } = usePaneContext();
   const paneWorkspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
   invariant(target.kind === "file", "FilePanel requires file target");
+  const dirty = useFilePanelDirty(target, { serverId, workspaceId });
+  usePublishPanelInstanceAttributes({ modified: dirty });
   // An external file is served from its owning workspace, or from its own
   // directory when it is outside every registered workspace.
   const origin = target.origin;
