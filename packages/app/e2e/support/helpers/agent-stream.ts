@@ -30,7 +30,7 @@ export async function expectRunningAgentChrome(page: Page, title: string): Promi
   const tab = page.getByRole("button", { name: title, exact: true });
 
   await expect(tab).toBeVisible({ timeout: 30_000 });
-  await expect(tab.getByRole("progressbar", { name: "Agent running" })).toBeVisible({
+  await expect(tab.getByRole("progressbar", { name: "Running", exact: true })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByRole("button", { name: /stop agent|canceling agent/i })).toBeVisible({
@@ -53,7 +53,9 @@ export async function expectVisibleAgentSurfacesIdle(page: Page): Promise<void> 
     .first();
 
   await expect(visibleAgentTab).toBeVisible({ timeout: 30_000 });
-  await expect(visibleAgentTab.getByRole("progressbar", { name: "Agent running" })).toHaveCount(0);
+  await expect(
+    visibleAgentTab.getByRole("progressbar", { name: "Running", exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByRole("button", { name: /stop agent|canceling agent/i })).toHaveCount(0);
   await expect(page.getByTestId("turn-working-indicator")).toHaveCount(0);
   await expect(page.getByTestId("turn-working-elapsed")).toHaveCount(0);
@@ -63,7 +65,7 @@ export async function expectAgentSurfacesIdle(page: Page, title: string): Promis
   const tab = page.getByRole("button", { name: title, exact: true });
 
   await expect(tab).toBeVisible({ timeout: 30_000 });
-  await expect(tab.getByRole("progressbar", { name: "Agent running" })).toHaveCount(0);
+  await expect(tab.getByRole("progressbar", { name: "Running", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /stop agent|canceling agent/i })).toHaveCount(0);
   await expect(page.getByTestId("turn-working-indicator")).toHaveCount(0);
   await expect(page.getByTestId("turn-working-elapsed")).toHaveCount(0);

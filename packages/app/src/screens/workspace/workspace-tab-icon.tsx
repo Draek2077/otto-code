@@ -1,5 +1,6 @@
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
 import { useMemo, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
@@ -58,6 +59,7 @@ export function WorkspaceTabIcon({
   accent = false,
   size,
 }: WorkspaceTabIconProps): ReactElement {
+  const { t } = useTranslation();
   const iconSize = useIconSize();
   const resolvedSize = size ?? iconSize.sm;
   let iconColor = styles.iconInactive.color;
@@ -101,7 +103,11 @@ export function WorkspaceTabIcon({
 
     const spinner = presentation.personalitySpinner;
     return (
-      <View style={agentIconWrapperStyle}>
+      <View
+        style={agentIconWrapperStyle}
+        accessibilityRole="progressbar"
+        accessibilityLabel={t("agentList.status.running")}
+      >
         {spinner ? (
           <BlobLoader size={resolvedSize - 1} glowA={spinner.glowA} glowB={spinner.glowB} />
         ) : (
