@@ -50,7 +50,7 @@ describe("ArchitecturalViewsService", () => {
     expect(result).toMatchObject({
       viewId: "runtime-overview",
       storeLocation: "repository",
-      htmlPath: ".otto/architectural-views/runtime-overview/view.architecture.html",
+      htmlPath: ".otto/architectural-views/runtime-overview/view.architecture.json",
     });
     await expect(
       readFile(
@@ -58,6 +58,18 @@ describe("ArchitecturalViewsService", () => {
         "utf8",
       ),
     ).resolves.toContain('"id": "runtime-overview"');
+    await expect(
+      readFile(
+        join(
+          projectRoot,
+          ".otto",
+          "architectural-views",
+          "runtime-overview",
+          "view.architecture.html",
+        ),
+        "utf8",
+      ),
+    ).rejects.toThrow();
   });
 
   it("discovers Knowledge-linked views and serves renderer HTML with Otto's CSP", async () => {
@@ -174,9 +186,24 @@ describe("ArchitecturalViewsService", () => {
     await expect(
       service.getDraftContent(projectRoot, "runtime-overview", "edit-one"),
     ).resolves.toBeNull();
+    const revisions = await readdir(
+      join(projectRoot, ".otto", "architectural-views", "runtime-overview", "revisions"),
+    );
+    expect(revisions).toHaveLength(1);
     await expect(
-      readdir(join(projectRoot, ".otto", "architectural-views", "runtime-overview", "revisions")),
-    ).resolves.toHaveLength(1);
+      readFile(
+        join(
+          projectRoot,
+          ".otto",
+          "architectural-views",
+          "runtime-overview",
+          "revisions",
+          revisions[0] ?? "",
+          "view.architecture.html",
+        ),
+        "utf8",
+      ),
+    ).rejects.toThrow();
 
     await service.createDraft({
       cwd: projectRoot,

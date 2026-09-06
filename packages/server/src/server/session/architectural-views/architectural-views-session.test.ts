@@ -74,7 +74,7 @@ describe("ArchitecturalViewsSession", () => {
         viewId: "runtime-overview",
         success: true,
         storeLocation: "repository",
-        htmlPath: ".otto/architectural-views/runtime-overview/view.architecture.html",
+        htmlPath: ".otto/architectural-views/runtime-overview/view.architecture.json",
         error: null,
       },
     });

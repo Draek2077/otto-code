@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { writeFileAtomic, writeJsonFileAtomic } from "../atomic-file.js";
+import { writeJsonFileAtomic } from "../atomic-file.js";
 import type { ProjectKnowledgeStore } from "../agent/project-knowledge/project-knowledge-store.js";
 import { ArchifyRenderer, type ArchifyQualityProfile } from "../archify/archify-renderer.js";
 import { validateHtmlFile } from "../artifact/html-validator.js";
@@ -23,6 +24,10 @@ export interface DeliverArchitecturalViewInput {
 export interface DeliveredArchitecturalView {
   viewId: string;
   storeLocation: ProjectKnowledgeStore["location"];
+  /**
+   * COMPAT(architecturalViewHtmlPath): retained wire field name until the
+   * protocol floor can rename it. It identifies the durable view source.
+   */
   htmlPath: string;
 }
 
@@ -31,6 +36,10 @@ export interface ArchitecturalViewSummary {
   title: string;
   knowledgeReferences: ArchitecturalViewKnowledgeReference[];
   storeLocation: ProjectKnowledgeStore["location"];
+  /**
+   * COMPAT(architecturalViewHtmlPath): retained wire field name until the
+   * protocol floor can rename it. It identifies the durable view source.
+   */
   htmlPath: string;
   renderedAt: string;
   /** Whether the cited Knowledge pages still match their delivery provenance. */
@@ -94,6 +103,7 @@ export interface ArchitecturalViewsServiceOptions {
 export class ArchitecturalViewsService {
   private readonly resolveStore: ArchitecturalViewsServiceOptions["resolveStore"];
   private readonly renderer: ArchifyRenderer;
+  private readonly renderedHtmlCache = new Map<string, string>();
 
   constructor(options: ArchitecturalViewsServiceOptions) {
     this.resolveStore = options.resolveStore;
@@ -119,22 +129,14 @@ export class ArchitecturalViewsService {
     } catch {
       throw new Error("Architectural View source must contain valid JSON.");
     }
-    const serializedSpecification = JSON.stringify(specification, null, 2);
-
     await mkdir(directory, { recursive: true });
     await writeJsonFileAtomic(specificationPath, specification);
-    const delivery = await this.renderer.deliverArchitectureFile({
+    const specificationSha256 = specificationHash(specification);
+    const rendered = await this.renderSpecification({
       specificationPath,
-      htmlPath,
+      specificationSha256,
       quality: input.quality,
     });
-    const rendered = validateHtmlFile(htmlPath);
-    if (!rendered.isValid) {
-      throw new Error("Architectural View renderer returned invalid HTML.");
-    }
-    // The renderer is interactive JavaScript. Keep it interactive, but make the
-    // daemon-owned stored document network-dark before any platform renders it.
-    await writeFile(htmlPath, rendered.content, "utf8");
     const manifest: ArchitecturalViewManifest = {
       schemaVersion: 1,
       kind: "architectural-view",
@@ -142,18 +144,22 @@ export class ArchitecturalViewsService {
       title: input.title,
       knowledgeReferences: input.knowledgeReferences,
       sourceDigests: await this.captureSourceDigests(store, input.knowledgeReferences),
-      specificationSha256: createHash("sha256").update(serializedSpecification).digest("hex"),
+      specificationSha256,
       renderedAt: new Date().toISOString(),
     };
     await Promise.all([
       writeJsonFileAtomic(manifestPath, manifest),
-      writeJsonFileAtomic(receiptPath, delivery.receipt),
+      writeJsonFileAtomic(receiptPath, rendered.receipt),
     ]);
+    // Pre-compact views carried a full standalone Archify runtime per
+    // document. The specification is now the durable source; runtime HTML
+    // is rendered into the daemon cache only when someone opens the view.
+    await rm(htmlPath, { force: true });
 
     return {
       viewId: input.viewId,
       storeLocation: store.location,
-      htmlPath: relative(store.pathBase, htmlPath).split("\\").join("/"),
+      htmlPath: relative(store.pathBase, specificationPath).split("\\").join("/"),
     };
   }
 
@@ -189,14 +195,14 @@ export class ArchitecturalViewsService {
   async getContent(cwd: string, viewId: string): Promise<ArchitecturalViewContent | null> {
     assertViewId(viewId);
     const store = await this.resolveStore(cwd);
-    const view = await this.readSummary(store, viewId);
-    if (!view) return null;
-    const htmlPath = join(store.base, "architectural-views", viewId, "view.architecture.html");
-    const rendered = validateHtmlFile(htmlPath);
-    if (!rendered.isValid) {
-      throw new Error("Architectural View HTML is missing or invalid.");
-    }
-    return { view, html: rendered.content };
+    const manifest = await this.readManifest(store, viewId);
+    if (!manifest) return null;
+    const view = await this.summaryFromManifest(store, manifest);
+    const html = await this.getRenderedHtml({
+      specificationPath: join(store.base, "architectural-views", viewId, "view.architecture.json"),
+      specificationSha256: manifest.specificationSha256,
+    });
+    return { view, html };
   }
 
   /**
@@ -252,7 +258,7 @@ export class ArchitecturalViewsService {
     return draft;
   }
 
-  /** A failed render leaves the draft's existing JSON and last valid HTML intact. */
+  /** A failed render leaves the draft's existing durable JSON intact. */
   async updateDraft(input: {
     cwd: string;
     viewId: string;
@@ -323,11 +329,16 @@ export class ArchitecturalViewsService {
     const store = await this.resolveStore(cwd);
     const draft = await this.readDraft(store, viewId, draftId);
     if (!draft) return null;
-    const rendered = validateHtmlFile(
-      join(draftDirectory(store, viewId, draftId), "view.architecture.html"),
+    const specificationPath = join(
+      draftDirectory(store, viewId, draftId),
+      "view.architecture.json",
     );
-    if (!rendered.isValid) throw new Error("Architectural View draft HTML is missing or invalid.");
-    return { draft, html: rendered.content };
+    const specification = await readJsonSpecification(specificationPath);
+    const html = await this.getRenderedHtml({
+      specificationPath,
+      specificationSha256: specificationHash(specification),
+    });
+    return { draft, html };
   }
 
   /** Lists durable staged work so a Knowledge article can offer Resume after a restart. */
@@ -391,7 +402,7 @@ export class ArchitecturalViewsService {
   }
 
   /**
-   * Promotes a fully rendered draft after a strict optimistic-concurrency
+   * Promotes a render-validated draft after a strict optimistic-concurrency
    * check. The previous published files are retained as a named revision.
    */
   async publishDraft(input: {
@@ -411,18 +422,20 @@ export class ArchitecturalViewsService {
       );
     }
     const draftPath = draftDirectory(store, input.viewId, input.draftId);
-    const rendered = validateHtmlFile(join(draftPath, "view.architecture.html"));
-    if (!rendered.isValid) throw new Error("Architectural View draft HTML is missing or invalid.");
     const specification = await readJsonSpecification(join(draftPath, "view.architecture.json"));
-    const receipt = JSON.parse(await readFile(join(draftPath, "receipt.json"), "utf8")) as unknown;
+    const specificationSha256 = specificationHash(specification);
+    const rendered = await this.renderSpecification({
+      specificationPath: join(draftPath, "view.architecture.json"),
+      specificationSha256,
+    });
     const directory = join(store.base, "architectural-views", input.viewId);
     const now = new Date().toISOString();
     if (current) {
       const revisionDirectory = join(directory, "revisions", revisionIdFor(current.renderedAt));
       await mkdir(revisionDirectory, { recursive: true });
       await Promise.all(
-        ["view.architecture.json", "view.architecture.html", "view.json", "receipt.json"].map(
-          (file) => copyFile(join(directory, file), join(revisionDirectory, file)),
+        ["view.architecture.json", "view.json", "receipt.json"].map((file) =>
+          copyFile(join(directory, file), join(revisionDirectory, file)),
         ),
       );
     }
@@ -433,15 +446,15 @@ export class ArchitecturalViewsService {
       title: draft.title,
       knowledgeReferences: draft.knowledgeReferences,
       sourceDigests: await this.captureSourceDigests(store, draft.knowledgeReferences),
-      specificationSha256: specificationHash(specification),
+      specificationSha256,
       renderedAt: now,
     };
     await Promise.all([
       writeJsonFileAtomic(join(directory, "view.architecture.json"), specification),
-      writeFileAtomic(join(directory, "view.architecture.html"), rendered.content),
       writeJsonFileAtomic(join(directory, "view.json"), manifest),
-      writeJsonFileAtomic(join(directory, "receipt.json"), receipt),
+      writeJsonFileAtomic(join(directory, "receipt.json"), rendered.receipt),
     ]);
+    await rm(join(directory, "view.architecture.html"), { force: true });
     await rm(draftPath, { recursive: true, force: true });
     return this.summaryFromManifest(store, manifest);
   }
@@ -483,7 +496,7 @@ export class ArchitecturalViewsService {
       storeLocation: store.location,
       htmlPath: relative(
         store.pathBase,
-        join(store.base, "architectural-views", manifest.id, "view.architecture.html"),
+        join(store.base, "architectural-views", manifest.id, "view.architecture.json"),
       )
         .split("\\")
         .join("/"),
@@ -613,32 +626,77 @@ export class ArchitecturalViewsService {
     const candidateDirectory = join(input.directory, ".candidate");
     await mkdir(candidateDirectory, { recursive: true });
     const candidateSpecificationPath = join(candidateDirectory, "view.architecture.json");
-    const candidateHtmlPath = join(candidateDirectory, "view.architecture.html");
     try {
       await writeJsonFileAtomic(candidateSpecificationPath, input.specification);
-      const delivery = await this.renderer.deliverArchitectureFile({
+      const specificationSha256 = specificationHash(input.specification);
+      const rendered = await this.renderSpecification({
         specificationPath: candidateSpecificationPath,
-        htmlPath: candidateHtmlPath,
+        specificationSha256,
         quality: input.quality,
       });
-      const rendered = validateHtmlFile(candidateHtmlPath);
-      if (!rendered.isValid) throw new Error("Architectural View renderer returned invalid HTML.");
       const manifest: ArchitecturalViewDraftManifest = {
         schemaVersion: 1,
         kind: "architectural-view-draft",
         ...input.draft,
-        specificationSha256: specificationHash(input.specification),
-        receipt: delivery.receipt,
+        specificationSha256,
+        receipt: rendered.receipt,
       };
       await Promise.all([
         writeJsonFileAtomic(join(input.directory, "view.architecture.json"), input.specification),
-        writeFileAtomic(join(input.directory, "view.architecture.html"), rendered.content),
-        writeJsonFileAtomic(join(input.directory, "receipt.json"), delivery.receipt),
+        writeJsonFileAtomic(join(input.directory, "receipt.json"), rendered.receipt),
         writeJsonFileAtomic(join(input.directory, "draft.json"), manifest),
       ]);
+      await rm(join(input.directory, "view.architecture.html"), { force: true });
       return input.draft;
     } finally {
       await rm(candidateDirectory, { recursive: true, force: true });
+    }
+  }
+
+  private async getRenderedHtml(input: {
+    specificationPath: string;
+    specificationSha256: string;
+  }): Promise<string> {
+    const cached = this.renderedHtmlCache.get(input.specificationSha256);
+    if (cached) return cached;
+    return (
+      await this.renderSpecification({
+        specificationPath: input.specificationPath,
+        specificationSha256: input.specificationSha256,
+      })
+    ).html;
+  }
+
+  private async renderSpecification(input: {
+    specificationPath: string;
+    specificationSha256: string;
+    quality?: ArchifyQualityProfile;
+  }): Promise<{ html: string; receipt: Record<string, unknown> }> {
+    const renderDirectory = await mkdtemp(join(tmpdir(), "otto-architectural-view-render-"));
+    const htmlPath = join(renderDirectory, "view.architecture.html");
+    try {
+      const delivery = await this.renderer.deliverArchitectureFile({
+        specificationPath: input.specificationPath,
+        htmlPath,
+        quality: input.quality,
+      });
+      const rendered = validateHtmlFile(htmlPath);
+      if (!rendered.isValid) {
+        throw new Error("Architectural View renderer returned invalid HTML.");
+      }
+      this.rememberRenderedHtml(input.specificationSha256, rendered.content);
+      return { html: rendered.content, receipt: delivery.receipt };
+    } finally {
+      await rm(renderDirectory, { recursive: true, force: true });
+    }
+  }
+
+  private rememberRenderedHtml(specificationSha256: string, html: string): void {
+    this.renderedHtmlCache.delete(specificationSha256);
+    this.renderedHtmlCache.set(specificationSha256, html);
+    const oldest = this.renderedHtmlCache.keys().next().value;
+    if (this.renderedHtmlCache.size > 8 && oldest) {
+      this.renderedHtmlCache.delete(oldest);
     }
   }
 }
