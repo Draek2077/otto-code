@@ -230,7 +230,7 @@ test.describe("Settings - compact master-detail", () => {
     await page.getByRole("button", { name: /Open .* settings/ }).click();
 
     await expectHostSettingsUrl(page, getServerId());
-    await expectSettingsHeader(page, "Connections");
+    await expect(page.getByTestId("host-page-connections-card")).toBeVisible();
 
     await goBackInSettings(page);
     await expectCompactSettingsList(page);

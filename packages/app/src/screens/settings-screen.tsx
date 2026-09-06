@@ -2619,11 +2619,9 @@ export default function SettingsScreen({
   }, [isCompactLayout, router]);
 
   const handleBackToRoot = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/settings");
-    }
+    // A host detail can be opened directly from the workspace's host picker.
+    // Its parent is still the Settings list, regardless of navigation history.
+    router.dismissTo("/settings");
   }, [router]);
 
   const detailProjectServerId = view.kind === "project" ? view.serverId : null;

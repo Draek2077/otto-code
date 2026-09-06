@@ -61,6 +61,11 @@ Integrations use that host for daemon-backed controls. Dropping the parameter
 can silently retarget skill installation to the local host when the new section
 mounts.
 
+In compact Settings, Back from a host or app section returns to the Settings
+list, including when the section was opened directly from a workspace. Dismiss
+to `/settings` instead of popping an arbitrary prior route. Back from that list
+returns to the remembered workspace.
+
 When app-wide routes such as `/new`, `/settings`, or `/sessions` navigate back
 into a host workspace, use `navigateToWorkspace()`. Do not make the caller
 branch on its current route.
