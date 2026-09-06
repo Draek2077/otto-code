@@ -410,6 +410,7 @@ export interface OttoAppSettings {
   // one live guest at a time, so there is only ever one simulation and one star
   // field (see docs/visualizer.md "PIP mode"). Device-local.
   visualizerPipOpen: boolean;
+  visualizerBackgroundOpen: boolean;
   // Which surface the header's Visualizer button opens. Sticky: whichever
   // surface you last used is the one that comes back. Collapsing the tab to PIP
   // writes "pip"; expanding the PIP to a tab writes "tab". Closing either one
@@ -638,10 +639,10 @@ export type VisualizerPipSize = "small" | "medium";
 
 export const VISUALIZER_PIP_SIZES: readonly VisualizerPipSize[] = ["small", "medium"];
 
-/** The two mutually-exclusive Visualizer surfaces. */
-export type VisualizerSurface = "tab" | "pip";
+/** Mutually-exclusive Visualizer placements. */
+export type VisualizerSurface = "tab" | "pip" | "background";
 
-export const VISUALIZER_SURFACES: readonly VisualizerSurface[] = ["tab", "pip"];
+export const VISUALIZER_SURFACES: readonly VisualizerSurface[] = ["tab", "pip", "background"];
 
 const VISUALIZER_NODE_SHAPES: readonly VisualizerNodeShape[] = [
   "square",
@@ -1286,6 +1287,9 @@ function pickVisualizerPipSettings(stored: Partial<AppSettings>): Partial<AppSet
   if (typeof stored.visualizerPipOpen === "boolean") {
     result.visualizerPipOpen = stored.visualizerPipOpen;
   }
+  if (typeof stored.visualizerBackgroundOpen === "boolean") {
+    result.visualizerBackgroundOpen = stored.visualizerBackgroundOpen;
+  }
   if (
     typeof stored.visualizerSurface === "string" &&
     (VISUALIZER_SURFACES as readonly string[]).includes(stored.visualizerSurface)
@@ -1541,6 +1545,7 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   visualizerSoundMuted: false,
   visualizerHudHidden: false,
   visualizerPipOpen: false,
+  visualizerBackgroundOpen: false,
   visualizerSurface: "tab",
   visualizerPipSize: "small",
   visualizerPipX: 1,

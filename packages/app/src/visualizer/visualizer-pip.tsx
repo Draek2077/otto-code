@@ -39,12 +39,14 @@
 // Everything you should be able to see through goes inside `fadeLayer`;
 // everything you still need to click stays outside it.
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Text, View, type LayoutChangeEvent } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import {
   CloseFullscreen,
+  FitScreen,
   Maximize,
   OpenInFull,
   Pin,
@@ -62,6 +64,7 @@ import { useVisualizerSurface } from "@/visualizer/use-visualizer-surface";
 import { PIP_DIMENSIONS, PIP_HOVER_OPACITY } from "@/visualizer/visualizer-chrome-profile";
 import { VisualizerSurface } from "@/visualizer/visualizer-surface";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
+import { getOverlayRoot } from "@/lib/overlay-root";
 
 export interface VisualizerPipProps {
   serverId: string;
@@ -92,11 +95,10 @@ export function VisualizerPip({
   // Lifted into VisualizerSurface so PIP and the tab share ONE follow state
   // rather than two that disagree. Pinned = frozen on the chat it was showing.
   const [followActive, setFollowActive] = useState(true);
-  // Measured from the anchor, which fills the workspace content area. Seeded at
-  // 0, which resolves EVERY stored fraction to the top-left corner - so the frame
-  // stays unmounted until this is real (`measured` below). Rendering it against
-  // the seed is what used to make the PIP appear in the corner and then jump to
-  // its saved position on the next frame.
+  // Seeded at 0, which resolves EVERY stored fraction to the top-left corner -
+  // so the frame stays unmounted until this is real (`measured` below). Web PIP
+  // uses the full window, not a workspace pane: it may cross the sidebar and
+  // never borrows the Explorer's geometry when that dock opens or closes.
   const [container, setContainer] = useState({ width: 0, height: 0 });
   const measured = container.width > 0 && container.height > 0;
 
@@ -108,6 +110,20 @@ export function VisualizerPip({
     setContainer((previous) =>
       previous.width === width && previous.height === height ? previous : { width, height },
     );
+  }, []);
+
+  useEffect(() => {
+    if (!isWeb) return;
+    const syncWindowBounds = () => {
+      setContainer((previous) =>
+        previous.width === window.innerWidth && previous.height === window.innerHeight
+          ? previous
+          : { width: window.innerWidth, height: window.innerHeight },
+      );
+    };
+    syncWindowBounds();
+    window.addEventListener("resize", syncWindowBounds);
+    return () => window.removeEventListener("resize", syncWindowBounds);
   }, []);
 
   const fraction = useMemo<PipFraction>(
@@ -139,10 +155,13 @@ export function VisualizerPip({
   // records which surface to bring back next time. Close leaves that memory
   // alone (reopening from the header gives you the PIP again); expand rewrites
   // it to "tab", because that is now the surface you are using.
-  const { closePip: handleClose, expandToTab: handleExpand } = useVisualizerSurface(
-    serverId,
-    workspaceId,
-  );
+  const {
+    closePip: handleClose,
+    expandToTab: handleExpand,
+    canShowAsBackground,
+    showAsBackground,
+  } = useVisualizerSurface(serverId, workspaceId);
+  const handleBackground = useCallback(() => showAsBackground(), [showAsBackground]);
 
   // Presence fade: 0 until the position is known, then up; back down when the
   // host hands us `shown: false` (closed, or handed over to a full tab) while it
@@ -198,67 +217,85 @@ export function VisualizerPip({
   const handlePointerEnter = useCallback(() => setHovered(true), []);
   const handlePointerLeave = useCallback(() => setHovered(false), []);
 
+  const frame = !measured ? null : (
+    /* Plain (non-Pressable) view owns hover; the Pressables inside are
+           separate - the canonical pattern in docs/hover.md. */
+    <Animated.View
+      style={frameStyle}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
+    >
+      <View style={fadeStyle} pointerEvents="none">
+        <VisualizerSurface
+          serverId={serverId}
+          workspaceId={workspaceId}
+          surface="pip"
+          isVisible={isVisible}
+          onOpenFile={onOpenFile}
+          followActive={followActive}
+          onFollowActiveChange={setFollowActive}
+        />
+      </View>
+      {/* Transparent, and stacked above the guest - the only place a
+            pointerdown over the graph can be observed at all. */}
+      <View style={dragStyle} {...drag.handlers} />
+      {/* Sibling of the fade layer, so it stays fully opaque and clickable
+            while everything beneath it goes see-through. */}
+      {hovered ? (
+        <View style={styles.controls}>
+          <PipButton
+            label={
+              followActive ? t("workspace.visualizer.pip.pin") : t("workspace.visualizer.pip.unpin")
+            }
+            onPress={handleTogglePin}
+            icon={followActive ? "pin" : "pinned"}
+          />
+          {canShowAsBackground ? (
+            <PipButton
+              label="Use as chat background"
+              onPress={handleBackground}
+              icon="background"
+            />
+          ) : null}
+          <PipButton
+            label={
+              size === "small"
+                ? t("workspace.visualizer.pip.sizeMedium")
+                : t("workspace.visualizer.pip.sizeSmall")
+            }
+            onPress={handleToggleSize}
+            icon={size === "small" ? "grow" : "shrink"}
+          />
+          <PipButton
+            label={t("workspace.visualizer.pip.expand")}
+            onPress={handleExpand}
+            icon="expand"
+          />
+          <PipButton
+            label={t("workspace.visualizer.pip.close")}
+            onPress={handleClose}
+            icon="close"
+          />
+        </View>
+      ) : null}
+    </Animated.View>
+  );
+
+  // Browser tabs are resident Electron webviews at the document root. Portal
+  // the PIP into Otto's higher overlay plane so their guest surface cannot paint
+  // over it, while the full-window anchor keeps the PIP independently clamped.
+  if (isWeb && typeof document !== "undefined") {
+    return createPortal(
+      <View style={styles.windowAnchor} pointerEvents="box-none">
+        {frame}
+      </View>,
+      getOverlayRoot(),
+    );
+  }
+
   return (
     <View style={styles.anchor} pointerEvents="box-none" onLayout={handleLayout}>
-      {/* Nothing at all until the anchor has been measured - see `measured`. */}
-      {!measured ? null : (
-        /* Plain (non-Pressable) view owns hover; the Pressables inside are
-           separate - the canonical pattern in docs/hover.md. */
-        <Animated.View
-          style={frameStyle}
-          onPointerEnter={handlePointerEnter}
-          onPointerLeave={handlePointerLeave}
-        >
-          <View style={fadeStyle} pointerEvents="none">
-            <VisualizerSurface
-              serverId={serverId}
-              workspaceId={workspaceId}
-              surface="pip"
-              isVisible={isVisible}
-              onOpenFile={onOpenFile}
-              followActive={followActive}
-              onFollowActiveChange={setFollowActive}
-            />
-          </View>
-          {/* Transparent, and stacked above the guest - the only place a
-            pointerdown over the graph can be observed at all. */}
-          <View style={dragStyle} {...drag.handlers} />
-          {/* Sibling of the fade layer, so it stays fully opaque and clickable
-            while everything beneath it goes see-through. */}
-          {hovered ? (
-            <View style={styles.controls}>
-              <PipButton
-                label={
-                  followActive
-                    ? t("workspace.visualizer.pip.pin")
-                    : t("workspace.visualizer.pip.unpin")
-                }
-                onPress={handleTogglePin}
-                icon={followActive ? "pin" : "pinned"}
-              />
-              <PipButton
-                label={
-                  size === "small"
-                    ? t("workspace.visualizer.pip.sizeMedium")
-                    : t("workspace.visualizer.pip.sizeSmall")
-                }
-                onPress={handleToggleSize}
-                icon={size === "small" ? "grow" : "shrink"}
-              />
-              <PipButton
-                label={t("workspace.visualizer.pip.expand")}
-                onPress={handleExpand}
-                icon="expand"
-              />
-              <PipButton
-                label={t("workspace.visualizer.pip.close")}
-                onPress={handleClose}
-                icon="close"
-              />
-            </View>
-          ) : null}
-        </Animated.View>
-      )}
+      {frame}
     </View>
   );
 }
@@ -270,7 +307,7 @@ function PipButton({
 }: {
   label: string;
   onPress: () => void;
-  icon: "grow" | "shrink" | "expand" | "close" | "pin" | "pinned";
+  icon: "grow" | "shrink" | "expand" | "background" | "close" | "pin" | "pinned";
 }) {
   const Icon = PIP_ICONS[icon];
   return (
@@ -298,6 +335,7 @@ const PIP_ICONS = {
   grow: OpenInFull,
   shrink: CloseFullscreen,
   expand: Maximize,
+  background: FitScreen,
   close: X,
   // Following the active chat = not pinned yet, so the control offers the pin;
   // once pinned it offers the release.
@@ -318,6 +356,13 @@ const FRAME_STYLE = { position: "absolute" } as const;
 const PIP_BORDER_WIDTH = 1;
 
 const styles = StyleSheet.create((theme) => ({
+  // The web PIP is portaled above resident browser webviews and owns the whole
+  // app viewport. Keep this an exact fill: its drag coordinates are window
+  // coordinates, so an inset here would let the right/bottom edge overshoot.
+  windowAnchor: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: CHAT_PANE_OVERLAY_Z.visualizerPip,
+  },
   // Fills the workspace content area so onLayout measures the region the PIP is
   // allowed to move within. box-none: only the frame takes pointer events, so
   // the chat behind stays fully interactive everywhere else.

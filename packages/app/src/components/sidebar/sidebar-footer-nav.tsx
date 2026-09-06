@@ -8,6 +8,7 @@ import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { Gauge, Home, Settings, type IconComponent } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 
 type SidebarTheme = Theme;
@@ -27,6 +28,26 @@ function activeFooterIconButtonStyle(state: { hovered?: boolean; pressed?: boole
     Boolean(state.hovered) && !state.pressed && styles.footerIconButtonHovered,
     Boolean(state.pressed) && styles.footerIconButtonPressed,
   ];
+}
+
+interface SidebarFooterHelpMinimumWidthOptions {
+  iconButtonSize: number;
+  leadingItemCount: number;
+  trailingItemCount: number;
+  gap: number;
+}
+
+// The Help control is the first footer action to give way. The surrounding
+// groups do not shrink, so calculate their actual minimum footprint rather
+// than applying a viewport breakpoint that would be wrong for a resized rail.
+export function getSidebarFooterHelpMinimumWidth({
+  iconButtonSize,
+  leadingItemCount,
+  trailingItemCount,
+  gap,
+}: SidebarFooterHelpMinimumWidthOptions): number {
+  const itemCount = leadingItemCount + trailingItemCount;
+  return itemCount * iconButtonSize + (itemCount - 1) * gap;
 }
 
 // Accent marks the surface you are already on - the same `accentBright` the
@@ -178,6 +199,21 @@ export function SidebarFooterNavRow({
   const brainRail = useBrainRail();
   const brainState = brainRail.state;
   const isCompact = useIsCompactFormFactor();
+  const iconSize = useIconSize();
+  // Footer buttons are 4/3 of the chromeXl glyph, which is 32px on desktop
+  // and 48px on compact form factors. Keep the threshold tied to those same
+  // live tokens so Help disappears precisely before this row would overflow.
+  const footerIconButtonSize = iconSize.chromeXl * (4 / 3);
+  const leadingItemCount = 2 + Number(Boolean(onBrain && brainRail.visible));
+  const trailingItemCount = 2 + Number(Boolean(children)); // Settings + Help + optional host picker.
+  const helpMinimumWidth = getSidebarFooterHelpMinimumWidth({
+    iconButtonSize: footerIconButtonSize,
+    leadingItemCount,
+    trailingItemCount,
+    gap: theme.spacing[2],
+  });
+  const { onLayout: onFooterLayout, isBelow: shouldHideHelp } =
+    useContainerWidthBelow(helpMinimumWidth);
   const renderBrainIcon = useCallback(
     ({ size }: { size: number }) => (
       <BrainStateIcon
@@ -196,7 +232,7 @@ export function SidebarFooterNavRow({
   const brainLabel = brainRail.label ?? resolveBrainActivityLabel(brainRail.activity);
 
   return (
-    <View style={styles.footerBar}>
+    <View style={styles.footerBar} onLayout={onFooterLayout}>
       <View style={styles.footerIconRow}>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild triggerRefProp="buttonRef">
@@ -248,7 +284,7 @@ export function SidebarFooterNavRow({
       </View>
       <View style={styles.footerIconRow}>
         {children}
-        <SidebarHelpMenu />
+        {shouldHideHelp ? null : <SidebarHelpMenu />}
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild triggerRefProp="buttonRef">
             <FooterIconButton

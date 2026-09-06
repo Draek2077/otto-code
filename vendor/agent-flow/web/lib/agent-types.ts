@@ -87,6 +87,9 @@ export interface MessageBubble {
   text: string
   time: number
   role: 'assistant' | 'thinking' | 'user'
+  /** The focused chat background retains its latest assistant reply until a
+   * newer reply replaces it. Ordinary timeline bubbles stay transient. */
+  persistent?: boolean
   /** Cached bubble dimensions (set during draw, used by hit-detection) */
   _cachedW?: number
   _cachedH?: number

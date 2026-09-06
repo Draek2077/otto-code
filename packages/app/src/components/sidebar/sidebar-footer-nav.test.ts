@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveSidebarFooterActiveItem } from "@/components/sidebar/sidebar-footer-nav";
+import {
+  getSidebarFooterHelpMinimumWidth,
+  resolveSidebarFooterActiveItem,
+} from "@/components/sidebar/sidebar-footer-nav";
 
 describe("resolveSidebarFooterActiveItem", () => {
   it("marks Home on the open-project route", () => {
@@ -34,5 +37,30 @@ describe("resolveSidebarFooterActiveItem", () => {
     expect(resolveSidebarFooterActiveItem("/h/local/workspace/abc")).toBeUndefined();
     expect(resolveSidebarFooterActiveItem("/new-project")).toBeUndefined();
     expect(resolveSidebarFooterActiveItem("/sessions")).toBeUndefined();
+  });
+});
+
+describe("getSidebarFooterHelpMinimumWidth", () => {
+  it("reserves the full series footprint before retaining Help", () => {
+    // Home, Brain, Metrics | Hosts, Help, Settings on desktop.
+    expect(
+      getSidebarFooterHelpMinimumWidth({
+        iconButtonSize: 32,
+        leadingItemCount: 3,
+        trailingItemCount: 3,
+        gap: 8,
+      }),
+    ).toBe(232);
+  });
+
+  it("uses the compact control geometry instead of a desktop breakpoint", () => {
+    expect(
+      getSidebarFooterHelpMinimumWidth({
+        iconButtonSize: 48,
+        leadingItemCount: 3,
+        trailingItemCount: 3,
+        gap: 8,
+      }),
+    ).toBe(328);
   });
 });

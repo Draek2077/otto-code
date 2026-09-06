@@ -4,6 +4,7 @@ import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import {
   buildDeterministicWorkspaceTabId,
   normalizeWorkspaceTabTarget,
+  shouldRetargetWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/workspace-tabs/identity";
 
@@ -31,6 +32,20 @@ describe("Architectural View draft tab identity", () => {
     expect(buildDeterministicWorkspaceTabId(target)).toBe(
       "architectural-view-draft_workflows_workflows-revision-2",
     );
+  });
+
+  it("retains a bound authoring chat without making it part of the view identity", () => {
+    const bound = { ...target, authoringAgentId: "architect-agent" };
+    expect(normalizeWorkspaceTabTarget(bound)).toEqual(bound);
+    expect(workspaceTabTargetsEqual(target, bound)).toBe(true);
+    expect(shouldRetargetWorkspaceTabTarget(target, bound)).toBe(true);
+  });
+
+  it("can consume a first-generation request without changing view identity", () => {
+    const generating = { ...target, generateOnOpen: true };
+    expect(normalizeWorkspaceTabTarget(generating)).toEqual(generating);
+    expect(workspaceTabTargetsEqual(target, generating)).toBe(true);
+    expect(shouldRetargetWorkspaceTabTarget(generating, target)).toBe(true);
   });
 
   it("keeps the authoring-chat draft reference while restoring a chat setup tab", () => {

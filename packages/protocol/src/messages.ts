@@ -497,6 +497,8 @@ import {
   ArchitecturalViewsDraftDiscardResponseSchema,
   ArchitecturalViewsDraftGetContentRequestSchema,
   ArchitecturalViewsDraftGetContentResponseSchema,
+  ArchitecturalViewsDraftListRequestSchema,
+  ArchitecturalViewsDraftListResponseSchema,
   ArchitecturalViewsOpenNotificationSchema,
 } from "./architectural-views/rpc-schemas.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
@@ -4861,6 +4863,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ArchitecturalViewsDraftPublishRequestSchema,
   ArchitecturalViewsDraftDiscardRequestSchema,
   ArchitecturalViewsDraftGetContentRequestSchema,
+  ArchitecturalViewsDraftListRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -5212,6 +5215,10 @@ export const ServerInfoStatusPayloadSchema = z
         artifacts: z.boolean().optional(),
         // COMPAT(architecturalViews): added in v0.9.0, remove after 2027-02-28.
         architecturalViews: z.boolean().optional(),
+        // COMPAT(architecturalViewDraftDiscovery): added in v0.9.0, remove after 2027-03-05.
+        // A host with Architectural Views but without this gate cannot serve the
+        // draft-list RPC introduced for the Knowledge toolbar.
+        architecturalViewDraftDiscovery: z.boolean().optional(),
         // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
         observedSubagents: z.boolean().optional(),
         // COMPAT(backgroundShellTasks): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
@@ -9301,6 +9308,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ArchitecturalViewsDraftPublishResponseSchema,
   ArchitecturalViewsDraftDiscardResponseSchema,
   ArchitecturalViewsDraftGetContentResponseSchema,
+  ArchitecturalViewsDraftListResponseSchema,
   ArchitecturalViewsOpenNotificationSchema,
 ]);
 

@@ -60,6 +60,7 @@ export function AgentVisualizer() {
     updateAgentPosition,
     saveSnapshot,
     restoreSnapshot,
+    setLatestAssistantBubble,
   } = useAgentSimulation({
     useMockData: bridge.useMockData,
     externalEvents: bridge.pendingEvents,
@@ -75,6 +76,14 @@ export function AgentVisualizer() {
   })
 
   const selection = useSelectionState({ agents, toolCalls, discoveries })
+
+  // OTTO PATCH (OTTO-PATCHES.md): only the fully focused chat background asks
+  // for a reply bubble. Keep it inside the Visualizer's native bubble pipeline
+  // and derive it again after each conversation update, so it persists through
+  // tools/user prompts and is replaced only by the next assistant reply.
+  useEffect(() => {
+    setLatestAssistantBubble(bridge.showLatestAssistantBubble === true)
+  }, [bridge.showLatestAssistantBubble, conversations, setLatestAssistantBubble])
 
   const [showStats, setShowStats] = useState(false)
   const [showCostOverlay, setShowCostOverlay] = useState(false)

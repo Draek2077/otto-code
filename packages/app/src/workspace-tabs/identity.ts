@@ -67,7 +67,17 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "architecturalViewDraft") {
     const viewId = trimNonEmpty(value.viewId);
     const draftId = trimNonEmpty(value.draftId);
-    return viewId && draftId ? { kind: "architecturalViewDraft", viewId, draftId } : null;
+    const authoringAgentId = trimNonEmpty(value.authoringAgentId);
+    const generateOnOpen = value.generateOnOpen === true;
+    return viewId && draftId
+      ? {
+          kind: "architecturalViewDraft",
+          viewId,
+          draftId,
+          ...(authoringAgentId ? { authoringAgentId } : {}),
+          ...(generateOnOpen ? { generateOnOpen: true } : {}),
+        }
+      : null;
   }
   if (value.kind === "architecturalView") {
     const viewId = trimNonEmpty(value.viewId);
@@ -444,6 +454,27 @@ export function workspaceTabTargetsEqual(
   return (
     (left as unknown as Record<string, unknown>)[field] ===
     (right as unknown as Record<string, unknown>)[field]
+  );
+}
+
+/**
+ * Retargeting normally follows durable tab identity. Architectural View drafts
+ * additionally mirror their daemon-bound chat id for live tab presentation;
+ * that metadata must replace the current target without turning one durable
+ * draft into a second workspace tab.
+ */
+export function shouldRetargetWorkspaceTabTarget(
+  current: WorkspaceTabTarget,
+  next: WorkspaceTabTarget,
+): boolean {
+  if (!workspaceTabTargetsEqual(current, next)) {
+    return true;
+  }
+  return (
+    current.kind === "architecturalViewDraft" &&
+    next.kind === "architecturalViewDraft" &&
+    (current.authoringAgentId !== next.authoringAgentId ||
+      current.generateOnOpen !== next.generateOnOpen)
   );
 }
 

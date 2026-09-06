@@ -6,7 +6,11 @@ import { BUBBLE_FADE_IN, BUBBLE_HOLD, BUBBLE_FADE_OUT } from '@/lib/canvas-const
  *
  * Returns 0 when the bubble should be skipped entirely.
  */
-export function bubbleAlpha(age: number, agentOpacity: number): number {
+export function bubbleAlpha(age: number, agentOpacity: number, persistent = false): number {
+  // The focused chat background uses the canvas's own bubble system for exactly
+  // one current assistant reply. It stays until the next assistant message
+  // replaces it, rather than aging out with the transient event bubbles.
+  if (persistent) return agentOpacity * 0.9
   if (age > BUBBLE_HOLD + BUBBLE_FADE_OUT) return 0
 
   let alpha: number

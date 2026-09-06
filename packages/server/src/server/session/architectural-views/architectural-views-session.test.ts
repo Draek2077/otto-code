@@ -138,6 +138,23 @@ describe("ArchitecturalViewsSession", () => {
     });
 
     emit.mockClear();
+    await session.handleDraftListRequest({
+      type: "architectural-views.draft.list.request",
+      workspaceId: "workspace-1",
+      knowledgeReference: { kind: "root", id: "architecture" },
+      requestId: "request-draft-list",
+    });
+    expect(emit).toHaveBeenCalledWith({
+      type: "architectural-views.draft.list.response",
+      payload: expect.objectContaining({
+        requestId: "request-draft-list",
+        success: true,
+        drafts: [expect.objectContaining({ id: "session-edit" })],
+        error: null,
+      }),
+    });
+
+    emit.mockClear();
     await session.handleDraftPublishRequest({
       type: "architectural-views.draft.publish.request",
       workspaceId: "workspace-1",

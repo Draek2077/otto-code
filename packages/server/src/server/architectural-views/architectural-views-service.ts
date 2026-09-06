@@ -215,19 +215,23 @@ export class ArchitecturalViewsService {
     assertViewId(input.viewId);
     assertDraftId(input.draftId);
     const store = await this.resolveStore(input.cwd);
+    const existingDraft = (await this.readDraftsForView(store, input.viewId))[0] ?? null;
+    if (existingDraft) {
+      return existingDraft;
+    }
     const current = await this.readManifest(store, input.viewId);
     const sourcePath = input.sourcePath
       ? resolveDraftSourcePath(input.sourcePath)
       : join(store.base, "architectural-views", input.viewId, "view.architecture.json");
-    if (!current && !input.sourcePath) {
-      throw new Error("A new Architectural View draft needs a JSON source.");
-    }
     const title = current?.title ?? input.title;
     const knowledgeReferences = current?.knowledgeReferences ?? input.knowledgeReferences;
     if (!title.trim() || knowledgeReferences.length === 0) {
       throw new Error("Architectural View drafts need a title and at least one Knowledge link.");
     }
-    const specification = await readJsonSpecification(sourcePath);
+    const specification =
+      input.sourcePath || current
+        ? await readJsonSpecification(sourcePath)
+        : starterArchitectureSpecification(title);
     const directory = draftDirectory(store, input.viewId, input.draftId);
     const now = new Date().toISOString();
     const draft = await this.renderDraft({
@@ -324,6 +328,37 @@ export class ArchitecturalViewsService {
     );
     if (!rendered.isValid) throw new Error("Architectural View draft HTML is missing or invalid.");
     return { draft, html: rendered.content };
+  }
+
+  /** Lists durable staged work so a Knowledge article can offer Resume after a restart. */
+  async listDrafts(
+    cwd: string,
+    knowledgeReference?: ArchitecturalViewKnowledgeReference,
+  ): Promise<ArchitecturalViewDraft[]> {
+    const store = await this.resolveStore(cwd);
+    const viewsRoot = join(store.base, "architectural-views");
+    const viewEntries = await readdir(viewsRoot, { withFileTypes: true }).catch(
+      (error: unknown) => {
+        if (isMissingPath(error)) return [];
+        throw error;
+      },
+    );
+    const drafts = await Promise.all(
+      viewEntries
+        .filter((entry) => entry.isDirectory() && isArchitecturalViewId(entry.name))
+        .map((entry) => this.readDraftsForView(store, entry.name)),
+    );
+    return drafts
+      .flat()
+      .filter(
+        (draft) =>
+          !knowledgeReference ||
+          draft.knowledgeReferences.some(
+            (reference) =>
+              reference.kind === knowledgeReference.kind && reference.id === knowledgeReference.id,
+          ),
+      )
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
   /** Bind a normal provider-neutral chat to this durable staged document. */
@@ -548,6 +583,26 @@ export class ArchitecturalViewsService {
     }
   }
 
+  private async readDraftsForView(
+    store: ProjectKnowledgeStore,
+    viewId: string,
+  ): Promise<ArchitecturalViewDraft[]> {
+    const entries = await readdir(join(store.base, "architectural-views", viewId, "drafts"), {
+      withFileTypes: true,
+    }).catch((error: unknown) => {
+      if (isMissingPath(error)) return [];
+      throw error;
+    });
+    const drafts = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory() && isArchitecturalViewId(entry.name))
+        .map((entry) => this.readDraft(store, viewId, entry.name)),
+    );
+    return drafts
+      .filter((draft): draft is ArchitecturalViewDraft => draft !== null)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
   private async renderDraft(input: {
     directory: string;
     draft: ArchitecturalViewDraft;
@@ -710,6 +765,50 @@ function isOptionalAuthoringAgentId(value: unknown): value is string | null | un
 
 function revisionIdFor(renderedAt: string): string {
   return `published-${renderedAt.replace(/[:.]/g, "-")}`;
+}
+
+/**
+ * A deliberately small, valid first frame. It makes the authoring session
+ * usable before a model has inspected the linked Knowledge, without inventing
+ * architecture facts or coupling creation to a workspace-side JSON file.
+ */
+function starterArchitectureSpecification(title: string): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    diagram_type: "architecture",
+    meta: {
+      title,
+      views: [
+        {
+          id: "overview",
+          label: "Architecture overview",
+          focus: ["knowledge-source"],
+          note: "A staged starting point linked to the selected Knowledge document.",
+        },
+      ],
+    },
+    components: [
+      {
+        id: "knowledge-source",
+        type: "backend",
+        label: title,
+        sublabel: "Knowledge source",
+        pos: [300, 260],
+        size: [220, 72],
+      },
+    ],
+    boundaries: [],
+    connections: [],
+    cards: [
+      {
+        dot: "violet",
+        title: "Staged draft",
+        items: [
+          "Use the authoring chat to replace this starting point with supported architecture.",
+        ],
+      },
+    ],
+  };
 }
 
 /** Knowledge records are grouped by kind, while root pages sit at the tree root. */

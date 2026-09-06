@@ -2,6 +2,7 @@ import {
   buildDeterministicWorkspaceTabId,
   normalizeWorkspaceDraftTabSetup,
   normalizeWorkspaceTabTarget,
+  shouldRetargetWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/workspace-tabs/identity";
 import type {
@@ -425,7 +426,7 @@ export function applyRetargetTab(
   }
 
   const currentTarget = currentTabs[index]?.target;
-  if (currentTarget && workspaceTabTargetsEqual(currentTarget, normalizedTarget)) {
+  if (currentTarget && !shouldRetargetWorkspaceTabTarget(currentTarget, normalizedTarget)) {
     return { state, tabId: null };
   }
 

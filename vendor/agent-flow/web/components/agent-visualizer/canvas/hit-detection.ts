@@ -66,7 +66,7 @@ export function findBubbleAgentAt(
     let cursorY = agent.y + AGENT_DRAW.bubbleCursorY
     for (const bubble of agent.messageBubbles) {
       const age = currentTime - bubble.time
-      const alpha = bubbleAlpha(age, agent.opacity)
+      const alpha = bubbleAlpha(age, agent.opacity, bubble.persistent)
       if (alpha < 0.01) continue
 
       // Use cached dimensions from the draw pass when available;

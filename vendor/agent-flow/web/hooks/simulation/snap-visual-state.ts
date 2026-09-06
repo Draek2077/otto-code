@@ -21,7 +21,7 @@ export function snapVisualState(state: SimulationState, targetTime: number): Sim
       snapped.opacity = 0.5
       snapped.scale = 1
     }
-    snapped.messageBubbles = agent.messageBubbles.filter(b => targetTime - b.time <= BUBBLE_VISIBLE_S)
+    snapped.messageBubbles = agent.messageBubbles.filter(b => b.persistent || targetTime - b.time <= BUBBLE_VISIBLE_S)
     newAgents.set(id, snapped)
   }
 

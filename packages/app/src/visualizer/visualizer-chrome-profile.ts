@@ -10,7 +10,7 @@
 import type { VisualizerPipSize } from "@/hooks/use-settings/storage";
 
 /** Which Visualizer surface a guest is rendering into. */
-export type VisualizerSurfaceKind = "tab" | "pip";
+export type VisualizerSurfaceKind = "tab" | "pip" | "background";
 
 /**
  * PIP auto-fit framing (vendor `config.camera`, OTTO PATCH - see
@@ -88,6 +88,14 @@ export function resolveVisualizerChromeProfile(input: {
   /** The device-local HUD-eye setting (tab only). */
   hudHidden: boolean;
 }): VisualizerChromeProfile {
+  if (input.surface === "background") {
+    return {
+      hudHidden: true,
+      hudBottomHidden: true,
+      hudCompact: false,
+      panelsEnabled: false,
+    };
+  }
   if (input.surface === "pip") {
     return {
       // The top stats readout is the ONE piece of HUD PIP keeps - it is the

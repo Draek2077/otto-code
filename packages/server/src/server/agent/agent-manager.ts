@@ -1413,6 +1413,9 @@ export class AgentManager {
   // Otto's provider-subagent projection, keyed by parent agent id.
   private readonly providerSubagents = new ProviderSubagentStore();
   private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
+  // A timed-out session close can still complete later. Retain its promise so
+  // a retry waits for that same writer release rather than starting another.
+  private readonly reloadedSessionCloses = new WeakMap<AgentSession, Promise<void>>();
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   // Signature of the last stale todo list we fired an idle reconcile pass for,
   // per agent. Guards against a nag loop: an unchanged stale list (the agent
@@ -2629,20 +2632,23 @@ export class AgentManager {
     const launchContext = await this.buildLaunchContext(agentId, client, storedConfig.cwd);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
 
-    const session = handle
-      ? await client.resumeSession(handle, providerLaunchConfig, launchContext)
-      : await client.createSession(providerLaunchConfig, launchContext);
-
+    let session: AgentSession | undefined;
+    let closedExisting: ManagedAgentClosed | undefined;
     let handedToRegistration = false;
     try {
+      // A persisted provider thread has a single writer even while its turn is
+      // idle. Releasing the original runtime must precede resume so a refresh
+      // cannot overlap provider writers.
+      await this.closeReloadedSession(existing.session, agentId);
+      await this.drainSessionEvents(agentId);
+      this.cancelRunningProviderSubagents(existing);
+      closedExisting = this.prepareAgentForClosure(existing, "agent reloaded");
+      await this.persistSnapshot(closedExisting);
       this.assertAcceptingAgentRegistrations();
 
-      const closedExisting = this.prepareAgentForClosure(existing, "agent reloaded");
-      try {
-        await this.persistSnapshot(closedExisting);
-      } finally {
-        await this.closeReloadedSession(existing.session, agentId);
-      }
+      session = handle
+        ? await client.resumeSession(handle, providerLaunchConfig, launchContext)
+        : await client.createSession(providerLaunchConfig, launchContext);
 
       if (rehydrateFromDisk) {
         // Wipe the in-memory timeline so registerSession mints a new epoch and
@@ -2670,34 +2676,41 @@ export class AgentManager {
         lastError: preservedLastError,
         attention: preservedAttention,
       });
+    } catch (error) {
+      if (closedExisting) {
+        this.emitClosedAgent(closedExisting, { persist: false });
+      } else if (this.agents.get(agentId) === existing) {
+        existing.lifecycle = "error";
+        existing.lastError = error instanceof Error ? error.message : String(error);
+        this.emitState(existing);
+      }
+      throw error;
     } finally {
-      if (!handedToRegistration) {
+      if (session && !handedToRegistration) {
         await this.closeUnregisteredSession(session);
       }
     }
   }
 
   private async closeReloadedSession(session: AgentSession, agentId: string): Promise<void> {
-    try {
-      const result = await this.waitWithTimeout({
-        operation: session.close(),
-        timeoutMs: this.rescueTimeouts.reloadSessionCloseMs,
-        onLateError: (error) => {
-          this.logger.warn(
-            { err: error, agentId },
-            "Previous session close failed after refresh timeout",
-          );
-        },
-      });
-
-      if (result === "timed_out") {
+    let operation = this.reloadedSessionCloses.get(session);
+    if (!operation) {
+      operation = Promise.resolve().then(() => session.close());
+      this.reloadedSessionCloses.set(session, operation);
+      void operation.catch(() => this.reloadedSessionCloses.delete(session));
+    }
+    const result = await this.waitWithTimeout({
+      operation,
+      timeoutMs: this.rescueTimeouts.reloadSessionCloseMs,
+      onLateError: (error) => {
         this.logger.warn(
-          { agentId, timeoutMs: this.rescueTimeouts.reloadSessionCloseMs },
-          "Timed out closing previous session during refresh",
+          { err: error, agentId },
+          "Previous session close failed after refresh timeout",
         );
-      }
-    } catch (error) {
-      this.logger.warn({ err: error, agentId }, "Failed to close previous session during refresh");
+      },
+    });
+    if (result === "timed_out") {
+      throw new Error("Timed out closing previous session during refresh");
     }
   }
 

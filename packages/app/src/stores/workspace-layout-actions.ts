@@ -8,6 +8,7 @@ import type { WorkspaceLayoutNodeIdPrefix } from "@/stores/workspace-layout-ids"
 import {
   buildDeterministicWorkspaceTabId,
   normalizeWorkspaceTabTarget,
+  shouldRetargetWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/workspace-tabs/identity";
 import { createNewWorkspaceTab } from "@/workspace-tabs/new-tab";
@@ -1702,7 +1703,7 @@ export function retargetTabInLayout(
   }
 
   const currentTab = collectAllTabs(layout.root).find((tab) => tab.tabId === input.tabId) ?? null;
-  if (currentTab && workspaceTabTargetsEqual(currentTab.target, input.target)) {
+  if (currentTab && !shouldRetargetWorkspaceTabTarget(currentTab.target, input.target)) {
     return {
       layout: input.layout,
       tabId: input.tabId,
@@ -1759,7 +1760,7 @@ export function replaceTabTargetInLayout(
   const layout = asInternalLayout(input.layout);
   if (!findPaneContainingTab(layout.root, input.tabId)) return null;
   const currentTab = collectAllTabs(layout.root).find((tab) => tab.tabId === input.tabId) ?? null;
-  if (currentTab && workspaceTabTargetsEqual(currentTab.target, input.target)) {
+  if (currentTab && !shouldRetargetWorkspaceTabTarget(currentTab.target, input.target)) {
     if (input.state === undefined) {
       return { layout: input.layout, tabId: input.tabId };
     }

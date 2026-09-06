@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type CameraConfig, type SessionStateReport, type TogglablePanel, type ViewportCommand } from '@/lib/vscode-bridge'
+import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type CameraConfig, type LatestAssistantBubbleConfig, type SessionStateReport, type TogglablePanel, type ViewportCommand } from '@/lib/vscode-bridge'
 import { SimulationEvent } from '@/lib/agent-types'
 
 // OTTO PATCH (OTTO-PATCHES.md): synthetic picker value from the native toolbar.
@@ -46,6 +46,8 @@ interface BridgeHookResult {
    *  instead of a full tab — the stats readout splits across both top corners
    *  and the FPS meter moves out of the top-left they now occupy (OTTO PATCH). */
   hudCompact: boolean | null
+  /** Background-only host flag for the root node's persistent native reply bubble. */
+  showLatestAssistantBubble: LatestAssistantBubbleConfig | null
   /** Open a file in the VS Code editor */
   bridgeOpenFile: (filePath: string, line?: number) => void
   /** OTTO PATCH: report the in-page mute toggle to the host so it persists the
@@ -109,6 +111,7 @@ export function useVSCodeBridge(): BridgeHookResult {
   const [hudHidden, setHudHidden] = useState<boolean | null>(null)
   const [hudBottomHidden, setHudBottomHidden] = useState<boolean | null>(null)
   const [hudCompact, setHudCompact] = useState<boolean | null>(null)
+  const [showLatestAssistantBubble, setShowLatestAssistantBubble] = useState<LatestAssistantBubbleConfig | null>(null)
   const pendingEventsRef = useRef<SimulationEvent[]>([])
   const [, setEventVersion] = useState(0) // trigger re-render on new events
 
@@ -253,6 +256,7 @@ export function useVSCodeBridge(): BridgeHookResult {
       if (config.hudHidden !== undefined) { setHudHidden(config.hudHidden) }
       if (config.hudBottomHidden !== undefined) { setHudBottomHidden(config.hudBottomHidden) }
       if (config.hudCompact !== undefined) { setHudCompact(config.hudCompact) }
+      if (config.showLatestAssistantBubble !== undefined) { setShowLatestAssistantBubble(config.showLatestAssistantBubble) }
     })
 
     // Session lifecycle tracking
@@ -480,6 +484,7 @@ export function useVSCodeBridge(): BridgeHookResult {
     hudHidden,
     hudBottomHidden,
     hudCompact,
+    showLatestAssistantBubble,
     bridgeOpenFile,
     bridgeSetSoundMuted,
     bridgeTogglePanel,

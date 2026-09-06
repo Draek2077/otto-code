@@ -150,6 +150,9 @@ export type VisualizerHostToPageMessage =
         // the stats readout across both top corners and move the FPS meter to
         // the bottom-left; the tab keeps the single top-right block.
         hudCompact: boolean;
+        // Background-only: show the focused root AI's latest assistant reply in
+        // the canvas's native node bubble while the transcript is hidden.
+        showLatestAssistantBubble: boolean;
       }>;
     }
   // Remote-control the page's session switcher from the Otto toolbar (OTTO

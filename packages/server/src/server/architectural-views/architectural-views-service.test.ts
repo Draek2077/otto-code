@@ -209,5 +209,52 @@ describe("ArchitecturalViewsService", () => {
     await expect(
       service.getDraftContent(projectRoot, "runtime-overview", "edit-two"),
     ).resolves.toBeNull();
+  }, 15_000);
+
+  it("creates a valid durable starter draft without a workspace JSON file", async () => {
+    const projectRoot = await createStore();
+    const service = new ArchitecturalViewsService({
+      resolveStore: async () => repositoryKnowledgeStore(projectRoot),
+    });
+
+    const draft = await service.createDraft({
+      cwd: projectRoot,
+      viewId: "architecture-overview",
+      draftId: "architecture-overview-first",
+      title: "Architecture overview",
+      knowledgeReferences: [{ kind: "root", id: "architecture" }],
+    });
+
+    await expect(service.getDraftContent(projectRoot, draft.viewId, draft.id)).resolves.toEqual(
+      expect.objectContaining({ html: expect.stringContaining("Architecture overview") }),
+    );
+    await expect(
+      service.listDrafts(projectRoot, { kind: "root", id: "architecture" }),
+    ).resolves.toEqual([expect.objectContaining({ id: draft.id, viewId: draft.viewId })]);
+  });
+
+  it("returns the existing staged draft when creation is requested again", async () => {
+    const projectRoot = await createStore();
+    const service = new ArchitecturalViewsService({
+      resolveStore: async () => repositoryKnowledgeStore(projectRoot),
+    });
+    const first = await service.createDraft({
+      cwd: projectRoot,
+      viewId: "architecture-overview",
+      draftId: "architecture-overview-first",
+      title: "Architecture overview",
+      knowledgeReferences: [{ kind: "root", id: "architecture" }],
+    });
+
+    const repeated = await service.createDraft({
+      cwd: projectRoot,
+      viewId: "architecture-overview",
+      draftId: "architecture-overview-second",
+      title: "Architecture overview",
+      knowledgeReferences: [{ kind: "root", id: "architecture" }],
+    });
+
+    expect(repeated).toEqual(first);
+    await expect(service.listDrafts(projectRoot)).resolves.toEqual([first]);
   });
 });

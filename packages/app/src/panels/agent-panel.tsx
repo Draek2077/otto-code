@@ -10,6 +10,7 @@ import React, {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
@@ -84,6 +85,8 @@ import {
   type ReconnectToastState,
 } from "@/panels/reconnect-toast-state";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
+import { ChatVisualizerBackground } from "@/visualizer/chat-visualizer-background";
+import { useChatVisualizerBackground } from "@/visualizer/chat-background-context";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { SidebarCallout } from "@/components/sidebar-callout";
 import { i18n } from "@/i18n/i18next";
@@ -495,13 +498,7 @@ function DraftPanel() {
 
   const handleCreated = useCallback(
     (agentSnapshot: Parameters<typeof normalizeAgentSnapshot>[0]) => {
-      const normalized = normalizeAgentSnapshot(agentSnapshot, serverId);
-      const agent = applyLegacyDaemonWorkspaceOwnership({ serverId, agent: normalized });
-      useSessionStore.getState().setAgents(serverId, (prev) => {
-        const next = new Map(prev);
-        next.set(agentSnapshot.id, agent);
-        return next;
-      });
+      storeCreatedWorkspaceAgent({ serverId, agentSnapshot });
       retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
     },
     [retargetCurrentTab, serverId],
@@ -523,9 +520,26 @@ function DraftPanel() {
   );
 }
 
+/** Registers a draft-created agent before its owning surface chooses its next state. */
+export function storeCreatedWorkspaceAgent({
+  serverId,
+  agentSnapshot,
+}: {
+  serverId: string;
+  agentSnapshot: Parameters<typeof normalizeAgentSnapshot>[0];
+}): Agent {
+  const normalized = normalizeAgentSnapshot(agentSnapshot, serverId);
+  const agent = applyLegacyDaemonWorkspaceOwnership({ serverId, agent: normalized });
+  useSessionStore.getState().setAgents(serverId, (previous) => {
+    const next = new Map(previous);
+    next.set(agent.id, agent);
+    return next;
+  });
+  return agent;
+}
+
 export function AgentConversationPanel() {
   const { target } = usePaneContext();
-  const { settings } = useAppSettings();
   invariant(
     target.kind === "draft" || target.kind === "agent",
     "AgentConversationPanel requires an agent or draft target",
@@ -534,10 +548,20 @@ export function AgentConversationPanel() {
   // Black tab background: render the whole chat pane (stream + composer) on
   // pure black with dark-theme colors regardless of the app-wide light/dark
   // mode. Chat tabs only - terminal/browser/preview panes are not wrapped.
+  return <ChatConversationSurface>{content}</ChatConversationSurface>;
+}
+
+/**
+ * The visual ownership boundary for a chat transcript and its composer. It is
+ * reusable by a compound surface, but individual workspace tabs still choose
+ * their own target and lifecycle above this layer.
+ */
+export function ChatConversationSurface({ children }: { children: ReactNode }) {
+  const { settings } = useAppSettings();
   return (
     <BlackChatScope enabled={settings.blackTabBackground}>
       <ChatOutlineLayoutProvider enabled={settings.chatOutlineEnabled}>
-        <ChatWidthLayoutProvider>{content}</ChatWidthLayoutProvider>
+        <ChatWidthLayoutProvider>{children}</ChatWidthLayoutProvider>
       </ChatOutlineLayoutProvider>
     </BlackChatScope>
   );
@@ -614,7 +638,7 @@ type AgentLookupState =
   | { tag: "not_found"; message: string }
   | { tag: "error"; message: string };
 
-function AgentPanelContent({
+export function AgentPanelContent({
   serverId,
   agentId,
   isPaneFocused,
@@ -1450,12 +1474,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   // strip, where the swipe-up bar covers it.
   const insets = useSafeAreaInsets();
   const bottomChromeStyle = useMemo(
-    () => [
-      styles.bottomChrome,
-      resolveBlackChatCanvasStyle(isBlackChat),
-      { paddingBottom: insets.bottom },
-    ],
-    [insets.bottom, isBlackChat],
+    () => [styles.bottomChrome, { paddingBottom: insets.bottom }],
+    [insets.bottom],
   );
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
@@ -1531,45 +1551,50 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     </View>
   );
 
+  const visualizerFooter = (
+    <View style={bottomChromeStyle}>
+      {composerSection}
+
+      {/* Under the message box, not over it: the sync warning is ambient
+              status, so it must never push the composer down or cover the last
+              message while the user is typing. It sits above the metrics bar so
+              the run's own totals stay the bottom-most row. */}
+      {showHistorySyncError ? (
+        <SidebarCallout
+          title={t("agentPanel.states.timelineSyncFailed")}
+          variant="error"
+          testID="agent-timeline-sync-error"
+        />
+      ) : null}
+
+      {/* The host has answered and the chat is not there. Nothing is being
+              retried, so the copy does not pretend otherwise. */}
+      {showHistorySyncMissing ? (
+        <SidebarCallout
+          title={t("agentPanel.states.timelineAgentMissing")}
+          variant="error"
+          testID="agent-timeline-sync-missing"
+        />
+      ) : null}
+
+      {/* Below the composer, at toolbar weight: this chat's total spend and
+              everything spawned under it. Its top border separates it from the
+              message box. Off unless switched on in Settings. See
+              subagents/chat-metrics-bar.tsx. */}
+      <ChatMetricsBar serverId={serverId} agentId={agentId} />
+    </View>
+  );
+
   return (
     <View style={[styles.root, resolveBlackChatCanvasStyle(isBlackChat)]} onLayout={onPaneLayout}>
       <FileDropZone
         style={[styles.container, resolveBlackChatCanvasStyle(isBlackChat)]}
         disabled={isArchivingCurrentAgent}
       >
-        {contentContainer}
-
-        <View style={bottomChromeStyle}>
-          {composerSection}
-
-          {/* Under the message box, not over it: the sync warning is ambient
-              status, so it must never push the composer down or cover the last
-              message while the user is typing. It sits above the metrics bar so
-              the run's own totals stay the bottom-most row. */}
-          {showHistorySyncError ? (
-            <SidebarCallout
-              title={t("agentPanel.states.timelineSyncFailed")}
-              variant="error"
-              testID="agent-timeline-sync-error"
-            />
-          ) : null}
-
-          {/* The host has answered and the chat is not there. Nothing is being
-              retried, so the copy does not pretend otherwise. */}
-          {showHistorySyncMissing ? (
-            <SidebarCallout
-              title={t("agentPanel.states.timelineAgentMissing")}
-              variant="error"
-              testID="agent-timeline-sync-missing"
-            />
-          ) : null}
-
-          {/* Below the composer, at toolbar weight: this chat's total spend and
-              everything spawned under it. Its top border separates it from the
-              message box. Off unless switched on in Settings. See
-              subagents/chat-metrics-bar.tsx. */}
-          <ChatMetricsBar serverId={serverId} agentId={agentId} />
-        </View>
+        <ChatVisualizerBackground>
+          {contentContainer}
+          {visualizerFooter}
+        </ChatVisualizerBackground>
 
         {showHistorySyncOverlay ? (
           <View style={styles.historySyncOverlay} testID="agent-history-overlay">
@@ -2194,6 +2219,7 @@ function ActiveAgentComposer({
     mode: "translate",
   });
 
+  const visualizerBackground = useChatVisualizerBackground();
   // The composer gutter is an opaque `surface0` band spanning the pane, so it
   // is a chat canvas in its own right and needs the same authoritative black
   // fill as the pane root - without it the whole bottom of a black chat pane
@@ -2202,9 +2228,10 @@ function ActiveAgentComposer({
     () => [
       styles.inputAreaWrapper,
       resolveBlackChatCanvasStyle(isBlackChat),
+      visualizerBackground && styles.transparentCanvas,
       composerKeyboardStyle,
     ],
-    [composerKeyboardStyle, isBlackChat],
+    [composerKeyboardStyle, isBlackChat, visualizerBackground],
   );
 
   return (
@@ -2383,8 +2410,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   bottomChrome: {
     width: "100%",
-    backgroundColor: theme.colors.surface0,
   },
+  transparentCanvas: { backgroundColor: "transparent" },
   // Highest layer in the composer fan so a dismissed card's exiting web clone -
   // appended after the composer in the DOM - still paints beneath it.
   composerLayer: {

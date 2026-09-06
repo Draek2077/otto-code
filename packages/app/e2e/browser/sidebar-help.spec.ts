@@ -3,7 +3,7 @@ import { gotoAppShell, openSettings } from "../support/helpers/app";
 import { openSettingsSection } from "../support/helpers/settings";
 
 const DISCORD_DESTINATION =
-  /^https:\/\/(?:discord\.gg\/jz8T2uahpH|discord\.com\/invite\/jz8T2uahpH)(?:[/?#]|$)/;
+  /^https:\/\/(?:discord\.gg\/Cwjm93KfK|discord\.com\/invite\/Cwjm93KfK)(?:[/?#]|$)/;
 const GITHUB_ISSUE_DESTINATION =
   /^https:\/\/github\.com\/(?:Draek2077\/otto-code\/issues\/new(?:\/choose)?(?:[/?#]|$)|login\?return_to=https%3A%2F%2Fgithub\.com%2FDraek2077%2Fotto-code%2Fissues%2Fnew$)/;
 const CHANGELOG_DESTINATION = /^https:\/\/otto-code\.me\/changelog(?:[/?#]|$)/;

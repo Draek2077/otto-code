@@ -447,6 +447,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
 }));
 
+const CHAT_VISUALIZER_CONTENT_DATA = { chatVisualizerContent: "true" };
 export type ChatMessageBubbleSide = "incoming" | "outgoing";
 
 /**
@@ -491,6 +492,7 @@ export function ChatMessageBubble({
   return (
     <View
       accessibilityLabel={accessibilityLabel}
+      dataSet={CHAT_VISUALIZER_CONTENT_DATA}
       style={[
         chatMessageBubbleStylesheet.bubble,
         side === "incoming"
@@ -2642,6 +2644,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         {keyedBlocks.length > 0 ? (
           <View
             ref={bubbleRef}
+            dataSet={CHAT_VISUALIZER_CONTENT_DATA}
             style={bubbleStyle}
             onLayout={blockGroupId !== undefined ? handleBubbleLayout : undefined}
           >

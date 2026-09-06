@@ -1,5 +1,6 @@
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { useChatVisualizerBackground } from "@/visualizer/chat-background-context";
 
 const CHAT_SEAM_FADE_HEIGHT = 24;
 
@@ -27,8 +28,15 @@ export type ChatSeamFadeEdge = "top" | "bottom";
  * later siblings of the list.
  */
 export function ChatSeamFade({ edge }: { edge: ChatSeamFadeEdge }) {
+  const visualizerBackground = useChatVisualizerBackground();
+  // ChatTranscriptMask reveals the live canvas at both edges in this mode.
+  if (visualizerBackground) return null;
   return (
-    <View style={edge === "top" ? styles.stripTop : styles.stripBottom} pointerEvents="none" />
+    <View
+      style={edge === "top" ? styles.stripTop : styles.stripBottom}
+      pointerEvents="none"
+      testID={`chat-seam-fade-${edge}`}
+    />
   );
 }
 

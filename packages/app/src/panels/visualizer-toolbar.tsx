@@ -76,6 +76,7 @@ function computeHiddenControls(
   isCompact: boolean,
   hasPipControl: boolean,
   hasDemoControl: boolean,
+  hasBackgroundControl: boolean,
 ): ReadonlySet<CollapsibleControl> {
   if (barWidth === null) {
     return EMPTY_HIDDEN;
@@ -84,7 +85,11 @@ function computeHiddenControls(
   const reserved =
     BAR_HORIZONTAL_PADDING +
     CHAT_MIN_WIDTH +
-    (ALWAYS_VISIBLE_ICON_COUNT + (hasPipControl ? 1 : 0) + (hasDemoControl ? 1 : 0)) * iconSlot +
+    (ALWAYS_VISIBLE_ICON_COUNT +
+      (hasPipControl ? 1 : 0) +
+      (hasDemoControl ? 1 : 0) +
+      (hasBackgroundControl ? 1 : 0)) *
+      iconSlot +
     ALWAYS_VISIBLE_SEPARATOR_COUNT * SEPARATOR_SLOT;
   const room = barWidth - reserved;
   const fit = Math.max(0, Math.min(COLLAPSE_ORDER.length, Math.floor(room / iconSlot)));
@@ -116,6 +121,7 @@ export interface VisualizerToolbarProps {
   /** Collapse the tab into the picture-in-picture viewport. Null where the PIP
    * doesn't exist (compact layouts) - see visualizer-pip-host.tsx. */
   onCollapseToPip: (() => void) | null;
+  onUseAsBackground: (() => void) | null;
   /** The vendored bundle's built-in demo scenario is playing - the canvas is
    * showing a scripted mock run, not this workspace (see visualizer-surface.tsx). */
   demoActive: boolean;
@@ -146,6 +152,19 @@ function DemoToolbarButton({
   );
 }
 
+function renderBackgroundToolbarButton(onPress: (() => void) | null) {
+  if (!onPress) return null;
+  return (
+    <ToolbarIconButton
+      key="background"
+      label="Use as chat background"
+      Icon={ThemedFitScreen}
+      onPress={onPress}
+      testID="visualizer-toolbar-background"
+    />
+  );
+}
+
 export function VisualizerToolbar({
   sessions,
   selectedSessionId,
@@ -167,6 +186,7 @@ export function VisualizerToolbar({
   onToggleAudio,
   onToggleHud,
   onCollapseToPip,
+  onUseAsBackground,
   demoActive,
   onToggleDemo,
 }: VisualizerToolbarProps) {
@@ -189,8 +209,14 @@ export function VisualizerToolbar({
   }, []);
   const hidden = useMemo(
     () =>
-      computeHiddenControls(barWidth, isCompact, onCollapseToPip !== null, onToggleDemo !== null),
-    [barWidth, isCompact, onCollapseToPip, onToggleDemo],
+      computeHiddenControls(
+        barWidth,
+        isCompact,
+        onCollapseToPip !== null,
+        onToggleDemo !== null,
+        onUseAsBackground !== null,
+      ),
+    [barWidth, isCompact, onCollapseToPip, onToggleDemo, onUseAsBackground],
   );
   const options = useMemo<SelectFieldOption<string>[]>(
     () => sessions.map((session) => ({ id: session.id, value: session.id, label: session.label })),
@@ -267,7 +293,10 @@ export function VisualizerToolbar({
     { id: "timeline", nodes: [timelineNode] },
     { id: "panels", nodes: [filesNode, costNode] },
     { id: "hud", nodes: [hudNode] },
-    { id: "surface", nodes: [pipNode] },
+    {
+      id: "surface",
+      nodes: [pipNode, renderBackgroundToolbarButton(onUseAsBackground)],
+    },
   ]
     .map((cluster) => ({
       id: cluster.id,

@@ -1350,6 +1350,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       draftId: z.string(),
       title: z.string(),
       updatedAt: z.string(),
+      knowledgeReferences: z.array(z.object({ kind: z.enum(["record", "root"]), id: z.string() })),
     };
 
     registerTool(
@@ -1357,12 +1358,12 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "Read Architectural View draft",
         description:
-          "Read the typed JSON specification for the staged Architectural View bound to this authoring chat. Use it before editing; it is the canonical editable source, not the rendered HTML.",
+          "Read the typed JSON specification and linked Knowledge references for the staged Architectural View bound to this authoring chat. Use it before editing; the specification is the canonical editable source, and the linked Knowledge is the factual source for a new or refreshed visual.",
         inputSchema: draftInput,
         outputSchema: { ...draftOutput, specification: z.json() },
       },
       async ({ viewId, draftId }) => {
-        await requireBoundDraft(viewId, draftId);
+        const boundDraft = await requireBoundDraft(viewId, draftId);
         const result = await architecturalViews.getDraftSpecification({
           cwd: authoringCwd(),
           viewId,
@@ -1376,6 +1377,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             draftId,
             title: result.draft.title,
             updatedAt: result.draft.updatedAt,
+            knowledgeReferences: boundDraft.knowledgeReferences,
             specification: result.specification,
           }),
         };

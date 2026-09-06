@@ -1,6 +1,11 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ChatSeamFade } from "@/components/chat-seam-fade";
+import { ChatTranscriptMask } from "@/components/chat-transcript-mask";
 import { ChatThemeScope } from "@/components/chat-theme-scope";
+import {
+  CHAT_VISUALIZER_CONTENT_DATA,
+  useChatVisualizerBackground,
+} from "@/visualizer/chat-background-context";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import React, {
   forwardRef,
@@ -198,9 +203,16 @@ function renderStreamItemWithTurnFooter(input: {
       onForkAssistantTurn={input.onForkAssistantTurn}
     />
   ) : null;
+  const isMessage =
+    input.layoutItem.item.kind === "user_message" ||
+    input.layoutItem.item.kind === "assistant_message";
   const content = (
     <StreamItemWrapper itemId={input.layoutItem.item.id} gapBelow={input.layoutItem.gapBelow}>
-      {input.content}
+      {isMessage ? (
+        input.content
+      ) : (
+        <View dataSet={CHAT_VISUALIZER_CONTENT_DATA}>{input.content}</View>
+      )}
     </StreamItemWrapper>
   );
 
@@ -433,6 +445,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
   ) {
     const { t } = useTranslation();
     const isBlackChat = useBlackChatScope();
+    const visualizerBackground = useChatVisualizerBackground();
+    const canvasStyle = useMemo(
+      () => (visualizerBackground ? stylesheet.transparentCanvas : null),
+      [visualizerBackground],
+    );
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const groupConsecutiveActions = useSettings((settings) => settings.groupConsecutiveActions);
@@ -1396,6 +1413,35 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         </View>
       ) : null;
 
+    const transcript = (
+      <ChatTranscriptMask>
+        <MessageOuterSpacingProvider disableOuterSpacing>
+          {streamRenderStrategy.render({
+            agentId,
+            segments: renderModel.segments,
+            historyRowRevision,
+            liveHeadRowRevision,
+            boundary,
+            renderers,
+            listEmptyComponent,
+            viewportRef,
+            routeBottomAnchorRequest,
+            isAuthoritativeHistoryReady,
+            onNearBottomChange: setIsNearBottom,
+            onReadingPositionChange: chatOutline.reportReadingPosition,
+            onNearHistoryStart: loadOlder,
+            isLoadingOlderHistory: isLoadingOlder,
+            hasOlderHistory: hasOlder,
+            olderHistoryProgressKey: progressKey,
+            scrollEnabled: streamScrollEnabled,
+            listStyle: stylesheet.list,
+            baseListContentContainerStyle: stylesheet.listContentContainer,
+            forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
+          })}
+        </MessageOuterSpacingProvider>
+      </ChatTranscriptMask>
+    );
+
     return (
       <ChatThemeScope>
         <ToolCallSheetProvider>
@@ -1409,35 +1455,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             toast={toast}
           >
             <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>
-              <AssistantSelectionCopySurface style={stylesheet.container}>
+              <AssistantSelectionCopySurface style={[stylesheet.container, canvasStyle]}>
                 <View
                   ref={streamContainerHostRef}
-                  style={[stylesheet.container, resolveBlackChatCanvasStyle(isBlackChat)]}
+                  style={[
+                    stylesheet.container,
+                    resolveBlackChatCanvasStyle(isBlackChat),
+                    canvasStyle,
+                  ]}
                 >
-                  <MessageOuterSpacingProvider disableOuterSpacing>
-                    {streamRenderStrategy.render({
-                      agentId,
-                      segments: renderModel.segments,
-                      historyRowRevision,
-                      liveHeadRowRevision,
-                      boundary,
-                      renderers,
-                      listEmptyComponent,
-                      viewportRef,
-                      routeBottomAnchorRequest,
-                      isAuthoritativeHistoryReady,
-                      onNearBottomChange: setIsNearBottom,
-                      onReadingPositionChange: chatOutline.reportReadingPosition,
-                      onNearHistoryStart: loadOlder,
-                      isLoadingOlderHistory: isLoadingOlder,
-                      hasOlderHistory: hasOlder,
-                      olderHistoryProgressKey: progressKey,
-                      scrollEnabled: streamScrollEnabled,
-                      listStyle: stylesheet.list,
-                      baseListContentContainerStyle: stylesheet.listContentContainer,
-                      forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
-                    })}
-                  </MessageOuterSpacingProvider>
+                  {transcript}
                   <ChatSeamFade edge="top" />
                   <ChatSeamFade edge="bottom" />
                   {webScrollbar}
@@ -1908,6 +1935,7 @@ function PermissionRequestCard({
 }
 
 const stylesheet = StyleSheet.create((theme) => ({
+  transparentCanvas: { backgroundColor: "transparent" },
   container: {
     flex: 1,
     backgroundColor: theme.colors.surface0,

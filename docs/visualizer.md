@@ -108,7 +108,7 @@ An optional `panels: Partial<{timeline, fileAttention, costOverlay, stats}>` fie
 
 The chat-transcript ("Chat") panel, the top-left message feed, and the per-node chat panel (click a node → that one agent's messages) were all **removed** from Otto's embed (2026-07-16 and 2026-07-17 vendor patches - `OTTO-PATCHES.md`): the visualizer is a companion to the real chat the user already has open, so reproducing message content in the graph was pure duplication. Clicking a node now shows only the **node detail card** (pinned middle-**right**, formerly middle-left), enriched with info the graph itself doesn't spell out: the agent's **task**, a **cost** estimate (from the honest lifetime total via `agentCost`), **lifetime tokens** (when they exceed context occupancy), and a labeled **context-composition** breakdown (one row per reported category, with token counts - the labels come from the data, since they are the provider's own category names; the node ring shows only proportions), alongside the existing context %, tool count, time alive, state, model, and current tool. The Files heatmap and the Cost overlay stay.
 
-**The floating on-canvas message bubbles are also gone - but the messages stay in the record.** The graph used to draw a popup bubble for every assistant/user/thinking message; that was the last surface duplicating the real chat the user already has open, and it obscured the orchestration the graph exists to show. A vendor patch (`OTTO-PATCHES.md` "suppress the floating on-canvas message bubbles") drops **only the popup**: `handleMessage` no longer pushes onto `agent.messageBubbles` (so `draw-bubbles`/`hit-detection`/camera all short-circuit on the now-always-empty array), but still calls `appendConversation` and still transitions the node to `thinking` on message activity. So a message is unchanged as part of the **record** - it still feeds the execution timeline and the node's account of what it did ("it's what really happened") - and the host keeps **emitting `message` events exactly as before** (the adapter's streaming-message coalescing is untouched). Needs `build:visualizer`. This is the deliberate line: the chat stays in the timeline/history; only the visual popups are hidden.
+**The floating on-canvas message bubbles are also gone - but the messages stay in the record.** The graph used to draw a popup bubble for every assistant/user/thinking message; that was the last surface duplicating the real chat the user already has open, and it obscured the orchestration the graph exists to show. A vendor patch (`OTTO-PATCHES.md` "suppress the floating on-canvas message bubbles") drops **only the popup**: `handleMessage` no longer pushes onto `agent.messageBubbles` (so `draw-bubbles`/`hit-detection`/camera all short-circuit on the now-always-empty array), but still calls `appendConversation` and still transitions the node to `thinking` on message activity. So a message is unchanged as part of the **record** - it still feeds the execution timeline and the node's account of what it did ("it's what really happened") - and the host keeps **emitting `message` events exactly as before** (the adapter's streaming-message coalescing is untouched). The sole, deliberate exception is the fully hidden chat background: it derives the focused root AI's latest assistant reply from that same conversation record and displays it through this native canvas bubble system. Needs `build:visualizer`. This is the deliberate line: the chat stays in the timeline/history; only the visual popups are hidden outside that focused background state.
 
 ### `config.hudHidden` (Otto patch)
 
@@ -242,6 +242,86 @@ Two exclusions are deliberate: **Read** (by far the most frequent tool - reads w
 **Rows can revive after settling - nodes must resurrect.** Claude can hand a Task off to the background: the parent's tool_result returns (the daemon settles the row idle) while task events keep flowing and flip it back to running. The page may have already faded and deleted the node, so `reconcileNodeLifecycle` re-emits `agent_spawn` when a settled row reconciles back to non-terminal (spawn of an existing name is a reactivate). Related invariants: the vendor's parent→children completion cascade is patched out (a parent finishing must not kill live children - see OTTO-PATCHES.md), and the Claude provider sweeps announced-but-unsettled observed rows to idle at turn end (`appendTurnEndObservedSubagentSweep`, Workflow rows exempt) so a lost task_notification can't strand a node forever.
 
 **Refresh resync is daemon-backed.** The graph is derived entirely client-side, but every input survives a page refresh on the daemon: agent list (now including in-flight observed rows - `listObservedSubagentPayloads` feeds `fetch_agents`), per-id timelines, and the live stream. A mid-run reload rebuilds the graph via the normal reset+replay; nothing about visualizer state is (or should be) persisted in the page.
+
+## Chat background
+
+The Visualizer toolbar's **Use as chat background** action places the shared
+renderer behind the selected chat. The workspace header remembers this placement
+alongside Tab and PIP. Background, PIP, and visualizer tabs are mutually exclusive
+in the active workspace; switching placements retires the old guest and uses the
+existing reset-and-replay path to hydrate the new one.
+
+The chat background's overlay toolbar offers a **Collapse to picture-in-picture**
+button beside the conversation and tab controls. It switches directly to PIP and
+remembers that placement. Like the tab toolbar's PIP action, it is hidden on
+compact layouts where PIP is unavailable.
+The PIP hover controls provide the reverse **Use as chat background** action when
+the workspace has a chat or draft tab. It focuses the current chat (or the first
+available chat when a file or terminal is focused), closes PIP, and remembers
+background placement.
+
+`chat-visualizer-background.tsx` owns a viewport-sized layer covering the whole
+chat pane, including the Composer area and its bottom inset, outside the
+conversation's scroll container. Scrolling moves only the messages.
+The canvas changes size when the pane changes size, never when history grows.
+Only the focused, visible chat mounts a background guest, including draft chats;
+retained hidden chats do not render their own simulations. A visualizer tab in a
+hidden workspace cannot close the active workspace's background.
+
+The background follows its owning chat explicitly. Both selection and the event
+adapter resolve child chats through the same workspace root: attended and
+observed subagents share their parent's graph session. Selection waits for the
+guest's session registration before requesting that session, and retries when
+the session mirror changes.
+
+When clicking the background hides the conversation, the focused root AI node
+uses the Visualizer's native `messageBubbles` renderer to retain its latest
+assistant reply. The bubble survives user prompts and tool activity, then the
+next assistant reply replaces it. It is not a chat-card overlay or a second
+message renderer, and regular tab and PIP Visualizer surfaces keep all message
+bubbles suppressed. The native auto-fit camera includes the complete persistent
+bubble footprint, so it opens fully within the visible canvas rather than
+clipping at the pane edge. Hiding is a tab-scoped choice: sending from the
+Composer, including the draft-to-agent transition, never restores the
+conversation. The persistent bubble may consume up to 78% of the canvas height
+(24 wrapped lines maximum), instead of inheriting the eight-line cap for
+transient event hints.
+
+The normal background opacity is 30%, with the existing translucent bubble
+fills and fully opaque text. On web and Electron, pausing over clearly empty space
+for 200 ms fades the conversation to 25% and raises the background to 80%.
+The hover checks 10 px above and below the pointer, excluding short gaps between
+messages/actions. There is no sideways clearance requirement, so side gutters
+remain usable beside messages. Movement beyond 6 px restarts the
+entry delay; small pointer jitter does not. Once active, moving within clear space
+keeps the preview steady, while returning to content restores reading opacity
+immediately. Scroll, pointer press, exit, and resize cancel pending previews.
+Clicking empty space hides
+the conversation and shows the background at 100%; clicking again, pressing
+Escape, or using **Show conversation** restores it. Controls remain visible and
+the Composer and its flyovers remain above the graph and usable. The Composer
+gutter is transparent in this placement, while the input keeps its normal fill.
+The entire Composer area, including its empty gutter and bottom inset, is excluded
+from background hover and click gestures. Moving from the conversation background
+into that area clears the hover hint and restores normal reading opacity.
+The top and bottom chat edges fade the transcript itself to transparency with
+`ChatTranscriptMask`, revealing the actual animated canvas. Painted seam gradients
+are suppressed in this placement: even a stage-colored overlay can obscure the
+stars and moving spotlight. The scrollbar gutter remains unmasked, and the outline
+and jump controls sit outside the mask. The pane beneath the translucent guest
+uses its stage color. Closing the background restores the normal chat seam gradients
+without replacing the scroll container.
+Native uses the explicit show/hide control without
+depending on hover.
+
+Hiding changes opacity and interaction/accessibility state, without unmounting
+the conversation or writing its scroll position. Message bubbles, text, links,
+controls, selections, and scrollbar/drag gestures do not trigger background
+toggles. The graph itself is passive in this placement; expand it to a tab to
+interact with its nodes. Like PIP, it has no visualizer toolbar or playback strip,
+including the **Live** indicator. The background profile also hides its HUD and panels, and
+keeps the existing rendering quality and software-rendering controls. Opacity
+does not reduce the simulation's rendering cost.
 
 ## PIP mode (picture-in-picture)
 

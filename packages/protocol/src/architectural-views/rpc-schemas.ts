@@ -142,6 +142,23 @@ export const ArchitecturalViewsDraftGetContentResponseSchema = z.object({
   }),
 });
 
+export const ArchitecturalViewsDraftListRequestSchema = z.object({
+  type: z.literal("architectural-views.draft.list.request"),
+  workspaceId: z.string(),
+  knowledgeReference: ArchitecturalViewKnowledgeReferenceSchema.optional(),
+  requestId: z.string(),
+});
+
+export const ArchitecturalViewsDraftListResponseSchema = z.object({
+  type: z.literal("architectural-views.draft.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    success: z.boolean(),
+    drafts: z.array(ArchitecturalViewDraftSchema),
+    error: z.string().nullable(),
+  }),
+});
+
 export const ArchitecturalViewsListRequestSchema = z.object({
   type: z.literal("architectural-views.list.request"),
   workspaceId: z.string(),
@@ -209,4 +226,10 @@ export type ArchitecturalViewsDraftGetContentRequest = z.infer<
 >;
 export type ArchitecturalViewsDraftGetContentResponse = z.infer<
   typeof ArchitecturalViewsDraftGetContentResponseSchema
+>;
+export type ArchitecturalViewsDraftListRequest = z.infer<
+  typeof ArchitecturalViewsDraftListRequestSchema
+>;
+export type ArchitecturalViewsDraftListResponse = z.infer<
+  typeof ArchitecturalViewsDraftListResponseSchema
 >;

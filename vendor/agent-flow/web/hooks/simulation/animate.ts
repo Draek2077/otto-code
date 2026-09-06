@@ -30,7 +30,7 @@ function animateAgents(agents: SimulationState['agents'], deltaTime: number, cur
     if (agent.state !== 'complete') { timeAlive += deltaTime; updated = true }
     // Prune expired message bubbles
     if (messageBubbles.length > 0) {
-      const pruned = messageBubbles.filter(b => currentTime - b.time <= BUBBLE_VISIBLE_S)
+      const pruned = messageBubbles.filter(b => b.persistent || currentTime - b.time <= BUBBLE_VISIBLE_S)
       if (pruned.length !== messageBubbles.length) { messageBubbles = pruned; updated = true }
     }
     if (updated) {

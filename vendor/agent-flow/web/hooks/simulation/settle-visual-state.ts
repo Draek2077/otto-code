@@ -46,7 +46,7 @@ export function settleVisualState(state: SimulationState): SimulationState {
       ...agent,
       opacity: agent.state === 'complete' ? 0.5 : 1,
       scale: 1,
-      messageBubbles: [],
+      messageBubbles: agent.messageBubbles.filter(b => b.persistent),
     })
   }
 

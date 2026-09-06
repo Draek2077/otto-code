@@ -88,5 +88,5 @@ Offer to fix the PATH or symlink; do not change shell configuration silently.
 If the current docs and diagnostics do not resolve the problem, collect the app and daemon versions, OS, install method, connection method, exact error, minimal reproduction, and a small redacted log excerpt.
 
 - Bugs: [GitHub Issues](https://github.com/Draek2077/otto-code/issues)
-- Questions and quick help: [Otto Discord](https://discord.gg/jz8T2uahpH)
+- Questions and quick help: [Otto Discord](https://discord.gg/Cwjm93KfK)
 - Product workflow discussions: [GitHub Discussions](https://github.com/Draek2077/otto-code/discussions) or `#product` in Discord

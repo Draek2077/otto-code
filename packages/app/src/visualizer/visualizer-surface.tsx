@@ -8,6 +8,7 @@ import { useIsSoftwareRendering } from "@/desktop/use-software-rendering";
 import { collectRunAgentIds, useRuns } from "@/hooks/use-runs";
 import { useAppSettings, useSettings } from "@/hooks/use-settings";
 import { VisualizerToolbar } from "@/panels/visualizer-toolbar";
+import { useSessionStore, type Agent } from "@/stores/session-store";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTab } from "@/stores/workspace-tabs-store";
 import {
   ALL_ACTIVE_CHATS_SESSION_ID,
@@ -28,6 +29,7 @@ import {
 } from "@/visualizer/visualizer-chrome-profile";
 import { resolveVisualizerTheme } from "@/visualizer/visualizer-theme";
 import { VisualizerView } from "@/visualizer/visualizer-view";
+import { resolveRootAgentId } from "./visualizer-session-identity";
 import type {
   VisualizerHostMessage,
   VisualizerViewHandle,
@@ -83,9 +85,14 @@ const READY_HANDSHAKE_TIMEOUT_MS = 15_000;
  * for a started chat, or an empty draft session (see `sessionIdForDraft`) for a
  * chat that hasn't started an agent yet. Non-chat tabs (terminal / file /
  * visualizer / browser / …) have no session - returns null. */
-function chatSessionIdForTab(tab: WorkspaceTab | undefined): string | null {
+function chatSessionIdForTab(
+  tab: WorkspaceTab | undefined,
+  agents?: ReadonlyMap<string, Agent>,
+): string | null {
   if (tab?.target.kind === "agent") {
-    return sessionIdForRootAgent(tab.target.agentId);
+    return sessionIdForRootAgent(
+      agents ? resolveRootAgentId(tab.target.agentId, agents) : tab.target.agentId,
+    );
   }
   if (tab?.target.kind === "draft") {
     return sessionIdForDraft(tab.target.draftId);
@@ -102,6 +109,13 @@ export interface VisualizerSurfaceProps {
    * adapter, the theme and the fonts are identical, which is exactly why both
    * render this one component instead of forking it. */
   surface: VisualizerSurfaceKind;
+  /** Backgrounds belong to this exact chat, independent of workspace focus. */
+  chatTabId?: string;
+  /** The focused chat background asks the canvas to keep the root AI's latest
+   * assistant reply in its native node bubble. Other surfaces keep bubbles
+   * suppressed, so the graph never duplicates the visible transcript. */
+  showLatestAssistantBubble?: boolean;
+  onBackgroundColorChange?: (color: string) => void;
   /** On screen and rendering. The guest sleeps (zero frames) when false, and
    * the adapter re-runs its reset+replay on every transition back to true. */
   isVisible: boolean;
@@ -128,6 +142,9 @@ export function VisualizerSurface({
   serverId,
   workspaceId,
   surface,
+  chatTabId,
+  showLatestAssistantBubble = false,
+  onBackgroundColorChange,
   isVisible,
   runId,
   onOpenFile,
@@ -136,6 +153,7 @@ export function VisualizerSurface({
 }: VisualizerSurfaceProps) {
   const { t } = useTranslation();
   const isPip = surface === "pip";
+  const isTab = surface === "tab";
   const { settings } = useSettings();
   // The in-page mute toggle persists through this store (visualizer settings
   // are device-local AppSettings, written directly - they don't round-trip the
@@ -230,9 +248,9 @@ export function VisualizerSurface({
   );
 
   // The session the focused tab maps to, when it's a chat (agent or draft).
-  const focusedChatSessionId = useMemo(
-    () => chatSessionIdForTab(workspaceTabs.find((tab) => tab.tabId === focusedTabId)),
-    [workspaceTabs, focusedTabId],
+  const followedTab = workspaceTabs.find((tab) => tab.tabId === (chatTabId ?? focusedTabId));
+  const focusedChatSessionId = useSessionStore((state) =>
+    chatSessionIdForTab(followedTab, state.sessions[serverId]?.agents),
   );
   // The last chat tab that actually held focus. Focusing a NON-chat tab (the
   // Visualizer's own pane, a terminal, a file) yields no chat session; we keep
@@ -264,6 +282,9 @@ export function VisualizerSurface({
       }),
     [settings.colorSchemeMode, settings.lightTheme, settings.darkTheme, systemColorScheme],
   );
+  useEffect(() => {
+    onBackgroundColorChange?.(visualizerTheme.background);
+  }, [onBackgroundColorChange, visualizerTheme.background]);
 
   // A quality or theme change reloads the guest (new dpr cap / palette baked
   // into the html), so the handshake state must reset - the fresh page
@@ -563,7 +584,7 @@ export function VisualizerSurface({
           stars: settings.visualizerRenderStars,
           backdrop: settings.visualizerRenderBackdrop,
           nodeShape: settings.visualizerNodeShape,
-          showFps: settings.visualizerShowFps,
+          showFps: surface !== "background" && settings.visualizerShowFps,
           contextDisplay: settings.visualizerContextDisplay,
         },
         // Effective master volume (0..1) for the page's audio engine: the mute
@@ -579,6 +600,7 @@ export function VisualizerSurface({
         // Compact HUD layout (OTTO PATCH) - PIP splits the stats readout across
         // both top corners and drops the FPS meter to the bottom-left.
         hudCompact: chrome.hudCompact,
+        showLatestAssistantBubble: surface === "background" && showLatestAssistantBubble,
         // Absent for the tab - an omitted `camera` key keeps the vendor's
         // tab-tuned auto-fit constants untouched.
         ...(chrome.camera ? { camera: chrome.camera } : {}),
@@ -588,6 +610,8 @@ export function VisualizerSurface({
     ready,
     isSoftwareRendering,
     chrome,
+    surface,
+    showLatestAssistantBubble,
     settings.visualizerPanelTimeline,
     settings.visualizerPanelFileAttention,
     settings.visualizerPanelCostOverlay,
@@ -612,8 +636,16 @@ export function VisualizerSurface({
   // Surface switching for the tab's toolbar. Null on compact, where the PIP does
   // not exist at all (visualizer-pip-host.tsx) - the toolbar then simply has no
   // PIP control rather than one that would do nothing.
-  const { collapseToPip } = useVisualizerSurface(serverId, workspaceId);
-  const handleCollapseToPip = isPip || isCompact ? null : collapseToPip;
+  const { collapseToPip, showAsBackground } = useVisualizerSurface(serverId, workspaceId);
+  const handleShowAsBackground = useCallback(() => {
+    const selectedTab = workspaceTabs.find(
+      (tab) =>
+        chatSessionIdForTab(tab, useSessionStore.getState().sessions[serverId]?.agents) ===
+        sessionState.selectedId,
+    );
+    showAsBackground(selectedTab?.tabId);
+  }, [workspaceTabs, serverId, sessionState.selectedId, showAsBackground]);
+  const handleCollapseToPip = !isTab || isCompact ? null : collapseToPip;
   useEffect(() => {
     if (!ready) {
       return;
@@ -693,12 +725,11 @@ export function VisualizerSurface({
   ]);
 
   // Follow the focused chat: whenever follow is on, drive the page's selection
-  // to the workspace's focused chat. PIP must be willing to select before its
-  // asynchronous guest -> host session mirror has caught up: unlike the tab it
-  // has no chats dropdown to recover a missed selection, and every workspace
-  // chat is valid for its unfiltered adapter. A run-scoped tab keeps the
-  // membership guard because its focused workspace chat may deliberately sit
-  // outside the run. The page echoes the new selection back via
+  // to the workspace's focused chat (or the background's owning chat). Wait
+  // until that root session is registered: selecting an unknown child id or a
+  // not-yet-loaded chat clears the guest into an empty simulation. The session
+  // mirror changing retries selection automatically when registration lands.
+  // A run-scoped tab also keeps out chats outside its run. The page echoes via
   // `session-state`, which satisfies the `=== selectedId` guard and stops any
   // feedback loop.
   // Never while the demo scenario owns the canvas: a select-session would
@@ -711,7 +742,7 @@ export function VisualizerSurface({
     if (sessionId === sessionState.selectedId) {
       return;
     }
-    if (!isPip && !sessionState.sessions.some((session) => session.id === sessionId)) {
+    if (!sessionState.sessions.some((session) => session.id === sessionId)) {
       return;
     }
     viewRef.current?.postMessage({ type: "select-session", sessionId });
@@ -720,7 +751,6 @@ export function VisualizerSurface({
     demoActive,
     followActive,
     followTargetSessionId,
-    isPip,
     sessionState.selectedId,
     sessionState.sessions,
   ]);
@@ -745,7 +775,7 @@ export function VisualizerSurface({
           the HUD-eye here hides only the in-webview HUD. PIP has NO controls at
           all (charter), so it renders none of this - its only chrome is the
           host-side strip drawn by visualizer-pip.tsx. */}
-      {isPip ? null : (
+      {!isTab ? null : (
         <VisualizerToolbar
           sessions={toolbarSessions}
           selectedSessionId={sessionState.selectedId}
@@ -767,6 +797,7 @@ export function VisualizerSurface({
           onToggleAudio={handleToggleAudio}
           onToggleHud={handleToggleHud}
           onCollapseToPip={handleCollapseToPip}
+          onUseAsBackground={hasChatTab ? handleShowAsBackground : null}
           demoActive={demoActive}
           onToggleDemo={handleToggleDemoIfOffered}
         />

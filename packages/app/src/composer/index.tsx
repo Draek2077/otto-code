@@ -88,6 +88,7 @@ import {
   type AttachmentPersister,
 } from "@/composer/actions";
 import { useComposerQueue, type ComposerQueueItem } from "@/composer/queue";
+import { visibleQueuedMessageWindow } from "@/composer/queue-visible-window";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -437,9 +438,13 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
   // the one whose "send now" it generalizes. With a single queued message that
   // button already does exactly this, so the pill would say it twice.
   const onSendAll = queuedMessages.length > 1 ? handleSendAllQueued : null;
+  // Keep the full queue intact so ordering and send-all actions retain their
+  // normal semantics, but only let its head occupy composer space. As entries
+  // leave, the next queued message naturally enters this visible window.
+  const visibleQueuedMessages = visibleQueuedMessageWindow(queuedMessages);
   return (
     <View style={styles.queueTrack}>
-      {queuedMessages.map((item, index) => (
+      {visibleQueuedMessages.map((item, index) => (
         <QueuedMessageRow
           key={item.id}
           item={item}
@@ -1312,6 +1317,12 @@ export function Composer({
   const messagePlaceholder = resolveMessagePlaceholder(inputMode, isDesktopLayout, t, placeholder);
   const userInput = value;
   const setUserInput = onChangeText;
+  const hasPromptSuggestion =
+    appSettings.promptSuggestionsEnabled && Boolean(promptSuggestion) && userInput.length === 0;
+  const compactMessagePlaceholder =
+    hasPromptSuggestion || placeholder !== undefined || inputMode === "terminal" || !isDesktopLayout
+      ? undefined
+      : t("composer.placeholders.mobile");
   // Sending is a programmatic replacement, not typing.  The replacement path
   // remounts the native/web input so a late change event from the old surface
   // cannot restore a message that has already reached the timeline.
@@ -2752,10 +2763,9 @@ export function Composer({
               client={client}
               isReadyForDictation={isDictationReady}
               placeholder={
-                appSettings.promptSuggestionsEnabled && promptSuggestion && userInput.length === 0
-                  ? promptSuggestion
-                  : messagePlaceholder
+                hasPromptSuggestion && promptSuggestion ? promptSuggestion : messagePlaceholder
               }
+              compactPlaceholder={compactMessagePlaceholder}
               autoFocus={messageInputAutoFocus}
               autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}
               disabled={isSubmitLoading}
@@ -2941,8 +2951,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],

@@ -14,6 +14,7 @@ import type { AgentTimelineItem } from "@otto-code/protocol/agent-types";
 import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
 import { getHostRuntimeStore, useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore, type Agent } from "@/stores/session-store";
+import { resolveRootAgentId } from "./visualizer-session-identity";
 import {
   buildAgentCompleteEvent,
   buildAgentIdleEvent,
@@ -45,10 +46,6 @@ const LIVE_FLUSH_INTERVAL_MS = 200;
  * (the tab surface and the PIP surface can be mounted at once, and both must
  * contribute their own set rather than overwrite each other's). */
 let nextSubscriptionSourceId = 0;
-/** Backstop against a parent-id cycle in corrupt/unexpected data; real chains
- * are one level deep today (root -> observed subagent). */
-const MAX_PARENT_WALK_DEPTH = 8;
-
 /** Synthetic picker value understood by the vendored Visualizer bridge. It is
  * never attached to an event: selecting it makes the page render every LIVE
  * real chat session as one unconnected workspace forest. A closed chat has no
@@ -255,23 +252,6 @@ function toSimTime(state: AdapterState, epochMs: number, sessionId?: string): nu
 
 function nodeCtx(node: TrackedNode): AgentNodeContext {
   return { name: node.name, sessionId: node.sessionId, workspaceRoot: node.workspaceRoot };
-}
-
-/** Walks up `parentAgentId` (observed AND attended children - the visualizer
- * mirrors the subagents track, which lists both under the parent) to find the
- * root agent the SimulationEvent sessionId is keyed on. The walk stops at the
- * topmost agent still present in the workspace set - an agent whose parent
- * isn't tracked here is its own root. */
-function resolveRootAgentId(agentId: string, agentsById: ReadonlyMap<string, Agent>): string {
-  let currentId = agentId;
-  for (let depth = 0; depth < MAX_PARENT_WALK_DEPTH; depth += 1) {
-    const current = agentsById.get(currentId);
-    if (!current?.parentAgentId || !agentsById.has(current.parentAgentId)) {
-      return currentId;
-    }
-    currentId = current.parentAgentId;
-  }
-  return currentId;
 }
 
 /** THE keying contract between the adapter and its hosts: a visualizer page

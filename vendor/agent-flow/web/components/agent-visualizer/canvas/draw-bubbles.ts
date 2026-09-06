@@ -9,6 +9,7 @@ export function drawMessageBubblesWorld(
   ctx: CanvasRenderingContext2D,
   agents: Map<string, Agent>,
   time: number,
+  persistentMaxLines = BUBBLE_MAX_LINES,
 ) {
   for (const agent of agents.values()) {
     if (agent.messageBubbles.length === 0) continue
@@ -21,7 +22,7 @@ export function drawMessageBubblesWorld(
 
     for (const bubble of agent.messageBubbles) {
       const age = time - bubble.time
-      const alpha = bubbleAlpha(age, agent.opacity)
+      const alpha = bubbleAlpha(age, agent.opacity, bubble.persistent)
       if (alpha < 0.01) continue
 
       const { role, text } = bubble
@@ -46,8 +47,9 @@ export function drawMessageBubblesWorld(
         bubble._cachedWrappedLines = allLines
         bubble._cachedWrappedFont = font
       }
-      const truncated = allLines.length > BUBBLE_MAX_LINES
-      const lines = truncated ? allLines.slice(0, BUBBLE_MAX_LINES) : allLines
+      const maxLines = bubble.persistent ? persistentMaxLines : BUBBLE_MAX_LINES
+      const truncated = allLines.length > maxLines
+      const lines = truncated ? allLines.slice(0, maxLines) : allLines
 
       const bubbleW = Math.min(BUBBLE_MAX_W, Math.max(...lines.map(l => measureTextCached(ctx, l))) + style.padding * 2 + 4)
       const bubbleH = style.headerH + lines.length * style.lineH + style.padding + (truncated ? style.lineH * 0.8 : 0)

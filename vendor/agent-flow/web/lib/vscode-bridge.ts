@@ -57,6 +57,10 @@ export type RenderConfig = Partial<{
   showFps: boolean
   contextDisplay: ContextDisplay
 }>
+/** OTTO PATCH (OTTO-PATCHES.md): when the chat transcript is intentionally
+ * hidden behind its Visualizer background, let the root node retain one native
+ * canvas bubble containing its latest assistant reply. */
+export type LatestAssistantBubbleConfig = boolean
 /** OTTO PATCH (OTTO-PATCHES.md): auto-fit framing profile. The camera's
  * constants were tuned for a full-tab viewport; Otto's PIP renders the same
  * scene into a ~260x160 box and needs its own values. Omitted keys keep the
@@ -65,7 +69,7 @@ export type CameraConfig = Partial<{
   viewportPadding: number
   autoFitMaxScale: number
 }>
-type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean; panels: PanelsConfig; render: RenderConfig; camera: CameraConfig; soundVolume: number; hudHidden: boolean; hudBottomHidden: boolean; hudCompact: boolean }>) => void
+type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean; panels: PanelsConfig; render: RenderConfig; camera: CameraConfig; soundVolume: number; hudHidden: boolean; hudBottomHidden: boolean; hudCompact: boolean; showLatestAssistantBubble: LatestAssistantBubbleConfig }>) => void
 // OTTO PATCH (OTTO-PATCHES.md): `autoSelect` rides along with 'started'. The
 // host sets it false for a chat that started in the background (a queued task,
 // a schedule, an orchestration child), which must register in the session list

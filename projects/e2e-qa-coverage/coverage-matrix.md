@@ -337,14 +337,15 @@ invariants have unit coverage. Browser-level management workflows remain explici
 
 ## 13. Visualizer
 
-| Behavior                                                                               | Status | Specs / plan                                                                | Tier | Pri |
-| -------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------- | ---- | --- |
-| Visualizer tab opens, guest iframe boots (ready handshake → session mirror; no pixels) | ✅     | `visualizer-open-boot.spec.ts`                                              | T1   | -   |
-| Session lifecycle: new agent appears in mirror; archive removes a tab-less session     | ✅     | `visualizer-session-lifecycle.spec.ts`                                      | T1   | -   |
-| New-chat redirect: draft never lands in Visualizer pane                                | ✅     | `visualizer-new-chat-redirect.spec.ts`                                      | T1   | -   |
-| Toolbar render (boot spec) - actions + detail card content still untested              | ✅     | `visualizer-open-boot.spec.ts`                                              | T1   | -   |
-| Discovery cards + context-composition ring populated                                   | ❌     | in-guest state; needs a host-observable seam                                | T1   | P2  |
-| Node-graph internals (spawn/complete inside canvas)                                    | ❌     | inside sandboxed vendor iframe; no host-DOM projection (descoped by design) | -    | P2  |
+| Behavior                                                                                                                                                | Status | Specs / plan                                                                | Tier | Pri |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------- | ---- | --- |
+| Visualizer tab opens, guest iframe boots (ready handshake → session mirror; no pixels)                                                                  | ✅     | `visualizer-open-boot.spec.ts`                                              | T1   | -   |
+| Session lifecycle: new agent appears in mirror; archive removes a tab-less session                                                                      | ✅     | `visualizer-session-lifecycle.spec.ts`                                      | T1   | -   |
+| New-chat redirect: draft never lands in Visualizer pane                                                                                                 | ✅     | `visualizer-new-chat-redirect.spec.ts`                                      | T1   | -   |
+| Toolbar render (boot spec) - actions + detail card content still untested                                                                               | ✅     | `visualizer-open-boot.spec.ts`                                              | T1   | -   |
+| Fixed chat background: selected session, Composer coverage, both seam pixels in dark/black mode, scroll, hover, hide/restore, resize, and tab expansion | ✅     | `visualizer-open-boot.spec.ts`                                              | T1   | -   |
+| Discovery cards + context-composition ring populated                                                                                                    | ❌     | in-guest state; needs a host-observable seam                                | T1   | P2  |
+| Node-graph internals (spawn/complete inside canvas)                                                                                                     | ❌     | inside sandboxed vendor iframe; no host-DOM projection (descoped by design) | -    | P2  |
 
 ## 14. Artifacts, preview & browser pane
 

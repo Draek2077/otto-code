@@ -95,15 +95,16 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
           <div className="space-y-24">
             <VisualizerSection />
             <PreviewVerificationSection />
+            <BringAnyModelSection />
             <AgentTeamSection />
             <AutonomousWorkSection />
-            <CodeIdeSection />
-            <InterfaceSection />
             <CostSection />
+            <CodeIdeSection />
             <ShipSection />
-            <BringAnyModelSection />
+            <InterfaceSection />
             <OttoBrainSection />
             <VoiceSection />
+            <FoundationCapabilitiesSection />
             <BuiltOnPaseoSection />
             <FAQ />
             <OttoCreditCTA />
@@ -277,6 +278,24 @@ const UPSTREAM_PILLARS = [
   },
 ] as const;
 
+function FoundationCapabilitiesSection() {
+  return (
+    <FeatureSection
+      title="Everything in one place"
+      description="Keep your agents, development tools, automation, and remote access in one connected environment."
+    >
+      <div className="space-y-12">
+        <SplitPanesBlock />
+        <MultiProviderBlock />
+        <SelfHostedBlock />
+        <ServiceProxyBlock />
+        <ShortcutsBlock />
+        <CLIBlock />
+      </div>
+    </FeatureSection>
+  );
+}
+
 function BuiltOnPaseoSection() {
   return (
     <motion.section
@@ -363,15 +382,6 @@ function BuiltOnPaseoSection() {
               </ul>
             </div>
           ))}
-        </div>
-
-        <div className="space-y-12 pt-6">
-          <SplitPanesBlock />
-          <MultiProviderBlock />
-          <SelfHostedBlock />
-          <ServiceProxyBlock />
-          <ShortcutsBlock />
-          <CLIBlock />
         </div>
       </div>
     </motion.section>

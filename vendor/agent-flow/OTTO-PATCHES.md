@@ -1732,3 +1732,34 @@ left that node absent from the graph for the whole chat.
   frame instead of being dropped.
 
 Otto-side counterpart: none (page-only fix). Needs `npm run build:visualizer`.
+
+## 2026-09-06 — focused chat background retains the root AI's latest reply
+
+Normal Visualizer surfaces keep canvas message bubbles suppressed because the
+visible chat already owns the conversation. The fully hidden chat background is
+the narrow exception: with no transcript visible, its root AI node retains one
+native canvas bubble containing the latest assistant reply. It is derived from
+the simulation's existing conversation record, survives later user/tool events,
+and is replaced by the next assistant reply. This deliberately reuses the
+canvas bubble renderer, hit detection, and camera framing rather than adding a
+host-side chat overlay.
+
+- `web/lib/vscode-bridge.ts` and `web/hooks/use-vscode-bridge.ts` accept the
+  optional `config.showLatestAssistantBubble` flag.
+- `web/hooks/use-agent-simulation.ts` derives exactly one persistent bubble for
+  the current main agent from `conversations` when that flag is enabled.
+- `web/components/agent-visualizer/index.tsx` refreshes that derived bubble on
+  every conversation update.
+- `web/lib/agent-types.ts`, canvas draw/hit helpers, animation, snapshot,
+  settling, tool placement, and camera framing honor `MessageBubble.persistent`
+  so the native bubble cannot age out before replacement.
+- `web/hooks/use-canvas-camera.ts` reserves the persistent bubble's full drawn
+  footprint during auto-fit instead of the small allowance used for transient
+  event hints, so its right and lower edges remain in the canvas.
+- `web/components/agent-visualizer/canvas.tsx` gives the persistent bubble a
+  viewport-relative line budget, up to 78% of the visible canvas and 24 wrapped
+  lines, while ordinary event bubbles retain their eight-line cap.
+
+Otto-side counterpart: `chat-visualizer-background.tsx` enables the flag only
+while its conversation is hidden; `visualizer-surface.tsx` passes it to the
+guest. Needs `npm run build:visualizer`.

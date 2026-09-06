@@ -1,7 +1,5 @@
-// The one place that knows how to move the Visualizer between its two
-// mutually-exclusive surfaces - the full workspace TAB and the picture-in-
-// picture viewport. Every control that opens, closes, or switches surfaces goes
-// through here.
+// Moves the Visualizer between mutually-exclusive tab, picture-in-picture,
+// and fixed chat-background surfaces. Every placement control goes through here.
 //
 // BUG THIS FIXES (2026-07-20): the header's PIP button used to flip
 // `visualizerPipOpen` blind, while `visualizer-pip-host.tsx` silently refused to
@@ -20,7 +18,10 @@ import type { VisualizerSurface } from "@/hooks/use-settings/storage";
 import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { openVisualizerTab } from "@/visualizer/open-visualizer-tab";
-import { useWorkspaceTabsFromLayout } from "@/visualizer/use-workspace-chat-focus";
+import {
+  useFocusedTabIdFromLayout,
+  useWorkspaceTabsFromLayout,
+} from "@/visualizer/use-workspace-chat-focus";
 
 /** Close every Visualizer tab in the workspace. Plural on purpose: run-scoped
  * Visualizer tabs (`target.runId`) are the same surface as the general one, and
@@ -40,10 +41,15 @@ function closeVisualizerTabs(workspaceKey: string): void {
 
 /** The tab wins when both somehow exist: it is the surface the user can see and
  * interact with, and the reconcile effect is about to retire the PIP anyway. */
-function resolveShowing(input: { hasTab: boolean; pipOpen: boolean }): VisualizerSurface | null {
+function resolveShowing(input: {
+  hasTab: boolean;
+  pipOpen: boolean;
+  backgroundOpen: boolean;
+}): VisualizerSurface | null {
   if (input.hasTab) {
     return "tab";
   }
+  if (input.backgroundOpen) return "background";
   return input.pipOpen ? "pip" : null;
 }
 
@@ -60,6 +66,10 @@ export interface VisualizerSurfaceControls {
   expandToTab: () => void;
   /** PIP close button: hide it without changing which surface is remembered. */
   closePip: () => void;
+  /** Background placement needs an existing chat or draft destination. */
+  canShowAsBackground: boolean;
+  showAsBackground: (preferredTabId?: string) => void;
+  closeBackground: () => void;
 }
 
 export function useVisualizerSurface(
@@ -78,22 +88,65 @@ export function useVisualizerSurface(
     [serverId, workspaceId],
   );
   const tabs = useWorkspaceTabsFromLayout(workspaceKey);
+  const focusedTabId = useFocusedTabIdFromLayout(workspaceKey);
   const hasTab = tabs.some((tab) => tab.target.kind === "visualizer");
+  const canShowAsBackground = tabs.some(
+    (tab) => tab.target.kind === "agent" || tab.target.kind === "draft",
+  );
   const pipOpen = settings.visualizerPipOpen && !isCompact;
-  const remembered = isCompact ? "tab" : settings.visualizerSurface;
+  const backgroundOpen = settings.visualizerBackgroundOpen;
+  const remembered =
+    isCompact && settings.visualizerSurface === "pip" ? "tab" : settings.visualizerSurface;
 
-  const showing: VisualizerSurface | null = resolveShowing({ hasTab, pipOpen });
+  const showing: VisualizerSurface | null = resolveShowing({ hasTab, pipOpen, backgroundOpen });
+
+  const showAsBackground = useCallback(
+    (preferredTabId?: string) => {
+      if (!workspaceKey) return;
+      const store = useWorkspaceLayoutStore.getState();
+      const chats = store
+        .getWorkspaceTabs(workspaceKey)
+        .filter((tab) => tab.target.kind === "agent" || tab.target.kind === "draft");
+      if (chats.length === 0) return;
+      closeVisualizerTabs(workspaceKey);
+      // Closing the visualizer may focus a file or terminal in its old pane.
+      // Make the destination concrete instead of parking an enabled background.
+      const destination =
+        chats.find((tab) => tab.tabId === preferredTabId) ??
+        chats.find((tab) => tab.tabId === focusedTabId) ??
+        chats[0]!;
+      store.focusTab(workspaceKey, destination.tabId);
+      void updateSettings({
+        visualizerPipOpen: false,
+        visualizerBackgroundOpen: true,
+        visualizerSurface: "background",
+      });
+    },
+    [focusedTabId, updateSettings, workspaceKey],
+  );
+
+  const closeBackground = useCallback(() => {
+    void updateSettings({ visualizerBackgroundOpen: false });
+  }, [updateSettings]);
 
   const collapseToPip = useCallback(() => {
     if (workspaceKey) {
       closeVisualizerTabs(workspaceKey);
     }
-    void updateSettings({ visualizerPipOpen: true, visualizerSurface: "pip" });
+    void updateSettings({
+      visualizerPipOpen: true,
+      visualizerBackgroundOpen: false,
+      visualizerSurface: "pip",
+    });
   }, [updateSettings, workspaceKey]);
 
   const expandToTab = useCallback(() => {
     // Order matters - retire the PIP first so only one guest is ever alive.
-    void updateSettings({ visualizerPipOpen: false, visualizerSurface: "tab" });
+    void updateSettings({
+      visualizerPipOpen: false,
+      visualizerBackgroundOpen: false,
+      visualizerSurface: "tab",
+    });
     if (workspaceId) {
       openVisualizerTab({ serverId, workspaceId });
     }
@@ -114,6 +167,14 @@ export function useVisualizerSurface(
       closePip();
       return;
     }
+    if (backgroundOpen) {
+      closeBackground();
+      return;
+    }
+    if (remembered === "background") {
+      showAsBackground();
+      return;
+    }
     if (remembered === "pip") {
       void updateSettings({ visualizerPipOpen: true });
       return;
@@ -121,9 +182,31 @@ export function useVisualizerSurface(
     if (workspaceId) {
       openVisualizerTab({ serverId, workspaceId });
     }
-  }, [closePip, hasTab, pipOpen, remembered, serverId, updateSettings, workspaceId, workspaceKey]);
+  }, [
+    closePip,
+    closeBackground,
+    showAsBackground,
+    backgroundOpen,
+    hasTab,
+    pipOpen,
+    remembered,
+    serverId,
+    updateSettings,
+    workspaceId,
+    workspaceKey,
+  ]);
 
-  return { showing, remembered, toggle, collapseToPip, expandToTab, closePip };
+  return {
+    showing,
+    remembered,
+    toggle,
+    collapseToPip,
+    expandToTab,
+    closePip,
+    canShowAsBackground,
+    showAsBackground,
+    closeBackground,
+  };
 }
 
 /**
@@ -133,14 +216,19 @@ export function useVisualizerSurface(
  * sit `true`-but-parked again, which is the exact state the old bug lived in.
  * Mount once per workspace (the PIP host does it).
  */
-export function useReconcileVisualizerSurface(hasVisualizerTab: boolean): void {
+export function useReconcileVisualizerSurface(hasVisualizerTab: boolean, isVisible: boolean): void {
   const { settings, updateSettings } = useAppSettings();
   const pipOpen = settings.visualizerPipOpen;
+  const backgroundOpen = settings.visualizerBackgroundOpen;
   useEffect(() => {
     // Self-extinguishing: the patch makes the condition false, so this can't loop
     // even if `updateSettings` is not referentially stable.
-    if (hasVisualizerTab && pipOpen) {
-      void updateSettings({ visualizerPipOpen: false, visualizerSurface: "tab" });
+    if (isVisible && hasVisualizerTab && (pipOpen || backgroundOpen)) {
+      void updateSettings({
+        visualizerPipOpen: false,
+        visualizerBackgroundOpen: false,
+        visualizerSurface: "tab",
+      });
     }
-  }, [hasVisualizerTab, pipOpen, updateSettings]);
+  }, [isVisible, hasVisualizerTab, pipOpen, backgroundOpen, updateSettings]);
 }

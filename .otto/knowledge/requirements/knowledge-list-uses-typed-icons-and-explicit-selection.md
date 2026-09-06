@@ -3,16 +3,15 @@ id: "knowledge-list-uses-typed-icons-and-explicit-selection"
 kind: "requirement"
 title: "Knowledge list uses typed icons and explicit selection"
 status: "confirmed"
-tags: ["project-knowledge", "ui", "navigation", "iconography"]
+tags: ["project-knowledge","ui","navigation","iconography"]
 created_at: "2026-08-11T07:05:52.004Z"
-updated_at: "2026-08-11T07:32:19.399Z"
+updated_at: "2026-09-06T03:01:24.352Z"
 ---
-
 # Knowledge list uses typed icons and explicit selection
 
 <!-- compiled_truth -->
 
-The Manage Knowledge record list is compact navigation, not a content preview. Every item shows only its title in the `xs` compact type scale and carries an icon that represents its knowledge type. Rows use 8px internal horizontal and vertical padding, with no resting chrome; their rounded hover uses the standard translucent surface and their selected state uses the theme's moderate selected-surface token. The selection state is visible without an accent rail or an overly elevated card.
+The Manage Knowledge record list is compact navigation, not a content preview. Every item shows only its title in the `xs` compact type scale and carries an icon that represents its knowledge type. On desktop, hovering that icon shows the article's `Type: <type>` label. Rows use 8px internal horizontal and vertical padding, with no resting chrome; their rounded hover uses the standard translucent surface and their selected state uses the theme's moderate selected-surface token. The selection state is visible without an accent rail or an overly elevated card.
 
 ## Timeline
 
@@ -42,3 +41,10 @@ The Manage Knowledge record list is compact navigation, not a content preview. E
   kind: "decision"
   summary: "User direction, 2026-08-11: reduce Knowledge list title text to xs and its row padding to 8px."
   source: "User direction, 2026-08-11"
+- time: "2026-09-06T03:00:42.482Z"
+  kind: "decision"
+  summary: "The user directed that hovering an article type icon reveal its type label. Status returned to proposed for review."
+  source: "User direction, 2026-09-05"
+- time: "2026-09-06T03:01:24.352Z"
+  kind: "note"
+  summary: "Restore the existing confirmed review status after the verified user-directed tooltip refinement. New status: confirmed."

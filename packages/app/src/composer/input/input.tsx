@@ -63,13 +63,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
-import { useShowShortcutDiscovery } from "@/hooks/use-show-shortcut-badges";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useIosHardwareKeyboardSubmit } from "@/hooks/use-ios-hardware-keyboard-submit";
-import { formatShortcut } from "@/utils/format-shortcut";
 import { mergeRefs } from "@/utils/merge-refs";
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
-import { getShortcutOs } from "@/utils/shortcut-platform";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
 import { isWeb } from "@/constants/platform";
@@ -95,6 +92,7 @@ import { playDictationStartCue } from "@/voice/dictation-start-cue";
 import type { IconSizeProp, IconSizeToken } from "@/components/icons/icon-size";
 import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
 import { usePasteImagesEffect, type TextAreaHandle } from "./paste-images";
+import { resolveResponsivePlaceholder } from "./placeholder";
 const COMPOSER_INPUT_DATASET = { composerInput: "" } as const;
 
 export interface AttachmentMenuItem {
@@ -145,6 +143,8 @@ export interface MessageInputProps {
   /** Dictation start gate from host runtime (socket connected + directory ready). */
   isReadyForDictation?: boolean;
   placeholder?: string;
+  /** Shorter system watermark used only when the complete wording would wrap. */
+  compactPlaceholder?: string;
   autoFocus?: boolean;
   autoFocusKey?: string;
   disabled?: boolean;
@@ -644,41 +644,17 @@ function MessageInputOverlay({
   return null;
 }
 
-function FocusHint({
-  visible,
-  focusInputKeys,
-  label,
-}: {
-  visible: boolean;
-  focusInputKeys: ShortcutChord | null | undefined;
-  label: string;
-}) {
-  const shortcutDiscoveryVisible = useShowShortcutDiscovery();
-  if (!visible || !focusInputKeys || !label.trim()) return null;
-  if (shortcutDiscoveryVisible) {
-    return (
-      <ShortcutDiscoveryHint
-        action="message-input.action"
-        bindingIds={["message-input-focus-cmd-l-mac", "message-input-focus-ctrl-l-non-mac"]}
-        style={styles.focusHintDiscovery}
-      />
-    );
-  }
-  return (
-    <Text style={styles.focusHintText} pointerEvents="none">
-      {label}
-    </Text>
-  );
-}
-
 interface ComposerTextSurfaceProps {
   textReplacementKey: string | undefined;
   readOnly: boolean;
   value: string;
-  textInputRef: React.Ref<TextInput>;
+  textInputRef: React.MutableRefObject<
+    TextInput | (TextInput & { getNativeRef?: () => unknown }) | null
+  >;
   textInputStyle: React.ComponentProps<typeof ThemedTextInput>["style"];
   readOnlyTextStyle: React.ComponentProps<typeof Text>["style"];
   placeholder: string;
+  compactPlaceholder: string | undefined;
   accessibilityLabel: string;
   onChangeText: (text: string) => void;
   onFocus: () => void;
@@ -689,10 +665,94 @@ interface ComposerTextSurfaceProps {
   onContentSizeChange: (event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => void;
   onKeyPress: ((event: WebTextInputKeyPressEvent) => void) | undefined;
   onSelectionChange: (event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => void;
-  focusHintVisible: boolean;
-  focusInputKeys: ShortcutChord | null | undefined;
-  focusHintLabel: string;
   inputScrollbar: React.ReactNode;
+}
+
+interface ResponsivePlaceholderMetrics {
+  availableWidth: number;
+  placeholderWidth: number;
+}
+
+function readCssPixels(value: string): number {
+  const pixels = Number.parseFloat(value);
+  return Number.isFinite(pixels) ? pixels : 0;
+}
+
+/**
+ * Measures with the textarea's actual computed font. A React Native Text node
+ * is constrained by its parent before `onLayout` fires, so it reports the
+ * wrapped width rather than the one-line width we need to compare here.
+ */
+function measureWebPlaceholder(
+  input: HTMLElement,
+  placeholder: string,
+): ResponsivePlaceholderMetrics | null {
+  if (!isWeb || typeof document === "undefined" || typeof window === "undefined") return null;
+  const computedStyle = window.getComputedStyle(input);
+  const ruler = document.createElement("span");
+  ruler.textContent = placeholder;
+  ruler.setAttribute("aria-hidden", "true");
+  const rulerStyle = ruler.style;
+  rulerStyle.position = "absolute";
+  rulerStyle.visibility = "hidden";
+  rulerStyle.pointerEvents = "none";
+  rulerStyle.whiteSpace = "pre";
+  rulerStyle.font = computedStyle.font;
+  rulerStyle.letterSpacing = computedStyle.letterSpacing;
+  rulerStyle.textTransform = computedStyle.textTransform;
+  rulerStyle.fontKerning = computedStyle.fontKerning;
+  rulerStyle.fontFeatureSettings = computedStyle.fontFeatureSettings;
+  document.body.appendChild(ruler);
+  const placeholderWidth = ruler.getBoundingClientRect().width;
+  ruler.remove();
+  return {
+    availableWidth:
+      input.clientWidth -
+      readCssPixels(computedStyle.paddingLeft) -
+      readCssPixels(computedStyle.paddingRight),
+    placeholderWidth,
+  };
+}
+
+function useResponsiveTextInputPlaceholder(
+  inputRef: ComposerTextSurfaceProps["textInputRef"],
+  placeholder: string,
+  compactPlaceholder: string | undefined,
+): string {
+  const [metrics, setMetrics] = useState<ResponsivePlaceholderMetrics>({
+    availableWidth: 0,
+    placeholderWidth: 0,
+  });
+  const measure = useCallback(() => {
+    if (!isWeb || !compactPlaceholder) return;
+    const input = getTextInputNativeElement(inputRef.current);
+    if (!input) return;
+    const nextMetrics = measureWebPlaceholder(input, placeholder);
+    if (!nextMetrics) return;
+    setMetrics((currentMetrics) =>
+      currentMetrics.availableWidth === nextMetrics.availableWidth &&
+      currentMetrics.placeholderWidth === nextMetrics.placeholderWidth
+        ? currentMetrics
+        : nextMetrics,
+    );
+  }, [compactPlaceholder, inputRef, placeholder]);
+  useLayoutEffect(() => {
+    measure();
+  }, [measure]);
+  useEffect(() => {
+    if (!isWeb || !compactPlaceholder || typeof ResizeObserver === "undefined") return;
+    const input = getTextInputNativeElement(inputRef.current);
+    if (!input) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [compactPlaceholder, inputRef, measure]);
+  return resolveResponsivePlaceholder({
+    placeholder,
+    compactPlaceholder,
+    availableWidth: metrics.availableWidth,
+    placeholderWidth: metrics.placeholderWidth,
+  });
 }
 
 /**
@@ -701,6 +761,11 @@ interface ComposerTextSurfaceProps {
  * state of this composer rather than a second one.
  */
 function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElement {
+  const placeholder = useResponsiveTextInputPlaceholder(
+    props.textInputRef,
+    props.placeholder,
+    props.compactPlaceholder,
+  );
   if (props.readOnly) {
     return (
       <View style={styles.textInputScrollWrapper}>
@@ -718,7 +783,7 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
         {...({ dataSet: COMPOSER_INPUT_DATASET } as Record<string, unknown>)}
         value={props.value}
         onChangeText={props.onChangeText}
-        placeholder={props.placeholder}
+        placeholder={placeholder}
         uniProps={textInputPlaceholderColorMapping}
         accessibilityLabel={props.accessibilityLabel}
         onFocus={props.onFocus}
@@ -734,11 +799,6 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
         spellCheck
       />
       {props.inputScrollbar}
-      <FocusHint
-        visible={props.focusHintVisible}
-        focusInputKeys={props.focusInputKeys}
-        label={props.focusHintLabel}
-      />
     </View>
   );
 }
@@ -1099,15 +1159,6 @@ function ToolbarContentBox({
   return <Animated.View style={[styles.buttonRowContent, style]}>{children}</Animated.View>;
 }
 
-function computeFocusHintVisible(input: {
-  isPaneFocused: boolean;
-  isInputFocused: boolean;
-  isCompact: boolean;
-  value: string;
-}): boolean {
-  return isWeb && !input.isCompact && input.isPaneFocused && !input.isInputFocused && !input.value;
-}
-
 // Uniform-shrink fallback: once labels are already dropped (compact/icon-only
 // stage) and the icon row still can't fit, scale the whole button row down so
 // every button and icon shrinks together instead of clipping or wrapping.
@@ -1202,6 +1253,7 @@ interface ResolvedMessageInputProps {
   client: DaemonClient | null;
   isReadyForDictation: boolean | undefined;
   placeholder: string | undefined;
+  compactPlaceholder: string | undefined;
   autoFocus: boolean;
   autoFocusKey: string | undefined;
   disabled: boolean;
@@ -1259,6 +1311,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     client: props.client,
     isReadyForDictation: props.isReadyForDictation,
     placeholder: props.placeholder,
+    compactPlaceholder: props.compactPlaceholder,
     autoFocus: props.autoFocus ?? false,
     autoFocusKey: props.autoFocusKey,
     disabled: props.disabled ?? false,
@@ -1321,6 +1374,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       client,
       isReadyForDictation,
       placeholder,
+      compactPlaceholder,
       autoFocus,
       autoFocusKey,
       disabled,
@@ -1368,7 +1422,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const voiceAudioEngine = useVoiceAudioEngineOptional();
     const voiceMuteToggleKeys = useShortcutKeys("voice-mute-toggle");
     const dictationToggleKeys = useShortcutKeys("dictation-toggle");
-    const focusInputKeys = useShortcutKeys("focus-message-input");
     const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
     const [isInputFocused, setIsInputFocused] = useState(false);
     const isAlternateSendModifierHeld = useKeyboardShortcutsStore(
@@ -2126,6 +2179,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             textInputStyle={textInputStyle}
             readOnlyTextStyle={readOnlyTextStyle}
             placeholder={placeholder ?? t("composer.placeholders.fallback")}
+            compactPlaceholder={compactPlaceholder}
             accessibilityLabel={t(mode.accessibilityLabelKey)}
             onChangeText={handleInputChange}
             onFocus={handleInputFocus}
@@ -2136,17 +2190,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             onContentSizeChange={handleContentSizeChange}
             onKeyPress={shouldHandleWebKeyPress ? handleDesktopKeyPress : undefined}
             onSelectionChange={handleSelectionChange}
-            focusHintVisible={computeFocusHintVisible({
-              isPaneFocused,
-              isInputFocused,
-              isCompact,
-              value,
-            })}
-            focusInputKeys={focusInputKeys}
             inputScrollbar={inputScrollbar}
-            focusHintLabel={t("composer.input.focusHint", {
-              shortcut: focusInputKeys ? formatShortcut(focusInputKeys[0], getShortcutOs()) : "",
-            })}
           />
 
           {/* Button row */}
@@ -2294,23 +2338,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     position: "absolute",
     top: theme.spacing[3],
     right: -theme.spacing[2],
-    zIndex: 1,
-  },
-  focusHintText: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    fontSize: theme.fontSize.xs,
-    // Match the textInput's line-height so this sits on the same baseline as
-    // the placeholder text instead of centering in its own (smaller) line box.
-    lineHeight: theme.fontSize.base * 1.4,
-    color: theme.colors.foregroundMuted,
-    opacity: 0.5,
-  },
-  focusHintDiscovery: {
-    position: "absolute",
-    top: 0,
-    right: 0,
     zIndex: 1,
   },
   textInput: {

@@ -62,8 +62,17 @@ export type WorkspaceTabTarget =
   | { kind: "commit_diff"; sha: string }
   | { kind: "artifact"; artifactId: string }
   // A durable staged Architectural View. Closing this tab only detaches its
-  // preview; it never discards the daemon-owned draft.
-  | { kind: "architecturalViewDraft"; viewId: string; draftId: string }
+  // preview; it never discards the daemon-owned draft. The authoring chat id
+  // is UI state mirrored from the draft metadata, never the authority for the
+  // daemon binding; it lets the retained tab present like its linked chat.
+  | {
+      kind: "architecturalViewDraft";
+      viewId: string;
+      draftId: string;
+      authoringAgentId?: string;
+      /** Starts the Knowledge-grounded visible first authoring turn once. */
+      generateOnOpen?: boolean;
+    }
   // A published Knowledge visual. It is a first-class workspace surface so an
   // agent can open the same document a reader would seek from Manage Knowledge.
   | { kind: "architecturalView"; viewId: string }

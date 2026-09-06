@@ -9,7 +9,7 @@ progress_completed: 4
 progress_total: 5
 progress_unit: "delivery slices"
 created_at: "2026-08-27T19:16:46.149Z"
-updated_at: "2026-08-30T00:25:52.788Z"
+updated_at: "2026-09-06T03:21:16.038Z"
 ---
 # Architecture visual documents
 
@@ -215,3 +215,8 @@ Source changes set a visible stale indicator. Refresh is an explicit authoring a
   kind: "note"
   summary: "Verified durable draft authoring, source-staleness, Knowledge discovery, published workspace tab, and agent/MCP open behavior. Proof/security/documentation delivery slice remains open."
   affects: ["architecture-visual-documents"]
+- time: "2026-09-06T03:21:16.038Z"
+  kind: "evidence"
+  summary: "User selected an article-owned entry point for Architectural Views: Manage Knowledge does not show an empty global Architectural Views section. From a selected Knowledge root or article, its pinned toolbar now offers **Create Architectural View** when no published view exists, **Open Architectural View** when one does, and **Resume Architectural View draft** for durable staged work. Creation is daemon-owned and produces a small valid, knowledge-linked starter specification, so it needs neither a workspace JSON file nor a retained chat context. Draft discovery is a separately capability-gated, backward-compatible RPC; the UI waits for it before offering creation, preventing duplicate staged work after restart. Targeted Architectural Views service/session and workspace-tab tests, protocol/client build, server/app typechecks, targeted lint, format, and `git diff --check` passed."
+  source: "Implementation verified 2026-09-05"
+  affects: ["project-knowledge-context-management"]

@@ -19,7 +19,10 @@ describe("Architectural View authoring tools", () => {
       callerAgentId: "author-agent",
       architecturalViews: {
         getDraftContent: vi.fn().mockResolvedValue({
-          draft: { authoringAgentId: "author-agent" },
+          draft: {
+            authoringAgentId: "author-agent",
+            knowledgeReferences: [{ kind: "record", id: "workflows" }],
+          },
         }),
         getDraftSpecification: vi.fn().mockResolvedValue({
           draft: { title: "Workflows overview", updatedAt: "2026-08-29T00:00:00.000Z" },
@@ -36,7 +39,10 @@ describe("Architectural View authoring tools", () => {
       draftId: "draft-one",
     });
     expect(read.structuredContent).toEqual(
-      expect.objectContaining({ specification: { title: "Workflow topology" } }),
+      expect.objectContaining({
+        knowledgeReferences: [{ kind: "record", id: "workflows" }],
+        specification: { title: "Workflow topology" },
+      }),
     );
 
     await catalog.executeTool("update_architectural_view_draft", {

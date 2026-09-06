@@ -5203,6 +5203,8 @@ export class Session {
         return this.architecturalViewsSession.handleDraftDiscardRequest(msg);
       case "architectural-views.draft.get-content.request":
         return this.architecturalViewsSession.handleDraftGetContentRequest(msg);
+      case "architectural-views.draft.list.request":
+        return this.architecturalViewsSession.handleDraftListRequest(msg);
       default:
         return undefined;
     }
@@ -7207,17 +7209,31 @@ export class Session {
           env,
           provisionalTitle,
           firstAgentContext,
+          ...(architecturalViewDraft
+            ? {
+                onCreatedBeforeInitialPrompt: async (agent: ManagedAgent) => {
+                  // The authoring binding is an authorization boundary for the
+                  // staged-draft tools. It must exist before createAgentCommand
+                  // starts the first prompt, not after it has already begun.
+                  createdAgentId = agent.id;
+                  await this.bindArchitecturalViewAuthoringChat({
+                    draft: architecturalViewDraft,
+                    workspaceId: resolvedIntent.intent.workspaceId,
+                    agentId: agent.id,
+                  });
+                  // Subscribe while the agent is still idle so the first user
+                  // message, tool calls, and streamed reply reach the linked
+                  // authoring chat instead of appearing only after a reload.
+                  await this.agentUpdates.forwardLiveAgent(agent);
+                },
+              }
+            : {}),
           buildSessionConfig: (sessionConfig, gitOptions, legacyWorktreeName, ctx) =>
             this.buildAgentSessionConfig(sessionConfig, gitOptions, legacyWorktreeName, ctx),
         },
       );
       createdAgentId = snapshot.id;
-      await this.bindArchitecturalViewAuthoringChat({
-        draft: architecturalViewDraft,
-        workspaceId: resolvedIntent.intent.workspaceId,
-        agentId: snapshot.id,
-      });
-      await this.agentUpdates.forwardLiveAgent(snapshot);
+      await this.forwardCreatedAgentAfterSetup({ snapshot, architecturalViewDraft });
       if (resolvedIntent.createdDirectoryWorkspace && trimmedPrompt) {
         this.workspaceAutoName.scheduleForDirectory(
           {
@@ -7295,6 +7311,17 @@ export class Session {
       draftId: input.draft.draftId,
       agentId: input.agentId,
     });
+  }
+
+  private async forwardCreatedAgentAfterSetup(input: {
+    snapshot: ManagedAgent;
+    architecturalViewDraft: CreateAgentRequestMessage["architecturalViewDraft"];
+  }): Promise<void> {
+    // Architectural View chats subscribe in their pre-prompt binding callback
+    // so the first turn streams live. Every other chat keeps the established
+    // post-create forwarding path.
+    if (input.architecturalViewDraft) return;
+    await this.agentUpdates.forwardLiveAgent(input.snapshot);
   }
 
   private async resolveSessionCreateAgentIntent(input: {
@@ -12226,8 +12253,11 @@ function withArchitecturalViewAuthoringBrief(
   if (!draft) return config;
   const brief =
     `You are the bound authoring chat for Architectural View ${draft.viewId}, draft ${draft.draftId}. ` +
-    "Use read_architectural_view_draft before editing and update_architectural_view_draft to replace its typed JSON. " +
-    "Those tools update only the staged draft; publish remains an explicit user action in the Architectural Views tab.";
+    "Use read_architectural_view_draft before editing; it returns the existing typed JSON and the linked Knowledge references. " +
+    "Read each linked record with read_project_knowledge or root with read_project_knowledge_root, including existing Mermaid and wiki-links, before translating the established documentation into the visual. " +
+    "Where the linked Knowledge is new or thin, make the first visual strictly reflect its available facts and make any gaps clear rather than inventing architecture. " +
+    "When the user asks to improve the Knowledge itself, use the normal project-knowledge tools and their evidence and confirmation policy; then update the staged visual when those changes affect it. " +
+    "update_architectural_view_draft replaces only the staged typed JSON. Publishing the visual remains an explicit user action in the Architectural Views tab.";
   return { ...config, systemPrompt: [config.systemPrompt, brief].filter(Boolean).join("\n\n") };
 }
 

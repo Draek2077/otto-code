@@ -360,6 +360,39 @@ export class ArchitecturalViewsSession {
     }
   }
 
+  async handleDraftListRequest(
+    msg: Extract<SessionInboundMessage, { type: "architectural-views.draft.list.request" }>,
+  ): Promise<void> {
+    const context = await this.authoringContext(msg.workspaceId);
+    if (!context) {
+      this.host.emit({
+        type: "architectural-views.draft.list.response",
+        payload: {
+          requestId: msg.requestId,
+          success: false,
+          drafts: [],
+          error: "Workspace or Architectural Views support is unavailable.",
+        },
+      });
+      return;
+    }
+    try {
+      const drafts = await this.service(context.resolver).listDrafts(
+        context.cwd,
+        msg.knowledgeReference,
+      );
+      this.host.emit({
+        type: "architectural-views.draft.list.response",
+        payload: { requestId: msg.requestId, success: true, drafts, error: null },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "architectural-views.draft.list.response",
+        payload: { requestId: msg.requestId, success: false, drafts: [], error: messageFor(error) },
+      });
+    }
+  }
+
   async bindDraftAuthoringAgent(input: {
     workspaceId: string;
     viewId: string;

@@ -63,6 +63,10 @@ export const BUBBLE_MAX_W = 220
 export const BUBBLE_GAP = 6
 /** Max visible lines in a bubble before truncation */
 export const BUBBLE_MAX_LINES = 8
+/** The persistent reply in a fully focused chat background earns more of the
+ * canvas than a transient event hint. The renderer still fits it to the live
+ * viewport before reaching this ceiling. */
+export const PERSISTENT_BUBBLE_MAX_LINES = 24
 
 /** Tool card width (px) for overlap detection */
 export const TOOL_CARD_W = 170

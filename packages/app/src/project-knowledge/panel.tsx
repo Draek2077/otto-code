@@ -66,6 +66,7 @@ import {
   type ArchitecturalViewKnowledgeReference,
   type ArchitecturalViewSummary,
 } from "@/architectural-views/use-architectural-views";
+import { useArchitecturalViewDrafts } from "@/architectural-views/use-architectural-view-drafts";
 import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
 import { KnowledgeMarkdownEditor } from "./knowledge-markdown-editor";
 import { KnowledgeReviewProposalView } from "./knowledge-review-proposal";
@@ -162,6 +163,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   const [reviewGenerating, setReviewGenerating] = useState(false);
   const [reviewProposal, setReviewProposal] = useState<KnowledgeReviewProposal | null>(null);
   const [reviewApplying, setReviewApplying] = useState(false);
+  const [creatingArchitecturalView, setCreatingArchitecturalView] = useState(false);
   const [documentMode, setDocumentMode] = useState<"article" | "architectural-view">("article");
   const reviewSupported = useSessionStore(
     (state) =>
@@ -256,6 +258,12 @@ export function ProjectKnowledgePanel(): ReactElement {
     architecturalKnowledgeReference,
   );
   const allArchitecturalViews = useArchitecturalViews(serverId, workspaceId, null, false);
+  const architecturalViewDrafts = useArchitecturalViewDrafts(
+    serverId,
+    workspaceId,
+    architecturalKnowledgeReference,
+  );
+  const refreshArchitecturalViewDrafts = architecturalViewDrafts.refresh;
   const showArchitecturalView = documentMode === "architectural-view";
   const showWholePageLoading = knowledge.loading && !knowledge.view && !requestedSelection;
   const reviewContent = reviewContentForSelection(selectedRoot, detailedSelection);
@@ -383,6 +391,74 @@ export function ProjectKnowledgePanel(): ReactElement {
     if (!markdownPath) return;
     openTab(createWorkspaceFileTabTarget({ path: markdownPath }));
   }, [markdownPath, openTab]);
+  const createArchitecturalView = useCallback(async () => {
+    if (!client || !architecturalKnowledgeReference || creatingArchitecturalView) return;
+    const sourceTitle = selectedRoot?.title ?? selected?.title ?? "Architecture";
+    const viewId = architecturalViewIdFor(architecturalKnowledgeReference.id);
+    const existingDraft = architecturalViewDrafts.drafts.find((draft) => draft.viewId === viewId);
+    if (existingDraft) {
+      openTab({
+        kind: "architecturalViewDraft",
+        viewId: existingDraft.viewId,
+        draftId: existingDraft.id,
+        ...(existingDraft.authoringAgentId
+          ? { authoringAgentId: existingDraft.authoringAgentId }
+          : {}),
+      });
+      return;
+    }
+    const draftId = `${viewId}-${Date.now().toString(36)}`;
+    setCreatingArchitecturalView(true);
+    setFormError(null);
+    try {
+      const result = await client.createArchitecturalViewDraft({
+        workspaceId,
+        viewId,
+        draftId,
+        title: architecturalViewTitleFor(sourceTitle),
+        knowledgeReferences: [architecturalKnowledgeReference],
+      });
+      if (!result.success || !result.draft) {
+        throw new Error(result.error ?? "Could not create Architectural View draft.");
+      }
+      refreshArchitecturalViewDrafts();
+      const returnedExistingDraft = result.draft.id !== draftId;
+      openTab({
+        kind: "architecturalViewDraft",
+        viewId: result.draft.viewId,
+        draftId: result.draft.id,
+        ...(result.draft.authoringAgentId
+          ? { authoringAgentId: result.draft.authoringAgentId }
+          : {}),
+        ...(returnedExistingDraft ? {} : { generateOnOpen: true }),
+      });
+    } catch (cause) {
+      setFormError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setCreatingArchitecturalView(false);
+    }
+  }, [
+    architecturalKnowledgeReference,
+    architecturalViewDrafts.drafts,
+    refreshArchitecturalViewDrafts,
+    client,
+    creatingArchitecturalView,
+    openTab,
+    selected?.title,
+    selectedRoot?.title,
+    workspaceId,
+  ]);
+  const resumeArchitecturalViewDraft = useCallback(() => {
+    const draft = architecturalViewDrafts.drafts[0];
+    if (draft) {
+      openTab({
+        kind: "architecturalViewDraft",
+        viewId: draft.viewId,
+        draftId: draft.id,
+        ...(draft.authoringAgentId ? { authoringAgentId: draft.authoringAgentId } : {}),
+      });
+    }
+  }, [architecturalViewDrafts.drafts, openTab]);
   const addReviewDirective = useCallback((directive: Omit<KnowledgeReviewDirective, "id">) => {
     const id = `review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setReviewDirectives((current) => [
@@ -1158,6 +1234,66 @@ export function ProjectKnowledgePanel(): ReactElement {
   if (showWholePageLoading) {
     return <PageLoading label="Loading project knowledge…" testID="project-knowledge-loading" />;
   }
+  let architecturalViewToolbar: ReactElement | null = null;
+  if (architecturalViews.views.length > 0) {
+    let architecturalViewDraftAction: ReactElement | null = null;
+    if (architecturalViewDrafts.drafts[0]) {
+      architecturalViewDraftAction = (
+        <ToolbarIconButton
+          label="Resume Architectural View draft"
+          Icon={ThemedArchitecture}
+          onPress={resumeArchitecturalViewDraft}
+        />
+      );
+    } else if (architecturalKnowledgeReference) {
+      architecturalViewDraftAction = (
+        <ToolbarIconButton
+          label="Update Architectural View"
+          Icon={ThemedArchitecture}
+          tone="accent"
+          loading={creatingArchitecturalView}
+          onPress={createArchitecturalView}
+          disabled={!architecturalViews.supported || creatingArchitecturalView}
+        />
+      );
+    }
+    architecturalViewToolbar = (
+      <>
+        <ToolbarIconButton
+          label={showArchitecturalView ? "Show article" : "Open Architectural View"}
+          Icon={showArchitecturalView ? ThemedBookOpen : ThemedArchitecture}
+          onPress={() => setDocumentMode(showArchitecturalView ? "article" : "architectural-view")}
+          selected={showArchitecturalView}
+        />
+        {showArchitecturalView && architecturalViews.views.length > 1 ? (
+          <ArchitecturalViewPicker
+            views={architecturalViews.views}
+            selectedViewId={architecturalViews.selectedView?.id ?? null}
+            onSelect={architecturalViews.selectView}
+          />
+        ) : null}
+        {architecturalViewDraftAction}
+        <ToolbarSeparator />
+      </>
+    );
+  } else if (architecturalKnowledgeReference) {
+    const resumableDraft = architecturalViewDrafts.drafts[0];
+    let draftActionLabel = "Create Architectural View";
+    if (resumableDraft) draftActionLabel = "Resume Architectural View draft";
+    architecturalViewToolbar = (
+      <>
+        <ToolbarIconButton
+          label={draftActionLabel}
+          Icon={ThemedArchitecture}
+          tone="accent"
+          loading={creatingArchitecturalView}
+          onPress={resumableDraft ? resumeArchitecturalViewDraft : createArchitecturalView}
+          disabled={!architecturalViews.supported || creatingArchitecturalView}
+        />
+        <ToolbarSeparator />
+      </>
+    );
+  }
 
   return (
     <Animated.View
@@ -1321,27 +1457,7 @@ export function ProjectKnowledgePanel(): ReactElement {
                 <Text style={styles.muted}>{documentIdentity}</Text>
               </View>
               <View style={styles.documentToolbar}>
-                {architecturalViews.views.length > 0 ? (
-                  <>
-                    <SegmentedControl
-                      size="xs"
-                      value={documentMode}
-                      onValueChange={setDocumentMode}
-                      options={[
-                        { value: "article", label: "Article" },
-                        { value: "architectural-view", label: "Architectural View" },
-                      ]}
-                    />
-                    {showArchitecturalView && architecturalViews.views.length > 1 ? (
-                      <ArchitecturalViewPicker
-                        views={architecturalViews.views}
-                        selectedViewId={architecturalViews.selectedView?.id ?? null}
-                        onSelect={architecturalViews.selectView}
-                      />
-                    ) : null}
-                    <ToolbarSeparator />
-                  </>
-                ) : null}
+                {architecturalViewToolbar}
                 {markdownPath ? (
                   <ToolbarIconButton
                     label="Open in Markdown editor"
@@ -1600,9 +1716,18 @@ function KnowledgeRecordRow({
         pressed ? styles.pressedRow : null,
       ]}
     >
-      <View style={styles.rowIcon}>
-        <ThemedKnowledgeKindIcon kind={record.kind} size="mdPlus" />
-      </View>
+      <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild accessibilityLabel={`Type: ${formatMetadataLabel(record.kind)}`}>
+          <View style={styles.rowIcon}>
+            <ThemedKnowledgeKindIcon kind={record.kind} size="mdPlus" />
+          </View>
+        </TooltipTrigger>
+        <TooltipContent side="top" align="center" offset={6}>
+          <Text style={styles.knowledgeKindTooltipText}>
+            Type: {formatMetadataLabel(record.kind)}
+          </Text>
+        </TooltipContent>
+      </Tooltip>
       <View style={styles.rowContent}>
         <Text numberOfLines={2} style={styles.rowTitle}>
           {record.title}
@@ -1661,6 +1786,22 @@ function architecturalViewSourceLabel(status: ArchitecturalViewSummary["sourceSt
   if (status === "stale") return "Source changed";
   if (status === "unknown") return "Source status unknown";
   return "Current";
+}
+
+function architecturalViewIdFor(knowledgeId: string): string {
+  const slug = knowledgeId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return `${slug || "knowledge"}-architecture`;
+}
+
+function architecturalViewTitleFor(knowledgeTitle: string): string {
+  return /architecture$/i.test(knowledgeTitle.trim())
+    ? knowledgeTitle
+    : `${knowledgeTitle} architecture`;
 }
 
 /** Selected tags stay visible as small removable chips; the full list lives in a popover. */
@@ -1860,6 +2001,8 @@ const ThemedArticleKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) 
   size: theme.iconSize.lg,
 }));
 const ThemedArchive = withUnistyles(Archive);
+const ThemedArchitecture = withUnistyles(Architecture);
+const ThemedBookOpen = withUnistyles(BookOpen);
 const ThemedCheck = withUnistyles(Check);
 const ThemedCheckSquare = withUnistyles(CheckSquare);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
@@ -2334,6 +2477,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.medium,
   },
+  knowledgeKindTooltipText: { color: theme.colors.foreground, fontSize: theme.fontSize.xs },
   viewMeta: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
   staleView: { color: theme.colors.statusWarning, fontSize: theme.fontSize.xs },
   viewer: { flex: 1, minWidth: 0, minHeight: 0, backgroundColor: theme.colors.surface0 },

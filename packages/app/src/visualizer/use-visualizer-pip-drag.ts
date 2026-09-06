@@ -65,6 +65,41 @@ export function resolvePipOffset(input: {
   };
 }
 
+/** Re-expresses a PIP position after its container changes without making a
+ * window resize look like a drag. Positions on the left/top half retain their
+ * inset from that edge; positions on the right/bottom half retain the opposite
+ * inset. The returned fraction remains bounded, so a newly narrow window can
+ * only clamp the PIP into view, never strand it off-screen. */
+export function rebasePipFractionForContainer(input: {
+  previousContainer: PipRect;
+  nextContainer: PipRect;
+  previousPip: PipRect;
+  nextPip: PipRect;
+  fraction: PipFraction;
+}): PipFraction {
+  const previous = resolvePipOffset({
+    container: input.previousContainer,
+    pip: input.previousPip,
+    fraction: input.fraction,
+  });
+  const previousFreeX = Math.max(0, input.previousContainer.width - input.previousPip.width);
+  const previousFreeY = Math.max(0, input.previousContainer.height - input.previousPip.height);
+  const nextFreeX = Math.max(0, input.nextContainer.width - input.nextPip.width);
+  const nextFreeY = Math.max(0, input.nextContainer.height - input.nextPip.height);
+  const nextLeft =
+    input.fraction.x <= 0.5
+      ? Math.min(previous.left, nextFreeX)
+      : Math.max(0, nextFreeX - (previousFreeX - previous.left));
+  const nextTop =
+    input.fraction.y <= 0.5
+      ? Math.min(previous.top, nextFreeY)
+      : Math.max(0, nextFreeY - (previousFreeY - previous.top));
+  return {
+    x: nextFreeX === 0 ? 0 : clampUnit(nextLeft / nextFreeX),
+    y: nextFreeY === 0 ? 0 : clampUnit(nextTop / nextFreeY),
+  };
+}
+
 export interface UseVisualizerPipDragInput {
   container: PipRect;
   pip: PipRect;
@@ -85,12 +120,41 @@ export interface VisualizerPipDragState {
 export function useVisualizerPipDrag(input: UseVisualizerPipDragInput): VisualizerPipDragState {
   const { container, pip, fraction, onCommit } = input;
   const [dragFraction, setDragFraction] = useState<PipFraction | null>(null);
+  const [layoutFraction, setLayoutFraction] = useState<PipFraction | null>(null);
+  const previousLayoutRef = useRef({ container, pip, fraction });
+
+  useEffect(() => {
+    const previous = previousLayoutRef.current;
+    const geometryChanged =
+      previous.container.width !== container.width ||
+      previous.container.height !== container.height ||
+      previous.pip.width !== pip.width ||
+      previous.pip.height !== pip.height;
+    const fractionChanged =
+      previous.fraction.x !== fraction.x || previous.fraction.y !== fraction.y;
+    if (geometryChanged && dragFraction === null) {
+      setLayoutFraction(
+        rebasePipFractionForContainer({
+          previousContainer: previous.container,
+          nextContainer: container,
+          previousPip: previous.pip,
+          nextPip: pip,
+          fraction: layoutFraction ?? fraction,
+        }),
+      );
+    } else if (fractionChanged) {
+      // A persisted setting change is intentional (normally a completed drag),
+      // so it supersedes any transient resize rebase.
+      setLayoutFraction(null);
+    }
+    previousLayoutRef.current = { container, pip, fraction };
+  }, [container, dragFraction, fraction, layoutFraction, pip]);
 
   // Read at pointermove time so the window listeners never need re-binding.
   const latest = useRef({ container, pip, fraction, onCommit });
   latest.current = { container, pip, fraction, onCommit };
 
-  const activeFraction = dragFraction ?? fraction;
+  const activeFraction = dragFraction ?? layoutFraction ?? fraction;
   const offset = resolvePipOffset({ container, pip, fraction: activeFraction });
 
   const handlePointerDown = useCallback((event: RNPointerEvent) => {

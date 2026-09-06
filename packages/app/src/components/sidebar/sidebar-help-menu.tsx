@@ -20,13 +20,13 @@ import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useSessionStore } from "@/stores/session-store";
-import type { Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { openExternalUrl } from "@/utils/open-external-url";
 
-const DISCORD_URL = "https://discord.gg/jz8T2uahpH";
+const DISCORD_URL = "https://discord.gg/Cwjm93KfK";
 const GITHUB_ISSUE_URL = "https://github.com/Draek2077/otto-code/issues/new";
 const CHANGELOG_URL = "https://otto-code.me/changelog";
 const ThemedActivity = withUnistyles(Activity);
@@ -39,6 +39,15 @@ const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foregrou
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
+
+function helpTriggerStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) {
+  return [
+    styles.trigger,
+    Boolean(hovered) && !pressed && styles.triggerHovered,
+    Boolean(pressed) && styles.triggerPressed,
+  ];
+}
+
 const diagnosticLeadingIcon = <ThemedActivity size="sm" uniProps={foregroundMutedColorMapping} />;
 const shortcutsLeadingIcon = <ThemedKeyboard size="sm" uniProps={foregroundMutedColorMapping} />;
 const discordLeadingIcon = <ThemedDiscordIcon size="sm" uniProps={foregroundMutedColorMapping} />;
@@ -97,14 +106,14 @@ export function SidebarHelpMenu() {
         <TooltipTrigger asChild>
           <View>
             <DropdownMenuTrigger
-              style={styles.trigger}
+              style={helpTriggerStyle}
               testID="sidebar-help"
               accessibilityRole="button"
               accessibilityLabel={t("sidebar.help.trigger")}
             >
               {({ hovered }) => (
                 <ThemedCircleHelp
-                  size="md"
+                  size="chromeXl"
                   uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
                 />
               )}
@@ -176,12 +185,20 @@ export function SidebarHelpMenu() {
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    width: 28,
-    height: 28,
+    // Match FooterIconButton: Help belongs to the footer icon series, rather
+    // than using the smaller menu-trigger geometry.
+    width: compactUp(32, 1.5),
+    height: compactUp(32, 1.5),
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[1],
+    padding: 0,
+    borderRadius: theme.borderRadius.lg,
+  },
+  triggerHovered: {
+    backgroundColor: theme.colors.surfaceInteractiveHover,
+  },
+  triggerPressed: {
+    backgroundColor: theme.colors.surfaceInteractivePressed,
   },
   tooltipText: {
     fontSize: theme.fontSize.base,

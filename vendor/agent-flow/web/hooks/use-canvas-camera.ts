@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, type MutableRefObject } from 'react'
 import { Agent, ToolCallNode, Discovery, ANIM, NODE } from '@/lib/agent-types'
-import { BUBBLE_HOLD, BUBBLE_FADE_OUT, BUBBLE_MAX_W, TOOL_CARD_W, TOOL_CARD_H, DISC_BOUNDS_HALF_W, DISC_BOUNDS_HALF_H } from '@/lib/canvas-constants'
+import { AGENT_DRAW, BUBBLE_DRAW, BUBBLE_FADE_OUT, BUBBLE_GAP, BUBBLE_HOLD, BUBBLE_MAX_LINES, BUBBLE_MAX_W, DISC_BOUNDS_HALF_H, DISC_BOUNDS_HALF_W, PERSISTENT_BUBBLE_MAX_LINES, TOOL_CARD_H, TOOL_CARD_W } from '@/lib/canvas-constants'
 
 /** Extra padding added to agent node radii for auto-fit bounding box */
 // OTTO: 22 -> 12. Stacks on top of ANIM.viewportPadding, so the two together
@@ -13,6 +13,11 @@ const AUTOFIT_AGENT_PADDING = 16
  * (4) only bounds manual wheel zoom and does not apply here.
  */
 const AUTOFIT_MAX_SCALE = 3.2
+const PERSISTENT_BUBBLE_MAX_H =
+  BUBBLE_DRAW.normal.headerH +
+  PERSISTENT_BUBBLE_MAX_LINES * BUBBLE_DRAW.normal.lineH +
+  BUBBLE_DRAW.normal.padding +
+  BUBBLE_DRAW.normal.lineH * 0.8
 
 /**
  * OTTO PATCH (OTTO-PATCHES.md): host-overridable auto-fit framing.
@@ -159,9 +164,25 @@ export function useCanvasCamera({
       minY = Math.min(minY, agent.y - r)
       maxY = Math.max(maxY, agent.y + r)
       if (agent.messageBubbles.length > 0) {
+        // OTTO PATCH (OTTO-PATCHES.md): the focused chat background retains one
+        // persistent reply through the native bubble renderer. Unlike transient
+        // event hints, it is conversational content, so the camera must reserve
+        // its complete drawn bounds rather than just a visual nudge to the fit.
+        const persistentBubble = agent.messageBubbles.find(b => b.persistent)
+        if (persistentBubble) {
+          const bubbleW = persistentBubble._cachedW ?? BUBBLE_MAX_W
+          const bubbleH = persistentBubble._cachedH ?? PERSISTENT_BUBBLE_MAX_H
+          const nodeRadius = agent.isMain ? NODE.radiusMain : NODE.radiusSub
+          const bubbleX = agent.x + nodeRadius + AGENT_DRAW.bubbleAnchorOffset
+          const bubbleY = agent.y + AGENT_DRAW.bubbleCursorY
+          maxX = Math.max(maxX, bubbleX + bubbleW)
+          minY = Math.min(minY, bubbleY)
+          maxY = Math.max(maxY, bubbleY + bubbleH + BUBBLE_GAP)
+          continue
+        }
         const visibleCount = agent.messageBubbles.filter(b => {
           const age = (simTimeRef.current ?? 0) - b.time
-          return age <= BUBBLE_HOLD + BUBBLE_FADE_OUT
+          return b.persistent || age <= BUBBLE_HOLD + BUBBLE_FADE_OUT
         }).length
         if (visibleCount > 0) {
           maxX = Math.max(maxX, agent.x + r + 14 + BUBBLE_MAX_W * 0.4)

@@ -67,13 +67,14 @@ export function VisualizerPipHost({
   // the latter is dead state.
   const workspaceTabs = useWorkspaceTabsFromLayout(tabPersistenceKey);
   const hasVisualizerTab = workspaceTabs.some((tab) => tab.target.kind === "visualizer");
-  useReconcileVisualizerSurface(hasVisualizerTab);
+  useReconcileVisualizerSurface(hasVisualizerTab, isVisible);
 
   const shown = !(
     isCompact ||
     !workspaceId ||
     !visualizerEnabled ||
     !settings.visualizerPipOpen ||
+    settings.visualizerBackgroundOpen ||
     hasVisualizerTab
   );
   // With motion on, the PIP fades rather than vanishing - which means staying

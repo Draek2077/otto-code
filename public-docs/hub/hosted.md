@@ -12,4 +12,4 @@ category: Hub
 
 To start now, [run Hub yourself](/docs/hub/self-hosting). Projects, configuration, triggers, daemons, and activity use the same model in both forms. The managed service owns its GitHub App, Slack app, and Discord application; a self-hosted Hub uses apps you create and control.
 
-For the hosted release, [join the Otto Discord](https://discord.gg/jz8T2uahpH) and watch the `#otto-hub` channel. The release will be announced there; you do not need to message anyone directly.
+For the hosted release, [join the Otto Discord](https://discord.gg/Cwjm93KfK) and watch the `#otto-hub` channel. The release will be announced there; you do not need to message anyone directly.

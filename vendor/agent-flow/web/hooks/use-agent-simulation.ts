@@ -118,7 +118,7 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     agent: Agent, agents: Map<string, Agent>,
     toolCalls: Map<string, ToolCallNode>, currentTime: number,
   ): { x: number; y: number } => {
-    const visibleBubbles = agent.messageBubbles.filter(b => currentTime - b.time <= BUBBLE_VISIBLE_S)
+    const visibleBubbles = agent.messageBubbles.filter(b => b.persistent || currentTime - b.time <= BUBBLE_VISIBLE_S)
     const bubbleRect = visibleBubbles.length > 0 ? {
       x1: agent.x + 30, y1: agent.y - 30,
       x2: agent.x + 300, y2: agent.y - 20 + visibleBubbles.length * 60 + 20,
@@ -442,6 +442,49 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     setTimeout(() => syncForceSimulation(snapshot.simState.agents, snapshot.simState.edges), 0)
   }, [syncForceSimulation, commitState])
 
+  // OTTO PATCH (OTTO-PATCHES.md): regular Visualizer surfaces deliberately
+  // suppress every transient chat bubble. The focused chat background is the
+  // narrow exception: when its transcript is hidden, the root AI retains one
+  // *native canvas* bubble with its latest assistant reply. Derive it from the
+  // simulation's conversation record, not from host chat markup, so hydration,
+  // session restore, and live events all take the same path.
+  const setLatestAssistantBubble = useCallback((enabled: boolean) => {
+    const previous = frameRef.current
+    let changed = false
+    const agents = new Map(previous.agents)
+
+    for (const [agentId, agent] of previous.agents) {
+      const latestAssistant = enabled && agent.isMain
+        ? [...(previous.conversations.get(agentId) ?? [])]
+            .reverse()
+            .find(message => message.type === 'assistant' && message.content.trim().length > 0)
+        : undefined
+      const nextBubbles = latestAssistant
+        ? [{
+            text: latestAssistant.content,
+            time: latestAssistant.timestamp,
+            role: 'assistant' as const,
+            persistent: true,
+          }]
+        : []
+      const current = agent.messageBubbles
+      const unchanged = current.length === nextBubbles.length && current.every((bubble, index) => {
+        const next = nextBubbles[index]
+        return next != null &&
+          bubble.text === next.text &&
+          bubble.time === next.time &&
+          bubble.role === next.role &&
+          bubble.persistent === next.persistent
+      })
+      if (!unchanged) {
+        agents.set(agentId, { ...agent, messageBubbles: nextBubbles })
+        changed = true
+      }
+    }
+
+    if (changed) commitState({ ...previous, agents })
+  }, [commitState])
+
   return {
     // Canvas reads frameRef directly for 60fps rendering
     frameRef,
@@ -459,5 +502,6 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     play, pause, restart, setSpeed, seekToTime,
     updateAgentPosition,
     saveSnapshot, restoreSnapshot,
+    setLatestAssistantBubble,
   }
 }

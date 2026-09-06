@@ -3,6 +3,7 @@ import { withUnistyles } from "react-native-unistyles";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { BLACK_CHAT_CANVAS_COLOR, useBlackChatScope } from "@/components/black-chat-scope-context";
 import type { Theme } from "@/styles/theme";
+import { useChatVisualizerBackground } from "@/visualizer/chat-background-context";
 
 const CHAT_SEAM_FADE_HEIGHT = 24;
 
@@ -69,10 +70,14 @@ export function ChatSeamFade({ edge }: { edge: ChatSeamFadeEdge }) {
   // gradient over pure black - visible as a grey band along the tab-bar and
   // composer seams.
   const isBlackChat = useBlackChatScope();
+  const visualizerBackground = useChatVisualizerBackground();
+  // ChatTranscriptMask reveals the live canvas at both edges in this mode.
+  if (visualizerBackground) return null;
+  const explicitColor = isBlackChat ? BLACK_CHAT_CANVAS_COLOR : null;
   return (
     <View style={edge === "top" ? TOP_STRIP_STYLE : BOTTOM_STRIP_STYLE} pointerEvents="none">
-      {isBlackChat ? (
-        <ChatSeamFadeGradient edge={edge} color={BLACK_CHAT_CANVAS_COLOR} />
+      {explicitColor ? (
+        <ChatSeamFadeGradient edge={edge} color={explicitColor} />
       ) : (
         <ThemedChatSeamFadeGradient edge={edge} uniProps={fadeColorMapping} />
       )}

@@ -34,6 +34,7 @@ vi.mock("@/runtime/host-runtime", () => ({
 
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { useVisualizerEventAdapter } from "./use-visualizer-event-adapter";
+import { resolveRootAgentId } from "./visualizer-session-identity";
 
 const SERVER_ID = "server-1";
 const WORKSPACE_ID = "ws-main";
@@ -189,6 +190,46 @@ describe("useVisualizerEventAdapter (stateful)", () => {
       }),
     );
   }
+
+  it("resolves child chat selection to the session carrying its agent nodes", async () => {
+    const agents = [
+      makeAgent({ id: "root-1", title: "Parent" }),
+      makeAgent({ id: "child-1", title: "Child", parentAgentId: "root-1" }),
+      makeAgent({
+        id: "observed-1",
+        title: "Explore",
+        parentAgentId: "child-1",
+        attend: "observed",
+      }),
+    ];
+    setAgents(agents);
+    renderAdapter();
+    await settle();
+    const selectedId = resolveRootAgentId(
+      "child-1",
+      new Map(agents.map((agent) => [agent.id, agent])),
+    );
+    expect(selectedId).toBe("root-1");
+    expect(
+      collectEvents(messages)
+        .filter((event) => event.type === "agent_spawn")
+        .map((event) => ({ name: event.payload.name, sessionId: event.sessionId })),
+    ).toEqual([
+      { name: "Parent", sessionId: selectedId },
+      { name: "Child", sessionId: selectedId },
+      { name: "Explore", sessionId: selectedId },
+    ]);
+    // A parent from another workspace is outside this canvas's membership.
+    expect(
+      resolveRootAgentId(
+        "child-1",
+        new Map([
+          ["child-1", agents[1]!],
+          ["root-1", makeAgent({ id: "root-1", workspaceId: "elsewhere" })],
+        ]),
+      ),
+    ).toBe("child-1");
+  });
 
   it("keeps a running observed subagent alive until it goes idle", async () => {
     setAgents([makeAgent({ id: "root-1", title: "My chat" })]);

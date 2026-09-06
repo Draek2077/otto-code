@@ -996,6 +996,10 @@ type ArchitecturalViewsDraftGetContentPayload = Extract<
   SessionOutboundMessage,
   { type: "architectural-views.draft.get-content.response" }
 >["payload"];
+type ArchitecturalViewsDraftListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "architectural-views.draft.list.response" }
+>["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"];
 
@@ -9739,6 +9743,22 @@ export class DaemonClient {
         draftId: options.draftId,
       },
       responseType: "architectural-views.draft.get-content.response",
+    });
+  }
+
+  async listArchitecturalViewDrafts(options: {
+    workspaceId: string;
+    knowledgeReference?: { kind: "root" | "record"; id: string };
+    requestId?: string;
+  }): Promise<ArchitecturalViewsDraftListPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "architectural-views.draft.list.request",
+        workspaceId: options.workspaceId,
+        ...(options.knowledgeReference ? { knowledgeReference: options.knowledgeReference } : {}),
+      },
+      responseType: "architectural-views.draft.list.response",
     });
   }
 

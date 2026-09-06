@@ -21,6 +21,7 @@ import {
   detectStateChanges as detectStateChangesPure,
 } from './canvas/index'
 import { useCanvasCamera, type CameraFramingConfig } from '@/hooks/use-canvas-camera'
+import { BUBBLE_DRAW, BUBBLE_MAX_LINES, PERSISTENT_BUBBLE_MAX_LINES } from '@/lib/canvas-constants'
 import { useCanvasInteraction } from '@/hooks/use-canvas-interaction'
 
 interface CanvasProps {
@@ -321,7 +322,23 @@ export function AgentCanvas({
       drawToolCalls(ctx, toolCalls, timeRef.current, selectedToolCallId)
       drawDiscoveries(ctx, discoveries, agents, selectedDiscoveryId)
       drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, nodeShape, showNodeGlow, contextDisplay)
-      drawMessageBubblesWorld(ctx, agents, simTimeRef.current)
+      // The focused chat background's persistent reply is conversational
+      // content, not an eight-line transient hint. Spend up to 78% of the
+      // currently visible canvas height on it, then leave the camera to fit the
+      // resulting native bubble and its agent in one frame.
+      const persistentMaxLines = Math.min(
+        PERSISTENT_BUBBLE_MAX_LINES,
+        Math.max(
+          BUBBLE_MAX_LINES,
+          Math.floor(
+            ((h * 0.78) / Math.max(transform.scale, 0.01) -
+              BUBBLE_DRAW.normal.headerH -
+              BUBBLE_DRAW.normal.padding) /
+              BUBBLE_DRAW.normal.lineH,
+          ),
+        ),
+      )
+      drawMessageBubblesWorld(ctx, agents, simTimeRef.current, persistentMaxLines)
       if (showCostOverlay) drawCostLabels(ctx, agents, toolCalls, showStats)
       drawParticles(ctx, particles, edgeMap, agents, toolCalls, timeRef.current)
       drawEffects(ctx, effectsRef.current, nodeShape)

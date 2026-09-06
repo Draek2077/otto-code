@@ -23,7 +23,7 @@ export const Route = createFileRoute("/hub")({
   component: Hub,
 });
 
-const DISCORD_INVITE_URL = "https://discord.gg/jz8T2uahpH";
+const DISCORD_INVITE_URL = "https://discord.gg/Cwjm93KfK";
 
 const LINK_CLASS = "underline hover:text-white/80";
 

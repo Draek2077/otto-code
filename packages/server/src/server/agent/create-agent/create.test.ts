@@ -96,6 +96,51 @@ test("session create forwards clientMessageId to the initial prompt run options"
   });
 });
 
+test("session create completes its pre-prompt binding before starting the first prompt", async () => {
+  const snapshot = {
+    id: "agent-1",
+    provider: "codex",
+    cwd: "/tmp/otto-create-test",
+    runtimeInfo: null,
+  } as ManagedAgent;
+  const order: string[] = [];
+  const streamAgent = vi.fn(() => {
+    order.push("prompt");
+    return (async function* noop() {})();
+  });
+  const dependencies: Parameters<typeof createAgentCommand>[0] = {
+    agentManager: {
+      createAgent: vi.fn(async () => snapshot),
+      getAgent: vi.fn(() => snapshot),
+      tryRunOutOfBand: vi.fn(() => false),
+      hasInFlightRun: vi.fn(() => false),
+      isBusyOnlyWithOutOfBandRun: vi.fn(() => false),
+      streamAgent,
+      waitForAgentRunStart: vi.fn(async () => undefined),
+    } as unknown as Parameters<typeof createAgentCommand>[0]["agentManager"],
+    agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
+    logger: createTestLogger(),
+    providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+  };
+
+  await createAgentCommand(dependencies, {
+    kind: "session",
+    config: { provider: "codex", cwd: "/tmp/otto-create-test" },
+    workspaceId: "ws-create-test",
+    initialPrompt: "make the view",
+    labels: {},
+    provisionalTitle: null,
+    firstAgentContext: { attachments: [] },
+    onCreatedBeforeInitialPrompt: async (agent) => {
+      expect(agent.id).toBe("agent-1");
+      order.push("bound");
+    },
+    buildSessionConfig: async (config) => ({ sessionConfig: config }),
+  });
+
+  expect(order).toEqual(["bound", "prompt"]);
+});
+
 test("session create validates the requested mode against the provider's modes", async () => {
   const snapshot = {
     id: "agent-1",

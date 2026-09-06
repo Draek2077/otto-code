@@ -9,7 +9,9 @@ import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { useContainerHeight } from "@/hooks/use-container-height";
 import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
+import { ChatVisualizerBackground } from "@/visualizer/chat-visualizer-background";
 import { ChatSeamFade } from "@/components/chat-seam-fade";
+import { ChatTranscriptMask } from "@/components/chat-transcript-mask";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
 import { COMPOSER_PILL_CLEARANCE } from "@/composer/pill-styles";
@@ -322,12 +324,71 @@ function resolveOnlineServerIds(input: { isConnected: boolean; serverId: string 
   return [input.serverId];
 }
 
+function shouldEnableDraftCommandCenter(input: {
+  isPaneFocused: boolean;
+  isSubmitting: boolean;
+  architecturalViewDraft: { viewId: string; draftId: string } | undefined;
+}): boolean {
+  return input.isPaneFocused && !input.isSubmitting && input.architecturalViewDraft === undefined;
+}
+
+/**
+ * Starts a surface-owned first turn through the ordinary draft creation flow.
+ * This deliberately creates the same visible user message, stream, and tool
+ * transcript as a person pressing Send; it is not a hidden background task.
+ */
+function useSurfaceInitialPrompt(input: {
+  prompt?: string;
+  enabled: boolean;
+  draftStoreKey: string;
+  isDraftEmpty: boolean;
+  onStarted?: () => void;
+  submit: (text: string) => Promise<unknown>;
+  restore: (text: string) => void;
+}) {
+  const submittedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const text = input.prompt?.trim();
+    if (!text || !input.enabled || !input.isDraftEmpty) {
+      return;
+    }
+    const key = `${input.draftStoreKey}:${text}`;
+    if (submittedKeyRef.current === key) {
+      return;
+    }
+    submittedKeyRef.current = key;
+    input.onStarted?.();
+    void input.submit(text).catch(() => {
+      input.restore(text);
+    });
+  }, [input]);
+}
+
+function shouldAutoSubmitSurfaceInitialPrompt(input: {
+  isHydrated: boolean;
+  workingDirectory: string | null;
+  client: DaemonClient | null;
+  isModelLoading: boolean;
+  isSubmitting: boolean;
+}): boolean {
+  return Boolean(
+    input.isHydrated &&
+    input.workingDirectory &&
+    input.client &&
+    !input.isModelLoading &&
+    !input.isSubmitting,
+  );
+}
+
 interface WorkspaceDraftAgentTabProps {
   serverId: string;
   workspaceId: string;
   tabId: string;
   draftId: string;
   initialSetup?: WorkspaceDraftTabSetup;
+  /** A surface-owned first turn submitted through the normal visible chat flow. */
+  autoSubmitInitialPrompt?: string;
+  onAutoSubmitInitialPromptStarted?: () => void;
   architecturalViewDraft?: { viewId: string; draftId: string };
   isPaneFocused: boolean;
   onCreated: (snapshot: AgentSnapshotPayload) => void;
@@ -351,6 +412,8 @@ export function WorkspaceDraftAgentTab({
   tabId,
   draftId,
   initialSetup = undefined,
+  autoSubmitInitialPrompt,
+  onAutoSubmitInitialPromptStarted,
   architecturalViewDraft,
   isPaneFocused,
   onCreated,
@@ -570,7 +633,15 @@ export function WorkspaceDraftAgentTab({
   );
   useAgentControlCommandCenterActions({
     sourceId: `draft:${serverId}:${tabId}`,
-    enabled: isPaneFocused && !isSubmitting,
+    // An Architectural View draft turns into the real authoring chat as soon
+    // as its first submission creates an agent. Registering command-center
+    // controls against the temporary tab id asks the daemon for a timeline
+    // that cannot exist yet.
+    enabled: shouldEnableDraftCommandCenter({
+      isPaneFocused,
+      isSubmitting,
+      architecturalViewDraft,
+    }),
     controls: {
       serverId,
       ownerKey: tabId,
@@ -605,6 +676,32 @@ export function WorkspaceDraftAgentTab({
     client &&
     !composerState.isModelLoading,
   );
+  const submitSurfaceInitialPrompt = useCallback(
+    (text: string) => {
+      invariant(draftWorkingDirectory, "Workspace directory is required");
+      return handleCreateFromInput({
+        text,
+        attachments: [],
+        cwd: draftWorkingDirectory,
+      });
+    },
+    [draftWorkingDirectory, handleCreateFromInput],
+  );
+  useSurfaceInitialPrompt({
+    prompt: autoSubmitInitialPrompt,
+    enabled: shouldAutoSubmitSurfaceInitialPrompt({
+      isHydrated: draftInput.isHydrated,
+      workingDirectory: draftWorkingDirectory,
+      client,
+      isModelLoading: composerState.isModelLoading,
+      isSubmitting,
+    }),
+    draftStoreKey,
+    isDraftEmpty: draftInput.text.trim().length === 0,
+    onStarted: onAutoSubmitInitialPromptStarted,
+    submit: submitSurfaceInitialPrompt,
+    restore: replaceDraftText,
+  });
   const autoSubmitKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!isReadyForPendingAutoSubmit) {
@@ -684,78 +781,89 @@ export function WorkspaceDraftAgentTab({
     }),
     [composerState.agentControls, handleDropdownCloseFocus, isSubmitting],
   );
+  const visualizerFooter = (
+    <ReanimatedAnimated.View style={inputAreaWrapperStyle} onLayout={onInputAreaLayout}>
+      {importPillPress ? (
+        <View style={styles.importPillRow}>
+          <ChatWidthBounds style={styles.importPillContent}>
+            <ComposerImportPill onPress={importPillPress} />
+          </ChatWidthBounds>
+        </View>
+      ) : null}
+      <Composer
+        agentId={tabId}
+        serverId={serverId}
+        workspaceId={workspaceId}
+        externalKeyboardShift
+        isPaneFocused={isPaneFocused}
+        autoStartDictation={pendingWakeWordAutoStart}
+        onAutoStartDictationConsumed={handleAutoStartDictationConsumed}
+        onSubmitMessage={handleCreateFromInput}
+        isSubmitLoading={isSubmitting}
+        blurOnSubmit={true}
+        value={draftInput.text}
+        onChangeText={draftInput.editText}
+        textReplacementKey={draftInput.textReplacementKey}
+        attachments={draftInput.attachments}
+        attachmentScopeKeys={attachmentScopeKeys}
+        attachmentWriteScopeKey={workspaceAttachmentScopeKey}
+        onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
+        onChangeAttachments={draftInput.setAttachments}
+        cwd={composerState.workingDir}
+        clearDraft={draftInput.clear}
+        autoFocus={shouldAutoFocusWorkspaceDraftComposer({ isPaneFocused, isSubmitting })}
+        autoFocusKey={String(draftInput.attachmentFocusRequestId)}
+        onFocusInput={handleFocusInputCallback}
+        commandDraftConfig={composerState.commandDraftConfig}
+        agentControls={composerAgentControls}
+        viewportHeight={tabHeight}
+      />
+    </ReanimatedAnimated.View>
+  );
+
+  const draftConfiguration = (
+    <ChatTranscriptMask>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
+        <View style={styles.configSection}>
+          {formErrorMessage ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{formErrorMessage}</Text>
+            </View>
+          ) : null}
+        </View>
+      </ScrollView>
+    </ChatTranscriptMask>
+  );
+
   return (
     <FileDropZone
       style={[styles.container, resolveBlackChatCanvasStyle(isBlackChat)]}
       onLayout={onTabLayout}
     >
-      <View style={styles.contentContainer}>
-        {isSubmitting && draftAgent ? (
-          <View style={styles.streamContainer}>
-            <AgentStreamView
-              agentId={tabId}
-              serverId={serverId}
-              context={draftAgent}
-              streamItems={submittedStreamItems}
-              pendingMessageSubmissions={pendingMessageSubmissions}
-              turnPresentation={turnPresentation}
-              pendingPermissions={EMPTY_PENDING_PERMISSIONS}
-              onOpenWorkspaceFile={onOpenWorkspaceFile}
-            />
-          </View>
-        ) : (
-          <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
-            <View style={styles.configSection}>
-              {formErrorMessage ? (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{formErrorMessage}</Text>
-                </View>
-              ) : null}
+      <ChatVisualizerBackground>
+        <View style={styles.contentContainer}>
+          {isSubmitting && draftAgent ? (
+            <View style={styles.streamContainer}>
+              <AgentStreamView
+                agentId={tabId}
+                serverId={serverId}
+                context={draftAgent}
+                streamItems={submittedStreamItems}
+                pendingMessageSubmissions={pendingMessageSubmissions}
+                turnPresentation={turnPresentation}
+                pendingPermissions={EMPTY_PENDING_PERMISSIONS}
+                onOpenWorkspaceFile={onOpenWorkspaceFile}
+              />
             </View>
-          </ScrollView>
-        )}
-        {/* The stream branch's AgentStreamView carries its own seam fades;
+          ) : (
+            draftConfiguration
+          )}
+          {/* The stream branch's AgentStreamView carries its own seam fades;
             rendering another here would double-stack the gradient. */}
-        {isSubmitting && draftAgent ? null : <ChatSeamFade edge="top" />}
-      </View>
-
-      <ReanimatedAnimated.View style={inputAreaWrapperStyle} onLayout={onInputAreaLayout}>
-        {importPillPress ? (
-          <View style={styles.importPillRow}>
-            <ChatWidthBounds style={styles.importPillContent}>
-              <ComposerImportPill onPress={importPillPress} />
-            </ChatWidthBounds>
-          </View>
-        ) : null}
-        <Composer
-          agentId={tabId}
-          serverId={serverId}
-          workspaceId={workspaceId}
-          externalKeyboardShift
-          isPaneFocused={isPaneFocused}
-          autoStartDictation={pendingWakeWordAutoStart}
-          onAutoStartDictationConsumed={handleAutoStartDictationConsumed}
-          onSubmitMessage={handleCreateFromInput}
-          isSubmitLoading={isSubmitting}
-          blurOnSubmit={true}
-          value={draftInput.text}
-          onChangeText={draftInput.editText}
-          textReplacementKey={draftInput.textReplacementKey}
-          attachments={draftInput.attachments}
-          attachmentScopeKeys={attachmentScopeKeys}
-          attachmentWriteScopeKey={workspaceAttachmentScopeKey}
-          onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
-          onChangeAttachments={draftInput.setAttachments}
-          cwd={composerState.workingDir}
-          clearDraft={draftInput.clear}
-          autoFocus={shouldAutoFocusWorkspaceDraftComposer({ isPaneFocused, isSubmitting })}
-          autoFocusKey={String(draftInput.attachmentFocusRequestId)}
-          onFocusInput={handleFocusInputCallback}
-          commandDraftConfig={composerState.commandDraftConfig}
-          agentControls={composerAgentControls}
-          viewportHeight={tabHeight}
-        />
-      </ReanimatedAnimated.View>
+          {isSubmitting && draftAgent ? null : <ChatSeamFade edge="top" />}
+        </View>
+        {visualizerFooter}
+      </ChatVisualizerBackground>
     </FileDropZone>
   );
 }

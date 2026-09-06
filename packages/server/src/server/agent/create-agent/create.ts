@@ -77,6 +77,12 @@ export interface CreateAgentFromSessionInput {
   env?: Record<string, string>;
   provisionalTitle: string | null;
   firstAgentContext: FirstAgentContext;
+  /**
+   * Runs after the agent record exists but before its initial prompt is
+   * started. Session-owned capabilities that authorize agent-scoped tools use
+   * this seam so the very first tool invocation sees its complete binding.
+   */
+  onCreatedBeforeInitialPrompt?: (agent: ManagedAgent) => Promise<void>;
   buildSessionConfig: (
     config: AgentSessionConfig,
     gitOptions?: GitSetupOptions,
@@ -206,6 +212,10 @@ export async function createAgentCommand(
     undefined,
     resolved.createOptions,
   );
+
+  if (input.kind === "session") {
+    await input.onCreatedBeforeInitialPrompt?.(snapshot);
+  }
 
   resolved.setupContinuation?.startAfterAgentCreate({
     agentId: snapshot.id,
