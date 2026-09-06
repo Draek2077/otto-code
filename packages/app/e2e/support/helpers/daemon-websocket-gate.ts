@@ -293,7 +293,10 @@ function recordClientRequest(
   directoryStarts.total[directory] += 1;
 }
 
-export async function installDaemonWebSocketGate(page: Page) {
+export async function installDaemonWebSocketGate(
+  page: Page,
+  routePattern = daemonWsRoutePattern(),
+) {
   let acceptingConnections = true;
   let reconnectWithFreshClient = false;
   let suppressAgentStream = false;
@@ -441,7 +444,7 @@ export async function installDaemonWebSocketGate(page: Page) {
     return true;
   };
 
-  await page.routeWebSocket(daemonWsRoutePattern(), (ws) => {
+  await page.routeWebSocket(routePattern, (ws) => {
     if (!acceptingConnections) {
       void ws.close({ code: 1008, reason: "Blocked by reconnect test." });
       return;

@@ -1,6 +1,7 @@
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell, openSettings } from "../support/helpers/app";
-import { getE2EDaemonPort } from "../support/helpers/daemon-port";
+import { getE2EDaemonPort, wsRoutePatternForPort } from "../support/helpers/daemon-port";
+import { installDaemonWebSocketGate } from "../support/helpers/daemon-websocket-gate";
 import { TEST_HOST_LABEL } from "../support/helpers/daemon-registry";
 import { getServerId } from "../support/helpers/server-id";
 import {
@@ -94,19 +95,28 @@ test.describe("Settings host page", () => {
     page,
     outdatedDaemon,
   }) => {
+    const gate = await installDaemonWebSocketGate(
+      page,
+      wsRoutePatternForPort(new URL(`http://${outdatedDaemon.endpoint}`).port),
+    );
     await seedSavedSettingsHosts(page, [outdatedDaemon]);
     await page.reload();
     await openSettings(page);
     await openSettingsHost(page, outdatedDaemon.serverId);
     await openHostSection(page, outdatedDaemon.serverId, "host");
 
-    page.once("dialog", (dialog) => dialog.accept());
     const updateButton = page.getByTestId("host-page-update-button");
+    // Keep the real response pending while checking progress: installation
+    // refusal can otherwise finish before the next browser assertion.
+    gate.holdNextServerMessage("daemon.update.response");
     await updateButton.click();
+    await page.getByTestId("confirm-dialog-confirm").click();
+    await gate.waitForHeldServerMessage("daemon.update.response");
 
     await expect(
       updateButton.filter({ hasText: /Preparing update|Downloading packages|Installing/ }),
     ).toBeDisabled();
+    gate.releaseHeldServerMessage("daemon.update.response");
 
     const updateFailure = page.getByTestId("host-page-update-error");
     await expect(updateFailure).toBeVisible();

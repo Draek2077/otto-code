@@ -900,6 +900,11 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
   const runtime = getHostRuntimeStore();
   const [isUpdating, setIsUpdating] = useState(false);
   const [progressPhase, setProgressPhase] = useState<string | null>(null);
+  // Keep failures on the card; React Native Web's Alert.alert displays nothing.
+  const [updateError, setUpdateError] = useState<{ title: string; message: string } | null>(null);
+  const reportUpdateError = useCallback((title: string, message: string) => {
+    setUpdateError({ title, message });
+  }, []);
   const isMountedRef = useRef(true);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -908,6 +913,9 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
   );
   const supportsSelfUpdate = useSessionStore(
     (state) => state.sessions[host.serverId]?.serverInfo?.features?.daemonSelfUpdate === true,
+  );
+  const desktopManaged = useSessionStore(
+    (state) => state.sessions[host.serverId]?.serverInfo?.desktopManaged === true,
   );
 
   const appVersion = resolveAppVersion();
@@ -963,26 +971,26 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
         setIsUpdating(false);
         setProgressPhase(null);
         if (!reconnected) {
-          Alert.alert(
+          reportUpdateError(
             t("settings.host.daemon.update.unableToReconnectTitle"),
             t("settings.host.daemon.update.unableToReconnectMessage", { name: host.label }),
           );
         }
       }
     },
-    [hasReconnectedAfter, host.label, isHostConnected, t, waitForCondition],
+    [hasReconnectedAfter, host.label, isHostConnected, reportUpdateError, t, waitForCondition],
   );
 
   const handleUpdate = useCallback(() => {
     if (!daemonClient) {
-      Alert.alert(
+      reportUpdateError(
         t("settings.host.daemon.update.unavailableTitle"),
         t("settings.host.daemon.update.unavailableMessage"),
       );
       return;
     }
     if (!isHostConnected()) {
-      Alert.alert(
+      reportUpdateError(
         t("settings.host.daemon.update.offlineTitle"),
         t("settings.host.daemon.update.offlineMessage"),
       );
@@ -998,6 +1006,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
     })
       .then((confirmed) => {
         if (!confirmed) return;
+        setUpdateError(null);
         const startGeneration = runtime.getSnapshot(host.serverId)?.clientGeneration ?? null;
         setIsUpdating(true);
         setProgressPhase(t("settings.host.daemon.update.phaseStarting"));
@@ -1027,7 +1036,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
               if (!isMountedRef.current) return undefined;
               setIsUpdating(false);
               setProgressPhase(null);
-              Alert.alert(
+              reportUpdateError(
                 t("settings.host.daemon.update.requestFailedTitle"),
                 t("settings.host.daemon.update.requestFailedMessage", {
                   error: response.error ?? "Unknown error",
@@ -1046,7 +1055,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
             if (!isMountedRef.current) return;
             setIsUpdating(false);
             setProgressPhase(null);
-            Alert.alert(
+            reportUpdateError(
               t("settings.host.daemon.update.requestFailedTitle"),
               t("settings.host.daemon.update.requestFailedMessage", {
                 error: error instanceof Error ? error.message : "Unknown error",
@@ -1057,20 +1066,30 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
       })
       .catch((error) => {
         console.error(`[HostPage] Failed to open update confirmation for ${host.label}`, error);
-        Alert.alert(
+        reportUpdateError(
           t("settings.host.daemon.update.requestFailedTitle"),
           t("settings.host.daemon.update.dialogFailedMessage"),
         );
       });
-  }, [daemonClient, host.label, host.serverId, isHostConnected, runtime, t, waitForDaemonRestart]);
+  }, [
+    daemonClient,
+    host.label,
+    host.serverId,
+    isHostConnected,
+    reportUpdateError,
+    runtime,
+    t,
+    waitForDaemonRestart,
+  ]);
 
   const updateIcon = useMemo(
     () => <ArrowUpToLine size={theme.iconSize.sm} color={theme.colors.foreground} />,
     [theme.iconSize.sm, theme.colors.foreground],
   );
 
-  // Don't show if the daemon doesn't support self-update or versions match
-  if (!supportsSelfUpdate || !hasVersionMismatch) {
+  // A desktop-managed host cannot self-update, but still needs to explain
+  // how to resolve its version mismatch.
+  if ((!supportsSelfUpdate && !desktopManaged) || !hasVersionMismatch) {
     return null;
   }
 
@@ -1083,19 +1102,31 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
       <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.host.daemon.update.title")}</Text>
-          <Text style={settingsStyles.rowHint}>{t("settings.host.daemon.update.hint")}</Text>
+          <Text style={settingsStyles.rowHint}>
+            {t(
+              desktopManaged
+                ? "settings.host.daemon.update.desktopManagedHint"
+                : "settings.host.daemon.update.hint",
+            )}
+          </Text>
         </View>
         <Button
           variant="outline"
           size="sm"
           leftIcon={updateIcon}
           onPress={handleUpdate}
-          disabled={isUpdating || !daemonClient || !isConnected}
+          disabled={desktopManaged || isUpdating || !daemonClient || !isConnected}
           testID="host-page-update-button"
         >
           {buttonLabel}
         </Button>
       </View>
+      {updateError ? (
+        <View testID="host-page-update-error" accessibilityRole="alert">
+          <Text style={styles.errorText}>{updateError.title}</Text>
+          <Text style={styles.errorText}>{updateError.message}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }

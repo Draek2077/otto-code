@@ -27,7 +27,7 @@ test("chooses a metadata model and can return to automatic selection", async ({
 }, testInfo) => {
   await openMetadataGenerationSettings(page);
 
-  await expect(page.getByText("Workspace titles", { exact: false })).toBeVisible();
+  await expect(page.getByTestId("metadata-generation-settings")).toBeVisible();
   await expect(page.getByRole("button", { name: "Automatic", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
