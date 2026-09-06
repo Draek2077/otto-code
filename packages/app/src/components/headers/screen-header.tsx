@@ -2,14 +2,15 @@ import { useMemo, type ReactNode } from "react";
 import type { LayoutChangeEvent } from "react-native";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
 import {
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
   HEADER_TOP_PADDING_MOBILE,
   useIsCompactFormFactor,
 } from "@/constants/layout";
-import { useWindowControlsPadding } from "@/utils/desktop-window";
+import { SPACING } from "@/styles/theme";
+import { WindowChromeSafeArea } from "@/utils/window-chrome";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 
 interface ScreenHeaderProps {
@@ -18,9 +19,10 @@ interface ScreenHeaderProps {
   leftStyle?: StyleProp<ViewStyle>;
   rightStyle?: StyleProp<ViewStyle>;
   borderless?: boolean;
-  windowControlsPaddingRole?: "header" | "detailHeader";
   onRowLayout?: (event: LayoutChangeEvent) => void;
 }
+
+const HEADER_HORIZONTAL_PADDING = SPACING[2];
 
 /**
  * Shared frame for the home/back headers so we only maintain padding, border,
@@ -32,30 +34,16 @@ export function ScreenHeader({
   leftStyle,
   rightStyle,
   borderless,
-  windowControlsPaddingRole = "header",
   onRowLayout,
 }: ScreenHeaderProps) {
-  const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isMobile = useIsCompactFormFactor();
-  const padding = useWindowControlsPadding(windowControlsPaddingRole);
   // Only add extra padding on mobile for better touch targets; on desktop, only use safe area insets
   const topPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
-  const baseHorizontalPadding = theme.spacing[2];
 
   const innerStyle = useMemo(
     () => [styles.inner, { paddingTop: insets.top + topPadding }],
     [insets.top, topPadding],
-  );
-  const rowStyle = useMemo(
-    () => [
-      styles.row,
-      {
-        paddingLeft: baseHorizontalPadding + padding.left,
-        paddingRight: baseHorizontalPadding + padding.right,
-      },
-    ],
-    [baseHorizontalPadding, padding.left, padding.right],
   );
   const leftCombinedStyle = useMemo(() => [styles.left, leftStyle], [leftStyle]);
   const rightCombinedStyle = useMemo(() => [styles.right, rightStyle], [rightStyle]);
@@ -71,12 +59,17 @@ export function ScreenHeader({
   return (
     <View style={headerStyle}>
       <View style={innerStyle}>
-        <View onLayout={onRowLayout} style={rowStyle}>
+        <WindowChromeSafeArea
+          placement="inline"
+          horizontalPadding={HEADER_HORIZONTAL_PADDING}
+          onLayout={onRowLayout}
+          style={styles.row}
+        >
           <TitlebarDragRegion />
           <View style={leftCombinedStyle}>{left}</View>
           <View style={rightCombinedStyle}>{right}</View>
           <View pointerEvents="none" style={borderLineStyle} />
-        </View>
+        </WindowChromeSafeArea>
       </View>
     </View>
   );
@@ -102,7 +95,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: theme.spacing[2],
     userSelect: "none",
   },
   left: {

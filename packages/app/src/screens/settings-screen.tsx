@@ -2977,7 +2977,6 @@ export default function SettingsScreen({
             >
               <ScreenHeader
                 borderless={!detailHeader}
-                windowControlsPaddingRole="detailHeader"
                 left={detailHeaderLeft}
                 leftStyle={desktopStyles.detailLeft}
               />
