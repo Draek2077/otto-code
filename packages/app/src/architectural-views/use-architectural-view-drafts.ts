@@ -54,8 +54,7 @@ export function useArchitecturalViewDrafts(
       })
       .then((result) => {
         if (cancelled) return undefined;
-        if (!result.success)
-          throw new Error(result.error ?? "Could not list Architectural View drafts.");
+        if (!result.success) throw new Error(result.error ?? "Could not list Interactive Views.");
         setDrafts(result.drafts);
         return undefined;
       })

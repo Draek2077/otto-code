@@ -3,6 +3,10 @@ import type { ProjectKnowledgeListResponseMessage } from "@otto-code/protocol/me
 type Record = ProjectKnowledgeListResponseMessage["payload"]["records"][number];
 
 export type KnowledgeArticleKind = Exclude<Record["kind"], "project" | "reference">;
+export type KnowledgeStatusFilter = Record["status"] | "all";
+
+/** Confirmed knowledge is the useful default; the other states are review and history views. */
+export const DEFAULT_KNOWLEDGE_STATUS_FILTER: KnowledgeStatusFilter = "confirmed";
 
 export const KNOWLEDGE_ARTICLE_KINDS = [
   "architecture",
@@ -103,6 +107,13 @@ export function uniqueTags(records: readonly { tags: readonly string[] }[]): str
 
 export function formatDeliveryStatus(status: string | undefined): string {
   return formatMetadataLabel(status ?? "charter");
+}
+
+/** Stored lifecycle values stay machine-readable while the Knowledge UI uses its intent. */
+export function formatKnowledgeStatus(status: Record["status"]): string {
+  if (status === "proposed") return "Proposed";
+  if (status === "superseded") return "History";
+  return "Confirmed";
 }
 
 /** Stored metadata stays machine-readable; only its presentation is polished. */

@@ -1,0 +1,298 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Flow Sequence",
+    "quality_profile": "showcase",
+    "viewBox": [800, 880],
+    "views": [
+      {
+        "id": "resolve-catalog",
+        "label": "Resolve the catalog",
+        "focus": ["client", "daemon", "knowledge"],
+        "note": "The daemon resolves the project root and hands back the six roots plus confirmed page links."
+      },
+      {
+        "id": "agent-work",
+        "label": "Work inside daemon guardrails",
+        "focus": ["session", "tools", "repo"],
+        "note": "The provider session reads pages on demand and reaches the repository only through Otto tools."
+      },
+      {
+        "id": "deliver-and-propose",
+        "label": "Deliver, then propose",
+        "focus": ["session", "daemon", "client", "user", "knowledge"],
+        "note": "The observable result returns first; durable knowledge is proposed at the end of the effort."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "User",
+      "sublabel": "in a workspace"
+    },
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "Otto client",
+      "sublabel": "app surface"
+    },
+    {
+      "id": "daemon",
+      "type": "backend",
+      "label": "Daemon",
+      "sublabel": "owns reads"
+    },
+    {
+      "id": "knowledge",
+      "type": "database",
+      "label": "Knowledge",
+      "sublabel": "repo or host"
+    },
+    {
+      "id": "session",
+      "type": "external",
+      "label": "Provider",
+      "sublabel": "agent session"
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "Otto tools",
+      "sublabel": "neutral"
+    },
+    {
+      "id": "repo",
+      "type": "database",
+      "label": "Repository",
+      "sublabel": "and services"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 334,
+      "label": "Resolve"
+    },
+    {
+      "from": 338,
+      "to": 598,
+      "label": "Work under guardrails"
+    },
+    {
+      "from": 602,
+      "to": 774,
+      "label": "Deliver and propose"
+    }
+  ],
+  "messages": [
+    {
+      "id": "task",
+      "from": "user",
+      "to": "client",
+      "y": 180,
+      "label": "send task",
+      "variant": "emphasis",
+      "note": "The task is sent inside a workspace, which is what scopes everything downstream."
+    },
+    {
+      "id": "request",
+      "from": "client",
+      "to": "daemon",
+      "y": 224,
+      "label": "WebSocket request",
+      "variant": "emphasis",
+      "note": "Remote clients traverse the optional encrypted relay; daemon semantics stay the same."
+    },
+    {
+      "id": "resolve",
+      "from": "daemon",
+      "to": "knowledge",
+      "y": 268,
+      "label": "resolve root + catalog",
+      "variant": "default",
+      "note": "Worktree workspaces resolve to the repository project root, so branches do not fork project truth."
+    },
+    {
+      "id": "catalog",
+      "from": "knowledge",
+      "to": "daemon",
+      "y": 312,
+      "label": "six roots + confirmed links",
+      "variant": "return",
+      "note": "Confirmed pages only. Full page bodies are not returned here."
+    },
+    {
+      "id": "start",
+      "from": "daemon",
+      "to": "session",
+      "y": 356,
+      "label": "start or resume",
+      "variant": "emphasis",
+      "note": "The compact catalog is runtime-only for this session."
+    },
+    {
+      "id": "read-pages",
+      "from": "session",
+      "to": "knowledge",
+      "y": 400,
+      "label": "read rich pages on demand",
+      "variant": "default",
+      "note": "Pull-on-demand: a page body is loaded only when the work needs it."
+    },
+    {
+      "id": "invoke",
+      "from": "session",
+      "to": "tools",
+      "y": 444,
+      "label": "invoke Otto tools",
+      "variant": "default",
+      "note": "Providers with native Otto tools consume the shared catalog directly; MCP-only providers receive it through the daemon adapter, without a second implementation."
+    },
+    {
+      "id": "act",
+      "from": "tools",
+      "to": "repo",
+      "y": 488,
+      "label": "inspect or mutate",
+      "variant": "security",
+      "note": "Bounded by daemon guardrails. Preview starts the configured dev server and binds an Otto browser tab for verification."
+    },
+    {
+      "id": "evidence",
+      "from": "repo",
+      "to": "tools",
+      "y": 532,
+      "label": "evidence and results",
+      "variant": "return"
+    },
+    {
+      "id": "tool-result",
+      "from": "tools",
+      "to": "session",
+      "y": 576,
+      "label": "structured tool result",
+      "variant": "return"
+    },
+    {
+      "id": "stream",
+      "from": "session",
+      "to": "daemon",
+      "y": 620,
+      "label": "stream events, usage, result",
+      "variant": "return"
+    },
+    {
+      "id": "updates",
+      "from": "daemon",
+      "to": "client",
+      "y": 664,
+      "label": "timeline + workspace updates",
+      "variant": "return"
+    },
+    {
+      "id": "observable",
+      "from": "client",
+      "to": "user",
+      "y": 708,
+      "label": "observable result",
+      "variant": "return"
+    },
+    {
+      "id": "propose",
+      "from": "session",
+      "to": "knowledge",
+      "y": 752,
+      "label": "propose durable knowledge",
+      "variant": "dashed",
+      "note": "Written at the end of an effort, after the result is observable. Current truth changes only with a reason; evidence stays in an append-only timeline."
+    }
+  ],
+  "activations": [
+    {
+      "participant": "client",
+      "from": 174,
+      "to": 714,
+      "type": "frontend"
+    },
+    {
+      "participant": "daemon",
+      "from": 218,
+      "to": 670,
+      "type": "backend"
+    },
+    {
+      "participant": "knowledge",
+      "from": 262,
+      "to": 318,
+      "type": "database"
+    },
+    {
+      "participant": "knowledge",
+      "from": 394,
+      "to": 424,
+      "type": "database"
+    },
+    {
+      "participant": "knowledge",
+      "from": 746,
+      "to": 772,
+      "type": "database"
+    },
+    {
+      "participant": "session",
+      "from": 350,
+      "to": 626,
+      "type": "external"
+    },
+    {
+      "participant": "tools",
+      "from": 438,
+      "to": 582,
+      "type": "backend"
+    },
+    {
+      "participant": "repo",
+      "from": 482,
+      "to": 538,
+      "type": "database"
+    },
+    {
+      "participant": "session",
+      "from": 740,
+      "to": 766,
+      "type": "external"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "The daemon owns the path",
+      "items": [
+        "Reads and mutations run through the daemon, so every provider behaves the same way",
+        "The store location is decided in one place: project override, existing repository store, then host default",
+        "Worktrees resolve to one project store instead of forking project truth"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Catalog first, pages on demand",
+      "items": [
+        "A session opens with the six roots and confirmed pages only",
+        "Full page bodies are read while the work runs, not preloaded",
+        "The catalog is runtime-only for the session that received it"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Neutral tools, late writes",
+      "items": [
+        "Native and MCP-only providers share one tool catalog, not two implementations",
+        "Repository and service access stays inside daemon guardrails",
+        "Durable knowledge is proposed after the result, and current truth changes only with a reason"
+      ]
+    }
+  ]
+}

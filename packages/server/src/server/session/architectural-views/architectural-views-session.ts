@@ -21,7 +21,7 @@ export interface ArchitecturalViewsSessionOptions {
   logger: Logger;
 }
 
-/** Daemon RPC boundary for Knowledge-packaged Architectural Views. */
+/** Daemon RPC boundary for Knowledge-packaged Interactive Views. */
 export class ArchitecturalViewsSession {
   private readonly host: ArchitecturalViewsSessionHost;
   private readonly workspaceRegistry: WorkspaceRegistry;
@@ -56,7 +56,7 @@ export class ArchitecturalViewsSession {
         success: false,
         storeLocation: null,
         htmlPath: null,
-        error: "This host does not support Knowledge-packaged Architectural Views.",
+        error: "This host does not support Knowledge-packaged Interactive Views.",
       });
       return;
     }
@@ -78,7 +78,7 @@ export class ArchitecturalViewsSession {
         success: false,
         storeLocation: null,
         htmlPath: null,
-        error: "Architectural View source must stay inside its workspace.",
+        error: "Interactive View source must stay inside its workspace.",
       });
       return;
     }
@@ -93,6 +93,7 @@ export class ArchitecturalViewsSession {
         title: msg.title,
         knowledgeReferences: msg.knowledgeReferences as ArchitecturalViewKnowledgeReference[],
         sourcePath: sourcePath!,
+        ...(msg.diagramType ? { diagramType: msg.diagramType } : {}),
         quality: msg.quality,
       });
       respond({
@@ -102,12 +103,12 @@ export class ArchitecturalViewsSession {
         error: null,
       });
     } catch (error) {
-      this.logger.error({ error, viewId: msg.viewId }, "Failed to deliver Architectural View");
+      this.logger.error({ error, viewId: msg.viewId }, "Failed to deliver Interactive View");
       respond({
         success: false,
         storeLocation: null,
         htmlPath: null,
-        error: error instanceof Error ? error.message : "Failed to deliver Architectural View.",
+        error: error instanceof Error ? error.message : "Failed to deliver Interactive View.",
       });
     }
   }
@@ -136,7 +137,7 @@ export class ArchitecturalViewsSession {
           requestId: msg.requestId,
           success: false,
           views: [],
-          error: "This host does not support Knowledge-packaged Architectural Views.",
+          error: "This host does not support Knowledge-packaged Interactive Views.",
         },
       });
       return;
@@ -148,14 +149,14 @@ export class ArchitecturalViewsSession {
         payload: { requestId: msg.requestId, success: true, views, error: null },
       });
     } catch (error) {
-      this.logger.error({ error }, "Failed to list Architectural Views");
+      this.logger.error({ error }, "Failed to list Interactive Views");
       this.host.emit({
         type: "architectural-views.list.response",
         payload: {
           requestId: msg.requestId,
           success: false,
           views: [],
-          error: error instanceof Error ? error.message : "Failed to list Architectural Views.",
+          error: error instanceof Error ? error.message : "Failed to list Interactive Views.",
         },
       });
     }
@@ -176,25 +177,25 @@ export class ArchitecturalViewsSession {
         false,
         null,
         null,
-        "This host does not support Knowledge-packaged Architectural Views.",
+        "This host does not support Knowledge-packaged Interactive Views.",
       );
       return;
     }
     try {
       const content = await this.service(resolver).getContent(workspace.cwd, msg.viewId);
       if (!content) {
-        this.respondGetContent(msg.requestId, false, null, null, "Architectural View not found.");
+        this.respondGetContent(msg.requestId, false, null, null, "Interactive View not found.");
         return;
       }
       this.respondGetContent(msg.requestId, true, content.view, content.html, null);
     } catch (error) {
-      this.logger.error({ error, viewId: msg.viewId }, "Failed to read Architectural View");
+      this.logger.error({ error, viewId: msg.viewId }, "Failed to read Interactive View");
       this.respondGetContent(
         msg.requestId,
         false,
         null,
         null,
-        error instanceof Error ? error.message : "Failed to read Architectural View.",
+        error instanceof Error ? error.message : "Failed to read Interactive View.",
       );
     }
   }
@@ -208,7 +209,7 @@ export class ArchitecturalViewsSession {
         msg.requestId,
         false,
         null,
-        "Workspace or Architectural Views support is unavailable.",
+        "Workspace or Interactive Views support is unavailable.",
       );
       return;
     }
@@ -221,7 +222,7 @@ export class ArchitecturalViewsSession {
         msg.requestId,
         false,
         null,
-        "Architectural View source must stay inside its workspace.",
+        "Interactive View source must stay inside its workspace.",
       );
       return;
     }
@@ -233,6 +234,7 @@ export class ArchitecturalViewsSession {
         title: msg.title,
         knowledgeReferences: msg.knowledgeReferences as ArchitecturalViewKnowledgeReference[],
         ...(sourcePath ? { sourcePath } : {}),
+        ...(msg.diagramType ? { diagramType: msg.diagramType } : {}),
         ...(msg.quality ? { quality: msg.quality } : {}),
       });
       this.respondDraftCreate(msg.requestId, true, draft, null);
@@ -250,7 +252,7 @@ export class ArchitecturalViewsSession {
         msg.requestId,
         false,
         null,
-        "Workspace or Architectural Views support is unavailable.",
+        "Workspace or Interactive Views support is unavailable.",
       );
       return;
     }
@@ -274,7 +276,7 @@ export class ArchitecturalViewsSession {
           requestId: msg.requestId,
           success: false,
           draft: null,
-          error: "Architectural View source must stay inside its workspace.",
+          error: "Interactive View source must stay inside its workspace.",
         },
       });
       return;
@@ -312,7 +314,7 @@ export class ArchitecturalViewsSession {
       this.respondDraftDiscard(
         msg.requestId,
         false,
-        "Workspace or Architectural Views support is unavailable.",
+        "Workspace or Interactive Views support is unavailable.",
       );
       return;
     }
@@ -334,7 +336,7 @@ export class ArchitecturalViewsSession {
         false,
         null,
         null,
-        "Workspace or Architectural Views support is unavailable.",
+        "Workspace or Interactive Views support is unavailable.",
       );
       return;
     }
@@ -350,7 +352,7 @@ export class ArchitecturalViewsSession {
           false,
           null,
           null,
-          "Architectural View draft not found.",
+          "Interactive View not found.",
         );
         return;
       }
@@ -371,7 +373,7 @@ export class ArchitecturalViewsSession {
           requestId: msg.requestId,
           success: false,
           drafts: [],
-          error: "Workspace or Architectural Views support is unavailable.",
+          error: "Workspace or Interactive Views support is unavailable.",
         },
       });
       return;
@@ -400,7 +402,7 @@ export class ArchitecturalViewsSession {
     agentId: string;
   }): Promise<void> {
     const context = await this.authoringContext(input.workspaceId);
-    if (!context) throw new Error("Workspace or Architectural Views support is unavailable.");
+    if (!context) throw new Error("Workspace or Interactive Views support is unavailable.");
     await this.service(context.resolver).bindDraftAuthoringAgent({ ...input, cwd: context.cwd });
   }
 
@@ -503,7 +505,7 @@ export class ArchitecturalViewsSession {
 }
 
 function messageFor(error: unknown): string {
-  return error instanceof Error ? error.message : "Architectural View draft operation failed.";
+  return error instanceof Error ? error.message : "Interactive View operation failed.";
 }
 
 function isPathWithinRoot(rootPath: string, candidatePath: string): boolean {

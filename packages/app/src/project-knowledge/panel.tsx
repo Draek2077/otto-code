@@ -12,14 +12,21 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   Archive,
   Architecture,
+  AllInclusive,
   BookOpen,
   Check,
   CheckSquare,
   Checklist,
   ClearAll,
+  DataObject,
+  EditNote,
+  FileText,
   FolderOpen,
   FolderTree,
   Gavel,
+  Handshake,
+  History,
+  InteractiveSpace,
   Lightbulb,
   Pencil,
   Robot,
@@ -27,7 +34,10 @@ import {
   Settings2,
   Shield,
   SquarePen,
+  Timeline,
   Trash2,
+  Verified,
+  Workflow,
   WrapText,
   X,
 } from "@/components/icons/material-icons";
@@ -42,9 +52,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
-import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { SearchClearButton } from "@/components/ui/search-clear-button";
-import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
+import { ToolbarIconButton, useToolbarIconButtonStyle } from "@/components/ui/toolbar-icon-button";
 import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
@@ -66,8 +76,11 @@ import {
   type ArchitecturalViewKnowledgeReference,
   type ArchitecturalViewSummary,
 } from "@/architectural-views/use-architectural-views";
-import { useArchitecturalViewDrafts } from "@/architectural-views/use-architectural-view-drafts";
 import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
+import {
+  resolveKnowledgeDocumentIdentityLayout,
+  type KnowledgeDocumentIdentity,
+} from "./document-identity";
 import { KnowledgeMarkdownEditor } from "./knowledge-markdown-editor";
 import { KnowledgeReviewProposalView } from "./knowledge-review-proposal";
 import { KnowledgeReviewSurface } from "./knowledge-review-surface";
@@ -80,7 +93,9 @@ import {
   type KnowledgeReviewTarget,
 } from "./review-session";
 import {
+  DEFAULT_KNOWLEDGE_STATUS_FILTER,
   formatDeliveryStatus,
+  formatKnowledgeStatus,
   formatMetadataLabel,
   isolateKnowledgeTypeFilter,
   KNOWLEDGE_ARTICLE_KINDS,
@@ -90,8 +105,16 @@ import {
   toggleKnowledgeTypeFilter,
   uniqueTags,
   type KnowledgeArticleKind,
+  type KnowledgeStatusFilter,
 } from "./model";
 import type { IconSizeProp } from "@/components/icons/icon-size";
+import type { Theme } from "@/styles/theme";
+import {
+  architecturalViewTypeLabel,
+  detectArchitecturalViewType,
+  type ArchitecturalViewDiagramType,
+  type ArchitecturalViewTypeSuggestion,
+} from "./architectural-view-types";
 
 const MIN_SIDEBAR_WIDTH = 260;
 const MAX_SIDEBAR_WIDTH = 520;
@@ -132,7 +155,7 @@ export function ProjectKnowledgePanel(): ReactElement {
     NonNullable<NonNullable<typeof knowledge.view>["rootPages"]>[number] | null
   >(null);
   const [scope, setScope] = useState<"knowledge" | "projects" | "references">("knowledge");
-  const [filter, setFilter] = useState<"all" | "proposed" | "confirmed" | "superseded">("all");
+  const [filter, setFilter] = useState<KnowledgeStatusFilter>(DEFAULT_KNOWLEDGE_STATUS_FILTER);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<KnowledgeArticleKind[]>([
     ...KNOWLEDGE_ARTICLE_KINDS,
@@ -164,7 +187,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   const [reviewProposal, setReviewProposal] = useState<KnowledgeReviewProposal | null>(null);
   const [reviewApplying, setReviewApplying] = useState(false);
   const [creatingArchitecturalView, setCreatingArchitecturalView] = useState(false);
-  const [documentMode, setDocumentMode] = useState<"article" | "architectural-view">("article");
+  const [documentMode, setDocumentMode] = useState<DocumentMode>("article");
   const reviewSupported = useSessionStore(
     (state) =>
       state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeAnchoredRefinement === true,
@@ -257,13 +280,9 @@ export function ProjectKnowledgePanel(): ReactElement {
     workspaceId,
     architecturalKnowledgeReference,
   );
-  const allArchitecturalViews = useArchitecturalViews(serverId, workspaceId, null, false);
-  const architecturalViewDrafts = useArchitecturalViewDrafts(
-    serverId,
-    workspaceId,
-    architecturalKnowledgeReference,
+  const interactiveViewTypesSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.interactiveViewTypes === true,
   );
-  const refreshArchitecturalViewDrafts = architecturalViewDrafts.refresh;
   const showArchitecturalView = documentMode === "architectural-view";
   const showWholePageLoading = knowledge.loading && !knowledge.view && !requestedSelection;
   const reviewContent = reviewContentForSelection(selectedRoot, detailedSelection);
@@ -294,7 +313,7 @@ export function ProjectKnowledgePanel(): ReactElement {
     setEditingMetadata(false);
     setEditingTags(false);
     setQuery("");
-    setFilter("all");
+    setFilter(DEFAULT_KNOWLEDGE_STATUS_FILTER);
     setTypeFilter([...KNOWLEDGE_ARTICLE_KINDS]);
     setTagFilter([]);
   }, [ensureKnowledgeLoaded, requestedSelection]);
@@ -376,66 +395,100 @@ export function ProjectKnowledgePanel(): ReactElement {
   }
   const markdownPath =
     selectedRoot?.absolutePath ?? selectedRoot?.path ?? knowledgePathForRecord(selected);
-  let documentIdentity = "";
-  if (selectedRoot) documentIdentity = `Knowledge root · ${selectedRoot.slug}`;
+  // Split into name / type / date rather than one string, because the header
+  // sheds the last two by measured width - see `document-identity.ts`.
+  let documentIdentity: KnowledgeDocumentIdentity = { name: "" };
+  if (selectedRoot) documentIdentity = { name: selectedRoot.slug, type: "Knowledge root" };
   else if (selected)
-    documentIdentity = `${recordStatusLabel(selected)} · Updated ${new Date(selected.updatedAt).toLocaleDateString()}`;
-  if (reviewProposal) documentIdentity = `Review proposal · ${documentIdentity}`;
+    documentIdentity = {
+      name: selected.title,
+      type: recordStatusLabel(selected),
+      date: `Updated ${new Date(selected.updatedAt).toLocaleDateString()}`,
+    };
+  if (reviewProposal)
+    documentIdentity = {
+      ...documentIdentity,
+      type: documentIdentity.type
+        ? `Review proposal · ${documentIdentity.type}`
+        : "Review proposal",
+    };
   if (showArchitecturalView && architecturalViews.selectedView) {
     const freshness = architecturalViewFreshnessSuffix(
       architecturalViews.selectedView.sourceStatus,
     );
-    documentIdentity = `Architectural View · ${architecturalViews.selectedView.title}${freshness}`;
+    documentIdentity = {
+      name: architecturalViews.selectedView.title,
+      type: `Interactive View${freshness}`,
+    };
   }
   const openMarkdown = useCallback(() => {
     if (!markdownPath) return;
     openTab(createWorkspaceFileTabTarget({ path: markdownPath }));
   }, [markdownPath, openTab]);
-  const createArchitecturalView = useCallback(async () => {
-    if (!client || !architecturalKnowledgeReference || creatingArchitecturalView) return;
-    const sourceTitle = selectedRoot?.title ?? selected?.title ?? "Architecture";
-    const viewId = architecturalViewIdFor(architecturalKnowledgeReference.id);
-    // The daemon is the authority for the unpublished View state. A client-side
-    // listing can be stale after Publish/Delete, so never open an ID from it.
-    // createArchitecturalViewDraft atomically returns the current staged View or
-    // creates a new one, and the returned ID is the only one we may author.
-    const draftId = `${viewId}-${Date.now().toString(36)}`;
-    setCreatingArchitecturalView(true);
-    setFormError(null);
-    try {
-      const result = await client.createArchitecturalViewDraft({
-        workspaceId,
-        viewId,
-        draftId,
-        title: architecturalViewTitleFor(sourceTitle),
-        knowledgeReferences: [architecturalKnowledgeReference],
-      });
-      if (!result.success || !result.draft) {
-        throw new Error(result.error ?? "Could not create Architectural View draft.");
+  const createArchitecturalView = useCallback(
+    async (diagramType: ArchitecturalViewDiagramType) => {
+      if (
+        !client ||
+        !architecturalKnowledgeReference ||
+        !interactiveViewTypesSupported ||
+        creatingArchitecturalView
+      )
+        return;
+      const sourceTitle =
+        selectedRoot?.title ?? selected?.title ?? architecturalViewTypeLabel(diagramType);
+      const viewId = architecturalViewIdFor(architecturalKnowledgeReference.id, diagramType);
+      // The daemon is the authority for the unpublished View state. A client-side
+      // listing can be stale after Publish/Delete, so never open an ID from it.
+      // createArchitecturalViewDraft atomically returns the current staged View or
+      // creates a new one, and the returned ID is the only one we may author.
+      const draftId = `${viewId}-${Date.now().toString(36)}`;
+      setCreatingArchitecturalView(true);
+      setFormError(null);
+      try {
+        const result = await client.createArchitecturalViewDraft({
+          workspaceId,
+          viewId,
+          draftId,
+          title: architecturalViewTitleFor(sourceTitle, diagramType),
+          knowledgeReferences: [architecturalKnowledgeReference],
+          diagramType,
+        });
+        if (!result.success || !result.draft) {
+          throw new Error(result.error ?? "Could not create Interactive View.");
+        }
+        openTab({
+          kind: "architecturalViewDraft",
+          viewId: result.draft.viewId,
+          draftId: result.draft.id,
+          generateOnOpen: true,
+          authoringPrompt: result.draft.id === draftId ? "create" : "update",
+          diagramType: result.draft.diagramType ?? diagramType,
+        });
+      } catch (cause) {
+        setFormError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setCreatingArchitecturalView(false);
       }
-      refreshArchitecturalViewDrafts();
-      openTab({
-        kind: "architecturalViewDraft",
-        viewId: result.draft.viewId,
-        draftId: result.draft.id,
-        generateOnOpen: true,
-        authoringPrompt: result.draft.id === draftId ? "create" : "update",
-      });
-    } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setCreatingArchitecturalView(false);
-    }
-  }, [
-    architecturalKnowledgeReference,
-    refreshArchitecturalViewDrafts,
-    client,
-    creatingArchitecturalView,
-    openTab,
-    selected?.title,
-    selectedRoot?.title,
-    workspaceId,
-  ]);
+    },
+    [
+      architecturalKnowledgeReference,
+      client,
+      creatingArchitecturalView,
+      interactiveViewTypesSupported,
+      openTab,
+      selected?.title,
+      selectedRoot?.title,
+      workspaceId,
+    ],
+  );
+  const architecturalViewSuggestion = useMemo<ArchitecturalViewTypeSuggestion | null>(
+    () =>
+      detectArchitecturalViewType({
+        title: selectedRoot?.title ?? selected?.title ?? "",
+        markdown: document,
+      }),
+    [document, selected?.title, selectedRoot?.title],
+  );
   const addReviewDirective = useCallback((directive: Omit<KnowledgeReviewDirective, "id">) => {
     const id = `review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setReviewDirectives((current) => [
@@ -1213,27 +1266,9 @@ export function ProjectKnowledgePanel(): ReactElement {
   }
   let architecturalViewToolbar: ReactElement | null = null;
   if (architecturalViews.views.length > 0) {
-    let architecturalViewDraftAction: ReactElement | null = null;
-    if (architecturalKnowledgeReference) {
-      architecturalViewDraftAction = (
-        <ToolbarIconButton
-          label="Update Architectural View"
-          Icon={ThemedArchitecture}
-          tone="accent"
-          loading={creatingArchitecturalView}
-          onPress={createArchitecturalView}
-          disabled={!architecturalViews.supported || creatingArchitecturalView}
-        />
-      );
-    }
     architecturalViewToolbar = (
       <>
-        <ToolbarIconButton
-          label={showArchitecturalView ? "Show article" : "Open Architectural View"}
-          Icon={showArchitecturalView ? ThemedBookOpen : ThemedArchitecture}
-          onPress={() => setDocumentMode(showArchitecturalView ? "article" : "architectural-view")}
-          selected={showArchitecturalView}
-        />
+        <DocumentModeToggle mode={documentMode} onChange={setDocumentMode} />
         {showArchitecturalView && architecturalViews.views.length > 1 ? (
           <ArchitecturalViewPicker
             views={architecturalViews.views}
@@ -1241,20 +1276,27 @@ export function ProjectKnowledgePanel(): ReactElement {
             onSelect={architecturalViews.selectView}
           />
         ) : null}
-        {architecturalViewDraftAction}
+        {architecturalKnowledgeReference ? (
+          <InteractiveViewActionMenu
+            label="Update Interactive View"
+            loading={creatingArchitecturalView}
+            disabled={!interactiveViewTypesSupported || creatingArchitecturalView}
+            suggestion={architecturalViewSuggestion}
+            onSelect={createArchitecturalView}
+          />
+        ) : null}
         <ToolbarSeparator />
       </>
     );
   } else if (architecturalKnowledgeReference) {
     architecturalViewToolbar = (
       <>
-        <ToolbarIconButton
-          label="Create Architectural View"
-          Icon={ThemedArchitecture}
-          tone="accent"
+        <InteractiveViewActionMenu
+          label="Create Interactive View"
           loading={creatingArchitecturalView}
-          onPress={createArchitecturalView}
-          disabled={!architecturalViews.supported || creatingArchitecturalView}
+          disabled={!interactiveViewTypesSupported || creatingArchitecturalView}
+          suggestion={architecturalViewSuggestion}
+          onSelect={createArchitecturalView}
         />
         <ToolbarSeparator />
       </>
@@ -1350,11 +1392,28 @@ export function ProjectKnowledgePanel(): ReactElement {
                   stretch
                   value={filter}
                   onValueChange={setFilter}
+                  hideLabels
                   options={[
-                    { value: "all", label: "All" },
-                    { value: "proposed", label: "Proposed" },
-                    { value: "confirmed", label: "Confirmed" },
-                    { value: "superseded", label: "History" },
+                    { value: "all", label: "All", icon: AllInclusive, tooltip: "All" },
+                    {
+                      value: "proposed",
+                      label: "Proposed",
+                      icon: Handshake,
+                      tooltip: "Proposed",
+                      tone: "warning",
+                    },
+                    {
+                      value: "confirmed",
+                      label: "Confirmed",
+                      icon: Verified,
+                      tooltip: "Confirmed",
+                    },
+                    {
+                      value: "superseded",
+                      label: "History",
+                      icon: History,
+                      tooltip: "History",
+                    },
                   ]}
                 />
               </View>
@@ -1365,18 +1424,6 @@ export function ProjectKnowledgePanel(): ReactElement {
                 </View>
               ) : (
                 <ScrollView style={styles.browser} contentContainerStyle={styles.browserContent}>
-                  {scope === "knowledge" && allArchitecturalViews.views.length > 0 ? (
-                    <View style={styles.architecturalViewsSection}>
-                      <Text style={styles.sectionLabel}>Architectural Views</Text>
-                      {allArchitecturalViews.views.map((view) => (
-                        <ArchitecturalViewRow
-                          key={view.id}
-                          view={view}
-                          onSelect={() => openTab({ kind: "architecturalView", viewId: view.id })}
-                        />
-                      ))}
-                    </View>
-                  ) : null}
                   {records.map((record) => (
                     <KnowledgeRecordRow
                       key={record.id}
@@ -1419,9 +1466,7 @@ export function ProjectKnowledgePanel(): ReactElement {
           ) : null}
           {selectedRoot || selected ? (
             <View style={styles.documentHeader}>
-              <View style={styles.documentIdentity}>
-                <Text style={styles.muted}>{documentIdentity}</Text>
-              </View>
+              <DocumentIdentityLine {...documentIdentity} />
               <View style={styles.documentToolbar}>
                 {architecturalViewToolbar}
                 {markdownPath ? (
@@ -1612,10 +1657,88 @@ function ArchitecturalViewCanvas({
   return (
     <View style={styles.architecturalViewLoading}>
       {loading ? <LoadingSpinner size="small" /> : null}
-      <Text style={styles.muted}>{error ?? "Loading Architectural View…"}</Text>
+      <Text style={styles.muted}>{error ?? "Loading Interactive View…"}</Text>
     </View>
   );
 }
+
+/**
+ * The header's left-hand identity, shedding metadata as the header narrows.
+ *
+ * Measures itself rather than the window: this pane is as narrow in a desktop
+ * three-way split as it is on a phone. The name never sheds - it shrinks and
+ * ellipsizes - so the reader always knows which document they are looking at.
+ */
+function DocumentIdentityLine({ name, type, date }: KnowledgeDocumentIdentity): ReactElement {
+  const [width, setWidth] = useState(0);
+  const layout = resolveKnowledgeDocumentIdentityLayout(width);
+  const showType = layout.showType && Boolean(type);
+  const showDate = layout.showDate && Boolean(date);
+  return (
+    <View
+      style={styles.documentIdentity}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      testID="knowledge-document-identity"
+    >
+      {showType ? (
+        <>
+          <Text numberOfLines={1} style={styles.documentIdentityMeta}>
+            {type}
+          </Text>
+          <Text style={styles.documentIdentitySeparator}>·</Text>
+        </>
+      ) : null}
+      <Text numberOfLines={1} style={styles.documentIdentityName}>
+        {name}
+      </Text>
+      {showDate ? (
+        <>
+          <Text style={styles.documentIdentitySeparator}>·</Text>
+          <Text numberOfLines={1} style={styles.documentIdentityMeta}>
+            {date}
+          </Text>
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+type DocumentMode = "article" | "architectural-view";
+
+/**
+ * Article vs Interactive View, as the File Editor's Preview/Source pair: two
+ * segments always visible, one of them selected. A single button that swaps its
+ * own glyph reads as "do this thing", not as "you are here", which is the
+ * opposite of what a view switch has to say.
+ */
+function DocumentModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: DocumentMode;
+  onChange: (mode: DocumentMode) => void;
+}): ReactElement {
+  return (
+    <SegmentedControl
+      size="sm"
+      hideLabels
+      value={mode}
+      onValueChange={onChange}
+      testID="knowledge-document-mode"
+      options={DOCUMENT_MODE_OPTIONS}
+    />
+  );
+}
+
+const DOCUMENT_MODE_OPTIONS: SegmentedControlOption<DocumentMode>[] = [
+  { value: "article", label: "Article", icon: FileText, tooltip: "Article" },
+  {
+    value: "architectural-view",
+    label: "Interactive View",
+    icon: InteractiveSpace,
+    tooltip: "Interactive View",
+  },
+];
 
 function ArchitecturalViewPicker({
   views,
@@ -1630,7 +1753,7 @@ function ArchitecturalViewPicker({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        accessibilityLabel="Choose Architectural View"
+        accessibilityLabel="Choose Interactive View"
         accessibilityRole="button"
         style={styles.architecturalViewSelector}
       >
@@ -1654,6 +1777,105 @@ function ArchitecturalViewPicker({
   );
 }
 
+function InteractiveViewActionMenu({
+  label,
+  loading,
+  disabled,
+  suggestion,
+  onSelect,
+}: {
+  label: string;
+  loading: boolean;
+  disabled: boolean;
+  suggestion: ArchitecturalViewTypeSuggestion | null;
+  onSelect: (diagramType: ArchitecturalViewDiagramType) => void;
+}): ReactElement {
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Same chrome the sibling ToolbarIconButtons render: this is a compound
+  // trigger, so it borrows the shared style rather than restating a radius and
+  // a padding that then drift out of step with the row it sits in.
+  const triggerStyle = useToolbarIconButtonStyle({
+    disabled: disabled || loading,
+    selected: menuOpen,
+  });
+  return (
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            disabled={disabled || loading}
+            style={triggerStyle}
+            testID="interactive-view-action-menu"
+          >
+            {loading ? (
+              <LoadingSpinner size="md" />
+            ) : (
+              <ThemedEditNote
+                size="md"
+                uniProps={
+                  disabled
+                    ? interactiveViewDisabledIconColorMapping
+                    : interactiveViewIconColorMapping
+                }
+              />
+            )}
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <Text style={styles.toolbarTooltipText}>{label}</Text>
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" side="bottom" offset={4} minWidth={246}>
+        {suggestion ? (
+          <>
+            <DropdownMenuItem
+              leading={interactiveViewTypeIconFor(suggestion.diagramType)}
+              onSelect={() => onSelect(suggestion.diagramType)}
+            >
+              {`Use suggested ${architecturalViewTypeLabel(suggestion.diagramType)} View`}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        {ARCHITECTURAL_VIEW_TYPES.map((diagramType) => (
+          <DropdownMenuItem
+            key={diagramType}
+            leading={interactiveViewTypeIconFor(diagramType)}
+            onSelect={() => onSelect(diagramType)}
+          >
+            {`${architecturalViewTypeLabel(diagramType)} View`}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const ARCHITECTURAL_VIEW_TYPES: readonly ArchitecturalViewDiagramType[] = [
+  "architecture",
+  "workflow",
+  "sequence",
+  "dataflow",
+  "lifecycle",
+];
+
+function interactiveViewTypeIconFor(diagramType: ArchitecturalViewDiagramType): ReactElement {
+  switch (diagramType) {
+    case "architecture":
+      return <ThemedArchitecture size="sm" uniProps={interactiveViewMenuIconColorMapping} />;
+    case "workflow":
+      return <ThemedWorkflow size="sm" uniProps={interactiveViewMenuIconColorMapping} />;
+    case "sequence":
+      return <ThemedTimeline size="sm" uniProps={interactiveViewMenuIconColorMapping} />;
+    case "dataflow":
+      return <ThemedDataObject size="sm" uniProps={interactiveViewMenuIconColorMapping} />;
+    case "lifecycle":
+      return <ThemedAllInclusive size="sm" uniProps={interactiveViewMenuIconColorMapping} />;
+  }
+}
+
 type KnowledgeRecord = NonNullable<
   ReturnType<typeof useProjectKnowledge>["view"]
 >["records"][number];
@@ -1674,6 +1896,7 @@ function KnowledgeRecordRow({
     <Pressable
       onPress={onSelect}
       accessibilityRole="button"
+      accessibilityLabel={`${formatKnowledgeStatus(record.status)} ${formatMetadataLabel(record.kind)}: ${record.title}`}
       accessibilityState={selected ? SELECTED_ACCESSIBILITY_STATE : undefined}
       style={({ hovered, pressed }) => [
         styles.row,
@@ -1685,7 +1908,11 @@ function KnowledgeRecordRow({
       <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild accessibilityLabel={`Type: ${formatMetadataLabel(record.kind)}`}>
           <View style={styles.rowIcon}>
-            <ThemedKnowledgeKindIcon kind={record.kind} size="mdPlus" />
+            <ThemedKnowledgeRecordKindIcon
+              kind={record.kind}
+              status={record.status}
+              size="mdPlus"
+            />
           </View>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={6}>
@@ -1695,45 +1922,15 @@ function KnowledgeRecordRow({
         </TooltipContent>
       </Tooltip>
       <View style={styles.rowContent}>
-        <Text numberOfLines={2} style={styles.rowTitle}>
-          {record.title}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function ArchitecturalViewRow({
-  view,
-  onSelect,
-}: {
-  view: ArchitecturalViewSummary;
-  onSelect: () => void;
-}): ReactElement {
-  const sourceLabel = architecturalViewSourceLabel(view.sourceStatus);
-  return (
-    <Pressable
-      onPress={onSelect}
-      accessibilityRole="button"
-      accessibilityLabel={`Open Architectural View: ${view.title}`}
-      style={({ hovered, pressed }) => [
-        styles.row,
-        hovered ? styles.hoveredRow : null,
-        pressed ? styles.pressedRow : null,
-      ]}
-    >
-      <View style={styles.rowIcon}>
-        <Architecture size="mdPlus" />
-      </View>
-      <View style={styles.rowContent}>
-        <Text numberOfLines={2} style={styles.rowTitle}>
-          {view.title}
-        </Text>
         <Text
-          numberOfLines={1}
-          style={view.sourceStatus === "stale" ? styles.staleView : styles.viewMeta}
+          numberOfLines={2}
+          style={[
+            styles.rowTitle,
+            record.status === "proposed" && styles.pendingRowTitle,
+            record.status === "superseded" && styles.historicalRowTitle,
+          ]}
         >
-          {sourceLabel}
+          {record.title}
         </Text>
       </View>
     </Pressable>
@@ -1748,26 +1945,27 @@ function architecturalViewFreshnessSuffix(
   return "";
 }
 
-function architecturalViewSourceLabel(status: ArchitecturalViewSummary["sourceStatus"]): string {
-  if (status === "stale") return "Source changed";
-  if (status === "unknown") return "Source status unknown";
-  return "Current";
-}
-
-function architecturalViewIdFor(knowledgeId: string): string {
+function architecturalViewIdFor(
+  knowledgeId: string,
+  diagramType: ArchitecturalViewDiagramType,
+): string {
   const slug = knowledgeId
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
-  return `${slug || "knowledge"}-architecture`;
+  return `${slug || "knowledge"}-${diagramType}`;
 }
 
-function architecturalViewTitleFor(knowledgeTitle: string): string {
-  return /architecture$/i.test(knowledgeTitle.trim())
+function architecturalViewTitleFor(
+  knowledgeTitle: string,
+  diagramType: ArchitecturalViewDiagramType,
+): string {
+  const typeLabel = architecturalViewTypeLabel(diagramType);
+  return new RegExp(`${typeLabel}$`, "i").test(knowledgeTitle.trim())
     ? knowledgeTitle
-    : `${knowledgeTitle} architecture`;
+    : `${knowledgeTitle} ${typeLabel}`;
 }
 
 /** Selected tags stay visible as small removable chips; the full list lives in a popover. */
@@ -1959,25 +2157,55 @@ function KnowledgeKindIcon({
 }
 const ThemedKnowledgeTagFilter = withUnistyles(KnowledgeTagFilter, (theme) => ({ theme }));
 const ThemedKnowledgeTypeFilter = withUnistyles(KnowledgeTypeFilter, (theme) => ({ theme }));
-const ThemedKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
-  color: theme.colors.foregroundMuted,
+function KnowledgeRecordKindIcon({
+  status,
+  theme,
+  ...props
+}: {
+  status: KnowledgeRecord["status"];
+  theme: { colors: { foregroundMuted: string; statusWarningStrong: string } };
+} & Omit<Parameters<typeof KnowledgeKindIcon>[0], "color">): ReactElement {
+  return (
+    <KnowledgeKindIcon
+      {...props}
+      color={
+        status === "proposed" ? theme.colors.statusWarningStrong : theme.colors.foregroundMuted
+      }
+    />
+  );
+}
+const ThemedKnowledgeRecordKindIcon = withUnistyles(KnowledgeRecordKindIcon, (theme) => ({
+  theme,
 }));
+const interactiveViewIconColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
+// Disabled outranks the accent tint, matching ToolbarIconButton: a live accent
+// glyph on an unpressable trigger reads as the action being available.
+const interactiveViewDisabledIconColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const interactiveViewMenuIconColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
 const ThemedArticleKnowledgeKindIcon = withUnistyles(KnowledgeKindIcon, (theme) => ({
   color: theme.colors.foregroundMuted,
   size: theme.iconSize.lg,
 }));
 const ThemedArchive = withUnistyles(Archive);
+const ThemedAllInclusive = withUnistyles(AllInclusive);
 const ThemedArchitecture = withUnistyles(Architecture);
-const ThemedBookOpen = withUnistyles(BookOpen);
 const ThemedCheck = withUnistyles(Check);
 const ThemedCheckSquare = withUnistyles(CheckSquare);
+const ThemedDataObject = withUnistyles(DataObject);
+const ThemedEditNote = withUnistyles(EditNote);
 const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedRobot = withUnistyles(Robot);
 const ThemedSearch = withUnistyles(Search);
 const ThemedSettings2 = withUnistyles(Settings2);
 const ThemedSquarePen = withUnistyles(SquarePen);
+const ThemedTimeline = withUnistyles(Timeline);
 const ThemedTrash2 = withUnistyles(Trash2);
+const ThemedWorkflow = withUnistyles(Workflow);
 const ThemedWrapText = withUnistyles(WrapText);
 const ThemedX = withUnistyles(X);
 const ThemedTextInput = withUnistyles(TextInput);
@@ -2400,18 +2628,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   browser: { flex: 1 },
   browserContent: { gap: theme.spacing[1], padding: theme.spacing[1] },
-  architecturalViewsSection: {
-    gap: theme.spacing[1],
-    paddingBottom: theme.spacing[2],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
-  },
-  sectionLabel: {
-    paddingHorizontal: theme.spacing[2],
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-  },
   catalogLoading: {
     flex: 1,
     alignItems: "center",
@@ -2443,9 +2659,11 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.medium,
   },
+  pendingRowTitle: { color: theme.colors.statusWarningStrong },
+  historicalRowTitle: { color: theme.colors.foregroundMuted },
   knowledgeKindTooltipText: { color: theme.colors.foreground, fontSize: theme.fontSize.xs },
-  viewMeta: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
-  staleView: { color: theme.colors.statusWarning, fontSize: theme.fontSize.xs },
+  // Matches ToolbarIconButton's tooltip, since this trigger sits in that row.
+  toolbarTooltipText: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   viewer: { flex: 1, minWidth: 0, minHeight: 0, backgroundColor: theme.colors.surface0 },
   compactDetailHeader: {
     paddingHorizontal: theme.spacing[2],
@@ -2480,12 +2698,43 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     gap: theme.spacing[3],
     paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    minHeight: PANE_TOOLBAR_HEIGHT,
+    // The Interactive View mode control is a 32px compact control. Keep the
+    // same 2px vertical inset as the File Editor, then pin the header so child
+    // measurement can never grow the row. This pane's divider rasterizes a
+    // half-pixel lower than its sidebar neighbor at desktop scale.
+    paddingVertical: 2,
+    height: PANE_TOOLBAR_HEIGHT - 0.5,
+    flexShrink: 0,
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
   },
-  documentIdentity: { flex: 1, minWidth: 0, gap: theme.spacing[1] },
+  // A single row: the name shrinks and ellipsizes, the metadata around it keeps
+  // its full width or is dropped outright by `resolveKnowledgeDocumentIdentityLayout`.
+  // `minWidth: 0` stops the row from growing past its share, which is also what
+  // keeps the measured width stable enough to shed against.
+  documentIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  documentIdentityName: {
+    flexShrink: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  documentIdentityMeta: {
+    flexShrink: 0,
+    color: theme.colors.mutedForeground,
+    fontSize: theme.fontSize.sm,
+  },
+  documentIdentitySeparator: {
+    flexShrink: 0,
+    color: theme.colors.mutedForeground,
+    fontSize: theme.fontSize.sm,
+  },
   viewerTitle: {
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.medium,

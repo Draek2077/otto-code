@@ -18,15 +18,22 @@ const ChatOutlineLayoutContext = createContext<ChatOutlineLayoutState>({
  */
 export function ChatOutlineLayoutProvider({
   enabled,
+  initiallyReserveGutter = enabled,
   children,
 }: {
   enabled: boolean;
+  /**
+   * Existing agents reserve the rail's clearance until history determines
+   * whether it can render. A brand-new draft has no history or rail yet, so
+   * reserving that space makes its composer visibly resize on first send.
+   */
+  initiallyReserveGutter?: boolean;
   children: ReactNode;
 }) {
-  // The fixed gutter must exist before the initial timeline response arrives.
-  // The rail later withdraws it for chats with fewer than two prompts or a
-  // narrow pane, but a chat that will show the rail never visibly reflows.
-  const [railVisible, setRailVisible] = useState(enabled);
+  // Existing chats reserve the gutter before their initial timeline response
+  // arrives. The rail later withdraws it for chats with fewer than two prompts
+  // or a narrow pane, but a chat that will show the rail never visibly reflows.
+  const [railVisible, setRailVisible] = useState(initiallyReserveGutter);
 
   useEffect(() => {
     if (!enabled) {

@@ -1,6 +1,14 @@
 import { z } from "zod";
 
 export const ArchitecturalViewIdSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
+export const ArchitecturalViewDiagramTypeSchema = z.enum([
+  "architecture",
+  "workflow",
+  "sequence",
+  "dataflow",
+  "lifecycle",
+]);
+export type ArchitecturalViewDiagramType = z.infer<typeof ArchitecturalViewDiagramTypeSchema>;
 
 export const ArchitecturalViewKnowledgeReferenceSchema = z.object({
   kind: z.enum(["root", "record"]),
@@ -14,6 +22,9 @@ export const ArchitecturalViewsDeliverRequestSchema = z.object({
   title: z.string().min(1),
   knowledgeReferences: z.array(ArchitecturalViewKnowledgeReferenceSchema).min(1),
   sourcePath: z.string().min(1),
+  // COMPAT(architecturalViewDiagramType): added in v0.9.0 on 2026-09-06;
+  // remove after 2027-03-06 once every supported host writes a typed View.
+  diagramType: ArchitecturalViewDiagramTypeSchema.optional(),
   quality: z.enum(["standard", "showcase"]).optional(),
   requestId: z.string(),
 });
@@ -37,6 +48,9 @@ export const ArchitecturalViewSummarySchema = z.object({
   storeLocation: z.enum(["repository", "host"]),
   htmlPath: z.string(),
   renderedAt: z.string(),
+  // COMPAT(architecturalViewDiagramType): added in v0.9.0 on 2026-09-06;
+  // remove after 2027-03-06 once every supported host writes a typed View.
+  diagramType: ArchitecturalViewDiagramTypeSchema.optional(),
   // COMPAT(architecturalViewSourceStatus): added in v0.9.0, remove after 2027-02-28.
   sourceStatus: z.enum(["current", "stale", "unknown"]).optional(),
 });
@@ -47,6 +61,9 @@ export const ArchitecturalViewDraftSchema = z.object({
   title: z.string(),
   knowledgeReferences: z.array(ArchitecturalViewKnowledgeReferenceSchema),
   baseSpecificationSha256: z.string().nullable(),
+  // COMPAT(architecturalViewDiagramType): added in v0.9.0 on 2026-09-06;
+  // remove after 2027-03-06 once every supported host writes a typed View.
+  diagramType: ArchitecturalViewDiagramTypeSchema.optional(),
   // COMPAT(architecturalViewDraftAuthoring): added in v0.9.0, remove after 2027-02-28.
   authoringAgentId: z.string().nullable().optional(),
   createdAt: z.string(),
@@ -61,6 +78,9 @@ export const ArchitecturalViewsDraftCreateRequestSchema = z.object({
   title: z.string().min(1),
   knowledgeReferences: z.array(ArchitecturalViewKnowledgeReferenceSchema).min(1),
   sourcePath: z.string().min(1).optional(),
+  // COMPAT(architecturalViewDiagramType): added in v0.9.0 on 2026-09-06;
+  // remove after 2027-03-06 once every supported host writes a typed View.
+  diagramType: ArchitecturalViewDiagramTypeSchema.optional(),
   quality: z.enum(["standard", "showcase"]).optional(),
   requestId: z.string(),
 });

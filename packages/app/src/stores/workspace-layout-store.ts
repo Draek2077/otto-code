@@ -238,6 +238,9 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
     authoringChatId: z.string().optional(),
     generateOnOpen: z.boolean().optional(),
     authoringPrompt: z.enum(["create", "update"]).optional(),
+    diagramType: z
+      .enum(["architecture", "workflow", "sequence", "dataflow", "lifecycle"])
+      .optional(),
   }),
   z.strictObject({ kind: z.literal("architecturalView"), viewId: z.string() }),
   z.strictObject({ kind: z.literal("artifact"), artifactId: z.string() }),

@@ -139,6 +139,10 @@ import {
   useSessionStore,
 } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import {
+  DEFAULT_ARCHITECTURAL_VIEW_AUTHORING_SPLIT_SIZES,
+  useArchitecturalViewAuthoringLayoutStore,
+} from "@/stores/architectural-view-authoring-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
 import type { Theme } from "@/styles/theme";
@@ -205,10 +209,12 @@ import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 // second task-list UI.
 const SHOW_PASEO_TASK_LIST_PANEL = false;
 const AUTHORING_SPLIT_GROUP_ID = "architectural-view-authoring";
-const DEFAULT_AUTHORING_SPLIT_SIZES = [0.46, 0.54];
 
 function architecturalViewErrorMessage(error: string | null | undefined, fallback: string): string {
-  return (error ?? fallback).replaceAll("Architectural View draft", "Architectural View");
+  return (error ?? fallback)
+    .replaceAll("Architectural View draft", "Interactive View")
+    .replaceAll("Architectural Views", "Interactive Views")
+    .replaceAll("Architectural View", "Interactive View");
 }
 
 interface ChatAgentStateShape {
@@ -480,7 +486,7 @@ function useAgentPanelDescriptor(
   const icon = isArchitecturalViewAuthoring ? Architecture : getProviderIcon(provider);
   let subtitle = "Agent";
   if (isArchitecturalViewAuthoring) {
-    subtitle = "Architectural View authoring";
+    subtitle = "Interactive View authoring";
   } else if (provider) {
     subtitle = `${formatProviderLabel(provider)} agent`;
   }
@@ -612,7 +618,11 @@ export function AgentConversationPanel() {
   // Black tab background: render the whole chat pane (stream + composer) on
   // pure black with dark-theme colors regardless of the app-wide light/dark
   // mode. Chat tabs only - terminal/browser/preview panes are not wrapped.
-  return <ChatConversationSurface>{content}</ChatConversationSurface>;
+  return (
+    <ChatConversationSurface initiallyReserveOutlineGutter={target.kind === "agent"}>
+      {content}
+    </ChatConversationSurface>
+  );
 }
 
 /**
@@ -620,11 +630,20 @@ export function AgentConversationPanel() {
  * reusable by a compound surface, but individual workspace tabs still choose
  * their own target and lifecycle above this layer.
  */
-export function ChatConversationSurface({ children }: { children: ReactNode }) {
+export function ChatConversationSurface({
+  children,
+  initiallyReserveOutlineGutter = true,
+}: {
+  children: ReactNode;
+  initiallyReserveOutlineGutter?: boolean;
+}) {
   const { settings } = useAppSettings();
   return (
     <BlackChatScope enabled={settings.blackTabBackground}>
-      <ChatOutlineLayoutProvider enabled={settings.chatOutlineEnabled}>
+      <ChatOutlineLayoutProvider
+        enabled={settings.chatOutlineEnabled}
+        initiallyReserveGutter={initiallyReserveOutlineGutter}
+      >
         <ChatWidthLayoutProvider>{children}</ChatWidthLayoutProvider>
       </ChatOutlineLayoutProvider>
     </BlackChatScope>
@@ -814,7 +833,8 @@ export function ArchitecturalViewAuthoringSurface({
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<"publish" | "delete" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [splitSizes, setSplitSizes] = useState(DEFAULT_AUTHORING_SPLIT_SIZES);
+  const splitSizes = useArchitecturalViewAuthoringLayoutStore((state) => state.splitSizes);
+  const setSplitSizes = useArchitecturalViewAuthoringLayoutStore((state) => state.setSplitSizes);
   const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
   const [splitContainerWidth, setSplitContainerWidth] = useState(0);
   const refreshInFlight = useRef(false);
@@ -830,7 +850,7 @@ export function ArchitecturalViewAuthoringSurface({
       });
       if (!result.success || !result.html) {
         throw new Error(
-          architecturalViewErrorMessage(result.error, "Could not open Architectural View."),
+          architecturalViewErrorMessage(result.error, "Could not open Interactive View."),
         );
       }
       setHtml(result.html);
@@ -847,7 +867,7 @@ export function ArchitecturalViewAuthoringSurface({
   useEffect(() => {
     if (!client || !supported) {
       setHtml(null);
-      setError("Update the host to use Architectural Views.");
+      setError("Update the host to use Interactive Views.");
       setLoading(false);
       return;
     }
@@ -921,7 +941,7 @@ export function ArchitecturalViewAuthoringSurface({
       });
       if (!result.success) {
         throw new Error(
-          architecturalViewErrorMessage(result.error, "Could not publish Architectural View."),
+          architecturalViewErrorMessage(result.error, "Could not publish Interactive View."),
         );
       }
       await completeChat(choice);
@@ -954,7 +974,7 @@ export function ArchitecturalViewAuthoringSurface({
       });
       if (!result.success) {
         throw new Error(
-          architecturalViewErrorMessage(result.error, "Could not delete Architectural View."),
+          architecturalViewErrorMessage(result.error, "Could not delete Interactive View."),
         );
       }
       await completeChat(choice);
@@ -980,22 +1000,31 @@ export function ArchitecturalViewAuthoringSurface({
   const handlePreviewResizeSplit = useCallback((_groupId: string, sizes: number[]) => {
     setPreviewSplitSizes(sizes);
   }, []);
-  const handleResizeSplit = useCallback((_groupId: string, sizes: number[]) => {
-    setPreviewSplitSizes(null);
-    setSplitSizes(sizes);
-  }, []);
+  const handleResizeSplit = useCallback(
+    (_groupId: string, sizes: number[]) => {
+      setPreviewSplitSizes(null);
+      setSplitSizes(sizes);
+    },
+    [setSplitSizes],
+  );
   const effectiveSplitSizes = previewSplitSizes ?? splitSizes;
   const chatPaneStyle = useMemo(
     () => [
       styles.architecturalAuthoringPane,
-      inlineUnistylesStyle({ flexGrow: effectiveSplitSizes[0] ?? 0.46, flexBasis: 0 }),
+      inlineUnistylesStyle({
+        flexGrow: effectiveSplitSizes[0] ?? DEFAULT_ARCHITECTURAL_VIEW_AUTHORING_SPLIT_SIZES[0],
+        flexBasis: 0,
+      }),
     ],
     [effectiveSplitSizes],
   );
   const viewPaneStyle = useMemo(
     () => [
       styles.architecturalAuthoringPane,
-      inlineUnistylesStyle({ flexGrow: effectiveSplitSizes[1] ?? 0.54, flexBasis: 0 }),
+      inlineUnistylesStyle({
+        flexGrow: effectiveSplitSizes[1] ?? DEFAULT_ARCHITECTURAL_VIEW_AUTHORING_SPLIT_SIZES[1],
+        flexBasis: 0,
+      }),
     ],
     [effectiveSplitSizes],
   );
@@ -1004,7 +1033,7 @@ export function ArchitecturalViewAuthoringSurface({
     <View style={styles.architecturalAuthoringContainer}>
       <View style={styles.architecturalAuthoringToolbar}>
         <ToolbarIconButton
-          label="Publish Architectural View"
+          label="Publish Interactive View"
           Icon={ThemedPublish}
           loading={action === "publish"}
           onPress={publish}
@@ -1013,7 +1042,7 @@ export function ArchitecturalViewAuthoringSurface({
         />
         <View style={styles.architecturalAuthoringToolbarSpacer} />
         <ToolbarIconButton
-          label="Delete Architectural View"
+          label="Delete Interactive View"
           Icon={ThemedTrash2}
           loading={action === "delete"}
           onPress={deleteArchitecturalView}
@@ -1049,7 +1078,7 @@ export function ArchitecturalViewAuthoringSurface({
             <View style={styles.architecturalAuthoringEmpty}>
               {loading ? <LoadingSpinner size="small" /> : null}
               <Text style={styles.architecturalAuthoringMessage}>
-                {error ?? "Loading Architectural View…"}
+                {error ?? "Loading Interactive View…"}
               </Text>
             </View>
           )}

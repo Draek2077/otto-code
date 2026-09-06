@@ -5213,6 +5213,9 @@ export const ServerInfoStatusPayloadSchema = z
         artifacts: z.boolean().optional(),
         // COMPAT(architecturalViews): added in v0.9.0, remove after 2027-02-28.
         architecturalViews: z.boolean().optional(),
+        // COMPAT(interactiveViewTypes): added in v0.9.0 on 2026-09-06; remove
+        // after 2027-03-06 once every supported host writes typed Interactive Views.
+        interactiveViewTypes: z.boolean().optional(),
         // COMPAT(architecturalViewDraftDiscovery): added in v0.9.0, remove after 2027-03-05.
         // A host with Architectural Views but without this gate cannot serve the
         // draft-list RPC introduced for the Knowledge toolbar.

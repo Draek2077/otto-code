@@ -79,6 +79,9 @@ export function normalizeWorkspaceTabTarget(
       value.authoringPrompt === "create" || value.authoringPrompt === "update"
         ? value.authoringPrompt
         : undefined;
+    const diagramType = isArchitecturalViewDiagramType(value.diagramType)
+      ? value.diagramType
+      : undefined;
     return viewId && draftId
       ? {
           kind: "architecturalViewDraft",
@@ -88,6 +91,7 @@ export function normalizeWorkspaceTabTarget(
           ...(authoringChatId ? { authoringChatId } : {}),
           ...(generateOnOpen ? { generateOnOpen: true } : {}),
           ...(authoringPrompt ? { authoringPrompt } : {}),
+          ...(diagramType ? { diagramType } : {}),
         }
       : null;
   }
@@ -494,7 +498,8 @@ export function shouldRetargetWorkspaceTabTarget(
       (current.authoringAgentId !== next.authoringAgentId ||
         current.authoringChatId !== next.authoringChatId ||
         current.generateOnOpen !== next.generateOnOpen ||
-        current.authoringPrompt !== next.authoringPrompt))
+        current.authoringPrompt !== next.authoringPrompt ||
+        current.diagramType !== next.diagramType))
   );
 }
 
@@ -503,6 +508,18 @@ function architecturalViewDraftContextsEqual(
   right: { viewId: string; draftId: string } | undefined,
 ): boolean {
   return left?.viewId === right?.viewId && left?.draftId === right?.draftId;
+}
+
+function isArchitecturalViewDiagramType(
+  value: unknown,
+): value is "architecture" | "workflow" | "sequence" | "dataflow" | "lifecycle" {
+  return (
+    value === "architecture" ||
+    value === "workflow" ||
+    value === "sequence" ||
+    value === "dataflow" ||
+    value === "lifecycle"
+  );
 }
 
 function communicationsRoomTargetsEqual(

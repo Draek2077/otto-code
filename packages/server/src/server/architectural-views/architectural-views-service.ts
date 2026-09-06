@@ -3,6 +3,7 @@ import { copyFile, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { writeJsonFileAtomic } from "../atomic-file.js";
+import type { ArchitecturalViewDiagramType } from "@otto-code/protocol/architectural-views/rpc-schemas";
 import type { ProjectKnowledgeStore } from "../agent/project-knowledge/project-knowledge-store.js";
 import { ArchifyRenderer, type ArchifyQualityProfile } from "../archify/archify-renderer.js";
 import { validateHtmlFile } from "../artifact/html-validator.js";
@@ -18,6 +19,7 @@ export interface DeliverArchitecturalViewInput {
   title: string;
   knowledgeReferences: ArchitecturalViewKnowledgeReference[];
   sourcePath: string;
+  diagramType?: ArchitecturalViewDiagramType;
   quality?: ArchifyQualityProfile;
 }
 
@@ -42,6 +44,7 @@ export interface ArchitecturalViewSummary {
    */
   htmlPath: string;
   renderedAt: string;
+  diagramType: ArchitecturalViewDiagramType;
   /** Whether the cited Knowledge pages still match their delivery provenance. */
   sourceStatus: "current" | "stale" | "unknown";
 }
@@ -57,6 +60,7 @@ export interface ArchitecturalViewDraft {
   title: string;
   knowledgeReferences: ArchitecturalViewKnowledgeReference[];
   baseSpecificationSha256: string | null;
+  diagramType: ArchitecturalViewDiagramType;
   authoringAgentId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -77,6 +81,8 @@ interface ArchitecturalViewManifest {
   sourceDigests?: ArchitecturalViewSourceDigest[];
   specificationSha256: string;
   renderedAt: string;
+  /** Optional while Architecture-only manifests remain readable. */
+  diagramType?: ArchitecturalViewDiagramType;
 }
 
 interface ArchitecturalViewSourceDigest {
@@ -97,7 +103,7 @@ export interface ArchitecturalViewsServiceOptions {
 }
 
 /**
- * Stores one Architectural View beside the project Knowledge it explains.
+ * Stores one Interactive View beside the project Knowledge it explains.
  * Repository and host stores therefore preserve the same layout and lifecycle.
  */
 export class ArchitecturalViewsService {
@@ -112,14 +118,15 @@ export class ArchitecturalViewsService {
 
   async deliver(input: DeliverArchitecturalViewInput): Promise<DeliveredArchitecturalView> {
     assertViewId(input.viewId);
+    const diagramType = input.diagramType ?? "architecture";
     const store = await this.resolveStore(input.cwd);
     const directory = join(store.base, "architectural-views", input.viewId);
-    const specificationPath = join(directory, "view.architecture.json");
-    const htmlPath = join(directory, "view.architecture.html");
+    const specificationPath = join(directory, specificationFilename(diagramType));
+    const htmlPath = join(directory, renderedHtmlFilename(diagramType));
     const manifestPath = join(directory, "view.json");
     const receiptPath = join(directory, "receipt.json");
     if (!isAbsolute(input.sourcePath)) {
-      throw new Error("Architectural View source paths must be absolute.");
+      throw new Error("Interactive View source paths must be absolute.");
     }
     const sourcePath = resolve(input.sourcePath);
     const sourceText = await readFile(sourcePath, "utf8");
@@ -127,14 +134,16 @@ export class ArchitecturalViewsService {
     try {
       specification = JSON.parse(sourceText) as unknown;
     } catch {
-      throw new Error("Architectural View source must contain valid JSON.");
+      throw new Error("Interactive View source must contain valid JSON.");
     }
+    assertSpecificationDiagramType(specification, diagramType);
     await mkdir(directory, { recursive: true });
     await writeJsonFileAtomic(specificationPath, specification);
     const specificationSha256 = specificationHash(specification);
     const rendered = await this.renderSpecification({
       specificationPath,
       specificationSha256,
+      diagramType,
       quality: input.quality,
     });
     const manifest: ArchitecturalViewManifest = {
@@ -146,6 +155,7 @@ export class ArchitecturalViewsService {
       sourceDigests: await this.captureSourceDigests(store, input.knowledgeReferences),
       specificationSha256,
       renderedAt: new Date().toISOString(),
+      diagramType,
     };
     await Promise.all([
       writeJsonFileAtomic(manifestPath, manifest),
@@ -199,8 +209,14 @@ export class ArchitecturalViewsService {
     if (!manifest) return null;
     const view = await this.summaryFromManifest(store, manifest);
     const html = await this.getRenderedHtml({
-      specificationPath: join(store.base, "architectural-views", viewId, "view.architecture.json"),
+      specificationPath: join(
+        store.base,
+        "architectural-views",
+        viewId,
+        specificationFilename(view.diagramType),
+      ),
       specificationSha256: manifest.specificationSha256,
+      diagramType: view.diagramType,
     });
     return { view, html };
   }
@@ -216,6 +232,7 @@ export class ArchitecturalViewsService {
     title: string;
     knowledgeReferences: ArchitecturalViewKnowledgeReference[];
     sourcePath?: string;
+    diagramType?: ArchitecturalViewDiagramType;
     quality?: ArchifyQualityProfile;
   }): Promise<ArchitecturalViewDraft> {
     assertViewId(input.viewId);
@@ -226,18 +243,20 @@ export class ArchitecturalViewsService {
       return existingDraft;
     }
     const current = await this.readManifest(store, input.viewId);
+    const diagramType = input.diagramType ?? diagramTypeForManifest(current);
     const sourcePath = input.sourcePath
       ? resolveDraftSourcePath(input.sourcePath)
-      : join(store.base, "architectural-views", input.viewId, "view.architecture.json");
+      : join(store.base, "architectural-views", input.viewId, specificationFilename(diagramType));
     const title = current?.title ?? input.title;
     const knowledgeReferences = current?.knowledgeReferences ?? input.knowledgeReferences;
     if (!title.trim() || knowledgeReferences.length === 0) {
-      throw new Error("Architectural View drafts need a title and at least one Knowledge link.");
+      throw new Error("Interactive Views need a title and at least one Knowledge link.");
     }
     const specification =
       input.sourcePath || current
         ? await readJsonSpecification(sourcePath)
-        : starterArchitectureSpecification(title);
+        : starterSpecification(diagramType, title);
+    assertSpecificationDiagramType(specification, diagramType);
     const directory = draftDirectory(store, input.viewId, input.draftId);
     const now = new Date().toISOString();
     const draft = await this.renderDraft({
@@ -248,6 +267,7 @@ export class ArchitecturalViewsService {
         title,
         knowledgeReferences,
         baseSpecificationSha256: current?.specificationSha256 ?? null,
+        diagramType,
         authoringAgentId: null,
         createdAt: now,
         updatedAt: now,
@@ -270,8 +290,9 @@ export class ArchitecturalViewsService {
     assertDraftId(input.draftId);
     const store = await this.resolveStore(input.cwd);
     const existing = await this.readDraft(store, input.viewId, input.draftId);
-    if (!existing) throw new Error("Architectural View draft not found.");
+    if (!existing) throw new Error("Interactive View not found.");
     const specification = await readJsonSpecification(resolveDraftSourcePath(input.sourcePath));
+    assertSpecificationDiagramType(specification, existing.diagramType);
     return this.renderDraft({
       directory: draftDirectory(store, input.viewId, input.draftId),
       draft: { ...existing, updatedAt: new Date().toISOString() },
@@ -292,7 +313,8 @@ export class ArchitecturalViewsService {
     assertDraftId(input.draftId);
     const store = await this.resolveStore(input.cwd);
     const existing = await this.readDraft(store, input.viewId, input.draftId);
-    if (!existing) throw new Error("Architectural View draft not found.");
+    if (!existing) throw new Error("Interactive View not found.");
+    assertSpecificationDiagramType(input.specification, existing.diagramType);
     return this.renderDraft({
       directory: draftDirectory(store, input.viewId, input.draftId),
       draft: { ...existing, updatedAt: new Date().toISOString() },
@@ -314,7 +336,10 @@ export class ArchitecturalViewsService {
     return {
       draft,
       specification: await readJsonSpecification(
-        join(draftDirectory(store, input.viewId, input.draftId), "view.architecture.json"),
+        join(
+          draftDirectory(store, input.viewId, input.draftId),
+          specificationFilename(draft.diagramType),
+        ),
       ),
     };
   }
@@ -331,12 +356,13 @@ export class ArchitecturalViewsService {
     if (!draft) return null;
     const specificationPath = join(
       draftDirectory(store, viewId, draftId),
-      "view.architecture.json",
+      specificationFilename(draft.diagramType),
     );
     const specification = await readJsonSpecification(specificationPath);
     const html = await this.getRenderedHtml({
       specificationPath,
       specificationSha256: specificationHash(specification),
+      diagramType: draft.diagramType,
     });
     return { draft, html };
   }
@@ -381,10 +407,10 @@ export class ArchitecturalViewsService {
   }): Promise<ArchitecturalViewDraft> {
     assertViewId(input.viewId);
     assertDraftId(input.draftId);
-    if (!input.agentId.trim()) throw new Error("Architectural View authoring chat id is required.");
+    if (!input.agentId.trim()) throw new Error("Interactive View authoring chat id is required.");
     const store = await this.resolveStore(input.cwd);
     const draft = await this.readDraft(store, input.viewId, input.draftId);
-    if (!draft) throw new Error("Architectural View draft not found.");
+    if (!draft) throw new Error("Interactive View not found.");
     // Create and Update each begin a new chat. A stored id is provenance for
     // cleanup, never a resume key, so the latest authoring chat takes ownership.
     const updated = {
@@ -413,19 +439,21 @@ export class ArchitecturalViewsService {
     assertDraftId(input.draftId);
     const store = await this.resolveStore(input.cwd);
     const draft = await this.readDraft(store, input.viewId, input.draftId);
-    if (!draft) throw new Error("Architectural View draft not found.");
+    if (!draft) throw new Error("Interactive View not found.");
     const current = await this.readManifest(store, input.viewId);
     if ((current?.specificationSha256 ?? null) !== draft.baseSpecificationSha256) {
       throw new Error(
-        "Architectural View changed since this draft began. Rebase before publishing.",
+        "Interactive View changed since this work began. Update it before publishing.",
       );
     }
     const draftPath = draftDirectory(store, input.viewId, input.draftId);
-    const specification = await readJsonSpecification(join(draftPath, "view.architecture.json"));
+    const specificationPath = join(draftPath, specificationFilename(draft.diagramType));
+    const specification = await readJsonSpecification(specificationPath);
     const specificationSha256 = specificationHash(specification);
     const rendered = await this.renderSpecification({
-      specificationPath: join(draftPath, "view.architecture.json"),
+      specificationPath,
       specificationSha256,
+      diagramType: draft.diagramType,
     });
     const directory = join(store.base, "architectural-views", input.viewId);
     const now = new Date().toISOString();
@@ -433,8 +461,8 @@ export class ArchitecturalViewsService {
       const revisionDirectory = join(directory, "revisions", revisionIdFor(current.renderedAt));
       await mkdir(revisionDirectory, { recursive: true });
       await Promise.all(
-        ["view.architecture.json", "view.json", "receipt.json"].map((file) =>
-          copyFile(join(directory, file), join(revisionDirectory, file)),
+        [specificationFilename(diagramTypeForManifest(current)), "view.json", "receipt.json"].map(
+          (file) => copyFile(join(directory, file), join(revisionDirectory, file)),
         ),
       );
     }
@@ -447,13 +475,14 @@ export class ArchitecturalViewsService {
       sourceDigests: await this.captureSourceDigests(store, draft.knowledgeReferences),
       specificationSha256,
       renderedAt: now,
+      diagramType: draft.diagramType,
     };
     await Promise.all([
-      writeJsonFileAtomic(join(directory, "view.architecture.json"), specification),
+      writeJsonFileAtomic(join(directory, specificationFilename(draft.diagramType)), specification),
       writeJsonFileAtomic(join(directory, "view.json"), manifest),
       writeJsonFileAtomic(join(directory, "receipt.json"), rendered.receipt),
     ]);
-    await rm(join(directory, "view.architecture.html"), { force: true });
+    await rm(join(directory, renderedHtmlFilename(draft.diagramType)), { force: true });
     await rm(draftPath, { recursive: true, force: true });
     return this.summaryFromManifest(store, manifest);
   }
@@ -464,7 +493,7 @@ export class ArchitecturalViewsService {
     const store = await this.resolveStore(input.cwd);
     const directory = draftDirectory(store, input.viewId, input.draftId);
     const draft = await this.readDraft(store, input.viewId, input.draftId);
-    if (!draft) throw new Error("Architectural View draft not found.");
+    if (!draft) throw new Error("Interactive View not found.");
     await rm(directory, { recursive: true, force: true });
   }
 
@@ -529,11 +558,17 @@ export class ArchitecturalViewsService {
       storeLocation: store.location,
       htmlPath: relative(
         store.pathBase,
-        join(store.base, "architectural-views", manifest.id, "view.architecture.json"),
+        join(
+          store.base,
+          "architectural-views",
+          manifest.id,
+          specificationFilename(diagramTypeForManifest(manifest)),
+        ),
       )
         .split("\\")
         .join("/"),
       renderedAt: manifest.renderedAt,
+      diagramType: diagramTypeForManifest(manifest),
       sourceStatus: await this.sourceStatus(store, manifest),
     };
   }
@@ -623,7 +658,11 @@ export class ArchitecturalViewsService {
         receipt: _receipt,
         ...draft
       } = manifest;
-      return { ...draft, authoringAgentId: draft.authoringAgentId ?? null };
+      return {
+        ...draft,
+        diagramType: draft.diagramType ?? "architecture",
+        authoringAgentId: draft.authoringAgentId ?? null,
+      };
     } catch {
       return null;
     }
@@ -658,13 +697,17 @@ export class ArchitecturalViewsService {
     await mkdir(input.directory, { recursive: true });
     const candidateDirectory = join(input.directory, ".candidate");
     await mkdir(candidateDirectory, { recursive: true });
-    const candidateSpecificationPath = join(candidateDirectory, "view.architecture.json");
+    const candidateSpecificationPath = join(
+      candidateDirectory,
+      specificationFilename(input.draft.diagramType),
+    );
     try {
       await writeJsonFileAtomic(candidateSpecificationPath, input.specification);
       const specificationSha256 = specificationHash(input.specification);
       const rendered = await this.renderSpecification({
         specificationPath: candidateSpecificationPath,
         specificationSha256,
+        diagramType: input.draft.diagramType,
         quality: input.quality,
       });
       const manifest: ArchitecturalViewDraftManifest = {
@@ -675,11 +718,16 @@ export class ArchitecturalViewsService {
         receipt: rendered.receipt,
       };
       await Promise.all([
-        writeJsonFileAtomic(join(input.directory, "view.architecture.json"), input.specification),
+        writeJsonFileAtomic(
+          join(input.directory, specificationFilename(input.draft.diagramType)),
+          input.specification,
+        ),
         writeJsonFileAtomic(join(input.directory, "receipt.json"), rendered.receipt),
         writeJsonFileAtomic(join(input.directory, "draft.json"), manifest),
       ]);
-      await rm(join(input.directory, "view.architecture.html"), { force: true });
+      await rm(join(input.directory, renderedHtmlFilename(input.draft.diagramType)), {
+        force: true,
+      });
       return input.draft;
     } finally {
       await rm(candidateDirectory, { recursive: true, force: true });
@@ -689,6 +737,7 @@ export class ArchitecturalViewsService {
   private async getRenderedHtml(input: {
     specificationPath: string;
     specificationSha256: string;
+    diagramType: ArchitecturalViewDiagramType;
   }): Promise<string> {
     const cached = this.renderedHtmlCache.get(input.specificationSha256);
     if (cached) return cached;
@@ -696,6 +745,7 @@ export class ArchitecturalViewsService {
       await this.renderSpecification({
         specificationPath: input.specificationPath,
         specificationSha256: input.specificationSha256,
+        diagramType: input.diagramType,
       })
     ).html;
   }
@@ -703,19 +753,21 @@ export class ArchitecturalViewsService {
   private async renderSpecification(input: {
     specificationPath: string;
     specificationSha256: string;
+    diagramType: ArchitecturalViewDiagramType;
     quality?: ArchifyQualityProfile;
   }): Promise<{ html: string; receipt: Record<string, unknown> }> {
     const renderDirectory = await mkdtemp(join(tmpdir(), "otto-architectural-view-render-"));
-    const htmlPath = join(renderDirectory, "view.architecture.html");
+    const htmlPath = join(renderDirectory, renderedHtmlFilename(input.diagramType));
     try {
-      const delivery = await this.renderer.deliverArchitectureFile({
+      const delivery = await this.renderer.deliverFile({
+        diagramType: input.diagramType,
         specificationPath: input.specificationPath,
         htmlPath,
         quality: input.quality,
       });
       const rendered = validateHtmlFile(htmlPath);
       if (!rendered.isValid) {
-        throw new Error("Architectural View renderer returned invalid HTML.");
+        throw new Error("Interactive View renderer returned invalid HTML.");
       }
       this.rememberRenderedHtml(input.specificationSha256, rendered.content);
       return { html: rendered.content, receipt: delivery.receipt };
@@ -740,13 +792,13 @@ function isArchitecturalViewId(value: string): boolean {
 
 function assertViewId(value: string): void {
   if (!isArchitecturalViewId(value)) {
-    throw new Error("Architectural View id must use lowercase letters, digits, and hyphens.");
+    throw new Error("Interactive View id must use lowercase letters, digits, and hyphens.");
   }
 }
 
 function assertDraftId(value: string): void {
   if (!/^[a-z][a-z0-9-]*$/.test(value)) {
-    throw new Error("Architectural View draft id must use lowercase letters, digits, and hyphens.");
+    throw new Error("Interactive View session id must use lowercase letters, digits, and hyphens.");
   }
 }
 
@@ -755,7 +807,7 @@ function draftDirectory(store: ProjectKnowledgeStore, viewId: string, draftId: s
 }
 
 function resolveDraftSourcePath(sourcePath: string): string {
-  if (!isAbsolute(sourcePath)) throw new Error("Architectural View source paths must be absolute.");
+  if (!isAbsolute(sourcePath)) throw new Error("Interactive View source paths must be absolute.");
   return resolve(sourcePath);
 }
 
@@ -764,12 +816,12 @@ async function readJsonSpecification(sourcePath: string): Promise<unknown> {
   try {
     sourceText = await readFile(sourcePath, "utf8");
   } catch {
-    throw new Error("Architectural View source could not be read.");
+    throw new Error("Interactive View source could not be read.");
   }
   try {
     return JSON.parse(sourceText) as unknown;
   } catch {
-    throw new Error("Architectural View source must contain valid JSON.");
+    throw new Error("Interactive View source must contain valid JSON.");
   }
 }
 
@@ -792,15 +844,7 @@ function isArchitecturalViewManifest(value: unknown): value is ArchitecturalView
     typeof manifest.id === "string" &&
     isArchitecturalViewId(manifest.id) &&
     typeof manifest.title === "string" &&
-    Array.isArray(manifest.knowledgeReferences) &&
-    manifest.knowledgeReferences.every(
-      (reference) =>
-        typeof reference === "object" &&
-        reference !== null &&
-        (reference.kind === "root" || reference.kind === "record") &&
-        typeof reference.id === "string" &&
-        reference.id.length > 0,
-    ) &&
+    hasValidKnowledgeReferences(manifest.knowledgeReferences) &&
     (manifest.sourceDigests === undefined ||
       (Array.isArray(manifest.sourceDigests) &&
         manifest.sourceDigests.every(
@@ -815,7 +859,8 @@ function isArchitecturalViewManifest(value: unknown): value is ArchitecturalView
             (typeof entry.sha256 === "string" || entry.sha256 === null),
         ))) &&
     typeof manifest.specificationSha256 === "string" &&
-    typeof manifest.renderedAt === "string"
+    typeof manifest.renderedAt === "string" &&
+    (manifest.diagramType === undefined || isArchitecturalViewDiagramType(manifest.diagramType))
   );
 }
 
@@ -830,19 +875,12 @@ function isArchitecturalViewDraftManifest(value: unknown): value is Architectura
     typeof manifest.viewId === "string" &&
     isArchitecturalViewId(manifest.viewId) &&
     typeof manifest.title === "string" &&
-    Array.isArray(manifest.knowledgeReferences) &&
-    manifest.knowledgeReferences.every(
-      (reference) =>
-        typeof reference === "object" &&
-        reference !== null &&
-        (reference.kind === "root" || reference.kind === "record") &&
-        typeof reference.id === "string" &&
-        reference.id.length > 0,
-    ) &&
+    hasValidKnowledgeReferences(manifest.knowledgeReferences) &&
     (typeof manifest.baseSpecificationSha256 === "string" ||
       manifest.baseSpecificationSha256 === null) &&
     typeof manifest.createdAt === "string" &&
     typeof manifest.updatedAt === "string" &&
+    (manifest.diagramType === undefined || isArchitecturalViewDiagramType(manifest.diagramType)) &&
     isOptionalAuthoringAgentId(manifest.authoringAgentId) &&
     typeof manifest.specificationSha256 === "string" &&
     typeof manifest.receipt === "object" &&
@@ -854,6 +892,22 @@ function isOptionalAuthoringAgentId(value: unknown): value is string | null | un
   return typeof value === "string" || value === null || value === undefined;
 }
 
+function hasValidKnowledgeReferences(
+  value: unknown,
+): value is ArchitecturalViewKnowledgeReference[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (reference) =>
+        typeof reference === "object" &&
+        reference !== null &&
+        (reference.kind === "root" || reference.kind === "record") &&
+        typeof reference.id === "string" &&
+        reference.id.length > 0,
+    )
+  );
+}
+
 function revisionIdFor(renderedAt: string): string {
   return `published-${renderedAt.replace(/[:.]/g, "-")}`;
 }
@@ -863,6 +917,61 @@ function revisionIdFor(renderedAt: string): string {
  * usable before a model has inspected the linked Knowledge, without inventing
  * architecture facts or coupling creation to a workspace-side JSON file.
  */
+function specificationFilename(diagramType: ArchitecturalViewDiagramType): string {
+  return `view.${diagramType}.json`;
+}
+
+function renderedHtmlFilename(diagramType: ArchitecturalViewDiagramType): string {
+  return `view.${diagramType}.html`;
+}
+
+function diagramTypeForManifest(
+  manifest: Pick<ArchitecturalViewManifest, "diagramType"> | null,
+): ArchitecturalViewDiagramType {
+  return manifest?.diagramType ?? "architecture";
+}
+
+function isArchitecturalViewDiagramType(value: unknown): value is ArchitecturalViewDiagramType {
+  return (
+    value === "architecture" ||
+    value === "workflow" ||
+    value === "sequence" ||
+    value === "dataflow" ||
+    value === "lifecycle"
+  );
+}
+
+function assertSpecificationDiagramType(
+  specification: unknown,
+  expected: ArchitecturalViewDiagramType,
+): void {
+  if (
+    typeof specification !== "object" ||
+    specification === null ||
+    (specification as { diagram_type?: unknown }).diagram_type !== expected
+  ) {
+    throw new Error(`Interactive View specification must be a ${expected} document.`);
+  }
+}
+
+function starterSpecification(
+  diagramType: ArchitecturalViewDiagramType,
+  title: string,
+): Record<string, unknown> {
+  switch (diagramType) {
+    case "architecture":
+      return starterArchitectureSpecification(title);
+    case "workflow":
+      return starterWorkflowSpecification(title);
+    case "sequence":
+      return starterSequenceSpecification(title);
+    case "dataflow":
+      return starterDataflowSpecification(title);
+    case "lifecycle":
+      return starterLifecycleSpecification(title);
+  }
+}
+
 function starterArchitectureSpecification(title: string): Record<string, unknown> {
   return {
     schema_version: 1,
@@ -899,6 +1008,122 @@ function starterArchitectureSpecification(title: string): Record<string, unknown
         ],
       },
     ],
+  };
+}
+
+function starterWorkflowSpecification(title: string): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    diagram_type: "workflow",
+    meta: { title },
+    lanes: [{ id: "knowledge", label: "Knowledge" }],
+    mainPath: ["source", "outcome"],
+    nodes: [
+      {
+        id: "source",
+        lane: "knowledge",
+        col: 0,
+        type: "backend",
+        label: "Source",
+        sublabel: "Knowledge",
+      },
+      {
+        id: "outcome",
+        lane: "knowledge",
+        col: 1,
+        type: "external",
+        label: "Outcome",
+        sublabel: "To author",
+      },
+    ],
+    edges: [{ id: "source-outcome", from: "source", to: "outcome", variant: "default" }],
+  };
+}
+
+function starterSequenceSpecification(title: string): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    diagram_type: "sequence",
+    meta: { title },
+    participants: [
+      { id: "source", type: "backend", label: "Source", sublabel: "Knowledge" },
+      { id: "outcome", type: "external", label: "Outcome", sublabel: "To author" },
+    ],
+    messages: [
+      {
+        id: "source-outcome",
+        from: "source",
+        to: "outcome",
+        y: 180,
+        label: "describe interaction",
+        variant: "default",
+      },
+    ],
+  };
+}
+
+function starterDataflowSpecification(title: string): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    diagram_type: "dataflow",
+    meta: { title },
+    stages: [{ label: "Source" }, { label: "Outcome" }],
+    nodes: [
+      {
+        id: "source",
+        type: "backend",
+        label: title,
+        sublabel: "Knowledge source",
+        stage: 0,
+        row: 0,
+      },
+      {
+        id: "outcome",
+        type: "external",
+        label: "Outcome",
+        sublabel: "To be authored",
+        stage: 1,
+        row: 0,
+      },
+    ],
+    flows: [
+      {
+        id: "source-outcome",
+        from: "source",
+        to: "outcome",
+        label: "describe data",
+        classification: "to be authored",
+        variant: "default",
+      },
+    ],
+  };
+}
+
+function starterLifecycleSpecification(title: string): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    diagram_type: "lifecycle",
+    meta: { title },
+    lanes: [{ id: "main", label: "Lifecycle" }],
+    states: [
+      {
+        id: "source",
+        type: "start",
+        label: "Source",
+        sublabel: "Knowledge",
+        lane: "main",
+        col: 0,
+      },
+      {
+        id: "outcome",
+        type: "active",
+        label: "Outcome",
+        sublabel: "To author",
+        lane: "main",
+        col: 2,
+      },
+    ],
+    transitions: [{ id: "source-outcome", from: "source", to: "outcome", variant: "default" }],
   };
 }
 

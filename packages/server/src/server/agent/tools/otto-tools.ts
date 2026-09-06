@@ -1302,16 +1302,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     const architecturalViews = options.architecturalViews;
     const authoringCwd = (): string => {
       const cwd = agentManager.getAgent(callerAgentId)?.config.cwd;
-      if (!cwd) throw new Error("Architectural View tools require an active authoring chat.");
+      if (!cwd) throw new Error("Interactive View tools require an active authoring chat.");
       return cwd;
     };
     const requireBoundDraft = async (viewId: string, draftId: string) => {
       const content = await architecturalViews.getDraftContent(authoringCwd(), viewId, draftId);
-      if (!content) throw new Error("Architectural View draft not found.");
+      if (!content) throw new Error("Interactive View not found.");
       if (content.draft.authoringAgentId !== callerAgentId) {
-        throw new Error(
-          "This chat is not the bound authoring chat for that Architectural View draft.",
-        );
+        throw new Error("This chat is not the bound authoring chat for that Interactive View.");
       }
       return content.draft;
     };
@@ -1320,6 +1318,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       viewId: z.string(),
       draftId: z.string(),
       title: z.string(),
+      diagramType: z.enum(["architecture", "workflow", "sequence", "dataflow", "lifecycle"]),
       updatedAt: z.string(),
       knowledgeReferences: z.array(z.object({ kind: z.enum(["record", "root"]), id: z.string() })),
     };
@@ -1327,9 +1326,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     registerTool(
       "read_architectural_view_draft",
       {
-        title: "Read Architectural View draft",
+        title: "Read Interactive View",
         description:
-          "Read the typed JSON specification and linked Knowledge references for the staged Architectural View bound to this authoring chat. Use it before editing; the specification is the canonical editable source, and the linked Knowledge is the factual source for a new or refreshed visual.",
+          "Read the typed JSON specification and linked Knowledge references for the Interactive View bound to this authoring chat. Use it before editing; the specification is the canonical editable source, and the linked Knowledge is the factual source for a new or refreshed visual.",
         inputSchema: draftInput,
         outputSchema: { ...draftOutput, specification: z.json() },
       },
@@ -1340,13 +1339,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           viewId,
           draftId,
         });
-        if (!result) throw new Error("Architectural View draft not found.");
+        if (!result) throw new Error("Interactive View not found.");
         return {
           content: [],
           structuredContent: ensureValidJson({
             viewId,
             draftId,
             title: result.draft.title,
+            diagramType: result.draft.diagramType,
             updatedAt: result.draft.updatedAt,
             knowledgeReferences: boundDraft.knowledgeReferences,
             specification: result.specification,
@@ -1357,9 +1357,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     registerTool(
       "update_architectural_view_draft",
       {
-        title: "Update Architectural View draft",
+        title: "Update Interactive View",
         description:
-          "Replace the bound staged Architectural View's complete typed JSON specification and refresh its last-known-good preview. The published view is never changed by this tool. If validation fails, the previous preview remains available.",
+          "Replace the bound Interactive View's complete typed JSON specification and refresh its last-known-good preview. The published view is never changed by this tool. If validation fails, the previous preview remains available.",
         inputSchema: draftInput.extend({ specification: z.json() }),
         outputSchema: draftOutput,
       },
@@ -1377,6 +1377,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             viewId,
             draftId,
             title: draft.title,
+            diagramType: draft.diagramType,
             updatedAt: draft.updatedAt,
           }),
         };
@@ -1389,9 +1390,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     registerTool(
       "show_architectural_view",
       {
-        title: "Show Architectural View",
+        title: "Show Interactive View",
         description:
-          "Open one published Architectural View in this chat's workspace. Use this when the user asks to see a diagram; it opens the interactive visual instead of pasting HTML into the conversation.",
+          "Open one published Interactive View in this chat's workspace. Use this when the user asks to see a diagram; it opens the interactive visual instead of pasting HTML into the conversation.",
         inputSchema: { viewId: z.string().min(1) },
         outputSchema: {
           viewId: z.string(),
@@ -1404,10 +1405,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         const cwd = agent?.config.cwd;
         const workspaceId = agent?.workspaceId;
         if (!cwd || !workspaceId) {
-          throw new Error("Architectural Views can only open from a workspace-bound chat.");
+          throw new Error("Interactive Views can only open from a workspace-bound chat.");
         }
         const content = await architecturalViews.getContent(cwd, viewId);
-        if (!content) throw new Error("Architectural View not found.");
+        if (!content) throw new Error("Interactive View not found.");
         options.openArchitecturalView?.({ agentId: callerAgentId, workspaceId, viewId });
         return {
           content: [],

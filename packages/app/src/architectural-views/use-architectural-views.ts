@@ -60,7 +60,7 @@ export function useArchitecturalViews(
       })
       .then((result) => {
         if (cancelled) return undefined;
-        if (!result.success) throw new Error(result.error ?? "Could not list Architectural Views.");
+        if (!result.success) throw new Error(result.error ?? "Could not list Interactive Views.");
         setViews(result.views);
         selectView((current) => retainAvailableView(current, result.views));
         return undefined;
@@ -93,7 +93,7 @@ export function useArchitecturalViews(
       .then((result) => {
         if (cancelled) return undefined;
         if (!result.success || !result.html) {
-          throw new Error(result.error ?? "Could not open Architectural View.");
+          throw new Error(result.error ?? "Could not open Interactive View.");
         }
         setHtml(result.html);
         return undefined;

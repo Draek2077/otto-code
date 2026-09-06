@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, type FunctionComponent } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import type { StyleProp, TextStyle, ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -11,13 +11,18 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useControlStatePreview } from "@/components/ui/control-state-preview";
 import type { IconSizeProp } from "@/components/icons/icon-size";
 import type { Theme } from "@/styles/theme";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-type SegmentedControlIconRenderer = (props: { color: string; size: IconSizeProp }) => ReactNode;
+type SegmentedControlIconRenderer = FunctionComponent<{ color: string; size: IconSizeProp }>;
 
 export interface SegmentedControlOption<T extends string> {
   value: T;
   label: string;
   icon?: SegmentedControlIconRenderer;
+  /** Replaces the visible label with a desktop-hover label when labels are hidden. */
+  tooltip?: string;
+  /** Defaults to `label`, which keeps icon-only segments discoverable to assistive tech. */
+  accessibilityLabel?: string;
   disabled?: boolean;
   testID?: string;
   /** Marks a segment as wanting attention: same amber the mode chip uses for
@@ -51,8 +56,12 @@ interface SegmentIconProps {
   iconColor: string;
 }
 
-function SegmentIcon({ icon, iconSize, iconColor }: SegmentIconProps) {
-  return <View style={styles.iconContainer}>{icon({ color: iconColor, size: iconSize })}</View>;
+function SegmentIcon({ icon: Icon, iconSize, iconColor }: SegmentIconProps) {
+  return (
+    <View style={styles.iconContainer}>
+      <Icon color={iconColor} size={iconSize} />
+    </View>
+  );
 }
 
 const ThemedSegmentIcon = withUnistyles(SegmentIcon);
@@ -197,9 +206,10 @@ function SegmentItem<T extends string>({
     () => ({ selected: isSelected, disabled: option.disabled }),
     [isSelected, option.disabled],
   );
-  return (
+  const segment = (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={option.accessibilityLabel ?? option.label}
       accessibilityState={accessibilityState}
       aria-selected={isSelected}
       disabled={option.disabled}
@@ -220,6 +230,17 @@ function SegmentItem<T extends string>({
         </Text>
       )}
     </Pressable>
+  );
+
+  if (!option.tooltip) return segment;
+
+  return (
+    <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>{segment}</TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={6}>
+        <Text style={styles.tooltipText}>{option.tooltip}</Text>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -350,6 +371,10 @@ const styles = StyleSheet.create((theme) => {
     },
     labelWarningSelected: {
       color: theme.colors.statusWarningStrong,
+    },
+    tooltipText: {
+      color: theme.colors.foreground,
+      fontSize: theme.fontSize.xs,
     },
   };
 });

@@ -2144,6 +2144,9 @@ export class VoiceAssistantWebSocketServer {
         artifacts: true,
         // COMPAT(architecturalViews): added in v0.9.0, remove after 2027-02-28.
         architecturalViews: this.projectKnowledgeStoreResolver !== null,
+        // COMPAT(interactiveViewTypes): added in v0.9.0 on 2026-09-06; remove
+        // after 2027-03-06 once every supported host writes typed Interactive Views.
+        interactiveViewTypes: this.projectKnowledgeStoreResolver !== null,
         // COMPAT(architecturalViewDraftDiscovery): added in v0.9.0, remove after 2027-03-05.
         architecturalViewDraftDiscovery: this.projectKnowledgeStoreResolver !== null,
         // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.

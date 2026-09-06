@@ -227,7 +227,7 @@ describe("ArchitecturalViewsService", () => {
     });
     await expect(
       service.publishDraft({ cwd: projectRoot, viewId: "runtime-overview", draftId: "edit-two" }),
-    ).rejects.toThrow("changed since this draft began");
+    ).rejects.toThrow("changed since this work began");
     await service.discardDraft({
       cwd: projectRoot,
       viewId: "runtime-overview",
@@ -259,6 +259,29 @@ describe("ArchitecturalViewsService", () => {
       service.listDrafts(projectRoot, { kind: "root", id: "architecture" }),
     ).resolves.toEqual([expect.objectContaining({ id: draft.id, viewId: draft.viewId })]);
   });
+
+  it("creates a valid typed starter for every Interactive View kind", async () => {
+    const projectRoot = await createStore();
+    const service = new ArchitecturalViewsService({
+      resolveStore: async () => repositoryKnowledgeStore(projectRoot),
+    });
+    const types = ["workflow", "sequence", "dataflow", "lifecycle"] as const;
+
+    for (const diagramType of types) {
+      const draft = await service.createDraft({
+        cwd: projectRoot,
+        viewId: `knowledge-${diagramType}`,
+        draftId: `knowledge-${diagramType}-first`,
+        title: `Knowledge ${diagramType}`,
+        knowledgeReferences: [{ kind: "root", id: "architecture" }],
+        diagramType,
+      });
+      expect(draft.diagramType).toBe(diagramType);
+      await expect(service.getDraftContent(projectRoot, draft.viewId, draft.id)).resolves.toEqual(
+        expect.objectContaining({ html: expect.stringContaining("Content-Security-Policy") }),
+      );
+    }
+  }, 30_000);
 
   it("returns the existing staged draft when creation is requested again", async () => {
     const projectRoot = await createStore();

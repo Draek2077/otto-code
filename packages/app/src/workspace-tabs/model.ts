@@ -83,6 +83,8 @@ export type WorkspaceTabTarget =
       generateOnOpen?: boolean;
       /** Selects a new chat's visible first-turn instruction. */
       authoringPrompt?: "create" | "update";
+      /** The renderer contract chosen before this authoring chat was created. */
+      diagramType?: "architecture" | "workflow" | "sequence" | "dataflow" | "lifecycle";
     }
   // A published Knowledge visual. It is a first-class workspace surface so an
   // agent can open the same document a reader would seek from Manage Knowledge.

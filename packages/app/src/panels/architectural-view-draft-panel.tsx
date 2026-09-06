@@ -12,19 +12,62 @@ import { WorkspaceDraftAgentTab } from "@/composer/draft/workspace-tab";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
+import {
+  DEFAULT_ARCHITECTURAL_VIEW_AUTHORING_SPLIT_SIZES,
+  useArchitecturalViewAuthoringLayoutStore,
+} from "@/stores/architectural-view-authoring-layout-store";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { definePanel } from "@/panels/panel-registry";
 
 const AUTHORING_SPLIT_GROUP_ID = "architectural-view-authoring";
-const DEFAULT_SPLIT_SIZES = [0.46, 0.54];
-const CREATE_ARCHITECTURAL_VIEW_REQUEST =
-  "Create this Architectural View from the Knowledge documentation linked to the staged draft. " +
-  "First read the staged draft to identify its linked Knowledge article and its current specification. Read that Knowledge article, including its prose, Mermaid diagrams, and wiki-links, then translate the established facts into a focused interactive Architectural View. Reuse and improve what is already documented; do not invent unsupported components or relationships. When the user asks to improve the Knowledge itself, use the normal Knowledge tools as well, then update the staged visual to reflect the revised facts. Summarize the visual choices when finished.";
-const UPDATE_ARCHITECTURAL_VIEW_REQUEST =
-  "Update this Architectural View from the Knowledge documentation linked to the staged draft. " +
-  "First read the staged draft and its linked Knowledge article, including prose, Mermaid diagrams, and wiki-links. Preserve established facts and useful parts of the existing typed visual, then improve the staged view to reflect current Knowledge. Do not invent unsupported components or relationships. When the user asks to improve the Knowledge itself, use the normal Knowledge tools as well, then update the staged visual to reflect the revised facts. Summarize the visual choices when finished.";
+type InteractiveViewDiagramType =
+  | "architecture"
+  | "workflow"
+  | "sequence"
+  | "dataflow"
+  | "lifecycle";
+
+function interactiveViewRequest(
+  action: "create" | "update",
+  diagramType: InteractiveViewDiagramType,
+): string {
+  const label = interactiveViewTypeLabel(diagramType);
+  const verb = action === "create" ? "Create" : "Update";
+  const emphasis = interactiveViewTypeFocus(diagramType);
+  return (
+    `${verb} this ${label} Interactive View from its linked Knowledge documentation. ` +
+    "First read the linked Interactive View specification and Knowledge article, including prose, Mermaid diagrams, and wiki-links. " +
+    `Use the ${diagramType} typed JSON contract and make ${emphasis} explicit. ` +
+    "Preserve established facts and useful existing structure; do not invent unsupported components or relationships. " +
+    "When the user asks to improve the Knowledge itself, use the normal Knowledge tools as well, then update the visual to reflect the revised facts. Summarize the visual choices when finished."
+  );
+}
+
+function interactiveViewTypeLabel(type: InteractiveViewDiagramType): string {
+  return (
+    {
+      architecture: "Architecture",
+      workflow: "Workflow",
+      sequence: "Sequence",
+      dataflow: "Data Flow",
+      lifecycle: "Lifecycle",
+    } as const
+  )[type];
+}
+
+function interactiveViewTypeFocus(type: InteractiveViewDiagramType): string {
+  return (
+    {
+      architecture: "scope, components, boundaries, and the primary path",
+      workflow: "participants, order, branches, and exceptions",
+      sequence: "callers, callees, returns, timing, and async traces",
+      dataflow: "sources, transforms, stores, sensitivity, and consumers",
+      lifecycle: "states, events, retries, waits, cancellation, and terminal outcomes",
+    } as const
+  )[type];
+}
 
 type ArchitecturalViewDraftTarget = Extract<WorkspaceTabTarget, { kind: "architecturalViewDraft" }>;
 
@@ -41,11 +84,9 @@ function useArchitecturalViewDraftPanelDescriptor(
   );
   const isAuthoring = authoringAgent?.status === "running";
   return {
-    label: `Architecture: ${target.viewId}`,
-    tooltip: `Architectural View authoring for ${target.viewId}`,
-    subtitle: isAuthoring
-      ? "Architectural View authoring in progress"
-      : "Architectural View authoring",
+    label: `Interactive View: ${target.viewId}`,
+    tooltip: `Interactive View authoring for ${target.viewId}`,
+    subtitle: isAuthoring ? "Interactive View authoring in progress" : "Interactive View authoring",
     titleState: "ready",
     icon: Architecture,
     statusBucket: isAuthoring ? "running" : null,
@@ -78,7 +119,8 @@ function ArchitecturalViewDraftPanel() {
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [action, setAction] = useState<"publish" | "discard" | null>(null);
-  const [splitSizes, setSplitSizes] = useState(DEFAULT_SPLIT_SIZES);
+  const splitSizes = useArchitecturalViewAuthoringLayoutStore((state) => state.splitSizes);
+  const setSplitSizes = useArchitecturalViewAuthoringLayoutStore((state) => state.setSplitSizes);
   const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
   const [splitContainerWidth, setSplitContainerWidth] = useState(0);
   // A completed create always becomes an ordinary agent tab carrying the
@@ -97,7 +139,7 @@ function ArchitecturalViewDraftPanel() {
   useEffect(() => {
     if (!client || !supported) {
       setHtml(null);
-      setError("Update the host to use Architectural Views.");
+      setError("Update the host to use Interactive Views.");
       setLoading(false);
       return;
     }
@@ -113,7 +155,7 @@ function ArchitecturalViewDraftPanel() {
       .then((result) => {
         if (cancelled) return undefined;
         if (!result.success || !result.html) {
-          throw new Error(result.error ?? "Could not open Architectural View draft.");
+          throw new Error(result.error ?? "Could not open Interactive View.");
         }
         setHtml(result.html);
         return undefined;
@@ -139,16 +181,19 @@ function ArchitecturalViewDraftPanel() {
   const handlePreviewResizeSplit = useCallback((_groupId: string, sizes: number[]) => {
     setPreviewSplitSizes(sizes);
   }, []);
-  const handleResizeSplit = useCallback((_groupId: string, sizes: number[]) => {
-    setPreviewSplitSizes(null);
-    setSplitSizes(sizes);
-  }, []);
+  const handleResizeSplit = useCallback(
+    (_groupId: string, sizes: number[]) => {
+      setPreviewSplitSizes(null);
+      setSplitSizes(sizes);
+    },
+    [setSplitSizes],
+  );
   const effectiveSplitSizes = previewSplitSizes ?? splitSizes;
   const chatPaneStyle = useMemo(
     () => [
       styles.chatPane,
       inlineUnistylesStyle({
-        flexGrow: effectiveSplitSizes[0] ?? DEFAULT_SPLIT_SIZES[0],
+        flexGrow: effectiveSplitSizes[0] ?? DEFAULT_ARCHITECTURAL_VIEW_AUTHORING_SPLIT_SIZES[0],
         flexBasis: 0,
       }),
     ],
@@ -158,7 +203,7 @@ function ArchitecturalViewDraftPanel() {
     () => [
       styles.viewPane,
       inlineUnistylesStyle({
-        flexGrow: effectiveSplitSizes[1] ?? DEFAULT_SPLIT_SIZES[1],
+        flexGrow: effectiveSplitSizes[1] ?? DEFAULT_ARCHITECTURAL_VIEW_AUTHORING_SPLIT_SIZES[1],
         flexBasis: 0,
       }),
     ],
@@ -180,7 +225,7 @@ function ArchitecturalViewDraftPanel() {
         draftId: target.draftId,
       });
       if (!result.success) {
-        throw new Error(result.error ?? "Could not publish Architectural View draft.");
+        throw new Error(result.error ?? "Could not publish Interactive View.");
       }
       closeCurrentTab();
     } catch (cause) {
@@ -193,10 +238,10 @@ function ArchitecturalViewDraftPanel() {
   const discard = useCallback(async () => {
     if (!client || action) return;
     const confirmed = await confirmDialog({
-      title: "Discard Architectural View draft?",
+      title: "Delete Interactive View?",
       message:
-        "This permanently removes the staged draft. The current published view is unchanged.",
-      confirmLabel: "Discard draft",
+        "This permanently removes this unpublished Interactive View. The published view is unchanged.",
+      confirmLabel: "Delete Interactive View",
       destructive: true,
     });
     if (!confirmed) return;
@@ -209,7 +254,7 @@ function ArchitecturalViewDraftPanel() {
         draftId: target.draftId,
       });
       if (!result.success) {
-        throw new Error(result.error ?? "Could not discard Architectural View draft.");
+        throw new Error(result.error ?? "Could not delete Interactive View.");
       }
       closeCurrentTab();
     } catch (cause) {
@@ -233,10 +278,10 @@ function ArchitecturalViewDraftPanel() {
 
   let autoSubmitInitialPrompt: string | undefined;
   if (target.generateOnOpen) {
-    autoSubmitInitialPrompt =
-      target.authoringPrompt === "update"
-        ? UPDATE_ARCHITECTURAL_VIEW_REQUEST
-        : CREATE_ARCHITECTURAL_VIEW_REQUEST;
+    autoSubmitInitialPrompt = interactiveViewRequest(
+      target.authoringPrompt === "update" ? "update" : "create",
+      target.diagramType ?? "architecture",
+    );
   }
 
   const chatContent = (
@@ -262,7 +307,7 @@ function ArchitecturalViewDraftPanel() {
     <View style={styles.container}>
       <View style={styles.toolbar}>
         <ToolbarIconButton
-          label="Publish Architectural View"
+          label="Publish Interactive View"
           Icon={ThemedPublish}
           loading={action === "publish"}
           onPress={publish}
@@ -271,7 +316,7 @@ function ArchitecturalViewDraftPanel() {
         />
         <View style={styles.toolbarSpacer} />
         <ToolbarIconButton
-          label="Discard Architectural View draft"
+          label="Delete Interactive View"
           Icon={ThemedTrash2}
           loading={action === "discard"}
           onPress={discard}
@@ -300,7 +345,7 @@ function ArchitecturalViewDraftPanel() {
           ) : (
             <View style={styles.centered}>
               {loading ? <LoadingSpinner size="small" /> : null}
-              <Text style={styles.message}>{error ?? "Loading Architectural View draft…"}</Text>
+              <Text style={styles.message}>{error ?? "Loading Interactive View…"}</Text>
             </View>
           )}
         </View>

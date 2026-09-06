@@ -5,6 +5,7 @@ import {
   recordComposerToolbarFrames,
 } from "../support/helpers/composer-control-density";
 import { clickNewChat, gotoWorkspace } from "../support/helpers/launcher";
+import { expectComposerVisible, submitMessage } from "../support/helpers/composer";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 
 const SETTLE_MS = 1_000;
@@ -86,6 +87,41 @@ test.describe("Composer control density across tab switches", () => {
       await page.waitForTimeout(SETTLE_MS);
 
       await expectNoCollapsedComposerToolbarFrame(page);
+    } finally {
+      await workspace.cleanup();
+    }
+  });
+
+  // Regression: a new-chat draft used to render the composer narrower than the
+  // agent panel that replaces it after its first prompt, visibly changing the
+  // left and right gutters as the message left the box.
+  test("first prompt keeps the composer width stable across draft handoff", async ({ page }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "composer-first-send-width-" });
+    try {
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          "@otto:create-agent-preferences",
+          JSON.stringify({
+            provider: "mock",
+            providerPreferences: { mock: { mode: "load-test" } },
+          }),
+        );
+      });
+      await gotoWorkspace(page, workspace.workspaceId);
+      await clickNewChat(page);
+      await expectComposerVisible(page);
+
+      const composer = page.getByTestId("message-input-root").filter({ visible: true }).first();
+      const widthBeforeSend = await composer.evaluate(
+        (element) => element.getBoundingClientRect().width,
+      );
+      await submitMessage(page, "Keep the composer width stable through this first prompt.");
+      await expectComposerVisible(page, { timeout: 30_000 });
+      const widthAfterSend = await composer.evaluate(
+        (element) => element.getBoundingClientRect().width,
+      );
+
+      expect(Math.abs(widthAfterSend - widthBeforeSend)).toBeLessThanOrEqual(1);
     } finally {
       await workspace.cleanup();
     }

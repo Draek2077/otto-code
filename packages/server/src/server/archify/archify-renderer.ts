@@ -5,8 +5,15 @@ import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type ArchifyQualityProfile = "standard" | "showcase";
+export type ArchifyDiagramType =
+  | "architecture"
+  | "workflow"
+  | "sequence"
+  | "dataflow"
+  | "lifecycle";
 
-export interface DeliverArchitectureFileInput {
+export interface DeliverArchifyFileInput {
+  diagramType: ArchifyDiagramType;
   specificationPath: string;
   htmlPath: string;
   quality?: ArchifyQualityProfile;
@@ -75,6 +82,7 @@ function resolveArchifyCliPath(): string {
 
 async function runArchifyDeliver(
   cliPath: string,
+  diagramType: ArchifyDiagramType,
   specificationPath: string,
   htmlPath: string,
   quality: ArchifyQualityProfile,
@@ -85,7 +93,7 @@ async function runArchifyDeliver(
       [
         cliPath,
         "deliver",
-        "architecture",
+        diagramType,
         specificationPath,
         htmlPath,
         "--quality",
@@ -112,22 +120,20 @@ async function runArchifyDeliver(
 }
 
 /**
- * Daemon-owned entry point for the deterministic Architecture renderer.
+ * Daemon-owned entry point for the deterministic typed Archify renderers.
  * The caller owns both paths through a managed Knowledge store; this adapter
  * never opens a local server or an OS browser.
  */
 export class ArchifyRenderer {
-  async deliverArchitectureFile(
-    input: DeliverArchitectureFileInput,
-  ): Promise<DeliveredArchitectureDocument> {
+  async deliverFile(input: DeliverArchifyFileInput): Promise<DeliveredArchitectureDocument> {
     if (!isAbsolute(input.specificationPath) || !isAbsolute(input.htmlPath)) {
-      throw new Error("Architectural View paths must be absolute.");
+      throw new Error("Interactive View paths must be absolute.");
     }
     if (extname(input.specificationPath).toLowerCase() !== ".json") {
-      throw new Error("Architectural View specifications must be JSON files.");
+      throw new Error("Interactive View specifications must be JSON files.");
     }
     if (extname(input.htmlPath).toLowerCase() !== ".html") {
-      throw new Error("Architectural View output must be an HTML file.");
+      throw new Error("Interactive View output must be an HTML file.");
     }
 
     const specificationPath = resolve(input.specificationPath);
@@ -135,6 +141,7 @@ export class ArchifyRenderer {
 
     const result = await runArchifyDeliver(
       resolveArchifyCliPath(),
+      input.diagramType,
       specificationPath,
       htmlPath,
       input.quality ?? "showcase",
@@ -143,7 +150,7 @@ export class ArchifyRenderer {
     if (result.exitCode !== 0 || receipt?.ok !== true) {
       throw new ArchifyDeliveryError(
         receipt
-          ? "Archify rejected the architecture document."
+          ? `Archify rejected the ${input.diagramType} document.`
           : "Archify did not return a valid receipt.",
         receipt,
         result.stderr,
@@ -152,5 +159,12 @@ export class ArchifyRenderer {
 
     await readFile(htmlPath, "utf8");
     return { htmlPath, specificationPath, receipt };
+  }
+
+  /** Kept for the existing Architecture-only callers and their persisted tests. */
+  async deliverArchitectureFile(
+    input: Omit<DeliverArchifyFileInput, "diagramType">,
+  ): Promise<DeliveredArchitectureDocument> {
+    return this.deliverFile({ ...input, diagramType: "architecture" });
   }
 }

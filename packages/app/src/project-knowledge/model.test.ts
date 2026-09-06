@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_KNOWLEDGE_STATUS_FILTER,
   formatDeliveryStatus,
+  formatKnowledgeStatus,
   formatMetadataLabel,
   isolateKnowledgeTypeFilter,
   KNOWLEDGE_ARTICLE_KINDS,
@@ -16,6 +18,13 @@ describe("project knowledge summary", () => {
     expect(formatMetadataLabel("in_build")).toBe("In Build");
     expect(formatMetadataLabel("requirement")).toBe("Requirement");
     expect(formatDeliveryStatus(undefined)).toBe("Charter");
+  });
+
+  it("defaults to confirmed knowledge without changing lifecycle labels", () => {
+    expect(DEFAULT_KNOWLEDGE_STATUS_FILTER).toBe("confirmed");
+    expect(formatKnowledgeStatus("proposed")).toBe("Proposed");
+    expect(formatKnowledgeStatus("confirmed")).toBe("Confirmed");
+    expect(formatKnowledgeStatus("superseded")).toBe("History");
   });
 
   it("keeps charter counts separate from weighted completion metrics", () => {

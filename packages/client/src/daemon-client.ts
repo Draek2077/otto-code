@@ -9579,6 +9579,7 @@ export class DaemonClient {
     title: string;
     knowledgeReferences: Array<{ kind: "root" | "record"; id: string }>;
     sourcePath: string;
+    diagramType?: "architecture" | "workflow" | "sequence" | "dataflow" | "lifecycle";
     quality?: "standard" | "showcase";
     requestId?: string;
   }): Promise<ArchitecturalViewsDeliverPayload> {
@@ -9591,6 +9592,7 @@ export class DaemonClient {
         title: options.title,
         knowledgeReferences: options.knowledgeReferences,
         sourcePath: options.sourcePath,
+        ...(options.diagramType ? { diagramType: options.diagramType } : {}),
         ...(options.quality ? { quality: options.quality } : {}),
       },
       responseType: "architectural-views.deliver.response",
@@ -9636,6 +9638,7 @@ export class DaemonClient {
     title: string;
     knowledgeReferences: Array<{ kind: "root" | "record"; id: string }>;
     sourcePath?: string;
+    diagramType?: "architecture" | "workflow" | "sequence" | "dataflow" | "lifecycle";
     quality?: "standard" | "showcase";
     requestId?: string;
   }): Promise<ArchitecturalViewsDraftCreatePayload> {
@@ -9649,6 +9652,7 @@ export class DaemonClient {
         title: options.title,
         knowledgeReferences: options.knowledgeReferences,
         ...(options.sourcePath ? { sourcePath: options.sourcePath } : {}),
+        ...(options.diagramType ? { diagramType: options.diagramType } : {}),
         ...(options.quality ? { quality: options.quality } : {}),
       },
       responseType: "architectural-views.draft.create.response",

@@ -15,8 +15,8 @@ type ArchitecturalViewTarget = Extract<WorkspaceTabTarget, { kind: "architectura
 function useArchitecturalViewPanelDescriptor(target: ArchitecturalViewTarget): PanelDescriptor {
   return {
     label: target.viewId,
-    tooltip: `Architectural View: ${target.viewId}`,
-    subtitle: "Published Architectural View",
+    tooltip: `Interactive View: ${target.viewId}`,
+    subtitle: "Published Interactive View",
     titleState: "ready",
     icon: Architecture,
     statusBucket: null,
@@ -42,7 +42,7 @@ function ArchitecturalViewPanel(): ReactElement {
   useEffect(() => {
     if (!client || !supported) {
       setHtml(null);
-      setError("Update the host to use Architectural Views.");
+      setError("Update the host to use Interactive Views.");
       setLoading(false);
       return;
     }
@@ -54,7 +54,7 @@ function ArchitecturalViewPanel(): ReactElement {
       .then((result) => {
         if (cancelled) return;
         if (!result.success || !result.html || !result.view) {
-          throw new Error(result.error ?? "Could not open Architectural View.");
+          throw new Error(result.error ?? "Could not open Interactive View.");
         }
         setHtml(result.html);
         setTitle(result.view.title);
@@ -90,7 +90,7 @@ function ArchitecturalViewPanel(): ReactElement {
       ) : (
         <View style={styles.centered}>
           {loading ? <LoadingSpinner size="small" /> : null}
-          <Text style={styles.message}>{error ?? "Loading Architectural View…"}</Text>
+          <Text style={styles.message}>{error ?? "Loading Interactive View…"}</Text>
         </View>
       )}
     </View>
