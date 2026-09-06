@@ -9,6 +9,7 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { clickSettingsBackToWorkspace, openCompactSettings } from "../support/helpers/settings";
 import { openSettings } from "../support/helpers/app";
+import { openSettingsFromCommandCenter } from "../support/helpers/command-center";
 import { moneyShot } from "../support/helpers/evidence";
 import {
   clickFirstTerminalTab,
@@ -41,12 +42,6 @@ async function expectSameRenderedNode(
 
 async function expectNodeConnected(node: Awaited<ReturnType<typeof captureRenderedNode>>) {
   expect(await node.evaluate((candidate) => candidate.isConnected)).toBe(true);
-}
-
-async function getSettingsShortcut(page: Page) {
-  return page.evaluate(() =>
-    navigator.platform.toLowerCase().includes("mac") ? "Meta+," : "Control+,",
-  );
 }
 
 async function waitForWorkspaceRoute(page: Page, route: string) {
@@ -124,9 +119,8 @@ test.describe("Workspace pane mounting", () => {
         const renameInput = renameModalInput(page, `workspace-tab-rename-modal-agent-${agent.id}`);
         await expect(renameInput).toBeVisible();
 
-        const settingsShortcut = await getSettingsShortcut(page);
-        await page.keyboard.press(settingsShortcut);
-        await expect(page).toHaveURL(/\/settings\/general$/);
+        await openSettingsFromCommandCenter(page);
+        await expect(page).toHaveURL(/\/settings$/);
         await expect(renameInput).not.toBeVisible();
         await clickSettingsBackToWorkspace(page);
         await expectSameRenderedNode(originalComposer, composer);
@@ -159,7 +153,7 @@ test.describe("Workspace pane mounting", () => {
 
       const workspaceRoute = buildHostWorkspaceRoute(serverId, workspace.workspaceId);
       await openCompactSettings(page, workspaceRoute);
-      await page.goBack();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
       await waitForWorkspaceRoute(page, workspaceRoute);
       await expectSameRenderedNode(originalComposer, composer);
     } finally {

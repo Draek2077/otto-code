@@ -1,13 +1,10 @@
 import { expect, test, type Page } from "../support/fixtures";
+import { openSettingsFromCommandCenter } from "../support/helpers/command-center";
 
 const modifier = process.platform === "darwin" ? "Meta" : "Control";
 
 async function pressFocusModeShortcut(page: Page) {
   await page.keyboard.press(`${modifier}+Alt+F`);
-}
-
-async function pressSettingsShortcut(page: Page) {
-  await page.keyboard.press(`${modifier}+Comma`);
 }
 
 async function pressRightSidebarShortcut(page: Page) {
@@ -57,8 +54,7 @@ test("sidebar shortcuts outside a workspace preserve its focus mode", async ({
   await enterFocusMode(page);
   const workspaceUrl = page.url();
 
-  await pressSettingsShortcut(page);
-  await expect(page.getByRole("navigation", { name: "Settings" })).toBeVisible();
+  await openSettingsFromCommandCenter(page);
 
   await pressRightSidebarShortcut(page);
   await returnToWorkspace(page, workspaceUrl);
@@ -71,7 +67,7 @@ test("focus mode only applies to the active workspace screen", async ({ page, wi
   await workspace.navigateTo();
   const exitFocusMode = exitFocusModeButton(page);
   const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
-  const settingsSidebar = page.getByRole("navigation", { name: "Settings" });
+  const settingsSidebar = page.getByTestId("settings-sidebar");
 
   await expect(settingsButton).toBeVisible();
   await expect(exitFocusMode).toHaveCount(0);
@@ -83,7 +79,7 @@ test("focus mode only applies to the active workspace screen", async ({ page, wi
   await expect(settingsButton).toHaveCount(0);
   const workspaceUrl = page.url();
 
-  await pressSettingsShortcut(page);
+  await openSettingsFromCommandCenter(page);
 
   await expect(settingsSidebar).toBeVisible();
   await expect(exitFocusMode).toHaveCount(0);

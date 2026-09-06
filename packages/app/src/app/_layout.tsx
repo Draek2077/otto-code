@@ -631,7 +631,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   useKeyboardActionHandler({
     handlerId: focusModeHandlerId,
     actions: FOCUS_MODE_KEYBOARD_ACTIONS,
-    enabled: keyboardShortcutsEnabled,
+    enabled: keyboardShortcutsEnabled && isWorkspaceRoute,
     priority: 0,
     handle: handleToggleFocusMode,
   });

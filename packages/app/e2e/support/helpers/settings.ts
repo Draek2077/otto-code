@@ -148,7 +148,10 @@ export async function toggleHostAdvanced(page: Page): Promise<void> {
 }
 
 export async function openCompactSettings(page: Page, expectedStartRoute: string): Promise<void> {
-  await expectAppRoute(page, expectedStartRoute, { timeout: 15_000 });
+  // A workspace may retain the query that selects its agent tab.
+  await expect
+    .poll(() => new URL(page.url()).pathname, { timeout: 15_000 })
+    .toBe(expectedStartRoute);
   await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
   const settingsButton = page.locator('[data-testid="sidebar-settings"]:visible').first();
   await expect(settingsButton).toBeVisible();
