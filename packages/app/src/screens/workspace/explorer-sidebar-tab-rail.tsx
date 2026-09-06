@@ -404,7 +404,10 @@ export function ExplorerSidebarTabRail({
           </Animated.ScrollView>
           <HorizontalScrollBoundaryShades
             visible
-            backdrop="sidebar"
+            // The Explorer rail owns the darker sidebar-panel surface. Its
+            // overflow fade must terminate in that exact color rather than
+            // the lighter navigation sidebar behind the Explorer.
+            backdrop="sidebarPanel"
             testIDPrefix="explorer-sidebar-tabs-scroll-shade"
             leftStyle={scrollBoundary.leftShadeStyle}
             rightStyle={scrollBoundary.rightShadeStyle}
