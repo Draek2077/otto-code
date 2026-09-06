@@ -174,8 +174,6 @@ export function Slider({
     [thumbCenter, isDragging],
   );
 
-  const accessibilityValue = useMemo(() => ({ min, max, now: value }), [min, max, value]);
-
   return (
     <View
       style={containerStyle}
@@ -185,7 +183,9 @@ export function Slider({
       {...(platformIsWeb ? ({ onPointerDown: startWebDrag } as object) : null)}
       accessibilityRole="adjustable"
       accessibilityLabel={accessibilityLabel}
-      accessibilityValue={accessibilityValue}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
       testID={testID}
     >
       <View style={styles.track}>

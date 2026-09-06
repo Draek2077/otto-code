@@ -5,8 +5,8 @@ import { openSettingsSection } from "../support/helpers/settings";
 const DISCORD_DESTINATION =
   /^https:\/\/(?:discord\.gg\/jz8T2uahpH|discord\.com\/invite\/jz8T2uahpH)(?:[/?#]|$)/;
 const GITHUB_ISSUE_DESTINATION =
-  /^https:\/\/github\.com\/(?:Draek2077\/otto\/issues\/new(?:\/choose)?(?:[/?#]|$)|login\?return_to=https%3A%2F%2Fgithub\.com%2FDraek2077%2Fotto%2Fissues%2Fnew$)/;
-const CHANGELOG_DESTINATION = /^https:\/\/otto\.sh\/changelog(?:[/?#]|$)/;
+  /^https:\/\/github\.com\/(?:Draek2077\/otto-code\/issues\/new(?:\/choose)?(?:[/?#]|$)|login\?return_to=https%3A%2F%2Fgithub\.com%2FDraek2077%2Fotto-code%2Fissues%2Fnew$)/;
+const CHANGELOG_DESTINATION = /^https:\/\/otto-code\.me\/changelog(?:[/?#]|$)/;
 // The name and the version are separate cells of a key/value row, so they meet with no space
 // between them in the row's text content.
 const APP_VERSION = /^Otto\s*v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -14,6 +14,32 @@ const APP_VERSION = /^Otto\s*v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-
 async function openHelpMenu(page: Page): Promise<void> {
   await page.getByTestId("sidebar-help").click();
   await expect(page.getByTestId("sidebar-help-menu")).toBeVisible();
+  try {
+    await expect(page.getByTestId("sidebar-help-menu")).toBeInViewport();
+  } catch (error) {
+    console.log(
+      "Help menu geometry",
+      await page.evaluate(() => {
+        const menu = document.querySelector('[data-testid="sidebar-help-menu"]');
+        const trigger = document.querySelector('[data-testid="sidebar-help"]');
+        const ancestors = [];
+        for (let node = menu; node; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          ancestors.push({
+            tag: node.tagName,
+            id: node.id,
+            rect: node.getBoundingClientRect().toJSON(),
+            position: style.position,
+            top: style.top,
+            left: style.left,
+            transform: style.transform,
+          });
+        }
+        return { trigger: trigger?.getBoundingClientRect().toJSON(), ancestors };
+      }),
+    );
+    throw error;
+  }
 }
 
 async function expectDiagnosticReport(page: Page): Promise<void> {

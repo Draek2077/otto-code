@@ -42,6 +42,7 @@ import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { AppDiagnosticHost } from "@/components/app-diagnostic-host";
 import {
   ShortcutDiscoveryOverlay,
   ShortcutDiscoveryProvider,
@@ -732,6 +733,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <WorkspaceSetupDialog />
       <WorkspacePinShortcutHandler />
       <KeyboardShortcutsDialog />
+      <AppDiagnosticHost />
       <ShortcutDiscoveryOverlay />
       <ConfirmDialogHost />
       <QuitConfirmListener />

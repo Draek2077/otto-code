@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { resolveBrainActivityLabel } from "@/components/brain/brain-state";
 import { BrainStateIcon } from "@/components/brain/brain-state-icon";
 import { useBrainRail } from "@/components/brain/use-brain-rail-state";
+import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { Gauge, Home, Settings, type IconComponent } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -247,6 +248,7 @@ export function SidebarFooterNavRow({
       </View>
       <View style={styles.footerIconRow}>
         {children}
+        <SidebarHelpMenu />
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild triggerRefProp="buttonRef">
             <FooterIconButton
