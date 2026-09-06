@@ -1,3 +1,5 @@
+import { normalizeFetchAgentOptions, type FetchAgentOptions } from "./fetch-agent-options.js";
+export type { FetchAgentOptions } from "./fetch-agent-options.js";
 import { resolveAgentConfig } from "./create-agent-config.js";
 import type { AgentAttentionNotificationPayload } from "@otto-code/protocol/agent-attention-notification";
 import type { z } from "zod";
@@ -1007,11 +1009,6 @@ export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"]
 export type FetchAgentTimelineDirection = FetchAgentTimelinePayload["direction"];
 export type FetchAgentTimelineProjection = FetchAgentTimelinePayload["projection"];
 export type FetchAgentTimelineCursor = NonNullable<FetchAgentTimelinePayload["startCursor"]>;
-export interface FetchAgentOptions {
-  agentId: string;
-  requestId?: string;
-  timeout?: number;
-}
 type LegacyFetchAgentOptions = Omit<FetchAgentOptions, "agentId">;
 export interface FetchAgentTimelineOptions {
   direction?: FetchAgentTimelineDirection;
@@ -1043,21 +1040,6 @@ export interface FetchProviderSubagentTimelineOptions {
   limit?: number;
   requestId?: string;
   timeout?: number;
-}
-
-// COMPAT(daemon-client-object-options): added in v0.1.102; remove after
-// 2026-12-29 once SDK callers have migrated to object parameters.
-function normalizeFetchAgentOptions(
-  input: FetchAgentOptions | string,
-  legacyOptions?: LegacyFetchAgentOptions | string,
-): FetchAgentOptions {
-  if (typeof input !== "string") {
-    return input;
-  }
-  if (typeof legacyOptions === "string") {
-    return { agentId: input, requestId: legacyOptions };
-  }
-  return { agentId: input, ...legacyOptions };
 }
 
 function normalizeListCommandsOptions(
