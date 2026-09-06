@@ -560,6 +560,29 @@ export function buildWorkspaceTabMenuEntries(
     canMoveToExplorer,
   });
 
+  const hasWorkspaceEntries = entries.length > 0;
+  const hasTabEntries =
+    (isDeveloperMode && tab.target.kind === "agent") ||
+    tab.target.kind === "agent" ||
+    tab.target.kind === "terminal";
+
+  if (hasWorkspaceEntries && hasTabEntries) {
+    entries.push({
+      kind: "separator",
+      key: "workspace-tab-separator",
+    });
+  }
+
+  appendTabFunctionMenuEntries({
+    tab,
+    entries,
+    labels,
+    menuTestIDBase,
+    isDeveloperMode,
+    onReloadAgent,
+    onRenameTab,
+  });
+
   const managesChat = appendChatManagementMenuEntries({
     tab,
     entries,
@@ -569,29 +592,6 @@ export function buildWorkspaceTabMenuEntries(
     onDeleteAgent,
   });
   if (!managesChat) {
-    const hasWorkspaceEntries = entries.length > 0;
-    const hasTabEntries =
-      (isDeveloperMode && tab.target.kind === "agent") ||
-      tab.target.kind === "agent" ||
-      tab.target.kind === "terminal";
-
-    if (hasWorkspaceEntries && hasTabEntries) {
-      entries.push({
-        kind: "separator",
-        key: "workspace-tab-separator",
-      });
-    }
-
-    appendTabFunctionMenuEntries({
-      tab,
-      entries,
-      labels,
-      menuTestIDBase,
-      isDeveloperMode,
-      onReloadAgent,
-      onRenameTab,
-    });
-
     if (!canCloseWorkspaceTab(tab)) {
       return entries;
     }

@@ -390,6 +390,8 @@ describe("buildWorkspaceTabMenuEntries", () => {
       onCopyFilePath: vi.fn(),
       onReloadAgent: vi.fn(),
       onRenameTab,
+      onArchiveAgent: vi.fn(),
+      onDeleteAgent: vi.fn(),
       onCloseTab: vi.fn(),
       onCloseTabsBefore: vi.fn(),
       onCloseTabsAfter: vi.fn(),

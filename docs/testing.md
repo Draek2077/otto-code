@@ -211,6 +211,10 @@ Diagnose a setup failure separately from an assertion failure. Preserve the fail
 output, repair its root cause, then run the same focused case. Full CI remains the
 acceptance matrix; a successful diagnostic run does not replace it.
 
+Deterministic app browser tests run once in CI and retain a trace from the first
+failure. Repeating a known failure wastes the shard's time budget and can prevent
+later tests from running. Provider-specific projects may declare a bounded retry.
+
 Browser downloads retry temporary HTTP/network failures at most three times within
 one five-minute download budget. Partial archives are discarded between attempts;
 permanent HTTP failures stop immediately and errors retain the URL and cause.

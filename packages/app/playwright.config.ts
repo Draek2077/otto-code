@@ -51,11 +51,9 @@ export default defineConfig({
   // spec on one worker avoids repeating its file-level setup across daemons.
   fullyParallel: false,
   workers: Number(process.env.E2E_WORKERS ?? (process.env.CI ? "2" : "1")),
-  // Two retries in CI: the shared metro/daemon/relay stack occasionally drops a
-  // browser at startup ("Target page/context or browser has been closed"), which
-  // is pure environmental flake a retry clears. Deterministic failures still fail
-  // every attempt, so this doesn't mask real regressions.
-  retries: process.env.CI ? 2 : 0,
+  // Deterministic failures need one actionable result, not three complete runs.
+  // Provider-specific projects can opt into a bounded retry explicitly.
+  retries: 0,
   // `list` for the terminal, `html` for the native trace/log viewer, and the QA
   // reporter for the release-check artifacts (per-module TOC, per-test evidence,
   // money-shot digest, failure report). See projects/e2e-qa-coverage/reporting.md.
@@ -66,7 +64,7 @@ export default defineConfig({
   ],
   use: {
     baseURL,
-    trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: videoMode(),
   },

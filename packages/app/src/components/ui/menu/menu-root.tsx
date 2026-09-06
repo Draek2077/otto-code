@@ -102,10 +102,14 @@ export const MenuTrigger = forwardRef<View, MenuTriggerProps>(function MenuTrigg
     [ctx.triggerRef, forwardedRef, triggerRef],
   );
 
-  const handlePress = useCallback(() => {
-    if (disabled) return;
-    ctx.setOpen(!ctx.open);
-  }, [disabled, ctx]);
+  const handlePress = useCallback<NonNullable<PressableProps["onPress"]>>(
+    (event) => {
+      event.stopPropagation();
+      if (disabled) return;
+      ctx.setOpen(!ctx.open);
+    },
+    [disabled, ctx],
+  );
 
   const pressableStyle = useCallback(
     ({
