@@ -318,7 +318,11 @@ function slug(spec: RuntimeSpec): string {
 }
 
 function displayNameForManagedRuntime(label: string, version: string): string {
-  return `${label.replace(/\s*\(managed\)$/iu, "")} · ${version} (Otto managed)`;
+  const suffix = "(managed)";
+  const withoutSuffix = label.toLowerCase().endsWith(suffix)
+    ? label.slice(0, -suffix.length).trimEnd()
+    : label;
+  return `${withoutSuffix} · ${version} (Otto managed)`;
 }
 
 function legacyManagedDisplayName(dirName: string, version: string): string {
