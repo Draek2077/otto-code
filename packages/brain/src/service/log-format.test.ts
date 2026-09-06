@@ -34,4 +34,11 @@ describe("Brain session log formatting", () => {
       "[brain] [api] 03:08:49.000 queued request",
     );
   });
+
+  test("formats a malformed long tagged line without regex backtracking", () => {
+    const message = `[brain] ${"[api".repeat(50_000)}`;
+    expect(timestampBrainLogLine("03:08:49.000", message)).toBe(
+      `[brain] 03:08:49.000 ${"[api".repeat(50_000)}`,
+    );
+  });
 });
