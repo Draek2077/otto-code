@@ -3,7 +3,9 @@ const { existsSync } = require("node:fs");
 const path = require("node:path");
 const { Arch } = require("builder-util");
 
-const SUPPORTED_PLATFORMS = new Set(["linux", "win"]);
+// electron-builder uses Node platform identifiers in lifecycle contexts, so
+// Windows is `win32`, not electron-builder's configuration shorthand `win`.
+const SUPPORTED_PLATFORMS = new Set(["linux", "win32"]);
 const VENV_DIR = ".venv-zoom-recorder";
 
 function run(command, args, options) {
@@ -62,8 +64,14 @@ function ensureVenvPython(projectDir) {
  * package targets; arm64 packages receive the intentionally empty helper
  * directory and the renderer capability gate hides the feature there.
  */
+function shouldBuildZoomRecorderForTarget(context) {
+  return context.arch === Arch.x64 && SUPPORTED_PLATFORMS.has(context.electronPlatformName);
+}
+
+exports.shouldBuildZoomRecorderForTarget = shouldBuildZoomRecorderForTarget;
+
 exports.default = async function buildZoomRecorderForTarget(context) {
-  if (context.arch !== Arch.x64 || !SUPPORTED_PLATFORMS.has(context.electronPlatformName)) {
+  if (!shouldBuildZoomRecorderForTarget(context)) {
     return;
   }
 

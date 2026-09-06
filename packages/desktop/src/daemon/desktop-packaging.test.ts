@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { Arch } from "builder-util";
 import {
   chmodSync,
   copyFileSync,
@@ -21,6 +22,14 @@ import { describe, expect, it } from "vitest";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { verifyBundledZoomRecorder } = require("../../scripts/after-pack.js") as {
   verifyBundledZoomRecorder: (appOutDir: string, platform: NodeJS.Platform, arch: string) => void;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { shouldBuildZoomRecorderForTarget } = require("../../scripts/before-pack.js") as {
+  shouldBuildZoomRecorderForTarget: (context: {
+    arch: Arch;
+    electronPlatformName: string;
+  }) => boolean;
 };
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -167,14 +176,26 @@ describe("desktop packaging", () => {
     expect(config).toContain("beforePack: ./scripts/before-pack.js");
     expect(config).toContain("from: resources/zoom-recorder/bin/${arch}");
     expect(config).toContain("to: zoom-recorder");
-    expect(beforePack).toContain('new Set(["linux", "win"])');
-    expect(beforePack).toContain("context.arch !== Arch.x64");
+    expect(beforePack).toContain('new Set(["linux", "win32"])');
+    expect(beforePack).toContain("shouldBuildZoomRecorderForTarget(context)");
     expect(beforePack).toContain('"build-zoom-recorder-runtime.py"');
     expect(beforePack).toContain('"bin", "x64"');
     expect(buildRuntime).toContain('OUTPUT_ROOT = HELPER_ROOT / "bin" / "x64"');
     expect(buildRuntime).toContain('system not in {"Linux", "Windows"}');
     expect(buildRuntime).toContain("smoke_test(executable)");
     expect(buildRuntime).toContain('("--version",), ("status",)');
+  });
+
+  it("builds the helper for Electron Builder's Windows lifecycle platform name", () => {
+    expect(
+      shouldBuildZoomRecorderForTarget({ arch: Arch.x64, electronPlatformName: "win32" }),
+    ).toBe(true);
+    expect(shouldBuildZoomRecorderForTarget({ arch: Arch.x64, electronPlatformName: "win" })).toBe(
+      false,
+    );
+    expect(
+      shouldBuildZoomRecorderForTarget({ arch: Arch.arm64, electronPlatformName: "win32" }),
+    ).toBe(false);
   });
 
   it("rejects a supported package when its Zoom Recorder helper is missing", () => {
