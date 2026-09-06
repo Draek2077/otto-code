@@ -79,6 +79,13 @@ import {
   useAgentScreenStateMachine,
 } from "@/hooks/use-agent-screen-state-machine";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
+import { confirmCloseChat } from "@/components/archive-chat-warning";
+import { useDeleteAgent } from "@/history/use-delete-agent";
+import {
+  resolveDeleteAgentDialog,
+  resolveHistoryDeleteUnsupportedDialog,
+} from "@/history/delete-dialogs";
+import { isHistoryDeleteSupported } from "@/history/use-history-delete-feature";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
@@ -188,7 +195,7 @@ import { openProviderSubagentTab } from "@/subagents/open-provider-subagent-tab"
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 
 // Otto's pinned task-list overlay is the task-tracking surface. Keep Paseo's
 // inline composer panel available for upstream convergence, but do not mount a
@@ -196,6 +203,10 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 const SHOW_PASEO_TASK_LIST_PANEL = false;
 const AUTHORING_SPLIT_GROUP_ID = "architectural-view-authoring";
 const DEFAULT_AUTHORING_SPLIT_SIZES = [0.46, 0.54];
+
+function architecturalViewErrorMessage(error: string | null | undefined, fallback: string): string {
+  return (error ?? fallback).replaceAll("Architectural View draft", "Architectural View");
+}
 
 interface ChatAgentStateShape {
   serverId: string | null;
@@ -772,8 +783,12 @@ export function ArchitecturalViewAuthoringSurface({
   isWorkspaceFocused: boolean;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
-  const { closeCurrentTab } = usePaneContext();
+  const { tabId } = usePaneContext();
   const { archiveAgent } = useArchiveAgent();
+  const { deleteAgent } = useDeleteAgent();
+  const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
+  const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
+  const unpinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.unpinAgent);
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const supported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.architecturalViews === true,
@@ -781,10 +796,13 @@ export function ArchitecturalViewAuthoringSurface({
   const agentIsRunning = useSessionStore(
     (state) => state.sessions[serverId]?.agents.get(agentId)?.status === "running",
   );
+  const agentTitle = useSessionStore(
+    (state) => state.sessions[serverId]?.agents.get(agentId)?.title ?? null,
+  );
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [action, setAction] = useState<"publish" | "discard" | null>(null);
+  const [action, setAction] = useState<"publish" | "delete" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [splitSizes, setSplitSizes] = useState(DEFAULT_AUTHORING_SPLIT_SIZES);
   const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
@@ -801,7 +819,9 @@ export function ArchitecturalViewAuthoringSurface({
         draftId: draft.draftId,
       });
       if (!result.success || !result.html) {
-        throw new Error(result.error ?? "Could not open Architectural View draft.");
+        throw new Error(
+          architecturalViewErrorMessage(result.error, "Could not open Architectural View."),
+        );
       }
       setHtml(result.html);
       setError(null);
@@ -834,16 +854,53 @@ export function ArchitecturalViewAuthoringSurface({
     return () => clearInterval(interval);
   }, [agentIsRunning, refreshPreview]);
 
-  const archiveAndClose = useCallback(async () => {
-    // Publishing or discarding finishes this dedicated authoring effort. The
-    // transcript remains in Archive as a normal chat, never as a resumable
-    // Architectural View surface.
-    await archiveAgent({ serverId, agentId });
-    closeCurrentTab();
-  }, [agentId, archiveAgent, closeCurrentTab, serverId]);
+  const removeCompletedAuthoringTab = useCallback(() => {
+    const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+    if (!workspaceKey) return;
+    unpinWorkspaceAgent(workspaceKey, agentId);
+    hideWorkspaceAgent(workspaceKey, agentId);
+    useSessionStore.getState().releaseClosedChat(serverId, agentId);
+    closeWorkspaceTab(workspaceKey, tabId);
+  }, [
+    agentId,
+    closeWorkspaceTab,
+    hideWorkspaceAgent,
+    serverId,
+    tabId,
+    unpinWorkspaceAgent,
+    workspaceId,
+  ]);
+
+  const chooseChatCompletion = useCallback(async (): Promise<"archive" | "delete" | null> => {
+    // Publishing or deleting the View must never silently consume its normal
+    // chat. The user explicitly chooses Archive, Delete, or Cancel first.
+    const choice = await confirmCloseChat({ forcePrompt: true });
+    if (choice === "cancel") return null;
+    if (choice !== "delete") return choice;
+    if (!isHistoryDeleteSupported(serverId)) {
+      await alertDialog(resolveHistoryDeleteUnsupportedDialog());
+      return null;
+    }
+    const confirmed = await confirmDialog(resolveDeleteAgentDialog({ title: agentTitle }));
+    return confirmed ? "delete" : null;
+  }, [agentTitle, serverId]);
+
+  const completeChat = useCallback(
+    async (choice: "archive" | "delete") => {
+      if (choice === "archive") {
+        await archiveAgent({ serverId, agentId });
+      } else {
+        await deleteAgent({ serverId, agentId });
+      }
+      removeCompletedAuthoringTab();
+    },
+    [agentId, archiveAgent, deleteAgent, removeCompletedAuthoringTab, serverId],
+  );
 
   const publish = useCallback(async () => {
     if (!client || action) return;
+    const choice = await chooseChatCompletion();
+    if (!choice) return;
     setAction("publish");
     setActionError(null);
     try {
@@ -853,27 +910,31 @@ export function ArchitecturalViewAuthoringSurface({
         draftId: draft.draftId,
       });
       if (!result.success) {
-        throw new Error(result.error ?? "Could not publish Architectural View draft.");
+        throw new Error(
+          architecturalViewErrorMessage(result.error, "Could not publish Architectural View."),
+        );
       }
-      await archiveAndClose();
+      await completeChat(choice);
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setAction(null);
     }
-  }, [action, archiveAndClose, client, draft.draftId, draft.viewId, workspaceId]);
+  }, [
+    action,
+    chooseChatCompletion,
+    client,
+    completeChat,
+    draft.draftId,
+    draft.viewId,
+    workspaceId,
+  ]);
 
-  const discard = useCallback(async () => {
+  const deleteArchitecturalView = useCallback(async () => {
     if (!client || action) return;
-    const confirmed = await confirmDialog({
-      title: "Discard Architectural View draft?",
-      message:
-        "This permanently removes the staged draft. The current published view is unchanged.",
-      confirmLabel: "Discard draft",
-      destructive: true,
-    });
-    if (!confirmed) return;
-    setAction("discard");
+    const choice = await chooseChatCompletion();
+    if (!choice) return;
+    setAction("delete");
     setActionError(null);
     try {
       const result = await client.discardArchitecturalViewDraft({
@@ -882,15 +943,25 @@ export function ArchitecturalViewAuthoringSurface({
         draftId: draft.draftId,
       });
       if (!result.success) {
-        throw new Error(result.error ?? "Could not discard Architectural View draft.");
+        throw new Error(
+          architecturalViewErrorMessage(result.error, "Could not delete Architectural View."),
+        );
       }
-      await archiveAndClose();
+      await completeChat(choice);
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setAction(null);
     }
-  }, [action, archiveAndClose, client, draft.draftId, draft.viewId, workspaceId]);
+  }, [
+    action,
+    chooseChatCompletion,
+    client,
+    completeChat,
+    draft.draftId,
+    draft.viewId,
+    workspaceId,
+  ]);
 
   const handleSplitLayout = useCallback((event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
@@ -932,10 +1003,10 @@ export function ArchitecturalViewAuthoringSurface({
         />
         <View style={styles.architecturalAuthoringToolbarSpacer} />
         <ToolbarIconButton
-          label="Discard Architectural View draft"
+          label="Delete Architectural View"
           Icon={ThemedTrash2}
-          loading={action === "discard"}
-          onPress={discard}
+          loading={action === "delete"}
+          onPress={deleteArchitecturalView}
           disabled={Boolean(action)}
           tone="destructive"
         />
@@ -968,7 +1039,7 @@ export function ArchitecturalViewAuthoringSurface({
             <View style={styles.architecturalAuthoringEmpty}>
               {loading ? <LoadingSpinner size="small" /> : null}
               <Text style={styles.architecturalAuthoringMessage}>
-                {error ?? "Loading Architectural View draft…"}
+                {error ?? "Loading Architectural View…"}
               </Text>
             </View>
           )}
