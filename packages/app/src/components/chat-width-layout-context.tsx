@@ -3,7 +3,6 @@ import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useChatOutlineLayout } from "@/agent-stream/chat-outline/layout";
 import { resolveChatMaxWidth } from "@/constants/layout";
-import { useContainerWidth } from "@/hooks/use-container-width";
 import type { Theme } from "@/styles/theme";
 import { resolveChatOutlinePadding } from "./chat-width-layout";
 
@@ -29,24 +28,17 @@ interface ChatWidthLayoutProviderProps {
 
 function ChatWidthLayoutProviderBase({ children, chatMaxWidth }: ChatWidthLayoutProviderProps) {
   const { isRailVisible } = useChatOutlineLayout();
-  const { width, onLayout } = useContainerWidth();
   const value = useMemo(
     () => ({
       chatMaxWidth,
-      outlinePadding: resolveChatOutlinePadding({
-        railVisible: isRailVisible,
-        paneWidth: width,
-        chatMaxWidth,
-      }),
+      outlinePadding: resolveChatOutlinePadding({ railVisible: isRailVisible }),
     }),
-    [chatMaxWidth, isRailVisible, width],
+    [chatMaxWidth, isRailVisible],
   );
 
   return (
     <ChatWidthLayoutContext value={value}>
-      <View style={styles.container} onLayout={onLayout}>
-        {children}
-      </View>
+      <View style={styles.container}>{children}</View>
     </ChatWidthLayoutContext>
   );
 }

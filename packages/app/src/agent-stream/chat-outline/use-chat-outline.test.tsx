@@ -45,6 +45,54 @@ describe("useChatOutline", () => {
     runtime.on.mockClear();
   });
 
+  it("uses the initial timeline prompt index without a second request", () => {
+    const viewportRef = createRef<StreamViewportHandle>();
+    const { result } = renderHook(() =>
+      useChatOutline({
+        agentId: "agent-1",
+        serverId: "server-1",
+        timelineEpoch: "epoch-1",
+        tail: [],
+        head: [],
+        enabled: true,
+        viewportRef,
+        onJumpError: vi.fn(),
+        initialPromptIndex: {
+          epoch: "epoch-1",
+          prompts: [
+            { seq: 1, timestamp: "2026-05-02T00:00:00.000Z", preview: "First prompt" },
+            { seq: 3, timestamp: "2026-05-02T00:00:02.000Z", preview: "Second prompt" },
+          ],
+        },
+      }),
+    );
+
+    expect(result.current.hasPromptIndex).toBe(true);
+    expect(result.current.prompts).toEqual([
+      expect.objectContaining({ seq: 1, preview: "First prompt" }),
+      expect.objectContaining({ seq: 3, preview: "Second prompt" }),
+    ]);
+    expect(runtime.listAgentTimelinePrompts).not.toHaveBeenCalled();
+  });
+
+  it("waits for initial timeline hydration before falling back to the legacy index RPC", () => {
+    const viewportRef = createRef<StreamViewportHandle>();
+    renderHook(() =>
+      useChatOutline({
+        agentId: "agent-1",
+        serverId: "server-1",
+        timelineEpoch: null,
+        tail: [],
+        head: [],
+        enabled: true,
+        viewportRef,
+        onJumpError: vi.fn(),
+      }),
+    );
+
+    expect(runtime.listAgentTimelinePrompts).not.toHaveBeenCalled();
+  });
+
   it("drops a late prompt index after the authoritative timeline epoch changes", async () => {
     const first = deferred<{ epoch: string; prompts: [] }>();
     const second = deferred<{

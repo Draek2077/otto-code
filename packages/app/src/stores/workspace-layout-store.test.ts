@@ -1220,7 +1220,7 @@ describe("workspace-layout-store actions", () => {
       target: { kind: "agent", agentId: "agent-1" },
       intent: "reveal",
     });
-    const focusedAgentTabId = source.getState().openTab({
+    source.getState().openTab({
       workspaceKey: workspaceKey,
       target: { kind: "agent", agentId: "agent-2" },
       intent: "reveal",
@@ -1236,6 +1236,19 @@ describe("workspace-layout-store actions", () => {
       intent: "background",
       placement: { mode: "prefer", paneId: explorerSidebarPaneId as string },
     });
+    source.getState().openTab({
+      workspaceKey,
+      target: { kind: "contextManagement" },
+      intent: "reveal",
+    });
+    source.getState().openTab({
+      workspaceKey,
+      target: {
+        kind: "projectKnowledge",
+        selection: { kind: "record", id: "workspace-tab-persistence" },
+      },
+      intent: "reveal",
+    });
     source.getState().hideExplorerSidebar(workspaceKey);
 
     await vi.waitFor(async () => {
@@ -1248,16 +1261,24 @@ describe("workspace-layout-store actions", () => {
     const layout = state.layoutByWorkspace[workspaceKey];
 
     expect(layout.focusedPaneId).toBe("main");
-    expect(findPaneById(layout.root, "main")?.focusedTabId).toBe(focusedAgentTabId);
+    expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("project-knowledge");
     expect(findPaneById(layout.root, explorerSidebarPaneId)?.hidden).toBe(true);
     expect(collectAllTabs(layout.root).map((tab) => tab.target.kind)).toEqual([
       "agent",
       "agent",
+      "contextManagement",
+      "projectKnowledge",
       "files",
       "changes_tree",
       "project_search",
       "pull_request",
     ]);
+    expect(
+      collectAllTabs(layout.root).find((tab) => tab.target.kind === "projectKnowledge")?.target,
+    ).toEqual({
+      kind: "projectKnowledge",
+      selection: { kind: "record", id: "workspace-tab-persistence" },
+    });
     expect(state.explorerSidebarPaneIdByWorkspace[workspaceKey]).toBe(explorerSidebarPaneId);
   });
 

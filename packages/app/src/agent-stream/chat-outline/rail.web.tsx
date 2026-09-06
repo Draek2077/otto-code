@@ -31,6 +31,7 @@ const PREVIEW_GAP = 4;
 
 export const ChatOutlineRail = memo(function ChatOutlineRail({
   enabled,
+  hasPromptIndex,
   prompts,
   activePrompt,
   onJumpToPrompt,
@@ -74,9 +75,13 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   }, [hoverIntent, isPanelNarrow]);
   const isRailVisible = enabled && prompts.length >= 2 && !isPanelNarrow;
   useEffect(() => {
+    // Keep the optimistic gutter until timeline hydration authoritatively says
+    // whether this chat has an outline. Otherwise the empty pre-hydration rail
+    // would release it for one paint, then reclaim it with the prompt index.
+    if (!hasPromptIndex) return;
     setRailVisible(isRailVisible);
     return () => setRailVisible(false);
-  }, [isRailVisible, setRailVisible]);
+  }, [hasPromptIndex, isRailVisible, setRailVisible]);
   const handleFocusChange = useCallback((index: number, focused: boolean) => {
     setFocusedIndex((current) => {
       if (focused) return index;

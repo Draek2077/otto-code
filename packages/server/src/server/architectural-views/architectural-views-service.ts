@@ -385,9 +385,8 @@ export class ArchitecturalViewsService {
     const store = await this.resolveStore(input.cwd);
     const draft = await this.readDraft(store, input.viewId, input.draftId);
     if (!draft) throw new Error("Architectural View draft not found.");
-    if (draft.authoringAgentId && draft.authoringAgentId !== input.agentId) {
-      throw new Error("Architectural View draft is already linked to another authoring chat.");
-    }
+    // Create and Update each begin a new chat. A stored id is provenance for
+    // cleanup, never a resume key, so the latest authoring chat takes ownership.
     const updated = {
       ...draft,
       authoringAgentId: input.agentId,
@@ -467,6 +466,40 @@ export class ArchitecturalViewsService {
     const draft = await this.readDraft(store, input.viewId, input.draftId);
     if (!draft) throw new Error("Architectural View draft not found.");
     await rm(directory, { recursive: true, force: true });
+  }
+
+  /** An unpublished draft ends when its bound authoring chat is archived or deleted. */
+  async discardDraftForAuthoringAgent(input: {
+    cwd: string;
+    viewId: string;
+    draftId: string;
+    agentId: string;
+  }): Promise<void> {
+    const store = await this.resolveStore(input.cwd);
+    const draft = await this.readDraft(store, input.viewId, input.draftId);
+    if (!draft || draft.authoringAgentId !== input.agentId) return;
+    await rm(draftDirectory(store, input.viewId, input.draftId), { recursive: true, force: true });
+  }
+
+  /** Retains unfinished visual work when its authoring chat moves elsewhere. */
+  async releaseDraftAuthoringAgent(input: {
+    cwd: string;
+    viewId: string;
+    draftId: string;
+    agentId: string;
+  }): Promise<void> {
+    const store = await this.resolveStore(input.cwd);
+    const draft = await this.readDraft(store, input.viewId, input.draftId);
+    if (!draft || draft.authoringAgentId !== input.agentId) return;
+    const manifestPath = join(draftDirectory(store, input.viewId, input.draftId), "draft.json");
+    const manifest = JSON.parse(
+      await readFile(manifestPath, "utf8"),
+    ) as ArchitecturalViewDraftManifest;
+    await writeJsonFileAtomic(manifestPath, {
+      ...manifest,
+      authoringAgentId: null,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   private async readSummary(

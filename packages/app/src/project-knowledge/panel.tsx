@@ -395,18 +395,10 @@ export function ProjectKnowledgePanel(): ReactElement {
     if (!client || !architecturalKnowledgeReference || creatingArchitecturalView) return;
     const sourceTitle = selectedRoot?.title ?? selected?.title ?? "Architecture";
     const viewId = architecturalViewIdFor(architecturalKnowledgeReference.id);
-    const existingDraft = architecturalViewDrafts.drafts.find((draft) => draft.viewId === viewId);
-    if (existingDraft) {
-      openTab({
-        kind: "architecturalViewDraft",
-        viewId: existingDraft.viewId,
-        draftId: existingDraft.id,
-        ...(existingDraft.authoringAgentId
-          ? { authoringAgentId: existingDraft.authoringAgentId }
-          : {}),
-      });
-      return;
-    }
+    // The daemon is the authority for the unpublished View state. A client-side
+    // listing can be stale after Publish/Delete, so never open an ID from it.
+    // createArchitecturalViewDraft atomically returns the current staged View or
+    // creates a new one, and the returned ID is the only one we may author.
     const draftId = `${viewId}-${Date.now().toString(36)}`;
     setCreatingArchitecturalView(true);
     setFormError(null);
@@ -422,15 +414,12 @@ export function ProjectKnowledgePanel(): ReactElement {
         throw new Error(result.error ?? "Could not create Architectural View draft.");
       }
       refreshArchitecturalViewDrafts();
-      const returnedExistingDraft = result.draft.id !== draftId;
       openTab({
         kind: "architecturalViewDraft",
         viewId: result.draft.viewId,
         draftId: result.draft.id,
-        ...(result.draft.authoringAgentId
-          ? { authoringAgentId: result.draft.authoringAgentId }
-          : {}),
-        ...(returnedExistingDraft ? {} : { generateOnOpen: true }),
+        generateOnOpen: true,
+        authoringPrompt: result.draft.id === draftId ? "create" : "update",
       });
     } catch (cause) {
       setFormError(cause instanceof Error ? cause.message : String(cause));
@@ -439,7 +428,6 @@ export function ProjectKnowledgePanel(): ReactElement {
     }
   }, [
     architecturalKnowledgeReference,
-    architecturalViewDrafts.drafts,
     refreshArchitecturalViewDrafts,
     client,
     creatingArchitecturalView,
@@ -448,17 +436,6 @@ export function ProjectKnowledgePanel(): ReactElement {
     selectedRoot?.title,
     workspaceId,
   ]);
-  const resumeArchitecturalViewDraft = useCallback(() => {
-    const draft = architecturalViewDrafts.drafts[0];
-    if (draft) {
-      openTab({
-        kind: "architecturalViewDraft",
-        viewId: draft.viewId,
-        draftId: draft.id,
-        ...(draft.authoringAgentId ? { authoringAgentId: draft.authoringAgentId } : {}),
-      });
-    }
-  }, [architecturalViewDrafts.drafts, openTab]);
   const addReviewDirective = useCallback((directive: Omit<KnowledgeReviewDirective, "id">) => {
     const id = `review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setReviewDirectives((current) => [
@@ -1237,15 +1214,7 @@ export function ProjectKnowledgePanel(): ReactElement {
   let architecturalViewToolbar: ReactElement | null = null;
   if (architecturalViews.views.length > 0) {
     let architecturalViewDraftAction: ReactElement | null = null;
-    if (architecturalViewDrafts.drafts[0]) {
-      architecturalViewDraftAction = (
-        <ToolbarIconButton
-          label="Resume Architectural View draft"
-          Icon={ThemedArchitecture}
-          onPress={resumeArchitecturalViewDraft}
-        />
-      );
-    } else if (architecturalKnowledgeReference) {
+    if (architecturalKnowledgeReference) {
       architecturalViewDraftAction = (
         <ToolbarIconButton
           label="Update Architectural View"
@@ -1277,17 +1246,14 @@ export function ProjectKnowledgePanel(): ReactElement {
       </>
     );
   } else if (architecturalKnowledgeReference) {
-    const resumableDraft = architecturalViewDrafts.drafts[0];
-    let draftActionLabel = "Create Architectural View";
-    if (resumableDraft) draftActionLabel = "Resume Architectural View draft";
     architecturalViewToolbar = (
       <>
         <ToolbarIconButton
-          label={draftActionLabel}
+          label="Create Architectural View"
           Icon={ThemedArchitecture}
           tone="accent"
           loading={creatingArchitecturalView}
-          onPress={resumableDraft ? resumeArchitecturalViewDraft : createArchitecturalView}
+          onPress={createArchitecturalView}
           disabled={!architecturalViews.supported || creatingArchitecturalView}
         />
         <ToolbarSeparator />

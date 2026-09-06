@@ -1,0 +1,21 @@
+{
+  "id": "run_mtp5or72_521f547a",
+  "title": "Investigate the release blocker",
+  "description": "Find the cause and report a safe remediation.",
+  "status": "failed",
+  "kind": "ai",
+  "phases": [],
+  "conductorAgentId": "9a1aeb92-b794-443a-b14d-b338908bd966",
+  "cwd": "C:\\Users\\phili\\Projects\\OTTO-C~1\\TMP~1\\CI8ED4~1\\temp\\otto-home-XIH9bp\\.otto",
+  "workspaceId": "wks_e9ed76ff88b984cc",
+  "error": "The orchestrator chat was archived before it declared a workflow plan.",
+  "workflowStorage": {
+    "schemaVersion": 1,
+    "projectRoot": "C:\\Users\\phili\\Projects\\otto-code",
+    "location": "repository",
+    "storeKey": "workflows:repository:root:2eb4cad800f66450582b08ec",
+    "source": "project-store"
+  },
+  "createdAt": "2026-09-06T01:51:45.326Z",
+  "updatedAt": "2026-09-06T01:51:59.410Z"
+}

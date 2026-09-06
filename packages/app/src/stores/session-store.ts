@@ -1,7 +1,10 @@
 import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type {
+  AgentTimelinePromptIndexPayload,
+  DaemonClient,
+} from "@otto-code/client/internal/daemon-client";
 import type {
   FileEol,
   AgentCumulativeUsage,
@@ -526,6 +529,10 @@ export interface SessionState {
   agentTimelineCursor: Map<string, AgentTimelineCursorState>;
   agentTimelineHasOlder: Map<string, boolean>;
   agentTimelineHasNewer: Map<string, boolean>;
+  agentTimelinePromptIndexes: Map<
+    string,
+    Pick<AgentTimelinePromptIndexPayload, "epoch" | "prompts">
+  >;
   agentTimelineOlderFetchInFlight: Map<string, boolean>;
   historySyncGeneration: number;
   agentHistorySyncGeneration: Map<string, number>;
@@ -756,6 +763,14 @@ interface SessionStoreActions {
     serverId: string,
     state: Map<string, boolean> | ((prev: Map<string, boolean>) => Map<string, boolean>),
   ) => void;
+  setAgentTimelinePromptIndexes: (
+    serverId: string,
+    state:
+      | Map<string, Pick<AgentTimelinePromptIndexPayload, "epoch" | "prompts">>
+      | ((
+          prev: Map<string, Pick<AgentTimelinePromptIndexPayload, "epoch" | "prompts">>,
+        ) => Map<string, Pick<AgentTimelinePromptIndexPayload, "epoch" | "prompts">>),
+  ) => void;
   setAgentTimelineOlderFetchInFlight: (
     serverId: string,
     state: Map<string, boolean> | ((prev: Map<string, boolean>) => Map<string, boolean>),
@@ -963,6 +978,7 @@ function createInitialSessionState(
     agentTimelineCursor: new Map(),
     agentTimelineHasOlder: new Map(),
     agentTimelineHasNewer: new Map(),
+    agentTimelinePromptIndexes: new Map(),
     agentTimelineOlderFetchInFlight: new Map(),
     historySyncGeneration: 0,
     agentHistorySyncGeneration: new Map(),
@@ -1725,6 +1741,7 @@ export const useSessionStore = create<SessionStore>()(
           const nextCursor = new Map(session.agentTimelineCursor);
           const nextHasOlder = new Map(session.agentTimelineHasOlder);
           const nextHasNewer = new Map(session.agentTimelineHasNewer);
+          const nextPromptIndexes = new Map(session.agentTimelinePromptIndexes);
           const nextOlderInFlight = new Map(session.agentTimelineOlderFetchInFlight);
           const nextApplied = new Map(session.agentAuthoritativeHistoryApplied);
           const nextTouchSeq = new Map(session.agentStreamTouchSeq);
@@ -1757,6 +1774,7 @@ export const useSessionStore = create<SessionStore>()(
                 nextCursor.delete(agentId),
                 nextHasOlder.delete(agentId),
                 nextHasNewer.delete(agentId),
+                nextPromptIndexes.delete(agentId),
                 nextOlderInFlight.delete(agentId),
                 nextApplied.delete(agentId),
                 nextTouchSeq.delete(agentId),
@@ -1786,6 +1804,7 @@ export const useSessionStore = create<SessionStore>()(
                 agentTimelineCursor: nextCursor,
                 agentTimelineHasOlder: nextHasOlder,
                 agentTimelineHasNewer: nextHasNewer,
+                agentTimelinePromptIndexes: nextPromptIndexes,
                 agentTimelineOlderFetchInFlight: nextOlderInFlight,
                 agentAuthoritativeHistoryApplied: nextApplied,
                 agentStreamTouchSeq: nextTouchSeq,
@@ -1971,6 +1990,23 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, agentTimelineHasNewer: nextState },
+            },
+          };
+        });
+      },
+
+      setAgentTimelinePromptIndexes: (serverId, state) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) return prev;
+          const nextState =
+            typeof state === "function" ? state(session.agentTimelinePromptIndexes) : state;
+          if (session.agentTimelinePromptIndexes === nextState) return prev;
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, agentTimelinePromptIndexes: nextState },
             },
           };
         });

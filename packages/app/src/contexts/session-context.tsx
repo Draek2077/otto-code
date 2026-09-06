@@ -348,6 +348,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setAgentStreamState = useSessionStore((state) => state.setAgentStreamState);
   const setAgentTimelineCursor = useSessionStore((state) => state.setAgentTimelineCursor);
   const setAgentTimelineHasNewer = useSessionStore((state) => state.setAgentTimelineHasNewer);
+  const setAgentTimelinePromptIndexes = useSessionStore(
+    (state) => state.setAgentTimelinePromptIndexes,
+  );
   const applyAgentTimelineResponseState = useSessionStore(
     (state) => state.applyAgentTimelineResponseState,
   );
@@ -575,6 +578,14 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       >["payload"],
     ) => {
       const agentId = payload.agentId;
+      const promptIndex = payload.promptIndex;
+      if (promptIndex) {
+        setAgentTimelinePromptIndexes(serverId, (current) => {
+          const next = new Map(current);
+          next.set(agentId, promptIndex);
+          return next;
+        });
+      }
       const initKey = getInitKey(serverId, agentId);
       const shouldMarkAuthoritativeHistoryApplied = isTimelineResumeSnapshotAuthoritative({
         direction: payload.direction,
@@ -670,6 +681,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       serverId,
       setAgentStreamState,
       setAgentTimelineHasNewer,
+      setAgentTimelinePromptIndexes,
       setInitializingAgents,
     ],
   );

@@ -127,6 +127,10 @@ class InMemoryAgentManager {
     return this.timeline.fetch("agent-1", options);
   }
 
+  async getTimelineRows(_agentId: string) {
+    return this.timeline.getRows("agent-1");
+  }
+
   getObservedSubagentPayload(id: string) {
     return this.observedPayloads.get(id) ?? null;
   }
@@ -464,6 +468,45 @@ describe("wire compatibility", () => {
 
     const currentParsed = FetchAgentTimelineResponseMessageSchema.parse(response);
     expect(currentParsed.payload.entries[0]?.collapsed).toContain("reasoning_merge");
+  });
+
+  test("includes the compact prompt index only when the timeline request asks for it", async () => {
+    const rows = [
+      {
+        seq: 1,
+        timestamp: "2026-05-02T00:00:00.000Z",
+        item: { type: "user_message" as const, text: "First prompt", clientMessageId: "message-1" },
+      },
+      {
+        seq: 2,
+        timestamp: "2026-05-02T00:00:01.000Z",
+        item: { type: "assistant_message" as const, text: "Done" },
+      },
+      {
+        seq: 3,
+        timestamp: "2026-05-02T00:00:02.000Z",
+        item: {
+          type: "user_message" as const,
+          text: "Second prompt",
+          clientMessageId: "message-2",
+        },
+      },
+    ];
+
+    const withoutIndex = await emitTimelineResponse({ rows });
+    expect(withoutIndex.payload.promptIndex).toBeUndefined();
+
+    const withIndex = await emitTimelineResponse({
+      rows,
+      request: { includePromptIndex: true },
+    });
+    expect(withIndex.payload.promptIndex).toEqual({
+      epoch: expect.any(String),
+      prompts: [
+        expect.objectContaining({ seq: 1, preview: "First prompt" }),
+        expect.objectContaining({ seq: 3, preview: "Second prompt" }),
+      ],
+    });
   });
 
   test("carries canonical turn IDs to new clients while legacy schemas ignore them", async () => {

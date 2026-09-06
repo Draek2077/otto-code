@@ -540,6 +540,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const timelineEpoch = useSessionStore(
       (state) => state.sessions[resolvedServerId]?.agentTimelineCursor.get(agentId)?.epoch ?? null,
     );
+    const initialPromptIndex = useSessionStore(
+      (state) => state.sessions[resolvedServerId]?.agentTimelinePromptIndexes.get(agentId) ?? null,
+    );
     const isTimelineDetached = useSessionStore(
       (state) => state.sessions[resolvedServerId]?.agentTimelineHasNewer.get(agentId) === true,
     );
@@ -826,6 +829,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       onJumpError: handleTimelineHistoryLoadError,
       visibleItemIds: visibleHistoryItemIds,
       revealLoadedItem: revealLoadedHistory,
+      initialPromptIndex,
     });
 
     useImperativeHandle(
@@ -1470,6 +1474,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                   {webScrollbar}
                   <ChatOutlineRail
                     enabled={isChatOutlineEnabled}
+                    hasPromptIndex={chatOutline.hasPromptIndex}
                     prompts={chatOutline.prompts}
                     activePrompt={chatOutline.activePrompt}
                     onJumpToPrompt={chatOutline.jumpToPrompt}

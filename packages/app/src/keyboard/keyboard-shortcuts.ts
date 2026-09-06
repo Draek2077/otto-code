@@ -255,7 +255,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   // --- New workspace ---
   {
     id: "workspace-new-cmd-n-mac",
-    action: "workspace.tab.new",
+    action: "workspace.new",
     combo: "Cmd+N",
     when: { mac: true, commandCenter: false },
     help: {
@@ -267,7 +267,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
   {
     id: "workspace-new-ctrl-n-non-mac",
-    action: "workspace.tab.new",
+    action: "workspace.new",
     combo: "Ctrl+N",
     when: { mac: false, commandCenter: false, terminal: false },
     help: {

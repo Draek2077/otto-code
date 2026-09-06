@@ -6,6 +6,7 @@ import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { planTimelinePromptJump } from "@/timeline/timeline-sync-plan";
 import type { StreamItem } from "@/types/stream";
 import type { StreamViewportHandle } from "../strategy";
+import { useChatOutlineLayout } from "./layout";
 import {
   createActivePromptPublisher,
   resolveActivePromptSeq,
@@ -35,9 +36,11 @@ export interface UseChatOutlineInput {
   onJumpError: () => void;
   visibleItemIds?: ReadonlySet<string>;
   revealLoadedItem?: (itemId: string) => boolean;
+  initialPromptIndex?: Pick<AgentTimelinePromptIndexPayload, "epoch" | "prompts"> | null;
 }
 
 export interface ChatOutline {
+  hasPromptIndex: boolean;
   prompts: ChatOutlinePrompt[];
   activePrompt: ActivePromptSource;
   jumpToPrompt: (seq: number) => void;
@@ -55,22 +58,39 @@ export function useChatOutline({
   onJumpError,
   visibleItemIds,
   revealLoadedItem,
+  initialPromptIndex = null,
 }: UseChatOutlineInput): ChatOutline {
-  const [index, setIndex] = useState<AgentTimelinePromptIndexPayload | null>(null);
+  const [index, setIndex] = useState<Pick<
+    AgentTimelinePromptIndexPayload,
+    "epoch" | "prompts"
+  > | null>(null);
+  const { setRailVisible } = useChatOutlineLayout();
   const [pendingJump, setPendingJump] = useState<PendingPromptJump | null>(null);
   const [activePrompt] = useState(createActivePromptPublisher);
   const readingRowIdRef = useRef<string | null>(null);
   const nextJumpRequestIdRef = useRef(0);
   const nextIndexRequestIdRef = useRef(0);
   const loadedItems = useMemo(() => [...tail, ...(head ?? NO_STREAM_ITEMS)], [head, tail]);
-  const prompts = enabled ? (index?.prompts ?? NO_PROMPTS) : NO_PROMPTS;
+  const acceptedIndex =
+    index && shouldAcceptPromptIndexEpoch(timelineEpoch, index.epoch) ? index : null;
+  const acceptedInitialPromptIndex =
+    initialPromptIndex && shouldAcceptPromptIndexEpoch(timelineEpoch, initialPromptIndex.epoch)
+      ? initialPromptIndex
+      : null;
+  const promptIndex = acceptedIndex ?? acceptedInitialPromptIndex;
+  const hasPromptIndex = enabled && promptIndex !== null;
+  const prompts = enabled ? (promptIndex?.prompts ?? NO_PROMPTS) : NO_PROMPTS;
 
   useEffect(() => {
     if (!isWeb || !enabled) {
       setIndex(null);
+      setRailVisible(false);
       return;
     }
-    setIndex(null);
+    setIndex(acceptedInitialPromptIndex);
+    if (acceptedInitialPromptIndex) {
+      setRailVisible(acceptedInitialPromptIndex.prompts.length >= 2);
+    }
     const client = getHostRuntimeStore().getClient(serverId);
     if (!client) return;
     let active = true;
@@ -84,13 +104,20 @@ export function useChatOutline({
             requestId === nextIndexRequestIdRef.current &&
             shouldAcceptPromptIndexEpoch(timelineEpoch, payload.epoch)
           ) {
+            // This response makes the rail render. Publish its fixed gutter in
+            // the same React batch so the transcript and composer never paint
+            // a rail over their pre-outline geometry.
+            setRailVisible(payload.prompts.length >= 2);
             setIndex(payload);
           }
           return undefined;
         })
         .catch(() => undefined);
     };
-    refresh();
+    // The initial timeline response now carries the compact index. Do not race
+    // it with the legacy index RPC: only use that RPC for a host that has
+    // already hydrated the timeline but did not return the optional field.
+    if (!acceptedInitialPromptIndex && timelineEpoch !== null) refresh();
     const unsubscribe = client.on("agent_stream", (message) => {
       if (
         message.type === "agent_stream" &&
@@ -105,7 +132,7 @@ export function useChatOutline({
       active = false;
       unsubscribe();
     };
-  }, [agentId, enabled, serverId, timelineEpoch]);
+  }, [acceptedInitialPromptIndex, agentId, enabled, serverId, setRailVisible, timelineEpoch]);
 
   // The transcript names the row it is showing; the outline turns that into a prompt using the
   // complete index, so unloaded rows never have to exist in the DOM to be marked.
@@ -188,5 +215,5 @@ export function useChatOutline({
     [agentId, index, loadedItems, onJumpError, revealLoadedItem, serverId, viewportRef],
   );
 
-  return { prompts, activePrompt, jumpToPrompt, reportReadingPosition };
+  return { hasPromptIndex, prompts, activePrompt, jumpToPrompt, reportReadingPosition };
 }

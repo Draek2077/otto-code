@@ -84,7 +84,13 @@ import { MeetingTranscriptStore } from "./meetings/transcript-store.js";
 import type { ConnectorsOauthAuthorizeResponse } from "@otto-code/protocol/messages";
 import { getErrorMessage, getErrorMessageOr } from "@otto-code/protocol/error-utils";
 import { getAgentStatusPriority } from "@otto-code/protocol/agent-state-bucket";
-import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
+import {
+  ARCHITECTURAL_VIEW_AUTHORING_LABEL,
+  ARCHITECTURAL_VIEW_DRAFT_ID_LABEL,
+  ARCHITECTURAL_VIEW_ID_LABEL,
+  getArchitecturalViewAuthoringLabels,
+  getParentAgentIdFromLabels,
+} from "@otto-code/protocol/agent-labels";
 import {
   normalizeGitHostingProviderId,
   ActivityCountersSchema,
@@ -5599,6 +5605,7 @@ export class Session {
 
     let knownWorkspaceId: string | null = null;
     try {
+      await this.discardArchitecturalViewDraftForAgent(agentId);
       knownWorkspaceId = await this.deleteAgentRecord(agentId);
       await this.agentManager.deleteAgentState(agentId);
     } catch (error) {
@@ -5726,6 +5733,7 @@ export class Session {
   private async handleArchiveAgentRequest(agentId: string, requestId: string): Promise<void> {
     this.sessionLogger.info({ agentId }, `Archiving agent ${agentId}`);
 
+    await this.discardArchitecturalViewDraftForAgent(agentId);
     const { archivedAt } = await this.archiveAgentForClose(agentId);
 
     this.emit({
@@ -5978,6 +5986,29 @@ export class Session {
     );
 
     try {
+      const liveAgent = this.agentManager.getAgent(agentId);
+      const storedAgent = liveAgent ? null : await this.agentStorage.get(agentId);
+      const authoring = getArchitecturalViewAuthoringLabels(
+        liveAgent?.labels ?? storedAgent?.labels,
+      );
+      const sourceWorkspaceId = liveAgent?.workspaceId ?? storedAgent?.workspaceId;
+      if (authoring && sourceWorkspaceId) {
+        // A moved chat remains useful, but its visual is rooted in the source
+        // Knowledge store. Leave the unfinished draft there for a later update
+        // and convert the moved chat back to an ordinary chat.
+        await this.architecturalViewsSession.releaseDraftAuthoringAgent({
+          workspaceId: sourceWorkspaceId,
+          agentId,
+          ...authoring,
+        });
+        await this.agentManager.updateAgentMetadata(agentId, {
+          labels: {
+            [ARCHITECTURAL_VIEW_AUTHORING_LABEL]: "false",
+            [ARCHITECTURAL_VIEW_ID_LABEL]: "",
+            [ARCHITECTURAL_VIEW_DRAFT_ID_LABEL]: "",
+          },
+        });
+      }
       const result = await transferAgentWorkspaceCommand(
         {
           getAgentWorkspaceId: async (id) => {
@@ -7203,7 +7234,10 @@ export class Session {
           images,
           attachments,
           git,
-          labels: resolvedIntent.intent.labels,
+          labels: withArchitecturalViewAuthoringLabels(
+            resolvedIntent.intent.labels,
+            architecturalViewDraft,
+          ),
           env,
           provisionalTitle,
           firstAgentContext,
@@ -7308,6 +7342,19 @@ export class Session {
       viewId: input.draft.viewId,
       draftId: input.draft.draftId,
       agentId: input.agentId,
+    });
+  }
+
+  private async discardArchitecturalViewDraftForAgent(agentId: string): Promise<void> {
+    const live = this.agentManager.getAgent(agentId);
+    const stored = live ? null : await this.agentStorage.get(agentId);
+    const authoring = getArchitecturalViewAuthoringLabels(live?.labels ?? stored?.labels);
+    const workspaceId = live?.workspaceId ?? stored?.workspaceId;
+    if (!authoring || !workspaceId) return;
+    await this.architecturalViewsSession.discardDraftForAuthoringAgent({
+      workspaceId,
+      agentId,
+      ...authoring,
     });
   }
 
@@ -11375,6 +11422,13 @@ export class Session {
         ...(cursor ? { cursor } : {}),
         pageLimit,
       });
+      const promptIndex =
+        msg.includePromptIndex === true
+          ? buildTimelinePromptIndex(
+              selectedTimeline.timeline.epoch,
+              await this.agentManager.getTimelineRows(msg.agentId),
+            )
+          : undefined;
       const startCursor =
         selectedTimeline.startSeq !== null
           ? { epoch: selectedTimeline.timeline.epoch, seq: selectedTimeline.startSeq }
@@ -11403,6 +11457,7 @@ export class Session {
             hasOlder: selectedTimeline.hasOlder,
             hasNewer: selectedTimeline.hasNewer,
             ...(msg.mergeWindow === true ? { mergeWindow: true } : {}),
+            ...(promptIndex ? { promptIndex } : {}),
             entries: selectedTimeline.entries.map((entry) => {
               const payloadEntry = {
                 provider: agentPayload.provider,
@@ -12181,6 +12236,19 @@ export class Session {
     this.artifactSession.stop();
     this.workspaceFilesSession.dispose();
   }
+}
+
+function withArchitecturalViewAuthoringLabels(
+  labels: Record<string, string>,
+  draft: CreateAgentRequestMessage["architecturalViewDraft"],
+): Record<string, string> {
+  if (!draft) return labels;
+  return {
+    ...labels,
+    [ARCHITECTURAL_VIEW_AUTHORING_LABEL]: "true",
+    [ARCHITECTURAL_VIEW_ID_LABEL]: draft.viewId,
+    [ARCHITECTURAL_VIEW_DRAFT_ID_LABEL]: draft.draftId,
+  };
 }
 
 function withArchitecturalViewAuthoringBrief(

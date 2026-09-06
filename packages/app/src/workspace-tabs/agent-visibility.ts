@@ -1,6 +1,7 @@
 import type { Agent } from "@/stores/session-store";
 import type { WorkspaceTabSnapshot } from "@/stores/workspace-layout-actions";
 import { isWorkspaceRootAgent } from "@/subagents/policies";
+import { getArchitecturalViewAuthoringLabels } from "@otto-code/protocol/agent-labels";
 import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
 
 export interface WorkspaceAgentVisibility {
@@ -43,7 +44,10 @@ export function deriveWorkspaceAgentVisibility(input: {
     if (!agent.archivedAt) {
       activeAgentIds.add(agent.id);
       const parentAgent = agent.parentAgentId ? agentsById.get(agent.parentAgentId) : undefined;
-      if (isWorkspaceRootAgent(agent, parentAgent)) {
+      if (
+        isWorkspaceRootAgent(agent, parentAgent) &&
+        !getArchitecturalViewAuthoringLabels(agent.labels)
+      ) {
         autoOpenAgentIds.add(agent.id);
       }
     }

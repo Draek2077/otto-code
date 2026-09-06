@@ -1,5 +1,28 @@
 export const PARENT_AGENT_ID_LABEL = "otto.parent-agent-id";
+/** Stamped only by the daemon for a chat that owns an unpublished Architectural View draft. */
+export const ARCHITECTURAL_VIEW_AUTHORING_LABEL = "otto.architectural-view-authoring";
+export const ARCHITECTURAL_VIEW_ID_LABEL = "otto.architectural-view-id";
+export const ARCHITECTURAL_VIEW_DRAFT_ID_LABEL = "otto.architectural-view-draft-id";
 const OPEN_AGENT_TAB_LABEL_PREFIX = "otto.open-agent-tab.";
+
+export interface ArchitecturalViewAuthoringLabels {
+  viewId: string;
+  draftId: string;
+}
+
+export function getArchitecturalViewAuthoringLabels(
+  labels: Record<string, unknown> | null | undefined,
+): ArchitecturalViewAuthoringLabels | null {
+  if (labels?.[ARCHITECTURAL_VIEW_AUTHORING_LABEL] !== "true") return null;
+  const viewId = labels[ARCHITECTURAL_VIEW_ID_LABEL];
+  const draftId = labels[ARCHITECTURAL_VIEW_DRAFT_ID_LABEL];
+  return typeof viewId === "string" &&
+    viewId.trim() &&
+    typeof draftId === "string" &&
+    draftId.trim()
+    ? { viewId: viewId.trim(), draftId: draftId.trim() }
+    : null;
+}
 
 export function getOpenAgentTabLabel(clientId: string): string {
   return `${OPEN_AGENT_TAB_LABEL_PREFIX}${clientId}`;

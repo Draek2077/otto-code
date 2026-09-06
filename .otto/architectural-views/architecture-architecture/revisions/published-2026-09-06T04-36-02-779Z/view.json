@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "architectural-view",
+  "id": "architecture-architecture",
+  "title": "Architecture",
+  "knowledgeReferences": [
+    {
+      "kind": "root",
+      "id": "architecture"
+    }
+  ],
+  "sourceDigests": [
+    {
+      "reference": {
+        "kind": "root",
+        "id": "architecture"
+      },
+      "sha256": "6991b8b7b4a13366863da3a51d87e67cb435d010558ec88180fa6aaf56bc388a"
+    }
+  ],
+  "specificationSha256": "9b3048daf9aa5269ab49e2af895099eb827c29882e36f7eab89ffaf4be867606",
+  "renderedAt": "2026-09-06T04:36:02.779Z"
+}

@@ -284,4 +284,102 @@ describe("ArchitecturalViewsService", () => {
     expect(repeated).toEqual(first);
     await expect(service.listDrafts(projectRoot)).resolves.toEqual([first]);
   });
+
+  it("discards unpublished work only when its bound authoring chat ends", async () => {
+    const projectRoot = await createStore();
+    const service = new ArchitecturalViewsService({
+      resolveStore: async () => repositoryKnowledgeStore(projectRoot),
+    });
+    const draft = await service.createDraft({
+      cwd: projectRoot,
+      viewId: "architecture-overview",
+      draftId: "architecture-overview-first",
+      title: "Architecture overview",
+      knowledgeReferences: [{ kind: "root", id: "architecture" }],
+    });
+    await service.bindDraftAuthoringAgent({
+      cwd: projectRoot,
+      viewId: draft.viewId,
+      draftId: draft.id,
+      agentId: "authoring-chat",
+    });
+
+    await service.discardDraftForAuthoringAgent({
+      cwd: projectRoot,
+      viewId: draft.viewId,
+      draftId: draft.id,
+      agentId: "different-chat",
+    });
+    await expect(
+      service.getDraftContent(projectRoot, draft.viewId, draft.id),
+    ).resolves.not.toBeNull();
+
+    await service.discardDraftForAuthoringAgent({
+      cwd: projectRoot,
+      viewId: draft.viewId,
+      draftId: draft.id,
+      agentId: "authoring-chat",
+    });
+    await expect(service.getDraftContent(projectRoot, draft.viewId, draft.id)).resolves.toBeNull();
+  });
+
+  it("lets a fresh Create or Update chat replace a stale authoring binding", async () => {
+    const projectRoot = await createStore();
+    const service = new ArchitecturalViewsService({
+      resolveStore: async () => repositoryKnowledgeStore(projectRoot),
+    });
+    const draft = await service.createDraft({
+      cwd: projectRoot,
+      viewId: "architecture-overview",
+      draftId: "architecture-overview-first",
+      title: "Architecture overview",
+      knowledgeReferences: [{ kind: "root", id: "architecture" }],
+    });
+    await service.bindDraftAuthoringAgent({
+      cwd: projectRoot,
+      viewId: draft.viewId,
+      draftId: draft.id,
+      agentId: "first-authoring-chat",
+    });
+
+    await expect(
+      service.bindDraftAuthoringAgent({
+        cwd: projectRoot,
+        viewId: draft.viewId,
+        draftId: draft.id,
+        agentId: "fresh-update-chat",
+      }),
+    ).resolves.toMatchObject({ authoringAgentId: "fresh-update-chat" });
+  });
+
+  it("keeps an unfinished draft but releases its chat binding when the chat moves", async () => {
+    const projectRoot = await createStore();
+    const service = new ArchitecturalViewsService({
+      resolveStore: async () => repositoryKnowledgeStore(projectRoot),
+    });
+    const draft = await service.createDraft({
+      cwd: projectRoot,
+      viewId: "architecture-overview",
+      draftId: "architecture-overview-first",
+      title: "Architecture overview",
+      knowledgeReferences: [{ kind: "root", id: "architecture" }],
+    });
+    await service.bindDraftAuthoringAgent({
+      cwd: projectRoot,
+      viewId: draft.viewId,
+      draftId: draft.id,
+      agentId: "authoring-chat",
+    });
+
+    await service.releaseDraftAuthoringAgent({
+      cwd: projectRoot,
+      viewId: draft.viewId,
+      draftId: draft.id,
+      agentId: "authoring-chat",
+    });
+
+    await expect(service.getDraftContent(projectRoot, draft.viewId, draft.id)).resolves.toEqual(
+      expect.objectContaining({ draft: expect.objectContaining({ authoringAgentId: null }) }),
+    );
+  });
 });

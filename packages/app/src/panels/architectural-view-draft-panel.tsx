@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View, type LayoutChangeEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
@@ -7,11 +7,7 @@ import { ArchitecturalViewHtml } from "@/components/architectural-views/architec
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ResizeHandle } from "@/components/resize-handle";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
-import {
-  AgentPanelContent,
-  ChatConversationSurface,
-  storeCreatedWorkspaceAgent,
-} from "@/panels/agent-panel";
+import { ChatConversationSurface, storeCreatedWorkspaceAgent } from "@/panels/agent-panel";
 import { WorkspaceDraftAgentTab } from "@/composer/draft/workspace-tab";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor } from "@/panels/panel-registry";
@@ -23,9 +19,12 @@ import { definePanel } from "@/panels/panel-registry";
 
 const AUTHORING_SPLIT_GROUP_ID = "architectural-view-authoring";
 const DEFAULT_SPLIT_SIZES = [0.46, 0.54];
-const INITIAL_ARCHITECTURAL_VIEW_REQUEST =
-  "Create or refresh this Architectural View from the Knowledge documentation linked to the staged draft. " +
-  "First read the staged draft to identify its linked Knowledge article and its current specification. Read that Knowledge article, including its prose, Mermaid diagrams, and wiki-links, then translate the established facts into a focused interactive Architectural View. Reuse and improve what is already documented; do not invent unsupported components or relationships. Update only the staged draft and summarize the visual choices when finished.";
+const CREATE_ARCHITECTURAL_VIEW_REQUEST =
+  "Create this Architectural View from the Knowledge documentation linked to the staged draft. " +
+  "First read the staged draft to identify its linked Knowledge article and its current specification. Read that Knowledge article, including its prose, Mermaid diagrams, and wiki-links, then translate the established facts into a focused interactive Architectural View. Reuse and improve what is already documented; do not invent unsupported components or relationships. When the user asks to improve the Knowledge itself, use the normal Knowledge tools as well, then update the staged visual to reflect the revised facts. Summarize the visual choices when finished.";
+const UPDATE_ARCHITECTURAL_VIEW_REQUEST =
+  "Update this Architectural View from the Knowledge documentation linked to the staged draft. " +
+  "First read the staged draft and its linked Knowledge article, including prose, Mermaid diagrams, and wiki-links. Preserve established facts and useful parts of the existing typed visual, then improve the staged view to reflect current Knowledge. Do not invent unsupported components or relationships. When the user asks to improve the Knowledge itself, use the normal Knowledge tools as well, then update the staged visual to reflect the revised facts. Summarize the visual choices when finished.";
 
 type ArchitecturalViewDraftTarget = Extract<WorkspaceTabTarget, { kind: "architecturalViewDraft" }>;
 
@@ -34,9 +33,9 @@ function useArchitecturalViewDraftPanelDescriptor(
   context: { serverId: string },
 ): PanelDescriptor {
   const authoringAgent = useSessionStore((state) =>
-    target.authoringAgentId
-      ? (state.sessions[context.serverId]?.agents.get(target.authoringAgentId) ??
-        state.sessions[context.serverId]?.agentDetails.get(target.authoringAgentId) ??
+    target.authoringChatId
+      ? (state.sessions[context.serverId]?.agents.get(target.authoringChatId) ??
+        state.sessions[context.serverId]?.agentDetails.get(target.authoringChatId) ??
         null)
       : null,
   );
@@ -65,7 +64,7 @@ function ArchitecturalViewDraftPanel() {
     openImportSheet,
     retargetCurrentTab,
   } = usePaneContext();
-  const { isInteractive, isWorkspaceFocused } = usePaneFocus();
+  const { isInteractive } = usePaneFocus();
   invariant(
     target.kind === "architecturalViewDraft",
     "ArchitecturalViewDraftPanel requires architecturalViewDraft target",
@@ -79,40 +78,21 @@ function ArchitecturalViewDraftPanel() {
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [action, setAction] = useState<"publish" | "discard" | null>(null);
-  const [authoringAgentId, setAuthoringAgentId] = useState<string | null>(null);
-  const authoringAgentIsRunning = useSessionStore((state) => {
-    if (!authoringAgentId) return false;
-    return state.sessions[serverId]?.agents.get(authoringAgentId)?.status === "running";
-  });
   const [splitSizes, setSplitSizes] = useState(DEFAULT_SPLIT_SIZES);
   const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
   const [splitContainerWidth, setSplitContainerWidth] = useState(0);
-  const previewRefreshInFlight = useRef(false);
-
-  const bindAuthoringAgent = useCallback(
-    (agentId: string | null) => {
-      setAuthoringAgentId(agentId);
-      if (agentId && target.authoringAgentId !== agentId) {
-        retargetCurrentTab({
-          kind: "architecturalViewDraft",
-          viewId: target.viewId,
-          draftId: target.draftId,
-          authoringAgentId: agentId,
-        });
-      }
-    },
-    [retargetCurrentTab, target.authoringAgentId, target.draftId, target.viewId],
-  );
-
-  const consumeInitialGeneration = useCallback(() => {
-    if (!target.generateOnOpen) return;
+  // A completed create always becomes an ordinary agent tab carrying the
+  // authoring presentation. Older persisted compound targets can contain the
+  // same chat id, so promote them on mount too. Keeping a created chat behind
+  // this temporary target excluded it from selective timeline delivery.
+  useEffect(() => {
+    if (!target.authoringChatId) return;
     retargetCurrentTab({
-      kind: "architecturalViewDraft",
-      viewId: target.viewId,
-      draftId: target.draftId,
-      ...(target.authoringAgentId ? { authoringAgentId: target.authoringAgentId } : {}),
+      kind: "agent",
+      agentId: target.authoringChatId,
+      architecturalViewDraft: { viewId: target.viewId, draftId: target.draftId },
     });
-  }, [retargetCurrentTab, target]);
+  }, [retargetCurrentTab, target.authoringChatId, target.draftId, target.viewId]);
 
   useEffect(() => {
     if (!client || !supported) {
@@ -136,7 +116,6 @@ function ArchitecturalViewDraftPanel() {
           throw new Error(result.error ?? "Could not open Architectural View draft.");
         }
         setHtml(result.html);
-        bindAuthoringAgent(result.draft?.authoringAgentId ?? null);
         return undefined;
       })
       .catch((cause: unknown) => {
@@ -151,50 +130,7 @@ function ArchitecturalViewDraftPanel() {
     return () => {
       cancelled = true;
     };
-  }, [bindAuthoringAgent, client, supported, target.draftId, target.viewId, workspaceId]);
-
-  // The bound authoring agent writes directly through the daemon service, so
-  // its edit does not originate from this panel's RPC request. Refresh only
-  // the one staged document while that agent is running; no Knowledge pages
-  // or project-wide index are reread.
-  useEffect(() => {
-    if (!client || !supported || !authoringAgentId || !authoringAgentIsRunning) return;
-    let cancelled = false;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    const refreshPreview = async () => {
-      if (previewRefreshInFlight.current) return;
-      previewRefreshInFlight.current = true;
-      try {
-        const result = await client.getArchitecturalViewDraftContent({
-          workspaceId,
-          viewId: target.viewId,
-          draftId: target.draftId,
-        });
-        if (cancelled || !result.success || !result.html) return;
-        setHtml(result.html);
-        setError(null);
-      } catch {
-        // The existing last-known-good preview remains usable while a refresh
-        // races an authoring write or a transient host disconnect.
-      } finally {
-        previewRefreshInFlight.current = false;
-        if (!cancelled) timeout = setTimeout(() => void refreshPreview(), 1_500);
-      }
-    };
-    void refreshPreview();
-    return () => {
-      cancelled = true;
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [
-    authoringAgentId,
-    authoringAgentIsRunning,
-    client,
-    supported,
-    target.draftId,
-    target.viewId,
-    workspaceId,
-  ]);
+  }, [client, supported, target.draftId, target.viewId, workspaceId]);
 
   const handleSplitLayout = useCallback((event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
@@ -243,8 +179,9 @@ function ArchitecturalViewDraftPanel() {
         viewId: target.viewId,
         draftId: target.draftId,
       });
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.error ?? "Could not publish Architectural View draft.");
+      }
       closeCurrentTab();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : String(cause));
@@ -271,8 +208,9 @@ function ArchitecturalViewDraftPanel() {
         viewId: target.viewId,
         draftId: target.draftId,
       });
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.error ?? "Could not discard Architectural View draft.");
+      }
       closeCurrentTab();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : String(cause));
@@ -284,29 +222,30 @@ function ArchitecturalViewDraftPanel() {
   const handleAuthoringAgentCreated = useCallback(
     (agentSnapshot: Parameters<typeof storeCreatedWorkspaceAgent>[0]["agentSnapshot"]) => {
       storeCreatedWorkspaceAgent({ serverId, agentSnapshot });
-      bindAuthoringAgent(agentSnapshot.id);
+      retargetCurrentTab({
+        kind: "agent",
+        agentId: agentSnapshot.id,
+        architecturalViewDraft: { viewId: target.viewId, draftId: target.draftId },
+      });
     },
-    [bindAuthoringAgent, serverId],
+    [retargetCurrentTab, serverId, target.draftId, target.viewId],
   );
 
-  const chat = authoringAgentId ? (
-    <AgentPanelContent
-      serverId={serverId}
-      agentId={authoringAgentId}
-      isPaneFocused={isInteractive}
-      isWorkspaceFocused={isWorkspaceFocused}
-      onOpenWorkspaceFile={openFileInWorkspace}
-    />
-  ) : (
+  let autoSubmitInitialPrompt: string | undefined;
+  if (target.generateOnOpen) {
+    autoSubmitInitialPrompt =
+      target.authoringPrompt === "update"
+        ? UPDATE_ARCHITECTURAL_VIEW_REQUEST
+        : CREATE_ARCHITECTURAL_VIEW_REQUEST;
+  }
+
+  const chatContent = (
     <WorkspaceDraftAgentTab
       serverId={serverId}
       workspaceId={workspaceId}
       tabId={tabId}
       draftId={`architectural-view-${target.viewId}-${target.draftId}`}
-      autoSubmitInitialPrompt={
-        target.generateOnOpen ? INITIAL_ARCHITECTURAL_VIEW_REQUEST : undefined
-      }
-      onAutoSubmitInitialPromptStarted={consumeInitialGeneration}
+      autoSubmitInitialPrompt={autoSubmitInitialPrompt}
       architecturalViewDraft={architecturalViewDraft}
       isPaneFocused={isInteractive}
       onOpenWorkspaceFile={openFileInWorkspace}
@@ -314,6 +253,10 @@ function ArchitecturalViewDraftPanel() {
       onCreated={handleAuthoringAgentCreated}
     />
   );
+  // This compound panel embeds a normal chat rather than being an alternate
+  // chat implementation. Keep the same stream/outline/width providers that
+  // own live transcript hydration for every regular Agent tab.
+  const chat = <ChatConversationSurface>{chatContent}</ChatConversationSurface>;
 
   return (
     <View style={styles.container}>
@@ -323,7 +266,7 @@ function ArchitecturalViewDraftPanel() {
           Icon={ThemedPublish}
           loading={action === "publish"}
           onPress={publish}
-          disabled={!html || !!action}
+          disabled={!html || Boolean(action)}
           tone="accent"
         />
         <View style={styles.toolbarSpacer} />
@@ -332,14 +275,14 @@ function ArchitecturalViewDraftPanel() {
           Icon={ThemedTrash2}
           loading={action === "discard"}
           onPress={discard}
-          disabled={!!action}
+          disabled={Boolean(action)}
           tone="destructive"
         />
       </View>
       {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
       <View style={styles.authoringSurface} onLayout={handleSplitLayout}>
         <View style={chatPaneStyle} testID="architectural-view-authoring-chat">
-          <ChatConversationSurface>{chat}</ChatConversationSurface>
+          {chat}
         </View>
         <ResizeHandle
           testID="architectural-view-authoring-splitter"
@@ -369,9 +312,6 @@ function ArchitecturalViewDraftPanel() {
 export const architecturalViewDraftPanelRegistration = definePanel("architecturalViewDraft", {
   component: ArchitecturalViewDraftPanel,
   useDescriptor: useArchitecturalViewDraftPanelDescriptor,
-  // Closing a preview is a detach, never a discard. The daemon retains the
-  // staged document until an explicit publish or discard action.
-  confirmClose: () => Promise.resolve(true),
 });
 
 const ThemedPublish = withUnistyles(Publish);

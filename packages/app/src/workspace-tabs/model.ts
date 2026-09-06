@@ -48,7 +48,12 @@ export type WorkspaceTabTarget =
       architecturalViewDraft?: { viewId: string; draftId: string };
     }
   | { kind: "new_tab" }
-  | { kind: "agent"; agentId: string }
+  | {
+      kind: "agent";
+      agentId: string;
+      /** Active-only presentation metadata for a normal authoring chat. */
+      architecturalViewDraft?: { viewId: string; draftId: string };
+    }
   | { kind: "provider_subagent"; parentAgentId: string; subagentId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser"; browserId: string }
@@ -69,9 +74,15 @@ export type WorkspaceTabTarget =
       kind: "architecturalViewDraft";
       viewId: string;
       draftId: string;
+      // COMPAT(architecturalViewDraftAuthoringAgent): retained to read tabs
+      // persisted before 0.9.0; it is never used to reopen a chat.
       authoringAgentId?: string;
+      /** The normal chat created by this authoring tab and safe to restore. */
+      authoringChatId?: string;
       /** Starts the Knowledge-grounded visible first authoring turn once. */
       generateOnOpen?: boolean;
+      /** Selects a new chat's visible first-turn instruction. */
+      authoringPrompt?: "create" | "update";
     }
   // A published Knowledge visual. It is a first-class workspace surface so an
   // agent can open the same document a reader would seek from Manage Knowledge.

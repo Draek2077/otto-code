@@ -70,10 +70,15 @@ export function ensureAgentIsInitialized(input: EnsureAgentIsInitializedInput): 
     return deferred.promise;
   }
 
-  input.runtime.fetchAgentTimeline(serverId, agentId, timelineRequest).catch((error) => {
-    setAgentInitializing(agentId, false);
-    rejectInitDeferred(key, error instanceof Error ? error : new Error(String(error)));
-  });
+  input.runtime
+    .fetchAgentTimeline(serverId, agentId, {
+      ...timelineRequest,
+      includePromptIndex: true,
+    })
+    .catch((error) => {
+      setAgentInitializing(agentId, false);
+      rejectInitDeferred(key, error instanceof Error ? error : new Error(String(error)));
+    });
 
   return deferred.promise;
 }

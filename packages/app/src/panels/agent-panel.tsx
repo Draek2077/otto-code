@@ -1,7 +1,13 @@
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { isExternalPreviewServerId } from "@otto-code/protocol/messages";
 import type { TFunction } from "i18next";
-import { ChevronRight, SquarePen } from "@/components/icons/material-icons";
+import {
+  Architecture,
+  ChevronRight,
+  Publish,
+  SquarePen,
+  Trash2,
+} from "@/components/icons/material-icons";
 import React, {
   memo,
   useCallback,
@@ -13,7 +19,7 @@ import React, {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, View, type LayoutChangeEvent } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -24,6 +30,7 @@ import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view
 import { ChatMessageSearchBar, type ChatMessageSearchHandle } from "@/chat/message-search-bar";
 import type { ChatMessageSearchState } from "@/chat/message-search";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
 import { BlackChatScope } from "@/components/black-chat-scope";
@@ -108,6 +115,8 @@ import {
   deriveRouteBottomAnchorRequest,
 } from "@/screens/agent/agent-ready-screen-bottom-anchor";
 import { WorkspaceDraftAgentTab } from "@/composer/draft/workspace-tab";
+import { ResizeHandle } from "@/components/resize-handle";
+import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { useBrowserStore } from "@/desktop/browser/store";
 import { AgentTaskList } from "@/composer/task-list";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
@@ -178,11 +187,15 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { openProviderSubagentTab } from "@/subagents/open-provider-subagent-tab";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
+import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
+import { confirmDialog } from "@/utils/confirm-dialog";
 
 // Otto's pinned task-list overlay is the task-tracking surface. Keep Paseo's
 // inline composer panel available for upstream convergence, but do not mount a
 // second task-list UI.
 const SHOW_PASEO_TASK_LIST_PANEL = false;
+const AUTHORING_SPLIT_GROUP_ID = "architectural-view-authoring";
+const DEFAULT_AUTHORING_SPLIT_SIZES = [0.46, 0.54];
 
 interface ChatAgentStateShape {
   serverId: string | null;
@@ -425,7 +438,11 @@ function buildAgentDescriptorState(agent: Agent | null) {
 }
 
 function useAgentPanelDescriptor(
-  target: { kind: "agent"; agentId: string },
+  target: {
+    kind: "agent";
+    agentId: string;
+    architecturalViewDraft?: { viewId: string; draftId: string };
+  },
   context: { serverId: string },
 ): PanelDescriptor {
   const descriptorState = useSessionStore(
@@ -445,12 +462,19 @@ function useAgentPanelDescriptor(
     isHydrated: descriptorState.isHydrated,
     fallbackLabel: i18n.t("workspace.tabs.fallback.agent"),
   });
-  const icon = getProviderIcon(provider);
+  const isArchitecturalViewAuthoring = Boolean(target.architecturalViewDraft);
+  const icon = isArchitecturalViewAuthoring ? Architecture : getProviderIcon(provider);
+  let subtitle = "Agent";
+  if (isArchitecturalViewAuthoring) {
+    subtitle = "Architectural View authoring";
+  } else if (provider) {
+    subtitle = `${formatProviderLabel(provider)} agent`;
+  }
 
   return {
     label,
     tooltip: label,
-    subtitle: provider ? `${formatProviderLabel(provider)} agent` : "Agent",
+    subtitle,
     titleState,
     icon,
     statusBucket: descriptorState.status
@@ -462,7 +486,10 @@ function useAgentPanelDescriptor(
         })
       : null,
     personalitySpinner: descriptorState.personalitySpinner,
-    provider,
+    // Architectural Views retain the authoring chat's colored busy spinner,
+    // but their resting glyph is the Architectural View icon, never the
+    // chat/provider identity.
+    provider: isArchitecturalViewAuthoring ? undefined : provider,
   };
 }
 
@@ -480,6 +507,20 @@ function AgentPanel() {
       openTab({ kind: "architecturalView", viewId: request.viewId });
     });
   }, [client, openTab, target.agentId, workspaceId]);
+
+  if (target.architecturalViewDraft) {
+    return (
+      <ArchitecturalViewAuthoringSurface
+        serverId={serverId}
+        workspaceId={workspaceId}
+        agentId={target.agentId}
+        draft={target.architecturalViewDraft}
+        isPaneFocused={isInteractive}
+        isWorkspaceFocused={isWorkspaceFocused}
+        onOpenWorkspaceFile={openFileInWorkspace}
+      />
+    );
+  }
 
   return (
     <AgentPanelContent
@@ -706,6 +747,234 @@ export function AgentPanelContent({
       connectionStatus={connectionStatus}
       onOpenWorkspaceFile={onOpenWorkspaceFile}
     />
+  );
+}
+
+/**
+ * A normal chat tab's specialized authoring renderer. The chat's identity and
+ * lifecycle stay entirely normal; only an active draft binding selects this
+ * split presentation.
+ */
+export function ArchitecturalViewAuthoringSurface({
+  serverId,
+  workspaceId,
+  agentId,
+  draft,
+  isPaneFocused,
+  isWorkspaceFocused,
+  onOpenWorkspaceFile,
+}: {
+  serverId: string;
+  workspaceId: string;
+  agentId: string;
+  draft: { viewId: string; draftId: string };
+  isPaneFocused: boolean;
+  isWorkspaceFocused: boolean;
+  onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+}) {
+  const { closeCurrentTab } = usePaneContext();
+  const { archiveAgent } = useArchiveAgent();
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  const supported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.architecturalViews === true,
+  );
+  const agentIsRunning = useSessionStore(
+    (state) => state.sessions[serverId]?.agents.get(agentId)?.status === "running",
+  );
+  const [html, setHtml] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [action, setAction] = useState<"publish" | "discard" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [splitSizes, setSplitSizes] = useState(DEFAULT_AUTHORING_SPLIT_SIZES);
+  const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
+  const [splitContainerWidth, setSplitContainerWidth] = useState(0);
+  const refreshInFlight = useRef(false);
+
+  const refreshPreview = useCallback(async () => {
+    if (!client || !supported || refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    try {
+      const result = await client.getArchitecturalViewDraftContent({
+        workspaceId,
+        viewId: draft.viewId,
+        draftId: draft.draftId,
+      });
+      if (!result.success || !result.html) {
+        throw new Error(result.error ?? "Could not open Architectural View draft.");
+      }
+      setHtml(result.html);
+      setError(null);
+    } catch (cause) {
+      setHtml(null);
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      refreshInFlight.current = false;
+      setLoading(false);
+    }
+  }, [client, draft.draftId, draft.viewId, supported, workspaceId]);
+
+  useEffect(() => {
+    if (!client || !supported) {
+      setHtml(null);
+      setError("Update the host to use Architectural Views.");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    void refreshPreview();
+  }, [client, refreshPreview, supported]);
+
+  // The authoring tools mutate only this staged document. Polling that one
+  // payload while a turn runs keeps the canvas live without rereading Project
+  // Knowledge or adding a second stream transport.
+  useEffect(() => {
+    if (!agentIsRunning) return;
+    const interval = setInterval(() => void refreshPreview(), 1_500);
+    return () => clearInterval(interval);
+  }, [agentIsRunning, refreshPreview]);
+
+  const archiveAndClose = useCallback(async () => {
+    // Publishing or discarding finishes this dedicated authoring effort. The
+    // transcript remains in Archive as a normal chat, never as a resumable
+    // Architectural View surface.
+    await archiveAgent({ serverId, agentId });
+    closeCurrentTab();
+  }, [agentId, archiveAgent, closeCurrentTab, serverId]);
+
+  const publish = useCallback(async () => {
+    if (!client || action) return;
+    setAction("publish");
+    setActionError(null);
+    try {
+      const result = await client.publishArchitecturalViewDraft({
+        workspaceId,
+        viewId: draft.viewId,
+        draftId: draft.draftId,
+      });
+      if (!result.success) {
+        throw new Error(result.error ?? "Could not publish Architectural View draft.");
+      }
+      await archiveAndClose();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setAction(null);
+    }
+  }, [action, archiveAndClose, client, draft.draftId, draft.viewId, workspaceId]);
+
+  const discard = useCallback(async () => {
+    if (!client || action) return;
+    const confirmed = await confirmDialog({
+      title: "Discard Architectural View draft?",
+      message:
+        "This permanently removes the staged draft. The current published view is unchanged.",
+      confirmLabel: "Discard draft",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setAction("discard");
+    setActionError(null);
+    try {
+      const result = await client.discardArchitecturalViewDraft({
+        workspaceId,
+        viewId: draft.viewId,
+        draftId: draft.draftId,
+      });
+      if (!result.success) {
+        throw new Error(result.error ?? "Could not discard Architectural View draft.");
+      }
+      await archiveAndClose();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setAction(null);
+    }
+  }, [action, archiveAndClose, client, draft.draftId, draft.viewId, workspaceId]);
+
+  const handleSplitLayout = useCallback((event: LayoutChangeEvent) => {
+    const width = event.nativeEvent.layout.width;
+    setSplitContainerWidth((current) => (current === width ? current : width));
+  }, []);
+  const handlePreviewResizeSplit = useCallback((_groupId: string, sizes: number[]) => {
+    setPreviewSplitSizes(sizes);
+  }, []);
+  const handleResizeSplit = useCallback((_groupId: string, sizes: number[]) => {
+    setPreviewSplitSizes(null);
+    setSplitSizes(sizes);
+  }, []);
+  const effectiveSplitSizes = previewSplitSizes ?? splitSizes;
+  const chatPaneStyle = useMemo(
+    () => [
+      styles.architecturalAuthoringPane,
+      inlineUnistylesStyle({ flexGrow: effectiveSplitSizes[0] ?? 0.46, flexBasis: 0 }),
+    ],
+    [effectiveSplitSizes],
+  );
+  const viewPaneStyle = useMemo(
+    () => [
+      styles.architecturalAuthoringPane,
+      inlineUnistylesStyle({ flexGrow: effectiveSplitSizes[1] ?? 0.54, flexBasis: 0 }),
+    ],
+    [effectiveSplitSizes],
+  );
+
+  return (
+    <View style={styles.architecturalAuthoringContainer}>
+      <View style={styles.architecturalAuthoringToolbar}>
+        <ToolbarIconButton
+          label="Publish Architectural View"
+          Icon={ThemedPublish}
+          loading={action === "publish"}
+          onPress={publish}
+          disabled={!html || Boolean(action)}
+          tone="accent"
+        />
+        <View style={styles.architecturalAuthoringToolbarSpacer} />
+        <ToolbarIconButton
+          label="Discard Architectural View draft"
+          Icon={ThemedTrash2}
+          loading={action === "discard"}
+          onPress={discard}
+          disabled={Boolean(action)}
+          tone="destructive"
+        />
+      </View>
+      {actionError ? <Text style={styles.architecturalAuthoringError}>{actionError}</Text> : null}
+      <View style={styles.architecturalAuthoringSurface} onLayout={handleSplitLayout}>
+        <View style={chatPaneStyle} testID="architectural-view-authoring-chat">
+          <AgentPanelContent
+            serverId={serverId}
+            agentId={agentId}
+            isPaneFocused={isPaneFocused}
+            isWorkspaceFocused={isWorkspaceFocused}
+            onOpenWorkspaceFile={onOpenWorkspaceFile}
+          />
+        </View>
+        <ResizeHandle
+          testID="architectural-view-authoring-splitter"
+          direction="horizontal"
+          groupId={AUTHORING_SPLIT_GROUP_ID}
+          index={0}
+          sizes={effectiveSplitSizes}
+          containerSize={splitContainerWidth}
+          onPreviewResizeSplit={handlePreviewResizeSplit}
+          onResizeSplit={handleResizeSplit}
+        />
+        <View style={viewPaneStyle} testID="architectural-view-authoring-preview">
+          {html ? (
+            <ArchitecturalViewHtml html={html} />
+          ) : (
+            <View style={styles.architecturalAuthoringEmpty}>
+              {loading ? <LoadingSpinner size="small" /> : null}
+              <Text style={styles.architecturalAuthoringMessage}>
+                {error ?? "Loading Architectural View draft…"}
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -2422,6 +2691,8 @@ function AgentSessionUnavailableState({
 
 const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 const ThemedChevronRight = withUnistyles(ChevronRight);
+const ThemedPublish = withUnistyles(Publish);
+const ThemedTrash2 = withUnistyles(Trash2);
 
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -2558,6 +2829,40 @@ const styles = StyleSheet.create((theme) => ({
   offlineDetails: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
+    textAlign: "center",
+  },
+  architecturalAuthoringContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.surface0,
+  },
+  architecturalAuthoringToolbar: {
+    minHeight: 36,
+    paddingHorizontal: theme.spacing[3],
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  architecturalAuthoringToolbarSpacer: { flex: 1 },
+  architecturalAuthoringSurface: { flex: 1, minHeight: 0, flexDirection: "row" },
+  architecturalAuthoringPane: { minWidth: 0, minHeight: 0, overflow: "hidden" },
+  architecturalAuthoringError: {
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    color: theme.colors.destructive,
+    fontSize: theme.fontSize.xs,
+  },
+  architecturalAuthoringEmpty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[2],
+    padding: theme.spacing[4],
+    backgroundColor: theme.colors.surface0,
+  },
+  architecturalAuthoringMessage: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
 }));

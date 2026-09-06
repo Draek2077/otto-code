@@ -34,7 +34,12 @@ export function normalizeWorkspaceTabTarget(
   }
   if (value.kind === "agent") {
     const agentId = trimNonEmpty(value.agentId);
-    return agentId ? { kind: "agent", agentId } : null;
+    const architecturalViewDraft = normalizeArchitecturalViewDraftContext(
+      value.architecturalViewDraft,
+    );
+    return agentId
+      ? { kind: "agent", agentId, ...(architecturalViewDraft ? { architecturalViewDraft } : {}) }
+      : null;
   }
   // Both ids are required: the tab is identified by the pair, and a subagent id
   // without its parent cannot be resolved back to a timeline.
@@ -68,14 +73,21 @@ export function normalizeWorkspaceTabTarget(
     const viewId = trimNonEmpty(value.viewId);
     const draftId = trimNonEmpty(value.draftId);
     const authoringAgentId = trimNonEmpty(value.authoringAgentId);
+    const authoringChatId = trimNonEmpty(value.authoringChatId);
     const generateOnOpen = value.generateOnOpen === true;
+    const authoringPrompt =
+      value.authoringPrompt === "create" || value.authoringPrompt === "update"
+        ? value.authoringPrompt
+        : undefined;
     return viewId && draftId
       ? {
           kind: "architecturalViewDraft",
           viewId,
           draftId,
           ...(authoringAgentId ? { authoringAgentId } : {}),
+          ...(authoringChatId ? { authoringChatId } : {}),
           ...(generateOnOpen ? { generateOnOpen: true } : {}),
+          ...(authoringPrompt ? { authoringPrompt } : {}),
         }
       : null;
   }
@@ -471,11 +483,26 @@ export function shouldRetargetWorkspaceTabTarget(
     return true;
   }
   return (
-    current.kind === "architecturalViewDraft" &&
-    next.kind === "architecturalViewDraft" &&
-    (current.authoringAgentId !== next.authoringAgentId ||
-      current.generateOnOpen !== next.generateOnOpen)
+    (current.kind === "agent" &&
+      next.kind === "agent" &&
+      !architecturalViewDraftContextsEqual(
+        current.architecturalViewDraft,
+        next.architecturalViewDraft,
+      )) ||
+    (current.kind === "architecturalViewDraft" &&
+      next.kind === "architecturalViewDraft" &&
+      (current.authoringAgentId !== next.authoringAgentId ||
+        current.authoringChatId !== next.authoringChatId ||
+        current.generateOnOpen !== next.generateOnOpen ||
+        current.authoringPrompt !== next.authoringPrompt))
   );
+}
+
+function architecturalViewDraftContextsEqual(
+  left: { viewId: string; draftId: string } | undefined,
+  right: { viewId: string; draftId: string } | undefined,
+): boolean {
+  return left?.viewId === right?.viewId && left?.draftId === right?.draftId;
 }
 
 function communicationsRoomTargetsEqual(

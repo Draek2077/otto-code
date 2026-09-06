@@ -23,7 +23,10 @@ export function ChatOutlineLayoutProvider({
   enabled: boolean;
   children: ReactNode;
 }) {
-  const [railVisible, setRailVisible] = useState(false);
+  // The fixed gutter must exist before the initial timeline response arrives.
+  // The rail later withdraws it for chats with fewer than two prompts or a
+  // narrow pane, but a chat that will show the rail never visibly reflows.
+  const [railVisible, setRailVisible] = useState(enabled);
 
   useEffect(() => {
     if (!enabled) {

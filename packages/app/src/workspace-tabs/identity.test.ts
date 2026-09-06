@@ -34,18 +34,22 @@ describe("Architectural View draft tab identity", () => {
     );
   });
 
-  it("retains a bound authoring chat without making it part of the view identity", () => {
-    const bound = { ...target, authoringAgentId: "architect-agent" };
+  it("retains a created authoring chat without making it part of the view identity", () => {
+    const bound = { ...target, authoringChatId: "architect-chat" };
     expect(normalizeWorkspaceTabTarget(bound)).toEqual(bound);
     expect(workspaceTabTargetsEqual(target, bound)).toBe(true);
     expect(shouldRetargetWorkspaceTabTarget(target, bound)).toBe(true);
   });
 
-  it("can consume a first-generation request without changing view identity", () => {
-    const generating = { ...target, generateOnOpen: true };
+  it("can start a fresh chat with a create or update prompt without changing view identity", () => {
+    const generating = { ...target, generateOnOpen: true, authoringPrompt: "update" as const };
     expect(normalizeWorkspaceTabTarget(generating)).toEqual(generating);
     expect(workspaceTabTargetsEqual(target, generating)).toBe(true);
     expect(shouldRetargetWorkspaceTabTarget(generating, target)).toBe(true);
+
+    expect(
+      normalizeWorkspaceTabTarget({ ...target, generateOnOpen: true, authoringPrompt: "create" }),
+    ).toEqual({ ...target, generateOnOpen: true, authoringPrompt: "create" });
   });
 
   it("keeps the authoring-chat draft reference while restoring a chat setup tab", () => {
@@ -60,6 +64,21 @@ describe("Architectural View draft tab identity", () => {
       draftId: "architectural-view-workflows-workflows-revision-2",
       architecturalViewDraft: { viewId: "workflows", draftId: "workflows-revision-2" },
     });
+  });
+
+  it("persists the active authoring presentation on its normal chat tab", () => {
+    const authoringChatTarget = {
+      kind: "agent",
+      agentId: "architect-agent",
+      architecturalViewDraft: { viewId: "workflows", draftId: "workflows-revision-2" },
+    } as const;
+    expect(normalizeWorkspaceTabTarget(authoringChatTarget)).toEqual(authoringChatTarget);
+    expect(
+      shouldRetargetWorkspaceTabTarget(authoringChatTarget, {
+        kind: "agent",
+        agentId: "architect-agent",
+      }),
+    ).toBe(true);
   });
 });
 

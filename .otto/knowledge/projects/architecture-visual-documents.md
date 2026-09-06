@@ -9,7 +9,7 @@ progress_completed: 4
 progress_total: 5
 progress_unit: "delivery slices"
 created_at: "2026-08-27T19:16:46.149Z"
-updated_at: "2026-09-06T03:21:16.038Z"
+updated_at: "2026-09-06T06:03:13.623Z"
 ---
 # Architecture visual documents
 
@@ -220,3 +220,7 @@ Source changes set a visible stale indicator. Refresh is an explicit authoring a
   summary: "User selected an article-owned entry point for Architectural Views: Manage Knowledge does not show an empty global Architectural Views section. From a selected Knowledge root or article, its pinned toolbar now offers **Create Architectural View** when no published view exists, **Open Architectural View** when one does, and **Resume Architectural View draft** for durable staged work. Creation is daemon-owned and produces a small valid, knowledge-linked starter specification, so it needs neither a workspace JSON file nor a retained chat context. Draft discovery is a separately capability-gated, backward-compatible RPC; the UI waits for it before offering creation, preventing duplicate staged work after restart. Targeted Architectural Views service/session and workspace-tab tests, protocol/client build, server/app typechecks, targeted lint, format, and `git diff --check` passed."
   source: "Implementation verified 2026-09-05"
   affects: ["project-knowledge-context-management"]
+- time: "2026-09-06T06:03:13.623Z"
+  kind: "evidence"
+  summary: "The authoring lifecycle has been corrected: an active Architectural View authoring surface is a **normal persisted chat tab** with an Architectural View binding and split chat/preview renderer, not a separate resumable preview-tab lifecycle. It restores with ordinary chat state across Otto/daemon restart. Archive or delete of that bound chat discards the unpublished draft; publishing or toolbar discard ends only the binding and leaves the ordinary chat available. The linked Knowledge toolbar creates/updates by focusing the one active bound chat for that view. Chat tooling may update both the staged visual and linked Knowledge when requested. Moving a bound chat to another workspace is allowed, but releases the draft in its source Knowledge store and converts the moved chat to an ordinary chat, so no visual preview travels with it. Focused tab identity/visibility/menu and Architectural Views storage tests passed; targeted lint and server typecheck passed. App typecheck is currently blocked by an unrelated in-progress type error in `packages/app/src/agent-stream/chat-outline/use-chat-outline.ts`."
+  source: "User product direction and implementation verification 2026-09-06"

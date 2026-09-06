@@ -21,7 +21,16 @@ export function selectVisibleAgentIds(input: {
       panes.flatMap((pane) => {
         const target = deriveWorkspacePaneState({ pane, tabs: input.tabs }).activeTab?.descriptor
           .target;
-        return target?.kind === "agent" ? [target.agentId] : [];
+        if (target?.kind === "agent") {
+          return [target.agentId];
+        }
+        // A just-created Architectural View authoring chat is promoted to a
+        // normal agent target on the next render. Claim its stream during that
+        // one transition too, otherwise selective delivery drops its first
+        // assistant events before the normal chat surface mounts.
+        return target?.kind === "architecturalViewDraft" && target.authoringChatId
+          ? [target.authoringChatId]
+          : [];
       }),
     ),
   ].sort();

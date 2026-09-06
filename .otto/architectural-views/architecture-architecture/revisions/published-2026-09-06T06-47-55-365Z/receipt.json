@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Users\\phili\\Projects\\otto-code\\.otto\\architectural-views\\architecture-architecture\\drafts\\architecture-architecture-mtpdq498\\view.architecture.json",
+  "output": "C:\\Users\\phili\\AppData\\Local\\Temp\\otto-architectural-view-render-ujXGXE\\view.architecture.html",
+  "specification": {
+    "sha256": "ddc331794795c246e07d3f5794a36799c4c8e155481d4fd895fcb3e1de55a818",
+    "bytes": 5921
+  },
+  "artifact": {
+    "sha256": "063ff9f67d8b5a0042b2957af8bf2e0eb82ba3caba5752b8d83e6e6e60cc6abc",
+    "bytes": 708909
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

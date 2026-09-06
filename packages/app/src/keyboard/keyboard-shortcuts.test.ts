@@ -74,6 +74,8 @@ function expectShortcutResolution(input: {
     context: input.context,
   });
 
+  expect(result.match?.action).toBe(input.action);
+  expect(result.match?.payload).toEqual(input.payload ?? null);
   expect(result.match?.preventDefault).toBe(input.preventDefault ?? true);
   expect(result.match?.stopPropagation).toBe(input.stopPropagation ?? true);
   expect(result.preventDefault).toBe(false);
@@ -204,7 +206,7 @@ describe("keyboard-shortcuts", () => {
       name: "matches Mod+T to open new tab",
       event: { key: "t", code: "KeyT", metaKey: true },
       context: { isMac: true },
-      action: "workspace.tab.menu.open",
+      action: "workspace.tab.new",
     },
     {
       name: "matches Alt+Shift+W to close current tab on web",

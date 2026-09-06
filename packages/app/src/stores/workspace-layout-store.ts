@@ -209,14 +209,38 @@ const WorkspaceDraftTabSetupStorageSchema = z.strictObject({
   thinkingOptionId: z.string().nullable(),
   featureValues: z.record(z.string(), z.union([z.boolean(), z.string(), z.null()])),
 });
+const ArchitecturalViewDraftContextStorageSchema = z.strictObject({
+  viewId: z.string(),
+  draftId: z.string(),
+});
 const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("new_tab") }),
   z.strictObject({
     kind: z.literal("draft"),
     draftId: z.string(),
     setup: WorkspaceDraftTabSetupStorageSchema.optional(),
+    architecturalViewDraft: ArchitecturalViewDraftContextStorageSchema.optional(),
   }),
-  z.strictObject({ kind: z.literal("agent"), agentId: z.string() }),
+  z.strictObject({
+    kind: z.literal("agent"),
+    agentId: z.string(),
+    architecturalViewDraft: ArchitecturalViewDraftContextStorageSchema.optional(),
+  }),
+  // The temporary pre-create authoring target is persisted only until it
+  // promotes itself to the normal agent chat target. Its complete shape must
+  // still be accepted: one unknown target otherwise rejects the entire saved
+  // workspace layout, including unrelated Knowledge and Context tabs.
+  z.strictObject({
+    kind: z.literal("architecturalViewDraft"),
+    viewId: z.string(),
+    draftId: z.string(),
+    authoringAgentId: z.string().optional(),
+    authoringChatId: z.string().optional(),
+    generateOnOpen: z.boolean().optional(),
+    authoringPrompt: z.enum(["create", "update"]).optional(),
+  }),
+  z.strictObject({ kind: z.literal("architecturalView"), viewId: z.string() }),
+  z.strictObject({ kind: z.literal("artifact"), artifactId: z.string() }),
   z.strictObject({
     kind: z.literal("provider_subagent"),
     parentAgentId: z.string(),
@@ -228,11 +252,32 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("files") }),
   z.strictObject({ kind: z.literal("project_search") }),
   z.strictObject({ kind: z.literal("pull_request") }),
+  // These workspace-wide management surfaces have no daemon-local id. Keep
+  // their targets in the persisted layout like every other durable tab.
+  z.strictObject({ kind: z.literal("contextManagement") }),
+  z.strictObject({
+    kind: z.literal("projectKnowledge"),
+    selection: z
+      .discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("root"), slug: z.string() }),
+        z.strictObject({ kind: z.literal("record"), id: z.string() }),
+      ])
+      .optional(),
+  }),
   z.strictObject({
     kind: z.literal("file"),
     path: z.string(),
     lineStart: z.number().int().positive().optional(),
     lineEnd: z.number().int().positive().optional(),
+    origin: z
+      .strictObject({
+        workspaceId: z.string(),
+        cwd: z.string(),
+        projectId: z.string(),
+        projectName: z.string().optional(),
+        outsideAnyProject: z.boolean().optional(),
+      })
+      .optional(),
   }),
   z.strictObject({
     kind: z.literal("working_diff"),
@@ -245,6 +290,46 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({ kind: z.literal("setup"), workspaceId: z.string() }),
   z.strictObject({ kind: z.literal("commit_diff"), sha: z.string() }),
+  z.strictObject({
+    kind: z.literal("communicationsRoom"),
+    providerId: z.string(),
+    conversationId: z.string(),
+    title: z.string().optional(),
+  }),
+  z.strictObject({ kind: z.literal("gitLog"), operation: z.string() }),
+  z.strictObject({ kind: z.literal("visualizer"), runId: z.string().optional() }),
+  z.strictObject({
+    kind: z.literal("fileHistory"),
+    path: z.string(),
+    startLine: z.number().int().positive().optional(),
+    endLine: z.number().int().positive().optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("codeReferences"),
+    path: z.string(),
+    line: z.number().int(),
+    column: z.number().int(),
+    symbol: z.string(),
+  }),
+  z.strictObject({
+    kind: z.literal("codeRename"),
+    path: z.string(),
+    line: z.number().int(),
+    column: z.number().int(),
+    symbol: z.string(),
+    newName: z.string(),
+  }),
+  z.strictObject({
+    kind: z.literal("refine"),
+    paths: z.array(z.string()),
+    references: z.array(z.string()).optional(),
+    presetId: z.string().optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("orchestrationGraph"),
+    graphId: z.string(),
+    runId: z.string().optional(),
+  }),
   z.discriminatedUnion("context", [
     z.strictObject({
       kind: z.literal("plugin"),

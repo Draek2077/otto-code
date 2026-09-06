@@ -16,6 +16,7 @@ function makeAgent(input: {
   archivedAt?: Date | null;
   createdAt?: Date;
   lastActivityAt?: Date;
+  labels?: Record<string, string>;
 }): Agent {
   const createdAt = input.createdAt ?? new Date("2026-03-04T00:00:00.000Z");
   const lastActivityAt = input.lastActivityAt ?? createdAt;
@@ -50,7 +51,7 @@ function makeAgent(input: {
     model: null,
     thinkingOptionId: null,
     parentAgentId: input.parentAgentId ?? null,
-    labels: {},
+    labels: input.labels ?? {},
     requiresAttention: false,
     attentionReason: null,
     attentionTimestamp: null,
@@ -61,6 +62,43 @@ function makeAgent(input: {
 const WORKSPACE_ID = "ws-1";
 
 describe("workspace agent visibility", () => {
+  it("keeps an Architectural View authoring chat out of automatic ordinary chat tabs", () => {
+    const authoring = makeAgent({
+      id: "architectural-authoring",
+      cwd: "/repo/worktree",
+      workspaceId: WORKSPACE_ID,
+      labels: {
+        "otto.architectural-view-authoring": "true",
+        "otto.architectural-view-id": "workflows",
+        "otto.architectural-view-draft-id": "workflows-draft",
+      },
+    });
+
+    const result = deriveWorkspaceAgentVisibility({
+      sessionAgents: new Map([[authoring.id, authoring]]),
+      workspaceId: WORKSPACE_ID,
+    });
+
+    expect(result.activeAgentIds).toEqual(new Set([authoring.id]));
+    expect(result.autoOpenAgentIds).toEqual(new Set<string>());
+  });
+
+  it("returns a transferred authoring chat to normal automatic tab behavior", () => {
+    const transferred = makeAgent({
+      id: "formerly-architectural-authoring",
+      cwd: "/repo/worktree",
+      workspaceId: WORKSPACE_ID,
+      labels: { "otto.architectural-view-authoring": "false" },
+    });
+
+    const result = deriveWorkspaceAgentVisibility({
+      sessionAgents: new Map([[transferred.id, transferred]]),
+      workspaceId: WORKSPACE_ID,
+    });
+
+    expect(result.autoOpenAgentIds).toEqual(new Set([transferred.id]));
+  });
+
   it("keeps subagents active and known while excluding them from auto-open", () => {
     const parent = makeAgent({
       id: "parent-agent",

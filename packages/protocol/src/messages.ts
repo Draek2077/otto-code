@@ -2811,6 +2811,9 @@ export const FetchAgentTimelineRequestMessageSchema = z.object({
   projection: z.enum(["projected", "canonical"]).optional(),
   // Allow the client to merge this bounded page outside its contiguous loaded range.
   mergeWindow: z.boolean().optional(),
+  // The initial chat hydration can carry this compact full-history index without
+  // loading every transcript row into the client.
+  includePromptIndex: z.boolean().optional(),
 });
 
 export const AgentTimelineListPromptsRequestMessageSchema = z.object({
@@ -6716,6 +6719,17 @@ export const AgentTimelineEntryPayloadSchema = z.object({
   collapsed: z.array(z.enum(["assistant_merge", "reasoning_merge", "tool_lifecycle"])),
 });
 
+export const AgentTimelinePromptIndexSchema = z.object({
+  epoch: z.string(),
+  prompts: z.array(
+    z.object({
+      seq: z.number().int().nonnegative(),
+      timestamp: z.string(),
+      preview: z.string(),
+    }),
+  ),
+});
+
 export const FetchAgentTimelineResponseMessageSchema = z.object({
   type: z.literal("fetch_agent_timeline_response"),
   payload: z.object({
@@ -6738,6 +6752,7 @@ export const FetchAgentTimelineResponseMessageSchema = z.object({
     hasOlder: z.boolean(),
     hasNewer: z.boolean(),
     mergeWindow: z.boolean().optional(),
+    promptIndex: AgentTimelinePromptIndexSchema.optional(),
     entries: z.array(AgentTimelineEntryPayloadSchema),
     error: z.string().nullable(),
   }),
@@ -6748,14 +6763,7 @@ export const AgentTimelineListPromptsResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     agentId: z.string(),
-    epoch: z.string(),
-    prompts: z.array(
-      z.object({
-        seq: z.number().int().nonnegative(),
-        timestamp: z.string(),
-        preview: z.string(),
-      }),
-    ),
+    ...AgentTimelinePromptIndexSchema.shape,
     error: z.string().nullable(),
   }),
 });

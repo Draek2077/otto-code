@@ -404,6 +404,34 @@ export class ArchitecturalViewsSession {
     await this.service(context.resolver).bindDraftAuthoringAgent({ ...input, cwd: context.cwd });
   }
 
+  async discardDraftForAuthoringAgent(input: {
+    workspaceId: string;
+    viewId: string;
+    draftId: string;
+    agentId: string;
+  }): Promise<void> {
+    const context = await this.authoringContext(input.workspaceId);
+    if (!context) return;
+    await this.service(context.resolver).discardDraftForAuthoringAgent({
+      ...input,
+      cwd: context.cwd,
+    });
+  }
+
+  async releaseDraftAuthoringAgent(input: {
+    workspaceId: string;
+    viewId: string;
+    draftId: string;
+    agentId: string;
+  }): Promise<void> {
+    const context = await this.authoringContext(input.workspaceId);
+    if (!context) return;
+    await this.service(context.resolver).releaseDraftAuthoringAgent({
+      ...input,
+      cwd: context.cwd,
+    });
+  }
+
   private service(resolver: ProjectKnowledgeStoreResolver): ArchitecturalViewsService {
     return new ArchitecturalViewsService({ resolveStore: (cwd) => resolver.resolveForCwd(cwd) });
   }
