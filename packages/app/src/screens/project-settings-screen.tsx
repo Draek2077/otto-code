@@ -636,6 +636,7 @@ function ProjectConfigForm({
           ok: true,
           config: result.config,
           revision: result.revision,
+          hasUncommittedWorktreeSetupChanges: result.hasUncommittedWorktreeSetupChanges,
           requestId: "local-cache",
           repoRoot,
         });

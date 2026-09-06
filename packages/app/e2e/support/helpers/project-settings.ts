@@ -238,7 +238,7 @@ export async function removeProjectScript(page: Page, scriptName: string): Promi
   // from the row's testID to avoid scoped locator unreliability.
   const id = (await row.getAttribute("data-testid"))!.replace("script-row-", "");
   await page.getByTestId(`script-row-menu-${id}`).click();
-  await page.getByRole("button", { name: "Remove" }).click();
+  await page.getByTestId(`script-action-${id}-remove`).click();
   // Removal is gated by the in-app ConfirmDialogHost, not a native window.confirm.
   await page.getByTestId("confirm-dialog-confirm").click();
 }
