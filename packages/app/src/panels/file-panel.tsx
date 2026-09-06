@@ -4,11 +4,19 @@ import { FileText } from "@/components/icons/material-icons";
 import invariant from "tiny-invariant";
 import { useTranslation } from "react-i18next";
 import { FileTabPane } from "@/components/file-tab-pane";
-import { buildEditorBufferKey, useEditorBufferStore } from "@/editor/editor-buffer-store";
+import {
+  buildEditorBufferKey,
+  isEditorBufferDirty,
+  removeEditorBuffer,
+  useEditorBufferStore,
+} from "@/editor/editor-buffer-store";
+import { hasActiveExternalFileEditor } from "@/editor/external-file-editor";
+import { i18n } from "@/i18n/i18next";
 import { usePaneContext } from "@/panels/pane-context";
 import { definePanel } from "@/panels/panel-registry";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { PanelDescriptorContext } from "@/panels/panel-registry";
+import { confirmDialog } from "@/utils/confirm-dialog";
 
 const CENTERED_PADDED_STYLE = {
   flex: 1,
@@ -40,6 +48,37 @@ function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDe
     icon: FileText,
     statusBucket: null,
   };
+}
+
+/** Mode switches retain the buffer; closing requires explicit discard when dirty. */
+async function confirmDiscardEditorBuffer(bufferId: {
+  serverId: string;
+  workspaceId: string;
+  path: string;
+}): Promise<boolean> {
+  if (hasActiveExternalFileEditor(bufferId)) {
+    const confirmed = await confirmDialog({
+      title: i18n.t("editor.externalEditorDialog.title"),
+      message: i18n.t("editor.externalEditorDialog.message"),
+      confirmLabel: i18n.t("editor.externalEditorDialog.confirm"),
+      cancelLabel: i18n.t("editor.cancel"),
+      destructive: true,
+    });
+    if (!confirmed) return false;
+  }
+  if (!isEditorBufferDirty(bufferId)) {
+    removeEditorBuffer(bufferId);
+    return true;
+  }
+  const confirmed = await confirmDialog({
+    title: i18n.t("editor.discardDialog.title"),
+    message: i18n.t("editor.discardDialog.message"),
+    confirmLabel: i18n.t("editor.discardDialog.confirm"),
+    cancelLabel: i18n.t("editor.cancel"),
+    destructive: true,
+  });
+  if (confirmed) removeEditorBuffer(bufferId);
+  return confirmed;
 }
 
 function FilePanel() {
@@ -74,4 +113,11 @@ function FilePanel() {
 export const filePanelRegistration = definePanel("file", {
   component: FilePanel,
   useDescriptor: useFilePanelDescriptor,
+  confirmClose(target, context) {
+    return confirmDiscardEditorBuffer({
+      serverId: context.serverId,
+      workspaceId: target.origin?.workspaceId ?? context.workspaceId,
+      path: target.path,
+    });
+  },
 });
