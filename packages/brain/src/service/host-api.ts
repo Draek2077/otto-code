@@ -613,6 +613,17 @@ export function createHostApi(deps: HostApiDeps): HostApi {
     return false;
   };
 
+  /** Keep implementation details in the local service log, never the HTTP response. */
+  const sendOperationError = (
+    res: http.ServerResponse,
+    status: number,
+    operation: string,
+    error: unknown,
+  ): void => {
+    deps.log?.("server", `${operation}: ${errorMessage(error)}`);
+    sendError(res, status, operation);
+  };
+
   const inventory = async (): Promise<InventoryRow[]> => {
     const [gpu, store] = [await deps.queryGpuInfo(), deps.getProfilesStore()];
     const defaults = deps.getProfileDefaults();
@@ -726,7 +737,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
             familyHostingProfileId: familyHostingProfileId(store, model.family),
           });
         } catch (error) {
-          sendError(res, 400, errorMessage(error));
+          sendOperationError(res, 400, "could not update the model profile", error);
         }
       })();
     });
@@ -824,7 +835,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           warnings: profileWarnings(profile, model, store),
         });
       } catch (error) {
-        sendError(res, 400, errorMessage(error));
+        sendOperationError(res, 400, "could not calculate the model budget", error);
       }
     })();
   };
@@ -927,7 +938,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
         componentIds: plan.componentIds,
       });
     } catch (error) {
-      sendError(res, 409, errorMessage(error));
+      sendOperationError(res, 409, "could not remove the model component", error);
     }
   };
 
@@ -1084,7 +1095,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
               ]) ?? null,
           });
         } catch (error) {
-          sendError(res, 409, errorMessage(error));
+          sendOperationError(res, 409, "could not start the benchmark", error);
         }
       });
       return true;
@@ -1230,7 +1241,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
             job: deps.jobs?.start(start.kind, spec.target, spec.args, spec.pull) ?? null,
           });
         } catch (error) {
-          sendError(res, 400, errorMessage(error));
+          sendOperationError(res, 400, "could not start the job", error);
         }
       });
       return true;
@@ -1405,7 +1416,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
             }),
           );
         } catch (error) {
-          sendError(res, 500, errorMessage(error));
+          sendOperationError(res, 500, "could not build the model details", error);
         }
       })();
       return true;
