@@ -485,7 +485,8 @@ export const ja: TranslationResources = {
       reconnecting: "再接続中...",
       archivingTitle: "エージェントをアーカイブ中...",
       archivingSubtitle: "このエージェントをアーカイブするまでお待ちください。",
-      timelineSyncFailed: "エージェントの履歴を更新できませんでした。再試行しています…",
+      timelineSyncFailed: "エージェントの履歴を更新できませんでした。",
+      timelineSyncRetrying: "再試行しています…",
       timelineAgentMissing: "このチャットはホスト上に存在しません。",
     },
     unavailable: {

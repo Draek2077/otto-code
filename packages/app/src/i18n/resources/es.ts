@@ -483,7 +483,8 @@ export const es: TranslationResources = {
       reconnecting: "Reconectando...",
       archivingTitle: "Agente de archivo...",
       archivingSubtitle: "Espere mientras archivamos este agente.",
-      timelineSyncFailed: "No se pudo actualizar el historial del agente. Reintentando…",
+      timelineSyncFailed: "No se pudo actualizar el historial del agente.",
+      timelineSyncRetrying: "Reintentando…",
       timelineAgentMissing: "Este chat ya no existe en el host.",
     },
     unavailable: {

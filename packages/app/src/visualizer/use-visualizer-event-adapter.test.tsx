@@ -1423,6 +1423,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
       replaceVisibleAgentIds,
       subscribe: () => () => {},
       getAgentTimelineStatus: () => "ready" as const,
+      retryVisibleAgentTimeline: vi.fn(),
     });
     setAgents([makeAgent({ id: "root-1", title: "My chat" })]);
     const view = renderAdapterWithProps({ active: true });

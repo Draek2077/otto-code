@@ -291,8 +291,9 @@ function renderChatAgentNonReadyView(args: {
   effectiveAgent: AgentScreenAgent | null;
   isBlackChat: boolean;
   t: TFunction;
+  onRetryLoad: () => void;
 }): React.ReactElement | null {
-  const { viewState, effectiveAgent, isBlackChat, t } = args;
+  const { viewState, effectiveAgent, isBlackChat, t, onRetryLoad } = args;
   if (viewState.tag === "not_found") {
     return (
       <View
@@ -314,6 +315,14 @@ function renderChatAgentNonReadyView(args: {
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{t("agentPanel.states.failedToLoad")}</Text>
           <Text style={styles.statusText}>{viewState.message}</Text>
+          <Pressable
+            accessibilityRole="button"
+            testID="agent-load-error-retry"
+            onPress={onRetryLoad}
+            style={styles.retryButton}
+          >
+            <Text style={styles.retryButtonText}>{t("common.actions.retry")}</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -770,7 +779,7 @@ function AgentPanelBody({
     if (!isConnected || !hasSession) {
       return;
     }
-    if (lookupState.tag === "loading" || lookupState.tag === "not_found") {
+    if (lookupState.tag !== "idle") {
       return;
     }
 
@@ -832,6 +841,14 @@ function AgentPanelBody({
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{t("agentPanel.states.failedToLoad")}</Text>
           <Text style={styles.statusText}>{lookupState.message}</Text>
+          <Pressable
+            accessibilityRole="button"
+            testID="agent-load-error-retry"
+            onPress={handleRetryLookup}
+            style={styles.retryButton}
+          >
+            <Text style={styles.retryButtonText}>{t("common.actions.retry")}</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -1292,7 +1309,7 @@ function ChatAgentContent({
     if (!isConnected || !hasSession) {
       return;
     }
-    if (missingAgentState.kind === "resolving" || missingAgentState.kind === "not_found") {
+    if (missingAgentState.kind !== "idle") {
       return;
     }
 
@@ -1354,11 +1371,20 @@ function ChatAgentContent({
     [animatedKeyboardStyle],
   );
 
+  const retryAgentLoad = useCallback(() => {
+    setMissingAgentState({ kind: "idle" });
+    if (agentState.id) ensureInitializedWithSyncErrorHandling("entry");
+  }, [agentState.id, ensureInitializedWithSyncErrorHandling]);
+  const retryTimelineSync = useCallback(() => {
+    if (agentId) viewedTimelineSync?.retryVisibleAgentTimeline(agentId);
+  }, [agentId, viewedTimelineSync]);
+
   const nonReadyView = renderChatAgentNonReadyView({
     viewState,
     effectiveAgent,
     isBlackChat,
     t,
+    onRetryLoad: retryAgentLoad,
   });
   if (nonReadyView) return nonReadyView;
   invariant(agentId, "agent id is defined when agent content is ready");
@@ -1370,6 +1396,10 @@ function ChatAgentContent({
     viewState.sync.status === "catching_up" &&
     viewState.sync.ui === "overlay";
   const showHistorySyncError = viewState.tag === "ready" && viewState.sync.status === "sync_error";
+  const isRetryingHistorySync =
+    viewState.tag === "ready" &&
+    viewState.sync.status === "sync_error" &&
+    viewState.sync.isRetrying;
   const showHistorySyncMissing =
     viewState.tag === "ready" && viewState.sync.status === "sync_missing";
 
@@ -1392,6 +1422,8 @@ function ChatAgentContent({
       handleMessageSent={handleMessageSent}
       showHistorySyncOverlay={showHistorySyncOverlay}
       showHistorySyncError={showHistorySyncError}
+      isRetryingHistorySync={isRetryingHistorySync}
+      retryTimelineSync={retryTimelineSync}
       showHistorySyncMissing={showHistorySyncMissing}
       cwd={agentCwd}
       onAttentionInputFocus={attentionController.clearOnInputFocus}
@@ -1419,6 +1451,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   handleMessageSent,
   showHistorySyncOverlay,
   showHistorySyncError,
+  isRetryingHistorySync,
+  retryTimelineSync,
   showHistorySyncMissing,
   cwd,
   onAttentionInputFocus,
@@ -1442,6 +1476,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   handleMessageSent: () => void;
   showHistorySyncOverlay: boolean;
   showHistorySyncError: boolean;
+  isRetryingHistorySync: boolean;
+  retryTimelineSync: () => void;
   showHistorySyncMissing: boolean;
   cwd: string;
   onAttentionInputFocus: () => void;
@@ -1564,6 +1600,16 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           title={t("agentPanel.states.timelineSyncFailed")}
           variant="error"
           testID="agent-timeline-sync-error"
+          actions={[
+            {
+              label: isRetryingHistorySync
+                ? t("agentPanel.states.timelineSyncRetrying")
+                : t("common.actions.retry"),
+              onPress: retryTimelineSync,
+              disabled: isRetryingHistorySync,
+              testID: "agent-timeline-sync-retry",
+            },
+          ]}
         />
       ) : null}
 

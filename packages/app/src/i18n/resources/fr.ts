@@ -485,7 +485,8 @@ export const fr: TranslationResources = {
       reconnecting: "Reconnexion...",
       archivingTitle: "Agent d'archivage...",
       archivingSubtitle: "Veuillez patienter pendant que nous archivons cet agent.",
-      timelineSyncFailed: "Impossible d’actualiser l’historique de l’agent. Nouvelle tentative…",
+      timelineSyncFailed: "Impossible d’actualiser l’historique de l’agent.",
+      timelineSyncRetrying: "Nouvelle tentative…",
       timelineAgentMissing: "Cette discussion n’existe plus sur l’hôte.",
     },
     unavailable: {

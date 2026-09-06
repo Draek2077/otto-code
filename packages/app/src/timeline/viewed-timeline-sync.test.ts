@@ -338,9 +338,8 @@ test("a failed catch-up reports once and retries through the explicit retry poli
   const failed = await world.nextFetch("agent-a");
   failed.fail("timeline unavailable");
   const [error, retryCatchUp] = await Promise.all([world.nextError(), world.nextRetry()]);
-  // A failure with a retry already scheduled reads as "retrying", not "error":
-  // that is what suppresses a Retry affordance the user would press pointlessly.
-  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("retrying");
+  // Background backoff must leave the user's immediate Retry action available.
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error");
 
   retryCatchUp();
   const retry = await world.nextFetch("agent-a");
@@ -774,4 +773,62 @@ test("repeated catch-up failures back off instead of retrying every second", asy
   const afterRecovery = await world.nextFetch("agent-a");
   afterRecovery.fail("host is unhappy again");
   await vi.waitFor(() => expect(world.scheduledDelays()).toEqual([1_000]));
+});
+
+test("manual retry reports pending, failure, and recovery without duplicate requests", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  (await world.nextMembership()).succeed();
+  (await world.nextFetch("agent-a")).fail("timeline unavailable");
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error"));
+
+  world.sync.retryVisibleAgentTimeline("agent-a");
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("retrying");
+  expect(world.scheduledDelays()).toEqual([]);
+  const retry = await world.nextFetch("agent-a");
+  world.sync.retryVisibleAgentTimeline("agent-a");
+  world.expectNoPendingFetch();
+  retry.fail("still unavailable");
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error"));
+
+  world.sync.retryVisibleAgentTimeline("agent-a");
+  (await world.nextFetch("agent-a")).respond({ hasNewer: false });
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("ready"));
+});
+
+test("manual retry remains pending through membership and history recovery", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  (await world.nextMembership()).fail("subscription unavailable");
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error"));
+
+  world.sync.retryVisibleAgentTimeline("agent-a");
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("retrying");
+  (await world.nextMembership()).succeed();
+  const history = await world.nextFetch("agent-a");
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("retrying");
+  history.respond({ hasNewer: false });
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("ready"));
+});
+
+test("disconnect clears a pending manual retry and ignores its late result", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  (await world.nextMembership()).succeed();
+  (await world.nextFetch("agent-a")).fail("timeline unavailable");
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error"));
+  world.sync.retryVisibleAgentTimeline("agent-a");
+  const retry = await world.nextFetch("agent-a");
+  world.sync.setConnected(false);
+  retry.respond({ hasNewer: false });
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("pending");
+  world.sync.retryVisibleAgentTimeline("agent-a");
+  world.expectNoPendingFetch();
+  world.sync.setConnected(true);
+  (await world.nextMembership()).succeed();
+  (await world.nextFetch("agent-a")).respond({ hasNewer: false });
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("ready"));
 });

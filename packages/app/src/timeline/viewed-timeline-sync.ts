@@ -27,6 +27,7 @@ export interface ViewedTimelineUiBridge {
   replaceVisibleAgentIds(sourceId: string, agentIds: string[]): void;
   subscribe(listener: () => void): () => void;
   getAgentTimelineStatus(agentId: string): ViewedTimelineStatus;
+  retryVisibleAgentTimeline(agentId: string): void;
 }
 
 export interface ViewedTimelineSync extends ViewedTimelineUiBridge {
@@ -121,6 +122,8 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
   const visibilityCatchUpPending = new Set<string>();
   const visibilityCatchUpErrors = new Set<string>();
   const visibilityCatchUpMissing = new Set<string>();
+  // Only user-requested retries own the button's pending state.
+  const manualRetries = new Set<string>();
   const catchUpFailureCounts = new Map<string, number>();
   const listeners = new Set<() => void>();
   let active = true;
@@ -167,13 +170,15 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
     const wasPending = visibilityCatchUpPending.delete(agentId);
     const hadError = visibilityCatchUpErrors.delete(agentId);
     const wasMissing = visibilityCatchUpMissing.delete(agentId);
+    const wasRetrying = manualRetries.delete(agentId);
     catchUpFailureCounts.delete(agentId);
-    if (wasPending || hadError || wasMissing) notifyListeners();
+    if (wasPending || hadError || wasMissing || wasRetrying) notifyListeners();
   };
 
   // Terminal, and said plainly: the chat is not on the host any more, so the UI
   // stops promising a retry that cannot succeed.
   const setVisibilityCatchUpMissing = (agentId: string) => {
+    manualRetries.delete(agentId);
     visibilityCatchUpPending.delete(agentId);
     visibilityCatchUpErrors.delete(agentId);
     catchUpFailureCounts.delete(agentId);
@@ -185,6 +190,7 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
   const setVisibilityCatchUpError = (agentIds: string[]) => {
     let changed = false;
     for (const agentId of agentIds) {
+      if (manualRetries.delete(agentId)) changed = true;
       if (!visibilityCatchUpPending.delete(agentId)) continue;
       visibilityCatchUpErrors.add(agentId);
       changed = true;
@@ -207,6 +213,7 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
   };
 
   const cancelCatchUp = (agentId: string) => {
+    manualRetries.delete(agentId);
     catchUpGenerations.set(agentId, (catchUpGenerations.get(agentId) ?? 0) + 1);
     catchUps.get(agentId)?.cancelRetry?.();
     catchUps.delete(agentId);
@@ -232,7 +239,12 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       if (current?.generation !== generation || current.status !== "error") return;
       startCatchUp(agentId);
     }, nextRetryDelayMs(failureCount));
-    catchUps.set(agentId, { generation, status: "error", cancelRetry });
+    catchUps.set(agentId, {
+      generation,
+      status: "error",
+      request: catchUps.get(agentId)?.request,
+      cancelRetry,
+    });
     setVisibilityCatchUpError([agentId]);
     ports.reportError(error);
   };
@@ -467,14 +479,28 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
     },
     getAgentTimelineStatus(agentId) {
       if (visibilityCatchUpMissing.has(agentId)) return "missing";
-      if (visibilityCatchUpErrors.has(agentId)) {
-        // A scheduled attempt is the difference between "this failed" and
-        // "this failed and is being retried"; only the latter should suppress
-        // a Retry affordance the user would otherwise press pointlessly.
-        return catchUps.get(agentId)?.cancelRetry ? "retrying" : "error";
-      }
+      if (manualRetries.has(agentId)) return "retrying";
+      if (visibilityCatchUpErrors.has(agentId)) return "error";
       if (!isDesired(agentId) || visibilityCatchUpPending.has(agentId)) return "pending";
       return "ready";
+    },
+    retryVisibleAgentTimeline(agentId) {
+      if (disposed || !connected || !isDesired(agentId) || manualRetries.has(agentId)) return;
+      const catchUp = catchUps.get(agentId);
+      const retryMembership = deliveryMode === "selective" && membershipNeedsRetry;
+      const joinBackgroundRetry =
+        catchUp?.status === "running" && visibilityCatchUpErrors.has(agentId);
+      if (catchUp?.status !== "error" && !retryMembership && !joinBackgroundRetry) return;
+      manualRetries.add(agentId);
+      notifyListeners();
+      if (joinBackgroundRetry) return;
+      if (retryMembership) {
+        cancelMembershipRetry?.();
+        cancelMembershipRetry = null;
+        void reconcileMembership();
+      } else {
+        startCatchUp(agentId, { request: catchUp?.request, supersede: true });
+      }
     },
     replaceVisibleAgentIds(sourceId, agentIds) {
       const normalized = normalizeAgentIds(agentIds);
@@ -491,6 +517,7 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       if (connected === nextConnected) return;
       connected = nextConnected;
       if (!connected) {
+        manualRetries.clear();
         const visible = active ? visibleAgentIds() : [];
         recentlyViewedAgentIds = visible;
         commitDesiredMembership(visible, { resetCatchUpStatus: true });

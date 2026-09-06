@@ -478,7 +478,8 @@ export const ar: TranslationResources = {
       reconnecting: "جارٍ إعادة الاتصال...",
       archivingTitle: "وكيل الارشيف...",
       archivingSubtitle: "الرجاء الانتظار بينما نقوم بأرشفة هذا الوكيل.",
-      timelineSyncFailed: "تعذر تحديث سجل الوكيل. جارٍ إعادة المحاولة…",
+      timelineSyncFailed: "تعذر تحديث سجل الوكيل.",
+      timelineSyncRetrying: "جارٍ إعادة المحاولة…",
       timelineAgentMissing: "لم تعد هذه المحادثة موجودة على المضيف.",
     },
     unavailable: {

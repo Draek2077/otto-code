@@ -482,7 +482,8 @@ export const ru: TranslationResources = {
       reconnecting: "Повторное подключение...",
       archivingTitle: "Архивный агент...",
       archivingSubtitle: "Пожалуйста, подождите, пока мы архивируем этого агента.",
-      timelineSyncFailed: "Не удалось обновить историю агента. Повторная попытка…",
+      timelineSyncFailed: "Не удалось обновить историю агента.",
+      timelineSyncRetrying: "Повторная попытка…",
       timelineAgentMissing: "Этот чат больше не существует на хосте.",
     },
     unavailable: {

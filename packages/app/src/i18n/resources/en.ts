@@ -480,7 +480,8 @@ export const en = {
       reconnecting: "Reconnecting...",
       archivingTitle: "Archiving chat...",
       archivingSubtitle: "Please wait while we archive this chat.",
-      timelineSyncFailed: "Couldn't refresh agent history. Retrying…",
+      timelineSyncFailed: "Couldn't refresh agent history.",
+      timelineSyncRetrying: "Retrying…",
       timelineAgentMissing: "This chat no longer exists on the host.",
     },
     unavailable: {
