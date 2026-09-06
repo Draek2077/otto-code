@@ -601,4 +601,19 @@ describe("requiresRestart (pendingReloadModelIds)", () => {
       await h.close();
     }
   });
+
+  it("does not expose invalid profile internals through the management API", async () => {
+    const h = harness(makeModel());
+    await h.start();
+    try {
+      const res = await h.setProfile(h.model.id, { temperature: "not a number" });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({
+        type: "error",
+        error: { type: "api_error", message: "could not update the model profile" },
+      });
+    } finally {
+      await h.close();
+    }
+  });
 });
