@@ -54,7 +54,8 @@ export async function killProcessTree(child: ChildProcess | null): Promise<void>
       await waitForExitOrTimeout(exited, 5_000);
       throw new Error(`Failed to terminate process tree for PID ${pid}`, { cause: taskkillError });
     }
-    if (!hasExited(child) && !(await waitForExitOrTimeout(exited, 5_000))) {
+    // The OS can finish termination before Node delivers the child exit event.
+    if (!hasExited(child) && !(await waitForExitOrTimeout(exited, 5_000)) && processExists(pid)) {
       throw new Error(`Process tree for PID ${pid} did not exit after taskkill`);
     }
     return;
@@ -66,6 +67,16 @@ export async function killProcessTree(child: ChildProcess | null): Promise<void>
   child.kill("SIGKILL");
   if (!(await waitForExitOrTimeout(exited, 5_000))) {
     throw new Error(`Process ${String(child.pid)} did not exit after SIGKILL`);
+  }
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
   }
 }
 

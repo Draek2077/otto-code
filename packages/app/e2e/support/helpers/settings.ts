@@ -324,11 +324,11 @@ export async function expectAboutContent(page: Page): Promise<void> {
 }
 
 export async function expectGeneralContent(page: Page): Promise<void> {
-  await expect(page.getByText("Default send", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Language", { exact: true })).toBeVisible();
 }
 
 export async function expectAppearanceContent(page: Page): Promise<void> {
-  await expect(page.getByText("Highlight theme", { exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId("settings-color-scheme-mode")).toBeVisible();
 }
 
 export async function expectHostLabelDisplayed(page: Page): Promise<void> {

@@ -1798,7 +1798,7 @@ function HostPicker({
 
 interface SettingsSidebarProps {
   view: SettingsView;
-  onSelectSection: (section: SettingsSectionSlug) => void;
+  onSelectSection: (section: SettingsSectionSlug | null) => void;
   onSelectHostSection: (section: HostSectionSlug) => void;
   onSelectHost: (serverId: string) => void;
   onAddHost: () => void;
@@ -1908,10 +1908,9 @@ function SettingsSidebar({
     [padding.top],
   );
 
-  // The Settings icon marks the surface the user is already on; pressing it
-  // just returns to the General section rather than leaving settings.
+  // Every Settings entry point returns to the search overview.
   const handleFooterSettings = useCallback(() => {
-    onSelectSection("general");
+    onSelectSection(null);
   }, [onSelectSection]);
 
   // Destructured, not passed whole: `useBrainRail` returns a fresh object every
@@ -2030,6 +2029,7 @@ function SettingsSidebar({
             just clicked whenever it is taller than the pane. Retain the offset
             across that remount. */}
         <ScrollView
+          testID="settings-sidebar-scroll-body"
           ref={sidebarScroll.ref}
           style={sidebarStyles.scrollBody}
           onScroll={sidebarScroll.onScroll}
@@ -2522,9 +2522,9 @@ export default function SettingsScreen({
   );
 
   const handleSelectSection = useCallback(
-    (section: SettingsSectionSlug) => {
+    (section: SettingsSectionSlug | null) => {
       guardProjectSettingsExit(() => {
-        const target = buildSettingsSectionRoute(section);
+        const target = section ? buildSettingsSectionRoute(section) : "/settings";
         if (isCompactLayout) {
           router.push(target);
         } else {

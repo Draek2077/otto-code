@@ -10,12 +10,12 @@ const execFileAsync = promisify(execFile);
 
 describe.skipIf(process.platform !== "win32")("native directory watcher", () => {
   it.each([false, true])(
-    "delivers changes beneath an 8.3 root (recursive=%s)",
-    async (recursive, context) => {
+    "delivers changes beneath a Windows root, using 8.3 when available (recursive=%s)",
+    async (recursive) => {
       const directory = await mkdtemp(path.join(tmpdir(), "otto watcher fixture "));
       try {
         const short = windowsShortPath(directory);
-        if (!short.includes("~")) context.skip("Fixture volume does not expose 8.3 names");
+        if (!short.includes("~")) console.info("8.3 names unavailable; exercising the full path");
         // An unnormalized root triggers a native assertion, so keep the real
         // watcher in a child process and make its exit part of the assertion.
         const source = `

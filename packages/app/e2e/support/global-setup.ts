@@ -1,10 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { once } from "node:events";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import dotenv from "dotenv";
 import { readLocalAiEnv, preflightLocalAi } from "./helpers/local-ai-preflight";
+import { killProcessTree } from "./helpers/spawn-node";
 
 export interface WaitForServerOptions {
   host?: string;
@@ -151,7 +151,8 @@ export async function waitForMetro(port: number, options: WaitForServerOptions):
 
 export async function warmMetro(port: number): Promise<void> {
   const origin = `http://127.0.0.1:${port}`;
-  const documentResponse = await fetch(origin, { signal: AbortSignal.timeout(120_000) });
+  const timeoutMs = process.env.E2E_METRO_COLD_START === "1" ? 300_000 : 120_000;
+  const documentResponse = await fetch(origin, { signal: AbortSignal.timeout(timeoutMs) });
   if (!documentResponse.ok) {
     throw new Error(`Metro document warmup failed with HTTP ${documentResponse.status}`);
   }
@@ -165,7 +166,7 @@ export async function warmMetro(port: number): Promise<void> {
   for (const source of scriptSources) {
     const scriptUrl = new URL(source, origin);
     if (scriptUrl.origin !== origin) continue;
-    const response = await fetch(scriptUrl, { signal: AbortSignal.timeout(120_000) });
+    const response = await fetch(scriptUrl, { signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok) {
       throw new Error(
         `Metro bundle warmup failed for ${scriptUrl.pathname}: HTTP ${response.status}`,
@@ -175,40 +176,34 @@ export async function warmMetro(port: number): Promise<void> {
   }
 }
 
-async function stopProcess(child: ChildProcess | null): Promise<void> {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  child.kill("SIGTERM");
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      once(child, "exit"),
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(() => {
-          if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-          resolve();
-        }, 5_000);
-      }),
-    ]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
-}
-
 function startMetro(port: number, buffer: ReturnType<typeof createLineBuffer>): ChildProcess {
   const appDir = path.resolve(__dirname, "../..");
   // Run the Expo CLI's JS entry with the current Node binary instead of
   // spawning `npx` - `npx` is not directly spawnable on Windows (ENOENT).
   const expoCli = require.resolve("expo/bin/cli", { paths: [appDir] });
-  const child = spawn(process.execPath, [expoCli, "start", "--web", "--port", String(port)], {
-    cwd: appDir,
-    env: {
-      ...process.env,
-      BROWSER: "none",
-      ...(process.env.E2E_DESKTOP_RUNTIME === "1" ? { OTTO_WEB_PLATFORM: "electron" } : {}),
+  const child = spawn(
+    process.execPath,
+    [expoCli, "start", "--web", "--port", String(port), "--max-workers", "2"],
+    {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        BROWSER: "none",
+        // Share only the compilation cache across focused runs. Daemons and
+        // browser fixtures keep their separate OS homes and temporary folders.
+        ...(process.env.E2E_METRO_TEMP_DIR
+          ? {
+              TEMP: process.env.E2E_METRO_TEMP_DIR,
+              TMP: process.env.E2E_METRO_TEMP_DIR,
+              TMPDIR: process.env.E2E_METRO_TEMP_DIR,
+            }
+          : {}),
+        ...(process.env.E2E_DESKTOP_RUNTIME === "1" ? { OTTO_WEB_PLATFORM: "electron" } : {}),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
     },
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: false,
-  });
+  );
   const log = (chunk: Buffer, stream: "stdout" | "stderr") => {
     for (const line of chunk.toString().split("\n").filter(Boolean)) {
       buffer.add(`[${stream}] ${line}`);
@@ -323,11 +318,11 @@ export default async function globalSetup() {
     console.log(`[e2e] Metro warmed on port ${metroPort}`);
 
     return async () => {
-      await stopProcess(metroProcess);
+      await killProcessTree(metroProcess);
       console.log("[e2e] Metro stopped");
     };
   } catch (error) {
-    await stopProcess(metroProcess);
+    await killProcessTree(metroProcess);
     throw error;
   }
 }

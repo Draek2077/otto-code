@@ -65,6 +65,7 @@ jobs:
         with:
           name: diagnostic-${{ inputs.suite }}-${{ inputs.runner }}
           path: |
+            .tmp/ci-diagnostic-*/reports/
             packages/app/test-results/
             packages/app/playwright-report/
             packages/app/e2e-report/

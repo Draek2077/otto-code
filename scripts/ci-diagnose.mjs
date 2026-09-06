@@ -68,6 +68,8 @@ function diagnosticEnvironment(suite) {
   if (!["server", "playwright", "desktop"].includes(suite)) return env;
   mkdirSync(path.join(root, ".tmp"), { recursive: true });
   const home = mkdtempSync(path.join(root, ".tmp/ci-diagnostic-"));
+  const metroTemp = path.join(root, ".tmp/ci-metro-cache");
+  mkdirSync(metroTemp, { recursive: true });
   for (const directory of ["AppData/Roaming", "AppData/Local", "temp", "otto-home"]) {
     mkdirSync(path.join(home, directory), { recursive: true });
   }
@@ -81,6 +83,11 @@ function diagnosticEnvironment(suite) {
     TMP: path.join(home, "temp"),
     TMPDIR: path.join(home, "temp"),
     OTTO_HOME: path.join(home, "otto-home"),
+    E2E_OUTPUT_DIR: path.join(home, "reports", "test-results"),
+    E2E_HTML_REPORT_DIR: path.join(home, "reports", "playwright-report"),
+    E2E_REPORT_DIR: path.join(home, "reports", "qa-report"),
+    E2E_METRO_TEMP_DIR: metroTemp,
+    E2E_METRO_COLD_START: "1",
   });
   console.log(`Isolated test home: ${home}`);
   return env;

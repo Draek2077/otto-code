@@ -192,6 +192,12 @@ steps and lets the caller choose Ubuntu or Windows. Provider-dependent tests and
 packaged Electron smoke retain their dedicated harnesses. Globs, directories and
 unknown tiers fail before test launch. `--dry-run` validates and prints the selection.
 
+Focused daemon and browser runs isolate OS homes, temporary files, and reports under
+`.tmp/ci-diagnostic-*`. Browser runs share only Metro's compilation cache in
+`.tmp/ci-metro-cache`, use two compiler workers, and allow five minutes for a cold
+bundle. Windows teardown terminates owned process trees before removing fixture
+homes, including workers spawned by the daemon and Metro.
+
 Diagnose a setup failure separately from an assertion failure. Preserve the failing
 output, repair its root cause, then run the same focused case. Full CI remains the
 acceptance matrix; a successful diagnostic run does not replace it.

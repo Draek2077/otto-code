@@ -1,10 +1,10 @@
-import { once } from "node:events";
 import { spawn, execFileSync, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { withDisabledE2ESpeechEnv } from "./speech-env";
+import { killProcessTree as stopProcess } from "./spawn-node";
 
 export interface IsolatedHostDaemon {
   serverId: string;
@@ -73,19 +73,6 @@ async function waitForServer(port: number, child: ChildProcess): Promise<void> {
       lastError instanceof Error ? lastError.message : String(lastError)
     }`,
   );
-}
-
-async function stopProcess(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  child.kill("SIGTERM");
-  const timeout = setTimeout(() => {
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  }, 5_000);
-  try {
-    await once(child, "exit");
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 export async function startIsolatedHostDaemon(
@@ -229,7 +216,7 @@ export async function startIsolatedHostDaemon(
       closed = true;
       await stopProcess(child);
       if (!options.preserveHome) {
-        await rm(ottoHome, { recursive: true, force: true });
+        await rm(ottoHome, { recursive: true, force: true, maxRetries: 5 });
       }
       if (publishedPackageRoot) {
         await rm(publishedPackageRoot, { recursive: true, force: true });
