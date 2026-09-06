@@ -191,8 +191,8 @@ test("installs, reloads, recovers, disables, and removes a trusted local plugin"
     await openContributionFromSettings(page, "Plugin v3", "Plugin v3 cleanup 6");
 
     await openPluginSettings(page);
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Remove", exact: true }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
     await expect(page.getByText("No plugins configured", { exact: true })).toBeVisible();
 
     await page.getByLabel("Plugin directory").fill(directory);

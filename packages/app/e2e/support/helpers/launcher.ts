@@ -50,7 +50,7 @@ export async function waitForTabBar(page: Page): Promise<void> {
 /** Return all tab test IDs currently in the tab bar. */
 export async function getTabTestIds(page: Page): Promise<string[]> {
   const tabs = page
-    .locator('[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])')
+    .locator('[data-testid^="workspace-tab-"][aria-selected]')
     .filter({ visible: true });
   const count = await tabs.count();
   const ids: string[] = [];

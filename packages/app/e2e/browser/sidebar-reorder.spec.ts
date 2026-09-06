@@ -66,9 +66,10 @@ test("projects, workspaces, and pinned chats reorder with an immediate mouse dra
   try {
     const secondWorkspace = await firstProject.client.createWorkspace({
       source: {
-        kind: "directory",
-        path: firstProject.repoPath,
+        kind: "worktree",
+        cwd: firstProject.repoPath,
         projectId: firstProject.projectId,
+        worktreeSlug: "reorder-second",
       },
       title: "Second workspace",
     });

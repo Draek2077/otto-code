@@ -23,9 +23,7 @@ async function openProviderSettingsFromModelSelector(page: Page) {
   await page.getByRole("button", { name: /Select model/ }).click();
   const configuration = page.getByTestId("agent-controls-model-sheet");
   await expect(configuration).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId("agent-controls-model").click();
-
-  const modelBrowser = page.getByTestId("agent-controls-model-browser-sheet");
+  const modelBrowser = page.getByTestId("agent-controls-model-viewport");
   await expect(modelBrowser).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole("button", { name: /Open .* settings/ }).click();
@@ -33,7 +31,7 @@ async function openProviderSettingsFromModelSelector(page: Page) {
 }
 
 async function expectModelBrowserVisible(page: Page) {
-  await expect(page.getByTestId("agent-controls-model-browser-sheet")).toBeVisible({
+  await expect(page.getByTestId("agent-controls-model-viewport")).toBeVisible({
     timeout: 10_000,
   });
   await expect(page.getByRole("button", { name: /Open .* settings/ })).toBeVisible();
@@ -196,12 +194,9 @@ test.describe("provider settings overlay stack", () => {
       await closeSheetByHeaderButton(page, "provider-settings-sheet");
 
       await expectModelBrowserVisible(page);
-      await closeTopSheet(page);
-      await expect(page.getByTestId("agent-controls-model-browser-sheet")).not.toBeVisible({
-        timeout: 10_000,
-      });
       await expect(page.getByTestId("agent-controls-settings-list")).toBeVisible();
       await closeTopSheet(page);
+      await expect(page.getByTestId("agent-controls-model-sheet")).not.toBeVisible();
     } finally {
       await session.cleanup();
     }

@@ -812,6 +812,9 @@ function IndependentModelList({
         contentContainerStyle={styles.virtualizedModelListContent}
         nestedScrollEnabled
         testID="compact-model-list"
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={3}
       />
     </IndependentScrollBoundary>
   );
@@ -1044,7 +1047,7 @@ function ProviderModelBrowserContent({
   );
 }
 
-function ModelBrowserContent({
+export function ModelBrowserContent({
   view,
   providers,
   selectedProvider,

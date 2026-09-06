@@ -27,7 +27,6 @@ import {
   DESKTOP_PROVIDER_VIEW_MIN_HEIGHT,
   HeaderSettingsIcon,
   ProviderGlyph,
-  SelectorContent,
   ThemedBoxes,
   TriggerLeadingIcon,
   foregroundMapping,
@@ -39,6 +38,11 @@ import type {
   SelectorView,
 } from "./model-selector/selector-content";
 import { styles } from "./model-selector/styles";
+import {
+  ModelProfilesHeaderAction,
+  selectorScrollEnabled,
+  SearchableSelectorContent as SelectorContent,
+} from "./model-selector/searchable-selector-content";
 
 const EMPTY_COMBOBOX_OPTIONS: ComboboxOption[] = [];
 const EMPTY_FAVORITE_KEYS = new Set<string>();
@@ -360,9 +364,7 @@ export function CombinedModelSelector({
         DESKTOP_PROVIDER_VIEW_MAX_HEIGHT,
       );
     }
-    if (view.kind !== "provider") {
-      return undefined;
-    }
+    if (view.kind !== "provider") return DESKTOP_PROVIDER_VIEW_MAX_HEIGHT;
     const familyPersonalityCount = onSelectProfile
       ? (personalities?.filter((entry) => entry.provider === view.providerId).length ?? 0)
       : 0;
@@ -501,17 +503,15 @@ export function CombinedModelSelector({
     if (view.kind === "all") {
       return {
         title: t("modelSelector.title"),
+        search: {
+          onChange: handleSearchQueryChange,
+          resetKey: `all:${searchResetKey}`,
+          placeholder: t("modelSelector.searchPlaceholder"),
+          autoFocus: platformIsWeb,
+          testID: "model-search-all-input",
+        },
         actions: onEditProfiles ? (
-          <Pressable
-            onPress={handleEditProfiles}
-            hitSlop={8}
-            style={iconButtonStyle}
-            accessibilityRole="button"
-            accessibilityLabel={t("modelSelector.editProfilesLabel")}
-            testID="model-profiles-edit"
-          >
-            <HeaderSettingsIcon disabled={false} />
-          </Pressable>
+          <ModelProfilesHeaderAction onPress={handleEditProfiles} />
         ) : undefined,
       };
     }
@@ -674,8 +674,9 @@ export function CombinedModelSelector({
         desktopMinWidth={desktopMinWidth}
         desktopLockWidth
         desktopFixedHeight={desktopFixedHeight}
+        desktopChildrenScrollEnabled={selectorScrollEnabled(view, searchQuery)}
         header={sheetHeader}
-        mobileChildrenScrollEnabled={view.kind !== "provider" || !isNative}
+        mobileChildrenScrollEnabled={selectorScrollEnabled(view, searchQuery, isNative)}
         mobileChildrenContentContainerStyle={styles.mobileBrowserContent}
       >
         {isContentReady ? (
@@ -709,8 +710,6 @@ export function CombinedModelSelector({
   );
 }
 
-// The selector implementation is Otto-owned and lives in model-selector/; this file
-// stays the import surface its consumers use.
 export type {
   SelectorProfile,
   SelectorProfileRoleGroup,

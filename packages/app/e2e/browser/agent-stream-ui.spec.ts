@@ -183,7 +183,13 @@ test.describe("Agent stream UI", () => {
       });
       await expectComposerVisible(page);
       await agent.client.sendAgentMessage(agent.agentId, "Stream for scroll-away anchor test.");
-      await expect(page.getByRole("button", { name: /stop|cancel/i }).first()).toBeVisible({
+      await expect(
+        page
+          .getByRole("button", {
+            name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+          })
+          .first(),
+      ).toBeVisible({
         timeout: 30_000,
       });
       await awaitAssistantMessage(page);
@@ -236,7 +242,13 @@ test.describe("Agent stream UI", () => {
     });
     await timelineGate.waitForCreatedAgent();
     await timelineGate.waitForDelayedResponse();
-    await expect(page.getByRole("button", { name: /stop|cancel/i }).first()).toBeVisible({
+    await expect(
+      page
+        .getByRole("button", {
+          name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+        })
+        .first(),
+    ).toBeVisible({
       timeout: 30_000,
     });
     await awaitAssistantMessage(page);

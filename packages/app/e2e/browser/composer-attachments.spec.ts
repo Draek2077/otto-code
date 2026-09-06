@@ -315,7 +315,9 @@ test.describe("Composer attachments", () => {
       await nameInput.press("Escape");
 
       await expect(nameInput).toBeHidden();
-      await expect(page.getByRole("button", { name: /stop|cancel/i }).first()).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Interrupt agent", exact: true }),
+      ).toBeVisible();
     } finally {
       await agent.cleanup();
     }

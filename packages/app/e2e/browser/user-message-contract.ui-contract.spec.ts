@@ -18,7 +18,11 @@ function readClipboardText(page: Page): Promise<string> {
 
 async function expectIdleComposer(page: Page): Promise<void> {
   await expectComposerEditable(page);
-  await expect(page.getByRole("button", { name: /stop|cancel/i })).toHaveCount(0, {
+  await expect(
+    page.getByRole("button", {
+      name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+    }),
+  ).toHaveCount(0, {
     timeout: 15_000,
   });
 }
@@ -108,6 +112,7 @@ test.describe("User message UI contract", () => {
       expect(rendered).not.toContain("\u201D");
 
       // Display is not the message. Copy still yields the exact typed string.
+      await bubble.hover();
       await bubble.getByRole("button", { name: "Copy message" }).click();
       await expect.poll(() => readClipboardText(page), { timeout: 10_000 }).toBe(prompt);
     } finally {
@@ -150,6 +155,7 @@ test.describe("User message UI contract", () => {
       await expect(bubble).toContainText("it cost $5 and $10.");
 
       // Display is not the message: the agent receives the TeX that was typed.
+      await bubble.hover();
       await bubble.getByRole("button", { name: "Copy message" }).click();
       await expect.poll(() => readClipboardText(page), { timeout: 10_000 }).toBe(prompt);
     } finally {

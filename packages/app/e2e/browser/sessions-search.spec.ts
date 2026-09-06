@@ -180,7 +180,7 @@ test.describe("History search", () => {
     await openSessions(page);
 
     await page.getByTestId("project-filter-trigger").click();
-    await page.getByText(path.basename(tempRepo.path), { exact: true }).click();
+    await page.getByRole("button", { name: path.basename(tempRepo.path), exact: true }).click();
 
     await expectVisibleTitles(page, [TITLES.billing, TITLES.unbilled, TITLES.terminal]);
     await expect(rowTitles(page).filter({ hasText: TITLES.otherProject })).toHaveCount(0);

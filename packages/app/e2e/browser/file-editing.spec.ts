@@ -410,11 +410,16 @@ test.describe("CodeMirror workspace file editing", () => {
 
     try {
       await openAgentRoute(page, session);
-      await page.getByText(target, { exact: true }).click();
+      await page.getByRole("link", { name: target, exact: true }).first().click();
 
-      await expectFileTabOpen(page, "plan.html");
-      await expect(page.getByTestId("file-source-editor")).toBeVisible();
-      await expect(page.getByLabel("Line 2, column 1")).toBeVisible();
+      await expect(
+        page
+          .locator('[data-testid^="workspace-tab-file_"]')
+          .filter({ hasText: "plan.html" })
+          .first(),
+      ).toBeVisible();
+      await expect(editor(page)).toBeVisible();
+      await expect(editor(page).locator(".cm-activeLine")).toContainText("Review this source line");
       await expect(page.getByTestId("file-html-preview")).toHaveCount(0);
     } finally {
       await session.cleanup();
@@ -717,10 +722,10 @@ test.describe("CodeMirror workspace file editing", () => {
     );
     await expect(preview.document.getByRole("heading", { name: "Updated plan" })).toBeVisible();
 
-    await selectFileView(page, "Source");
-    await expect(page.getByTestId("file-source-editor")).toBeVisible();
+    await page.getByTestId("file-view-mode-editor").filter({ visible: true }).click();
+    await expect(editor(page)).toContainText("Updated plan");
     await expect(preview.host).toHaveCount(0);
-    await selectFileView(page, "Preview");
+    await page.getByTestId("file-view-mode-preview").filter({ visible: true }).click();
     await expect(preview.host).toBeVisible();
   });
 

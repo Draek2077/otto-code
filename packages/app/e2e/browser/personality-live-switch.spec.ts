@@ -44,7 +44,13 @@ test.describe("Running-agent personality switch", () => {
       // Start a turn so the agent is genuinely RUNNING (ten-second-stream)
       // when the switch lands.
       await session.client.sendAgentMessage(session.agentId, "Live switch e2e stream");
-      await expect(page.getByRole("button", { name: /stop|cancel/i }).first()).toBeVisible({
+      await expect(
+        page
+          .getByRole("button", {
+            name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+          })
+          .first(),
+      ).toBeVisible({
         timeout: 30_000,
       });
 

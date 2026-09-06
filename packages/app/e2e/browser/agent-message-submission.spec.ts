@@ -400,7 +400,13 @@ async function expectInterruptedTurnOrderAfterReconnect(
     await openAgentRoute(page, { workspaceId: agent.workspaceId, agentId: agent.agentId });
     await expectComposerVisible(page);
     await agent.client.sendAgentMessage(agent.agentId, "Start the turn that will be interrupted.");
-    await expect(page.getByRole("button", { name: /stop|cancel/i }).first()).toBeVisible();
+    await expect(
+      page
+        .getByRole("button", {
+          name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+        })
+        .first(),
+    ).toBeVisible();
     await expect(page.getByText("Cycle 1", { exact: true })).toBeVisible();
     await queueMessage(page, prompt);
     gate.setAgentStreamSuppressed(true);
@@ -600,7 +606,9 @@ async function expectStaleCanonicalPagePreservesNewerLiveOutput(
     await agent.client.sendAgentMessage(agent.agentId, "End the snapshot at a tool call.");
     await awaitToolCall(page, "read");
     await page
-      .getByRole("button", { name: /stop|cancel/i })
+      .getByRole("button", {
+        name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+      })
       .first()
       .click();
     await expectAgentIdle(page);

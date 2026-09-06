@@ -110,11 +110,11 @@ test.describe("mobile bottom sheet reopen", () => {
         await openAndCloseModelSelectorTwice(page);
       });
 
-      await test.step("model search returns to configuration", async () => {
+      await test.step("model selection closes the picker and configuration reopens", async () => {
         await openModelSelector(page);
         const sheet = page.getByTestId("agent-controls-model-sheet");
 
-        await page.getByTestId("model-search-all-input").click();
+        await sheet.getByRole("textbox").fill("Ten second stream");
         const model = page.getByRole("button", { name: /^Ten second stream/ });
         await expect(model).toBeVisible({
           timeout: 10_000,
@@ -122,10 +122,12 @@ test.describe("mobile bottom sheet reopen", () => {
 
         await model.click();
 
-        await expect(sheet).toBeVisible();
+        await expect(sheet).not.toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Select model (Ten second stream)", exact: true }),
+        ).toBeVisible();
+        await openModelSelector(page);
         await expect(page.getByTestId("agent-controls-settings-list")).toBeVisible();
-        await expect(page.getByTestId("agent-controls-model")).toContainText("Ten second stream");
-        await expect(page.getByTestId("agent-controls-model-browser-sheet")).not.toBeVisible();
       });
     } finally {
       await session.cleanup();

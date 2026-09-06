@@ -1,8 +1,4 @@
-import {
-  buildHostAgentDetailRoute,
-  buildHostWorkspaceOpenRoute,
-  buildHostWorkspaceRoute,
-} from "@/utils/host-routes";
+import { buildHostAgentDetailRoute, buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { expect, test, type Page } from "../support/fixtures";
 import { gotoAppShell, openSettings } from "../support/helpers/app";
 import {
@@ -75,7 +71,10 @@ async function expectNoLoadingPane(page: Page): Promise<void> {
 }
 
 async function getVisibleDraftTabCount(page: Page): Promise<number> {
-  return page.locator('[data-testid^="workspace-tab-draft"]').filter({ visible: true }).count();
+  return page
+    .locator('[data-testid^="workspace-tab-draft"][aria-selected]')
+    .filter({ visible: true })
+    .count();
 }
 
 async function closeFirstVisibleDraftTab(page: Page): Promise<void> {
@@ -122,11 +121,9 @@ test.describe("Workspace navigation regression", () => {
       );
     }, target);
 
-    await expectAppRoute(
-      page,
-      buildHostWorkspaceOpenRoute(target.serverId, target.workspaceId, `agent:${target.agentId}`),
-      { timeout: 30_000 },
-    );
+    await expectAppRoute(page, buildHostWorkspaceRoute(target.serverId, target.workspaceId), {
+      timeout: 30_000,
+    });
     await expect(page.getByText("Connecting", { exact: true })).toBeVisible();
     await expect(page.getByText("Notification Host", { exact: true })).toBeVisible();
     await expect(page.getByText("Add a project", { exact: true })).toHaveCount(0);

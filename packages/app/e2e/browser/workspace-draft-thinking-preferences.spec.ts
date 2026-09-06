@@ -24,9 +24,7 @@ async function chooseDraftControl(page: Page, query: string, choice: string): Pr
 
 async function expectThinkingSelected(page: Page, label: string): Promise<void> {
   await expect(
-    page
-      .getByRole("button", { name: `Select thinking option (${label})` })
-      .filter({ visible: true }),
+    page.getByRole("button", { name: `Select effort (${label})` }).filter({ visible: true }),
   ).toBeVisible({ timeout: 30_000 });
 }
 

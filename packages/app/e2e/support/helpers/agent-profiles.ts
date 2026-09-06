@@ -173,7 +173,7 @@ export async function closeModelPicker(page: Page): Promise<void> {
 
 export function profilePickerRow(page: Page, name: string): Locator {
   return pickerViewport(page)
-    .locator('[data-testid^="model-profile-row-"]')
+    .locator('[data-testid^="personality-row-"]')
     .filter({ hasText: name });
 }
 
@@ -313,7 +313,7 @@ function escapeForRegex(value: string): string {
 
 /** Search results replace the whole root view, pinned profiles included. */
 export async function expectPinnedProfilesHidden(page: Page): Promise<void> {
-  await expect(pickerViewport(page).locator('[data-testid^="model-profile-row-"]')).toHaveCount(0);
+  await expect(pickerViewport(page).locator('[data-testid^="personality-row-"]')).toHaveCount(0);
 }
 
 export async function expectModelSearchEmptyState(page: Page, query: string): Promise<void> {

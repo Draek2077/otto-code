@@ -98,7 +98,11 @@ test.describe("Composer suggestions and history", () => {
       await expectComposerVisible(page);
 
       await submitMessage(page, "Stream for escape-cancel test.");
-      const stopButton = page.getByRole("button", { name: /stop|cancel/i }).first();
+      const stopButton = page
+        .getByRole("button", {
+          name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+        })
+        .first();
       await expect(stopButton).toBeVisible({ timeout: 30_000 });
 
       // Escape never touches the composer text - typed-but-unsent text is unrecoverable.
@@ -107,7 +111,11 @@ test.describe("Composer suggestions and history", () => {
       await focusComposer(page);
       await input.fill("draft that should survive");
       await page.keyboard.press("Escape");
-      await expect(page.getByRole("button", { name: /stop|cancel/i })).toHaveCount(0, {
+      await expect(
+        page.getByRole("button", {
+          name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
+        }),
+      ).toHaveCount(0, {
         timeout: 15_000,
       });
       await expect(input).toHaveValue("draft that should survive");
