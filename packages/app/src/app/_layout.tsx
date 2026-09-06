@@ -426,6 +426,7 @@ async function shouldStartBuiltInDaemon(): Promise<boolean> {
 }
 
 function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
+  const [daemonStartGatePending, setDaemonStartGatePending] = useState(shouldUseDesktopDaemon);
   useEffect(() => {
     const store = getHostRuntimeStore();
     const daemonStartService = getDaemonStartService({ store });
@@ -434,6 +435,7 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
       daemonStartService,
       shouldStartDaemon: shouldStartBuiltInDaemon,
       onGateError: (message) => daemonStartService.recordError(message),
+      onGateSettled: () => setDaemonStartGatePending(false),
     });
   }, []);
 
@@ -449,8 +451,15 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
         anyOnlineHostServerId,
         daemonStartIsRunning,
         daemonStartError,
+        daemonStartGatePending,
       }),
-    [anyOnlineHostServerId, daemonStartError, daemonStartIsRunning, isDesktopRuntime],
+    [
+      anyOnlineHostServerId,
+      daemonStartError,
+      daemonStartIsRunning,
+      daemonStartGatePending,
+      isDesktopRuntime,
+    ],
   );
   const shouldRunGiveUpTimer = shouldRunStartupGiveUpTimer({
     startupBlocker,

@@ -25,6 +25,7 @@ export interface StartHostRuntimeBootstrapInput {
   daemonStartService: HostRuntimeBootstrapDaemonStartService;
   shouldStartDaemon: HostRuntimeBootstrapStartGate;
   onGateError?: (message: string) => void;
+  onGateSettled?: () => void;
 }
 
 export function startHostRuntimeBootstrap(input: StartHostRuntimeBootstrapInput): void {
@@ -33,6 +34,7 @@ export function startHostRuntimeBootstrap(input: StartHostRuntimeBootstrapInput)
     daemonStartService: input.daemonStartService,
     shouldStartDaemon: input.shouldStartDaemon,
     onGateError: input.onGateError,
+    onGateSettled: input.onGateSettled,
   });
 }
 
@@ -40,12 +42,14 @@ export function startDaemonIfGateAllows(input: {
   daemonStartService: HostRuntimeBootstrapDaemonStartService;
   shouldStartDaemon: HostRuntimeBootstrapStartGate;
   onGateError?: (message: string) => void;
+  onGateSettled?: () => void;
 }): void {
   const gate = input.shouldStartDaemon;
   if (typeof gate === "boolean") {
     if (gate) {
       void input.daemonStartService.start();
     }
+    input.onGateSettled?.();
     return;
   }
 
@@ -60,7 +64,8 @@ export function startDaemonIfGateAllows(input: {
     .catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       input.onGateError?.(`Failed to evaluate desktop daemon settings: ${message}`);
-    });
+    })
+    .finally(() => input.onGateSettled?.());
 }
 
 const WELCOME_ROUTE: Href = "/welcome";
@@ -76,6 +81,7 @@ export interface ResolveStartupBlockerInput {
   anyOnlineHostServerId: string | null;
   daemonStartIsRunning: boolean;
   daemonStartError: string | null;
+  daemonStartGatePending?: boolean;
 }
 
 export function initialStartupBlocker(isDesktopRuntime: boolean): StartupBlocker {
@@ -95,7 +101,7 @@ export function resolveStartupBlocker(input: ResolveStartupBlockerInput): Startu
     return { kind: "managed-daemon-error", message: input.daemonStartError };
   }
 
-  if (input.daemonStartIsRunning) {
+  if (input.daemonStartGatePending || input.daemonStartIsRunning) {
     return { kind: "managed-daemon-starting" };
   }
 

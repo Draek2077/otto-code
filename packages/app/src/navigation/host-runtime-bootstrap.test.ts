@@ -79,6 +79,7 @@ describe("startHostRuntimeBootstrap", () => {
     const store = createFakeStore();
     const daemonStartService = createFakeDaemonStartService();
     const onGateError = vi.fn();
+    const onGateSettled = vi.fn();
 
     startHostRuntimeBootstrap({
       store,
@@ -87,6 +88,7 @@ describe("startHostRuntimeBootstrap", () => {
         throw new Error("settings file unreadable");
       },
       onGateError,
+      onGateSettled,
     });
     await vi.waitFor(() => {
       expect(onGateError).toHaveBeenCalledTimes(1);
@@ -94,7 +96,36 @@ describe("startHostRuntimeBootstrap", () => {
 
     expect(daemonStartService.start).not.toHaveBeenCalled();
     expect(onGateError).toHaveBeenCalledWith(expect.stringContaining("settings file unreadable"));
+    expect(onGateSettled).toHaveBeenCalledTimes(1);
   });
+
+  it.each([true, false])(
+    "settles a delayed settings gate (%s) after dispatching its decision",
+    async (shouldStart) => {
+      let finishGate!: (value: boolean) => void;
+      const gate = new Promise<boolean>((resolve) => {
+        finishGate = resolve;
+      });
+      const events: string[] = [];
+      const start = vi.fn(() => {
+        events.push("start");
+        return new Promise<{ ok: true }>(() => {});
+      });
+      startHostRuntimeBootstrap({
+        store: createFakeStore(),
+        daemonStartService: { start },
+        shouldStartDaemon: () => gate,
+        onGateSettled: () => events.push("settled"),
+      });
+      await Promise.resolve();
+      expect(events).toEqual([]);
+      finishGate(shouldStart);
+      await vi.waitFor(() =>
+        expect(events).toEqual(shouldStart ? ["start", "settled"] : ["settled"]),
+      );
+      expect(start).toHaveBeenCalledTimes(shouldStart ? 1 : 0);
+    },
+  );
 
   it("does not await the daemon-start promise", () => {
     const store = createFakeStore();
@@ -164,6 +195,25 @@ describe("startup blocking policy", () => {
         hasGivenUpWaitingForHost: false,
       }),
     ).toBe(false);
+  });
+
+  it("keeps the runtime covered while the desktop daemon settings gate is pending", () => {
+    const input = {
+      ...noBlockerInput,
+      isDesktopRuntime: true,
+      daemonStartGatePending: true,
+    };
+    const blocker = resolveStartupBlocker(input);
+    expect(blocker).toEqual({ kind: "managed-daemon-starting" });
+    expect(
+      shouldMountStartupRuntime({ startupBlocker: blocker, hostRegistryStatus: "ready" }),
+    ).toBe(false);
+    expect(resolveStartupBlocker({ ...input, daemonStartGatePending: false })).toEqual({
+      kind: "none",
+    });
+    expect(resolveStartupBlocker({ ...input, anyOnlineHostServerId: "remote" })).toEqual({
+      kind: "none",
+    });
   });
 
   it("keeps the application runtime unmounted until host bootstrap is settled", () => {

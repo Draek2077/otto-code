@@ -47,6 +47,12 @@ state.
 This split is deliberate. The host layout must mount first so native local
 dynamic params exist before any nested workspace leaf is selected.
 
+Desktop bootstrap keeps the splash visible while loading the setting that decides
+whether to start the built-in daemon. A ready host registry and an idle daemon
+start service do not mean that decision has settled. Release the gate after
+dispatching the start decision, including skip and error outcomes; an already
+online host can unblock navigation independently.
+
 ## App-Wide Route Hops
 
 Settings section navigation carries the selected host in the `host` query

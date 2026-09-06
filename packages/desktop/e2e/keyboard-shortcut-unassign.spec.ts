@@ -148,7 +148,8 @@ test("an unassigned shortcut lists no keys in the shortcuts cheat sheet", async 
 test("a rebound shortcut lists its new keys in the shortcuts cheat sheet", async ({ page }) => {
   await openShortcutsSettings(page);
 
-  const defaultKeys = page.getByText("?", { exact: true });
+  // Settings displays the actual binding chord, including its Shift modifier.
+  const defaultKeys = page.getByText("⇧?", { exact: true });
   await expect(defaultKeys).toBeVisible();
 
   await page.getByTestId(`shortcut-actions-${SHORTCUTS_ROW}`).click();
@@ -164,5 +165,5 @@ test("a rebound shortcut lists its new keys in the shortcuts cheat sheet", async
   const row = dialog.getByTestId(`shortcut-help-row-${SHORTCUTS_ROW}`);
   await expect(row.getByText("⌥⇧K", { exact: true })).toBeVisible();
   // The whole point: the cheat sheet stops advertising the shipped default.
-  await expect(row.getByText("?", { exact: true })).toHaveCount(0);
+  await expect(row.getByText("⇧?", { exact: true })).toHaveCount(0);
 });
