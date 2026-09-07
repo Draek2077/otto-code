@@ -92,6 +92,20 @@ describe("Mermaid sandbox runtime", () => {
     expect(second).toMatchObject({ type: "rendered", revision: 3, source: secondSource });
   });
 
+  it("renders modern Mermaid shape templates", async () => {
+    const frame = await mountRuntime();
+    const source = "flowchart TD\n  Input@{ shape: lean-r } --> Output@{ shape: notch-rect }";
+
+    const result = await render(frame, { revision: 4, source });
+
+    expect(result).toMatchObject({
+      type: "rendered",
+      revision: 4,
+      source,
+      svg: expect.stringContaining("<svg"),
+    });
+  });
+
   it("coalesces queued input and never reports an obsolete result", async () => {
     const frame = await mountRuntime();
     const obsoleteSource = `flowchart TD\n${Array.from({ length: 250 }, (_, index) => `A${index} --> A${index + 1}`).join("\n")}`;

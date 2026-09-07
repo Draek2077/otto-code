@@ -293,6 +293,12 @@ The load-bearing decisions:
   [feature-flags.md](feature-flags.md), a dynamic boundary is the only lever Metro respects. If the
   native bundle ever needs trimming, aliasing out `cytoscape` (mindmap, architecture) and `katex`
   (math labels) removes ~24% - at the cost of web/native parity, which is why it was not done.
+- **Modern shape templates remain available without opening a fetch path.** Mermaid’s flat
+  `@{ ... }` property maps support ordinary shape, label, dimension, constraint, and view metadata.
+  The source policy permits those maps, but rejects resource-bearing properties (`img`, `icon`,
+  `url`, `href`, `src`, `link`) and YAML aliases, anchors, tags, flow collections, and complex keys.
+  This complements, rather than replaces, the sandbox’s closed CSP and Mermaid’s strict security
+  level. A rejected or invalid template still shows its source block.
 - **A diagram that can't be drawn shows its source.** `MermaidDiagram` takes a `renderFallback`
   rather than having a "nothing yet" state, so neither host has a code path that draws an empty box.
   Failure adds the parse message under the source block; the source block is a normal
