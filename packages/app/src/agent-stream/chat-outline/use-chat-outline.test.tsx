@@ -21,6 +21,7 @@ const runtime = vi.hoisted(() => ({
     () => () => undefined,
   ),
 }));
+const outlineLayout = vi.hoisted(() => ({ setRailVisible: vi.fn() }));
 
 vi.mock("@/constants/platform", () => ({ isWeb: true }));
 vi.mock("@/runtime/host-runtime", () => ({
@@ -28,6 +29,9 @@ vi.mock("@/runtime/host-runtime", () => ({
     getClient: () => runtime,
     fetchAgentTimeline: runtime.fetchAgentTimeline,
   }),
+}));
+vi.mock("./layout", () => ({
+  useChatOutlineLayout: () => outlineLayout,
 }));
 
 function deferred<T>() {
@@ -43,6 +47,7 @@ describe("useChatOutline", () => {
     runtime.listAgentTimelinePrompts.mockReset();
     runtime.fetchAgentTimeline.mockReset();
     runtime.on.mockClear();
+    outlineLayout.setRailVisible.mockReset();
   });
 
   it("uses the initial timeline prompt index without a second request", () => {
@@ -73,6 +78,32 @@ describe("useChatOutline", () => {
       expect.objectContaining({ seq: 3, preview: "Second prompt" }),
     ]);
     expect(runtime.listAgentTimelinePrompts).not.toHaveBeenCalled();
+  });
+
+  it("leaves narrow-pane gutter ownership to the width-aware rail", async () => {
+    runtime.listAgentTimelinePrompts.mockResolvedValue({
+      epoch: "epoch-1",
+      prompts: [
+        { seq: 1, timestamp: new Date(1).toISOString(), preview: "First prompt" },
+        { seq: 2, timestamp: new Date(2).toISOString(), preview: "Second prompt" },
+      ],
+    });
+    const viewportRef = createRef<StreamViewportHandle>();
+    const { result } = renderHook(() =>
+      useChatOutline({
+        agentId: "agent-1",
+        serverId: "server-1",
+        timelineEpoch: "epoch-1",
+        tail: [],
+        head: [],
+        enabled: true,
+        viewportRef,
+        onJumpError: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2));
+    expect(outlineLayout.setRailVisible).not.toHaveBeenCalled();
   });
 
   it("waits for initial timeline hydration before falling back to the legacy index RPC", () => {

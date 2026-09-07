@@ -11,6 +11,7 @@ import {
   releaseResidentBrowserWebview,
   removeResidentBrowserWebview,
   resizeResidentBrowserWebview,
+  setResidentBrowserSurfaceInputEnabled,
   takeResidentBrowserWebview,
 } from "./resident-webviews";
 import {
@@ -161,6 +162,37 @@ describe("resident browser webviews", () => {
       mode: "responsive",
     });
     expect(webview.parentElement).toBe(permanentParent);
+  });
+
+  it("yields a visible browser surface to workspace tab drags without unmounting it", () => {
+    const webview = ensureTestBrowser({
+      browserId: "browser-drag-target",
+      workspaceId: "workspace-drag-target",
+      url: "https://example.com",
+    });
+    const anchor = document.createElement("div");
+    const clip = document.createElement("div");
+    Object.defineProperty(anchor, "getBoundingClientRect", {
+      value: () => ({ left: 40, top: 60, width: 640, height: 480 }),
+    });
+    Object.defineProperty(clip, "getBoundingClientRect", {
+      value: () => ({ left: 40, top: 60, width: 640, height: 480 }),
+    });
+    if (!webview?.parentElement) {
+      throw new Error("Expected resident browser surface");
+    }
+    const surface = webview.parentElement;
+
+    presentBrowserWebview("browser-drag-target", webview, anchor, clip, { mode: "responsive" });
+    setResidentBrowserSurfaceInputEnabled(false);
+
+    expect(surface.style.pointerEvents).toBe("none");
+    expect(webview.isConnected).toBe(true);
+
+    setResidentBrowserSurfaceInputEnabled(true);
+
+    expect(surface.style.pointerEvents).toBe("auto");
+    expect(webview.isConnected).toBe(true);
   });
 
   it("clips an oversized fixed viewport to its pane without resizing the webview", () => {

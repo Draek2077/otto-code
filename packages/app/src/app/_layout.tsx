@@ -51,7 +51,6 @@ import { ConfirmDialogHost } from "@/components/confirm-dialog-host";
 import { TutorialController } from "@/tutorial/controller";
 import { QuitConfirmListener } from "@/desktop/components/quit-confirm-listener";
 import { LeftSidebar } from "@/components/left-sidebar";
-import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { DesktopWindowControls } from "@/components/desktop/window-controls";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
@@ -65,11 +64,7 @@ import { resolveClientResourceBarPlacement } from "@/components/client-resource-
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { TextSelectionMenuProvider } from "@/components/text-selection-menu/text-selection-menu";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
-import {
-  getIsElectronRuntime,
-  HEADER_INNER_HEIGHT,
-  useIsCompactFormFactor,
-} from "@/constants/layout";
+import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
 import {
   canDesktopAppSidebarShare,
   resolveDesktopAppChromeLayout,
@@ -156,7 +151,6 @@ import {
   useHasWindowChromeObstruction,
   WindowChromeProvider,
   WindowChromeRegion,
-  WindowChromeSafeArea,
 } from "@/utils/window-chrome";
 import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
@@ -562,8 +556,6 @@ const THEME_CYCLE_ORDER: ThemeCycleStep[] = [
   { colorSchemeMode: "dark", darkTheme: "ghostty" }, // Slate
   { colorSchemeMode: "light", lightTheme: "daylight" }, // Daylight
 ];
-const WINDOW_SIDEBAR_TOGGLE_HORIZONTAL_PADDING = 12;
-
 function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppContainerProps) {
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const daemons = useHosts();
@@ -676,7 +668,6 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const appChromeLayout = resolveDesktopAppChromeLayout({
     desktopSidebarRendered: desktopSidebarVisible,
     hasTopLeftWindowControls,
-    sidebarControlsEnabled: chromeEnabled && !isWorkspaceFocusModeEnabled,
   });
   const sidebarChrome = (
     <SidebarChrome
@@ -712,18 +703,6 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const surface = (
     <View style={layoutStyles.surfaceFill}>
       {workspaceChrome}
-      {!isCompactLayout && appChromeLayout.sidebarToggleOwner === "window" ? (
-        <WindowChromeRegion corners="top-left">
-          <WindowChromeSafeArea
-            placement="inline"
-            horizontalPadding={WINDOW_SIDEBAR_TOGGLE_HORIZONTAL_PADDING}
-            pointerEvents="box-none"
-            style={layoutStyles.windowSidebarToggle}
-          >
-            <SidebarMenuToggle />
-          </WindowChromeSafeArea>
-        </WindowChromeRegion>
-      ) : null}
       <DesktopWindowControls />
       <FloatingPanelPortalHost />
       {isCompactLayout ? sidebarChrome : null}
@@ -1530,13 +1509,6 @@ const layoutStyles = StyleSheet.create((theme) => ({
   surfaceFill: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
-  },
-  windowSidebarToggle: {
-    position: "absolute",
-    top: 1,
-    left: 0,
-    zIndex: 20,
-    height: HEADER_INNER_HEIGHT,
   },
   startupOverlay: {
     position: "absolute",

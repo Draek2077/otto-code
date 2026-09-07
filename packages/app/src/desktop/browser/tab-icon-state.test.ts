@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { getBrowserTabIconKind } from "./tab-icon-state";
+import { getBrowserTabIconKind, getBrowserTabLoadingStatus } from "./tab-icon-state";
 
 describe("browser tab icon", () => {
+  it("uses the shared loading indicator only while the page is loading", () => {
+    expect(getBrowserTabLoadingStatus(true)).toBe("running");
+    expect(getBrowserTabLoadingStatus(false)).toBeNull();
+  });
+
   it("returns to the Globe when a page favicon fails to load", () => {
     expect(
       getBrowserTabIconKind({

@@ -15,6 +15,11 @@ const RESIDENT_VIEWPORT_HEIGHT = 800;
 const residentWebviewsByBrowserId = new Map<string, HTMLElement>();
 const residentSurfacesByBrowserId = new Map<string, HTMLElement>();
 const residentWebviewSizesByBrowserId = new Map<string, { width: number; height: number }>();
+// Electron webviews live in a permanent top-level surface so their guest
+// contents survive pane changes. While a workspace tab is being dragged that
+// surface must yield hit-testing to the split canvas beneath it: otherwise a
+// browser pane eats the drag and its drop zones can never create a split.
+let residentBrowserSurfaceInputEnabled = true;
 
 interface BrowserWebviewElement extends HTMLElement {
   src: string;
@@ -118,6 +123,22 @@ function applyParkedBrowserSurfaceStyle(surface: HTMLElement): void {
   surface.style.display = "block";
   surface.style.visibility = "visible";
   surface.style.transform = "";
+}
+
+/**
+ * Lets the split canvas temporarily receive a workspace-tab drag over a
+ * browser pane. This changes pointer targeting only; the resident webview
+ * remains mounted and paintable, which keeps its browser automation binding
+ * intact.
+ */
+export function setResidentBrowserSurfaceInputEnabled(enabled: boolean): void {
+  residentBrowserSurfaceInputEnabled = enabled;
+  for (const surface of residentSurfacesByBrowserId.values()) {
+    if (surface.getAttribute("aria-hidden") !== "false") {
+      continue;
+    }
+    surface.style.pointerEvents = enabled ? "auto" : "none";
+  }
 }
 
 function getBrowserSurface(browserId: string, ownerDocument: Document): HTMLElement {
@@ -278,7 +299,8 @@ export function presentBrowserWebview(
   surface.style.height = `${Math.max(0, surfaceBottom - surfaceTop)}px`;
   surface.style.overflow = "hidden";
   surface.style.opacity = "1";
-  surface.style.pointerEvents = hasVisibleArea ? "auto" : "none";
+  surface.style.pointerEvents =
+    hasVisibleArea && residentBrowserSurfaceInputEnabled ? "auto" : "none";
   surface.style.display = "flex";
   surface.style.visibility = "visible";
   clearResidentWebviewParkingStyle(webview);
@@ -446,6 +468,7 @@ export function clearResidentBrowserWebviewsForTests(): void {
   residentWebviewsByBrowserId.clear();
   residentSurfacesByBrowserId.clear();
   residentWebviewSizesByBrowserId.clear();
+  residentBrowserSurfaceInputEnabled = true;
   readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID)?.remove();
 }
 

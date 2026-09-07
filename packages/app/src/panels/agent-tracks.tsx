@@ -31,12 +31,10 @@ export const AgentTracks = memo(function AgentTracks({
   serverId,
   workspaceId,
   agentId,
-  showSubagents = true,
 }: {
   serverId: string;
   workspaceId: string;
   agentId: string;
-  showSubagents?: boolean;
 }): ReactElement | null {
   const { tabId } = usePaneContext();
   const isCompact = useIsCompactFormFactor();
@@ -56,7 +54,7 @@ export const AgentTracks = memo(function AgentTracks({
     serverId,
     parentAgentId: agentId,
     rows,
-    enabled: showSubagents && autoClearCompleted,
+    enabled: autoClearCompleted,
   });
   const hasDiff = useWorkspaceHasDiffStat(serverId, workspaceId, workspaceChangeIndicator);
   const hasTasks = useSessionStore((state) =>
@@ -106,21 +104,19 @@ export const AgentTracks = memo(function AgentTracks({
     });
   }, [isCompact, openInSidePane, tabId, workspaceKey]);
 
-  if (!hasDiff && (!showSubagents || (rows.length === 0 && !hasTasks))) return null;
+  if (!hasDiff && rows.length === 0 && !hasTasks) return null;
   return (
     <ComposerTrackBar>
-      {showSubagents ? <AgentTaskList serverId={serverId} agentId={agentId} /> : null}
-      {showSubagents ? (
-        <SubagentsPillTrack
-          rows={rows}
-          onOpenSubagent={openSubagent}
-          onOpenProviderSubagent={openProviderSubagent}
-          onArchiveSubagent={archiveSubagent}
-          onStopSubagent={stopSubagent}
-          onClearCompleted={clearCompleted}
-          onDetachSubagent={canDetach ? detachSubagent : undefined}
-        />
-      ) : null}
+      <AgentTaskList serverId={serverId} agentId={agentId} />
+      <SubagentsPillTrack
+        rows={rows}
+        onOpenSubagent={openSubagent}
+        onOpenProviderSubagent={openProviderSubagent}
+        onArchiveSubagent={archiveSubagent}
+        onStopSubagent={stopSubagent}
+        onClearCompleted={clearCompleted}
+        onDetachSubagent={canDetach ? detachSubagent : undefined}
+      />
       <WorkspaceDiffStatPill
         serverId={serverId}
         workspaceId={workspaceId}

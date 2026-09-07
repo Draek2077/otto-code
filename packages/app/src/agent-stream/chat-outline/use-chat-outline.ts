@@ -104,10 +104,10 @@ export function useChatOutline({
             requestId === nextIndexRequestIdRef.current &&
             shouldAcceptPromptIndexEpoch(timelineEpoch, payload.epoch)
           ) {
-            // This response makes the rail render. Publish its fixed gutter in
-            // the same React batch so the transcript and composer never paint
-            // a rail over their pre-outline geometry.
-            setRailVisible(payload.prompts.length >= 2);
+            // The rail owns its gutter because it is also the only surface
+            // that knows whether this pane is wide enough to render. Setting
+            // it from the prompt count alone left a narrow pane inset after a
+            // second prompt, even though no rail could appear there.
             setIndex(payload);
           }
           return undefined;

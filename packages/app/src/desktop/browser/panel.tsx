@@ -8,7 +8,7 @@ import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useBrowserStore } from "@/desktop/browser/store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { withIconSizeToken } from "@/components/icons/icon-size";
-import { getBrowserTabIconKind } from "./tab-icon-state";
+import { getBrowserTabIconKind, getBrowserTabLoadingStatus } from "./tab-icon-state";
 
 function getBrowserLabel(input: { title: string; url: string }): string {
   const title = input.title.trim();
@@ -71,11 +71,10 @@ function useBrowserPanelDescriptor(target: {
     subtitle: url,
     titleState: "ready",
     icon,
-    // Keep the browser identity visible while a page is loading. The shared
-    // tab presentation swaps the icon for a busy loader when statusBucket is
-    // "running", which makes browser tabs appear blank (especially when a
-    // navigation fails and the loading state lingers).
-    statusBucket: null,
+    // Page load is ordinary I/O, so the workspace tab replaces the page icon
+    // with the neutral circular loader until Electron reports it stopped.
+    statusBucket: getBrowserTabLoadingStatus(browser?.isLoading ?? false),
+    busyLoader: "spinner",
   };
 }
 

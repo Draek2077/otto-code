@@ -19,8 +19,9 @@ import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { SPACING } from "@/styles/theme";
 
-// Upstream: room the transcript reserves below the last turn footer.
-export const TURN_FOOTER_BOTTOM_SPACING = SPACING[8];
+// The running footer's actual padding below its content. Bottom-overlay
+// clearance deducts this value, so it must stay in step with turnFooterSlot.
+export const TURN_FOOTER_BOTTOM_SPACING = SPACING[2];
 
 /** Two glow colors for an agent's personality thinking spinner. */
 export interface PersonalitySpinnerColors {
@@ -288,7 +289,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     alignItems: "center",
     alignSelf: "flex-start",
     minHeight: 24,
-    paddingBottom: theme.spacing[2],
+    paddingBottom: TURN_FOOTER_BOTTOM_SPACING,
   },
   turnFooterContent: {
     height: 24,

@@ -1914,6 +1914,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         routeBottomAnchorRequest={routeBottomAnchorRequest}
         hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
         hasActiveComposer={!agentState.archivedAt && !isArchivingCurrentAgent}
+        subagentTrackPresentation={subagentTrackPresentation}
         toast={toastApi}
         onOpenWorkspaceFile={onOpenWorkspaceFile}
       />
@@ -1941,13 +1942,11 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   const streamContent = (
     <ReanimatedAnimated.View style={animatedContentStyle}>
       {streamSection}
-      {!agentState.archivedAt && !isArchivingCurrentAgent && workspaceId ? (
-        <AgentTracks
-          serverId={serverId}
-          workspaceId={workspaceId}
-          agentId={agentId}
-          showSubagents={subagentTrackPresentation === "pills"}
-        />
+      {!agentState.archivedAt &&
+      !isArchivingCurrentAgent &&
+      subagentTrackPresentation === "pills" &&
+      workspaceId ? (
+        <AgentTracks serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
       ) : null}
     </ReanimatedAnimated.View>
   );
@@ -2070,6 +2069,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   routeBottomAnchorRequest,
   hasAppliedAuthoritativeHistory,
   hasActiveComposer,
+  subagentTrackPresentation,
   toast,
   onOpenWorkspaceFile,
 }: {
@@ -2085,6 +2085,8 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasAppliedAuthoritativeHistory: boolean;
   /** False once the chat is archived or archiving, when no track bar renders. */
   hasActiveComposer: boolean;
+  /** Pills own a transparent bottom overlay; panels participate in the composer layout. */
+  subagentTrackPresentation: "panels" | "pills";
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
@@ -2115,19 +2117,22 @@ const AgentStreamSection = memo(function AgentStreamSection({
   const { workspaceId } = usePaneContext();
   const isCompactFormFactor = useIsCompactFormFactor();
   const trackSubagentRows = useSubagentsForParent({ serverId, parentAgentId: agentId ?? "" });
-  const trackBackgroundTaskRows = useBackgroundShellTasksForParent({
-    serverId,
-    parentAgentId: agentId ?? "",
-  });
   const workspaceChangeIndicator = useWorkspaceChangeIndicator();
   const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(
     serverId,
     workspaceId ?? "",
     workspaceChangeIndicator,
   );
+  const hasAgentTasks = useSessionStore((state) =>
+    Boolean(state.sessions[serverId]?.agentTasks.get(agentId ?? "")?.length),
+  );
+  // Only the compact pill rail floats over the transcript. Panels and
+  // background-task cards take ordinary composer-layout space, so reserving an
+  // overlay inset for them leaves a false blank band at the transcript tail.
   const hasVisibleComposerTracks =
     hasActiveComposer &&
-    (trackSubagentRows.length > 0 || trackBackgroundTaskRows.length > 0 || hasWorkspaceDiffStat);
+    subagentTrackPresentation === "pills" &&
+    (trackSubagentRows.length > 0 || hasAgentTasks || hasWorkspaceDiffStat);
   const bottomOverlayTailClearance = hasVisibleComposerTracks
     ? resolveComposerTrackTailClearance(isCompactFormFactor)
     : 0;

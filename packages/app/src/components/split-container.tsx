@@ -94,6 +94,7 @@ import {
 import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
 import { RenderProfile } from "@/utils/render-profiler";
 import { isNative } from "@/constants/platform";
+import { setResidentBrowserSurfaceInputEnabled } from "@/desktop/browser/resident-webviews";
 import { panelTargetSupportsHost } from "@/plugins/workspace-panels/locations";
 import type { PaneHost } from "@/panels/panel-manifest";
 
@@ -400,6 +401,14 @@ export function SplitContainer({
   } | null>(null);
   const maximizedPaneId =
     maximizedPane?.workspaceKey === workspaceKey ? maximizedPane.paneId : null;
+
+  // Browser guests are a permanent top-level Electron surface. Yield their
+  // pointer targeting for the duration of a tab drag so a browser pane can be
+  // a real split/drop destination instead of swallowing the gesture.
+  useEffect(() => {
+    setResidentBrowserSurfaceInputEnabled(activeDragTabId === null);
+    return () => setResidentBrowserSurfaceInputEnabled(true);
+  }, [activeDragTabId]);
   const explorerSidebarPaneId = useWorkspaceLayoutStore(
     (state) => state.explorerSidebarPaneIdByWorkspace[workspaceKey] ?? null,
   );
@@ -445,6 +454,27 @@ export function SplitContainer({
       );
     },
     [workspaceKey],
+  );
+  // A split is an explicit request to work with more than one pane. Restore
+  // before applying it so the newly created pane is visible in the same paint,
+  // rather than leaving the user in a maximized pane that hides the result.
+  const handleSplitPane = useCallback(
+    (input: {
+      tabId: string;
+      targetPaneId: string;
+      position: "left" | "right" | "top" | "bottom";
+    }) => {
+      setMaximizedPane(null);
+      onSplitPane(input);
+    },
+    [onSplitPane],
+  );
+  const handleSplitPaneEmpty = useCallback(
+    (input: { targetPaneId: string; position: "left" | "right" | "top" | "bottom" }) => {
+      setMaximizedPane(null);
+      onSplitPaneEmpty(input);
+    },
+    [onSplitPaneEmpty],
   );
   const handleCreateExplorerTab = useCallback(
     () => onCreateNewTab({ paneId: explorerSidebarPaneId ?? undefined }),
@@ -680,13 +710,13 @@ export function SplitContainer({
         }
         return;
       }
-      onSplitPane({
+      handleSplitPane({
         tabId: activeData.tabId,
         targetPaneId: overData.paneId,
         position: dropPreview.position,
       });
     },
-    [dropPreview, onMoveTabToPane, onSplitPane],
+    [dropPreview, handleSplitPane, onMoveTabToPane],
   );
 
   const handleDragEnd = useCallback(
@@ -757,8 +787,8 @@ export function SplitContainer({
                   renderPaneEmptyState={renderPaneEmptyState}
                   buildPaneContentModel={buildPaneContentModel}
                   onFocusPane={onFocusPane}
-                  onSplitPane={onSplitPane}
-                  onSplitPaneEmpty={onSplitPaneEmpty}
+                  onSplitPane={handleSplitPane}
+                  onSplitPaneEmpty={handleSplitPaneEmpty}
                   onMoveTabToExplorer={handleMoveMainTabToExplorer}
                   onResizeSplit={onResizeSplit}
                   onReorderTabsInPane={onReorderTabsInPane}

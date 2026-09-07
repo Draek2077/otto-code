@@ -1,6 +1,7 @@
 import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test, type Page } from "../support/fixtures";
+import { startRunningMockAgent } from "../support/helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import { openFilesPanel } from "../support/helpers/workspace-tabs";
 
@@ -40,7 +41,13 @@ async function seedChangedAgent(repoPrefix: string) {
 
 test("composer diff stat opens Changes in the configured side pane", async ({ page }) => {
   await page.addInitScript((settingsKey) => {
-    localStorage.setItem(settingsKey, JSON.stringify({ openInSidePane: { changesLinks: true } }));
+    localStorage.setItem(
+      settingsKey,
+      JSON.stringify({
+        openInSidePane: { changesLinks: true },
+        subagentTrackPresentation: "pills",
+      }),
+    );
   }, APP_SETTINGS_KEY);
   const workspace = await seedChangedAgent("composer-diff-stat-side-");
 
@@ -81,6 +88,9 @@ test("composer diff stat opens Changes in the configured side pane", async ({ pa
 });
 
 test("composer diff stat opens the compact explorer instead of a Changes tab", async ({ page }) => {
+  await page.addInitScript((settingsKey) => {
+    localStorage.setItem(settingsKey, JSON.stringify({ subagentTrackPresentation: "pills" }));
+  }, APP_SETTINGS_KEY);
   const workspace = await seedChangedAgent("composer-diff-stat-compact-");
 
   try {
@@ -102,6 +112,9 @@ test("composer diff stat opens the compact explorer instead of a Changes tab", a
 });
 
 test("composer diff stat opens Changes in the focused pane by default", async ({ page }) => {
+  await page.addInitScript((settingsKey) => {
+    localStorage.setItem(settingsKey, JSON.stringify({ subagentTrackPresentation: "pills" }));
+  }, APP_SETTINGS_KEY);
   const workspace = await seedChangedAgent("composer-diff-stat-tab-");
 
   try {
@@ -123,5 +136,37 @@ test("composer diff stat opens Changes in the focused pane by default", async ({
     ).toHaveCount(1);
   } finally {
     await workspace.cleanup();
+  }
+});
+
+test("composer diff stat clears live chat activity in Pills mode", async ({ page }) => {
+  await page.addInitScript((settingsKey) => {
+    localStorage.setItem(settingsKey, JSON.stringify({ subagentTrackPresentation: "pills" }));
+  }, APP_SETTINGS_KEY);
+  const agent = await startRunningMockAgent(page, {
+    prefix: "composer-diff-stat-live-",
+    model: "ten-second-stream",
+    prompt: "stay busy long enough to inspect the live activity footer",
+  });
+
+  try {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await writeFile(
+      path.join(agent.repo.path, "README.md"),
+      "# Temp Repo\nexport const changed = true;\n",
+    );
+    await agent.client.checkoutRefresh(agent.repo.path);
+
+    const pill = page.getByTestId("composer-diff-stat-pill");
+    const activity = page.getByTestId("turn-working-indicator");
+    await expect(pill).toBeVisible({ timeout: 30_000 });
+    await expect(activity).toBeVisible({ timeout: 30_000 });
+    const [pillBox, activityBox] = await Promise.all([pill.boundingBox(), activity.boundingBox()]);
+    if (!pillBox || !activityBox) {
+      throw new Error("Expected visible diff pill and live activity geometry");
+    }
+    expect(pillBox.y - (activityBox.y + activityBox.height)).toBeGreaterThanOrEqual(16);
+  } finally {
+    await agent.cleanup();
   }
 });

@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Pressable, Text, View, type PointerEvent as RNPointerEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useReducedMotion } from "react-native-reanimated";
@@ -74,10 +82,12 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
     if (isPanelNarrow) hoverIntent.leave();
   }, [hoverIntent, isPanelNarrow]);
   const isRailVisible = enabled && prompts.length >= 2 && !isPanelNarrow;
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Keep the optimistic gutter until timeline hydration authoritatively says
     // whether this chat has an outline. Otherwise the empty pre-hydration rail
     // would release it for one paint, then reclaim it with the prompt index.
+    // This must settle before paint: the outline may be disabled by width even
+    // when the prompt index has enough entries to render one.
     if (!hasPromptIndex) return;
     setRailVisible(isRailVisible);
     return () => setRailVisible(false);

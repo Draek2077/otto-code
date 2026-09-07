@@ -34,6 +34,9 @@ test.describe("Subagent detach", () => {
       workspaceId: agents.workspaceId,
       agentId: agents.parent.id,
     });
+    await expect(page.getByTestId("subagents-pill-track")).toHaveCount(0);
+    await expect(page.getByTestId("composer-diff-stat-pill")).toHaveCount(0);
+    await expect(page.getByTestId("subagents-track-header")).toBeVisible();
     await openSubagentsTrack(page);
     await expectSubagentRowVisible(page, agents.child.id);
 
