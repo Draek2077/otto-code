@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View, type LayoutChangeEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
-import { Architecture, Publish, Trash2 } from "@/components/icons/material-icons";
+import { Architecture, Publish, RotateCw, Trash2 } from "@/components/icons/material-icons";
 import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ResizeHandle } from "@/components/resize-handle";
@@ -119,6 +119,7 @@ function ArchitecturalViewDraftPanel() {
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [action, setAction] = useState<"publish" | "discard" | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const splitSizes = useArchitecturalViewAuthoringLayoutStore((state) => state.splitSizes);
   const setSplitSizes = useArchitecturalViewAuthoringLayoutStore((state) => state.setSplitSizes);
   const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
@@ -173,6 +174,30 @@ function ArchitecturalViewDraftPanel() {
       cancelled = true;
     };
   }, [client, supported, target.draftId, target.viewId, workspaceId]);
+
+  const refresh = useCallback(async () => {
+    if (!client || !supported || action || isRefreshing) return;
+    setIsRefreshing(true);
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await client.getArchitecturalViewDraftContent({
+        workspaceId,
+        viewId: target.viewId,
+        draftId: target.draftId,
+      });
+      if (!result.success || !result.html) {
+        throw new Error(result.error ?? "Could not open Interactive View.");
+      }
+      setHtml(result.html);
+    } catch (cause) {
+      setHtml(null);
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [action, client, isRefreshing, supported, target.draftId, target.viewId, workspaceId]);
 
   const handleSplitLayout = useCallback((event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
@@ -311,7 +336,7 @@ function ArchitecturalViewDraftPanel() {
           Icon={ThemedPublish}
           loading={action === "publish"}
           onPress={publish}
-          disabled={!html || Boolean(action)}
+          disabled={!html || Boolean(action) || isRefreshing}
           tone="accent"
         />
         <View style={styles.toolbarSpacer} />
@@ -320,8 +345,16 @@ function ArchitecturalViewDraftPanel() {
           Icon={ThemedTrash2}
           loading={action === "discard"}
           onPress={discard}
-          disabled={Boolean(action)}
+          disabled={Boolean(action) || isRefreshing}
           tone="destructive"
+        />
+        <View style={styles.toolbarDivider} />
+        <ToolbarIconButton
+          label="Refresh Interactive View"
+          Icon={ThemedRotateCw}
+          loading={isRefreshing}
+          onPress={refresh}
+          disabled={Boolean(action)}
         />
       </View>
       {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
@@ -361,6 +394,7 @@ export const architecturalViewDraftPanelRegistration = definePanel("architectura
 
 const ThemedPublish = withUnistyles(Publish);
 const ThemedTrash2 = withUnistyles(Trash2);
+const ThemedRotateCw = withUnistyles(RotateCw);
 
 const styles = StyleSheet.create((theme) => ({
   container: { flex: 1, backgroundColor: theme.colors.surface0 },
@@ -373,6 +407,12 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   toolbarSpacer: { flex: 1 },
+  toolbarDivider: {
+    width: 1,
+    height: 16,
+    marginHorizontal: theme.spacing[1],
+    backgroundColor: theme.colors.border,
+  },
   authoringSurface: { flex: 1, minHeight: 0, flexDirection: "row" },
   chatPane: { minWidth: 0, minHeight: 0, overflow: "hidden" },
   viewPane: { minWidth: 0, minHeight: 0, overflow: "hidden" },

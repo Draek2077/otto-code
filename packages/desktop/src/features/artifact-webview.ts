@@ -1,10 +1,18 @@
-import { session, type WebContents, type WebPreferences } from "electron";
+import { session, type Session, type WebContents, type WebPreferences } from "electron";
 
 // Must match ARTIFACT_WEBVIEW_PARTITION in
 // packages/app/src/components/artifacts/artifact-html-view.electron.tsx.
 // Non-persist: the session (and any storage an artifact's script writes) is
 // gone as soon as the app quits.
 export const ARTIFACT_WEBVIEW_PARTITION = "otto-artifact-preview";
+
+/**
+ * Self-contained documents stay in their own hardened session. Selected
+ * Interactive Views may still be registered as browser-automation targets.
+ */
+export function getArtifactWebviewSession(): Session {
+  return session.fromPartition(ARTIFACT_WEBVIEW_PARTITION);
+}
 
 /**
  * Artifacts are LLM-generated HTML, loaded as a data: URL into a <webview>
@@ -36,7 +44,7 @@ export function hardenArtifactWebviewPreferences(webPreferences: WebPreferences)
 /** Deny every permission request (camera, mic, geolocation, clipboard, USB, etc.)
  * on the artifact partition. Idempotent - safe to call on every attach. */
 export function registerArtifactWebviewSessionGuards(): void {
-  const artifactSession = session.fromPartition(ARTIFACT_WEBVIEW_PARTITION);
+  const artifactSession = getArtifactWebviewSession();
   artifactSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false);
   });

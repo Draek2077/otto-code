@@ -4,6 +4,7 @@ import { WebView } from "react-native-webview";
 
 export interface ArtifactHtmlViewProps {
   html: string;
+  browserAutomation?: { browserId: string; workspaceId: string };
 }
 
 // react-native-webview always allows "about:blank" (the origin of the initial

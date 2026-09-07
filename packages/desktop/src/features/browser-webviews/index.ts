@@ -36,7 +36,8 @@ interface AttachedBrowserRegistration {
 
 interface RegisterAttachedBrowserInput extends AttachedBrowserRegistration {
   sender: BrowserWebContentsIdentity;
-  profileSession: object;
+  /** Sessions whose hardened guests may be browser-automation targets. */
+  allowedGuestSessions: readonly object[];
   findWebContents(webContentsId: number): RegisteredBrowserWebContents | null;
 }
 
@@ -68,7 +69,7 @@ export function registerAttachedOttoBrowser(input: RegisterAttachedBrowserInput)
     !guest ||
     guest.isDestroyed() ||
     guest.hostWebContents !== input.sender ||
-    guest.session !== input.profileSession
+    !input.allowedGuestSessions.includes(guest.session)
   ) {
     return false;
   }

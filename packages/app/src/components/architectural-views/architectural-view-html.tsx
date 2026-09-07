@@ -3,6 +3,7 @@ import { ArtifactHtmlView } from "@/components/artifacts/artifact-html-view";
 
 export interface ArchitecturalViewHtmlProps {
   html: string;
+  browserAutomation?: { browserId: string; workspaceId: string };
 }
 
 /**
@@ -10,6 +11,9 @@ export interface ArchitecturalViewHtmlProps {
  * document. It intentionally shares Otto's one hardened HTML isolation layer
  * with Artifacts while keeping the product surface and ownership distinct.
  */
-export function ArchitecturalViewHtml({ html }: ArchitecturalViewHtmlProps): ReactElement {
-  return <ArtifactHtmlView html={html} />;
+export function ArchitecturalViewHtml({
+  html,
+  browserAutomation,
+}: ArchitecturalViewHtmlProps): ReactElement {
+  return <ArtifactHtmlView html={html} browserAutomation={browserAutomation} />;
 }

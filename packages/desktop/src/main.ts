@@ -87,6 +87,7 @@ import {
   setWorkspaceActiveOttoBrowserId,
 } from "./features/browser-webviews/index.js";
 import {
+  getArtifactWebviewSession,
   hardenArtifactWebviewPreferences,
   isArtifactWebviewAttach,
   lockDownArtifactWebviewContents,
@@ -622,7 +623,7 @@ ipcMain.handle("otto:browser:register-attached", (event, rawInput: unknown) => {
   const registered = registerAttachedOttoBrowser({
     ...input,
     sender: event.sender,
-    profileSession: getOttoBrowserProfileSession(session),
+    allowedGuestSessions: [getOttoBrowserProfileSession(session), getArtifactWebviewSession()],
     findWebContents: (webContentsId) => webContents.fromId(webContentsId) ?? null,
   });
   if (!registered) {
@@ -631,6 +632,12 @@ ipcMain.handle("otto:browser:register-attached", (event, rawInput: unknown) => {
   const guest = webContents.fromId(input.webContentsId);
   if (!guest) {
     throw new Error("Attached browser guest disappeared after registration");
+  }
+  // Interactive Views retain the artifact session's navigation lockdown. They
+  // skip the ordinary browser attach branch, so add only its liveness setup
+  // here. Normal browser guests were already prepared at did-attach time.
+  if (guest.session === getArtifactWebviewSession()) {
+    prepareOttoBrowserWebContents(guest);
   }
   browserKeyboard.attach({ contents: guest, hostContents: event.sender });
   log.info("[browser-webview] registered", {

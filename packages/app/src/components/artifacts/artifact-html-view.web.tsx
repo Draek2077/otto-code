@@ -2,6 +2,7 @@ import type { CSSProperties, ReactElement } from "react";
 
 export interface ArtifactHtmlViewProps {
   html: string;
+  browserAutomation?: { browserId: string; workspaceId: string };
 }
 
 const IFRAME_STYLE: CSSProperties = {

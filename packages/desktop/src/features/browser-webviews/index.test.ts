@@ -77,7 +77,7 @@ describe("browser webview attachment", () => {
       workspaceId: "workspace-a",
       webContentsId: guest.id,
       sender: renderer,
-      profileSession,
+      allowedGuestSessions: [profileSession],
       findWebContents: () => guest,
     });
 
@@ -98,7 +98,7 @@ describe("browser webview attachment", () => {
       workspaceId: "workspace-a",
       webContentsId: guest.id,
       sender: claimant,
-      profileSession,
+      allowedGuestSessions: [profileSession],
       findWebContents: () => guest,
     });
 
@@ -116,12 +116,32 @@ describe("browser webview attachment", () => {
       workspaceId: "workspace-a",
       webContentsId: guest.id,
       sender: renderer,
-      profileSession,
+      allowedGuestSessions: [profileSession],
       findWebContents: () => guest,
     });
 
     expect(registered).toBe(false);
     expect(getOttoBrowserIdForWebContents(guest)).toBeNull();
+  });
+
+  test("accepts a separately hardened document session when explicitly allowed", () => {
+    const profileSession = {};
+    const documentSession = {};
+    const renderer = new FakeRenderer(1);
+    const guest = new FakeBrowserGuest(351, renderer, documentSession);
+
+    const registered = registerAttachedOttoBrowser({
+      browserId: "architectural-view-a",
+      workspaceId: "workspace-a",
+      webContentsId: guest.id,
+      sender: renderer,
+      allowedGuestSessions: [profileSession, documentSession],
+      findWebContents: () => guest,
+    });
+
+    expect(registered).toBe(true);
+    expect(getOttoBrowserIdForWebContents(guest)).toBe("architectural-view-a");
+    unregisterOttoBrowser("architectural-view-a");
   });
 
   test("concurrent windows cannot swap browser identities", () => {
@@ -140,7 +160,7 @@ describe("browser webview attachment", () => {
       workspaceId: "workspace-second",
       webContentsId: secondGuest.id,
       sender: secondRenderer,
-      profileSession,
+      allowedGuestSessions: [profileSession],
       findWebContents: (id) => guests.get(id) ?? null,
     });
     registerAttachedOttoBrowser({
@@ -148,7 +168,7 @@ describe("browser webview attachment", () => {
       workspaceId: "workspace-first",
       webContentsId: firstGuest.id,
       sender: firstRenderer,
-      profileSession,
+      allowedGuestSessions: [profileSession],
       findWebContents: (id) => guests.get(id) ?? null,
     });
 
@@ -174,7 +194,7 @@ describe("browser webview attachment", () => {
         workspaceId: "workspace-shared",
         webContentsId: guest.id,
         sender: renderer,
-        profileSession,
+        allowedGuestSessions: [profileSession],
         findWebContents: () => guest,
       });
     }
@@ -197,7 +217,7 @@ describe("browser webview attachment", () => {
       workspaceId: "workspace-cleanup",
       webContentsId: guest.id,
       sender: renderer,
-      profileSession,
+      allowedGuestSessions: [profileSession],
       findWebContents: () => guest,
     });
 

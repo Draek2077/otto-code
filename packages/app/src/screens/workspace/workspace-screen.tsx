@@ -181,6 +181,7 @@ import {
 } from "@/history/delete-dialogs";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
+import { architecturalViewAuthoringBrowserId } from "@/architectural-views/browser-id";
 import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
 import { getDesktopHost } from "@/desktop/host";
 import {
@@ -2848,6 +2849,13 @@ function WorkspaceScreenContent({
       }
 
       if (input.target?.kind === "agent") {
+        if (input.target.architecturalViewDraft) {
+          void getDesktopHost()
+            ?.browser?.unregisterWorkspaceBrowser?.(
+              architecturalViewAuthoringBrowserId(input.target.agentId),
+            )
+            .catch(() => undefined);
+        }
         unpinWorkspaceAgent(persistenceKey, input.target.agentId);
         hideWorkspaceAgent(persistenceKey, input.target.agentId);
         // Closing the tab is what ends the by-id projection an archived chat

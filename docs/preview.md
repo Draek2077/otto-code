@@ -138,6 +138,23 @@ they do and must survive future changes:
 
 ## Preview tabs vs. normal browser tabs
 
+### Interactive View authoring panes
+
+The Archify Interactive View shown beside its bound authoring chat is also a
+real Otto browser-automation target. It deliberately has **no browser toolbar**
+or independent workspace tab: the authoring surface owns its placement and the
+chat tab owns its lifetime. On Electron it remains in the hardened
+self-contained-document session, but registers its guest webContents with the
+browser host. The bound agent can discover it with `browser_list_tabs` and use
+the ordinary `browser_snapshot`, `browser_inspect`, and `browser_screenshot`
+tools to review the rendered diagram.
+
+Its automation identity is deterministic for the authoring chat, survives
+live HTML refreshes, and is unregistered when that chat tab closes. The
+authoring toolbar has a Refresh action for fetching the latest rendered draft
+into that same guest when the automatic refresh has not caught up. Ordinary
+artifacts are not browser-automation targets.
+
 A preview tab is a normal Otto browser tab with extra bookkeeping, not a
 separate tab type:
 

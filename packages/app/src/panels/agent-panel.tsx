@@ -5,6 +5,7 @@ import {
   Architecture,
   ChevronRight,
   Publish,
+  RotateCw,
   SquarePen,
   Trash2,
 } from "@/components/icons/material-icons";
@@ -31,6 +32,7 @@ import { ChatMessageSearchBar, type ChatMessageSearchHandle } from "@/chat/messa
 import type { ChatMessageSearchState } from "@/chat/message-search";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
+import { architecturalViewAuthoringBrowserId } from "@/architectural-views/browser-id";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
 import { BlackChatScope } from "@/components/black-chat-scope";
@@ -833,6 +835,7 @@ export function ArchitecturalViewAuthoringSurface({
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<"publish" | "delete" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const splitSizes = useArchitecturalViewAuthoringLayoutStore((state) => state.splitSizes);
   const setSplitSizes = useArchitecturalViewAuthoringLayoutStore((state) => state.setSplitSizes);
   const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
@@ -993,6 +996,16 @@ export function ArchitecturalViewAuthoringSurface({
     workspaceId,
   ]);
 
+  const refresh = useCallback(async () => {
+    if (action || isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await refreshPreview();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [action, isRefreshing, refreshPreview]);
+
   const handleSplitLayout = useCallback((event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
     setSplitContainerWidth((current) => (current === width ? current : width));
@@ -1028,6 +1041,13 @@ export function ArchitecturalViewAuthoringSurface({
     ],
     [effectiveSplitSizes],
   );
+  const browserAutomation = useMemo(
+    () => ({
+      browserId: architecturalViewAuthoringBrowserId(agentId),
+      workspaceId,
+    }),
+    [agentId, workspaceId],
+  );
 
   return (
     <View style={styles.architecturalAuthoringContainer}>
@@ -1037,7 +1057,7 @@ export function ArchitecturalViewAuthoringSurface({
           Icon={ThemedPublish}
           loading={action === "publish"}
           onPress={publish}
-          disabled={!html || Boolean(action)}
+          disabled={!html || Boolean(action) || isRefreshing}
           tone="accent"
         />
         <View style={styles.architecturalAuthoringToolbarSpacer} />
@@ -1046,8 +1066,16 @@ export function ArchitecturalViewAuthoringSurface({
           Icon={ThemedTrash2}
           loading={action === "delete"}
           onPress={deleteArchitecturalView}
-          disabled={Boolean(action)}
+          disabled={Boolean(action) || isRefreshing}
           tone="destructive"
+        />
+        <View style={styles.architecturalAuthoringToolbarDivider} />
+        <ToolbarIconButton
+          label="Refresh Interactive View"
+          Icon={ThemedRotateCw}
+          loading={isRefreshing}
+          onPress={refresh}
+          disabled={Boolean(action)}
         />
       </View>
       {actionError ? <Text style={styles.architecturalAuthoringError}>{actionError}</Text> : null}
@@ -1073,7 +1101,7 @@ export function ArchitecturalViewAuthoringSurface({
         />
         <View style={viewPaneStyle} testID="architectural-view-authoring-preview">
           {html ? (
-            <ArchitecturalViewHtml html={html} />
+            <ArchitecturalViewHtml html={html} browserAutomation={browserAutomation} />
           ) : (
             <View style={styles.architecturalAuthoringEmpty}>
               {loading ? <LoadingSpinner size="small" /> : null}
@@ -2820,6 +2848,7 @@ const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedPublish = withUnistyles(Publish);
 const ThemedTrash2 = withUnistyles(Trash2);
+const ThemedRotateCw = withUnistyles(RotateCw);
 
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -2971,6 +3000,12 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   architecturalAuthoringToolbarSpacer: { flex: 1 },
+  architecturalAuthoringToolbarDivider: {
+    width: 1,
+    height: 16,
+    marginHorizontal: theme.spacing[1],
+    backgroundColor: theme.colors.border,
+  },
   architecturalAuthoringSurface: { flex: 1, minHeight: 0, flexDirection: "row" },
   architecturalAuthoringPane: { minWidth: 0, minHeight: 0, overflow: "hidden" },
   architecturalAuthoringError: {

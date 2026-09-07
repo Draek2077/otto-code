@@ -1,13 +1,18 @@
 import { createElement, useEffect, useRef, type CSSProperties, type ReactElement } from "react";
-import { isElectronRuntime } from "@/desktop/host";
+import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 
 export interface ArtifactHtmlViewProps {
   html: string;
+  /** Opt-in automation for a hardened self-contained document guest. */
+  browserAutomation?: { browserId: string; workspaceId: string };
 }
 
 type ArtifactWebview = HTMLElement & {
   src: string;
   loadURL?: (url: string) => Promise<void>;
+  getWebContentsId?: () => number;
+  addEventListener: (type: string, listener: EventListener) => void;
+  removeEventListener: (type: string, listener: EventListener) => void;
 };
 
 const HOST_STYLE: CSSProperties = {
@@ -34,9 +39,11 @@ function toDataUrl(html: string): string {
 /** Electron renderer for artifact HTML. Renders into a <webview> guest (its own
  * session, exempt from the app-shell CSP) so artifact inline scripts run. A
  * srcDoc iframe would inherit the host CSP and have its scripts blocked. */
-export function ArtifactHtmlView({ html }: ArtifactHtmlViewProps): ReactElement {
+export function ArtifactHtmlView({ html, browserAutomation }: ArtifactHtmlViewProps): ReactElement {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const webviewRef = useRef<ArtifactWebview | null>(null);
+  const browserAutomationRef = useRef(browserAutomation);
+  browserAutomationRef.current = browserAutomation;
 
   // Create the webview once and mount it into the host div.
   useEffect(() => {
@@ -56,10 +63,25 @@ export function ArtifactHtmlView({ html }: ArtifactHtmlViewProps): ReactElement 
     webview.style.border = "0";
     webview.style.background = "#fff";
     webview.src = toDataUrl(html);
+    const handleAttached = () => {
+      const automation = browserAutomationRef.current;
+      const register = getDesktopHost()?.browser?.registerAttachedBrowser;
+      const webContentsId = webview.getWebContentsId?.();
+      if (!automation || !register || !webContentsId) return;
+      void register({ ...automation, webContentsId }).catch((error: unknown) => {
+        console.error("[architectural-view] browser registration failed", error);
+      });
+    };
+    webview.addEventListener("did-attach", handleAttached);
     webviewRef.current = webview;
     host.appendChild(webview);
 
     return () => {
+      webview.removeEventListener("did-attach", handleAttached);
+      const automation = browserAutomationRef.current;
+      if (automation) {
+        void getDesktopHost()?.browser?.unregisterWorkspaceBrowser?.(automation.browserId);
+      }
       webview.remove();
       webviewRef.current = null;
     };
