@@ -6,6 +6,7 @@ describe("isMobileWorkspaceSwitcherTarget", () => {
     { kind: "changes_tree" } as const,
     { kind: "files" } as const,
     { kind: "project_search" } as const,
+    { kind: "pull_request" } as const,
     { kind: "working_diff" } as const,
   ])("keeps Explorer target $kind out of the mobile workspace switcher", (target) => {
     expect(isMobileWorkspaceSwitcherTarget(target)).toBe(false);

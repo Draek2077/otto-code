@@ -7,6 +7,7 @@ const COMPACT_EXPLORER_TARGET_KINDS = new Set<WorkspaceTabTarget["kind"]>([
   "changes_tree",
   "files",
   "project_search",
+  "pull_request",
   "working_diff",
 ]);
 
