@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.3 - 2026-09-07
+
+### Changed
+
+- Refresh the DimCode, fast-agent, and MiniMax Code launchers in the Agent Client Protocol catalog
+
+### Fixed
+
+- Restore workspace split interactions when dragging Browser tabs or creating a split from a maximized pane
+- Keep Browser tabs responsive and preserve their current URL and icon while navigation completes
+- Keep subagent Panels and Pills in their selected presentation, without leaving blank space below an active chat
+- Align desktop title-bar actions with the surface that owns the window controls
+- Include the Zoom Recorder helper in Windows x64 desktop packages
+
 ## 0.9.2 - 2026-09-06
 
 ### Changed
