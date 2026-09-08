@@ -2317,11 +2317,14 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     paddingTop: theme.spacing[16],
+    paddingHorizontal: theme.spacing[4],
     gap: theme.spacing[2],
   },
   emptyText: {
+    alignSelf: "stretch",
     fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
+    textAlign: "center",
   },
   tooltipText: {
     fontSize: theme.fontSize.sm,
