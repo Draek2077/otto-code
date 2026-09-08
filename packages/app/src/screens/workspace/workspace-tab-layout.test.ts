@@ -12,17 +12,13 @@ const metrics = {
   tabGap: 4,
   minTabWidth: 96,
   maxTabWidth: 160,
-  tabIconWidth: 14,
-  tabContentGap: 4,
-  tabHorizontalPadding: 8,
-  closeButtonWidth: 0,
 };
 
 describe("computeWorkspaceTabLayout", () => {
-  it("keeps each tab at its natural content width when space is available", () => {
+  it("grows every tab to the maximum width when the strip has ample space", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1200,
-      tabLabelWidths: [56, 70, 49],
+      tabCount: 3,
       metrics,
     });
 
@@ -30,37 +26,37 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.requiresHorizontalScrollFallback).toBe(false);
     expect(result.items).toHaveLength(3);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
-    expect(result.items.map((item) => item.width)).toEqual([96, 104, 96]);
+    expect(result.items.map((item) => item.width)).toEqual([160, 160, 160]);
   });
 
-  it("sizes a single tab between the minimum and maximum from its content", () => {
+  it("clamps a single tab at the maximum width", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1200,
-      tabLabelWidths: [105],
+      tabCount: 1,
       metrics,
     });
 
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([139]);
+    expect(result.items.map((item) => item.width)).toEqual([160]);
   });
 
-  it("shrinks natural widths proportionally without crossing the clickable minimum", () => {
+  it("divides available space evenly without crossing the clickable minimum", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 460,
-      tabLabelWidths: [168, 84, 56],
+      tabCount: 3,
       metrics,
     });
 
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([117, 103, 96]);
+    expect(result.items.map((item) => item.width)).toEqual([105, 105, 105]);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
   });
 
   it("caps long tabs at the maximum width", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1004,
-      tabLabelWidths: [280, 280, 280, 280],
+      tabCount: 4,
       metrics: {
         ...metrics,
         actionsReservedWidth: 44,
@@ -74,10 +70,26 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.items.map((item) => item.width)).toEqual([160, 160, 160, 160]);
   });
 
+  it("gives every tab more room as the available strip width grows", () => {
+    const narrow = computeWorkspaceTabLayout({
+      viewportWidth: 320,
+      tabCount: 2,
+      metrics,
+    });
+    const wide = computeWorkspaceTabLayout({
+      viewportWidth: 440,
+      tabCount: 2,
+      metrics,
+    });
+
+    expect(narrow.items.map((item) => item.width)).toEqual([96, 96]);
+    expect(wide.items.map((item) => item.width)).toEqual([150, 150]);
+  });
+
   it("keeps every tab at the clickable minimum at the exact fit boundary", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 532,
-      tabLabelWidths: [98, 98, 98, 98],
+      tabCount: 4,
       metrics,
     });
 
@@ -90,7 +102,7 @@ describe("computeWorkspaceTabLayout", () => {
   it("uses horizontal scroll rather than shrinking below the clickable minimum", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 531,
-      tabLabelWidths: [98, 98, 98, 98],
+      tabCount: 4,
       metrics,
     });
 
@@ -103,7 +115,7 @@ describe("computeWorkspaceTabLayout", () => {
   it("returns empty layout details when there are no tabs", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1200,
-      tabLabelWidths: [],
+      tabCount: 0,
       metrics,
     });
 
@@ -112,14 +124,14 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.items).toEqual([]);
   });
 
-  it("uses rendered label width rather than character count", () => {
+  it("gives every tab the same measured share", () => {
     const result = computeWorkspaceTabLayout({
-      viewportWidth: 1200,
-      tabLabelWidths: [68, 104],
+      viewportWidth: 440,
+      tabCount: 2,
       metrics,
     });
 
-    expect(result.items.map((item) => item.width)).toEqual([102, 138]);
+    expect(result.items.map((item) => item.width)).toEqual([150, 150]);
   });
 });
 

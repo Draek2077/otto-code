@@ -70,14 +70,7 @@ import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useNonClientHover } from "@/hooks/use-non-client-hover";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
-import {
-  TAB_CLOSE_BUTTON_WIDTH,
-  TAB_ESTIMATED_CHAR_WIDTH,
-  TAB_HORIZONTAL_PADDING,
-  TAB_ICON_WIDTH,
-  TAB_MAX_WIDTH,
-  TAB_MIN_WIDTH,
-} from "@/screens/workspace/workspace-tab-layout";
+import { TAB_MAX_WIDTH, TAB_MIN_WIDTH } from "@/screens/workspace/workspace-tab-layout";
 import { useHostFeature } from "@/runtime/host-features";
 import {
   WorkspaceTabPresentationResolver,
@@ -117,7 +110,6 @@ import {
   useWorkspacePreviewController,
 } from "./workspace-preview-controller";
 import type { TerminalProfile } from "@otto-code/protocol/messages";
-import { TAB_CONTENT_GAP } from "@/screens/workspace/workspace-tab-layout";
 import { shouldRevealTabToolbarOptions } from "@/screens/workspace/workspace-tab-toolbar-options";
 
 const DROPDOWN_WIDTH = 220;
@@ -1565,24 +1557,10 @@ export function WorkspaceDesktopTabsRow({
       tabGap: 0,
       minTabWidth: TAB_MIN_WIDTH,
       maxTabWidth: TAB_MAX_WIDTH,
-      tabIconWidth: TAB_ICON_WIDTH,
-      tabContentGap: TAB_CONTENT_GAP,
-      tabHorizontalPadding: TAB_HORIZONTAL_PADDING,
-      estimatedCharWidth: TAB_ESTIMATED_CHAR_WIDTH,
-      closeButtonWidth: TAB_CLOSE_BUTTON_WIDTH,
     }),
     [overflowReservedWidth, tabsActionsWidth],
   );
 
-  const fallbackTabLabels = useMemo(
-    () => ({
-      newAgent: t("workspace.tabs.fallback.newAgent"),
-      setup: t("workspace.tabs.fallback.setup"),
-      terminal: t("workspace.tabs.fallback.terminal"),
-      agent: t("workspace.tabs.fallback.agent"),
-    }),
-    [t],
-  );
   const tabMenuLabels = useMemo<WorkspaceTabMenuLabels>(
     () => ({
       copyResumeCommand: t("workspace.tabs.menu.copyResumeCommand"),
@@ -1607,14 +1585,6 @@ export function WorkspaceDesktopTabsRow({
     }),
     [t],
   );
-  const tabLabelLengths = useMemo(
-    () =>
-      visibleTabs.map((tab) => {
-        const label = getFallbackTabLabel(tab.tab, fallbackTabLabels);
-        return label.length;
-      }),
-    [fallbackTabLabels, visibleTabs],
-  );
   const { focusedAgentId, focusedPreviewCwd, paneHasEditableAgentTab, paneHasPreviewTab } =
     usePaneTabAgentFacts({
       tabs,
@@ -1622,14 +1592,8 @@ export function WorkspaceDesktopTabsRow({
       normalizedServerId,
     });
 
-  // The row estimates label width from character count rather than measuring;
-  // `estimatedCharWidth` is the conversion the rail's sizing already uses.
-  const tabLabelWidths = useMemo(
-    () => tabLabelLengths.map((length) => length * TAB_ESTIMATED_CHAR_WIDTH),
-    [tabLabelLengths],
-  );
   const { layout } = useWorkspaceTabLayout({
-    tabLabelWidths,
+    tabCount: visibleTabs.length,
     viewportWidthOverride: contentWidth > 0 ? contentWidth : null,
     metrics: layoutMetrics,
   });

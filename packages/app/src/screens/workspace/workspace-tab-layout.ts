@@ -2,9 +2,7 @@ import { WORKSPACE_TABS_RAIL_MAX_WIDTH } from "@/constants/layout";
 
 export type WorkspaceTabCloseButtonPolicy = "all";
 
-// Shared tab-chip metrics - the single source of truth for both the
-// horizontal row's shrink-to-fit math and the vertical rail's content-driven
-// width, so the two never drift apart.
+// Shared tab-chip metrics for the vertical rail's content-driven width.
 export const TAB_ICON_WIDTH = 14;
 // Mirrors the chip's paddingHorizontal (theme.spacing[2] in styles.tab) -
 // keep the two in sync or the width math over/under-estimates label room.
@@ -36,15 +34,11 @@ export interface WorkspaceTabLayoutMetrics {
   tabGap: number;
   minTabWidth: number;
   maxTabWidth: number;
-  tabIconWidth: number;
-  tabContentGap: number;
-  tabHorizontalPadding: number;
-  closeButtonWidth: number;
 }
 
 export interface WorkspaceTabLayoutInput {
   viewportWidth: number;
-  tabLabelWidths: number[];
+  tabCount: number;
   metrics: WorkspaceTabLayoutMetrics;
 }
 
@@ -72,7 +66,7 @@ export function clamp(value: number, min: number, max: number): number {
 export function computeWorkspaceTabLayout(
   input: WorkspaceTabLayoutInput,
 ): WorkspaceTabLayoutResult {
-  const tabCount = input.tabLabelWidths.length;
+  const { tabCount } = input;
   if (tabCount === 0) {
     return {
       items: [],
@@ -88,38 +82,24 @@ export function computeWorkspaceTabLayout(
   const rowOverhead =
     input.metrics.rowPaddingHorizontal * 2 + Math.max(tabCount - 1, 0) * input.metrics.tabGap;
   const availableTabsWidth = Math.max(0, availableWidth - rowOverhead);
-  const tabChromeWidth =
-    input.metrics.tabIconWidth +
-    input.metrics.tabContentGap +
-    input.metrics.tabHorizontalPadding * 2 +
-    input.metrics.closeButtonWidth;
-  const naturalWidths = input.tabLabelWidths.map((labelWidth) =>
-    clamp(tabChromeWidth + labelWidth, input.metrics.minTabWidth, input.metrics.maxTabWidth),
-  );
-  const naturalTotalWidth = naturalWidths.reduce((total, width) => total + width, 0);
   const minimumTotalWidth = input.metrics.minTabWidth * tabCount;
   const requiresHorizontalScrollFallback = availableTabsWidth < minimumTotalWidth;
-
-  let resolvedWidths = naturalWidths;
-  if (requiresHorizontalScrollFallback) {
-    resolvedWidths = Array.from({ length: tabCount }, () => input.metrics.minTabWidth);
-  } else if (naturalTotalWidth > availableTabsWidth) {
-    const widthToRemove = naturalTotalWidth - availableTabsWidth;
-    const shrinkCapacity = naturalTotalWidth - minimumTotalWidth;
-    const shrinkRatio = widthToRemove / shrinkCapacity;
-    resolvedWidths = naturalWidths.map(
-      (width) => width - (width - input.metrics.minTabWidth) * shrinkRatio,
-    );
-  }
-
-  const roundedWidths = resolvedWidths.map((width) =>
-    Math.round(clamp(width, input.metrics.minTabWidth, input.metrics.maxTabWidth)),
+  // The strip owns a finite slot for every visible tab. Allocate that measured
+  // space evenly, then bound it by the readable minimum and sensible maximum.
+  // Sizing from fallback labels here is wrong: agent descriptors resolve below
+  // this component, so their labels look like the generic "Agent" placeholder
+  // and tabs stay stuck at the floor in a wide pane.
+  const widthPerTab = clamp(
+    availableTabsWidth / tabCount,
+    input.metrics.minTabWidth,
+    input.metrics.maxTabWidth,
   );
+  const roundedWidths = Array.from({ length: tabCount }, () => Math.round(widthPerTab));
 
   return {
     items: roundedWidths.map((width) => ({
       width,
-      showLabel: width > tabChromeWidth,
+      showLabel: true,
     })),
     closeButtonPolicy: "all",
     requiresHorizontalScrollFallback,
