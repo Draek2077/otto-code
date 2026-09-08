@@ -24,6 +24,19 @@ let residentBrowserSurfaceInputEnabled = true;
 interface BrowserWebviewElement extends HTMLElement {
   src: string;
   getWebContentsId(): number;
+  getTitle?: () => string;
+}
+
+function syncBrowserWebviewTitle(browserId: string, webview: HTMLElement): void {
+  if (!isResidentBrowserWebviewReady(webview)) return;
+  try {
+    const title = (webview as BrowserWebviewElement).getTitle?.();
+    if (typeof title === "string") {
+      useBrowserStore.getState().updateBrowser(browserId, { title });
+    }
+  } catch {
+    // The guest can detach between its readiness check and the method call.
+  }
 }
 
 interface BrowserWebviewIdentity {
@@ -328,12 +341,22 @@ export function prepareBrowserWebview(
   const browser = getBrowserBridge(input.profileHost);
   // These events belong to the guest, not the pane: automation can create a
   // background tab before any pane mounts, and loads can finish while parked.
-  webview.addEventListener("dom-ready", () => markResidentBrowserWebviewReady(webview));
+  webview.addEventListener("dom-ready", () => {
+    markResidentBrowserWebviewReady(webview);
+    syncBrowserWebviewTitle(input.browserId, webview);
+  });
+  webview.addEventListener("page-title-updated", (event) => {
+    const title = (event as Event & { title?: unknown }).title;
+    if (typeof title === "string") {
+      useBrowserStore.getState().updateBrowser(input.browserId, { title });
+    }
+  });
   webview.addEventListener("did-start-loading", () => {
     useBrowserStore.getState().updateBrowser(input.browserId, { isLoading: true, lastError: null });
   });
   webview.addEventListener("did-stop-loading", () => {
     useBrowserStore.getState().updateBrowser(input.browserId, { isLoading: false });
+    syncBrowserWebviewTitle(input.browserId, webview);
   });
   webview.setAttribute(BROWSER_ID_ATTRIBUTE, input.browserId);
   webview.setAttribute("partition", browser.profilePartition);
@@ -410,6 +433,7 @@ export function takeResidentBrowserWebview(browserId: string): HTMLElement | nul
     return null;
   }
 
+  syncBrowserWebviewTitle(normalizedBrowserId, webview);
   return webview;
 }
 

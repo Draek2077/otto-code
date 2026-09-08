@@ -1019,13 +1019,6 @@ function BrowserPaneContents({
       });
       setDraftUrl((current) => (current === normalized ? current : normalized));
     };
-    const handleTitleUpdated = (event: Event) => {
-      const title =
-        typeof (event as Event & { title?: unknown }).title === "string"
-          ? ((event as Event & { title?: string }).title ?? "")
-          : "";
-      updateBrowserRef.current(browserIdRef.current, { title });
-    };
     const handleFaviconUpdated = (event: Event) => {
       const favicons = Array.isArray((event as Event & { favicons?: unknown[] }).favicons)
         ? ((event as Event & { favicons?: string[] }).favicons ?? [])
@@ -1067,7 +1060,6 @@ function BrowserPaneContents({
     webview.addEventListener("will-navigate", handleWillNavigate);
     webview.addEventListener("did-navigate", handleNavigate);
     webview.addEventListener("did-navigate-in-page", handleNavigate);
-    webview.addEventListener("page-title-updated", handleTitleUpdated);
     webview.addEventListener("page-favicon-updated", handleFaviconUpdated);
     webview.addEventListener("did-fail-load", handleLoadFailed);
     webview.addEventListener("dom-ready", handleDomReady);
@@ -1096,7 +1088,6 @@ function BrowserPaneContents({
       webview.removeEventListener("will-navigate", handleWillNavigate);
       webview.removeEventListener("did-navigate", handleNavigate);
       webview.removeEventListener("did-navigate-in-page", handleNavigate);
-      webview.removeEventListener("page-title-updated", handleTitleUpdated);
       webview.removeEventListener("page-favicon-updated", handleFaviconUpdated);
       webview.removeEventListener("did-fail-load", handleLoadFailed);
       webview.removeEventListener("dom-ready", handleDomReady);

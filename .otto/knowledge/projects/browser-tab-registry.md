@@ -6,7 +6,7 @@ status: "confirmed"
 tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "charter"
 created_at: "2026-08-08T06:17:30.324Z"
-updated_at: "2026-09-08T13:13:27.655Z"
+updated_at: "2026-09-08T13:21:15.570Z"
 ---
 # Browser Tab Registry
 
@@ -148,3 +148,7 @@ Not a design decision yet; these are the constraints the design has to satisfy.
   kind: "evidence"
   summary: "2026-09-08: Follow-up on the user's report that all restored tabs showed example.com. Verified current ownership: workspace layouts retain browser IDs; the separate workspace-browser-store localStorage entry retains addresses. Missing records render the example.com fallback. A new regression test reproduced loss of valid addresses when one sibling record or viewport metadata fails strict validation. The shared validated storage adapter additionally deletes the entire entry on validation failure. Browser persistence now validates and recovers records individually, retains a usable address with default metadata when the full record is invalid, preserves malformed bytes on read, and rejects invalid writes without deleting previous data. Verification: 22 focused state/storage tests and 7 rendered browser-control tests pass, as do app typecheck and targeted lint. The user's original profile was not decoded, so this is a reproduced loss mechanism rather than a confirmed diagnosis of their exact session; already-deleted addresses cannot be recovered from layout IDs. This does not change the registry charter's delivery status."
   source: "docs/preview.md#browser-loading-and-navigation-lifetime; packages/app/src/desktop/browser/store/storage.test.ts"
+- time: "2026-09-08T13:21:15.570Z"
+  kind: "evidence"
+  summary: "2026-09-08: A rendered regression test reproduced a missing website title: page-title-updated fired before pane mount, but the tab descriptor displayed the hostname. Title observation still belonged to the mounted pane. The resident guest now owns page-title-updated, and getTitle() reconciles the current title on DOM readiness, load completion, and pane reattachment. Tests cover pre-mount and background dynamic titles, reopening an already-loaded guest, persisted completed titles, and hostname fallback after a page clears its title. Validation: 30 focused Chromium browser tests, app typecheck, targeted lint, formatting, and diff checks pass. Rendered tests substitute Electron methods/events; no packaged Electron end-to-end claim."
+  source: "packages/app/src/desktop/browser/pane/loading.browser.test.tsx; docs/preview.md#browser-loading-and-navigation-lifetime"

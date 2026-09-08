@@ -77,6 +77,7 @@ function BrowserTab({ pane = true }: { pane?: boolean }) {
   );
   return (
     <>
+      <span data-testid="tab-title">{descriptor.label}</span>
       <div data-testid="tab-icon">
         <WorkspaceTabIcon presentation={presentation} />
       </div>
@@ -139,6 +140,56 @@ afterEach(() => {
 });
 
 describe("browser loading controls", () => {
+  it("reads the current guest title when reopening and persists the completed page title", async () => {
+    guest.dispatchEvent(new Event("dom-ready"));
+    let title = "A page loaded before the pane opened";
+    Object.assign(guest, { getTitle: () => title });
+    act(() => root.render(<BrowserTab />));
+    expect(container.querySelector('[data-testid="tab-title"]')?.textContent).toBe(title);
+    title = "The final website title";
+    act(() => guest.dispatchEvent(new Event("did-stop-loading")));
+    expect(container.querySelector('[data-testid="tab-title"]')?.textContent).toBe(title);
+    const stored = await useBrowserStore.persist
+      .getOptions()
+      .storage?.getItem("workspace-browser-store");
+    expect(stored?.state.browsersById[browserId].title).toBe(title);
+  });
+
+  it("falls back to the hostname only when the page clears its title", () => {
+    act(() => root.render(<BrowserTab />));
+    act(() =>
+      guest.dispatchEvent(
+        Object.assign(new Event("page-title-updated"), { title: "Website title" }),
+      ),
+    );
+    expect(container.querySelector('[data-testid="tab-title"]')?.textContent).toBe("Website title");
+    act(() => guest.dispatchEvent(Object.assign(new Event("page-title-updated"), { title: "" })));
+    expect(container.querySelector('[data-testid="tab-title"]')?.textContent).toBe("example.com");
+  });
+
+  it("shows the page title received before pane mount and tracks background title changes", () => {
+    guest.dispatchEvent(
+      Object.assign(new Event("page-title-updated"), { title: "Otto Documentation" }),
+    );
+    act(() => root.render(<BrowserTab />));
+    expect(container.querySelector('[data-testid="tab-title"]')?.textContent).toBe(
+      "Otto Documentation",
+    );
+    act(() => root.render(<BrowserTab pane={false} />));
+    act(() =>
+      guest.dispatchEvent(
+        Object.assign(new Event("page-title-updated"), { title: "Getting Started - Otto" }),
+      ),
+    );
+    expect(container.querySelector('[data-testid="tab-title"]')?.textContent).toBe(
+      "Getting Started - Otto",
+    );
+    act(() => root.render(<BrowserTab />));
+    expect(container.querySelector('[data-testid="tab-title"]')?.textContent).toBe(
+      "Getting Started - Otto",
+    );
+  });
+
   it("shows progress immediately on reload and Stop cancels in the same tab", () => {
     guest.dispatchEvent(new Event("dom-ready"));
     act(() => root.render(<BrowserTab />));

@@ -247,6 +247,12 @@ with the guest when its pane unmounts. A background tab created by automation mu
 update the same browser store as a visible tab. Pane-scoped listeners cannot own
 this state: they miss events before the first mount and while the guest is parked.
 
+Page titles follow the same guest lifetime. The resident webview records
+`page-title-updated` even before a pane mounts or while it is absent, and reads
+`getTitle()` on DOM readiness, load completion, and pane reattachment. The tab label
+uses that persisted website title, falling back to the hostname when no title is
+available. Dynamic page-title changes update background tabs too.
+
 The tab's circular spinner and the toolbar's Reload/Stop control read that same
 loading flag. Reload sets it immediately; Stop cancels the guest navigation and
 clears it. `dom-ready` does not end resource loading, so only the load's terminal
