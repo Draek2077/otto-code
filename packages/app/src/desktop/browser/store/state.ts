@@ -95,8 +95,29 @@ function browserViewportsEqual(left: BrowserViewport, right: BrowserViewport): b
 }
 
 export function normalizeBrowserIndexState(value: unknown): BrowserIndexState {
-  const result = BrowserIndexStateSchema.safeParse(value);
-  return result.success ? result.data : { browsersById: {} };
+  const index = z.object({ browsersById: z.record(z.string(), z.unknown()) }).safeParse(value);
+  if (!index.success) {
+    return { browsersById: {} };
+  }
+  const browsersById: Record<string, BrowserRecord> = {};
+  for (const [browserId, raw] of Object.entries(index.data.browsersById)) {
+    const record = BrowserRecordSchema.safeParse(raw);
+    if (record.success) {
+      browsersById[browserId] = record.data;
+      continue;
+    }
+    // The address is durable user data. Invalid metadata in this or another
+    // tab must never discard a usable address during restore.
+    const address = z.object({ url: z.string().trim().min(1) }).safeParse(raw);
+    if (address.success) {
+      browsersById[browserId] = createBrowserRecord({
+        browserId,
+        initialUrl: address.data.url,
+        now: 0,
+      });
+    }
+  }
+  return { browsersById };
 }
 
 export function trimNonEmpty(value: string | null | undefined): string | null {

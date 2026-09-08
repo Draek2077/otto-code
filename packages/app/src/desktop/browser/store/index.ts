@@ -3,10 +3,9 @@ import { BrowserAutomationBrowserIdSchema } from "@otto-code/protocol/browser-au
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
+import { createBrowserPersistStorage } from "./storage";
 import {
   applyBrowserPatch,
-  BrowserIndexStateSchema,
   type BrowserIndexState,
   type BrowserRecord,
   type BrowserRecordPatch,
@@ -91,7 +90,7 @@ export const useBrowserStore = create<BrowserStoreState>()(
     }),
     {
       name: "workspace-browser-store",
-      storage: createValidatedPersistStorage(AsyncStorage, BrowserIndexStateSchema),
+      storage: createBrowserPersistStorage(AsyncStorage),
       partialize: (state) => sanitizeBrowsersForPersist(state),
       merge: (persistedState, currentState) => {
         const persistedBrowsersById = normalizeBrowserIndexState(persistedState).browsersById;

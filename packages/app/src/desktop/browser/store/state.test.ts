@@ -228,6 +228,27 @@ describe("sanitizeBrowsersForPersist", () => {
 });
 
 describe("normalizeBrowserIndexState", () => {
+  it("preserves saved URLs when another record or optional metadata is invalid", () => {
+    const valid = createBrowserRecord({
+      browserId: "good",
+      initialUrl: "https://otto-code.me/docs",
+      now: 0,
+    });
+    const invalidMetadata = {
+      ...valid,
+      browserId: "old",
+      url: "https://example.org/important",
+      viewport: { mode: "fixed", width: 0, height: 800 },
+    };
+    const restored = normalizeBrowserIndexState({
+      browsersById: { good: valid, old: invalidMetadata, broken: null },
+    });
+    expect(restored.browsersById.good?.url).toBe("https://otto-code.me/docs");
+    expect(restored.browsersById.old?.url).toBe("https://example.org/important");
+    expect(restored.browsersById.old?.viewport).toEqual({ mode: "responsive" });
+    expect(Object.keys(restored.browsersById)).toEqual(["good", "old"]);
+  });
+
   it("defaults legacy persisted records to Responsive", () => {
     const legacy = createBrowserRecord({
       browserId: "b1",

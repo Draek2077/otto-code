@@ -227,6 +227,20 @@ What this buys you, concretely:
 
 ## Browser loading and navigation lifetime
 
+Workspace layouts persist browser IDs; `workspace-browser-store` separately maps
+those IDs to URLs and browser metadata in the app's AsyncStorage (localStorage on
+Electron/web). A restored pane waits for that store to hydrate before creating its
+guest. Switching panes retains the existing guest; restarting the app loads the
+saved URL in a new guest, without restoring the full Chromium navigation history.
+
+Browser persistence recovers each saved record independently. Invalid metadata or
+a malformed sibling record must not discard another tab's URL. When metadata cannot
+be decoded but an address remains, restore that address with default metadata. Reads
+never delete malformed saved bytes. Already-erased addresses cannot be reconstructed
+from the workspace layout, which contains only the browser ID. The current missing
+record fallback is `example.com`; seeing it on formerly populated tabs indicates a
+missing or overwritten browser record, not successful restoration of those pages.
+
 The resident webview owns `did-start-loading`, `did-stop-loading`, and the first
 `dom-ready` observation. These listeners are installed before attachment and remain
 with the guest when its pane unmounts. A background tab created by automation must

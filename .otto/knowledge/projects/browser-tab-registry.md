@@ -6,7 +6,7 @@ status: "confirmed"
 tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "charter"
 created_at: "2026-08-08T06:17:30.324Z"
-updated_at: "2026-09-08T06:39:27.515Z"
+updated_at: "2026-09-08T13:13:27.655Z"
 ---
 # Browser Tab Registry
 
@@ -144,3 +144,7 @@ Not a design decision yet; these are the constraints the design has to satisfy.
   kind: "evidence"
   summary: "2026-09-08: Review of browser commits d5ebc4a5b, 64247c145, and 44528e380 found that the spinner descriptor and Stop glyph were wired, but loading and DOM readiness were observed only by mounted panes. A new resident-webview browser test reproduced did-start-loading leaving the browser store's isLoading false before pane mount. The recovery change also still reset pane readiness on every load, so Stop before another dom-ready could leave the next navigation queued indefinitely. The repair makes resident guests own loading events and first readiness, preserves method readiness across page loads, resets it for replacement attachments, removes the deferred first-navigation queue, immediately displays reload progress, and prevents stopped/superseded asynchronous failures from overwriting current progress. Synchronous loadURL errors now settle visibly. Verification: 20 resident lifecycle tests and 7 Chromium-rendered pane/toolbar/tab-icon tests pass; app typecheck, targeted lint, formatting, and git diff --check pass. Electron guest methods/events are substituted in the rendered component tests; packaged Electron and the user's intermittent dead-tab report are not end-to-end verified. This evidence does not complete the registry charter or establish a renderer-crash diagnosis."
   source: "0.9.4 browser loading-state audit; docs/preview.md#browser-loading-and-navigation-lifetime"
+- time: "2026-09-08T13:13:27.655Z"
+  kind: "evidence"
+  summary: "2026-09-08: Follow-up on the user's report that all restored tabs showed example.com. Verified current ownership: workspace layouts retain browser IDs; the separate workspace-browser-store localStorage entry retains addresses. Missing records render the example.com fallback. A new regression test reproduced loss of valid addresses when one sibling record or viewport metadata fails strict validation. The shared validated storage adapter additionally deletes the entire entry on validation failure. Browser persistence now validates and recovers records individually, retains a usable address with default metadata when the full record is invalid, preserves malformed bytes on read, and rejects invalid writes without deleting previous data. Verification: 22 focused state/storage tests and 7 rendered browser-control tests pass, as do app typecheck and targeted lint. The user's original profile was not decoded, so this is a reproduced loss mechanism rather than a confirmed diagnosis of their exact session; already-deleted addresses cannot be recovered from layout IDs. This does not change the registry charter's delivery status."
+  source: "docs/preview.md#browser-loading-and-navigation-lifetime; packages/app/src/desktop/browser/store/storage.test.ts"
