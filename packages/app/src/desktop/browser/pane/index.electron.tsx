@@ -20,6 +20,7 @@ import {
   MousePointer2,
   RotateCw,
   Smartphone,
+  Square,
   Tablet,
   Wrench,
   X,
@@ -1935,7 +1936,11 @@ function BrowserPaneContents({
             onPress={handleRefresh}
             style={baseIconButtonStyle}
           >
-            <RotateCw size={16} color={theme.colors.foregroundMuted} />
+            {browser?.isLoading ? (
+              <Square size={16} color={theme.colors.foregroundMuted} />
+            ) : (
+              <RotateCw size={16} color={theme.colors.foregroundMuted} />
+            )}
           </ToolbarButton>
         </View>
         <View style={styles.urlBarWrap}>
