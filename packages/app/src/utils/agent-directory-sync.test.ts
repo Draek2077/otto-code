@@ -40,6 +40,7 @@ function createAgentPayload(
     persistence: input.persistence ?? null,
     title: input.title ?? null,
     labels: input.labels ?? {},
+    archivedAt: input.archivedAt ?? null,
   };
 }
 
@@ -299,6 +300,54 @@ describe("replaceFetchedAgentDirectory", () => {
     store.clearSession(serverId);
   });
 
+  it("keeps a locally archived agent hidden when a stale directory refresh arrives", () => {
+    const serverId = "server-archive-fetch-race";
+    const agentId = "agent-archive-fetch-race";
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, null as unknown as DaemonClient);
+    const current = normalizeAgentSnapshot(createAgentPayload({ id: agentId }), serverId);
+    store.setAgents(
+      serverId,
+      new Map([[agentId, { ...current, archivedAt: new Date("2026-08-30T00:02:00.000Z") }]]),
+    );
+    setAgentArchiving({ queryClient, serverId, agentId, isArchiving: true });
+
+    replaceFetchedAgentDirectory({
+      serverId,
+      entries: [
+        createEntry(
+          createAgentPayload({
+            id: agentId,
+            archivedAt: null,
+            updatedAt: "2026-08-30T00:01:00.000Z",
+          }),
+        ),
+      ],
+    });
+
+    expect(store.getSession(serverId)?.agents.get(agentId)?.archivedAt?.toISOString()).toBe(
+      "2026-08-30T00:02:00.000Z",
+    );
+    expect(isAgentArchiving({ queryClient, serverId, agentId })).toBe(true);
+
+    const archived = createAgentPayload({
+      id: agentId,
+      archivedAt: "2026-08-30T00:04:00.000Z",
+      updatedAt: "2026-08-30T00:04:00.000Z",
+    });
+    applyAgentDirectoryDelta({
+      serverId,
+      delta: { kind: "upsert", agent: archived, project: createEntry(archived).project },
+    });
+
+    expect(store.getSession(serverId)?.agents.get(agentId)?.archivedAt?.toISOString()).toBe(
+      "2026-08-30T00:04:00.000Z",
+    );
+    expect(isAgentArchiving({ queryClient, serverId, agentId })).toBe(false);
+
+    store.clearSession(serverId);
+  });
+
   it("removes every replica-owned artifact for a removed agent", () => {
     const serverId = "server-removal";
     const agentId = "removed-agent";
@@ -460,6 +509,44 @@ describe("replaceFetchedAgentDirectory", () => {
       activity: "2026-07-12T11:00:00.000Z",
     });
 
+    store.clearSession(serverId);
+  });
+
+  it("suppresses an unarchived live update while the local archive is pending", () => {
+    const serverId = "server-archive-upsert-race";
+    const agentId = "agent-archive-upsert-race";
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, null as unknown as DaemonClient);
+    const current = normalizeAgentSnapshot(
+      createAgentPayload({ id: agentId, updatedAt: "2026-08-30T00:01:00.000Z" }),
+      serverId,
+    );
+    store.setAgents(
+      serverId,
+      new Map([[agentId, { ...current, archivedAt: new Date("2026-08-30T00:02:00.000Z") }]]),
+    );
+    setAgentArchiving({ queryClient, serverId, agentId, isArchiving: true });
+
+    applyAgentDirectoryDelta({
+      serverId,
+      delta: {
+        kind: "upsert",
+        agent: createAgentPayload({
+          id: agentId,
+          archivedAt: null,
+          status: "running",
+          updatedAt: "2026-08-30T00:03:00.000Z",
+        }),
+        project: createEntry(createAgentPayload({ id: agentId })).project,
+      },
+    });
+
+    expect(store.getSession(serverId)?.agents.get(agentId)?.archivedAt?.toISOString()).toBe(
+      "2026-08-30T00:02:00.000Z",
+    );
+    expect(isAgentArchiving({ queryClient, serverId, agentId })).toBe(true);
+
+    setAgentArchiving({ queryClient, serverId, agentId, isArchiving: false });
     store.clearSession(serverId);
   });
 });

@@ -8,7 +8,7 @@ import {
 } from "@/utils/agent-snapshots";
 import { resolveProjectPlacement } from "@/utils/project-placement";
 import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
-import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
+import { clearArchiveAgentPending, isAgentArchiving } from "@/hooks/use-archive-agent";
 import { queryClient } from "@/data/query-client";
 import { acceptAgentDirectoryUpdate } from "@/utils/agent-directory-update-policy";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
@@ -44,6 +44,17 @@ function upsertAgentDirectoryReplica(
   const session = useSessionStore.getState().sessions[serverId];
   const previousAgent =
     session?.agents.get(normalized.id) ?? session?.agentDetails.get(normalized.id);
+  // The archive mutation marks the local replica before the daemon's archive
+  // snapshot arrives. An already-buffered normal update must not undo that
+  // optimistic close: the track would briefly restore the row after Clear.
+  // Only an explicit archived update is authoritative while this archive is
+  // pending; failure restores the snapshot in use-archive-agent instead.
+  if (
+    !normalized.archivedAt &&
+    isAgentArchiving({ queryClient, serverId, agentId: normalized.id })
+  ) {
+    return { agentId: normalized.id, stoppedRunning: false };
+  }
   const legacyWorkspaceId =
     previousAgent?.workspaceId ??
     Array.from(session?.workspaces.values() ?? []).find(
@@ -222,15 +233,42 @@ export function replaceFetchedAgentDirectory(input: {
 }): { agents: Map<string, Agent> } {
   const { agents: fetchedAgents, pendingPermissions } = buildAgentDirectoryState(input);
   const store = useSessionStore.getState();
+  const currentAgents = store.sessions[input.serverId]?.agents;
+  const suppressedAgentIds = new Set<string>();
+
+  // fetch_agents is a whole-directory replacement, so it needs the same guard
+  // as live upserts. A fetch begun before Clear can otherwise land after the
+  // optimistic archive and bring the completed row back for one interaction.
+  for (const [agentId, current] of currentAgents ?? []) {
+    const fetched = fetchedAgents.get(agentId);
+    if (
+      !fetched ||
+      !current.archivedAt ||
+      fetched.archivedAt ||
+      !isAgentArchiving({ queryClient, serverId: input.serverId, agentId })
+    ) {
+      continue;
+    }
+    fetchedAgents.set(agentId, current);
+    suppressedAgentIds.add(agentId);
+    for (const [key, pending] of pendingPermissions) {
+      if (pending.agentId === agentId) pendingPermissions.delete(key);
+    }
+    for (const request of current.pendingPermissions) {
+      const key = derivePendingPermissionKey(agentId, request);
+      pendingPermissions.set(key, { key, agentId, request });
+    }
+  }
 
   for (const agent of fetchedAgents.values()) {
-    if (agent.archivedAt) {
+    if (agent.archivedAt && !suppressedAgentIds.has(agent.id)) {
       clearArchiveAgentPending({ queryClient, serverId: input.serverId, agentId: agent.id });
     }
   }
 
   store.setAgents(input.serverId, fetchedAgents);
   for (const entry of input.entries) {
+    if (suppressedAgentIds.has(entry.agent.id)) continue;
     const agent = fetchedAgents.get(entry.agent.id);
     if (!agent) continue;
     applyAgentTurnSnapshot(
