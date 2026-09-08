@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.5 - 2026-09-08
+
+### Fixed
+
+- Browser tabs stay responsive after stopping a load
+- Browser tabs retain their address when Otto restarts
+- Browser tabs retain the correct page title when you switch away and back
+- Empty states in a narrow Changes pane stay centered
+
 ## 0.9.4 - 2026-09-07
 
 ### Changed
