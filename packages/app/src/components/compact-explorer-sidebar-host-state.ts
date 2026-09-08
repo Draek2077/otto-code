@@ -18,14 +18,12 @@ export function resolveCompactExplorerTabs(input: {
   hasProjectSearch: boolean;
   showPullRequest: boolean;
 }): { activeTab: ExplorerTab; tabs: ExplorerTab[] } {
-  if (!input.isDeveloperMode) {
-    return { activeTab: "files", tabs: ["files"] };
-  }
-  const tabs: ExplorerTab[] = input.isGit ? ["changes", "files"] : ["files"];
+  const tabs: ExplorerTab[] =
+    input.isDeveloperMode && input.isGit ? ["changes", "files"] : ["files"];
   if (input.hasProjectSearch) tabs.push("search");
-  if (input.isGit && input.showPullRequest) tabs.push("pr");
+  if (input.isDeveloperMode && input.isGit && input.showPullRequest) tabs.push("pr");
   let activeTab = input.activeTab;
-  if (!input.isGit && (activeTab === "changes" || activeTab === "pr")) {
+  if ((!input.isDeveloperMode || !input.isGit) && (activeTab === "changes" || activeTab === "pr")) {
     activeTab = "files";
   } else if (activeTab === "search" && !input.hasProjectSearch) {
     activeTab = "files";

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { queryClient } from "@/data/query-client";
+import { APP_SETTINGS_QUERY_KEY } from "@/hooks/use-settings/storage";
 
 import {
   createKeyboardActionDispatcher,
@@ -10,6 +12,7 @@ describe("keyboard-action-dispatcher", () => {
 
   beforeEach(() => {
     dispatcher = createKeyboardActionDispatcher();
+    queryClient.removeQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
   });
 
   it("dispatches to the highest-priority active handler", () => {
@@ -215,5 +218,30 @@ describe("keyboard-action-dispatcher", () => {
     expect(dispatcher.dispatch(action)).toBe(true);
     expect(replacementHandle).toHaveBeenCalledOnce();
     expect(oldHandle).not.toHaveBeenCalled();
+  });
+
+  it("keeps Search available while User mode blocks the Git Explorer action", () => {
+    queryClient.setQueryData(APP_SETTINGS_QUERY_KEY, { interfaceMode: "user" });
+    const search = vi.fn(() => true);
+    const changes = vi.fn(() => true);
+    dispatcher.registerHandler({
+      handlerId: "search",
+      actions: ["sidebar.open.search"],
+      enabled: true,
+      priority: 100,
+      handle: search,
+    });
+    dispatcher.registerHandler({
+      handlerId: "changes",
+      actions: ["sidebar.open.changes"],
+      enabled: true,
+      priority: 100,
+      handle: changes,
+    });
+
+    expect(dispatcher.dispatch({ id: "sidebar.open.search", scope: "sidebar" })).toBe(true);
+    expect(dispatcher.dispatch({ id: "sidebar.open.changes", scope: "sidebar" })).toBe(false);
+    expect(search).toHaveBeenCalledOnce();
+    expect(changes).not.toHaveBeenCalled();
   });
 });

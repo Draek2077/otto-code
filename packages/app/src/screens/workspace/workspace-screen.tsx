@@ -2211,8 +2211,8 @@ function shouldShowWorkspaceExplorerSidebar(input: {
   isFocusModeEnabled: boolean;
   isMobile: boolean;
 }): boolean {
-  // Shown in both interface modes. User mode gets a Files-only explorer (the
-  // sidebar itself filters Changes / Search / PR); see interface-modes.md.
+  // Shown in both interface modes. User mode retains Files and Search while the
+  // sidebar filters Git-only Changes and pull-request tabs.
   return !input.isMobile && input.isRouteFocused && shouldShowWorkspaceScreenHeader(input);
 }
 
@@ -4903,8 +4903,8 @@ function WorkspaceScreenContent({
           </>
         ) : (
           <>
-            {/* User interface mode: a plain explorer toggle for the Files-only
-                explorer (no git-aware diff badge). Desktop + mobile. */}
+            {/* User interface mode: a plain explorer toggle for Files and Search
+                (no git-aware diff badge). Desktop + mobile. */}
             {headerActionFit.showPlainExplorer ? (
               <PlainExplorerToggle
                 isMobile={isMobile}

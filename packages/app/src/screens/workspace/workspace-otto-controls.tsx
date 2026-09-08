@@ -137,7 +137,7 @@ export function GitCheckoutExplorerToggle({
 
 // The plain explorer toggle (no git-aware diff badge) used to open/close the
 // explorer sidebar. Developer mode uses it for non-git checkouts; User interface
-// mode always uses it, since that mode shows a Files-only explorer.
+// mode always uses it, since that mode keeps Files and Search without Git chrome.
 export function PlainExplorerToggle({
   isMobile,
   anchorRef,

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveCompactExplorerTabs } from "./compact-explorer-sidebar-host-state";
 
 describe("resolveCompactExplorerTabs", () => {
-  it("shows only Files and coerces a persisted developer tab in User mode", () => {
+  it("keeps Otto Search beside Files in User mode", () => {
     expect(
       resolveCompactExplorerTabs({
         activeTab: "search",
@@ -11,7 +11,7 @@ describe("resolveCompactExplorerTabs", () => {
         hasProjectSearch: true,
         showPullRequest: true,
       }),
-    ).toEqual({ activeTab: "files", tabs: ["files"] });
+    ).toEqual({ activeTab: "search", tabs: ["files", "search"] });
   });
 
   it("keeps Otto Search additive to the upstream compact tabs", () => {

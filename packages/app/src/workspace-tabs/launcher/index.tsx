@@ -110,7 +110,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
   const plugins = useInstalledPlugins();
   const isDeveloperMode = useIsDeveloperMode();
   const hasProjectSearch = useProjectSearchFeature(serverId);
-  const showProjectSearch = isDeveloperMode && hasProjectSearch;
+  const showProjectSearch = hasProjectSearch;
   ensurePanelsRegistered();
 
   const launchSelection = useCallback(
@@ -184,8 +184,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         disabled: false,
         panelKind: "project_search",
         explorerNewTab: true,
-        // Same gate as Otto's Explorer search view: a Developer-mode surface
-        // that needs the host's projectSearch capability.
+        // Search is available in both interface modes when the host supports it.
         hidden: !showProjectSearch,
         launch: launchSelection(BUILT_IN_SELECTIONS.search),
       },

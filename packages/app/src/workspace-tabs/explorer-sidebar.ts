@@ -26,7 +26,9 @@ const TAB_TARGETS: Record<ExplorerTab, WorkspaceTabTarget> = {
   pr: { kind: "pull_request" },
 };
 
-const USER_MODE_HIDDEN_EXPLORER_KINDS = new Set(["changes_tree", "project_search", "pull_request"]);
+// Search is Otto's workspace-navigation addition, not a Git/developer operation.
+// User mode keeps it beside Files while continuing to hide Git-only surfaces.
+const USER_MODE_HIDDEN_EXPLORER_KINDS = new Set(["changes_tree", "pull_request"]);
 
 export function filterExplorerSidebarTabs(
   tabs: WorkspaceTab[],
@@ -74,7 +76,7 @@ function canUseExplorerSidebar(
 
 /** Reveals the Explorer sidebar and selects one of its tabs. */
 export function openExplorerSidebarTab(input: ExplorerSidebarInput & { tab: ExplorerTab }): void {
-  const requestedTab = input.isDeveloperMode === false ? "files" : input.tab;
+  const requestedTab = input.tab;
   const tab =
     input.checkout && !input.checkout.isGit && (requestedTab === "changes" || requestedTab === "pr")
       ? "files"

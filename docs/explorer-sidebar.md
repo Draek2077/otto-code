@@ -20,6 +20,9 @@ tabs, including agents, terminals, files, and diffs, can move between Explorer a
 Keep panel implementations independent of either shell. `WorkspacePanelHost` owns mounting and
 retention, while each shell owns its tabs, focus, dragging, resizing, and shortcuts.
 
+User mode retains Files and Otto's Search when the connected host supports project search. Changes
+and pull requests remain Developer-mode Git surfaces.
+
 ## Explorer sidebar
 
 `packages/app/src/workspace-tabs/explorer-sidebar.ts` owns show, hide, toggle, and view selection.

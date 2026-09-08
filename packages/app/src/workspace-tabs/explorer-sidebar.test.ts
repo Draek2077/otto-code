@@ -90,7 +90,7 @@ describe("Explorer sidebar", () => {
     expect(isExplorerSidebarOpen(input)).toBe(false);
   });
 
-  it("opens Files instead of developer-only tabs in User mode", () => {
+  it("opens Search in User mode", () => {
     openExplorerSidebarTab({
       isCompact: true,
       isDeveloperMode: false,
@@ -100,7 +100,7 @@ describe("Explorer sidebar", () => {
     });
 
     expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
-    expect(usePanelStore.getState().explorerTab).toBe("files");
+    expect(usePanelStore.getState().explorerTab).toBe("search");
   });
 
   it("defaults the User-mode compact toggle to Files for Git workspaces", () => {
@@ -117,7 +117,7 @@ describe("Explorer sidebar", () => {
     expect(usePanelStore.getState().explorerTab).toBe("files");
   });
 
-  it("defaults the User-mode desktop toggle to Files for Git workspaces", () => {
+  it("keeps Files and Search in the User-mode desktop Explorer", () => {
     const input = {
       isCompact: false,
       isDeveloperMode: false,
@@ -141,6 +141,7 @@ describe("Explorer sidebar", () => {
         : [];
     expect(filterExplorerSidebarTabs(paneTabs, false).map((tab) => tab.target.kind)).toEqual([
       "files",
+      "project_search",
     ]);
   });
 

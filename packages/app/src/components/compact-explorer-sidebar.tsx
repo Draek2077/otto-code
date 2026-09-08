@@ -111,7 +111,6 @@ export function CompactExplorerSidebar({
   onOpenFile,
 }: ExplorerSidebarProps) {
   const insets = useSafeAreaInsets();
-  const isDeveloperMode = useIsDeveloperMode();
   const isOpen = usePanelStore(selectIsCompactFileExplorerOpen);
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const { explorerTab, handleTabPress } = useExplorerSidebarSharedState({
@@ -121,7 +120,7 @@ export function CompactExplorerSidebar({
   });
   const usePanelKeyboardPadding = shouldUseCompactExplorerKeyboardPadding({
     isGit,
-    explorerTab: isDeveloperMode ? explorerTab : "files",
+    explorerTab,
   });
   const { style: mobileKeyboardInsetStyle } = useKeyboardShiftStyle({
     mode: "padding",
@@ -444,7 +443,7 @@ function ExplorerSidebarContent({
             onTabPress={onTabPress}
             testID="explorer-tab-files"
           />
-          {isDeveloperMode && hasProjectSearch && (
+          {hasProjectSearch && (
             <ExplorerTabButton
               tab="search"
               active={resolvedTab === "search"}
