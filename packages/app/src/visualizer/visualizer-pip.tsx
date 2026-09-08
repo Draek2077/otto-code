@@ -65,6 +65,7 @@ import { PIP_DIMENSIONS, PIP_HOVER_OPACITY } from "@/visualizer/visualizer-chrom
 import { VisualizerSurface } from "@/visualizer/visualizer-surface";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { getOverlayRoot } from "@/lib/overlay-root";
+import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 export interface VisualizerPipProps {
   serverId: string;
@@ -176,21 +177,22 @@ export function VisualizerPip({
   }, [shown, measured, animationsEnabled, presence]);
   const presenceStyle = useAnimatedStyle(() => ({ opacity: presence.value }));
 
-  // FRAME_STYLE is a plain object, not a Unistyles theme style: this is a
-  // Reanimated view, and a `StyleSheet.create((theme) => …)` style on one crashes
-  // on theme change (docs/unistyles.md).
+  // Electron's guest surface does not reliably follow a Reanimated ancestor's
+  // position while that ancestor moves. Keep drag geometry on this ordinary
+  // host node, then fade its contents in a separate animated child. Otherwise
+  // the frame moves while the guest remains painted at its previous location
+  // until release makes the two look like cloned PIPs.
   const frameStyle = useMemo(
     () => [
       FRAME_STYLE,
-      {
+      inlineUnistylesStyle({
         width: dimensions.width,
         height: dimensions.height,
         left: drag.offset.left,
         top: drag.offset.top,
-      },
-      presenceStyle,
+      }),
     ],
-    [dimensions.width, dimensions.height, drag.offset.left, drag.offset.top, presenceStyle],
+    [dimensions.width, dimensions.height, drag.offset.left, drag.offset.top],
   );
   // Don't fade mid-drag: the user is aiming this thing and needs to see it.
   const faded = hovered && !drag.dragging;
@@ -220,65 +222,69 @@ export function VisualizerPip({
   const frame = !measured ? null : (
     /* Plain (non-Pressable) view owns hover; the Pressables inside are
            separate - the canonical pattern in docs/hover.md. */
-    <Animated.View
+    <View
       style={frameStyle}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
-      <View style={fadeStyle} pointerEvents="none">
-        <VisualizerSurface
-          serverId={serverId}
-          workspaceId={workspaceId}
-          surface="pip"
-          isVisible={isVisible}
-          onOpenFile={onOpenFile}
-          followActive={followActive}
-          onFollowActiveChange={setFollowActive}
-        />
-      </View>
-      {/* Transparent, and stacked above the guest - the only place a
-            pointerdown over the graph can be observed at all. */}
-      <View style={dragStyle} {...drag.handlers} />
-      {/* Sibling of the fade layer, so it stays fully opaque and clickable
-            while everything beneath it goes see-through. */}
-      {hovered ? (
-        <View style={styles.controls}>
-          <PipButton
-            label={
-              followActive ? t("workspace.visualizer.pip.pin") : t("workspace.visualizer.pip.unpin")
-            }
-            onPress={handleTogglePin}
-            icon={followActive ? "pin" : "pinned"}
-          />
-          {canShowAsBackground ? (
-            <PipButton
-              label="Use as chat background"
-              onPress={handleBackground}
-              icon="background"
-            />
-          ) : null}
-          <PipButton
-            label={
-              size === "small"
-                ? t("workspace.visualizer.pip.sizeMedium")
-                : t("workspace.visualizer.pip.sizeSmall")
-            }
-            onPress={handleToggleSize}
-            icon={size === "small" ? "grow" : "shrink"}
-          />
-          <PipButton
-            label={t("workspace.visualizer.pip.expand")}
-            onPress={handleExpand}
-            icon="expand"
-          />
-          <PipButton
-            label={t("workspace.visualizer.pip.close")}
-            onPress={handleClose}
-            icon="close"
+      <Animated.View style={[PRESENCE_LAYER_STYLE, presenceStyle]}>
+        <View style={fadeStyle} pointerEvents="none">
+          <VisualizerSurface
+            serverId={serverId}
+            workspaceId={workspaceId}
+            surface="pip"
+            isVisible={isVisible}
+            onOpenFile={onOpenFile}
+            followActive={followActive}
+            onFollowActiveChange={setFollowActive}
           />
         </View>
-      ) : null}
-    </Animated.View>
+        {/* Transparent, and stacked above the guest - the only place a
+              pointerdown over the graph can be observed at all. */}
+        <View style={dragStyle} {...drag.handlers} />
+        {/* Sibling of the fade layer, so it stays fully opaque and clickable
+              while everything beneath it goes see-through. */}
+        {hovered ? (
+          <View style={styles.controls}>
+            <PipButton
+              label={
+                followActive
+                  ? t("workspace.visualizer.pip.pin")
+                  : t("workspace.visualizer.pip.unpin")
+              }
+              onPress={handleTogglePin}
+              icon={followActive ? "pin" : "pinned"}
+            />
+            {canShowAsBackground ? (
+              <PipButton
+                label="Use as chat background"
+                onPress={handleBackground}
+                icon="background"
+              />
+            ) : null}
+            <PipButton
+              label={
+                size === "small"
+                  ? t("workspace.visualizer.pip.sizeMedium")
+                  : t("workspace.visualizer.pip.sizeSmall")
+              }
+              onPress={handleToggleSize}
+              icon={size === "small" ? "grow" : "shrink"}
+            />
+            <PipButton
+              label={t("workspace.visualizer.pip.expand")}
+              onPress={handleExpand}
+              icon="expand"
+            />
+            <PipButton
+              label={t("workspace.visualizer.pip.close")}
+              onPress={handleClose}
+              icon="close"
+            />
+          </View>
+        ) : null}
+      </Animated.View>
+    </View>
   );
 
   // Browser tabs are resident Electron webviews at the document root. Portal
@@ -346,10 +352,16 @@ const PIP_ICONS = {
 // Static because the strip sits on its own dark scrim in every theme.
 const pipIconColor = "rgba(255,255,255,0.92)";
 
-// The frame itself carries no theming, so it lives outside the Unistyles sheet -
-// it is applied to a Reanimated view, and theme styles crash those on theme
-// change (docs/unistyles.md).
+// The frame and presence layer carry no theming, so they live outside the
+// Unistyles sheet. The latter is applied directly to a Reanimated view.
 const FRAME_STYLE = { position: "absolute" } as const;
+const PRESENCE_LAYER_STYLE = {
+  position: "absolute",
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+} as const;
 
 // The frame's outline. Shared, because the control strip insets itself by
 // exactly this much to avoid painting over it - the two must not drift apart.

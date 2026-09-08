@@ -5,6 +5,8 @@ import {
   clearResidentBrowserWebviewsForTests,
   ensureResidentBrowserWebview,
   getResidentBrowserWebview,
+  isResidentBrowserWebviewReady,
+  markResidentBrowserWebviewReady,
   prepareBrowserWebview,
   presentBrowserWebview,
   rememberBrowserWebviewSize,
@@ -162,6 +164,24 @@ describe("resident browser webviews", () => {
       mode: "responsive",
     });
     expect(webview.parentElement).toBe(permanentParent);
+  });
+
+  it("retains guest readiness while a browser pane is parked and presented again", () => {
+    const webview = ensureTestBrowser({
+      browserId: "browser-ready-after-remount",
+      workspaceId: "workspace-ready-after-remount",
+      url: "https://example.com",
+    });
+    if (!webview) {
+      throw new Error("Expected resident browser webview");
+    }
+
+    expect(isResidentBrowserWebviewReady(webview)).toBe(false);
+    markResidentBrowserWebviewReady(webview);
+    releaseResidentBrowserWebview("browser-ready-after-remount", webview);
+
+    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
+    expect(takeResidentBrowserWebview("browser-ready-after-remount")).toBe(webview);
   });
 
   it("yields a visible browser surface to workspace tab drags without unmounting it", () => {

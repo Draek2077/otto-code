@@ -64,6 +64,7 @@ import {
 import {
   applyInactiveBrowserWebviewViewport,
   isResidentBrowserWebviewReady,
+  markResidentBrowserWebviewReady,
   prepareBrowserWebview,
   presentBrowserWebview,
   rememberBrowserWebviewSize,
@@ -1055,6 +1056,7 @@ function BrowserPaneContents({
     };
     const handleDomReady = () => {
       domReadyRef.current = true;
+      markResidentBrowserWebviewReady(webview);
       // Flush any navigation requested before the webview was ready (e.g. a
       // preview tab mounted against an already-running server).
       const pendingLoadUrl = pendingLoadUrlRef.current;

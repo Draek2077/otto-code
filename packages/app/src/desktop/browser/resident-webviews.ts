@@ -457,12 +457,16 @@ export function removeResidentBrowserWebview(browserId: string): void {
   residentWebviewsByBrowserId.delete(normalizedBrowserId);
   residentSurfacesByBrowserId.delete(normalizedBrowserId);
   residentWebviewSizesByBrowserId.delete(normalizedBrowserId);
+  if (resident) {
+    readyResidentWebviews.delete(resident);
+  }
   resident?.remove();
   surface?.remove();
 }
 
 export function clearResidentBrowserWebviewsForTests(): void {
   for (const webview of residentWebviewsByBrowserId.values()) {
+    readyResidentWebviews.delete(webview);
     webview.remove();
   }
   residentWebviewsByBrowserId.clear();
@@ -477,3 +481,12 @@ export function isResidentBrowserWebviewReady(webview: HTMLElement): boolean {
 }
 
 const readyResidentWebviews = new WeakSet<HTMLElement>();
+
+/**
+ * A resident guest only emits `dom-ready` once per attachment. Browser panes
+ * mount and unmount around that guest, so the next pane must retain this fact
+ * instead of waiting forever for an event that has already happened.
+ */
+export function markResidentBrowserWebviewReady(webview: HTMLElement): void {
+  readyResidentWebviews.add(webview);
+}

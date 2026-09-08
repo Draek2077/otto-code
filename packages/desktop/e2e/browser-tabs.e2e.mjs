@@ -863,6 +863,25 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
     );
   }
 
+  // A resident guest has already emitted dom-ready before this pane remounts.
+  // Submitting a URL must navigate immediately, rather than queue it forever
+  // for an event that will not repeat until a navigation begins.
+  const resumedUrl = `${targetUrl}?resident-navigation=1`;
+  const addressBar = originalDeck.getByRole("textbox", { name: "Browser URL" });
+  await addressBar.fill(resumedUrl);
+  await addressBar.press("Enter");
+  await page.waitForFunction(
+    ({ id, url }) => {
+      const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+      return typeof webview?.getURL === "function" && webview.getURL() === url;
+    },
+    { id: browserId, url: resumedUrl },
+    { timeout: timeoutMs },
+  );
+  await originalDeck
+    .getByRole("button", { name: "Refresh", exact: true })
+    .waitFor({ state: "visible", timeout: timeoutMs });
+
   for (const workspaceId of workspaceIds.slice(1)) {
     await page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`).click();
     await page
