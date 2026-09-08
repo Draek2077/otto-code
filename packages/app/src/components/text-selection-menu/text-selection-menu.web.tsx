@@ -1,11 +1,12 @@
 import * as Clipboard from "expo-clipboard";
-import {
+import React, {
   Fragment,
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
   type ReactElement,
@@ -20,6 +21,7 @@ import {
   contextMenuAnchorFromEvent,
 } from "@/components/ui/context-menu";
 import { Shortcut } from "@/components/ui/shortcut";
+import { getDesktopHost } from "@/desktop/host";
 import {
   resolveTextSelectionMenuActions,
   type TextSelectionMenuActionId,
@@ -37,6 +39,15 @@ interface TextSelectionMenuState {
   anchor: { x: number; y: number };
   beforeStandardActions: ReactNode;
   snapshot: TextSelectionSnapshot;
+  spellcheckContext: SpellcheckContextSnapshot | null;
+}
+
+interface SpellcheckContextSnapshot {
+  token: string;
+  x: number;
+  y: number;
+  suggestions: string[];
+  canAddToDictionary: boolean;
 }
 
 export interface OpenTextSelectionMenuOptions {
@@ -57,6 +68,7 @@ interface TextSelectionMenuContextValue {
 
 const TextSelectionMenuContext = createContext<TextSelectionMenuContextValue | null>(null);
 const DISPLAY_CONTENTS: CSSProperties = { display: "contents" };
+const SPELLCHECK_CONTEXT_TTL_MS = 30_000;
 
 function getEventTarget(event: unknown): EventTarget | null {
   if (typeof event !== "object" || event === null) return null;
@@ -69,6 +81,35 @@ function getEventTarget(event: unknown): EventTarget | null {
 function getTargetElement(target: EventTarget | null): Element | null {
   if (target instanceof Element) return target;
   return target instanceof Node ? target.parentElement : null;
+}
+
+function readSpellcheckContext(input: unknown): SpellcheckContextSnapshot | null {
+  if (typeof input !== "object" || input === null) return null;
+  const token = Reflect.get(input, "token");
+  const x = Reflect.get(input, "x");
+  const y = Reflect.get(input, "y");
+  const suggestions = Reflect.get(input, "suggestions");
+  const canAddToDictionary = Reflect.get(input, "canAddToDictionary");
+  if (
+    typeof token !== "string" ||
+    typeof x !== "number" ||
+    typeof y !== "number" ||
+    !Array.isArray(suggestions) ||
+    !suggestions.every((suggestion) => typeof suggestion === "string") ||
+    typeof canAddToDictionary !== "boolean"
+  ) {
+    return null;
+  }
+  return { token, x, y, suggestions, canAddToDictionary };
+}
+
+function isSpellcheckContextAtAnchor(
+  context: SpellcheckContextSnapshot,
+  anchor: { x: number; y: number },
+): boolean {
+  // Electron and React Native Web report the same content-space coordinates,
+  // but tolerate sub-pixel rounding at a non-100% desktop zoom.
+  return Math.abs(context.x - anchor.x) <= 2 && Math.abs(context.y - anchor.y) <= 2;
 }
 
 function supportsTextSelection(input: HTMLInputElement): boolean {
@@ -235,8 +276,65 @@ function TextSelectionMenuItems({ snapshot }: { snapshot: TextSelectionSnapshot 
   ));
 }
 
+function SpellcheckSuggestionMenuItem({
+  suggestion,
+  onReplace,
+}: {
+  suggestion: string;
+  onReplace: (suggestion: string) => void;
+}) {
+  const handleSelect = useCallback(() => onReplace(suggestion), [onReplace, suggestion]);
+  return <ContextMenuItem onSelect={handleSelect}>{suggestion}</ContextMenuItem>;
+}
+
+function SpellcheckMenuItems({ context }: { context: SpellcheckContextSnapshot }) {
+  const runReplace = useCallback(
+    (suggestion: string) => {
+      void getDesktopHost()?.menu?.applySpellcheckAction?.({
+        token: context.token,
+        kind: "replace",
+        suggestion,
+      });
+    },
+    [context.token],
+  );
+  const runAddToDictionary = useCallback(() => {
+    void getDesktopHost()?.menu?.applySpellcheckAction?.({
+      token: context.token,
+      kind: "add-to-dictionary",
+    });
+  }, [context.token]);
+
+  return (
+    <>
+      {context.suggestions.length > 0 ? (
+        context.suggestions.map((suggestion) => (
+          <SpellcheckSuggestionMenuItem
+            key={suggestion}
+            suggestion={suggestion}
+            onReplace={runReplace}
+          />
+        ))
+      ) : (
+        <ContextMenuItem disabled>No suggestions</ContextMenuItem>
+      )}
+      {context.canAddToDictionary ? (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={runAddToDictionary}>Add to Dictionary</ContextMenuItem>
+        </>
+      ) : null}
+      <ContextMenuSeparator />
+    </>
+  );
+}
+
 export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
   const [state, setState] = useState<TextSelectionMenuState | null>(null);
+  const pendingSpellcheckContext = useRef<{
+    context: SpellcheckContextSnapshot;
+    receivedAt: number;
+  } | null>(null);
   const close = useCallback(() => setState(null), []);
   const handleOpenChange = useCallback(
     (isOpen: boolean) => {
@@ -248,10 +346,20 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
     (event: unknown, options: OpenTextSelectionMenuOptions = {}): boolean => {
       const anchor = contextMenuAnchorFromEvent(event);
       if (!anchor) return false;
+      const snapshot = captureTextSelection(getEventTarget(event), options.selectAllScope);
+      const pending = pendingSpellcheckContext.current;
+      const spellcheckContext =
+        snapshot.editableTarget !== null &&
+        pending !== null &&
+        Date.now() - pending.receivedAt <= SPELLCHECK_CONTEXT_TTL_MS &&
+        isSpellcheckContextAtAnchor(pending.context, anchor)
+          ? pending.context
+          : null;
       setState({
         anchor,
         beforeStandardActions: options.beforeStandardActions ?? null,
-        snapshot: captureTextSelection(getEventTarget(event), options.selectAllScope),
+        snapshot,
+        spellcheckContext,
       });
       return true;
     },
@@ -291,6 +399,41 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
     };
   }, [open]);
 
+  useEffect(() => {
+    const onSpellcheckContext = (input: unknown) => {
+      const context = readSpellcheckContext(input);
+      if (!context) return;
+      pendingSpellcheckContext.current = { context, receivedAt: Date.now() };
+      setState((current) => {
+        if (
+          !current?.snapshot.editableTarget ||
+          !isSpellcheckContextAtAnchor(context, current.anchor)
+        ) {
+          return current;
+        }
+        return { ...current, spellcheckContext: context };
+      });
+    };
+    const subscribe = getDesktopHost()?.events?.on;
+    if (!subscribe) return;
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+    void Promise.resolve(subscribe("spellcheck-context", onSpellcheckContext))
+      .then((nextUnsubscribe) => {
+        if (disposed) {
+          nextUnsubscribe();
+          return undefined;
+        }
+        unsubscribe = nextUnsubscribe;
+        return undefined;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
+
   const hasCustomActions = state?.beforeStandardActions !== null;
   return (
     <TextSelectionMenuContext.Provider value={contextValue}>
@@ -301,6 +444,9 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
         onOpenChange={handleOpenChange}
       >
         <ContextMenuContent side="bottom" align="start" testID="text-selection-context-menu">
+          {state?.spellcheckContext ? (
+            <SpellcheckMenuItems context={state.spellcheckContext} />
+          ) : null}
           {state?.beforeStandardActions}
           {hasCustomActions ? <ContextMenuSeparator /> : null}
           {state ? <TextSelectionMenuItems snapshot={state.snapshot} /> : null}

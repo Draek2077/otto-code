@@ -150,6 +150,8 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
       ipcRenderer.invoke("otto:menu:showContextMenu", input),
     setCapturingShortcut: (capturing: boolean) =>
       ipcRenderer.invoke("otto:menu:set-capturing-shortcut", capturing),
+    applySpellcheckAction: (action: Record<string, unknown>) =>
+      ipcRenderer.invoke("otto:spellcheck:apply", action),
   },
   browser: {
     setShortcutPolicy: (input: BrowserKeyboardPolicy) =>

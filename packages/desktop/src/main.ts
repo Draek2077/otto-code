@@ -69,7 +69,7 @@ import { registerOpenerHandlers } from "./features/opener.js";
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
 import { resolveDesktopWindowChromeMode, windowChromeModeArgument } from "./window/chrome.js";
 import { resolveAppIconPath } from "./features/stamped-icon.js";
-import { setupApplicationMenu } from "./features/menu.js";
+import { setupApplicationMenu, SpellcheckContextRegistry } from "./features/menu.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
   decideBrowserWindowOpenRequest,
@@ -383,6 +383,13 @@ const pendingWebviewAttaches: PendingWebviewAttach[] = [];
 // this must be constructed at module scope, before the first window loads.
 const browserKeyboard = new BrowserKeyboard(getOttoBrowserWebviewRegistry());
 browserKeyboard.registerIpc();
+const spellcheckContexts = new SpellcheckContextRegistry();
+
+// The shared renderer menu draws the suggestions, but Electron must perform
+// the edit against the exact native spelling context that produced them.
+ipcMain.handle("otto:spellcheck:apply", (event, action: unknown): boolean =>
+  spellcheckContexts.apply(event.sender, action),
+);
 
 function showBrowserWebviewContextMenu(
   win: BrowserWindow,
@@ -1049,6 +1056,7 @@ async function createWindow(
     agentNavigationInbox.removeWindow(webContentsId);
     unregisterOttoBrowserHost(webContentsId);
     browserKeyboard.detachHost(webContentsId);
+    spellcheckContexts.clear(webContentsId);
   });
 
   // Windows/Linux: hide the last visible window to the tray instead of letting it
@@ -1112,6 +1120,12 @@ async function createWindow(
   }
   setupDragDropPrevention(mainWindow, trustedOttoOriginPolicy);
   setupCursorHoverForwarding(mainWindow);
+  mainWindow.webContents.on("context-menu", (_event, params) => {
+    const context = spellcheckContexts.capture(mainWindow.webContents, params);
+    if (context) {
+      mainWindow.webContents.send("otto:event:spellcheck-context", context);
+    }
+  });
   mainWindow.webContents.on("will-attach-webview", (event, webPreferences, params) => {
     if (isArtifactWebviewAttach(params)) {
       pendingWebviewAttaches.push({ kind: "artifact" });

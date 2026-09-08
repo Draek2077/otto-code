@@ -166,6 +166,8 @@ export interface DesktopWebUtilsBridge {
 export interface DesktopMenuBridge {
   showContextMenu?: (input?: { kind?: "terminal"; hasSelection?: boolean }) => Promise<void>;
   setCapturingShortcut?: (capturing: boolean) => Promise<void>;
+  /** Applies an opaque spelling operation from the current native right click. */
+  applySpellcheckAction?: (action: Record<string, unknown>) => Promise<boolean>;
 }
 
 export interface DesktopWindowChromeUpdate {

@@ -1,9 +1,96 @@
-import { app, Menu, BrowserWindow, ipcMain } from "electron";
+import { app, Menu, BrowserWindow, ipcMain, type WebContents } from "electron";
 import { getActiveOttoBrowserWebContentsForHostWindow } from "./browser-webviews/index.js";
 
 interface ShowContextMenuInput {
   kind?: "terminal";
   hasSelection?: boolean;
+}
+
+const SPELLCHECK_CONTEXT_TTL_MS = 30_000;
+
+export interface SpellcheckContextSnapshot {
+  token: string;
+  x: number;
+  y: number;
+  suggestions: string[];
+  canAddToDictionary: boolean;
+}
+
+interface StoredSpellcheckContext extends SpellcheckContextSnapshot {
+  misspelledWord: string;
+  expiresAt: number;
+}
+
+type SpellcheckMenuAction =
+  | { token: string; kind: "replace"; suggestion: string }
+  | { token: string; kind: "add-to-dictionary" };
+
+function readSpellcheckMenuAction(input: unknown): SpellcheckMenuAction | null {
+  if (typeof input !== "object" || input === null) return null;
+  const token = Reflect.get(input, "token");
+  const kind = Reflect.get(input, "kind");
+  if (typeof token !== "string") return null;
+  if (kind === "add-to-dictionary") return { token, kind };
+  const suggestion = Reflect.get(input, "suggestion");
+  return kind === "replace" && typeof suggestion === "string" ? { token, kind, suggestion } : null;
+}
+
+/**
+ * Retains only the native spellchecker operation created by the latest right
+ * click in each window. The renderer sees suggestions, never the misspelled
+ * word, and can only apply one of the suggestions that Electron produced.
+ */
+export class SpellcheckContextRegistry {
+  private readonly contexts = new Map<number, StoredSpellcheckContext>();
+  private nextToken = 0;
+
+  capture(
+    contents: WebContents,
+    params: Electron.ContextMenuParams,
+  ): SpellcheckContextSnapshot | null {
+    if (!params.isEditable || !params.spellcheckEnabled || !params.misspelledWord) {
+      this.contexts.delete(contents.id);
+      return null;
+    }
+
+    const context: StoredSpellcheckContext = {
+      token: `spellcheck-${++this.nextToken}`,
+      x: params.x,
+      y: params.y,
+      suggestions: [...params.dictionarySuggestions],
+      canAddToDictionary: true,
+      misspelledWord: params.misspelledWord,
+      expiresAt: Date.now() + SPELLCHECK_CONTEXT_TTL_MS,
+    };
+    this.contexts.set(contents.id, context);
+    const { misspelledWord: _misspelledWord, expiresAt: _expiresAt, ...snapshot } = context;
+    return snapshot;
+  }
+
+  apply(contents: WebContents, rawAction: unknown): boolean {
+    const action = readSpellcheckMenuAction(rawAction);
+    const context = this.contexts.get(contents.id);
+    if (!action || !context || context.expiresAt < Date.now() || context.token !== action.token) {
+      return false;
+    }
+    if (action.kind === "replace" && !context.suggestions.includes(action.suggestion)) {
+      return false;
+    }
+
+    // A context-menu command is single use, matching Electron's own native
+    // menu. Clearing before the edit also prevents a stale React menu from
+    // changing a newer word after another right click.
+    this.contexts.delete(contents.id);
+    if (action.kind === "add-to-dictionary") {
+      return contents.session.addWordToSpellCheckerDictionary(context.misspelledWord);
+    }
+    contents.replaceMisspelling(action.suggestion);
+    return true;
+  }
+
+  clear(contentsId: number): void {
+    this.contexts.delete(contentsId);
+  }
 }
 
 interface ApplicationMenuOptions {

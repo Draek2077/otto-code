@@ -16,6 +16,12 @@ standard action group: static text gets **Copy** and **Select all**; a text inpu
 **Cut** and **Paste**. Disabled actions remain visible when their target has no selection, and every
 row prints its platform shortcut.
 
+On Electron, an editable misspelling adds the native spellchecker’s suggestions and **Add to
+Dictionary** above that standard group. The menu stays Otto-owned, while its short-lived native
+operation token keeps replacement and dictionary changes bound to the word that produced that
+right click. Browser and mobile hosts omit this Electron-only group because the web platform does
+not expose native dictionary suggestions to renderer code.
+
 A target with a specific context menu claims an **unselected** browser event, while a non-empty text
 selection always yields to the root standard group. That keeps Copy available from selected labels
 inside workspace rows and tabs. To build a hybrid menu, wrap the target in
