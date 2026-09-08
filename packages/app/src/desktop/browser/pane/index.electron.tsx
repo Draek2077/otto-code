@@ -64,7 +64,6 @@ import {
 import {
   applyInactiveBrowserWebviewViewport,
   isResidentBrowserWebviewReady,
-  markResidentBrowserWebviewReady,
   prepareBrowserWebview,
   presentBrowserWebview,
   rememberBrowserWebviewSize,
@@ -726,14 +725,7 @@ function BrowserPaneContents({
   const browserRef = useRef(browser);
   browserRef.current = browser;
   const pendingNavigationUrlRef = useRef<string | null>(null);
-  // A URL requested via navigate() before the webview's dom-ready fired.
-  // loadURL() throws ("must be attached to the DOM and dom-ready emitted")
-  // if called too early - most commonly when a preview tab mounts against an
-  // already-running server, so previewStatus is "ready" synchronously and the
-  // navigation effect fires before the guest page has ever loaded. We stash the
-  // URL here and flush it from handleDomReady.
-  const pendingLoadUrlRef = useRef<string | null>(null);
-  const domReadyRef = useRef(false);
+  const navigationRequestRef = useRef(0);
   const annotationMarkersRef = useRef<BrowserAnnotationMarker[]>([]);
   const [selectorMode, setSelectorMode] = useState<"annotate" | "screenshot" | null>(null);
   const selectorActive = selectorMode !== null;
@@ -917,7 +909,7 @@ function BrowserPaneContents({
 
   const syncNavigationState = useCallback((input?: { syncUrl?: boolean }) => {
     const webview = webviewRef.current;
-    if (!webview || !domReadyRef.current) {
+    if (!webview || !isResidentBrowserWebviewReady(webview)) {
       return;
     }
 
@@ -956,7 +948,6 @@ function BrowserPaneContents({
     const residentWebview = takeResidentBrowserWebview(browserId) as ElectronWebview | null;
     const webview = residentWebview ?? (document.createElement("webview") as ElectronWebview);
     webviewRef.current = webview;
-    domReadyRef.current = isResidentBrowserWebviewReady(webview);
     if (!residentWebview) {
       prepareBrowserWebview(webview, {
         browserId,
@@ -988,12 +979,9 @@ function BrowserPaneContents({
           });
 
     const handleStartLoading = () => {
-      domReadyRef.current = false;
-      updateBrowser(browserId, { isLoading: true, lastError: null });
       syncNavigationState({ syncUrl: false });
     };
     const handleStopLoading = () => {
-      updateBrowser(browserId, { isLoading: false });
       syncNavigationState();
     };
     const handleNavigate = (event: Event) => {
@@ -1055,23 +1043,6 @@ function BrowserPaneContents({
       });
     };
     const handleDomReady = () => {
-      domReadyRef.current = true;
-      markResidentBrowserWebviewReady(webview);
-      // Flush any navigation requested before the webview was ready (e.g. a
-      // preview tab mounted against an already-running server).
-      const pendingLoadUrl = pendingLoadUrlRef.current;
-      if (pendingLoadUrl && webview.loadURL) {
-        pendingLoadUrlRef.current = null;
-        void webview.loadURL(pendingLoadUrl).catch((error: unknown) => {
-          const message = getLoadUrlRejectionMessage(error, browserErrorLabelsRef.current);
-          if (message) {
-            updateBrowserRef.current(browserIdRef.current, {
-              isLoading: false,
-              lastError: message,
-            });
-          }
-        });
-      }
       syncNavigationState();
       // The previous page's overlay is gone after a load; re-apply markers for
       // the freshly loaded document.
@@ -1116,6 +1087,9 @@ function BrowserPaneContents({
     }
 
     return () => {
+      // Invalidate the latest request, including one started after this effect mounted.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      ++navigationRequestRef.current;
       sizeObserver?.disconnect();
       webview.removeEventListener("did-start-loading", handleStartLoading);
       webview.removeEventListener("did-stop-loading", handleStopLoading);
@@ -1139,7 +1113,6 @@ function BrowserPaneContents({
       if (webviewRef.current === webview) {
         webviewRef.current = null;
       }
-      domReadyRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [browserId, onFocusPane]);
@@ -1171,6 +1144,7 @@ function BrowserPaneContents({
 
   const navigate = useCallback(
     (nextUrl: string) => {
+      const request = ++navigationRequestRef.current;
       const normalizedUrl = normalizeWorkspaceBrowserUrl(nextUrl);
       const webview = webviewRef.current;
       const unsafeNavigationMessage = getUnsafeNavigationMessage(normalizedUrl, browserErrorLabels);
@@ -1190,26 +1164,29 @@ function BrowserPaneContents({
         });
         return;
       }
-      if (webview?.loadURL) {
-        if (!domReadyRef.current) {
-          // Webview not ready yet - defer; handleDomReady flushes this.
-          pendingLoadUrlRef.current = normalizedUrl;
+      const handleNavigationError = (error: unknown) => {
+        if (request !== navigationRequestRef.current) {
           return;
         }
-        void webview.loadURL(normalizedUrl).catch((error: unknown) => {
-          const message = getLoadUrlRejectionMessage(error, browserErrorLabels);
-          if (!message) {
-            return;
-          }
-          updateBrowserRef.current(browserIdRef.current, {
-            isLoading: false,
-            lastError: message,
-          });
+        const message = getLoadUrlRejectionMessage(error, browserErrorLabels);
+        if (!message) {
+          return;
+        }
+        updateBrowserRef.current(browserIdRef.current, {
+          isLoading: false,
+          lastError: message,
         });
-        return;
-      }
-      if (webview) {
-        webview.setAttribute("src", normalizedUrl);
+      };
+      try {
+        if (webview?.loadURL && isResidentBrowserWebviewReady(webview)) {
+          void webview.loadURL(normalizedUrl).catch(handleNavigationError);
+        } else if (webview) {
+          // Before the first DOM ready, src can replace even a stalled initial
+          // request. Waiting for that request to finish can strand the tab forever.
+          webview.setAttribute("src", normalizedUrl);
+        }
+      } catch (error) {
+        handleNavigationError(error);
       }
     },
     [browserErrorLabels],
@@ -1246,13 +1223,34 @@ function BrowserPaneContents({
   }, [syncNavigationState]);
 
   const handleRefresh = useCallback(() => {
-    if (browser?.isLoading) {
-      webviewRef.current?.stop?.();
-      updateBrowser(browserId, { isLoading: false });
+    const webview = webviewRef.current;
+    if (!webview) {
       return;
     }
-    webviewRef.current?.reload?.();
-  }, [browser?.isLoading, browserId, updateBrowser]);
+    ++navigationRequestRef.current;
+    if (useBrowserStore.getState().browsersById[browserId]?.isLoading) {
+      pendingNavigationUrlRef.current = null;
+      try {
+        webview.stop?.();
+        updateBrowser(browserId, { isLoading: false });
+      } catch (error) {
+        updateBrowser(browserId, {
+          isLoading: false,
+          lastError: getLoadUrlRejectionMessage(error, browserErrorLabelsRef.current),
+        });
+      }
+      return;
+    }
+    updateBrowser(browserId, { isLoading: true, lastError: null });
+    try {
+      webview.reload?.();
+    } catch (error) {
+      updateBrowser(browserId, {
+        isLoading: false,
+        lastError: getLoadUrlRejectionMessage(error, browserErrorLabelsRef.current),
+      });
+    }
+  }, [browserId, updateBrowser]);
 
   useEffect(() => {
     if (!isElectronRuntime() || !isInteractive) {
@@ -1454,7 +1452,7 @@ function BrowserPaneContents({
   const startElementSelector = useCallback(
     (mode: "annotate" | "screenshot") => {
       const webview = webviewRef.current;
-      if (!webview || !domReadyRef.current) return;
+      if (!webview || !isResidentBrowserWebviewReady(webview)) return;
       // Annotate needs a workspace scope to attach to; screenshot only copies.
       if (mode === "annotate" && !workspaceAttachmentScopeKey) return;
       selectorModeRef.current = mode;
@@ -1691,7 +1689,7 @@ function BrowserPaneContents({
             window.setTimeout(() => {
               window.clearInterval(poll);
               setSelectorMode(null);
-              if (webviewRef.current !== webview || !domReadyRef.current) {
+              if (webviewRef.current !== webview || !isResidentBrowserWebviewReady(webview)) {
                 return;
               }
               destroyWebviewSelector(webview);
@@ -1711,7 +1709,7 @@ function BrowserPaneContents({
   const cancelElementSelector = useCallback(() => {
     const webview = webviewRef.current;
     setSelectorMode(null);
-    if (webview && domReadyRef.current) {
+    if (webview && isResidentBrowserWebviewReady(webview)) {
       try {
         clearWebviewSelector(webview);
       } catch {}
@@ -1747,7 +1745,7 @@ function BrowserPaneContents({
       return;
     }
     const webview = webviewRef.current;
-    if (!webview || !domReadyRef.current) {
+    if (!webview || !isResidentBrowserWebviewReady(webview)) {
       return;
     }
     if (annotationMarkers.length === 0) {

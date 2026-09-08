@@ -1,0 +1,252 @@
+import React, { act, useMemo } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BrowserPane } from "./index.electron";
+import { browserPanelRegistration } from "../panel";
+import {
+  WorkspaceTabIcon,
+  type WorkspaceTabPresentation,
+} from "@/screens/workspace/workspace-tab-icon";
+import { useBrowserStore } from "../store";
+import {
+  clearResidentBrowserWebviewsForTests,
+  ensureResidentBrowserWebview,
+} from "../resident-webviews";
+
+Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
+
+// Only the surrounding app services and Electron methods are substituted.
+// The pane, resident lifecycle, store, descriptor, toolbar and tab icon are real.
+vi.mock("@/desktop/host", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/desktop/host")>()),
+  isElectronRuntime: () => true,
+  getDesktopHost: () => ({
+    browser: {
+      profilePartition: "persist:otto-browser-test",
+      registerAttachedBrowser: async () => {},
+    },
+  }),
+}));
+vi.mock("@/hooks/use-settings", () => ({ useAppSettings: () => ({ settings: {} }) }));
+vi.mock("@/components/retained-panel", () => ({ useRetainedPanelActive: () => true }));
+vi.mock("@/contexts/toast-context", () => ({ useToast: () => ({ toast: () => {} }) }));
+vi.mock("@/stores/session-store", () => ({
+  useSessionStore: { getState: () => ({ sessions: {} }) },
+}));
+vi.mock("@/stores/session-store-hooks", () => ({ useWorkspaceDirectory: () => null }));
+vi.mock("@/attachments/workspace-attachments-store", () => {
+  const attachments: never[] = [];
+  return {
+    buildWorkspaceAttachmentScopeKey: () => "workspace",
+    useWorkspaceAttachments: () => attachments,
+    useWorkspaceAttachmentsStore: () => () => {},
+  };
+});
+vi.mock("@/attachments/service", () => ({ persistAttachmentFromDataUrl: async () => null }));
+vi.mock("expo-clipboard", () => ({ setStringAsync: async () => {} }));
+vi.mock("react-i18next", () => {
+  const t = (key: string) => key;
+  return { useTranslation: () => ({ t }) };
+});
+
+type Guest = HTMLElement & {
+  reload: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+  loadURL: ReturnType<typeof vi.fn>;
+};
+let container: HTMLDivElement;
+let root: Root;
+let browserId: string;
+let guest: Guest;
+const reloadLabel = "workspace.browser.controls.refresh";
+const stopLabel = "workspace.browser.controls.stopLoading";
+
+function BrowserTab({ pane = true }: { pane?: boolean }) {
+  const descriptor = browserPanelRegistration.useDescriptor(
+    { kind: "browser", browserId },
+    { serverId: "host", workspaceId: "workspace", tabId: "tab" },
+  );
+  const presentation = useMemo<WorkspaceTabPresentation>(
+    () => ({
+      ...descriptor,
+      key: "tab",
+      kind: "browser",
+      subtitle: descriptor.subtitle ?? "",
+    }),
+    [descriptor],
+  );
+  return (
+    <>
+      <div data-testid="tab-icon">
+        <WorkspaceTabIcon presentation={presentation} />
+      </div>
+      {pane && (
+        <BrowserPane browserId={browserId} serverId="host" workspaceId="workspace" cwd={null} />
+      )}
+    </>
+  );
+}
+
+function button(label: string): HTMLElement | null {
+  return container.querySelector(`[role="button"][aria-label="${label}"]`);
+}
+
+function expectLoading(loading: boolean) {
+  expect(button(loading ? stopLabel : reloadLabel)).not.toBeNull();
+  expect(button(loading ? reloadLabel : stopLabel)).toBeNull();
+  expect(container.querySelector('[data-testid="tab-icon"] [role="progressbar"]') !== null).toBe(
+    loading,
+  );
+}
+
+function navigateTo(url: string) {
+  const input = container.querySelector<HTMLInputElement>(
+    'input[aria-label="workspace.browser.controls.browserUrl"]',
+  )!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, url);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  act(() =>
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }),
+    ),
+  );
+}
+
+beforeEach(async () => {
+  await useBrowserStore.persist.rehydrate();
+  useBrowserStore.setState({ browsersById: {} });
+  browserId = useBrowserStore.getState().createBrowser({ initialUrl: "https://example.com" });
+  guest = ensureResidentBrowserWebview({
+    browserId,
+    workspaceId: "workspace",
+    url: "https://example.com",
+  }) as Guest;
+  guest.reload = vi.fn();
+  guest.stop = vi.fn(() => guest.dispatchEvent(new Event("did-stop-loading")));
+  guest.loadURL = vi.fn(async () => {});
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  container.remove();
+  clearResidentBrowserWebviewsForTests();
+  useBrowserStore.setState({ browsersById: {} });
+});
+
+describe("browser loading controls", () => {
+  it("shows progress immediately on reload and Stop cancels in the same tab", () => {
+    guest.dispatchEvent(new Event("dom-ready"));
+    act(() => root.render(<BrowserTab />));
+    expectLoading(false);
+    act(() => button(reloadLabel)!.click());
+    expect(guest.reload).toHaveBeenCalledTimes(1);
+    expectLoading(true);
+    act(() => guest.dispatchEvent(new Event("did-start-loading")));
+    act(() => button(stopLabel)!.click());
+    expect(guest.stop).toHaveBeenCalledTimes(1);
+    expectLoading(false);
+    act(() => button(reloadLabel)!.click());
+    expectLoading(true);
+    act(() => guest.dispatchEvent(new Event("dom-ready")));
+    expectLoading(true);
+    act(() => guest.dispatchEvent(new Event("did-stop-loading")));
+    expectLoading(false);
+    expect(guest.isConnected).toBe(true);
+  });
+
+  it("reflects background loads when mounting and completes while the pane is absent", () => {
+    guest.dispatchEvent(new Event("did-start-loading"));
+    guest.dispatchEvent(new Event("dom-ready"));
+    act(() => root.render(<BrowserTab />));
+    expectLoading(true);
+    act(() => root.render(<BrowserTab pane={false} />));
+    act(() => guest.dispatchEvent(new Event("did-stop-loading")));
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    act(() => root.render(<BrowserTab />));
+    expectLoading(false);
+  });
+
+  it("navigates in the same tab after stopping a load that never reached DOM ready", () => {
+    guest.dispatchEvent(new Event("dom-ready"));
+    act(() => root.render(<BrowserTab />));
+    act(() => guest.dispatchEvent(new Event("did-start-loading")));
+    act(() => button(stopLabel)!.click());
+    expectLoading(false);
+    navigateTo("https://example.com/recovered");
+    expect(guest.loadURL).toHaveBeenCalledWith("https://example.com/recovered");
+    expectLoading(true);
+    act(() => guest.dispatchEvent(new Event("did-stop-loading")));
+    expectLoading(false);
+    expect(guest.isConnected).toBe(true);
+  });
+
+  it("replaces a stalled first request without waiting for its DOM ready", () => {
+    guest.dispatchEvent(new Event("did-start-loading"));
+    act(() => root.render(<BrowserTab />));
+    navigateTo("https://example.com/recovered");
+    expect(guest.getAttribute("src")).toBe("https://example.com/recovered");
+    expect(guest.loadURL).not.toHaveBeenCalled();
+    expectLoading(true);
+    act(() => button(stopLabel)!.click());
+    act(() => guest.dispatchEvent(new Event("dom-ready")));
+    expect(guest.loadURL).not.toHaveBeenCalled();
+    expectLoading(false);
+  });
+
+  it("shows a failed page with Reload available and permits retry", () => {
+    guest.dispatchEvent(new Event("dom-ready"));
+    act(() => root.render(<BrowserTab />));
+    act(() => button(reloadLabel)!.click());
+    act(() =>
+      guest.dispatchEvent(
+        Object.assign(new Event("did-fail-load"), {
+          errorCode: -102,
+          errorDescription: "ERR_CONNECTION_REFUSED",
+          isMainFrame: true,
+        }),
+      ),
+    );
+    expectLoading(false);
+    expect(container.textContent).toContain("workspace.browser.errors.connectionRefused");
+    act(() => button(reloadLabel)!.click());
+    expectLoading(true);
+    expect(container.textContent).not.toContain("workspace.browser.errors.connectionRefused");
+  });
+
+  it("does not let a stopped request rejection clear progress for the next navigation", async () => {
+    let rejectLoad!: (reason: Error) => void;
+    guest.loadURL.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectLoad = reject;
+        }),
+    );
+    guest.dispatchEvent(new Event("dom-ready"));
+    act(() => root.render(<BrowserTab />));
+    navigateTo("https://example.com/old");
+    act(() => button(stopLabel)!.click());
+    navigateTo("https://example.com/new");
+    await act(async () => rejectLoad(new Error("ERR_CONNECTION_REFUSED")));
+    expectLoading(true);
+    expect(container.textContent).not.toContain("workspace.browser.errors.connectionRefused");
+  });
+
+  it("settles synchronous guest navigation failures and leaves the tab retryable", () => {
+    guest.dispatchEvent(new Event("dom-ready"));
+    guest.loadURL.mockImplementationOnce(() => {
+      throw new Error("GUEST_VIEW_MANAGER_CALL failed");
+    });
+    act(() => root.render(<BrowserTab />));
+    navigateTo("https://example.com/recovered");
+    expectLoading(false);
+    expect(container.textContent).toContain("workspace.browser.errors.failedToLoad");
+    act(() => button(reloadLabel)!.click());
+    expectLoading(true);
+    expect(guest.reload).toHaveBeenCalledTimes(1);
+  });
+});

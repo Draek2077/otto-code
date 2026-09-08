@@ -3,7 +3,7 @@ import {
   type DesktopAttachedBrowserRegistration,
   type DesktopBrowserBridge,
 } from "@/desktop/host";
-import type { BrowserViewport } from "@/desktop/browser/store";
+import { useBrowserStore, type BrowserViewport } from "@/desktop/browser/store";
 import { WEB_SURFACE_PLANE } from "@/lib/overlay-root";
 
 const RESIDENT_BROWSER_HOST_ID = "otto-browser-resident-webviews";
@@ -66,6 +66,7 @@ function registerBrowserWhenAttached(
   // Reparenting a webview can replace its guest WebContents without replacing
   // this DOM element, so every attachment needs a fresh main-process registration.
   webview.addEventListener("did-attach", () => {
+    readyResidentWebviews.delete(webview);
     const webContentsId = webview.getWebContentsId();
     void browser
       .registerAttachedBrowser({
@@ -325,6 +326,15 @@ export function prepareBrowserWebview(
   },
 ): void {
   const browser = getBrowserBridge(input.profileHost);
+  // These events belong to the guest, not the pane: automation can create a
+  // background tab before any pane mounts, and loads can finish while parked.
+  webview.addEventListener("dom-ready", () => markResidentBrowserWebviewReady(webview));
+  webview.addEventListener("did-start-loading", () => {
+    useBrowserStore.getState().updateBrowser(input.browserId, { isLoading: true, lastError: null });
+  });
+  webview.addEventListener("did-stop-loading", () => {
+    useBrowserStore.getState().updateBrowser(input.browserId, { isLoading: false });
+  });
   webview.setAttribute(BROWSER_ID_ATTRIBUTE, input.browserId);
   webview.setAttribute("partition", browser.profilePartition);
   webview.setAttribute("allowpopups", "true");
@@ -483,9 +493,9 @@ export function isResidentBrowserWebviewReady(webview: HTMLElement): boolean {
 const readyResidentWebviews = new WeakSet<HTMLElement>();
 
 /**
- * A resident guest only emits `dom-ready` once per attachment. Browser panes
- * mount and unmount around that guest, so the next pane must retain this fact
- * instead of waiting forever for an event that has already happened.
+ * Guest methods become usable after the first `dom-ready`. Subsequent page
+ * loads must not revoke that capability: Stop or another navigation must still
+ * work if the next page hangs before reaching `dom-ready`.
  */
 export function markResidentBrowserWebviewReady(webview: HTMLElement): void {
   readyResidentWebviews.add(webview);

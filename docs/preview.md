@@ -225,6 +225,32 @@ What this buys you, concretely:
   auto-restarts the dev server or waits for the user to click "Start" is the
   `previewAutoStartOnRestore` setting below.
 
+## Browser loading and navigation lifetime
+
+The resident webview owns `did-start-loading`, `did-stop-loading`, and the first
+`dom-ready` observation. These listeners are installed before attachment and remain
+with the guest when its pane unmounts. A background tab created by automation must
+update the same browser store as a visible tab. Pane-scoped listeners cannot own
+this state: they miss events before the first mount and while the guest is parked.
+
+The tab's circular spinner and the toolbar's Reload/Stop control read that same
+loading flag. Reload sets it immediately; Stop cancels the guest navigation and
+clears it. `dom-ready` does not end resource loading, so only the load's terminal
+state ends the spinner. A navigation failure exposes the page error with Reload
+available for retry.
+
+Readiness to call guest methods survives later page loads. Clearing it at every
+`did-start-loading` can strand navigation after a stopped or stalled request that
+never reaches another `dom-ready`. Before the first document is ready, a new URL
+replaces `src` directly instead of waiting for the old request to finish. Stop and
+subsequent navigation invalidate older `loadURL()` rejection callbacks so they
+cannot clear the new request's progress.
+
+Focused coverage lives in `resident-webviews.browser.test.ts` and
+`pane/loading.browser.test.tsx` under `packages/app/src/desktop/browser/`. The latter
+renders the production pane, descriptor, toolbar, and tab icon in Chromium with
+substituted Electron methods; it does not prove packaged Electron guest behavior.
+
 ## Settings
 
 Preview-related configuration is split across three levels - daemon-wide,

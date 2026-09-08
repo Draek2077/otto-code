@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { useBrowserStore } from "./store";
 import {
   applyInactiveBrowserWebviewViewport,
   type BrowserWebviewProfileHost,
@@ -22,6 +23,55 @@ import {
 } from "../../utils/command-center-focus-restore";
 
 const RESIDENT_HOST_ID = "otto-browser-resident-webviews";
+
+describe("resident browser loading lifecycle", () => {
+  afterEach(() => {
+    clearResidentBrowserWebviewsForTests();
+    useBrowserStore.setState({ browsersById: {} });
+  });
+
+  it("tracks page loads and readiness before a pane mounts and while parked", () => {
+    const browserId = useBrowserStore
+      .getState()
+      .createBrowser({ initialUrl: "https://example.com" });
+    const webview = ensureTestBrowser({
+      browserId,
+      workspaceId: "workspace",
+      url: "https://example.com",
+    })!;
+    webview.dispatchEvent(new Event("did-start-loading"));
+    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(true);
+    webview.dispatchEvent(new Event("dom-ready"));
+    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
+    // DOM ready is not the end of resource loading.
+    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(true);
+    webview.dispatchEvent(new Event("did-stop-loading"));
+    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(false);
+    releaseResidentBrowserWebview(browserId, webview);
+    webview.dispatchEvent(new Event("did-start-loading"));
+    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
+    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(true);
+    webview.dispatchEvent(new Event("did-stop-loading"));
+    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(false);
+    expect(takeResidentBrowserWebview(browserId)).toBe(webview);
+  });
+
+  it("requires fresh readiness when the element attaches a replacement guest", () => {
+    const browserId = useBrowserStore.getState().createBrowser();
+    const webview = ensureTestBrowser({
+      browserId,
+      workspaceId: "workspace",
+      url: "https://example.com",
+    })!;
+    Object.assign(webview, { getWebContentsId: () => 42 });
+    webview.dispatchEvent(new Event("dom-ready"));
+    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
+    webview.dispatchEvent(new Event("did-attach"));
+    expect(isResidentBrowserWebviewReady(webview)).toBe(false);
+    webview.dispatchEvent(new Event("dom-ready"));
+    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
+  });
+});
 const attachedBrowsers: Array<{
   browserId: string;
   workspaceId: string;
