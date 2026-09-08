@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.4 - 2026-09-07
+
+### Changed
+
+- Let agents inspect and verify Interactive Views in Otto's built-in browser
+
+### Fixed
+
+- Render Mermaid diagrams with templates safely
+- Keep pull requests accessible from Explorer on mobile
+- Show the Browser stop control while a page is loading
+- Keep Files and Search available together in Explorer
+- Keep the Visualizer overlay attached while dragging it
+- Keep workspace tabs within their available width
+
 ## 0.9.3 - 2026-09-07
 
 ### Changed
