@@ -353,6 +353,20 @@ describe("Project Knowledge tab selection", () => {
     expect(buildDeterministicWorkspaceTabId(architecture)).toBe("project-knowledge");
     expect(buildDeterministicWorkspaceTabId(record)).toBe("project-knowledge");
   });
+
+  it("preserves an optional heading target while retargeting the singleton tab", () => {
+    expect(
+      normalizeWorkspaceTabTarget({
+        kind: "projectKnowledge",
+        selection: { kind: "root", slug: "architecture" },
+        anchor: "workspace-navigation",
+      }),
+    ).toEqual({
+      kind: "projectKnowledge",
+      selection: { kind: "root", slug: "architecture" },
+      anchor: "workspace-navigation",
+    });
+  });
 });
 
 describe("plugin panel tab identity", () => {

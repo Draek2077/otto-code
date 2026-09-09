@@ -113,6 +113,7 @@ import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import type { FileHistoryRange } from "@/git/file-history/use-file-history-data";
 import { useGitFileHistoryFeature } from "@/git/use-git-file-history-feature";
 import { useToast } from "@/contexts/toast-context";
+import { resolveWorkspaceMarkdownLink } from "@/components/markdown/workspace-link-target";
 import { openRefineTab } from "@/refine/open-refine-tab";
 import { isRefinableDocument } from "@/refine/refine-scope";
 import { useRefineFeature } from "@/refine/use-refine-feature";
@@ -553,6 +554,7 @@ function PreviewOnlyView({
   onViewChanges,
   onRefine,
   onAddToChat,
+  onMarkdownLinkPress,
 }: {
   serverId: string;
   workspaceId: string;
@@ -575,6 +577,7 @@ function PreviewOnlyView({
   onRefine: (() => void) | null;
   /** Attaches this file to the composer as a pill; null without a registered workspace. */
   onAddToChat: (() => void) | null;
+  onMarkdownLinkPress: (href: string) => boolean;
 }) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -913,6 +916,7 @@ function PreviewOnlyView({
         activeMatchIndex={activeMatchIndex}
         onFindMatchCount={setMatchCount}
         syncRef={previewSyncRef}
+        onLinkPress={onMarkdownLinkPress}
       />
       {/* Null until the preview has read the file - the bar appears with real
           values rather than flashing zeroes. No caret: there is no editor. */}
@@ -1534,6 +1538,7 @@ function EditorModeView({
   onRefine,
   onAddToChat,
   onAddSelectionToChat,
+  onMarkdownLinkPress,
   onOpenExternalEditor,
   externalEditorLabel,
 }: {
@@ -1559,6 +1564,7 @@ function EditorModeView({
   onAddToChat: (() => void) | null;
   /** Attaches the selected range as a pill; null without a registered workspace. */
   onAddSelectionToChat: (() => void) | null;
+  onMarkdownLinkPress: (href: string) => boolean;
   /** Starts the host-owned editor after the clean-buffer guard passes. */
   onOpenExternalEditor: (() => void) | null;
   externalEditorLabel: string | null;
@@ -2551,6 +2557,7 @@ function EditorModeView({
               onScrolledSync={handlePreviewScrolled}
               onPointerDownSync={handlePreviewPointerDown}
               onToggleTask={handleToggleTask}
+              onLinkPress={onMarkdownLinkPress}
             />
           </View>
         </View>
@@ -2753,7 +2760,7 @@ export function FileTabPane({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { closeCurrentTab, paneId } = usePaneContext();
+  const { closeCurrentTab, openFileInWorkspace, paneId } = usePaneContext();
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
 
   // Editing is independent from project ownership. Rendered formats (markdown,
@@ -2783,6 +2790,23 @@ export function FileTabPane({
   const [externalEditorFailure, setExternalEditorFailure] = useState<string | null>(null);
   const [fileInfo, setFileInfo] = useState<FilePreviewFileInfo | null>(null);
   const controllerRef = useRef<EditorController | null>(null);
+  const handleMarkdownLinkPress = useCallback(
+    (href: string) => {
+      const target = resolveWorkspaceMarkdownLink({
+        href,
+        workspaceRoot,
+        documentPath: location.path,
+      });
+      if (target.kind === "external") return true;
+      if (target.kind === "invalid") {
+        toast.error(target.reason);
+        return false;
+      }
+      openFileInWorkspace({ location: target, disposition: "main" });
+      return false;
+    },
+    [location.path, openFileInWorkspace, toast, workspaceRoot],
+  );
 
   // Until the first read reports back, trust the remembered mode: a file that
   // was in editor view last time is a text file until proven otherwise.
@@ -3212,6 +3236,7 @@ export function FileTabPane({
         onViewChanges={onViewChanges}
         onRefine={onRefine}
         onAddToChat={onAddToChat}
+        onMarkdownLinkPress={handleMarkdownLinkPress}
       />
     ) : (
       <EditorModeView
@@ -3233,6 +3258,7 @@ export function FileTabPane({
         onRefine={onRefine}
         onAddToChat={onAddToChat}
         onAddSelectionToChat={onAddSelectionToChat}
+        onMarkdownLinkPress={handleMarkdownLinkPress}
         onOpenExternalEditor={externalEditorAvailable ? openExternalEditor : null}
         externalEditorLabel={externalEditorLabel}
       />

@@ -135,7 +135,12 @@ export function normalizeWorkspaceTabTarget(
   }
   if (value.kind === "projectKnowledge") {
     const selection = normalizeProjectKnowledgeTabSelection(value.selection);
-    return selection ? { kind: "projectKnowledge", selection } : { kind: "projectKnowledge" };
+    const anchor = trimNonEmpty(typeof value.anchor === "string" ? value.anchor : null);
+    return {
+      kind: "projectKnowledge",
+      ...(selection ? { selection } : {}),
+      ...(anchor ? { anchor } : {}),
+    };
   }
   if (value.kind === "orchestrationGraph") {
     const graphId = trimNonEmpty(value.graphId);

@@ -24,6 +24,8 @@ import {
   MarkdownRenderer,
   type MarkdownDocumentAnnotationTarget,
 } from "@/components/markdown/renderer";
+import { headingAnchors } from "@/editor/markdown/markdown-link-completion";
+import { extractMarkdownHeadings } from "@otto-code/highlight";
 import { FileHtmlPreview } from "@/file-pane/html-preview";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
@@ -218,6 +220,8 @@ interface FilePreviewBodyProps {
   onPointerDownSync?: (pointer: PreviewPointerDown) => void;
   /** Ticking a rendered task list; `line` is already a line of the file. */
   onToggleTask?: MarkdownTaskToggle | null;
+  /** Handles local document links before the shared renderer tries an external opener. */
+  onLinkPress?: (href: string) => boolean;
   onAnnotateDocumentItem?: (target: MarkdownDocumentAnnotationTarget, comment: string) => void;
   onDeleteDocumentItem?: (target: MarkdownDocumentAnnotationTarget) => void;
   annotatedHeadingSourceLines?: readonly number[];
@@ -447,6 +451,7 @@ function FilePreviewBody({
   onScrolledSync,
   onPointerDownSync,
   onToggleTask = null,
+  onLinkPress,
   onAnnotateDocumentItem,
   onDeleteDocumentItem,
   annotatedHeadingSourceLines = [],
@@ -475,6 +480,30 @@ function FilePreviewBody({
     () => resolveRenderedDocument(documentKind, effectiveContent),
     [documentKind, effectiveContent],
   );
+  const headingOffsets = useRef(new Map<string, number>());
+  const [headingLayoutRevision, setHeadingLayoutRevision] = useState(0);
+  const requestedAnchor = location.anchor?.trim() || null;
+  const renderedHeadingAnchors = useMemo(
+    () =>
+      new Set(
+        renderedDocument
+          ? headingAnchors(extractMarkdownHeadings(renderedDocument.body)).map(
+              (item) => item.anchor,
+            )
+          : [],
+      ),
+    [renderedDocument],
+  );
+  const anchorMissing = Boolean(requestedAnchor && !renderedHeadingAnchors.has(requestedAnchor));
+  useEffect(() => {
+    headingOffsets.current.clear();
+    setHeadingLayoutRevision((revision) => revision + 1);
+  }, [renderedDocument?.body]);
+  const handleHeadingLayout = useCallback((anchor: string, y: number) => {
+    if (headingOffsets.current.get(anchor) === y) return;
+    headingOffsets.current.set(anchor, y);
+    setHeadingLayoutRevision((revision) => revision + 1);
+  }, []);
   const [annotationTarget, setAnnotationTarget] = useState<MarkdownDocumentAnnotationTarget | null>(
     null,
   );
@@ -524,6 +553,7 @@ function FilePreviewBody({
         ? createMarkdownDocumentAnnotationRules({
             text: renderedDocument.body,
             onAnnotationOpenChange: onAnnotateDocumentItem ? handleAnnotationOpenChange : undefined,
+            onHeadingLayout: handleHeadingLayout,
             annotatedHeadingSourceLines: annotatedHeadingSourceLines.map(
               (lineStart) => lineStart - (annotationLineOffset ?? 0),
             ),
@@ -557,6 +587,7 @@ function FilePreviewBody({
       cancelAnnotation,
       deleteAnnotation,
       handleAnnotationOpenChange,
+      handleHeadingLayout,
       onAnnotateDocumentItem,
       renderedDocument,
       submitAnnotation,
@@ -582,6 +613,15 @@ function FilePreviewBody({
   const scrollbar = useWebScrollViewScrollbar(previewScrollRef, {
     enabled: showWebScrollbar,
   });
+  useEffect(() => {
+    if (!requestedAnchor || anchorMissing) return;
+    const y = headingOffsets.current.get(requestedAnchor);
+    if (y === undefined) return;
+    const frame = requestAnimationFrame(() => {
+      previewScrollRef.current?.scrollTo({ y: Math.max(0, y), animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [anchorMissing, headingLayoutRevision, requestedAnchor]);
 
   // Split-view sync plumbing: track the viewport imperatively (re-rendering
   // per scroll frame would be wasteful) and swallow the echo of our own
@@ -830,6 +870,15 @@ function FilePreviewBody({
                   </Text>
                 </View>
               ) : null}
+              {anchorMissing ? (
+                <Text
+                  style={styles.errorText}
+                  accessibilityRole="alert"
+                  testID="markdown-anchor-missing"
+                >
+                  The heading #{requestedAnchor} was not found in this document.
+                </Text>
+              ) : null}
               {/* A repo document must not be able to reach the network just by being previewed -
                   but it may show its own images, read back through the daemon. */}
               <MarkdownRenderer
@@ -839,6 +888,7 @@ function FilePreviewBody({
                 enableHtmlish={enableHtmlish}
                 workspaceImages={workspaceImages}
                 onToggleTask={handleToggleTask}
+                onLinkPress={onLinkPress}
               />
             </View>
           </RNScrollView>
@@ -970,6 +1020,8 @@ export interface FilePreviewProps {
    * editable buffer for this file.
    */
   onToggleTask?: MarkdownTaskToggle | null;
+  /** Handles local document links before the shared renderer tries an external opener. */
+  onLinkPress?: (href: string) => boolean;
 }
 
 // eslint-disable-next-line complexity -- query, watch, and preview rendering remain one lifecycle owner.
@@ -989,6 +1041,7 @@ export function FilePreview({
   onScrolledSync,
   onPointerDownSync,
   onToggleTask = null,
+  onLinkPress,
 }: FilePreviewProps) {
   const { t } = useTranslation();
   // Ungated on compact: the app's overlay bar is wanted on mobile web too,
@@ -1181,6 +1234,7 @@ export function FilePreview({
         onScrolledSync={onScrolledSync}
         onPointerDownSync={onPointerDownSync}
         onToggleTask={onToggleTask}
+        onLinkPress={onLinkPress}
         onAnnotateDocumentItem={handleAnnotateDocumentItem}
         onDeleteDocumentItem={handleDeleteDocumentItem}
         annotatedHeadingSourceLines={annotatedHeadingSourceLines}

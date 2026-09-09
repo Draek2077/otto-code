@@ -3253,6 +3253,7 @@ function WorkspaceScreenContent({
           serverId: normalizedServerId,
           workspaceId: knowledgeWorkspaceId,
           selection,
+          anchor: resolved.location.anchor,
           navigate: true,
         });
         return;
@@ -4545,6 +4546,7 @@ function WorkspaceScreenContent({
                   serverId: normalizedServerId,
                   workspaceId: normalizedWorkspaceId,
                   selection,
+                  anchor: target.anchor,
                   navigate: true,
                 });
                 return;

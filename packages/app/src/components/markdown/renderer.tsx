@@ -81,6 +81,8 @@ import {
   resolveHeadingAnnotationTarget,
   type MarkdownDocumentAnnotationTarget,
 } from "./annotation-locators";
+import { headingAnchors } from "@/editor/markdown/markdown-link-completion";
+import { extractMarkdownHeadings } from "@otto-code/highlight";
 import { colorMarkdownLinkChildren } from "./link-children";
 import { MarkdownLinkText } from "./link-text";
 
@@ -269,6 +271,30 @@ function markdownNodeText(node: ASTNode): string {
   return node.children.map(markdownNodeText).join("");
 }
 
+function MarkdownHeadingAnchor({
+  anchor,
+  onHeadingLayout,
+  style,
+  children,
+}: {
+  anchor?: string;
+  onHeadingLayout?: (anchor: string, y: number) => void;
+  style?: ViewStyle;
+  children: ReactNode;
+}) {
+  const onLayout = useCallback(
+    (event: { nativeEvent: { layout: { y: number } } }) => {
+      if (anchor) onHeadingLayout?.(anchor, event.nativeEvent.layout.y);
+    },
+    [anchor, onHeadingLayout],
+  );
+  return (
+    <View style={style} onLayout={anchor ? onLayout : undefined}>
+      {children}
+    </View>
+  );
+}
+
 /**
  * Adds press targets only to block kinds whose markdown-it source map is
  * known. Other rendered nodes deliberately remain unannotatable: a visual
@@ -278,6 +304,8 @@ function markdownNodeText(node: ASTNode): string {
 export function createMarkdownDocumentAnnotationRules(input: {
   text: string;
   onAnnotationOpenChange?: (target: MarkdownDocumentAnnotationTarget, open: boolean) => void;
+  /** Reports rendered heading positions so document links can land exactly on them. */
+  onHeadingLayout?: (anchor: string, y: number) => void;
   annotatedHeadingSourceLines?: readonly number[];
   annotatedHeadingComments?: ReadonlyMap<number, string>;
   /** Rendered in a popup anchored to the matching heading's annotation button. */
@@ -289,6 +317,10 @@ export function createMarkdownDocumentAnnotationRules(input: {
     text: input.text,
     markdownit: defaultMarkdownParser,
   });
+  const headings = extractMarkdownHeadings(input.text);
+  const headingAnchorByLine = new Map(
+    headingAnchors(headings).map((heading, index) => [headings[index]?.line, heading.anchor]),
+  );
   const annotatedHeadingSourceLines = new Set(input.annotatedHeadingSourceLines);
 
   const rules = createSharedMarkdownRules();
@@ -300,28 +332,48 @@ export function createMarkdownDocumentAnnotationRules(input: {
         text: markdownNodeText(node),
         level,
       });
-      if (!target) {
+      const anchor = target ? headingAnchorByLine.get(target.lineStart) : undefined;
+      if (!target || !input.onAnnotationOpenChange) {
         return (
-          <View key={node.key} style={styles[`_VIEW_SAFE_heading${level}`]}>
+          <MarkdownHeadingAnchor
+            key={node.key}
+            anchor={anchor}
+            onHeadingLayout={input.onHeadingLayout}
+            style={styles[`_VIEW_SAFE_heading${level}`]}
+          >
             {children}
-          </View>
+          </MarkdownHeadingAnchor>
         );
       }
       return (
-        <HeadingAnnotationAction
-          target={target}
-          annotated={annotatedHeadingSourceLines.has(target.lineStart)}
-          comment={input.annotatedHeadingComments?.get(target.lineStart)}
-          onOpenChange={input.onAnnotationOpenChange}
-          annotationPopover={input.renderHeadingAnnotationPopover?.(target)}
-          style={styles[`_VIEW_SAFE_heading${level}`]}
+        <MarkdownHeadingAnchor
+          key={node.key}
+          anchor={anchor}
+          onHeadingLayout={input.onHeadingLayout}
         >
-          {children}
-        </HeadingAnnotationAction>
+          <HeadingAnnotationAction
+            target={target}
+            annotated={annotatedHeadingSourceLines.has(target.lineStart)}
+            comment={input.annotatedHeadingComments?.get(target.lineStart)}
+            onOpenChange={input.onAnnotationOpenChange}
+            annotationPopover={input.renderHeadingAnnotationPopover?.(target)}
+            style={styles[`_VIEW_SAFE_heading${level}`]}
+          >
+            {children}
+          </HeadingAnnotationAction>
+        </MarkdownHeadingAnchor>
       );
     };
   }
   return rules;
+}
+
+/** Heading-only rules for readers that navigate but do not support annotations. */
+export function createMarkdownHeadingNavigationRules(input: {
+  text: string;
+  onHeadingLayout: (anchor: string, y: number) => void;
+}): RenderRules {
+  return createMarkdownDocumentAnnotationRules(input);
 }
 
 /**

@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import { Text as NativeText, View, type TextStyle } from "react-native";
 import {
   createSharedMarkdownRules,
+  createMarkdownHeadingNavigationRules,
   MarkdownRenderer,
   type MarkdownStyles,
 } from "@/components/markdown/renderer";
@@ -129,6 +130,8 @@ function KnowledgeReviewSurfaceWeb({
   onUpdate,
   onRemove,
   onSelectionError,
+  onLinkPress,
+  onHeadingLayout,
   theme,
 }: ThemedProps) {
   const articleRef = useRef<HTMLDivElement | null>(null);
@@ -143,7 +146,10 @@ function KnowledgeReviewSurfaceWeb({
   );
   const styleText = useMemo(() => buildHighlightCss(theme), [theme]);
   const sourceMap = useMemo(() => collectMarkdownSourceMap(directiveSource), [directiveSource]);
-  const reviewRules = useMemo(() => createKnowledgeReviewMarkdownRules(), []);
+  const reviewRules = useMemo(
+    () => createKnowledgeReviewMarkdownRules(source, onHeadingLayout),
+    [onHeadingLayout, source],
+  );
 
   const measureMarkers = useCallback(() => {
     const article = articleRef.current;
@@ -354,7 +360,12 @@ function KnowledgeReviewSurfaceWeb({
             onContextMenu={openSelectionMenu}
             style={{ position: "relative" }}
           >
-            <MarkdownRenderer text={source} remoteImages="altText" rules={reviewRules} />
+            <MarkdownRenderer
+              text={source}
+              remoteImages="altText"
+              rules={reviewRules}
+              onLinkPress={onLinkPress}
+            />
             <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
               {markers.map((marker) => (
                 <button
@@ -508,8 +519,13 @@ function findFenceAtEventTarget(
     : null;
 }
 
-function createKnowledgeReviewMarkdownRules(): RenderRules {
-  const rules = createSharedMarkdownRules();
+function createKnowledgeReviewMarkdownRules(
+  source: string,
+  onHeadingLayout: KnowledgeReviewSurfaceProps["onHeadingLayout"],
+): RenderRules {
+  const rules = onHeadingLayout
+    ? createMarkdownHeadingNavigationRules({ text: source, onHeadingLayout })
+    : createSharedMarkdownRules();
   rules.fence = (
     node: ASTNode,
     _children: ReactNode[],

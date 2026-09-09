@@ -33,6 +33,20 @@ describe("normalizeWorkspaceFileLocation", () => {
     });
   });
 
+  it("preserves a rendered Markdown heading target independently of line navigation", () => {
+    expect(
+      normalizeWorkspaceFileLocation({
+        path: "docs/README.md",
+        lineStart: 12,
+        anchor: "durable-messaging-1",
+      }),
+    ).toEqual({
+      path: "docs/README.md",
+      lineStart: 12,
+      anchor: "durable-messaging-1",
+    });
+  });
+
   it("rejects empty paths", () => {
     expect(normalizeWorkspaceFileLocation({ path: " " })).toBeNull();
   });
@@ -58,6 +72,12 @@ describe("workspace file tab targets", () => {
       workspaceFileLocationsEqual(
         { path: "src/app.ts", lineStart: 12 },
         { path: "src/app.ts", lineStart: 13 },
+      ),
+    ).toBe(false);
+    expect(
+      workspaceFileLocationsEqual(
+        { path: "docs/README.md", anchor: "first" },
+        { path: "docs/README.md", anchor: "second" },
       ),
     ).toBe(false);
   });

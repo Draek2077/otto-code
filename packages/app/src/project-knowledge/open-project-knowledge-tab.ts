@@ -7,16 +7,19 @@ export function openProjectKnowledgeTab(input: {
   workspaceId: string;
   navigate?: boolean;
   selection?: ProjectKnowledgeTabSelection;
+  anchor?: string;
 }): boolean {
   const key = buildWorkspaceTabPersistenceKey(input);
   if (!key) return false;
-  useWorkspaceLayoutStore
-    .getState()
-    .openTabFocused(
-      key,
-      { kind: "projectKnowledge", ...(input.selection ? { selection: input.selection } : {}) },
-      { insertAfterFocusedTab: true },
-    );
+  useWorkspaceLayoutStore.getState().openTabFocused(
+    key,
+    {
+      kind: "projectKnowledge",
+      ...(input.selection ? { selection: input.selection } : {}),
+      ...(input.anchor ? { anchor: input.anchor } : {}),
+    },
+    { insertAfterFocusedTab: true },
+  );
   if (input.navigate) navigateToWorkspace(input);
   return true;
 }

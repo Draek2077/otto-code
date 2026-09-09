@@ -12,4 +12,6 @@ export interface KnowledgeReviewSurfaceProps {
   onUpdate: (id: string, update: Pick<KnowledgeReviewDirective, "kind" | "value">) => void;
   onRemove: (id: string) => void;
   onSelectionError: (message: string | null) => void;
+  onLinkPress?: (href: string) => boolean;
+  onHeadingLayout?: (anchor: string, y: number) => void;
 }

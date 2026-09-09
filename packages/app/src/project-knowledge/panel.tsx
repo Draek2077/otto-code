@@ -63,6 +63,10 @@ import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { usePaneContext } from "@/panels/pane-context";
 import { createWorkspaceFileTabTarget } from "@/workspace/file-open";
+import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { resolveWorkspaceMarkdownLink } from "@/components/markdown/workspace-link-target";
+import { headingAnchors } from "@/editor/markdown/markdown-link-completion";
+import { extractMarkdownHeadings } from "@otto-code/highlight";
 import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 import {
   useProjectKnowledge,
@@ -84,6 +88,10 @@ import {
 import { KnowledgeMarkdownEditor } from "./knowledge-markdown-editor";
 import { KnowledgeReviewProposalView } from "./knowledge-review-proposal";
 import { KnowledgeReviewSurface } from "./knowledge-review-surface";
+import {
+  findProjectKnowledgeFileSelection,
+  findRepositoryKnowledgeFileSelection,
+} from "./file-target";
 import { useCompactDetailNavigation } from "./use-compact-detail-navigation";
 import { allHunkIds, applyRefineDecisions, buildRefineDiff, type RefineDiff } from "@/refine/hunks";
 import {
@@ -130,7 +138,15 @@ const EMPTY_REVIEW_DIFF: RefineDiff = { lines: [], hunks: [] };
 /** Markdown knowledge is rendered as a document, while Otto owns mutations. */
 // eslint-disable-next-line complexity -- panel intentionally owns its three explicit review states.
 export function ProjectKnowledgePanel(): ReactElement {
-  const { serverId, workspaceId, target: paneTarget, openTab } = usePaneContext();
+  const {
+    serverId,
+    workspaceId,
+    target: paneTarget,
+    openFileInWorkspace,
+    openTab,
+    retargetCurrentTab,
+  } = usePaneContext();
+  const workspaceRoot = useWorkspaceDirectory(serverId, workspaceId);
   const requestedSelection =
     paneTarget.kind === "projectKnowledge" ? paneTarget.selection : undefined;
   const knowledge = useProjectKnowledge(serverId, workspaceId, {
@@ -395,6 +411,100 @@ export function ProjectKnowledgePanel(): ReactElement {
   }
   const markdownPath =
     selectedRoot?.absolutePath ?? selectedRoot?.path ?? knowledgePathForRecord(selected);
+  const knowledgeSelection = useMemo(
+    () => currentKnowledgeSelection(selectedRoot, selected),
+    [selected, selectedRoot],
+  );
+  const requestedAnchor =
+    paneTarget.kind === "projectKnowledge" ? paneTarget.anchor?.trim() || null : null;
+  const documentScrollRef = useRef<ScrollView>(null);
+  const headingOffsets = useRef(new Map<string, number>());
+  const [headingLayoutRevision, setHeadingLayoutRevision] = useState(0);
+  const documentAnchors = useMemo(
+    () => new Set(headingAnchors(extractMarkdownHeadings(document)).map((item) => item.anchor)),
+    [document],
+  );
+  const anchorMissing = Boolean(requestedAnchor && !documentAnchors.has(requestedAnchor));
+  useEffect(() => {
+    headingOffsets.current.clear();
+    setHeadingLayoutRevision((revision) => revision + 1);
+  }, [document]);
+  const handleHeadingLayout = useCallback((anchor: string, y: number) => {
+    if (headingOffsets.current.get(anchor) === y) return;
+    headingOffsets.current.set(anchor, y);
+    setHeadingLayoutRevision((revision) => revision + 1);
+  }, []);
+  useEffect(() => {
+    if (!requestedAnchor || anchorMissing) return;
+    const y = headingOffsets.current.get(requestedAnchor);
+    if (y === undefined) return;
+    const frame = requestAnimationFrame(() => {
+      documentScrollRef.current?.scrollTo({ y: Math.max(0, y), animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [anchorMissing, headingLayoutRevision, requestedAnchor]);
+  useEffect(() => {
+    if (anchorMissing && requestedAnchor) {
+      setFormError(`The heading #${requestedAnchor} was not found in this document.`);
+    }
+  }, [anchorMissing, requestedAnchor]);
+  const handleKnowledgeMarkdownLink = useCallback(
+    (href: string) => {
+      if (!workspaceRoot || !markdownPath) {
+        setFormError("This Knowledge article has no workspace path for local link navigation.");
+        return false;
+      }
+      const target = resolveWorkspaceMarkdownLink({
+        href,
+        workspaceRoot,
+        documentPath: markdownPath,
+      });
+      if (target.kind === "external") return true;
+      if (target.kind === "invalid") {
+        setFormError(target.reason);
+        return false;
+      }
+      if (href.trim().startsWith("#") && knowledgeSelection) {
+        retargetCurrentTab({
+          kind: "projectKnowledge",
+          selection: knowledgeSelection,
+          ...(target.anchor ? { anchor: target.anchor } : {}),
+        });
+        return false;
+      }
+      void (async () => {
+        const repositorySelection = findRepositoryKnowledgeFileSelection(target.path);
+        let selection = repositorySelection;
+        if (!selection && client) {
+          selection = findProjectKnowledgeFileSelection({
+            path: target.path,
+            view: await client.listProjectKnowledge(workspaceId),
+          });
+        }
+        if (selection) {
+          retargetCurrentTab({
+            kind: "projectKnowledge",
+            selection,
+            ...(target.anchor ? { anchor: target.anchor } : {}),
+          });
+          return;
+        }
+        openFileInWorkspace({ location: target, disposition: "main" });
+      })().catch((error: unknown) => {
+        setFormError(error instanceof Error ? error.message : "Could not open the Markdown link.");
+      });
+      return false;
+    },
+    [
+      client,
+      knowledgeSelection,
+      markdownPath,
+      openFileInWorkspace,
+      retargetCurrentTab,
+      workspaceId,
+      workspaceRoot,
+    ],
+  );
   // Split into name / type / date rather than one string, because the header
   // sheds the last two by measured width - see `document-identity.ts`.
   let documentIdentity: KnowledgeDocumentIdentity = { name: "" };
@@ -1039,6 +1149,8 @@ export function ProjectKnowledgePanel(): ReactElement {
               setReviewDirectives((current) => current.filter((item) => item.id !== id))
             }
             onSelectionError={setFormError}
+            onLinkPress={handleKnowledgeMarkdownLink}
+            onHeadingLayout={handleHeadingLayout}
           />
         </>
       );
@@ -1247,6 +1359,8 @@ export function ProjectKnowledgePanel(): ReactElement {
                 setReviewDirectives((current) => current.filter((item) => item.id !== id))
               }
               onSelectionError={setFormError}
+              onLinkPress={handleKnowledgeMarkdownLink}
+              onHeadingLayout={handleHeadingLayout}
             />
           </>
         )}
@@ -1616,6 +1730,7 @@ export function ProjectKnowledgePanel(): ReactElement {
               />
             ) : (
               <ScrollView
+                ref={documentScrollRef}
                 contentContainerStyle={
                   reviewProposal ? styles.viewerProposalContent : styles.viewerContent
                 }
@@ -1882,6 +1997,12 @@ type KnowledgeRecord = NonNullable<
 type KnowledgeFinding = NonNullable<
   ReturnType<typeof useProjectKnowledge>["view"]
 >["findings"][number];
+
+function currentKnowledgeSelection(root: { slug: string } | null, record: KnowledgeRecord | null) {
+  if (root) return { kind: "root" as const, slug: root.slug };
+  if (record) return { kind: "record" as const, id: record.id };
+  return null;
+}
 
 function KnowledgeRecordRow({
   record,
