@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.6 - 2026-09-10
+
+### Changed
+
+- Save Git server accounts and choose different accounts for individual projects
+- Follow local file and heading links from rendered Markdown documents
+
+### Fixed
+
+- Restore spelling suggestions and Add to Dictionary in desktop text menus
+- Keep cleared chats from briefly reappearing
+- Check out the selected branch when creating a worktree workspace
+
 ## 0.9.5 - 2026-09-08
 
 ### Fixed
