@@ -357,6 +357,7 @@ interface WorkspaceGitServiceDependencies {
    * fakes. Any forge not listed here is built (and cached once) by the registry.
    */
   forgeOverrides?: Record<string, ForgeService>;
+  configuredForge?: (host: string) => string | null;
   /**
    * Otto's provider-neutral hosting layer (docs/git-providers.md). Upstream's forge
    * registry has no equivalent, so this stays a separate seam: it supplies the typed
@@ -533,6 +534,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   private readonly worktreesRoot: string | undefined;
   private readonly deps: WorkspaceGitServiceDependencies;
   private readonly forgeResolver: ForgeResolver;
+  private forgeConnectionGeneration = 0;
   private readonly snapshotUpdatedListeners = new Set<WorkspaceGitSnapshotUpdatedListener>();
   private readonly workspaceTargets = new Map<string, WorkspaceGitTarget>();
   private readonly repoTargets = new Map<string, RepoGitTarget>();
@@ -582,6 +584,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     this.deps = resolveWorkspaceGitServiceDeps(options.deps);
     this.forgeResolver = createForgeResolver({
       createService: (forge) => this.deps.forgeOverrides?.[forge] ?? createForgeService(forge),
+      configuredForge: this.deps.configuredForge,
     });
   }
 
@@ -995,6 +998,17 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
    */
   invalidateForge(cwd: string): void {
     this.forgeResolver.invalidate(resolve(cwd));
+  }
+
+  /** Connection changes invalidate displayed account data as well as adapter caches. */
+  onForgeConnectionsChanged(): void {
+    this.forgeConnectionGeneration++;
+    for (const target of this.workspaceTargets.values()) {
+      target.latestForge = buildForgeUnavailableSnapshot();
+      target.latestForgeLoadedAtMs = null;
+      this.stopForgePrStatusPollForTarget(target);
+      this.onWorkspaceStateMayHaveChanged(target.cwd);
+    }
   }
 
   /**
@@ -2463,6 +2477,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     request: WorkspaceGitRefreshRequest,
     facts: CheckoutSnapshotFacts,
   ): Promise<void> {
+    const generation = this.forgeConnectionGeneration;
     const remoteUrl = target.latestGit?.remoteUrl ?? null;
     const resolution = await this.forgeResolver.resolveFromRemoteUrlAsync(remoteUrl);
     // Every forge gates on the resolver alone: a cloud host matches synchronously
@@ -2497,6 +2512,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const hosting = this.deps.resolveHostingForCwd
       ? await this.deps.resolveHostingForCwd(target.cwd).catch(() => null)
       : null;
+    if (generation !== this.forgeConnectionGeneration) return;
     target.latestForge = {
       ...forgeSnapshot,
       forge: resolution.forge,

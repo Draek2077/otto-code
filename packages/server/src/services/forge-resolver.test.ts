@@ -42,6 +42,21 @@ describe("forgeForHost", () => {
 });
 
 describe("createForgeResolver", () => {
+  it("recognizes a newly configured server even after a negative discovery result", async () => {
+    let configured: string | null = null;
+    const probeForge = vi.fn(async () => null);
+    const resolver = createForgeResolver({
+      configuredForge: () => configured,
+      probeForge,
+      resolveSshHostname: resolveSshHostnameAsLiteralHost,
+    });
+    const remote = "https://forge.example/team/repo.git";
+    expect(await resolver.resolveFromRemoteUrlAsync(remote)).toBeNull();
+    configured = "gitlab";
+    expect(await resolver.resolveFromRemoteUrlAsync(remote)).toMatchObject({ forge: "gitlab" });
+    expect(resolver.resolveFromRemoteUrl(remote)).toMatchObject({ forge: "gitlab" });
+    expect(probeForge).toHaveBeenCalledOnce();
+  });
   it("resolves a github.com remote to the github forge", async () => {
     const resolver = createForgeResolver({
       resolveRemoteUrl: async () => "git@github.com:owner/repo.git",

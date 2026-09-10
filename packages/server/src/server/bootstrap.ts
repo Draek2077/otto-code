@@ -10,6 +10,14 @@ import { IntegrationAuthorizationCatalog } from "./integration-authorization/int
 import { IntegrationBrowserAuthorizationService } from "./integration-authorization/browser-authorization-service.js";
 import { FileBackedIntegrationAuthorizationRegistry } from "./integration-authorization/integration-authorization-registry.js";
 import { IntegrationAuthorizationService } from "./integration-authorization/integration-authorization-service.js";
+import { ForgeConnectionStore } from "../services/git-hosting/connection-store.js";
+import { resolveForgeProjectScope } from "../services/git-hosting/project-scope.js";
+import {
+  createConnectedForgeService,
+  validateForgeConnection,
+} from "../services/git-hosting/connection-drivers.js";
+import { withForgeConnections } from "../services/git-hosting/connection-router.js";
+import { createForgeService } from "../services/forge-registry.js";
 import { createServer as createHTTPServer, type IncomingMessage, type ServerResponse } from "http";
 import { constants, existsSync, unlinkSync } from "fs";
 import { open, rm } from "fs/promises";
@@ -1483,19 +1491,62 @@ export async function createOttoDaemon(
     path.join(config.ottoHome, "projects", "workspaces.json"),
     logger,
   );
+  const integrationAuthorizationRegistry = new FileBackedIntegrationAuthorizationRegistry(
+    path.join(config.ottoHome, "integration-authorizations.json"),
+    logger,
+  );
+  const integrationAuthorization = new IntegrationAuthorizationService({
+    hostId: serverId,
+    registry: integrationAuthorizationRegistry,
+    vault: await createDaemonCredentialVault(),
+  });
+  await integrationAuthorization.initialize();
+  const forgeConnections = new ForgeConnectionStore({
+    filePath: path.join(config.ottoHome, "forge-connections.json"),
+    authorization: integrationAuthorization,
+    validate: (input) => validateForgeConnection(input, config.ottoHome),
+    createService: createConnectedForgeService,
+    projectExists: async (id) => {
+      const project = await projectRegistry.get(id);
+      return Boolean(project && !project.archivedAt);
+    },
+    resolveProjectId: async (cwd) => {
+      const [projects, workspaces] = await Promise.all([
+        projectRegistry.list(),
+        workspaceRegistry!.list(),
+      ]);
+      return resolveForgeProjectScope(cwd, projects, workspaces);
+    },
+  });
+  await forgeConnections.initialize();
   // All PR/issue functionality routes through the git hosting layer: GitHub
   // uses gh and Bitbucket Cloud uses its native REST adapter.
   const gitHostingResolver = createGitHostingResolver({
+    connections: forgeConnections,
     github: createGitHubHostingService(),
     getDaemonConfig: () => daemonConfigStore.get(),
     readOttoConfigJson,
     ottoHome: config.ottoHome,
   });
-  const github = createGitHostingRouter(gitHostingResolver);
-  const bitbucketCloud = createGitHostingProviderForgeAdapter(
-    gitHostingResolver,
-    "bitbucket-cloud",
+  const github = withForgeConnections(
+    "github",
+    createGitHostingRouter(gitHostingResolver),
+    forgeConnections,
   );
+  const bitbucketCloud = withForgeConnections(
+    "bitbucket-cloud",
+    createGitHostingProviderForgeAdapter(gitHostingResolver, "bitbucket-cloud"),
+    forgeConnections,
+  );
+  const forgeOverrides = { github, "bitbucket-cloud": bitbucketCloud } as Record<
+    string,
+    import("../services/forge-service.js").ForgeService
+  >;
+  for (const forge of ["gitlab", "gitea", "forgejo", "codeberg"]) {
+    const base = createForgeService(forge);
+    forgeOverrides[forge] = withForgeConnections(forge, base!, forgeConnections);
+  }
+  forgeConnections.subscribe(() => gitHostingResolver.invalidateAll());
   const unsubscribeGitHostingConfigChange = daemonConfigStore.onChange(() => {
     // Provider credentials may have changed; re-resolve on next use.
     gitHostingResolver.invalidateAll();
@@ -1510,7 +1561,8 @@ export async function createOttoDaemon(
     worktreesRoot: config.worktreesRoot,
     fetchPolicy: daemonConfigStore.get().gitFetch ?? { enabled: true, intervalSeconds: 180 },
     deps: {
-      forgeOverrides: { github, "bitbucket-cloud": bitbucketCloud },
+      forgeOverrides,
+      configuredForge: (host) => forgeConnections.forgeForHost(host),
       resolveHostingForCwd: async (cwd) => {
         const resolved = await gitHostingResolver.resolveForCwd(cwd);
         return {
@@ -1521,6 +1573,7 @@ export async function createOttoDaemon(
       },
     },
   });
+  forgeConnections.subscribe(() => workspaceGitService.onForgeConnectionsChanged());
   daemonConfigStore.onFieldChange("gitFetch", (value) => {
     workspaceGitService.setFetchPolicy(
       value as { enabled: boolean; intervalSeconds: 60 | 180 | 300 | 600 | 900 | 1_800 | 3_600 },
@@ -2668,17 +2721,6 @@ export async function createOttoDaemon(
               );
             }
 
-            const integrationAuthorizationRegistry = new FileBackedIntegrationAuthorizationRegistry(
-              path.join(config.ottoHome, "integration-authorizations.json"),
-              logger,
-            );
-            const integrationAuthorization = new IntegrationAuthorizationService({
-              hostId: serverId,
-              registry: integrationAuthorizationRegistry,
-              vault: await createDaemonCredentialVault(),
-            });
-            await integrationAuthorization.initialize();
-
             const integrationAuthorizationCatalog = new IntegrationAuthorizationCatalog();
             integrationAuthorizationCatalog.registerMethods(getZoomTeamChatAuthorizationMethods());
             const zoomTeamChatAuthorization = new ZoomTeamChatManagedAuthorizationBroker(
@@ -2906,6 +2948,10 @@ export async function createOttoDaemon(
     unsubscribeSpeechConfigChange();
     unsubscribeGitHostingConfigChange();
     github.dispose?.();
+    forgeConnections.dispose();
+    ["gitlab", "gitea", "forgejo", "codeberg"].forEach((forge) =>
+      forgeOverrides[forge]?.dispose?.(),
+    );
     speechService.stop();
     toolArtifactService.stop();
     await speechService.stop();

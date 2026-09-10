@@ -44,14 +44,16 @@ function serviceFromResolution(resolved: {
   return resolved.service;
 }
 
-function createGitHostingForgeAdapter(options: {
-  serviceFor: (cwd: string) => Promise<GitHostingService>;
+export function createGitHostingForgeAdapter(options: {
+  serviceFor: (cwd: string) => Promise<ForgeService>;
   invalidate: (cwd: string) => void;
   dispose: () => void;
+  onChange?: (listener: () => void) => () => void;
 }): ForgeService {
   const serviceFor = options.serviceFor;
 
   return {
+    authProbeCanThrow: true,
     async listPullRequests(input) {
       return (await serviceFor(input.cwd)).listPullRequests(input);
     },
@@ -133,15 +135,33 @@ function createGitHostingForgeAdapter(options: {
       // resolves, and make unsubscribe idempotent across that boundary.
       let inner: { unsubscribe: () => void } | null = null;
       let cancelled = false;
+      let generation = 0;
       const subscribe = async () => {
-        const service = await serviceFor(input.cwd);
-        if (cancelled) {
+        const current = ++generation;
+        inner?.unsubscribe();
+        inner = null;
+        let service: ForgeService;
+        try {
+          service = await serviceFor(input.cwd);
+        } catch (error) {
+          if (!cancelled && current === generation) input.onError?.(error);
+          return;
+        }
+        if (cancelled || current !== generation) {
           return;
         }
         if (!service.retainCurrentPullRequestStatusPoll) {
           return;
         }
-        inner = service.retainCurrentPullRequestStatusPoll(input);
+        inner = service.retainCurrentPullRequestStatusPoll({
+          ...input,
+          onStatus: (status) => {
+            if (!cancelled && current === generation) input.onStatus?.(status);
+          },
+          onError: (error) => {
+            if (!cancelled && current === generation) input.onError?.(error);
+          },
+        });
         if (cancelled) {
           inner.unsubscribe();
         }
@@ -151,9 +171,16 @@ function createGitHostingForgeAdapter(options: {
           input.onError?.(error);
         }
       });
+      const stopChanges = options.onChange?.(() => {
+        void subscribe().catch((error: unknown) => {
+          if (!cancelled) input.onError?.(error);
+        });
+      });
       return {
         unsubscribe: () => {
           cancelled = true;
+          generation++;
+          stopChanges?.();
           inner?.unsubscribe();
           inner = null;
         },

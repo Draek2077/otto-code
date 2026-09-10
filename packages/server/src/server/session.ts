@@ -4358,8 +4358,34 @@ export class Session {
     }
   }
 
+  private async handleForgeConnectionsRequest(
+    msg: Extract<SessionInboundMessage, { type: "forge.connections.manage.request" }>,
+  ): Promise<void> {
+    try {
+      const connections = this.gitHostingResolver?.connections;
+      if (!connections) throw new Error("Update this host to manage Git connections.");
+      const overview = await connections.manage(msg.action);
+      this.emit({
+        type: "forge.connections.manage.response",
+        payload: { requestId: msg.requestId, overview, error: null },
+      });
+    } catch (error) {
+      // Never log this request: credential entry is write-only and goes straight to the vault.
+      this.emit({
+        type: "forge.connections.manage.response",
+        payload: {
+          requestId: msg.requestId,
+          overview: null,
+          error: error instanceof Error ? error.message : "Could not update the Git connection.",
+        },
+      });
+    }
+  }
+
   private dispatchProjectScaffoldMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
+      case "forge.connections.manage.request":
+        return this.handleForgeConnectionsRequest(msg);
       case "project.scaffold.request":
         return this.handleProjectScaffoldRequest(msg);
       case "hosting.list_repositories.request":

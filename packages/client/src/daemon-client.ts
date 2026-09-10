@@ -6076,6 +6076,15 @@ export class DaemonClient {
     });
   }
 
+  async manageForgeConnections(
+    action: import("@otto-code/protocol/forge-connections").ForgeConnectionsAction,
+  ) {
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "forge.connections.manage.request", action },
+      responseType: "forge.connections.manage.response",
+    });
+  }
+
   async getDirectorySuggestions(
     options: {
       query: string;

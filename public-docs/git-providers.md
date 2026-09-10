@@ -1,6 +1,6 @@
 ---
 title: Git providers
-description: Connect GitHub and Bitbucket Cloud once per host: each workspace picks the right one from its git remote for pull requests, issues, checks, and merges.
+description: Save Git server accounts on a host, choose defaults, and use different accounts for individual projects.
 nav: Git providers
 order: 13
 category: Git
@@ -8,27 +8,39 @@ category: Git
 
 # Git providers
 
-Otto's pull-request features (the PR panel, checks, issue and PR search, attaching a PR or issue to a prompt, checking out a PR into a worktree, and merging) work against both **GitHub** and **Bitbucket Cloud**. You connect each provider once per host, and every workspace automatically uses whichever one matches its git remote.
+Otto's pull-request features use your project's Git server. You can save several accounts on a host, choose a default for each server, and choose a different account for individual projects.
 
-You don't choose a provider per project. A repo on `github.com` uses GitHub; a repo on `bitbucket.org` uses Bitbucket Cloud. Open a Bitbucket-remote project and all the PR and issue features switch over on their own.
+The Git remote identifies the provider: a repository on `github.com` uses GitHub and one on `bitbucket.org` uses Bitbucket Cloud. The account used for pull requests is separate from your Git commit identity and SSH keys. Otto keeps your existing Git commit, fetch and push setup.
 
 ## Connecting a provider
 
-Open **Host settings**, go to the **Workspaces** page, and find the **Git providers** section.
+Open **Host settings → Workspaces → Git connections** and select **Add connection**. Choose the provider, enter a name such as Work or Personal, and enter the server hostname. **Save and set as host default** makes that account the default for projects using that server.
 
 ### GitHub
 
-GitHub needs no credentials stored in Otto. It uses the [GitHub CLI](https://cli.github.com/) (`gh`) that's already installed and authenticated on your machine. The GitHub card is just a **Check connection** button that confirms `gh` is signed in. If it isn't, run `gh auth login` in a terminal.
+Choose **Existing GitHub CLI account** and enter the login name of an account already signed in on the host, or choose **API token**. The token form links to GitHub's token creation and permission instructions. Otto verifies the account and saves its credential securely on the host. Importing a CLI account leaves its globally active account unchanged. GitHub operations still require the GitHub CLI on the host.
 
 ### Bitbucket Cloud
 
 Bitbucket Cloud uses an **Atlassian account email** and an **API token**:
 
-1. Create an API token in your Atlassian account settings.
-2. In the Bitbucket Cloud card, enter your account email and paste the token.
-3. Use **Check connection** to confirm it works.
+1. Select **API token**, then use **Create a token and check permissions** to open your Atlassian account settings.
+2. Enter your account email and paste the token. Give it access to the repositories and pull requests you need.
+3. Save the connection. Otto checks the account before saving.
 
-You enter this once per host, not once per repo. The token is stored only in the daemon's private config file (`$OTTO_HOME/config.json`), never in a repo's `otto.json` and never in git. The connection is HTTPS-only, the credential is sent per request, and it's kept out of logs and error messages.
+Saved connection tokens live in the host's credential vault. A project stores only its connection selection. Existing Atlassian settings remain available for Jira and for Bitbucket projects that use the existing host configuration.
+
+### GitLab, Gitea, Forgejo and Codeberg
+
+GitLab connections accept an API token and require `glab` on the host. Gitea, Forgejo and Codeberg connections use an existing named `tea` login on the host. Enter your server hostname for a self-hosted installation.
+
+## Using another account for one project
+
+Open **Project Settings → Git connections**. Each server offers **Use host default** and the accounts saved for that server. Choose an account or add a connection directly in the project. The choice applies to all of that project's worktrees, including worktrees outside its folder.
+
+If a selected connection is removed or stops working, Otto asks you to choose or reconnect it. It does not silently switch to a different account. Use **Reconnect** in host settings to replace an expired credential. Background lookups never open a sign-in window or ask for credentials in a terminal.
+
+This connection setup supports existing CLI logins and token entry. Browser OAuth sign-in is not available here yet. A successful account check confirms the identity; repository access still depends on that account's permissions.
 
 ## How a workspace picks its provider
 
@@ -37,7 +49,7 @@ The provider comes from the workspace's git remote:
 - `github.com/…` → GitHub
 - `bitbucket.org/…` → Bitbucket Cloud
 
-Both HTTPS and SSH remotes (including scp-style `git@…`) are understood. If a remote matches neither host, Otto defaults to GitHub.
+Both HTTPS and SSH remotes (including scp-style `git@…` and SSH hostname aliases) are understood. Other Forge providers use their registered host detection or an explicitly configured connection.
 
 For an unusual setup you can override the choice by adding `gitHosting.provider` to the repo's `otto.json`, but you'll rarely need to. The remote is almost always enough.
 

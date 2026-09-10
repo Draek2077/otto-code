@@ -5,9 +5,41 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createCachedCliPathResolver,
   createForgeCliRunner,
+  ForgeCommandError,
   probeHostViaCliAuthStatus,
 } from "./forge-cli-command.js";
 import { isPlatform } from "../test-utils/platform.js";
+
+describe("ForgeCommandError", () => {
+  it.each([
+    { brand: "GitHub", binary: "gh" },
+    { brand: "GitLab", binary: "glab" },
+    { brand: "Gitea", binary: "tea" },
+  ])("includes the actual failure in the $brand error message", (label) => {
+    const stderr =
+      "GraphQL: Could not resolve to a Repository with the name 'taste-the-city/ttc-api'. (repository)\n";
+    const params = {
+      args: ["pr", "view", "--json", "number,url,title"],
+      cwd: "/repo",
+      exitCode: 1,
+      stderr,
+    };
+    const error = new ForgeCommandError(label, params);
+
+    expect(error.message).toBe(`${label.brand} CLI command failed: ${stderr.trim()}`);
+    expect(error).toMatchObject(params);
+    expect(error.args).not.toBe(params.args);
+  });
+
+  it.each(["", " \n"])("identifies the failed command when stderr is %j", (stderr) => {
+    const error = new ForgeCommandError(
+      { brand: "GitHub", binary: "gh" },
+      { args: ["pr", "view"], cwd: "/repo", exitCode: 1, stderr },
+    );
+
+    expect(error.message).toBe("GitHub CLI command failed: gh pr view");
+  });
+});
 
 describe.skipIf(isPlatform("win32"))("probeHostViaCliAuthStatus", () => {
   let tempDir: string;

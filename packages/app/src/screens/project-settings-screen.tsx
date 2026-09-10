@@ -32,6 +32,7 @@ import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsGroup } from "@/screens/settings/settings-group";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
+import { ForgeConnectionsSettings } from "@/screens/settings/forge-connections-settings";
 import { isNative } from "@/constants/platform";
 import { useProjects } from "@/hooks/use-projects";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
@@ -398,6 +399,11 @@ function ProjectSettingsBody({
         projectId={selectedHost.projectId}
         client={client}
         onSaveStateChange={setKanbanSaveState}
+      />
+
+      <ForgeConnectionsSettings
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
       />
 
       <ProjectKnowledgeSection

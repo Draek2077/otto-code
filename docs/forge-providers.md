@@ -100,9 +100,19 @@ previous commit's cached terminal status until the cache expires.
 
 Cloud hosts in the manifest are a bounded public-host list, not a self-host
 allowlist. Self-hosted detection is a trust gate: Otto only talks to a forge
-host that is either a known cloud host or one the CLI is already authenticated
-to. Adapter probes must not make anonymous HTTP requests to remote-derived
+host that is either a known cloud host, explicitly configured through a verified
+saved connection, or one the CLI is already authenticated to. Adapter probes must not make anonymous HTTP requests to remote-derived
 hosts, and adapters must not route credentials to an unauthenticated host.
+
+Provider detection and account selection are separate. Otto wraps the registered
+adapters at bootstrap through `forgeOverrides`, choosing a reusable connection
+by project, provider and canonical API host. Project overrides take precedence
+over host defaults; an unavailable selected connection never falls back to a
+different account. Connection-specific adapters own their caches and polling.
+The resolver's optional `configuredForge` lookup makes saved custom servers
+immediately recognizable without changing the provider manifest. See
+[Git hosting providers](git-providers.md#account-selection) for storage, credential
+methods, lifecycle and settings behavior.
 
 ## App
 

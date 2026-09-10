@@ -9,6 +9,8 @@ import type {
 import { runGitCommand } from "../../utils/run-git-command.js";
 import { parseGitRevParsePath } from "../../utils/git-rev-parse-path.js";
 import { readAtlassianCredentials } from "./atlassian-credentials.js";
+import type { ForgeConnectionStore } from "./connection-store.js";
+import { defaultForgeConnectionHost, resolveForgeConnectionRemote } from "./connection-drivers.js";
 import {
   createBitbucketCloudService,
   type BitbucketCloudCredentials,
@@ -40,6 +42,7 @@ export type ResolvedGitHosting =
     };
 
 export interface GitHostingResolver {
+  connections?: ForgeConnectionStore;
   resolveForCwd(cwd: string): Promise<ResolvedGitHosting>;
   resolveForProvider(providerId: GitHostingProviderId): ResolvedGitHosting;
   // Drops cached resolutions and provider read caches for a cwd - call after
@@ -51,6 +54,7 @@ export interface GitHostingResolver {
 }
 
 export interface GitHostingResolverOptions {
+  connections?: ForgeConnectionStore;
   github: GitHostingService;
   getDaemonConfig: () => MutableDaemonConfig;
   // A default cwd for provider-level operations that aren't tied to a
@@ -159,8 +163,20 @@ export function createGitHostingResolver(options: GitHostingResolverOptions): Gi
     return service;
   }
 
-  function resolveForProvider(providerId: GitHostingProviderId): ResolvedGitHosting {
+  function resolveForProvider(
+    providerId: GitHostingProviderId,
+    targetHost?: string,
+  ): ResolvedGitHosting {
     const capabilities = capabilitiesFor(providerId);
+    const host = targetHost ?? defaultForgeConnectionHost(providerId);
+    const connected = host ? options.connections?.resolve(providerId, host) : null;
+    if (connected)
+      return {
+        providerId,
+        capabilities,
+        service: connected as GitHostingService,
+        credentialsMissing: false,
+      };
     if (providerId === "github") {
       // GitHub auth is owned by the gh CLI; we always have a path to try, and
       // isAuthenticated reports the real state.
@@ -182,11 +198,23 @@ export function createGitHostingResolver(options: GitHostingResolverOptions): Gi
     const repoRoot = await resolveRepoRoot(cwd);
     const override = readProviderOverride(repoRoot);
     const remoteUrl = await resolveRemoteUrl(cwd);
-    const providerId = override ?? deriveProviderFromRemote(remoteUrl) ?? "github";
-    return resolveForProvider(providerId);
+    const remote = options.connections ? await resolveForgeConnectionRemote(cwd) : null;
+    const providerId = override ?? deriveProviderFromRemote(remote?.url ?? remoteUrl) ?? "github";
+    if (remote && options.connections) {
+      const service = await options.connections.forCwd(cwd, providerId, remote.host);
+      if (service)
+        return {
+          providerId,
+          capabilities: capabilitiesFor(providerId),
+          service: service as GitHostingService,
+          credentialsMissing: false,
+        };
+    }
+    return resolveForProvider(providerId, remote?.host);
   }
 
   return {
+    connections: options.connections,
     resolveForCwd(cwd: string): Promise<ResolvedGitHosting> {
       const cached = resolutionCache.get(cwd);
       if (cached && cached.expiresAt > now()) {

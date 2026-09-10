@@ -47,6 +47,10 @@ const DEFAULT_CONSOLE_FORMAT: LogFormat = "json";
 const DEFAULT_FILE_LEVEL: LogLevel = "info";
 const DEFAULT_DAEMON_LOG_FILENAME = "daemon.log";
 const REDACT_PATHS = [
+  "action.secret",
+  "msg.action.secret",
+  "message.action.secret",
+  "payload.action.secret",
   "authorization",
   "Authorization",
   "headers.authorization",

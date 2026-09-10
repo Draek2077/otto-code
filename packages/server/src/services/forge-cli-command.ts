@@ -161,7 +161,10 @@ export class ForgeCommandError extends Error {
   readonly stderr: string;
 
   constructor(label: { brand: string; binary: string }, params: ForgeCommandFailureParams) {
-    super(`${label.brand} CLI command failed: ${label.binary} ${params.args.join(" ")}`);
+    // Workspace snapshots carry only Error.message to the Changes tab. Keep the
+    // failure reason there and retain command details in the structured fields.
+    const reason = params.stderr.trim() || `${label.binary} ${params.args.join(" ")}`;
+    super(`${label.brand} CLI command failed: ${reason}`);
     this.args = [...params.args];
     this.cwd = params.cwd;
     this.exitCode = params.exitCode;

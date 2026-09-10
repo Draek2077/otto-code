@@ -345,6 +345,35 @@ function createService(options?: CreateServiceTestOptions) {
 }
 
 describe("WorkspaceGitServiceImpl", () => {
+  test("discards an in-flight forge snapshot when the selected connection changes", async () => {
+    let completeOld: (value: PullRequestStatusResult) => void;
+    const pendingOld = new Promise<PullRequestStatusResult>((resolve) => {
+      completeOld = resolve;
+    });
+    const getPullRequestStatus = vi
+      .fn()
+      .mockReturnValueOnce(pendingOld)
+      .mockResolvedValue(createPullRequestStatusResult());
+    const service = createService({ getPullRequestStatus });
+    const oldRead = service.getSnapshot(REPO_CWD);
+    await vi.waitFor(() => expect(getPullRequestStatus).toHaveBeenCalledOnce());
+    service.onForgeConnectionsChanged();
+    completeOld!(
+      createPullRequestStatusResult({
+        status: {
+          url: "https://github.com/acme/repo/pull/1",
+          title: "Old connection",
+          state: "open",
+          baseRefName: "main",
+          headRefName: "feature",
+          isMerged: false,
+        },
+      }),
+    );
+    expect((await oldRead).forge.pullRequest?.title).not.toBe("Old connection");
+    await flushPromises();
+    service.dispose();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
   });

@@ -6,8 +6,8 @@ The build history and locked product decisions live in `archive/projects/git-hos
 
 ## The two contracts
 
-- **Providers are configured once per host**, in a **Git providers** settings section. Both can be live at once - configure GitHub and Bitbucket Cloud and each workspace uses whichever matches its remote. In the shipped app the cards are folded into the **Workspaces** settings page (`packages/app/src/screens/settings/host-page.tsx` → `GitProvidersSettingsCards`), not a standalone sidebar entry - too few options to warrant their own category. (The charter's `git-providers` slug / `HostGitProvidersPage` was the original plan; the shipped code folded it in.)
-- **A workspace's provider is auto-detected from its git remote.** `github.com/…` → GitHub, `bitbucket.org/…` → Bitbucket Cloud (scp-style SSH remotes parse too). Nothing to configure per project. Switching to a Bitbucket-remote project switches all PR/issue functionality automatically.
+- **Connections belong to the host, with project selection overrides.** The **Git connections** section in host **Workspaces** settings manages reusable named accounts and a default per provider and server. **Project Settings → Git connections** can inherit that default or choose another connection. Worktrees inherit their owning project's selection, including worktrees outside the project folder.
+- **A workspace's provider is auto-detected from its Git remote.** SSH aliases are resolved to their canonical hostname. This identifies the API server, not the API account. Commit author settings, SSH keys and Git credential helpers remain owned by Git.
 
 ## Resolution: cwd → provider → service
 
@@ -17,7 +17,15 @@ The build history and locked product decisions live in `archive/projects/git-hos
 2. the provider derived from the git remote (`deriveProviderFromRemote` in `resolver.ts`, over the URL parsers in `packages/protocol/src/git-remote.ts`),
 3. default `"github"`.
 
-Resolutions are cached 30s per cwd; `invalidateAll()` fires on any daemon-config change. `resolveForProvider(id)` answers host-level auth-status checks (the settings "Check connection" rows). One Bitbucket service instance per host, keyed by a **SHA-256 fingerprint** of the credentials (never the raw token), rebuilt when the token rotates.
+Resolutions are cached 30s per cwd; daemon configuration and connection changes invalidate them. `resolveForProvider(id)` uses the host default for host-level operations. Connection-bound adapters have separate caches, polling and rate-limit state per connection revision. The existing ambient CLI/configuration path remains available when no connection is selected.
+
+### Account selection
+
+`git-hosting/connection-store.ts` owns connection metadata and selection. For a provider and canonical API server, resolution chooses the project's explicit binding first, then the host default. A missing or deleted selected connection is an error; it never falls through to another identity. Selecting **Use host default** deliberately removes a project override. Selecting **Use existing host configuration** deliberately removes a host default.
+
+`connection-router.ts` composes this selection around Paseo's `ForgeService` through bootstrap's `forgeOverrides` seam. `connection-drivers.ts` supplies command-local credentials to GitHub and GitLab, an explicit named login to tea, and a credential-bound native REST adapter to Bitbucket Cloud. No `gh auth switch`, process-wide environment mutation, or automatic sign-in occurs. Canonical remote hosts are checked before using a saved credential. Connection changes restart observed PR lookups and suppress results from superseded polls and in-flight snapshots.
+
+Saved custom servers also feed the Forge resolver's configured-host lookup, so an earlier failed automatic probe cannot hide a newly configured server. Existing Forge adapter manifests and provider capabilities remain authoritative.
 
 ## Service interface & capabilities
 
@@ -53,13 +61,17 @@ Comment reactions are similarly modelled as aggregate counts plus the current vi
 
 ## Configuration & secrets
 
-- **Credentials never touch `otto.json`.** They live only in the daemon's private `$OTTO_HOME/config.json` under `gitHosting.providers.bitbucketCloud: { email, apiToken }` (`packages/server/src/server/persisted-config.ts`, restrictive file perms), one set per provider per host.
-- **GitHub needs no stored credential** - the `gh` CLI owns auth, so its card is a connection check only.
-- On the wire: `MutableGitHostingConfigSchema` on `MutableDaemonConfigSchema` (`packages/protocol/src/messages.ts`), written via the daemon-config patch RPC and echoed in `get_daemon_config` like other provider keys (the WS channel is the trust boundary per [SECURITY.md](../SECURITY.md)).
+- **Saved connections use the shared daemon credential vault.** `$OTTO_HOME/forge-connections.json` contains only ids, labels, verified accounts, methods, revisions, host defaults and project references. Neither secrets nor machine-specific connection ids are committed to `otto.json` or project knowledge. Replacing credentials uses versioned vault keys and an atomic metadata write; failed persistence leaves the previous connection usable. Retired vault entries are deleted after metadata commits.
+- **GitHub** supports importing a specific existing `gh` account or entering an API token. Import reads `gh auth token --hostname HOST --user LOGIN`, ignoring ambient token variables, verifies the account, and saves a snapshot in the vault. It never changes the CLI's active account. A later CLI token rotation requires reconnecting the Otto connection.
+- **GitLab** accepts an API token and still uses `glab` for Forge operations. **Bitbucket Cloud** accepts an Atlassian email and API token and uses native REST. **Gitea, Forgejo and Codeberg** select an existing named `tea` login; tea retains its token and Otto verifies the selected endpoint and account before commands.
+- Token entry is write-only through the authenticated settings request. It is cleared on submit, excluded from the query mutation cache, redacted from structured logging, and absent from every settings response. The host checks account identity before saving; repository-specific permissions are checked by the actual operation. A successful account check does not prove access to every repository.
+- Existing host Atlassian configuration remains available for Jira and for Bitbucket when no saved connection is selected. It is not automatically migrated, copied or deleted by these settings.
+- Browser OAuth sign-in is not provided by this connection-selection feature. No Otto GitHub OAuth client is configured here. Missing credentials remain an actionable error, without background browser or terminal prompts.
 
 ## Protocol (additive only)
 
 - Capability flag `server_info.features.gitHostingProviders` - `COMPAT(gitHostingProviders)` at the client gate.
+- Saved connection settings use the additive `forgeConnections` capability and `forge.connections.manage.request/response`. The action union supports list, save/reconnect, select and remove. Save-and-select is atomic. New clients show an update message on older hosts.
 - Provider id: `GitHostingProviderIdSchema = enum(["github","bitbucket-cloud"])`, but the **wire id is an open string** (`GitHostingProviderIdWireSchema` + `normalizeGitHostingProviderId`, `packages/protocol/src/git-hosting.ts`) so a newer provider doesn't break old peers.
 - New dotted RPCs (per [docs/rpc-namespacing.md](rpc-namespacing.md)): `hosting.search.request/response` (provider-neutral issue/PR search; the response carries the resolved `provider`) and `hosting.auth_status.request/response` (host-level connection check driving the settings rows). The flat `github_search_request` is legacy and won't grow.
 - Attachments gain provider-neutral kinds `hosting_pr` / `hosting_issue` (each with a `provider` field). Legacy `github_pr` / `github_issue` remain accepted forever, and a new client still sends them for a GitHub-provider project talking to an old daemon (feature contract: one gate, no fallback logic). See [glossary Attachment](glossary.md).
@@ -73,4 +85,4 @@ Comment reactions are similarly modelled as aggregate counts plus the current vi
 
 ## Deferred (out of v1)
 
-Bitbucket Server / Data Center (different API + repo-path shape), GitLab, Gitea, GitHub Enterprise custom hosts (needs a configurable host→provider map), Bitbucket pipelines log fetch (the check-details successor), Bitbucket issue search (Jira is the norm), and OAuth flows (v1 is API-token only).
+Bitbucket Server / Data Center (different API and repo-path shape), Bitbucket pipelines log fetch, Bitbucket issue search, and Forge browser OAuth authorization. GitLab, Gitea, Forgejo and Codeberg use the wider [Forge architecture](forge-providers.md); host repository creation remains limited to adapters that expose that capability.

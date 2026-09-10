@@ -12,6 +12,7 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
+import { ForgeConnectionsSettings } from "./forge-connections-settings";
 
 /**
  * The single detection point for the git hosting providers capability.
@@ -44,6 +45,7 @@ export function GitProvidersSettingsCards({ serverId }: { serverId: string }) {
 
   return (
     <>
+      <ForgeConnectionsSettings serverId={serverId} />
       <GitHubProviderCard serverId={serverId} />
       <AtlassianProviderCard serverId={serverId} />
     </>
