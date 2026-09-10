@@ -179,12 +179,16 @@ export function defaultBasePickerItem(status: BaseRefCheckoutStatus): PickerItem
 }
 
 export function pickerItemToCheckoutRequest(
-  item: PickerItem | null,
+  selectedItem: PickerItem | null,
+  defaultBaseItem: PickerItem | null = null,
 ): PickerCheckoutRequest | undefined {
+  const item = selectedItem ?? defaultBaseItem;
   if (!item) return undefined;
   switch (item.kind) {
     case "branch":
-      return { action: "branch-off", refName: item.refName };
+      // An explicit selection opens that branch. Only the implicit base creates
+      // a new branch named after the generated worktree directory.
+      return { action: selectedItem ? "checkout" : "branch-off", refName: item.refName };
     case "github-pr": {
       const headRefName = item.item.headRefName?.trim();
       const forge = item.item.forge ?? "github";

@@ -4,6 +4,18 @@ How a workspace is archived, how an Otto-owned git worktree is cleaned up or rev
 
 **Workspaces are not chats.** A workspace is one concrete `cwd` on one daemon; a chat is a conversation surface that happens to live in one. They have independent lifecycles - the only coupling is ownership: archiving a workspace archives everything it owns, including its chats. Nothing here should be read as chat lifecycle; that lives in [chat-lifecycle.md](chat-lifecycle.md).
 
+## Worktree creation and branch selection
+
+The New Workspace branch picker checks out an explicitly selected branch. The generated
+worktree directory name is independent of the Git branch name. With no explicit selection,
+Otto creates a new branch from the implicit base using the generated name.
+
+Local and remote picker rows carry exact refs. A local selection checks out that local branch;
+a remote selection reuses an available local branch at the same commit or creates a tracking
+branch from that exact remote ref. If the branch is already checked out, or a same-named local
+branch differs from the selected remote, Otto creates a branch with a numeric suffix based on
+the selected branch name. Existing branches and worktrees are preserved.
+
 ## Worktree archive, branch cleanup, and re-attach
 
 "Leave"/"detach" on a worktree workspace **is** archive - there is no separate detach verb.

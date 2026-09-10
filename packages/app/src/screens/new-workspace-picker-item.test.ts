@@ -35,7 +35,7 @@ describe("pickerItemToCheckoutRequest", () => {
     expect(pickerItemToCheckoutRequest(null)).toBeUndefined();
   });
 
-  it("maps a branch row to branch-off with its exact ref", () => {
+  it("maps a selected branch row to checkout with its exact ref", () => {
     const item: PickerItem = {
       kind: "branch",
       name: "dev",
@@ -43,8 +43,30 @@ describe("pickerItemToCheckoutRequest", () => {
       accessibilityLabel: "dev, local branch",
     };
     expect(pickerItemToCheckoutRequest(item)).toEqual({
-      action: "branch-off",
+      action: "checkout",
       refName: "refs/heads/dev",
+    });
+  });
+
+  it("keeps branch-off behavior when only the implicit default base is present", () => {
+    const defaultItem = defaultBasePickerItem({
+      currentBranch: "main",
+      upstreamRef: "refs/remotes/upstream/main",
+    });
+    expect(pickerItemToCheckoutRequest(null, defaultItem)).toEqual({
+      action: "branch-off",
+      refName: "refs/remotes/upstream/main",
+    });
+  });
+
+  it("checks out an explicitly selected remote ref even when it is also the default", () => {
+    const item = defaultBasePickerItem({
+      currentBranch: "main",
+      upstreamRef: "refs/remotes/upstream/main",
+    });
+    expect(pickerItemToCheckoutRequest(item, item)).toEqual({
+      action: "checkout",
+      refName: "refs/remotes/upstream/main",
     });
   });
 
@@ -304,7 +326,7 @@ describe("buildPickerOptionData", () => {
     });
     const selected = data.itemById.get(data.selectedOptionId) ?? null;
     expect(pickerItemToCheckoutRequest(selected)).toEqual({
-      action: "branch-off",
+      action: "checkout",
       refName: "refs/heads/main",
     });
   });

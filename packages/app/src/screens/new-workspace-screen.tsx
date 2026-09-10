@@ -2194,9 +2194,7 @@ export function NewWorkspaceScreen({
           })
         : null;
       const checkoutRequest = checkoutStatusForCreate
-        ? pickerItemToCheckoutRequest(
-            selectedItem ?? defaultBasePickerItem(checkoutStatusForCreate),
-          )
+        ? pickerItemToCheckoutRequest(selectedItem, defaultBasePickerItem(checkoutStatusForCreate))
         : undefined;
       const normalizedWorkspace = supportsWorkspaceMultiplicity
         ? await createMultiplicityWorkspace({

@@ -1419,39 +1419,9 @@ async function resolveWorktreeSourcePlan({
       };
     }
     case "checkout-branch": {
-      await validateGitBranchName(cwd, source.branchName);
-      if (!(await localBranchExists(cwd, source.branchName))) {
-        try {
-          await runGitCommand(["fetch", "origin", `${source.branchName}:${source.branchName}`], {
-            cwd,
-            timeout: 120_000,
-          });
-        } catch {
-          throw new UnknownBranchError({ branchName: source.branchName, cwd });
-        }
-      }
-      if (await isBranchCheckedOut(cwd, source.branchName)) {
-        const branchName = await resolveUniqueLocalBranchName(cwd, source.branchName);
-        return {
-          branchName,
-          metadataBaseRefName: source.branchName,
-          changeRequestLookupTarget: createOttoWorktreeChangeRequestHint({
-            headRef: branchName,
-            localBranchName: branchName,
-          }),
-          addArguments: ["-b", branchName, "--no-track", source.branchName],
-        };
-      }
-
-      return {
-        branchName: source.branchName,
-        metadataBaseRefName: source.branchName,
-        changeRequestLookupTarget: createOttoWorktreeChangeRequestHint({
-          headRef: source.branchName,
-          localBranchName: source.branchName,
-        }),
-        addArguments: [source.branchName],
-      };
+      return source.branchName.startsWith("refs/remotes/")
+        ? resolveRemoteBranchCheckoutPlan(cwd, source.branchName)
+        : resolveLocalBranchCheckoutPlan(cwd, source.branchName);
     }
     case "checkout-change-request":
     case "checkout-github-pr": {
@@ -1516,6 +1486,84 @@ async function resolveWorktreeSourcePlan({
       };
     }
   }
+}
+
+async function resolveLocalBranchCheckoutPlan(
+  cwd: string,
+  refName: string,
+): Promise<WorktreeSourcePlan> {
+  const isLocalRef = refName.startsWith("refs/heads/");
+  const requestedBranch = isLocalRef ? refName.slice("refs/heads/".length) : refName;
+  await validateGitBranchName(cwd, requestedBranch);
+  if (!(await localBranchExists(cwd, requestedBranch))) {
+    if (isLocalRef) {
+      throw new UnknownBranchError({ branchName: refName, cwd });
+    }
+    try {
+      await runGitCommand(["fetch", "origin", `${requestedBranch}:${requestedBranch}`], {
+        cwd,
+        timeout: 120_000,
+      });
+    } catch {
+      throw new UnknownBranchError({ branchName: refName, cwd });
+    }
+  }
+  const occupied = await isBranchCheckedOut(cwd, requestedBranch);
+  const branchName = occupied
+    ? await resolveUniqueLocalBranchName(cwd, requestedBranch)
+    : requestedBranch;
+  return {
+    branchName,
+    metadataBaseRefName: requestedBranch,
+    changeRequestLookupTarget: createOttoWorktreeChangeRequestHint({
+      headRef: branchName,
+      localBranchName: branchName,
+    }),
+    addArguments: occupied ? ["-b", branchName, "--no-track", requestedBranch] : [branchName],
+  };
+}
+
+async function resolveRemoteBranchCheckoutPlan(
+  cwd: string,
+  refName: string,
+): Promise<WorktreeSourcePlan> {
+  const match = /^refs\/remotes\/([^/]+)\/(.+)$/.exec(refName);
+  if (!match) throw new UnknownBranchError({ branchName: refName, cwd });
+  const requestedBranch = match[2]!;
+  await validateGitBranchName(cwd, requestedBranch);
+  const remoteCommit = await runGitCommand(["rev-parse", "--verify", `${refName}^{commit}`], {
+    cwd,
+    acceptExitCodes: [0, 128],
+  });
+  if (remoteCommit.exitCode !== 0) {
+    throw new UnknownBranchError({ branchName: refName, cwd });
+  }
+
+  // Reuse the local branch only when it represents the exact selected ref and
+  // is available. Never reset a divergent branch or disturb another worktree.
+  let reuseLocalBranch = false;
+  if (await localBranchExists(cwd, requestedBranch)) {
+    const localCommit = await runGitCommand(
+      ["rev-parse", "--verify", `refs/heads/${requestedBranch}^{commit}`],
+      { cwd },
+    );
+    reuseLocalBranch =
+      localCommit.stdout.trim() === remoteCommit.stdout.trim() &&
+      !(await isBranchCheckedOut(cwd, requestedBranch));
+  }
+  const branchName = reuseLocalBranch
+    ? requestedBranch
+    : await resolveUniqueLocalBranchName(cwd, requestedBranch);
+  return {
+    branchName,
+    metadataBaseRefName: normalizeRequiredBaseBranch(refName),
+    metadataBaseRef: refName,
+    changeRequestLookupTarget: createOttoWorktreeChangeRequestHint({
+      headRef: requestedBranch,
+      localBranchName: branchName,
+    }),
+    addArguments: reuseLocalBranch ? [branchName] : ["-b", branchName, "--track", refName],
+  };
 }
 
 async function configureWorktreePushRemote(options: {
