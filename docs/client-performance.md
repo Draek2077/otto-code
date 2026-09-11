@@ -32,6 +32,8 @@ its heap, or what it does with what the daemon sends it. None of those were meas
 | `resource-monitor.ts`         | The singleton: rAF loop + census interval + bounded ring buffer                                                                            |
 | `long-frame-attribution.ts`   | Long Animation Frames observer → per-script breakdown of every >50ms frame, bounded ring + session aggregate                               |
 | `performance-capture.ts`      | The Metrics bar's Capture: samples + trend + hotspots + long frames + inbound-dispatch attribution + daemon diagnostics, saved as one JSON |
+| `capture-frame-evidence.ts`   | Preserves the 20 worst frames with nearby DOM mutations, inbound dispatches and named operations before recent rings roll over             |
+| `capture-operations.ts`       | Capture-only bounded spans for chat creation, state publication, stream reduction and audio preparation/playback                           |
 | `dom-write-attribution.ts`    | Capture-scoped MutationObserver + CSSOM insert counter → one record per React commit, matched to long frames                               |
 | `runtime-counters.ts`         | Patches the timer globals to count live intervals and pending timeouts                                                                     |
 | `format-resource-report.ts`   | Renders it as the `label: value` text the rest of `diagnostics/` produces                                                                  |
@@ -123,6 +125,19 @@ Electron and desktop Chrome, feature-detected and silently absent elsewhere). Ev
 arrives with its script breakdown: source URL, function name, character position, duration, and any
 forced style/layout time.
 
+**Packaged desktop requires `AlwaysLogLOAFURL`.** Chromium 146's
+`AnimationFrameTimingMonitor::ShouldAllowScriptURL` excludes the app's `otto://` scripts by
+default, even though Otto registers that scheme as standard and secure. Desktop enables this
+Chromium feature before creating renderers, merging it with existing feature flags. The flag makes
+script attribution eligible; it does not start an observer or CPU profiler. The monitor still owns
+observation. Script entries include epoch start times for correlation with operation spans.
+The exact filter is in [Chromium 146.0.7680.216](https://github.com/chromium/chromium/blob/146.0.7680.216/third_party/blink/renderer/core/frame/animation_frame_timing_monitor.cc#L491-L557).
+
+`node packages/desktop/scripts/verify-performance-attribution.cjs` exercises the actual Electron
+runtime with a hidden, isolated `otto://` fixture and no daemon: the control must omit script
+attribution and the enabled run must report the fixture script. Its temporary profiles live under
+the repository's `.tmp/` and are removed afterward.
+
 Two bounded views, started and stopped with the monitor's frame sampler:
 
 - a **ring of recent long frames** (capacity 500) with the top 5 scripts per frame - what the user
@@ -162,6 +177,40 @@ the whole document, and is the one write that makes a 25k-node layout pay on a s
 The capture persists `domWrites.batches` for the window and `domWrites.longFrameMatches`, the
 batches that landed inside each long frame. Read a keystroke frame as: which targets were written,
 how many nodes moved, and whether `cssRulesInserted` is non-zero.
+
+**The recent mutation ring is not the entire capture.** At animation rates its 300 batches can
+cover only the last three seconds. `frameEvidence.worstFrames` therefore preserves evidence when
+each expensive frame is observed, ranking the top 20 by blocking time, then duration. Each entry
+keeps the frame, its scripts, and nearby mutations, dispatches and named operations, including a
+100ms lead-in. Each evidence category is limited to 100 entries, with explicit omission counts.
+Nearby work is correlation, not proof of causality. Operations still running when the frame is
+observed are marked `pending`; their later completion can appear in the final operation ring.
+
+`frameEvidence.totalFrames` and `framesWithScripts` count this capture, while the older
+`longFrames.totalLongFrames` and script aggregate remain session totals. `attribution.status`
+distinguishes unsupported observation, no long frames, missing scripts and available attribution.
+The capture records the runtime user agent, page scheme and performance clock origin.
+
+`operations.entries` records named synchronous and asynchronous spans while Capture is active.
+These cover chat creation, agent-directory publication, timeline application, stream reduction
+and commit, voice-cue synthesis/base64 conversion, AudioContext creation/readiness, audio buffer
+reading/decoding/PCM conversion, playback start and queued playback. **Async durations include
+waiting; they are not CPU time.** Playback spans include queueing and playing the sound. Sync
+spans include synchronous subscribers but not subsequent React rendering. Only names, timestamps,
+status, identifiers and sizes/counts are retained, never prompts, audio bytes or error bodies.
+The ring holds 500 completed spans plus at most 100 pending spans and reports dropped entries.
+Late completions cannot write into a later capture.
+
+`domWrites.observerOverhead` measures mutation summarization, and
+`frameEvidence.observerOverhead` measures evidence collection for retained frame candidates.
+These expose instrument cost separately from application work; they do not claim to measure all
+browser observer overhead. The capture drains queued observer records and freezes client evidence
+before awaiting daemon diagnostics, so saving does not extend the frame/dispatch recording window.
+Daemon diagnostics carry their own later collection timestamp.
+
+For startup investigations, start Capture before creating the chat, reproduce startup, voice cues
+and incoming responses, then stop after a short steady period. This records the busy transition
+and the settled workload in the same file without changing the animation or playback behavior.
 
 The capture also persists `preCapture`: the growth trend over the monitor history that existed
 _before_ the capture reset the ring. A capture is usually taken seconds after the symptom, so the

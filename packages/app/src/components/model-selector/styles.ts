@@ -18,6 +18,7 @@ export const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
   },
+  compactGlyph: { flexShrink: 0 },
   compactLabelActive: { color: theme.colors.foreground },
   mobileBrowserContent: {
     paddingHorizontal: 0,

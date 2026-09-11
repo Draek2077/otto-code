@@ -172,6 +172,21 @@ The branching is one `useIsCompactFormFactor()` check at the top of the screen c
 
 The workspace screen (`packages/app/src/screens/workspace/workspace-screen.tsx`) follows a different but parallel rule: tabs collapse on compact, panes split on desktop. The sidebar (`packages/app/src/components/left-sidebar.tsx`) is overlaid on compact and pinned on desktop.
 
+Workspace split panes have no minimum size or minimum proportion. A pane can shrink to zero
+and expand again using its divider; resizing preserves the adjacent pair's total allocation.
+On web, the shared `ResizeHandle` grab area lives above resident browser surfaces and below
+menus and dialogs. It follows nested layout movement even when the divider itself keeps the
+same dimensions. During a resize, browser surfaces yield pointer input until release,
+cancellation, lost capture, window blur, or handle removal. Browser guests remain mounted.
+
+Resident browser guests and app foreground UI occupy separate document-level paint planes.
+Pane-local overlays use `PaneOverlay` to keep their pane bounds while painting above guests;
+window-wide previews use `WindowOverlay`. Split drop highlights, splitter highlights and hit
+areas, browser errors, preview controls, and annotation cards use the pane layer. Dragged tabs
+use the drag layer above pane overlays and below menus and dialogs. Disabling a guest's pointer
+events only changes input; it never makes UI underneath the guest visible. Do not solve this
+with local z-index increases inside the workspace's stacking context.
+
 On desktop each pane draws its tab strip in one of two orientations: a horizontal row across the top or a vertical rail down the left edge (the default) (`packages/app/src/screens/workspace/workspace-desktop-tabs-rail.tsx`, mounted per pane in `packages/app/src/components/split-container.tsx`). Orientation is a per-pane property (`SplitPane.tabOrientation`), so a split layout can mix a rail on one pane with a row on a sibling; a pane that never sets it inherits the `defaultTabOrientation` Appearance setting (`packages/app/src/hooks/use-settings/storage.ts`, the `TabOrientationRow` in `packages/app/src/screens/settings/appearance/appearance-section.tsx`). This is desktop/web only - compact still routes tabs through `MobileWorkspaceTabSwitcher`, unchanged.
 
 The rail sizes itself to its widest current tab label until the user drags the splitter on its right edge, at which point the dragged width takes over outright - it is an override of the content-driven formula, not a second cap it can shrink under, because a splitter that sometimes refuses to move is worse than one that always does. That width is **one number for every rail on the device** (`verticalTabRailWidth` in `AppSettings`), not per-pane: how much of a tab label you want to read is a preference about the reader, not about the pane. Panes of very different sizes are handled by a `maxWidth` of 60% of the pane rather than by remembering a width per pane, so a rail dragged wide on a full-width pane caps itself in a narrow split instead of squeezing that pane to nothing. Double-tapping the splitter clears the saved width and returns the rail to content-driven - that reset is also the touch-reachable path, since the drag itself is a pan gesture and works wherever the rail renders.

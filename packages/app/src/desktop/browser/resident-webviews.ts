@@ -20,6 +20,21 @@ const residentWebviewSizesByBrowserId = new Map<string, { width: number; height:
 // surface must yield hit-testing to the split canvas beneath it: otherwise a
 // browser pane eats the drag and its drop zones can never create a split.
 let residentBrowserSurfaceInputEnabled = true;
+const residentBrowserInputSuspensions = new Set<symbol>();
+
+function isResidentBrowserInputEnabled(): boolean {
+  return residentBrowserSurfaceInputEnabled && residentBrowserInputSuspensions.size === 0;
+}
+
+export function suspendResidentBrowserSurfaceInput(): () => void {
+  const token = Symbol();
+  residentBrowserInputSuspensions.add(token);
+  setResidentBrowserSurfaceInputEnabled(residentBrowserSurfaceInputEnabled);
+  return () => {
+    if (!residentBrowserInputSuspensions.delete(token)) return;
+    setResidentBrowserSurfaceInputEnabled(residentBrowserSurfaceInputEnabled);
+  };
+}
 
 interface BrowserWebviewElement extends HTMLElement {
   src: string;
@@ -151,7 +166,7 @@ export function setResidentBrowserSurfaceInputEnabled(enabled: boolean): void {
     if (surface.getAttribute("aria-hidden") !== "false") {
       continue;
     }
-    surface.style.pointerEvents = enabled ? "auto" : "none";
+    surface.style.pointerEvents = isResidentBrowserInputEnabled() ? "auto" : "none";
   }
 }
 
@@ -313,8 +328,7 @@ export function presentBrowserWebview(
   surface.style.height = `${Math.max(0, surfaceBottom - surfaceTop)}px`;
   surface.style.overflow = "hidden";
   surface.style.opacity = "1";
-  surface.style.pointerEvents =
-    hasVisibleArea && residentBrowserSurfaceInputEnabled ? "auto" : "none";
+  surface.style.pointerEvents = hasVisibleArea && isResidentBrowserInputEnabled() ? "auto" : "none";
   surface.style.display = "flex";
   surface.style.visibility = "visible";
   clearResidentWebviewParkingStyle(webview);
@@ -507,6 +521,7 @@ export function clearResidentBrowserWebviewsForTests(): void {
   residentSurfacesByBrowserId.clear();
   residentWebviewSizesByBrowserId.clear();
   residentBrowserSurfaceInputEnabled = true;
+  residentBrowserInputSuspensions.clear();
   readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID)?.remove();
 }
 

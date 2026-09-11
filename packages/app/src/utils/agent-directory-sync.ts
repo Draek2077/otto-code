@@ -1,4 +1,5 @@
 import equal from "fast-deep-equal";
+import { traceCaptureSync } from "@/diagnostics/resource-report/capture-operations";
 import type { FetchAgentsEntry } from "@otto-code/client/internal/daemon-client";
 import { type Agent, useSessionStore } from "@/stores/session-store";
 import {
@@ -27,11 +28,20 @@ export function applyAgentDirectoryDelta(input: { serverId: string; delta: Agent
   agentId: string;
   stoppedRunning: boolean;
 } {
-  if (input.delta.kind === "remove") {
-    removeAgentDirectoryReplica(input.serverId, input.delta.agentId);
-    return { agentId: input.delta.agentId, stoppedRunning: false };
-  }
-  return upsertAgentDirectoryReplica(input.serverId, input.delta);
+  return traceCaptureSync(
+    "agent.directory.apply",
+    () => {
+      if (input.delta.kind === "remove") {
+        removeAgentDirectoryReplica(input.serverId, input.delta.agentId);
+        return { agentId: input.delta.agentId, stoppedRunning: false };
+      }
+      return upsertAgentDirectoryReplica(input.serverId, input.delta);
+    },
+    {
+      serverId: input.serverId,
+      agentId: input.delta.kind === "remove" ? input.delta.agentId : input.delta.agent.id,
+    },
+  );
 }
 
 type AgentUpsertDelta = Extract<AgentDirectoryDelta, { kind: "upsert" }>;

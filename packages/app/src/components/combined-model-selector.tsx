@@ -588,11 +588,13 @@ export function CombinedModelSelector({
           >
             {({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => (
               <>
-                <ProviderGlyph
-                  provider={selectedProvider}
-                  size="xs"
-                  tone={hovered || pressed ? "foreground" : "muted"}
-                />
+                <View style={styles.compactGlyph}>
+                  <ProviderGlyph
+                    provider={selectedProvider}
+                    size="xs"
+                    tone={hovered || pressed ? "foreground" : "muted"}
+                  />
+                </View>
                 <Text
                   style={[styles.compactLabel, (hovered || pressed) && styles.compactLabelActive]}
                   numberOfLines={1}
@@ -600,10 +602,12 @@ export function CombinedModelSelector({
                 >
                   {triggerLabel}
                 </Text>
-                <ThemedChevronDown
-                  size="xs"
-                  uniProps={hovered || pressed ? foregroundMapping : foregroundMutedMapping}
-                />
+                <View style={styles.compactGlyph}>
+                  <ThemedChevronDown
+                    size="xs"
+                    uniProps={hovered || pressed ? foregroundMapping : foregroundMutedMapping}
+                  />
+                </View>
               </>
             )}
           </SplitButtonPrimary>

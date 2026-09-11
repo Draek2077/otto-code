@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { DaemonClientInboundDispatchTiming } from "@otto-code/client/internal/daemon-client";
 
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 import { isElectronRuntime } from "@/desktop/host";
@@ -17,13 +16,21 @@ import {
   type DomWriteReport,
 } from "./dom-write-attribution";
 import {
+  flushLongFrameAttribution,
   getLongFrameReport,
+  subscribeLongFrames,
   type LongFrameReport,
   type LongFrameSummary,
 } from "./long-frame-attribution";
 import { resourceMonitor } from "./resource-monitor";
 import { getSlowTimerCallbacks, type SlowTimerCallback } from "./runtime-counters";
 import { analyzeResourceTrend, type ResourceSample } from "./resource-trend";
+import { captureOperations } from "./capture-operations";
+import { getGlobalSingleton } from "./global-singleton";
+import {
+  CaptureFrameEvidenceRecorder,
+  type CapturedInboundDispatch,
+} from "./capture-frame-evidence";
 
 export interface PerformanceCaptureState {
   active: boolean;
@@ -31,10 +38,6 @@ export interface PerformanceCaptureState {
   saving: boolean;
   lastSavedPath: string | null;
   error: string | null;
-}
-
-interface CapturedInboundDispatch extends DaemonClientInboundDispatchTiming {
-  serverId: string;
 }
 
 interface InboundDispatchLongFrameMatch {
@@ -55,6 +58,11 @@ interface PersistedPerformanceCapture {
   format: "otto-performance-capture-v1";
   startedAt: string;
   stoppedAt: string;
+  /** Runtime identity and clock used to interpret packaged script locations. */
+  environment: { userAgent: string | null; timeOrigin: number; pageScheme: string | null };
+  frameEvidence: ReturnType<CaptureFrameEvidenceRecorder["report"]>;
+  operations: ReturnType<typeof captureOperations.report>;
+  attribution: { status: "unsupported" | "no-long-frames" | "missing-scripts" | "available" };
   samples: ResourceSample[];
   trend: ReturnType<typeof analyzeResourceTrend>;
   /**
@@ -101,15 +109,21 @@ interface PersistedPerformanceCapture {
 
 type Listener = () => void;
 
-const state: PerformanceCaptureState = {
-  active: false,
-  startedAt: null,
-  saving: false,
-  lastSavedPath: null,
-  error: null,
-};
-let preCaptureSnapshot: PersistedPerformanceCapture["preCapture"] = null;
-const listeners = new Set<Listener>();
+const captureRuntime = getGlobalSingleton("otto.diagnostics.performanceCapture", () => ({
+  state: {
+    active: false,
+    startedAt: null,
+    saving: false,
+    lastSavedPath: null,
+    error: null,
+  } as PerformanceCaptureState,
+  preCaptureSnapshot: null as PersistedPerformanceCapture["preCapture"],
+  frameEvidence: null as CaptureFrameEvidenceRecorder | null,
+  unsubscribeFrames: null as (() => void) | null,
+  listeners: new Set<Listener>(),
+}));
+const state = captureRuntime.state;
+const listeners = captureRuntime.listeners;
 
 function notify(): void {
   for (const listener of listeners) listener();
@@ -133,7 +147,7 @@ export function startPerformanceCapture(): void {
   // Snapshot the always-on history before reset wipes it: its growth trend is
   // the leak evidence, and the capture window alone is too short to re-derive it.
   const history = resourceMonitor.getSamples();
-  preCaptureSnapshot =
+  captureRuntime.preCaptureSnapshot =
     history.length >= 2
       ? {
           samples: history.length,
@@ -143,9 +157,18 @@ export function startPerformanceCapture(): void {
       : null;
   resourceMonitor.reset();
   resourceMonitor.takeSample();
+  state.startedAt = Date.now();
+  captureOperations.start();
+  captureRuntime.frameEvidence = new CaptureFrameEvidenceRecorder(state.startedAt);
+  captureRuntime.unsubscribeFrames = subscribeLongFrames((frame) => {
+    captureRuntime.frameEvidence?.record(frame, () => ({
+      domWrites: getDomWriteReport(frame.at - 100).batches,
+      dispatches: collectInboundDispatches(frame.at - 100),
+      operations: captureOperations.report().entries,
+    }));
+  });
   startDomWriteAttribution();
   state.active = true;
-  state.startedAt = Date.now();
   state.lastSavedPath = null;
   state.error = null;
   notify();
@@ -158,18 +181,32 @@ export async function stopPerformanceCapture(): Promise<void> {
   try {
     resourceMonitor.takeSample();
     stopDomWriteAttribution();
+    flushLongFrameAttribution();
+    captureRuntime.unsubscribeFrames?.();
+    captureRuntime.unsubscribeFrames = null;
+    const stoppedAt = Date.now();
     const samples = copySamples();
-    const daemonDiagnostics = await collectDaemonDiagnostics();
+    // Freeze every client record BEFORE awaiting daemon diagnostics. Otherwise
+    // saving extends the LoAF/dispatch window past the samples and DOM observer.
     const longFrames = getLongFrameReport(state.startedAt);
     const inboundDispatchEntries = collectInboundDispatches(state.startedAt);
     const domWrites = getDomWriteReport(state.startedAt);
+    const evidence = captureRuntime.frameEvidence!.report();
     const capture: PersistedPerformanceCapture = {
       format: "otto-performance-capture-v1",
       startedAt: new Date(state.startedAt).toISOString(),
-      stoppedAt: new Date().toISOString(),
+      stoppedAt: new Date(stoppedAt).toISOString(),
+      environment: {
+        userAgent: typeof navigator === "undefined" ? null : navigator.userAgent,
+        timeOrigin: performance.timeOrigin,
+        pageScheme: typeof location === "undefined" ? null : location.protocol,
+      },
+      frameEvidence: evidence,
+      operations: captureOperations.stop(stoppedAt),
+      attribution: { status: attributionStatus(longFrames.supported, evidence) },
       samples,
       trend: analyzeResourceTrend(samples),
-      preCapture: preCaptureSnapshot,
+      preCapture: captureRuntime.preCaptureSnapshot,
       longFrames,
       censusStats: getCensusStats(),
       slowTimers: getSlowTimerCallbacks(state.startedAt),
@@ -188,8 +225,9 @@ export async function stopPerformanceCapture(): Promise<void> {
         traffic: collectTrafficHotspots(24),
         queries: collectQueryHotspots(24),
       },
-      daemonDiagnostics,
+      daemonDiagnostics: [],
     };
+    capture.daemonDiagnostics = await collectDaemonDiagnostics();
     const result = await invokeDesktopCommand<{ path?: unknown }>("write_performance_capture", {
       contents: `${JSON.stringify(capture, null, 2)}\n`,
     });
@@ -201,11 +239,25 @@ export async function stopPerformanceCapture(): Promise<void> {
   } catch (error) {
     state.error = error instanceof Error ? error.message : String(error);
   } finally {
+    captureRuntime.unsubscribeFrames?.();
+    captureRuntime.unsubscribeFrames = null;
+    captureOperations.stop();
+    stopDomWriteAttribution();
+    captureRuntime.frameEvidence = null;
     state.active = false;
     state.startedAt = null;
     state.saving = false;
     notify();
   }
+}
+
+function attributionStatus(
+  supported: boolean,
+  evidence: { totalFrames: number; framesWithScripts: number },
+): PersistedPerformanceCapture["attribution"]["status"] {
+  if (!supported) return "unsupported";
+  if (evidence.totalFrames === 0) return "no-long-frames";
+  return evidence.framesWithScripts === 0 ? "missing-scripts" : "available";
 }
 
 function collectInboundDispatches(sinceMs: number): CapturedInboundDispatch[] {

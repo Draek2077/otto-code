@@ -1,5 +1,3 @@
-import { MIN_SPLIT_SIZE } from "@/stores/workspace-layout-constants";
-
 interface ComputeResizeHandleSizesInput {
   sizes: number[];
   index: number;
@@ -11,7 +9,7 @@ export function computeResizeHandleSizes({
   sizes,
   index,
   deltaRatio,
-  minSize = MIN_SPLIT_SIZE,
+  minSize = 0,
 }: ComputeResizeHandleSizesInput): number[] {
   const nextSizes = sizes.slice();
   const leftSize = sizes[index];

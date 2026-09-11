@@ -26,6 +26,8 @@
     "pretest:e2e:renderer": "npm --prefix ../.. run browsers:install",
     "test:e2e:renderer": "cross-env E2E_DESKTOP_RUNTIME=1 node ../../scripts/run-playwright.mjs test --config=playwright.config.ts --project=desktop",
     "test:e2e:browser-tabs": "npm run build:main && node ./e2e/browser-tabs.e2e.mjs",
+    "test:e2e:browser-focus": "node ./e2e/browser-focus.e2e.cjs",
+    "test:e2e:browser-layering": "node ./e2e/browser-layering.e2e.cjs",
     "verify:electron-cdp": "node ./scripts/verify-electron-cdp.mjs",
     "test": "vitest run --exclude \"e2e/**\"",
     "typecheck": "tsgo --noEmit -p tsconfig.json"

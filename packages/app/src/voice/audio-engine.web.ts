@@ -1,4 +1,8 @@
 import { isElectronRuntime } from "@/desktop/host";
+import {
+  traceCaptureAsync,
+  traceCaptureSync,
+} from "@/diagnostics/resource-report/capture-operations";
 import type {
   AudioEngine,
   AudioEngineCallbacks,
@@ -163,7 +167,7 @@ export function createAudioEngine(
       throw new Error("AudioContext unavailable");
     }
 
-    const context = new AudioContextCtor();
+    const context = traceCaptureSync("audio.context.create", () => new AudioContextCtor());
     if (context.state === "suspended") {
       await context.resume().catch(() => undefined);
     }
@@ -193,16 +197,25 @@ export function createAudioEngine(
   }
 
   async function playAudio(audio: AudioPlaybackSource, gain: number): Promise<number> {
-    const context = await ensurePlaybackContext();
-    const arrayBuffer = await audio.arrayBuffer();
+    const context = await traceCaptureAsync("audio.context.ready", ensurePlaybackContext);
+    const arrayBuffer = await traceCaptureAsync("audio.read-buffer", () => audio.arrayBuffer(), {
+      bytes: audio.size,
+    });
     const type = (audio.type || "").toLowerCase();
     const audioBuffer = type.startsWith("audio/pcm")
-      ? pcm16LeToAudioBuffer(
-          context,
-          new Uint8Array(arrayBuffer),
-          parsePcmSampleRate(type) ?? 24000,
+      ? traceCaptureSync(
+          "audio.pcm.convert",
+          () =>
+            pcm16LeToAudioBuffer(
+              context,
+              new Uint8Array(arrayBuffer),
+              parsePcmSampleRate(type) ?? 24000,
+            ),
+          { bytes: arrayBuffer.byteLength },
         )
-      : await decodeAudioData(context, arrayBuffer);
+      : await traceCaptureAsync("audio.decode", () => decodeAudioData(context, arrayBuffer), {
+          bytes: arrayBuffer.byteLength,
+        });
 
     const durationSec = audioBuffer.duration;
     const source = context.createBufferSource();
@@ -244,7 +257,7 @@ export function createAudioEngine(
       });
 
       try {
-        source.start();
+        traceCaptureSync("audio.playback.start", () => source.start());
       } catch (error) {
         settle(() => reject(error instanceof Error ? error : new Error(String(error))));
       }
@@ -481,7 +494,7 @@ export function createAudioEngine(
 
   return {
     async initialize() {
-      await ensurePlaybackContext();
+      await traceCaptureAsync("audio.context.ready", ensurePlaybackContext);
     },
 
     async destroy() {
@@ -551,12 +564,17 @@ export function createAudioEngine(
 
     async play(audio: AudioPlaybackSource, options?: AudioPlaybackOptions) {
       const gain = clampGain(options?.gain);
-      return await new Promise<number>((resolve, reject) => {
-        refs.queue.push({ audio, gain, resolve, reject });
-        if (!refs.processingQueue) {
-          void processQueue();
-        }
-      });
+      return await traceCaptureAsync(
+        "audio.queue-and-play",
+        () =>
+          new Promise<number>((resolve, reject) => {
+            refs.queue.push({ audio, gain, resolve, reject });
+            if (!refs.processingQueue) {
+              void processQueue();
+            }
+          }),
+        { bytes: audio.size },
+      );
     },
 
     stop() {

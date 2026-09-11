@@ -1,7 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, type PointerEvent as RNPointerEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
+import { PaneOverlay } from "@/components/ui/pane-overlay";
+import { suspendResidentBrowserSurfaceInput } from "@/desktop/browser/resident-webviews";
 import { startResizeHandleDrag, type ResizeHandleDrag } from "@/components/resize-handle-drag";
 import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 import {
@@ -46,15 +48,25 @@ export function ResizeHandle({
   onPreviewResizeSplit,
   onResizeSplit,
 }: ResizeHandleProps) {
-  const { theme } = useUnistyles();
   const finePointer = useHasFinePointer();
+  const cleanupsRef = useRef(new Set<() => void>());
   const pointerStatesRef = useRef(new Map<number, PointerState>());
   const touchDragRef = useRef<ResizeHandleDrag | null>(null);
+  const releaseTouchInputRef = useRef<(() => void) | null>(null);
   const cursorBeforeDragRef = useRef<string | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [active, setActive] = useState(false);
   const [dragging, setDragging] = useState(false);
   const highlighted = active || dragging;
+
+  useEffect(
+    () => () => {
+      for (const cleanup of cleanupsRef.current) cleanup();
+      releaseTouchInputRef.current?.();
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    },
+    [],
+  );
 
   const handlePointerDown = useCallback(
     (event: RNPointerEvent) => {
@@ -73,6 +85,7 @@ export function ResizeHandle({
       }
 
       setDragging(true);
+      const releaseBrowserInput = suspendResidentBrowserSurfaceInput();
 
       pointerStatesRef.current.set(pointerId, {
         containerSize,
@@ -98,6 +111,8 @@ export function ResizeHandle({
       resetWindowHorizontalScroll();
 
       function cleanup() {
+        if (!cleanupsRef.current.delete(cleanup)) return;
+        releaseBrowserInput();
         pointerStatesRef.current.delete(pointerId);
         setDragging(pointerStatesRef.current.size > 0);
         if (pointerStatesRef.current.size === 0) {
@@ -111,6 +126,8 @@ export function ResizeHandle({
         window.removeEventListener("pointermove", handlePointerMove);
         window.removeEventListener("pointerup", handlePointerUp);
         window.removeEventListener("pointercancel", handlePointerUp);
+        window.removeEventListener("blur", handleWindowBlur);
+        pointerCaptureElement.removeEventListener("lostpointercapture", handlePointerUp);
       }
 
       function handlePointerMove(moveEvent: PointerEvent) {
@@ -141,9 +158,17 @@ export function ResizeHandle({
         cleanup();
       }
 
+      function handleWindowBlur() {
+        pointerStatesRef.current.get(pointerId)?.drag.finish();
+        cleanup();
+      }
+
+      cleanupsRef.current.add(cleanup);
       window.addEventListener("pointermove", handlePointerMove);
       window.addEventListener("pointerup", handlePointerUp);
       window.addEventListener("pointercancel", handlePointerUp);
+      window.addEventListener("blur", handleWindowBlur);
+      pointerCaptureElement.addEventListener("lostpointercapture", handlePointerUp);
     },
     [containerSize, direction, groupId, index, onPreviewResizeSplit, onResizeSplit, sizes],
   );
@@ -153,6 +178,7 @@ export function ResizeHandle({
       .runOnJS(true)
       .onBegin(() => setDragging(true))
       .onStart(() => {
+        releaseTouchInputRef.current = suspendResidentBrowserSurfaceInput();
         touchDragRef.current = startResizeHandleDrag({
           sizes,
           index,
@@ -167,6 +193,8 @@ export function ResizeHandle({
       })
       .onEnd(() => touchDragRef.current?.finish())
       .onFinalize(() => {
+        releaseTouchInputRef.current?.();
+        releaseTouchInputRef.current = null;
         touchDragRef.current = null;
         setDragging(false);
       });
@@ -198,17 +226,15 @@ export function ResizeHandle({
     () => [
       styles.handle,
       direction === "horizontal" ? styles.handleHorizontal : styles.handleVertical,
-      { backgroundColor: theme.colors.border },
     ],
-    [direction, theme.colors.border],
+    [direction],
   );
   const highlightStyle = useMemo(
     () => [
       styles.highlight,
       direction === "horizontal" ? styles.highlightHorizontal : styles.highlightVertical,
-      { backgroundColor: theme.colors.accent },
     ],
-    [direction, theme.colors.accent],
+    [direction],
   );
   const hitAreaStyle = useMemo(
     () => [
@@ -242,47 +268,49 @@ export function ResizeHandle({
       styles.touchGrip,
       direction === "horizontal" ? styles.touchGripHorizontal : styles.touchGripVertical,
       highlighted ? styles.touchGripVisible : styles.touchGripHidden,
-      { backgroundColor: theme.colors.foreground },
     ],
-    [direction, highlighted, theme.colors.foreground],
+    [direction, highlighted],
   );
 
   return (
     <View style={handleStyle} testID={testID}>
-      {highlighted && (
-        <View
-          pointerEvents="none"
-          style={highlightStyle}
-          testID={testID ? `${testID}-highlight` : undefined}
-        />
-      )}
-      {finePointer ? (
-        <View
-          role="separator"
-          aria-orientation={direction === "horizontal" ? "vertical" : "horizontal"}
-          style={hitAreaStyle}
-          onPointerDown={handlePointerDown}
-          onPointerEnter={handlePointerEnter}
-          onPointerLeave={handlePointerLeave}
-        />
-      ) : (
-        <GestureDetector gesture={touchGesture}>
+      <PaneOverlay>
+        {highlighted && (
+          <View
+            pointerEvents="none"
+            style={highlightStyle}
+            testID={testID ? `${testID}-highlight` : undefined}
+          />
+        )}
+        {finePointer ? (
           <View
             role="separator"
             aria-orientation={direction === "horizontal" ? "vertical" : "horizontal"}
-            collapsable={false}
-            style={touchHitAreaStyle}
-          >
-            <View pointerEvents="none" style={touchGripStyle} />
-          </View>
-        </GestureDetector>
-      )}
+            style={hitAreaStyle}
+            onPointerDown={handlePointerDown}
+            onPointerEnter={handlePointerEnter}
+            onPointerLeave={handlePointerLeave}
+          />
+        ) : (
+          <GestureDetector gesture={touchGesture}>
+            <View
+              role="separator"
+              aria-orientation={direction === "horizontal" ? "vertical" : "horizontal"}
+              collapsable={false}
+              style={touchHitAreaStyle}
+            >
+              <View pointerEvents="none" style={touchGripStyle} />
+            </View>
+          </GestureDetector>
+        )}
+      </PaneOverlay>
     </View>
   );
 }
 
-const styles = StyleSheet.create((_theme) => ({
+const styles = StyleSheet.create((theme) => ({
   handle: {
+    backgroundColor: theme.colors.border,
     position: "relative",
     flexShrink: 0,
     zIndex: 10,
@@ -296,6 +324,7 @@ const styles = StyleSheet.create((_theme) => ({
     width: "100%",
   },
   highlight: {
+    backgroundColor: theme.colors.accent,
     position: "absolute",
     zIndex: 5,
   },
@@ -347,6 +376,7 @@ const styles = StyleSheet.create((_theme) => ({
     transform: [{ translateX: -44 }],
   },
   touchGrip: {
+    backgroundColor: theme.colors.foreground,
     borderRadius: 2,
   },
   touchGripHorizontal: {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Image as ExpoImage } from "expo-image";
 import { X } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
@@ -8,25 +8,32 @@ import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionId } from "@/keyboard/keyboard-action-dispatcher";
+import type { Theme } from "@/styles/theme";
+
+const ThemedX = withUnistyles(X);
+const closeIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 // Stable reference so the handler doesn't re-register every render.
 const LIGHTBOX_KEYBOARD_ACTIONS: readonly KeyboardActionId[] = ["agent.interrupt"];
 
 interface AttachmentLightboxProps {
   metadata: AttachmentMetadata | null;
+  /** A resolved URI borrowed from a mounted thumbnail, which owns its lifetime. */
+  uri?: string | null;
   onClose: () => void;
 }
 
-export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProps) {
-  const { theme } = useUnistyles();
+export function AttachmentLightbox({ metadata, uri, onClose }: AttachmentLightboxProps) {
   const { t } = useTranslation();
-  const url = useAttachmentPreviewUrl(metadata);
+  const attachmentUrl = useAttachmentPreviewUrl(uri ? null : metadata);
+  const url = uri ?? attachmentUrl;
+  const visible = Boolean(metadata || uri);
   const [errored, setErrored] = useState(false);
   const keyboardHandlerId = useId();
 
   useEffect(() => {
     setErrored(false);
-  }, [metadata?.id]);
+  }, [metadata?.id, uri]);
 
   // Close on Escape by claiming `agent.interrupt` at a priority above the
   // composer's (100–200). The global shortcut listener runs in the capture
@@ -42,7 +49,7 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
   useKeyboardActionHandler({
     handlerId: keyboardHandlerId,
     actions: LIGHTBOX_KEYBOARD_ACTIONS,
-    enabled: metadata !== null,
+    enabled: visible,
     priority: 1000,
     handle: handleInterrupt,
   });
@@ -51,7 +58,7 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
   const noopPress = useCallback(() => {}, []);
   const imageSource = useMemo(() => ({ uri: url ?? "" }), [url]);
 
-  if (!metadata) {
+  if (!visible) {
     return null;
   }
 
@@ -94,7 +101,7 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
                   onPress={onClose}
                   style={styles.closeButton}
                 >
-                  <X size="md" color={theme.colors.foregroundMuted} />
+                  <ThemedX size="md" uniProps={closeIconColor} />
                 </Pressable>
               </View>
             )}

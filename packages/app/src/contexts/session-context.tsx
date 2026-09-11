@@ -1,4 +1,8 @@
 import { useRef, ReactNode, useCallback, useEffect } from "react";
+import {
+  traceCaptureAsync,
+  traceCaptureSync,
+} from "@/diagnostics/resource-report/capture-operations";
 import { Buffer } from "buffer";
 import { AppState } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
@@ -814,7 +818,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     const unsubAgentTimeline = client.on("fetch_agent_timeline_response", (message) => {
       if (message.type !== "fetch_agent_timeline_response") return;
       agentStreamReducerQueue.flushAgent(message.payload.agentId);
-      applyTimelineResponse(message.payload);
+      traceCaptureSync("timeline.apply", () => applyTimelineResponse(message.payload), {
+        serverId,
+        agentId: message.payload.agentId,
+      });
     });
 
     const unsubProviderSubagentUpdate = client.on("agent.provider_subagents.update", (message) => {
@@ -1275,15 +1282,17 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       } catch (error) {
         console.error("[Session] Failed to prepare images for agent creation:", error);
       }
-      await client.createAgent({
-        config,
-        ...(trimmedPrompt ? { initialPrompt: trimmedPrompt } : {}),
-        ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
-        ...(attachments && attachments.length > 0 ? { attachments } : {}),
-        ...(git ? { git } : {}),
-        ...(worktreeName ? { worktreeName } : {}),
-        ...(requestId ? { requestId } : {}),
-      });
+      await traceCaptureAsync("chat.create", () =>
+        client.createAgent({
+          config,
+          ...(trimmedPrompt ? { initialPrompt: trimmedPrompt } : {}),
+          ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
+          ...(attachments && attachments.length > 0 ? { attachments } : {}),
+          ...(git ? { git } : {}),
+          ...(worktreeName ? { worktreeName } : {}),
+          ...(requestId ? { requestId } : {}),
+        }),
+      );
     },
     [client],
   );

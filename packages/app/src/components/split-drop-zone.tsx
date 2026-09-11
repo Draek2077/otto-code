@@ -1,7 +1,8 @@
 import { useMemo, type Ref } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { View } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
+import { PaneOverlay } from "@/components/ui/pane-overlay";
 
 export type SplitDropZonePosition = "center" | "left" | "right" | "top" | "bottom";
 
@@ -24,7 +25,6 @@ export function buildSplitDropZoneId(paneId: string): string {
 }
 
 export function SplitDropZone({ paneId, active, preview }: SplitDropZoneProps) {
-  const { theme } = useUnistyles();
   const { setNodeRef } = useDroppable({
     id: buildSplitDropZoneId(paneId),
     disabled: !active,
@@ -39,23 +39,10 @@ export function SplitDropZone({ paneId, active, preview }: SplitDropZoneProps) {
       return null;
     }
     return {
-      overlay: [
-        styles.previewOverlay,
-        getPreviewOverlayStyle(preview.position),
-        {
-          backgroundColor: theme.colors.accent,
-          opacity: 0.6,
-        },
-      ],
-      frame: [
-        styles.previewFrame,
-        getPreviewFrameStyle(preview.position),
-        {
-          borderColor: theme.colors.accent,
-        },
-      ],
+      overlay: [styles.previewOverlay, getPreviewOverlayStyle(preview.position)],
+      frame: [styles.previewFrame, getPreviewFrameStyle(preview.position)],
     };
-  }, [paneId, preview, theme.colors.accent]);
+  }, [paneId, preview]);
 
   if (!active) {
     return null;
@@ -63,12 +50,14 @@ export function SplitDropZone({ paneId, active, preview }: SplitDropZoneProps) {
 
   return (
     <View ref={setNodeRef as unknown as Ref<View>} style={styles.overlay} pointerEvents="none">
-      {previewStyles ? (
-        <>
-          <View pointerEvents="none" style={previewStyles.overlay} />
-          <View pointerEvents="none" style={previewStyles.frame} />
-        </>
-      ) : null}
+      <PaneOverlay pointerEvents="none" clip>
+        {previewStyles ? (
+          <>
+            <View pointerEvents="none" style={previewStyles.overlay} />
+            <View pointerEvents="none" style={previewStyles.frame} />
+          </>
+        ) : null}
+      </PaneOverlay>
     </View>
   );
 }
@@ -147,14 +136,21 @@ function getPreviewFrameStyle(position: SplitDropZonePosition) {
 
 const styles = StyleSheet.create((theme) => ({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     zIndex: 40,
   },
   previewOverlay: {
+    backgroundColor: theme.colors.accent,
+    opacity: 0.6,
     position: "absolute",
     borderRadius: theme.borderRadius.md,
   },
   previewFrame: {
+    borderColor: theme.colors.accent,
     position: "absolute",
     borderRadius: theme.borderRadius.md,
     borderWidth: 2,

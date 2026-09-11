@@ -20,6 +20,7 @@ import {
 } from "@/stores/workspace-layout-store";
 import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { withBrowserAutomationFocus } from "./focus-guard";
 
 type BrowserAutomationExecuteRequest = Extract<
   SessionOutboundMessage,
@@ -176,7 +177,12 @@ async function handleBrowserAutomationRequest(params: {
   }
 
   try {
-    const payload = await executeAutomationCommand(request);
+    const payload =
+      "browserId" in request.command.args && typeof request.command.args.browserId === "string"
+        ? await withBrowserAutomationFocus(request.command.args.browserId, () =>
+            executeAutomationCommand(request),
+          )
+        : await executeAutomationCommand(request);
     client.sendBrowserAutomationExecuteResponse({
       type: "browser.automation.execute.response",
       payload: normalizeBridgePayload(request.requestId, payload),

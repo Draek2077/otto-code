@@ -518,6 +518,13 @@ function appendChromiumFeatures(features: readonly string[]): void {
 // unknown features are silently ignored and would read as working config.
 appendChromiumFeatures(["OverlayScrollbar"]);
 
+// Chromium 146 otherwise discards LoAF script entries from our otto:// bundle.
+// This enables attribution, not tracing: the resource monitor still owns the
+// observer lifetime. Without it packaged captures report stalls with no scripts.
+// third_party/blink/renderer/core/frame/animation_frame_timing_monitor.cc:
+// ShouldAllowScriptURL (Chromium 146.0.7680.216).
+appendChromiumFeatures(["AlwaysLogLOAFURL"]);
+
 // VM guests without 3D acceleration (VMware "No 3D enabled") and broken GPU
 // drivers crash the GPU process and leave the window blank with no actionable
 // error. Recover automatically: honor a persisted software-rendering marker up

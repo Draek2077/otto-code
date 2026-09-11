@@ -36,6 +36,8 @@ export interface PerformanceLongAnimationFrameTiming extends PerformanceEntry {
 }
 
 export interface LongFrameScriptSummary {
+  /** Epoch timestamp, so scripts can be correlated with named operation spans. */
+  at?: number;
   /** `sourceURL@functionName` when known, else the invoker, else "(unknown)". */
   source: string;
   invokerType: string;
@@ -141,6 +143,7 @@ export function summarizeLongAnimationFrame(
         ? (resolveTimerFire(script.startTime) ?? undefined)
         : undefined;
       const summary: LongFrameScriptSummary = {
+        at: Math.round(timeOrigin + script.startTime),
         source: scriptSource(script, timer),
         invokerType: script.invokerType ?? "",
         invoker: script.invoker ?? "",
@@ -248,6 +251,41 @@ const runtime = getGlobalSingleton<LongFrameRuntime>(
   }),
 );
 
+const captureListeners = getGlobalSingleton(
+  "otto.diagnostics.longFrameCaptureListeners",
+  () => new Set<(frame: LongFrameSummary) => void>(),
+);
+
+export function subscribeLongFrames(listener: (frame: LongFrameSummary) => void): () => void {
+  captureListeners.add(listener);
+  return () => {
+    captureListeners.delete(listener);
+  };
+}
+
+function recordEntries(entries: readonly PerformanceEntry[]): void {
+  for (const entry of entries) {
+    const frame = summarizeLongAnimationFrame(
+      entry as PerformanceLongAnimationFrameTiming,
+      performance.timeOrigin,
+    );
+    runtime.aggregator?.record(frame);
+    for (const listener of captureListeners) {
+      // Diagnostic consumers must never disrupt the always-on monitor.
+      try {
+        listener(frame);
+      } catch {
+        /* best effort attribution */
+      }
+    }
+  }
+}
+
+/** Drain queued observations before freezing the capture's stop boundary. */
+export function flushLongFrameAttribution(): void {
+  recordEntries(runtime.observer?.takeRecords() ?? []);
+}
+
 export function isLongFrameAttributionSupported(): boolean {
   return (
     typeof PerformanceObserver !== "undefined" &&
@@ -264,16 +302,11 @@ export function startLongFrameAttribution(): void {
     const aggregator = new LongFrameAggregator();
     runtime.aggregator = aggregator;
     runtime.observedSince = Date.now();
-    const timeOrigin = performance.timeOrigin;
     runtime.observer = new PerformanceObserver((list) => {
       // The observer callback itself runs on the main thread inside a frame;
       // shaping is O(scripts per entry) and bounded, so it cannot become the
       // long task it is measuring.
-      for (const entry of list.getEntries()) {
-        aggregator.record(
-          summarizeLongAnimationFrame(entry as PerformanceLongAnimationFrameTiming, timeOrigin),
-        );
-      }
+      recordEntries(list.getEntries());
     });
     runtime.observer.observe({ type: "long-animation-frame", buffered: true });
   } catch {

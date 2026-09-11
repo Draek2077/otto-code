@@ -157,6 +157,7 @@ import {
   AttachmentThumbnail,
 } from "@/components/attachment-pill";
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
+import { ChatImagePreview } from "@/components/chat-image-preview";
 import { ChatImageContextMenuTarget } from "@/chat/image-context-menu";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { isWeb, isNative } from "@/constants/platform";
@@ -1206,7 +1207,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
 
   const image = (
     <View style={frameStyle}>
-      <View style={surfaceStyle}>
+      <ChatImagePreview uri={uri} style={surfaceStyle}>
         <Image
           source={imageSource}
           style={assistantMessageStylesheet.image}
@@ -1214,7 +1215,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
           accessibilityLabel={alt}
           onError={handleImageError}
         />
-      </View>
+      </ChatImagePreview>
     </View>
   );
   return attachment ? (

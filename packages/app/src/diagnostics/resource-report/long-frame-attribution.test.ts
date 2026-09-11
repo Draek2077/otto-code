@@ -69,6 +69,20 @@ describe("summarizeLongAnimationFrame", () => {
     expect(result.styleAndLayoutMs).toBe(20);
   });
 
+  test("retains script timestamps and packaged URLs for operation correlation", () => {
+    const result = summarizeLongAnimationFrame(
+      loafEntry({
+        scripts: [script({ duration: 80, startTime: 1020, sourceURL: "otto://app/bundle.js" })],
+      }),
+      5000,
+    );
+    expect(result.scripts[0]).toMatchObject({
+      at: 6020,
+      source: "otto://app/bundle.js@applyAgentUpdate",
+      durationMs: 80,
+    });
+  });
+
   test("keeps only the slowest scripts, ranked by duration", () => {
     const entry = loafEntry({
       scripts: Array.from({ length: LONG_FRAME_SCRIPTS_PER_ENTRY + 3 }, (_, index) =>

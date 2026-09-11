@@ -10,6 +10,7 @@ import {
   useKeyboardActionDispatcher,
 } from "@/keyboard/keyboard-action-dispatcher-context";
 import { AttachmentLightbox } from "./attachment-lightbox";
+import { ChatImagePreview } from "./chat-image-preview";
 
 const { theme, imageMetadata, useAttachmentPreviewUrlMock } = vi.hoisted(() => {
   const hoistedTheme = {
@@ -52,7 +53,10 @@ vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
     create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
   },
-  useUnistyles: () => ({ theme }),
+  withUnistyles:
+    (Component: React.ComponentType<Record<string, unknown>>) =>
+    ({ uniProps, ...props }: { uniProps: (value: typeof theme) => Record<string, unknown> }) =>
+      React.createElement(Component, { ...props, ...uniProps(theme) }),
 }));
 
 vi.mock("@/constants/platform", () => ({
@@ -73,6 +77,7 @@ vi.mock("react-i18next", () => ({
         "message.attachments.closeImage": "Close image",
         "message.attachments.dismissImage": "Dismiss image",
         "message.attachments.imageLoadFailed": "Couldn't load image",
+        "composer.attachments.openImage": "Open image attachment",
       })[key] ?? key,
   }),
 }));
@@ -178,6 +183,32 @@ function queryByTestId(testID: string): HTMLElement | null {
 }
 
 describe("AttachmentLightbox", () => {
+  it.each([
+    "blob:screenshot",
+    "https://example.com/screenshot.png",
+    "file:///cache/screenshot.png",
+  ])("opens and reopens a chat thumbnail using its resolved URI: %s", (uri) => {
+    useAttachmentPreviewUrlMock.mockReturnValue(null);
+    render(
+      <ChatImagePreview uri={uri}>
+        <span>Screenshot thumbnail</span>
+      </ChatImagePreview>,
+    );
+    expect(queryByTestId("attachment-lightbox-image")).toBeNull();
+
+    const thumbnail = document.querySelector('[aria-label="Open image attachment"]')!;
+    click(thumbnail);
+    expect(queryByTestId("attachment-lightbox-image")?.getAttribute("data-source")).toBe(uri);
+    expect(document.body.textContent).toContain("Screenshot thumbnail");
+
+    click(queryByTestId("attachment-lightbox-close")!);
+    expect(queryByTestId("attachment-lightbox-image")).toBeNull();
+    click(thumbnail);
+    expect(queryByTestId("attachment-lightbox-image")?.getAttribute("data-source")).toBe(uri);
+    click(queryByTestId("attachment-lightbox-backdrop")!);
+    expect(queryByTestId("attachment-lightbox-image")).toBeNull();
+  });
+
   it("renders nothing when metadata is null", () => {
     render(<AttachmentLightbox metadata={null} onClose={vi.fn()} />);
 
@@ -191,6 +222,28 @@ describe("AttachmentLightbox", () => {
     const image = queryByTestId("attachment-lightbox-image");
     expect(image).not.toBeNull();
     expect(image?.getAttribute("data-source")).toBe("blob:preview");
+  });
+
+  it("opens a resolved screenshot without local attachment metadata and closes on Escape", () => {
+    useAttachmentPreviewUrlMock.mockReturnValue(null);
+    const onClose = vi.fn();
+    render(
+      <AttachmentLightbox
+        metadata={null}
+        uri="https://example.com/screenshot.png"
+        onClose={onClose}
+      />,
+    );
+
+    expect(queryByTestId("attachment-lightbox-image")?.getAttribute("data-source")).toBe(
+      "https://example.com/screenshot.png",
+    );
+    act(() => {
+      expect(keyboardActionDispatcher.dispatch({ id: "agent.interrupt", scope: "global" })).toBe(
+        true,
+      );
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("fills its parent via absolute positioning so expo-image does not collapse to 0px", () => {

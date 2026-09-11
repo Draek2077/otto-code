@@ -32,6 +32,10 @@
 // never re-announces history. Only agents that spawn / think / finish while
 // you're watching speak. See docs/agent-profiles.md "Voice cues".
 import { Buffer } from "buffer";
+import {
+  traceCaptureAsync,
+  traceCaptureSync,
+} from "@/diagnostics/resource-report/capture-operations";
 import { useEffect, useRef } from "react";
 import type {
   AgentProfile,
@@ -217,15 +221,17 @@ async function speak(
   // here - cues fire without a fresh user gesture, so the very first may be
   // silent until the user has interacted with the app once).
   void engine.initialize().catch(() => undefined);
-  const result = await client.previewTtsVoice({
-    text: input.text,
-    ...(input.voice ? { voice: input.voice } : {}),
-  });
+  const result = await traceCaptureAsync("voice-cue.synthesis", () =>
+    client.previewTtsVoice({
+      text: input.text,
+      ...(input.voice ? { voice: input.voice } : {}),
+    }),
+  );
   if (result.error || !result.audio || engine.isPlaying()) {
     return;
   }
   const format = result.format ?? "pcm";
-  const bytes = Buffer.from(result.audio, "base64");
+  const bytes = traceCaptureSync("voice-cue.base64", () => Buffer.from(result.audio!, "base64"));
   await engine.initialize();
   if (engine.isPlaying()) {
     return;

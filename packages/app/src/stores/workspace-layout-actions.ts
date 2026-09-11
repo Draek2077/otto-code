@@ -1,7 +1,6 @@
 import invariant from "tiny-invariant";
 import type { JsonValue } from "@otto-code/protocol/agent-types";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/workspace-tabs/model";
-import { MIN_SPLIT_SIZE } from "@/stores/workspace-layout-constants";
 import { panelResourceKey, panelSupportsHost } from "@/panels/panel-manifest";
 import { defaultWorkspaceLayoutIds } from "@/stores/workspace-layout-ids";
 import type { WorkspaceLayoutNodeIdPrefix } from "@/stores/workspace-layout-ids";
@@ -426,7 +425,7 @@ function normalizeSizes(input: NormalizeSizesInput): number[] {
     raw.push(1);
   }
 
-  const sanitized = raw.map((value) => (Number.isFinite(value) && value > 0 ? value : 1));
+  const sanitized = raw.map((value) => (Number.isFinite(value) && value >= 0 ? value : 1));
   const total = sanitized.reduce((sum, value) => sum + value, 0);
   if (total <= 0) {
     return Array.from({ length: input.count }, () => 1 / input.count);
@@ -435,59 +434,7 @@ function normalizeSizes(input: NormalizeSizesInput): number[] {
 }
 
 export function clampNormalizedSizes(sizes: number[]): number[] {
-  if (sizes.length === 0) {
-    return [];
-  }
-
-  const normalized = normalizeSizes({ sizes, count: sizes.length });
-  if (sizes.length === 1) {
-    return [1];
-  }
-  if (sizes.length * MIN_SPLIT_SIZE > 1) {
-    return Array.from({ length: sizes.length }, () => 1 / sizes.length);
-  }
-
-  const nextSizes = Array.from({ length: sizes.length }, () => 0);
-  const unlocked = new Set(normalized.map((_, index) => index));
-  let remainingTotal = 1;
-
-  while (unlocked.size > 0) {
-    let unlockedWeight = 0;
-    for (const index of unlocked) {
-      unlockedWeight += normalized[index] ?? 0;
-    }
-
-    if (unlockedWeight <= 0) {
-      const evenShare = remainingTotal / unlocked.size;
-      for (const index of unlocked) {
-        nextSizes[index] = evenShare;
-      }
-      break;
-    }
-
-    const nextLocked: number[] = [];
-    for (const index of unlocked) {
-      const proposedSize = ((normalized[index] ?? 0) / unlockedWeight) * remainingTotal;
-      if (proposedSize < MIN_SPLIT_SIZE) {
-        nextLocked.push(index);
-      }
-    }
-
-    if (nextLocked.length === 0) {
-      for (const index of unlocked) {
-        nextSizes[index] = ((normalized[index] ?? 0) / unlockedWeight) * remainingTotal;
-      }
-      break;
-    }
-
-    for (const index of nextLocked) {
-      nextSizes[index] = MIN_SPLIT_SIZE;
-      unlocked.delete(index);
-      remainingTotal -= MIN_SPLIT_SIZE;
-    }
-  }
-
-  return normalizeSizes({ sizes: nextSizes, count: nextSizes.length });
+  return normalizeSizes({ sizes, count: sizes.length });
 }
 
 function asInternalNode(node: SplitNode): SplitNodeInternal {

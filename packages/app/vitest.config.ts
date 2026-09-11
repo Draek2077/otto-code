@@ -193,7 +193,9 @@ export default defineConfig({
         // "optimized dependencies changed. reloading" mid-run, which vitest
         // warns is a flake vector - and the app's dependency scan can't always
         // find it for itself (it bails when a workspace `dist` isn't built yet).
-        optimizeDeps: { include: ["mermaid"] },
+        // The lightbox's expo-image import must also be ready before a click
+        // mounts it; lazy optimization reloads the test mid-interaction.
+        optimizeDeps: { include: ["mermaid", "expo-image"] },
         // expo-router's build output carries JSX in plain `.js` files that the
         // dependency optimizer cannot parse. Any browser test whose import
         // graph reaches the router aborted the optimizer mid-run and every file

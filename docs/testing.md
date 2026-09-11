@@ -142,6 +142,21 @@ Prefer a `@lezer/*` grammar. When a language only ships inside an editor extensi
 
 ### Desktop browser regression
 
+`npm run test:e2e:browser-layering --workspace=@otto-code/desktop` runs an isolated,
+hidden Electron window with a real guest. It reproduces browser occlusion of pane-local UI,
+then checks compositor pixels for the production `PaneOverlay` and `WindowOverlay` layers,
+menu clicks, exposed-guest hit-testing, guest input through CDP, and guest retention after
+overlays close. The fixture exercises the shared layer primitives rather than a full app
+journey. Hidden-window host input does not reliably forward to guest renderers, so guest
+input is dispatched separately after checking the host's hit target.
+
+`npm run test:e2e:browser-focus --workspace=@otto-code/desktop` runs an isolated
+Electron guest test without a daemon or visible window. It reproduces the native
+focus transfer from trusted automation input, then verifies the production focus
+guard preserves host chat typing and menu focus while guest text input still works.
+The Chromium component test in `pane/loading.browser.test.tsx` separately exercises
+the real browser device-size menu; the native fixture is not a full app journey.
+
 The desktop browser E2E launches an isolated real daemon, Metro, and Electron app. It visits six workspaces to force LRU eviction, verifies that the original browser keeps its guest `WebContents` in the permanent browser surface, then makes one MCP call each for tab listing, snapshot, and click against that original browser id. A final MCP wait proves the real target page received the click. Initial renderer startup allows five minutes for cold Metro compilation; subsequent bridge actions retain their 90-second timeout.
 
 Run it locally with the same command owned by the Ubuntu `desktop-tests` required check:

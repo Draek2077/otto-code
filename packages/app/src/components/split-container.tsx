@@ -35,6 +35,8 @@ import Animated, {
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
+import { WindowOverlay } from "@/components/ui/pane-overlay";
+import { OVERLAY_Z } from "@/lib/overlay-root";
 import {
   resolveExplorerSidebarDockSizes,
   resolveExplorerSidebarWidth,
@@ -842,16 +844,18 @@ export function SplitContainer({
             </>
           ) : null}
         </View>
-        <DragOverlay dropAnimation={null}>
-          {activeDragTabId ? (
-            <DragOverlayTabChip
-              tabId={activeDragTabId}
-              uiTabs={uiTabs}
-              normalizedServerId={normalizedServerId}
-              normalizedWorkspaceId={normalizedWorkspaceId}
-            />
-          ) : null}
-        </DragOverlay>
+        <WindowOverlay layer={OVERLAY_Z.drag}>
+          <DragOverlay dropAnimation={null} zIndex={0}>
+            {activeDragTabId ? (
+              <DragOverlayTabChip
+                tabId={activeDragTabId}
+                uiTabs={uiTabs}
+                normalizedServerId={normalizedServerId}
+                normalizedWorkspaceId={normalizedWorkspaceId}
+              />
+            ) : null}
+          </DragOverlay>
+        </WindowOverlay>
       </DndContext>
     </RenderProfile>
   );

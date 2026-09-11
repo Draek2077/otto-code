@@ -227,6 +227,27 @@ What this buys you, concretely:
 
 ## Browser loading and navigation lifetime
 
+### Automation and user focus
+
+Tab-scoped browser automation preserves the user's current app control. Electron's
+trusted guest clicks can transfer focus into the webview without an explicit focus
+call. The renderer guards those transfers while a command runs, restores the current
+control without scrolling, and prevents guest focus notifications from activating
+the browser pane. A control the user focuses during the command becomes the new
+restoration target. Overlapping commands share the guard until the last finishes,
+including failures.
+
+This keeps the browser device-size menu usable during automation too. The explicit
+`browser_focus_tab` action still brings a tab forward. The guard does not arbitrate a
+user and an agent interacting with the same web page.
+
+Coverage lives in `automation/focus-guard.browser.test.ts` and
+`pane/loading.browser.test.tsx`. The isolated native regression is
+`npm run test:e2e:browser-focus --workspace=@otto-code/desktop`; it checks real guest
+clicks and text input against host chat and menu focus without starting a daemon.
+
+### Resident state
+
 Workspace layouts persist browser IDs; `workspace-browser-store` separately maps
 those IDs to URLs and browser metadata in the app's AsyncStorage (localStorage on
 Electron/web). A restored pane waits for that store to hydrate before creating its

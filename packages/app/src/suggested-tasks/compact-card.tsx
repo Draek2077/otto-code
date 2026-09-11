@@ -209,7 +209,7 @@ const styles = StyleSheet.create((theme) => ({
     marginRight: theme.iconSize.md + theme.spacing[2] + theme.spacing[2],
     minWidth: 0,
     flexGrow: 1,
-    flexShrink: 1,
+    flexShrink: 0,
     maxWidth: "100%",
     alignItems: "center",
     gap: theme.spacing[2],
@@ -221,7 +221,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   dismiss: { position: "absolute", right: theme.spacing[2], top: theme.spacing[2] },
   // The model name never participates in the row's intrinsic width or wrap gate.
-  modelControl: { flexBasis: 108, flexGrow: 1, flexShrink: 1, minWidth: 0, maxWidth: 180 },
+  modelControl: {
+    flexBasis: 108,
+    flexGrow: 1,
+    flexShrink: 1,
+    // Preserve both compact glyphs, two gaps, padding, and the trigger border.
+    minWidth: 2 * (theme.iconSize.xs + theme.spacing[1] + theme.spacing[2] + theme.borderWidth[1]),
+    maxWidth: 180,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",

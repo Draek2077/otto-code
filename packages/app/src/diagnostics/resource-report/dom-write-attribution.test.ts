@@ -1,6 +1,14 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-import { DOM_WRITE_TOP_N, labelTarget, summarizeMutationBatch } from "./dom-write-attribution";
+import {
+  DOM_WRITE_TOP_N,
+  labelTarget,
+  summarizeMutationBatch,
+  startDomWriteAttribution,
+  stopDomWriteAttribution,
+  getDomWriteReport,
+  resetDomWriteAttributionForTest,
+} from "./dom-write-attribution";
 
 function element(
   tag: string,
@@ -90,4 +98,37 @@ describe("summarizeMutationBatch", () => {
     );
     expect(summarizeMutationBatch(records, 0, 0).targets).toHaveLength(DOM_WRITE_TOP_N);
   });
+});
+
+test("drains pending mutations at stop and reports summarization overhead", () => {
+  let deliver!: (records: MutationRecord[]) => void;
+  let pending: MutationRecord[] = [];
+  class Observer {
+    constructor(callback: typeof deliver) {
+      deliver = callback;
+    }
+    observe() {}
+    disconnect() {}
+    takeRecords() {
+      const result = pending;
+      pending = [];
+      return result;
+    }
+  }
+  vi.stubGlobal("MutationObserver", Observer);
+  vi.stubGlobal("document", { documentElement: element("html") });
+  try {
+    startDomWriteAttribution();
+    deliver([record("attributes", element("div"), { attributeName: "style" })]);
+    pending = [record("characterData", element("span"))];
+    stopDomWriteAttribution();
+    const report = getDomWriteReport();
+    expect(report.totalRecords).toBe(2);
+    expect(report.batches.map((batch) => batch.records)).toEqual([1, 1]);
+    expect(report.observerOverhead.calls).toBe(2);
+    expect(report.observerOverhead.totalMs).toBeGreaterThanOrEqual(report.observerOverhead.maxMs);
+  } finally {
+    resetDomWriteAttributionForTest();
+    vi.unstubAllGlobals();
+  }
 });

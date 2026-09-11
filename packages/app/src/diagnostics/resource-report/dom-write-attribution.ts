@@ -44,6 +44,8 @@ export interface DomWriteReport {
   totalRecords: number;
   totalCssRulesInserted: number;
   batches: DomWriteBatch[];
+  /** Time spent summarizing mutation deliveries, not application work. */
+  observerOverhead: { calls: number; totalMs: number; maxMs: number };
 }
 
 /** Batches kept. React commits one per render pass; typing is one per key. */
@@ -75,6 +77,24 @@ const runtime = getGlobalSingleton<DomWriteRuntime>("otto.diagnostics.domWriteAt
   cssRulesSinceLastBatch: 0,
   cssPatched: false,
 }));
+
+const overhead = getGlobalSingleton("otto.diagnostics.domWriteOverhead", () => ({
+  calls: 0,
+  totalMs: 0,
+  maxMs: 0,
+}));
+
+function recordMutations(records: MutationRecord[]): void {
+  if (records.length === 0) return;
+  const started = performance.now();
+  const cssRules = runtime.cssRulesSinceLastBatch;
+  runtime.cssRulesSinceLastBatch = 0;
+  recordBatch(summarizeMutationBatch(records, cssRules, Date.now()));
+  const elapsed = performance.now() - started;
+  overhead.calls++;
+  overhead.totalMs += elapsed;
+  overhead.maxMs = Math.max(overhead.maxMs, elapsed);
+}
 
 function topCounts(counts: Map<string, number>, limit: number): Array<[string, number]> {
   return [...counts.entries()].sort((left, right) => right[1] - left[1]).slice(0, limit);
@@ -190,12 +210,11 @@ export function startDomWriteAttribution(): void {
   runtime.totalCssRulesInserted = 0;
   runtime.cssRulesSinceLastBatch = 0;
   runtime.observedSince = Date.now();
+  overhead.calls = 0;
+  overhead.totalMs = 0;
+  overhead.maxMs = 0;
   try {
-    const observer = new MutationObserver((records) => {
-      const cssRules = runtime.cssRulesSinceLastBatch;
-      runtime.cssRulesSinceLastBatch = 0;
-      recordBatch(summarizeMutationBatch(records, cssRules, Date.now()));
-    });
+    const observer = new MutationObserver(recordMutations);
     observer.observe(document.documentElement, {
       subtree: true,
       childList: true,
@@ -210,6 +229,7 @@ export function startDomWriteAttribution(): void {
 }
 
 export function stopDomWriteAttribution(): void {
+  recordMutations(runtime.observer?.takeRecords() ?? []);
   runtime.observer?.disconnect();
   runtime.observer = null;
 }
@@ -221,6 +241,7 @@ export function getDomWriteReport(sinceMs?: number): DomWriteReport {
     totalBatches: runtime.totalBatches,
     totalRecords: runtime.totalRecords,
     totalCssRulesInserted: runtime.totalCssRulesInserted,
+    observerOverhead: { ...overhead },
     batches: runtime.ring
       .filter((batch) => sinceMs === undefined || batch.at >= sinceMs)
       .map((batch) => ({

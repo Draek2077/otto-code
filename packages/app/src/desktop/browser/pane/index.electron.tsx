@@ -9,6 +9,7 @@ import {
   createElement,
 } from "react";
 import { Pressable, Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
+import { PaneOverlay } from "@/components/ui/pane-overlay";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -2007,66 +2008,72 @@ function BrowserPaneContents({
           ref: setWebviewHostNode,
           style: webviewHostStyle,
         })}
-        {browser?.isPreview && browser.previewStatus !== "ready" ? (
-          <View style={styles.previewOverlay} pointerEvents="box-none">
-            <View style={styles.previewOverlayCard}>
-              {browser.previewStatus === "starting" ? (
-                <>
-                  <LoadingSpinner size="small" />
-                  <Text style={previewOverlayTitleStyle}>
-                    {t("workspace.browser.preview.starting")}
-                  </Text>
-                </>
-              ) : null}
-              {browser.previewStatus === "error" ? (
-                <>
-                  <Text style={previewOverlayTitleStyle}>
-                    {t("workspace.browser.preview.error.title")}
-                  </Text>
-                  {browser.lastError ? (
-                    <Text style={previewOverlayErrorStyle} numberOfLines={4}>
-                      {browser.lastError}
-                    </Text>
+        {(browser?.isPreview && browser.previewStatus !== "ready") ||
+        browser?.lastError ||
+        pendingSelection ? (
+          <PaneOverlay pointerEvents="none" clip>
+            {browser?.isPreview && browser.previewStatus !== "ready" ? (
+              <View style={styles.previewOverlay} pointerEvents="box-none">
+                <View style={styles.previewOverlayCard}>
+                  {browser.previewStatus === "starting" ? (
+                    <>
+                      <LoadingSpinner size="small" />
+                      <Text style={previewOverlayTitleStyle}>
+                        {t("workspace.browser.preview.starting")}
+                      </Text>
+                    </>
                   ) : null}
-                  <Button variant="default" size="sm" onPress={handleStartPreviewPress}>
-                    {t("workspace.browser.preview.error.retry")}
+                  {browser.previewStatus === "error" ? (
+                    <>
+                      <Text style={previewOverlayTitleStyle}>
+                        {t("workspace.browser.preview.error.title")}
+                      </Text>
+                      {browser.lastError ? (
+                        <Text style={previewOverlayErrorStyle} numberOfLines={4}>
+                          {browser.lastError}
+                        </Text>
+                      ) : null}
+                      <Button variant="default" size="sm" onPress={handleStartPreviewPress}>
+                        {t("workspace.browser.preview.error.retry")}
+                      </Button>
+                    </>
+                  ) : null}
+                  {browser.previewStatus === "needs-start" ? (
+                    <>
+                      <Text style={previewOverlayTitleStyle}>
+                        {t("workspace.browser.preview.needsStart.title")}
+                      </Text>
+                      <Text style={previewOverlayHintStyle}>
+                        {t("workspace.browser.preview.needsStart.description")}
+                      </Text>
+                      <Button variant="default" size="sm" onPress={handleStartPreviewPress}>
+                        {t("workspace.browser.preview.needsStart.action")}
+                      </Button>
+                    </>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
+            {browser?.lastError && !(browser.isPreview && browser.previewStatus === "error") ? (
+              <View style={styles.browserErrorOverlay} pointerEvents="auto">
+                <View style={styles.browserErrorCard}>
+                  <AlertTriangle size={28} color={theme.colors.palette.red[500]} />
+                  <Text style={previewOverlayTitleStyle}>{browserErrorLabels.pageUnavailable}</Text>
+                  <Text style={previewOverlayHintStyle}>{browser.lastError}</Text>
+                  <Button variant="default" size="sm" onPress={handleRefresh}>
+                    {t("workspace.browser.controls.refresh")}
                   </Button>
-                </>
-              ) : null}
-              {browser.previewStatus === "needs-start" ? (
-                <>
-                  <Text style={previewOverlayTitleStyle}>
-                    {t("workspace.browser.preview.needsStart.title")}
-                  </Text>
-                  <Text style={previewOverlayHintStyle}>
-                    {t("workspace.browser.preview.needsStart.description")}
-                  </Text>
-                  <Button variant="default" size="sm" onPress={handleStartPreviewPress}>
-                    {t("workspace.browser.preview.needsStart.action")}
-                  </Button>
-                </>
-              ) : null}
-            </View>
-          </View>
-        ) : null}
-        {browser?.lastError && !(browser.isPreview && browser.previewStatus === "error") ? (
-          <View style={styles.browserErrorOverlay}>
-            <View style={styles.browserErrorCard}>
-              <AlertTriangle size={28} color={theme.colors.palette.red[500]} />
-              <Text style={previewOverlayTitleStyle}>{browserErrorLabels.pageUnavailable}</Text>
-              <Text style={previewOverlayHintStyle}>{browser.lastError}</Text>
-              <Button variant="default" size="sm" onPress={handleRefresh}>
-                {t("workspace.browser.controls.refresh")}
-              </Button>
-            </View>
-          </View>
-        ) : null}
-        {pendingSelection ? (
-          <BrowserElementAnnotationCard
-            selection={pendingSelection}
-            onSubmit={submitAnnotation}
-            onCancel={cancelAnnotation}
-          />
+                </View>
+              </View>
+            ) : null}
+            {pendingSelection ? (
+              <BrowserElementAnnotationCard
+                selection={pendingSelection}
+                onSubmit={submitAnnotation}
+                onCancel={cancelAnnotation}
+              />
+            ) : null}
+          </PaneOverlay>
         ) : null}
       </View>
     </View>

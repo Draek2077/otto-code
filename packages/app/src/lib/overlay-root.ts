@@ -43,6 +43,8 @@ export const WEB_SURFACE_PLANE = {
 } as const;
 
 export const OVERLAY_Z = {
+  pane: 1,
+  drag: 5,
   floating: 10,
   modal: 20,
   toast: 10_000,

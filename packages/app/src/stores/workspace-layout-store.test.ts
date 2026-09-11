@@ -3120,7 +3120,7 @@ describe("workspace-layout-store actions", () => {
     ).toMatchObject({ baseRef: "main", treeWidth: 300, collapsedFolderPaths: ["src"] });
   });
 
-  it("resizeSplit keeps sizes normalized while enforcing the minimum proportion", () => {
+  it("resizeSplit preserves small and zero-sized nested panes", () => {
     useWorkspaceLayoutIds(
       "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
       "ffffffff-ffff-ffff-ffff-ffffffffffff",
@@ -3174,9 +3174,18 @@ describe("workspace-layout-store actions", () => {
 
     expect(rightPaneId).toBe("pane_eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
     expect(farRightPaneId).toBe("pane_ffffffff-ffff-ffff-ffff-ffffffffffff");
-    expect(resizedNestedGroup.group.sizes[0]).toBeGreaterThanOrEqual(0.1);
-    expect(resizedNestedGroup.group.sizes[1]).toBeGreaterThanOrEqual(0.1);
+    expect(
+      workspaceLayoutStore.getState().splitSizesByWorkspace[workspaceKey][nestedGroup.group.id],
+    ).toEqual([0.01, 0.99]);
     expect(total).toBeCloseTo(1, 10);
+    store.resizeSplit(workspaceKey, nestedGroup.group.id, [0, 1]);
+    expect(
+      workspaceLayoutStore.getState().splitSizesByWorkspace[workspaceKey][nestedGroup.group.id],
+    ).toEqual([0, 1]);
+    store.resizeSplit(workspaceKey, nestedGroup.group.id, [0.5, 0.5]);
+    expect(
+      workspaceLayoutStore.getState().splitSizesByWorkspace[workspaceKey][nestedGroup.group.id],
+    ).toEqual([0.5, 0.5]);
   });
 
   it("closing the last content tab creates a fresh New tab in the retained pane", () => {

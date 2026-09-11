@@ -1,6 +1,7 @@
 import React, { act, useMemo } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ReducedMotionConfig, ReduceMotion } from "react-native-reanimated";
 import { BrowserPane } from "./index.electron";
 import { browserPanelRegistration } from "../panel";
 import {
@@ -8,6 +9,7 @@ import {
   type WorkspaceTabPresentation,
 } from "@/screens/workspace/workspace-tab-icon";
 import { useBrowserStore } from "../store";
+import { withBrowserAutomationFocus } from "../automation/focus-guard.web";
 import {
   clearResidentBrowserWebviewsForTests,
   ensureResidentBrowserWebview,
@@ -140,6 +142,36 @@ afterEach(() => {
 });
 
 describe("browser loading controls", () => {
+  it("keeps the device menu open while automation focuses the guest and updates loading", async () => {
+    act(() =>
+      root.render(
+        <>
+          <ReducedMotionConfig mode={ReduceMotion.Always} />
+          <BrowserTab />
+        </>,
+      ),
+    );
+    act(() =>
+      container
+        .querySelector<HTMLElement>('[aria-label="workspace.browser.devices.label"]')!
+        .click(),
+    );
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-menu-item="true"]')).not.toBeNull();
+    });
+    const menuItem = document.querySelector<HTMLElement>('[data-menu-item="true"]')!;
+    menuItem.focus();
+    guest.tabIndex = 0;
+    const automate = async () => {
+      guest.focus();
+      guest.dispatchEvent(new Event("did-start-loading"));
+      guest.dispatchEvent(new Event("did-stop-loading"));
+    };
+    await act(() => withBrowserAutomationFocus(browserId, automate));
+    expect(menuItem.isConnected).toBe(true);
+    expect(document.activeElement).toBe(menuItem);
+  });
+
   it("reads the current guest title when reopening and persists the completed page title", async () => {
     guest.dispatchEvent(new Event("dom-ready"));
     let title = "A page loaded before the pane opened";
@@ -249,7 +281,9 @@ describe("browser loading controls", () => {
     expectLoading(false);
   });
 
-  it("shows a failed page with Reload available and permits retry", () => {
+  it("shows a failed page above the guest with clickable Reload and permits retry", async () => {
+    container.style.cssText =
+      "position:fixed;left:0;top:0;width:360px;height:300px;display:flex;flex-direction:column;z-index:0";
     guest.dispatchEvent(new Event("dom-ready"));
     act(() => root.render(<BrowserTab />));
     act(() => button(reloadLabel)!.click());
@@ -263,10 +297,20 @@ describe("browser loading controls", () => {
       ),
     );
     expectLoading(false);
-    expect(container.textContent).toContain("workspace.browser.errors.connectionRefused");
-    act(() => button(reloadLabel)!.click());
+    const overlayRoot = document.getElementById("overlay-root")!;
+    expect(overlayRoot.textContent).toContain("workspace.browser.errors.connectionRefused");
+    const retry = overlayRoot.querySelector<HTMLElement>('[role="button"]')!;
+    await expect
+      .poll(() => {
+        const rect = retry.getBoundingClientRect();
+        return retry.contains(
+          document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2),
+        );
+      })
+      .toBe(true);
+    act(() => retry.click());
     expectLoading(true);
-    expect(container.textContent).not.toContain("workspace.browser.errors.connectionRefused");
+    expect(overlayRoot.textContent).not.toContain("workspace.browser.errors.connectionRefused");
   });
 
   it("does not let a stopped request rejection clear progress for the next navigation", async () => {
@@ -295,7 +339,9 @@ describe("browser loading controls", () => {
     act(() => root.render(<BrowserTab />));
     navigateTo("https://example.com/recovered");
     expectLoading(false);
-    expect(container.textContent).toContain("workspace.browser.errors.failedToLoad");
+    expect(document.getElementById("overlay-root")!.textContent).toContain(
+      "workspace.browser.errors.failedToLoad",
+    );
     act(() => button(reloadLabel)!.click());
     expectLoading(true);
     expect(guest.reload).toHaveBeenCalledTimes(1);

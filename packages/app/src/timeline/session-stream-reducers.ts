@@ -1,4 +1,5 @@
 import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
+import { traceCaptureSync } from "@/diagnostics/resource-report/capture-operations";
 import { selectAgentTimelineState, useSessionStore, type Agent } from "@/stores/session-store";
 import type { AssistantMessageItem, StreamItem, TodoEntry } from "@/types/stream";
 import type { TurnLivenessTransition } from "@/timeline/turn-liveness";
@@ -1763,15 +1764,21 @@ export function createAgentStreamReducerQueue(
       cancelScheduledFlush();
     }
 
-    const result = processAgentStreamEvents({
-      events,
-      ...input.getSnapshot(agentId),
-    });
+    traceCaptureSync(
+      "stream.reduce-and-commit",
+      () => {
+        const result = processAgentStreamEvents({
+          events,
+          ...input.getSnapshot(agentId),
+        });
 
-    input.commit(agentId, result, events);
-    if (result.sideEffects.length > 0) {
-      input.handleSideEffects(agentId, result.sideEffects);
-    }
+        input.commit(agentId, result, events);
+        if (result.sideEffects.length > 0) {
+          input.handleSideEffects(agentId, result.sideEffects);
+        }
+      },
+      { agentId, items: events.length },
+    );
   };
 
   const flush = () => {

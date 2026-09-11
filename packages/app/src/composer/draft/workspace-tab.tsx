@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { traceCaptureAsync } from "@/diagnostics/resource-report/capture-operations";
 import { Keyboard, ScrollView, StyleSheet as RNStyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -200,16 +201,18 @@ async function submitDraftCreateRequest(input: {
     autoSubmitConfig,
     agentControls: composerState.agentControls,
   });
-  const result = await client.createAgent({
-    config,
-    workspaceId,
-    ...(draftPersonality ? { personality: draftPersonality.id } : {}),
-    ...(text ? { initialPrompt: text } : {}),
-    clientMessageId: attempt.clientMessageId,
-    ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
-    ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
-    ...authoringArchitecturalViewDraftOption(input.architecturalViewDraft),
-  });
+  const result = await traceCaptureAsync("chat.create", () =>
+    client.createAgent({
+      config,
+      workspaceId,
+      ...(draftPersonality ? { personality: draftPersonality.id } : {}),
+      ...(text ? { initialPrompt: text } : {}),
+      clientMessageId: attempt.clientMessageId,
+      ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
+      ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
+      ...authoringArchitecturalViewDraftOption(input.architecturalViewDraft),
+    }),
+  );
 
   return {
     agentId: result.id,
