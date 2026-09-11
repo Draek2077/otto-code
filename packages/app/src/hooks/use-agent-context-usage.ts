@@ -8,6 +8,7 @@ import { useSessionStore } from "@/stores/session-store";
 const CONTEXT_USAGE_STALE_TIME_MS = 15 * 1000;
 
 type ContextUsageClient = Pick<DaemonClient, "getAgentContextUsage">;
+type ContextUsagePayload = Awaited<ReturnType<ContextUsageClient["getAgentContextUsage"]>>;
 
 export function agentContextUsageQueryKey(
   serverId: string | null | undefined,
@@ -22,8 +23,8 @@ interface UseAgentContextUsageOptions {
 
 /**
  * Fetches the per-category context window breakdown for an agent. Resolves to
- * null - meaning "don't show a breakdown" - when the daemon predates the RPC,
- * the agent's provider can't report one, or the fetch hasn't completed yet.
+ * null - meaning "don't show a breakdown" - until a supported provider reports
+ * one. A temporarily unavailable live handle keeps the last reported breakdown.
  */
 export function useAgentContextUsage(
   serverId: string | null | undefined,
@@ -45,8 +46,16 @@ export function useAgentContextUsage(
     if (!client || !agentId) {
       throw new Error("Host connection unavailable");
     }
-    return client.getAgentContextUsage(agentId);
-  }, [client, agentId]);
+    const payload = await client.getAgentContextUsage(agentId);
+    // Null also means the provider has no live handle right now, not that the
+    // context is empty. Keep this host/agent's last measurement through that
+    // gap, just as the composer ring keeps its last reported token count.
+    if (payload.usage === null) {
+      const cached = queryClient.getQueryData<ContextUsagePayload>(queryKey);
+      return { ...payload, usage: cached?.usage ?? null };
+    }
+    return payload;
+  }, [client, agentId, queryClient, queryKey]);
 
   const query = useQuery({
     queryKey,
