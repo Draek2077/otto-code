@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.9 - 2026-09-12
+
+### Changed
+
+- Use installed connector tools with more agent providers
+- Connect Gmail, Drive, and Calendar on hosts configured for Google access
+
+### Fixed
+
+- Discover every tool from connectors with paginated tool lists
+- Show connector results that contain structured data without a text response
+
 ## 0.9.8 - 2026-09-12
 
 ### Changed
