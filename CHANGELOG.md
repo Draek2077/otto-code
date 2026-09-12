@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.7 - 2026-09-11
+
+### Changed
+
+- Point a preview launch configuration at an explicit web address instead of only a port
+- Open images from a chat in the full attachment lightbox
+- Remove the minimum size limits on workspace panes
+- Refresh the agent catalog to the latest published versions
+
+### Fixed
+
+- Confirm a Debian update installed before Otto quits and relaunches
+- Keep Otto running when a Linux update is canceled or fails to install
+- Show the reason and the log location when a desktop update cannot install
+- Keep pane overlays, split highlights, and dragged tabs above the built-in browser
+- Restore browser input once a pane resize finishes or is canceled
+- Keep Otto's own controls usable while an agent drives the built-in browser
+- Keep the image and close controls reachable in the lightbox on narrow screens
+- Keep the context usage breakdown populated when a provider briefly loses its session
+- Keep the provider icon and chevron visible in the compact model selector
+- Attribute slow frames to the scripts that caused them in performance diagnostics
+
 ## 0.9.6 - 2026-09-10
 
 ### Changed
