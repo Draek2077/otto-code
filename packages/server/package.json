@@ -84,7 +84,7 @@
     "@otto-code/protocol": "0.9.8",
     "@otto-code/relay": "0.9.8",
     "@xterm/headless": "^6.0.0",
-    "ai": "5.0.78",
+    "ai": "5.0.257",
     "ajv": "^8.20.0",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
