@@ -124,6 +124,12 @@ describe("connector authorization ownership", () => {
     store.setConnectorAuth("linear", {
       kind: "oauth",
       tokens: { accessToken: "access-abc", refreshToken: "refresh-xyz" },
+      client: {
+        clientId: "registered-client",
+        clientSecret: "private-client-secret",
+        redirectUri: "http://127.0.0.1:6871/connectors/oauth/callback",
+      },
+      resourceUrl: "https://mcp.linear.app/mcp",
       account: "someone@example.com",
     });
 
@@ -131,6 +137,10 @@ describe("connector authorization ownership", () => {
     const serialized = JSON.stringify(wire);
     expect(serialized).not.toContain("access-abc");
     expect(serialized).not.toContain("refresh-xyz");
+    expect(serialized).not.toContain("private-client-secret");
+    store.patch({ connectors: wire.connectors });
+    expect(store.get().connectors[0]?.auth?.client?.clientSecret).toBe("private-client-secret");
+    expect(store.get().connectors[0]?.auth?.resourceUrl).toBe("https://mcp.linear.app/mcp");
     // The label survives: the UI has to be able to say who is connected.
     expect(wire.connectors[0]?.auth?.account).toBe("someone@example.com");
     expect(wire.connectors[0]?.auth?.tokens?.accessToken).toBe(DAEMON_CONFIG_SECRET_SENTINEL);

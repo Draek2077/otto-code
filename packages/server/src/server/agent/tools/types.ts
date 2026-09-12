@@ -12,6 +12,8 @@ export interface OttoToolResult {
 }
 
 export interface OttoToolConfig {
+  /** Connector grants are governed by host connector switches, not Otto groups. */
+  source?: "connector";
   title?: string;
   description?: string;
   inputSchema?: z.ZodRawShape | z.ZodType;
@@ -36,6 +38,8 @@ export interface OttoToolCatalog {
 
 export interface OttoToolRuntimeContext {
   callerAgentId?: string;
+  /** Daemon-resolved launch cwd; the agent may not be registered yet. */
+  callerCwd?: string;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
 }

@@ -1,3 +1,4 @@
+import type { GoogleConnectorService } from "./connectors/google-connector-service.js";
 import {
   LEGACY_PROVIDER_IDS,
   errorToFriendlyMessage,
@@ -588,6 +589,7 @@ export interface SessionOptions {
   // Optional so the many test harnesses need not build one; when absent the
   // connector OAuth RPCs answer with a clear "not available on this host".
   connectorOAuthBroker?: ConnectorOAuthBroker | null;
+  googleConnectors?: GoogleConnectorService;
   /** Daemon-global provider registry, shared by every connected frontend. */
   communicationsService?: CommunicationsService;
   /** Daemon-owned connection metadata and secure credential-vault boundary. */
@@ -875,6 +877,7 @@ export class Session {
   private readonly workspaceRecovery: WorkspaceRecoveryService;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly connectorOAuthBroker: ConnectorOAuthBroker | null;
+  private readonly googleConnectors?: GoogleConnectorService;
   private readonly communicationsService: CommunicationsService;
   private readonly integrationAuthorization: IntegrationAuthorizationService | null;
   private readonly integrationAuthorizationCatalog: IntegrationAuthorizationCatalog;
@@ -1035,6 +1038,7 @@ export class Session {
       agentAutoTitle,
       daemonConfigStore,
       connectorOAuthBroker,
+      googleConnectors,
       communicationsService,
       integrationAuthorization,
       integrationAuthorizationCatalog,
@@ -1089,6 +1093,7 @@ export class Session {
       host: { emit: (msg) => this.emit(msg) },
       communicationsService: this.communicationsService,
     });
+    this.googleConnectors = googleConnectors;
     this.integrationAuthorization = integrationAuthorization ?? null;
     this.integrationAuthorizationCatalog =
       integrationAuthorizationCatalog ?? new IntegrationAuthorizationCatalog();
@@ -3448,6 +3453,7 @@ export class Session {
     requestId: string,
     connectorId: string,
     scope: string | undefined,
+    oauthClient?: { clientId: string; clientSecret: string },
   ): void {
     const respond = (
       payload: Omit<ConnectorsOauthAuthorizeResponse["payload"], "connectorId" | "requestId">,
@@ -3486,7 +3492,11 @@ export class Session {
         });
     };
     void broker
-      .beginAuthorization({ connector, ...(scope ? { scope } : {}) })
+      .beginAuthorization({
+        connector,
+        ...(scope ? { scope } : {}),
+        ...(oauthClient ? { oauthClient } : {}),
+      })
       .then((result) => {
         if (result.status === "authorized") {
           respond({ authorizationUrl: null, status: "authorized", error: null });
@@ -3525,6 +3535,22 @@ export class Session {
     });
   }
 
+  private async disconnectConnector(connectorId: string, requestId: string): Promise<void> {
+    const connector = this.daemonConfigStore
+      .get()
+      .connectors?.find((entry) => entry.id === connectorId);
+    if (connector?.builtin) {
+      if (!this.googleConnectors) throw new Error("Update the host to manage this connector.");
+      await this.googleConnectors.disconnect(connectorId);
+    } else {
+      this.connectorOAuthBroker?.disconnect(connectorId);
+    }
+    this.emit({
+      type: "connectors.oauth.disconnect.response",
+      payload: { connectorId, requestId },
+    });
+  }
+
   private dispatchAgentConfigMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "set_agent_mode_request":
@@ -3556,6 +3582,7 @@ export class Session {
           return undefined;
         }
         void listConnectorTools(connector, {
+          googleConnectors: this.googleConnectors,
           cwd: process.cwd(),
           logger: this.sessionLogger,
         })
@@ -3588,18 +3615,15 @@ export class Session {
         return undefined;
       }
       case "connectors.oauth.authorize.request":
-        this.handleConnectorOauthAuthorize(msg.requestId, msg.connectorId, msg.scope);
+        this.handleConnectorOauthAuthorize(
+          msg.requestId,
+          msg.connectorId,
+          msg.scope,
+          msg.oauthClient,
+        );
         return undefined;
-      case "connectors.oauth.disconnect.request": {
-        const disconnectRequestId = msg.requestId;
-        const disconnectId = msg.connectorId;
-        this.connectorOAuthBroker?.disconnect(disconnectId);
-        this.emit({
-          type: "connectors.oauth.disconnect.response",
-          payload: { connectorId: disconnectId, requestId: disconnectRequestId },
-        });
-        return undefined;
-      }
+      case "connectors.oauth.disconnect.request":
+        return this.disconnectConnector(msg.connectorId, msg.requestId);
       case "agentPersonalities.get_stats.request": {
         const statsRequestId = msg.requestId;
         // The stats store is async (file-backed); resolve then emit.

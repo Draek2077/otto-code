@@ -1,6 +1,14 @@
 import { z } from "zod";
 import type { AgentProvider } from "./agent-types.js";
 import { AgentProviderSchema, OTTO_BRAIN_PROVIDER_ID } from "./provider-manifest.js";
+export {
+  GOOGLE_CONNECTOR_SERVICES,
+  GOOGLE_CONNECTOR_SOURCE,
+  CONNECTOR_OAUTH_REDIRECT_URI,
+  googleConnectorForUrl,
+  googleConnectorForConfig,
+  type GoogleConnectorService,
+} from "./google-connectors.js";
 
 const ProviderCommandDefaultSchema = z.object({
   mode: z.literal("default"),
@@ -330,6 +338,8 @@ export const ConnectorOAuthClientSchema = z.object({
  * is only for the interactive OAuth path.
  */
 export const ConnectorAuthStateSchema = z.object({
+  /** Binds new authorizations to the exact resource that owns them. */
+  resourceUrl: z.string().optional(),
   kind: z.literal("oauth"),
   tokens: ConnectorOAuthTokensSchema.optional(),
   client: ConnectorOAuthClientSchema.optional(),
@@ -360,6 +370,9 @@ export const ConnectorWorkspaceStateSchema = z.object({
  * old configs and old daemons behaving exactly as before.
  */
 export const ConnectorConfigSchema = z.object({
+  /** COMPAT(connectorBuiltin): added in v0.9.9, remove gate after 2027-03-12.
+   * Native implementation identity; transport union remains backward compatible. */
+  builtin: z.string().optional(),
   /** Stable key; doubles as the MCP server name used by the tool namespacer. */
   id: z.string().min(1),
   /** Human-facing name shown in the Connectors UI. Falls back to id when absent. */

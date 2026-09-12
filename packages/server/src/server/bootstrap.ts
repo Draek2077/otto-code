@@ -1,3 +1,9 @@
+import {
+  GoogleConnectorAuthorization,
+  loadGoogleOAuthRegistration,
+  GOOGLE_CONNECTOR_INTEGRATION_ID,
+} from "./connectors/google-connector-authorization.js";
+import { GoogleConnectorService } from "./connectors/google-connector-service.js";
 import express from "express";
 import { CommunicationsService } from "./communications/communications-service.js";
 import {
@@ -241,6 +247,7 @@ import { createAgentStructuredTextGeneration } from "./session/checkout/git-meta
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { ConnectorOAuthBroker, type ConnectorAuthStore } from "./connectors/connector-oauth.js";
 import { setConnectorAuthStore } from "./connectors/connector-auth-store.js";
+import { ConnectorToolCatalogService } from "./connectors/connector-tool-catalog.js";
 import {
   createStartupOrchestrationSkills,
   SkillMaintenanceStoppedError,
@@ -1501,6 +1508,31 @@ export async function createOttoDaemon(
     vault: await createDaemonCredentialVault(),
   });
   await integrationAuthorization.initialize();
+  const googleConnectorAuthorization = new GoogleConnectorAuthorization({
+    authorization: integrationAuthorization,
+    registration: await loadGoogleOAuthRegistration(),
+    readConnectors: () => daemonConfigStore.get().connectors ?? [],
+  });
+  const googleConnectors = new GoogleConnectorService({
+    authorization: googleConnectorAuthorization,
+    readConnectors: () => daemonConfigStore.get().connectors ?? [],
+  });
+  const connectorToolCatalog = new ConnectorToolCatalogService({
+    readConnectors: () => daemonConfigStore.get().connectors ?? [],
+    authStore: connectorAuthStore,
+    googleConnectors,
+    logger,
+    managedProcesses,
+  });
+  daemonConfigStore.onFieldChange("connectors", () => {
+    void googleConnectors
+      .reconcile()
+      .catch(() => logger.warn("Could not clear a removed Google connection"));
+    void connectorToolCatalog
+      .reconcile()
+      .catch(() => logger.warn("Could not close an outdated connector client"));
+  });
+
   const forgeConnections = new ForgeConnectionStore({
     filePath: path.join(config.ottoHome, "forge-connections.json"),
     authorization: integrationAuthorization,
@@ -2441,8 +2473,20 @@ export async function createOttoDaemon(
     nodeOutputStore,
     logger,
   });
-  const createAgentToolCatalog = (runtime: OttoToolRuntimeContext) =>
-    createOttoToolCatalog(createAgentToolHostDependencies(runtime));
+  const createAgentToolDependencies = async (
+    runtime: OttoToolRuntimeContext,
+  ): Promise<OttoToolHostDependencies> => {
+    const deps = createAgentToolHostDependencies(runtime);
+    const cwd =
+      runtime.callerCwd ??
+      (runtime.callerAgentId ? agentManager.getAgentToolCwd(runtime.callerAgentId) : undefined);
+    // Connector authority is agent-scoped. Unbound control-plane clients and
+    // voice-only catalog requests do not acquire the host's external accounts.
+    if (cwd && !runtime.voiceOnly) deps.connectorTools = await connectorToolCatalog.getTools(cwd);
+    return deps;
+  };
+  const createAgentToolCatalog = async (runtime: OttoToolRuntimeContext) =>
+    createOttoToolCatalog(await createAgentToolDependencies(runtime));
   agentManager.setOttoToolCatalogFactory(createAgentToolCatalog);
   agentManager.setOttoToolsEnabled(config.mcpInjectIntoAgents !== false);
 
@@ -2460,7 +2504,7 @@ export async function createOttoDaemon(
 
     const createAgentMcpSession = async (callerAgentId?: string) => {
       const agentMcpServer = await createAgentMcpServer(
-        createAgentToolHostDependencies({ callerAgentId }),
+        await createAgentToolDependencies({ callerAgentId }),
       );
 
       // Stateless mode: each HTTP request builds a fresh server + transport that is
@@ -2728,6 +2772,14 @@ export async function createOttoDaemon(
             );
             const integrationBrowserAuthorization = new IntegrationBrowserAuthorizationService();
             integrationBrowserAuthorization.register(zoomTeamChatAuthorization);
+            integrationBrowserAuthorization.registerResolver(
+              GOOGLE_CONNECTOR_INTEGRATION_ID,
+              (connectionId) => ({
+                integrationId: GOOGLE_CONNECTOR_INTEGRATION_ID,
+                connectionId,
+                start: () => googleConnectors.start(connectionId),
+              }),
+            );
 
             const communicationsService = new CommunicationsService();
             communicationsService.registerProvider(
@@ -2831,6 +2883,7 @@ export async function createOttoDaemon(
               pluginRuntime,
               orchestrationSkills,
               workspaceLabelService,
+              googleConnectors,
             );
             pluginRuntime.bindOttoSessionHost(wsServer);
             await pluginRuntime.start();
@@ -2919,6 +2972,9 @@ export async function createOttoDaemon(
   };
 
   const stop = async () => {
+    connectorOAuthBroker.closeAll();
+    await connectorToolCatalog.close();
+    await googleConnectors.close();
     await orchestrationSkills.dispose();
     await pluginRuntime.stopAllPlugins();
     await hubRelationships.stop();

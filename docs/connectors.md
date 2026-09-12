@@ -1,7 +1,7 @@
 # Connectors
 
-A connector is an MCP server presented to the user as a named integration with a
-switch, not as a command line. The user picks Notion from a list, signs in, and
+A connector is a named integration whose tools execute on the host, using a
+vendor MCP server or Otto-owned service API tools. The user picks Notion from a list, signs in, and
 Notion's tools are available to agents. They never learn what MCP is.
 
 Two rules carry this subsystem. Both exist because the first version broke them.
@@ -62,17 +62,17 @@ saying where to get it is the failure this catalog was rebuilt to remove.
 
 ### The four shapes real vendors actually need
 
-`oauth` above means "fixed URL plus dynamic client registration", which is what
-the broker implements. Per-vendor research found that assumption covers barely
-half the ecosystem. The other shapes, and who needs them:
+The generic broker supports fixed URLs with dynamic client registration. Google
+uses Otto's publisher-owned Desktop OAuth registration and ordinary APIs. The
+remaining shapes below describe vendor requirements, not implemented support:
 
-| Shape                                    | What the user supplies                  | Vendors                                                                                                                                                                                                        |
-| ---------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fixed URL + DCR                          | nothing                                 | Slack, Notion, Linear, Atlassian, monday.com, Box, Airtable, Dropbox, ClickUp, Trello, HubSpot, Stripe, GitHub, Sentry, Supabase, Cloudflare, Vercel, Square, Intercom, Canva, Figma, Webflow, Ahrefs, Netlify |
-| Fixed URL + **own client ID and secret** | two pasted values from a vendor console | all of Google Workspace (Gmail, Drive, Docs, Sheets, Slides, Calendar, Chat, People)                                                                                                                           |
-| **Templated URL** + a variable           | tenant, host, store, region, or org URL | Microsoft 365, GitLab, Shopify, Datadog, AWS, Salesforce, Microsoft Ads                                                                                                                                        |
-| **Client credentials** grant             | client ID and secret, no browser        | PayPal                                                                                                                                                                                                         |
-| Static API token, no OAuth               | one token                               | Bitbucket tools on the Atlassian endpoint                                                                                                                                                                      |
+| Shape                          | What the user supplies                  | Vendors                                                                                                                                                                                                        |
+| ------------------------------ | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fixed URL + DCR                | nothing                                 | Slack, Notion, Linear, Atlassian, monday.com, Box, Airtable, Dropbox, ClickUp, Trello, HubSpot, Stripe, GitHub, Sentry, Supabase, Cloudflare, Vercel, Square, Intercom, Canva, Figma, Webflow, Ahrefs, Netlify |
+| Publisher-owned Desktop OAuth  | nothing beyond account sign-in          | Google Drive, Gmail and Calendar                                                                                                                                                                               |
+| **Templated URL** + a variable | tenant, host, store, region, or org URL | Microsoft 365, GitLab, Shopify, Datadog, AWS, Salesforce, Microsoft Ads                                                                                                                                        |
+| **Client credentials** grant   | client ID and secret, no browser        | PayPal                                                                                                                                                                                                         |
+| Static API token, no OAuth     | one token                               | Bitbucket tools on the Atlassian endpoint                                                                                                                                                                      |
 
 The lesson is that "sign in and you're done" is the goal, not a universal
 property of the ecosystem. A connector that needs a tenant ID still beats one
@@ -92,11 +92,10 @@ That is the whole point of the subsystem, and it is the line that decides whethe
 a shape above is acceptable. A connector needing a tenant ID is fine, because the
 UI can ask for it. A connector needing you to hand-write a command is not.
 
-The shapes are served by one mechanism: a connector declares an ordered list of
-setup fields (text, secret, or choice), each with a label, help text, and an
-`issueUrl` linking to the exact vendor page that issues that value. The UI renders
-them, and the daemon substitutes them into both the endpoint template and the
-auth flow. The browser half is the OAuth broker below.
+Implemented catalog setup kinds are `oauth`, `token` and `none`. Google OAuth
+entries additionally declare a `builtin` service identifier. Their install panel
+has a Connect button. Client registration belongs to the publisher, never the
+user. General tenant templates and client-credentials grants remain unbuilt.
 
 `issueUrl` is not decoration. A field that asks for a client secret without
 saying where to get one has handed the user homework, which is the original sin
@@ -121,12 +120,10 @@ When a service we need has no official MCP server, we write one. "No official
 server" is a statement about a vendor's roadmap, not about what is possible:
 every such service still has a documented REST API.
 
-The mechanism is `InMemoryTransport.createLinkedPair()` from the MCP SDK. The
-daemon hosts the server **in its own process** and connects a client to it over
-memory, with no subprocess, port, or network hop. Downstream nothing changes:
-tool namespacing, per-tool disable, permission gating and the verification gate
-all see an ordinary MCP client. We write the API wrapper and inherit the rest of
-the subsystem free.
+Native connectors contribute `OttoToolDefinition` objects to the existing shared
+tool catalog. Native providers execute that catalog directly; MCP providers see
+it through Otto's internal MCP server. API execution, credentials, result limits
+and live enable checks stay in the daemon. The renderer owns presentation.
 
 These are marked by an optional `builtin` field on `ConnectorConfig`, not by a
 new branch on `McpServerConfigSchema`. That union is discriminated on `type`, so
@@ -168,7 +165,8 @@ pieces the SDK calls back into.
 3. **The return.** The listener validates the `state` parameter, then resumes the
    exchange.
 
-Preferred loopback port is 6871, falling back to an ephemeral port when taken. A
+The generic MCP broker prefers loopback port 6871, falling back to an ephemeral
+port when taken. Google Desktop OAuth uses a separate ephemeral listener. A
 stable redirect URI lets a second login reuse the first login's registration; a
 registration bound to a different URI is discarded rather than reused, because
 the authorization server rejects the mismatch at the authorize step.
@@ -249,6 +247,112 @@ Some endpoints legitimately refuse Otto. Vercel gates its MCP server to clients
 it has reviewed. The gate surfaces what the vendor actually said rather than
 pretending the connection succeeded.
 
+## Google Drive, Gmail and Calendar
+
+Otto implements these services over their ordinary account APIs. Users choose a
+service in **Settings > Tools > Connectors > Add connector**, click Connect,
+sign in and approve access. They need no client registration or preview setting.
+The callback currently requires a browser on the host computer; remote phone
+consent is not implemented. Start or reload a chat after changing connections.
+
+| Service  | Operations                                                             | Requested scopes (Google auth prefix omitted)       |
+| -------- | ---------------------------------------------------------------------- | --------------------------------------------------- |
+| Gmail    | List/search, read, draft, send, reply, forward                         | `gmail.readonly`, `gmail.compose`                   |
+| Drive    | List/search, read/export text, create text files, replace file content | `drive`                                             |
+| Calendar | List calendars, list events, read an event, create an event            | `calendar.calendarlist.readonly`, `calendar.events` |
+
+Every login also requests `openid` and `userinfo.email` for a verified account
+label. Drive writes cover ordinary UTF-8 files; native Docs/Sheets/Slides editing
+and binary transfers are not implemented. Pagination is explicit (25 by default,
+100 maximum). Email bodies, file text, HTTP responses and final tool results are
+bounded. Writes are never retried automatically because a timeout can follow a
+successful send or creation. Sending or forwarding mail requires user instruction.
+
+### Daemon ownership and publisher configuration
+
+`GoogleConnectorAuthorization` registers with the shared integration browser
+authorization service. It uses PKCE, state validation and a short-lived loopback
+listener. The common `IntegrationAuthorizationService` persists tokens in the OS
+credential vault and exposes only status, scopes and the account label. Tokens
+never enter app state, provider launch configuration or the generic connector
+`auth` block. Refresh and disconnect are serialized per connection; a superseded
+callback cannot restore a disconnected grant. Removal reconciles vault entries.
+Disconnect clears Otto's local grant; it does not revoke the app at Google.
+
+The publisher creates a **Desktop app** OAuth registration, enables the regular
+Gmail/Drive/Calendar APIs and maintains the consent screen's scope inventory.
+Google's token exchange requires that registration's generated client secret.
+A desktop registration is distributed application identity, not a confidential
+server credential. End-user tokens remain separate in the vault.
+
+Builds copy the publisher registration from `OTTO_GOOGLE_OAUTH_CLIENT_FILE` into
+the daemon package with `scripts/copy-google-oauth-client.mjs`. That variable is a
+publisher build input, never an end-user setting. A build without registration
+does not advertise `server_info.features.connectorNativeGoogle`; the client asks
+to update the host. The old caller-supplied registration RPC shape remains
+parseable for compatibility but is rejected.
+
+Public release requires publisher registration packaging and Google's required
+OAuth verification. A Testing consent screen only admits listed test users.
+Enabling APIs and completing a developer login do not prove public readiness.
+See [Google's native app OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app).
+
+### Hosted MCP backend
+
+`GoogleMcpBackend` is an alternative daemon backend, selected by host construction
+policy, not a user knob. It consumes Google's live catalog and JSON schemas at
+`https://gmailmcp.googleapis.com/mcp/v1`,
+`https://drivemcp.googleapis.com/mcp/v1`, and
+`https://calendarmcp.googleapis.com/mcp/v1`. Changing backend changes the vendor
+operation names and can require additional scopes; it is a release decision.
+There is no automatic retry or switch after a failed write.
+
+Google's public `tools/list` does not prove account access. Admission performs a
+read-only tool call before exposing hosted tools. The September 2026 live check
+returned 23 Gmail, 8 Drive and 9 Calendar definitions, but authenticated Gmail
+and Calendar calls required Developer Preview enrollment, and Drive denied
+access. The equivalent REST reads succeeded. Hosted Gmail's catalog had draft
+creation but no send operation; it cannot currently replace the full REST set.
+See the [Workspace MCP setup guide](https://developers.google.com/workspace/guides/configure-mcp-servers)
+and [Developer Preview requirements](https://developers.google.com/workspace/preview).
+
+### Open-source reuse
+
+`vendor/activepieces-mail.ts` adapts the MIT-licensed Gmail MIME, reply and forward
+helpers from pinned Activepieces commit `89aeeae8c1eb98428210ec7d214f933b96aa1987`.
+It retains the license and records Otto's changes. Nodemailer and Mailparser
+handle MIME encoding and parsing. Otto owns the operation schemas and API
+adapters; the Activepieces workflow engine is not a runtime dependency.
+
+## One tool catalog for every provider
+
+`ConnectorToolCatalogService` owns the connector MCP clients in the daemon.
+Bound agents receive enabled connector tools through the shared Otto tool
+catalog. Brain, OpenAI-compatible and OMP use that catalog natively; Claude,
+Codex, OpenCode and ACP use the internal Otto MCP server. Pi requires its MCP
+adapter. The host's Otto-tool injection must be enabled. Unbound control-plane
+clients and voice-only catalogs do not receive external account tools.
+
+Every provider receives the same namespaced vendor tools and schemas. Connector
+enable/per-tool switches apply independently of Otto's internal tool groups.
+Calls check live settings again, so a stale chat cannot call a disabled or
+removed tool. Google credentials remain in the daemon, never in provider launch
+configuration. Agents still follow their provider's tool permission policy.
+
+Enumeration follows MCP pagination. Connections are shared across providers;
+stdio connectors remain scoped to the agent's working directory. Idle clients
+are closed after five minutes, and later calls reconnect. Catalog snapshots
+refresh on subsequent construction after five minutes, with a shorter retry
+for failed connections. Existing chats must reload to discover newly added
+tools. Unsupported input schemas fail verification instead of silently dropping
+part of a connector's catalog.
+
+Local tests cover Google consent parameters, loopback callbacks, refresh,
+endpoint binding, paginated MCP discovery, native/MCP schema parity, reconnects
+and live disable checks. They use fixture servers and mocked token responses.
+They do not prove a Google account's preview enrollment, Cloud configuration or
+end-to-end calls from each installed provider; those require live account tests.
+
 ## Secrets
 
 Connector credentials are host-owned and never sent to a client.
@@ -278,13 +382,22 @@ paste-a-token entries. Tagged `COMPAT(connectorOauth)`, added in v0.7.7.
 
 ## Files
 
-| Path                                                            | What it holds                                     |
-| --------------------------------------------------------------- | ------------------------------------------------- |
-| `packages/app/src/screens/settings/connectors-catalog.ts`       | The catalog. Citations required                   |
-| `packages/app/src/screens/settings/connectors-section.tsx`      | Installed connectors, enable and per-tool toggles |
-| `packages/app/src/screens/settings/connectors-add-sheet.tsx`    | Browse, install, verify; the by-hand form         |
-| `packages/app/src/screens/settings/connectors-shared.ts`        | Capability gates, the OAuth wait, form chrome     |
-| `packages/server/src/server/connectors/connector-oauth.ts`      | The broker and the SDK's storage callbacks        |
-| `packages/server/src/server/connectors/connector-auth-store.ts` | The daemon-scoped credential store                |
-| `packages/server/src/server/connectors/connector-tools.ts`      | Live connect and enumerate                        |
-| `packages/server/src/server/daemon-config-store.ts`             | Redaction and the one write path into `auth`      |
+| Path                                                                      | What it holds                                           |
+| ------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `packages/app/src/screens/settings/connectors-catalog.ts`                 | The catalog. Citations required                         |
+| `packages/app/src/screens/settings/connectors-section.tsx`                | Installed connectors, enable and per-tool toggles       |
+| `packages/app/src/screens/settings/connectors-add-sheet.tsx`              | Browse, install, verify; the by-hand form               |
+| `packages/app/src/screens/settings/connectors-shared.ts`                  | Capability gates, the OAuth wait, form chrome           |
+| `packages/server/src/server/connectors/connector-oauth.ts`                | The broker and the SDK's storage callbacks              |
+| `packages/server/src/server/connectors/connector-auth-store.ts`           | The daemon-scoped credential store                      |
+| `packages/server/src/server/connectors/connector-tools.ts`                | Live connect and enumerate                              |
+| `packages/server/src/server/connectors/connector-tool-catalog.ts`         | Shared connector clients and provider tool definitions  |
+| `packages/protocol/src/google-connectors.ts`                              | Native Google service identities and requested scopes   |
+| `packages/app/src/screens/settings/connectors-google-auth.tsx`            | Google reconnect and disconnect actions                 |
+| `packages/server/src/server/connectors/google-connector-authorization.ts` | Google driver on the shared authorization platform      |
+| `packages/server/src/server/connectors/google-connector-service.ts`       | Native Google catalog, verification and live call gates |
+| `packages/server/src/server/connectors/google-gmail-tools.ts`             | Gmail operations and MIME integration                   |
+| `packages/server/src/server/connectors/google-drive-tools.ts`             | Drive text operations                                   |
+| `packages/server/src/server/connectors/google-calendar-tools.ts`          | Calendar operations                                     |
+| `packages/server/src/server/connectors/google-mcp-backend.ts`             | Hosted Google MCP adapter and admission probe           |
+| `packages/server/src/server/daemon-config-store.ts`                       | Redaction and the one write path into `auth`            |

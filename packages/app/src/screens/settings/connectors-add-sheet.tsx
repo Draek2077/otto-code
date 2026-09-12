@@ -10,9 +10,11 @@
 // i18n: English-only pending a translation pass (build-first, translate-last).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Text, TextInput, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { StyleSheet } from "react-native-unistyles";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
+import { signInGoogleConnector } from "./connectors-google-sign-in";
 import {
   AdaptiveModalSheet,
   SHEET_HORIZONTAL_PADDING_SCALE,
@@ -46,6 +48,7 @@ import {
   connectorStyles,
   toErrorMessage,
   useConnectorOauthFeature,
+  useGoogleConnectorFeature,
   usePatchMutation,
   waitForOauthStatus,
 } from "./connectors-shared";
@@ -177,15 +180,20 @@ function CatalogInstallPanel(props: {
   onDone: () => void;
 }) {
   const { serverId, config, entry, onDone } = props;
+  const queryClient = useQueryClient();
   const client = useHostRuntimeClient(serverId);
   const hasOauth = useConnectorOauthFeature(serverId);
+  const hasGoogleOauth = useGoogleConnectorFeature(serverId);
   const { patchConfig } = useDaemonConfig(serverId);
   const [token, setToken] = useState("");
+  const authorizationAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => authorizationAbort.current?.abort(), []);
   const [state, setState] = useState<InstallState>(IDLE_INSTALL);
 
   const needsToken = entry.setup.kind === "token";
   const isOauth = entry.setup.kind === "oauth";
-  const blockedOnHost = isOauth && !hasOauth;
+  const builtin = entry.setup.kind === "oauth" ? entry.setup.builtin : undefined;
+  const blockedOnHost = isOauth && (builtin ? !hasGoogleOauth : !hasOauth);
   const busy =
     state.phase === "adding" || state.phase === "signing-in" || state.phase === "verifying";
   const canInstall =
@@ -202,6 +210,7 @@ function CatalogInstallPanel(props: {
         id: entry.id,
         label: entry.label,
         server,
+        ...(builtin ? { builtin } : {}),
         enabled: true,
       };
       const result = await addVerifiedCatalogConnector({
@@ -210,19 +219,26 @@ function CatalogInstallPanel(props: {
         verify: async () => {
           if (entry.setup.kind === "oauth") {
             setState({ phase: "signing-in", message: "Opening your browser to sign in…" });
-            const authorization = await client.connectorsOauthAuthorize(
-              entry.id,
-              entry.setup.scope,
-            );
-            if (authorization.status === "error") {
-              throw new Error(authorization.error ?? "Sign-in failed.");
-            }
-            if (authorization.status === "redirect" && authorization.authorizationUrl) {
-              // The daemon holds the loopback listener open while the user is away;
-              // the push below is what tells us they came back.
-              const settled = waitForOauthStatus(client, entry.id);
-              void openExternalUrl(authorization.authorizationUrl);
-              await settled;
+            if (builtin) {
+              authorizationAbort.current?.abort();
+              const controller = new AbortController();
+              authorizationAbort.current = controller;
+              await signInGoogleConnector(client, entry.id, controller.signal);
+              await queryClient.invalidateQueries({
+                queryKey: ["connector-authorization", serverId],
+              });
+            } else {
+              const authorization = await client.connectorsOauthAuthorize(
+                entry.id,
+                entry.setup.scope,
+              );
+              if (authorization.status === "error")
+                throw new Error(authorization.error ?? "Sign-in failed.");
+              if (authorization.status === "redirect" && authorization.authorizationUrl) {
+                const settled = waitForOauthStatus(client, entry.id);
+                void openExternalUrl(authorization.authorizationUrl);
+                await settled;
+              }
             }
           }
 
@@ -239,16 +255,22 @@ function CatalogInstallPanel(props: {
       });
       setState({
         phase: "done",
-        message: `Connected. ${result.tools.length} ${result.tools.length === 1 ? "tool" : "tools"} available.`,
+        message: `Connected. ${result.tools.length} ${result.tools.length === 1 ? "tool" : "tools"} available. Start or reload a chat to load them.`,
       });
     };
     void run().catch((error: unknown) => {
       setState({ phase: "error", message: toErrorMessage(error) ?? "Could not connect." });
     });
-  }, [client, config, entry, patchConfig, token]);
+  }, [client, config, entry, patchConfig, token, builtin, queryClient, serverId]);
 
   return (
     <View style={styles.installPanel} testID={`connectors-install-${entry.id}`}>
+      {builtin ? (
+        <Text style={settingsStyles.rowHint}>
+          Sign in with Google and approve access. Complete sign-in on the computer running this
+          host.
+        </Text>
+      ) : null}
       {entry.setup.kind === "token" ? (
         <View style={styles.installRow}>
           <View style={settingsStyles.rowContent}>

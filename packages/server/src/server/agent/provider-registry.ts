@@ -112,9 +112,8 @@ export interface BuildProviderRegistryOptions {
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
   managedProcesses?: ManagedProcessRegistry;
   /**
-   * Daemon-wide connector registry, injected into providers whose MCP tool loop
-   * the daemon owns (openai-compat). Provider-neutral in config; only the
-   * openai-compat path consumes it today.
+   * Host snapshot input. Vendor transports and credentials are consumed only
+   * by ConnectorToolCatalogService; all providers receive the shared catalog.
    */
   connectors?: readonly ConnectorConfig[];
   isDev?: boolean;
@@ -292,7 +291,6 @@ function createOttoBrainClient(
     resolveEndpoint: () => resolveBrainEndpoint(options?.brainEndpoint),
     ottoToolGroups: resolveProviderToolGroups(override),
     mcpServers: override?.mcpServers,
-    connectors: options?.connectors,
     mcpToolPermissions: override?.mcpToolPermissions,
     // Local models benefit from a much smaller retained tail and a bounded
     // handoff. External OpenAI-compatible providers retain their existing
@@ -1020,7 +1018,6 @@ function resolveOpenAICompatProvider(
         resolveProjectRoot: buildProjectRootResolver(options.workspaceGitService),
         ottoToolGroups: resolveProviderToolGroups(override),
         mcpServers: override.mcpServers,
-        connectors: options.connectors,
         mcpToolPermissions: override.mcpToolPermissions,
         compaction: override.compaction,
         maxToolRounds: override.maxToolRounds,

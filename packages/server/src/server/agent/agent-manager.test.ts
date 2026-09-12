@@ -2887,6 +2887,7 @@ test("createAgent passes native Otto tools through launch context without intern
   }
 
   const client = new NativeToolsClient();
+  let catalogCwd: string | undefined;
   const manager = new AgentManager({
     clients: {
       codex: client,
@@ -2894,7 +2895,10 @@ test("createAgent passes native Otto tools through launch context without intern
     registry: storage,
     logger,
     mcpBaseUrl: "http://127.0.0.1:6868/mcp/agents",
-    ottoToolCatalogFactory: () => ottoTools,
+    ottoToolCatalogFactory: (context) => {
+      catalogCwd = context.callerCwd;
+      return ottoTools;
+    },
     idFactory: () => "00000000-0000-4000-8000-000000000106",
   });
 
@@ -2914,6 +2918,7 @@ test("createAgent passes native Otto tools through launch context without intern
   );
 
   expect(client.lastLaunchContext?.ottoTools).toBe(ottoTools);
+  expect(catalogCwd).toBe(workdir);
   expect(client.lastConfig?.mcpServers).toEqual({
     custom: {
       type: "stdio",
@@ -2935,6 +2940,37 @@ test("createAgent passes native Otto tools through launch context without intern
     },
   });
 });
+
+test.each([false, true])(
+  "MCP discovery resolves the launching chat directory and clears failed launches (%s)",
+  async (failLaunch) => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-tool-cwd-"));
+    const agentId = "00000000-0000-4000-8000-000000000107";
+    class DiscoveringClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        expect(manager.getAgent(agentId)).toBeNull();
+        expect(manager.getAgentToolCwd(agentId)).toBe(workdir);
+        if (failLaunch) throw new Error("Fixture launch failure");
+        return new McpCapableTestAgentSession(config);
+      }
+    }
+    const manager = new AgentManager({
+      clients: { codex: new DiscoveringClient() },
+      logger,
+      idFactory: () => agentId,
+    });
+    const launched = manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    if (failLaunch) {
+      await expect(launched).rejects.toThrow("Fixture launch failure");
+      expect(manager.getAgentToolCwd(agentId)).toBeUndefined();
+    } else {
+      await launched;
+      expect(manager.getAgentToolCwd(agentId)).toBe(workdir);
+    }
+  },
+);
 
 test("createAgent injects the MCP auth token as a bearer header into the launch config", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));

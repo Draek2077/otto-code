@@ -6,7 +6,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { StyleSheet } from "react-native-unistyles";
 import type { MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
-import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
+import {
+  googleConnectorForConfig,
+  type ConnectorConfig,
+} from "@otto-code/protocol/provider-config";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
@@ -31,6 +34,13 @@ export function useConnectorOauthFeature(serverId: string): boolean {
   );
 }
 
+/** COMPAT(connectorNativeGoogle): added in v0.9.9, remove after 2027-03-12. */
+export function useGoogleConnectorFeature(serverId: string): boolean {
+  return useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.connectorNativeGoogle === true,
+  );
+}
+
 /**
  * Resolve when the daemon reports this connector's login settled. Subscribed
  * BEFORE the browser is opened, so a login the user finishes instantly cannot
@@ -41,11 +51,16 @@ export function waitForOauthStatus(
   connectorId: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error("Sign-in timed out. Try Connect again."));
+    }, 310_000);
     const unsubscribe = client.on("connectors.oauth.status", (message) => {
       if (message.payload.connectorId !== connectorId) {
         return;
       }
       unsubscribe();
+      clearTimeout(timeout);
       if (message.payload.status === "connected") {
         resolve();
         return;
@@ -63,6 +78,7 @@ export function toErrorMessage(error: unknown): string | null {
 }
 
 export function transportSummary(connector: ConnectorConfig): string {
+  if (googleConnectorForConfig(connector)) return "Google account";
   const server = connector.server;
   return server.type === "stdio" ? `stdio · ${server.command}` : `${server.type} · ${server.url}`;
 }

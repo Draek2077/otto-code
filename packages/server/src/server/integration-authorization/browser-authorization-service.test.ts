@@ -24,4 +24,30 @@ describe("IntegrationBrowserAuthorizationService", () => {
       service.start({ integrationId: "notion", connectionId: "primary" }),
     ).rejects.toBeInstanceOf(BrowserAuthorizationDriverUnavailableError);
   });
+
+  test("resolves newly installed connections without restarting the host", async () => {
+    const service = new IntegrationBrowserAuthorizationService();
+    const installed = new Set<string>();
+    service.registerResolver("google-connectors", (connectionId) =>
+      installed.has(connectionId)
+        ? {
+            integrationId: "google-connectors",
+            connectionId,
+            start: async () => ({ authorizationUrl: "https://accounts.google.com/authorize" }),
+          }
+        : null,
+    );
+    const key = { integrationId: "google-connectors", connectionId: "gmail" };
+    await expect(service.start(key)).rejects.toBeInstanceOf(
+      BrowserAuthorizationDriverUnavailableError,
+    );
+    installed.add("gmail");
+    await expect(service.start(key)).resolves.toEqual({
+      authorizationUrl: "https://accounts.google.com/authorize",
+    });
+    installed.delete("gmail");
+    await expect(service.start(key)).rejects.toBeInstanceOf(
+      BrowserAuthorizationDriverUnavailableError,
+    );
+  });
 });

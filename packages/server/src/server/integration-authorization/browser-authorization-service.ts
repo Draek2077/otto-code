@@ -11,6 +11,20 @@ export interface BrowserAuthorizationDriver {
 
 export class IntegrationBrowserAuthorizationService {
   private readonly drivers = new Map<string, BrowserAuthorizationDriver>();
+  private readonly resolvers = new Map<
+    string,
+    (connectionId: string) => BrowserAuthorizationDriver | null
+  >();
+
+  /** Host-owned drivers for connections installed after server startup. */
+  registerResolver(
+    integrationId: string,
+    resolve: (connectionId: string) => BrowserAuthorizationDriver | null,
+  ): void {
+    if (this.resolvers.has(integrationId))
+      throw new Error("Authorization resolver already registered.");
+    this.resolvers.set(integrationId, resolve);
+  }
 
   register(driver: BrowserAuthorizationDriver): void {
     const key = browserAuthorizationDriverKey(driver);
@@ -24,7 +38,9 @@ export class IntegrationBrowserAuthorizationService {
     integrationId: string;
     connectionId: string;
   }): Promise<{ authorizationUrl: string }> {
-    const driver = this.drivers.get(browserAuthorizationDriverKey(params));
+    const driver =
+      this.drivers.get(browserAuthorizationDriverKey(params)) ??
+      this.resolvers.get(params.integrationId)?.(params.connectionId);
     if (!driver) {
       throw new BrowserAuthorizationDriverUnavailableError(
         "This sign-in method is not configured on this host.",

@@ -63,6 +63,7 @@ export interface BeginAuthorizationParams {
   connector: ConnectorConfig;
   /** OAuth scopes to request, when the catalog entry names them. */
   scope?: string;
+  oauthClient?: { clientId: string; clientSecret: string };
 }
 
 export type BeginAuthorizationResult =
@@ -110,6 +111,7 @@ export function hasUsableAuthorization(
  * re-login it throws rather than opening a browser nobody asked for.
  */
 class ConnectorOAuthProvider implements OAuthClientProvider {
+  private readonly isActive: () => boolean;
   private readonly connectorId: string;
   private readonly store: ConnectorAuthStore;
   private readonly redirectUri: string;
@@ -127,12 +129,14 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
     state: string;
     now: () => number;
     onRedirect?: (url: URL) => void;
+    isActive?: () => boolean;
   }) {
     this.connectorId = params.connectorId;
     this.store = params.store;
     this.redirectUri = params.redirectUri;
     this.stateValue = params.state;
     this.now = params.now;
+    this.isActive = params.isActive ?? (() => true);
     this.onRedirect = params.onRedirect;
   }
 
@@ -147,8 +151,6 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
       redirect_uris: [this.redirectUri],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
-      // Public client: the daemon runs on the user's machine, so there is no
-      // secret it could keep. PKCE is what protects the exchange.
       token_endpoint_auth_method: "none",
     };
   }
@@ -158,6 +160,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
   }
 
   clientInformation(): OAuthClientInformationMixed | undefined {
+    if (!this.isActive()) return undefined;
     const stored = this.store.read(this.connectorId)?.client;
     // A registration made against a different redirect URI cannot be reused:
     // the authorization server will reject the mismatch at the authorize step.
@@ -171,6 +174,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
   }
 
   saveClientInformation(clientInformation: OAuthClientInformationMixed): void {
+    if (!this.isActive()) throw new Error("This authorization attempt is no longer active.");
     const current = this.store.read(this.connectorId);
     this.store.write(this.connectorId, {
       kind: "oauth",
@@ -186,6 +190,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
   }
 
   tokens(): OAuthTokens | undefined {
+    if (!this.isActive()) return undefined;
     const stored = this.store.read(this.connectorId)?.tokens;
     if (!stored) {
       return undefined;
@@ -199,6 +204,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
   }
 
   saveTokens(tokens: OAuthTokens): void {
+    if (!this.isActive()) throw new Error("This authorization attempt is no longer active.");
     const current = this.store.read(this.connectorId);
     // A refresh token is often omitted on refresh responses; keeping the
     // previous one is the difference between staying logged in and being
@@ -241,6 +247,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
   }
 
   invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery"): void {
+    if (!this.isActive()) return;
     if (scope === "verifier") {
       this.verifier = undefined;
       return;
@@ -276,7 +283,12 @@ export function createConnectorAuthProvider(params: {
   store: ConnectorAuthStore;
   now?: () => number;
 }): OAuthClientProvider | undefined {
-  const state = params.connector.auth;
+  const state = params.store.read(params.connector.id);
+  if (
+    state?.resourceUrl &&
+    (params.connector.server.type === "stdio" || state.resourceUrl !== params.connector.server.url)
+  )
+    return undefined;
   if (!state?.tokens) {
     return undefined;
   }
@@ -288,6 +300,15 @@ export function createConnectorAuthProvider(params: {
     redirectUri: state.client?.redirectUri ?? loopbackRedirectUri(PREFERRED_CALLBACK_PORT),
     state: "",
     now: params.now ?? Date.now,
+    isActive: () => {
+      const live = params.store.read(params.connector.id);
+      return (
+        !!live?.tokens &&
+        live.client?.clientId === state.client?.clientId &&
+        live.client?.clientSecret === state.client?.clientSecret &&
+        live.resourceUrl === state.resourceUrl
+      );
+    },
   });
 }
 
@@ -296,6 +317,14 @@ function loopbackRedirectUri(port: number): string {
 }
 
 function renderCallbackPage(title: string, detail: string): string {
+  const escape = (value: string) =>
+    value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  title = escape(title);
+  detail = escape(detail);
   // Deliberately dependency-free and inert: this HTML is rendered by whatever
   // browser the user logged in with, which is outside our trust boundary.
   return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
@@ -329,6 +358,7 @@ export class ConnectorOAuthBroker {
     if (connector.server.type === "stdio") {
       throw new Error("OAuth applies to remote connectors; this one runs a local command.");
     }
+    this.validateRegistration(params, connector.server.url);
     // A second Connect on the same connector supersedes the first: leaving the
     // old listener bound would strand a port and accept a stale code.
     this.cancel(connector.id, "Superseded by a new connection attempt.");
@@ -343,6 +373,7 @@ export class ConnectorOAuthBroker {
       redirectUri,
       state,
       now: this.now,
+      isActive: () => this.pending.get(connector.id)?.state === state,
       onRedirect: (url) => {
         capturedUrl = url;
       },
@@ -388,17 +419,21 @@ export class ConnectorOAuthBroker {
     });
 
     try {
+      const scope = params.scope;
       const result = await auth(provider, {
         serverUrl,
-        ...(params.scope ? { scope: params.scope } : {}),
+        ...(scope ? { scope } : {}),
       });
       if (result === "AUTHORIZED") {
         this.finish(connector.id, { ok: true });
         return { status: "authorized" };
       }
     } catch (error) {
-      this.finish(connector.id, { ok: false, error: describeError(error) });
-      throw error;
+      const message = this.describeError(connector.id, error);
+      if (this.pending.get(connector.id)?.state === state)
+        this.finish(connector.id, { ok: false, error: message });
+      // eslint-disable-next-line preserve-caught-error -- The vendor error may contain credentials; never attach its unredacted cause.
+      throw new Error(message);
     }
 
     if (!capturedUrl) {
@@ -414,6 +449,18 @@ export class ConnectorOAuthBroker {
   /** Resolves when the user finishes the login; rejects on denial or timeout. */
   waitForCompletion(connectorId: string): Promise<void> {
     return this.completions.get(connectorId) ?? Promise.resolve();
+  }
+
+  private validateRegistration(params: BeginAuthorizationParams, serverUrl: string): void {
+    const stored = this.store.read(params.connector.id);
+    if (stored?.resourceUrl && stored.resourceUrl !== serverUrl) {
+      throw new Error("This connector's endpoint changed. Remove it and connect again.");
+    }
+    if (params.connector.builtin || params.oauthClient) {
+      throw new Error(
+        "Use the built-in Google connector sign-in. User-supplied OAuth app credentials are no longer accepted.",
+      );
+    }
   }
 
   /** Drop a connector's authorization entirely (the Disconnect button). */
@@ -450,13 +497,6 @@ export class ConnectorOAuthBroker {
       res.writeHead(404).end();
       return;
     }
-    const error = url.searchParams.get("error");
-    if (error) {
-      const description = url.searchParams.get("error_description") ?? error;
-      this.respond(res, 400, "Sign-in failed", description);
-      this.finish(connectorId, { ok: false, error: description });
-      return;
-    }
     const code = url.searchParams.get("code");
     const returnedState = url.searchParams.get("state");
     // CSRF: a code arriving with the wrong state is not ours to exchange.
@@ -465,6 +505,13 @@ export class ConnectorOAuthBroker {
       // A stale or unsolicited browser callback must not tear down the valid
       // attempt that still owns this listener. The user can continue the
       // current sign-in or deliberately choose Connect again to replace it.
+      return;
+    }
+    const error = url.searchParams.get("error");
+    if (error) {
+      const description = "Google or the connector declined authorization. Try Connect again.";
+      this.respond(res, 400, "Sign-in failed", description);
+      this.finish(connectorId, { ok: false, error: description });
       return;
     }
     if (!code) {
@@ -477,15 +524,25 @@ export class ConnectorOAuthBroker {
         serverUrl: flow.serverUrl,
         authorizationCode: code,
       });
+      if (this.pending.get(connectorId) !== flow) {
+        this.respond(
+          res,
+          400,
+          "Sign-in replaced",
+          "Return to Otto and use the current sign-in attempt.",
+        );
+        return;
+      }
       if (result !== "AUTHORIZED") {
         throw new Error("The authorization server did not issue a token.");
       }
       this.respond(res, 200, "Connected", "You can close this tab and return to Otto.");
       this.finish(connectorId, { ok: true });
     } catch (err) {
-      const message = describeError(err);
+      const message = this.describeError(connectorId, err).replaceAll(code, "***");
       this.respond(res, 500, "Sign-in failed", message);
-      this.finish(connectorId, { ok: false, error: message });
+      if (this.pending.get(connectorId) === flow)
+        this.finish(connectorId, { ok: false, error: message });
     }
   }
 
@@ -497,6 +554,19 @@ export class ConnectorOAuthBroker {
   ): void {
     res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
     res.end(renderCallbackPage(title, detail));
+  }
+
+  private describeError(connectorId: string, error: unknown): string {
+    let message = describeError(error);
+    const state = this.store.read(connectorId);
+    for (const secret of [
+      state?.client?.clientSecret,
+      state?.tokens?.accessToken,
+      state?.tokens?.refreshToken,
+    ]) {
+      if (secret) message = message.replaceAll(secret, "***");
+    }
+    return message;
   }
 
   private finish(connectorId: string, result: { ok: true } | { ok: false; error: string }): void {

@@ -7512,6 +7512,7 @@ export class DaemonClient {
     connectorId: string,
     scope?: string,
     requestId?: string,
+    oauthClient?: { clientId: string; clientSecret: string },
   ): Promise<ConnectorsOauthAuthorizeResponse["payload"]> {
     return this.sendCorrelatedSessionRequest({
       requestId,
@@ -7519,6 +7520,7 @@ export class DaemonClient {
         type: "connectors.oauth.authorize.request",
         connectorId,
         ...(scope ? { scope } : {}),
+        ...(oauthClient ? { oauthClient } : {}),
       },
       responseType: "connectors.oauth.authorize.response",
     });

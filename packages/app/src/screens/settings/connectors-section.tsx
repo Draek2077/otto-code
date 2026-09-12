@@ -25,6 +25,7 @@ import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { AddConnectorSheet } from "./connectors-add-sheet";
+import { GoogleConnectorAuth } from "./connectors-google-auth";
 import {
   createRemoveConnectorPatch,
   createSetConnectorEnabledPatch,
@@ -164,6 +165,10 @@ function ConnectorCard(props: {
   const toolsError = toErrorMessage(toolsMutation.error) ?? toolsMutation.data?.error ?? null;
   const tools = toolsMutation.data?.tools ?? NO_TOOLS;
   const enabled = isConnectorEnabled(connector);
+  const refreshTools = useCallback(() => {
+    toolsMutation.reset();
+    setExpanded(false);
+  }, [toolsMutation]);
 
   return (
     <View style={settingsStyles.card} testID={`connectors-card-${connector.id}`}>
@@ -186,6 +191,7 @@ function ConnectorCard(props: {
         />
       </View>
 
+      <GoogleConnectorAuth serverId={serverId} connector={connector} onChanged={refreshTools} />
       <View style={connectorStyles.borderedRow}>
         <Button
           onPress={toggleExpanded}

@@ -2516,6 +2516,15 @@ export const ConnectorsOauthAuthorizeRequestSchema = z.object({
   connectorId: z.string(),
   /** Scopes to request, when the catalog entry names them. */
   scope: z.string().optional(),
+  /** COMPAT(connectorOwnClient): accepted since v0.9.9; remove after 2027-03-12.
+   * Parse the former caller-supplied registration shape, but the broker rejects it.
+   * Native Google registration is publisher-owned and never supplied by the app. */
+  oauthClient: z
+    .object({
+      clientId: z.string().min(1).max(1024),
+      clientSecret: z.string().min(1).max(4096),
+    })
+    .optional(),
 });
 export const ConnectorsOauthAuthorizeResponseSchema = z.object({
   type: z.literal("connectors.oauth.authorize.response"),
@@ -5577,6 +5586,8 @@ export const ServerInfoStatusPayloadSchema = z
         // daemons have no broker and no way to hold a token, so the client hides
         // Connect / Disconnect and offers only the paste-a-token connectors.
         connectorOauth: z.boolean().optional(),
+        connectorGoogleOauth: z.boolean().optional(),
+        connectorNativeGoogle: z.boolean().optional(),
         // COMPAT(communications): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
         // The daemon owns the provider-neutral communications overview. An old
         // host must not receive a communications RPC from a newer frontend.

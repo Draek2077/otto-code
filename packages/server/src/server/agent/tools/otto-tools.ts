@@ -159,6 +159,7 @@ import type {
 } from "./types.js";
 
 export interface OttoToolHostDependencies {
+  connectorTools?: readonly OttoToolDefinition[];
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager?: TerminalManager | null;
@@ -1257,10 +1258,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   ) => {
     // Per-group gating: a tool whose group is disabled is never registered, so
     // both the MCP path and any future catalog consumer inherit the filter.
-    if (!isToolGroupEnabled(name)) {
+    if (config.source !== "connector" && !isToolGroupEnabled(name)) {
       return;
     }
-    if (!isToolAllowedByOrchestrationPolicy(name)) {
+    if (config.source !== "connector" && !isToolAllowedByOrchestrationPolicy(name)) {
       return;
     }
     // Workspace-access ceiling: enforced here at registration, like the two
@@ -1272,6 +1273,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       return;
     }
     tools.set(name, {
+      source: config.source,
       name,
       title: config.title,
       description: config.description ?? name,
@@ -6192,6 +6194,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     logger: childLogger,
   });
 
+  for (const tool of options.connectorTools ?? []) {
+    registerTool(tool.name, { ...tool, source: "connector" }, tool.handler);
+  }
   return toCatalog();
 }
 

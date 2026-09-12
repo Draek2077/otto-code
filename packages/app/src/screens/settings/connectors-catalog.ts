@@ -20,6 +20,11 @@
 //
 // i18n: English-only pending a translation pass (build-first, translate-last).
 
+import {
+  GOOGLE_CONNECTOR_SERVICES,
+  GOOGLE_CONNECTOR_SOURCE,
+} from "@otto-code/protocol/provider-config";
+
 export type ConnectorAudience = "user" | "developer";
 
 /**
@@ -38,6 +43,8 @@ export type ConnectorSetup =
       url: string;
       /** Scopes to request, when the vendor requires them to be named. */
       scope?: string;
+      /** Daemon-owned implementation, with publisher-managed sign-in. */
+      builtin?: string;
     }
   | {
       kind: "token";
@@ -75,6 +82,24 @@ export interface ConnectorCatalogEntry {
 const VERIFIED = "2026-08-03";
 
 export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
+  ...GOOGLE_CONNECTOR_SERVICES.map(
+    (service): ConnectorCatalogEntry => ({
+      id: service.id,
+      label: service.label,
+      category: "Google Workspace",
+      audience: "user",
+      description: service.description,
+      setup: {
+        kind: "oauth",
+        transport: "http",
+        url: service.url,
+        scope: service.scopes.join(" "),
+        builtin: service.id,
+      },
+      source: GOOGLE_CONNECTOR_SOURCE,
+      verifiedOn: "2026-09-12",
+    }),
+  ),
   // ---- Sign-in connectors (OAuth) -----------------------------------------
   // These are the point of the whole subsystem: nothing to paste, nothing to
   // configure. Click Connect, log in on the vendor's page, the daemon holds the
@@ -422,8 +447,8 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
  * 1. BLOCKED ON A SETUP SHAPE WE HAVE NOT BUILT. These have real, verified,
  *    official endpoints. They are absent only because `ConnectorSetup` cannot yet
  *    express what they need:
- *      - own OAuth client id + secret: all of Google Workspace (Gmail, Drive,
- *        Docs, Sheets, Slides, Calendar, Chat, People)
+ *      - remaining Google Workspace services (Docs, Sheets, Slides, Chat, People)
+ *        require their own scope and live-tool verification before catalog inclusion.
  *      - templated URL: Microsoft 365 (tenant), GitLab (host), Shopify (store),
  *        Datadog (region), AWS (region), Salesforce (org), Microsoft Ads
  *      - client-credentials grant: PayPal

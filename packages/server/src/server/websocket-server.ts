@@ -1,3 +1,4 @@
+import type { GoogleConnectorService } from "./connectors/google-connector-service.js";
 import { WebSocket, WebSocketServer } from "ws";
 import type { IncomingMessage, Server as HTTPServer } from "http";
 import { join } from "path";
@@ -802,6 +803,7 @@ export class VoiceAssistantWebSocketServer {
     pluginRuntime?: SessionOptions["pluginRuntime"],
     orchestrationSkills?: SessionOptions["orchestrationSkills"],
     workspaceLabelService?: WorkspaceLabelService,
+    private readonly googleConnectors?: GoogleConnectorService,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
@@ -1819,6 +1821,7 @@ export class VoiceAssistantWebSocketServer {
       ...(this.agentAutoTitle ? { agentAutoTitle: this.agentAutoTitle } : {}),
       daemonConfigStore: this.daemonConfigStore,
       connectorOAuthBroker: this.connectorOAuthBroker,
+      googleConnectors: this.googleConnectors,
       communicationsService: this.communicationsService,
       integrationAuthorization: this.integrationAuthorization,
       integrationAuthorizationCatalog: this.integrationAuthorizationCatalog,
@@ -2318,6 +2321,8 @@ export class VoiceAssistantWebSocketServer {
         connectors: true,
         // COMPAT(connectorOauth): added in v0.7.7, drop the gate when daemon floor >= v0.7.7.
         connectorOauth: true,
+        connectorGoogleOauth: false,
+        connectorNativeGoogle: this.googleConnectors?.configured === true,
         // COMPAT(communications): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
         communications: true,
         // COMPAT(communicationsChatHome): added in v0.8.11, remove gate after 2027-02-14.

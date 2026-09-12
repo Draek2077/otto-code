@@ -28,6 +28,44 @@ interface TestEndpoint {
 const servers: Server[] = [];
 const tempWorkspaces: string[] = [];
 
+test("connected tools use the shared native catalog even when Otto groups are disabled", async () => {
+  const endpoint = await startEndpoint();
+  const client = new OpenAICompatAgentClient({
+    providerId: "lmstudio",
+    label: "Fixture",
+    env: { OPENAI_BASE_URL: endpoint.baseUrl },
+    ottoToolGroups: [],
+  });
+  const tool = {
+    name: "connector_drive_search",
+    source: "connector" as const,
+    description: "Search connected Drive files",
+    inputSchema: z.object({ query: z.string() }),
+    handler: async () => ({ content: [{ type: "text", text: "found" }] }),
+  };
+  const session = await client.createSession(
+    { provider: "lmstudio", cwd: process.cwd(), model: "test-model-a" },
+    {
+      ottoTools: {
+        tools: new Map([[tool.name, tool]]),
+        getTool: (name) => (name === tool.name ? tool : undefined),
+        executeTool: tool.handler,
+      },
+    },
+  );
+  try {
+    await session.run("Hello");
+    const tools = endpoint.completionBodies[0]?.tools as Array<{
+      function: { name: string; parameters: { required?: string[] } };
+    }>;
+    const matches = tools.filter((entry) => entry.function.name === tool.name);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].function.parameters.required).toEqual(["query"]);
+  } finally {
+    await session.close();
+  }
+});
+
 afterEach(async () => {
   await Promise.all(
     servers.splice(0).map(

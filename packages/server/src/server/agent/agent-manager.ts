@@ -1394,6 +1394,7 @@ export class AgentManager {
   private readonly clients = new Map<AgentProvider, AgentClient>();
   private readonly providerEnabled = new Map<AgentProvider, boolean>();
   private readonly agents = new Map<string, LiveManagedAgent>();
+  private readonly launchingAgentCwds = new Map<string, string>();
   private readonly timelineStore = new InMemoryAgentTimelineStore();
   private readonly agentsAwaitingInitialSnapshotPersist = new Set<string>();
   private readonly sessionEventTails = new Map<string, Promise<void>>();
@@ -2459,7 +2460,9 @@ export class AgentManager {
     );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const createOptions = this.buildCreateSessionOptions(options);
-    const session = await client.createSession(providerLaunchConfig, launchContext, createOptions);
+    const session = await this.withLaunchingAgentCwd(resolvedAgentId, storedConfig.cwd, () =>
+      client.createSession(providerLaunchConfig, launchContext, createOptions),
+    );
     const managed = this.registerSession(session, storedConfig, resolvedAgentId, {
       labels: options.labels,
       initialTitle: options.initialTitle,
@@ -2551,11 +2554,13 @@ export class AgentManager {
     // its history is not the same as resuming it to work in, and a provider that
     // cannot tell the difference does the full interactive setup for a session
     // nobody is going to type into.
-    const session = await client.resumeSession(
-      handle,
-      providerLaunchConfig,
-      launchContext,
-      options?.purpose ? { purpose: options.purpose } : undefined,
+    const session = await this.withLaunchingAgentCwd(resolvedAgentId, storedConfig.cwd, () =>
+      client.resumeSession(
+        handle,
+        providerLaunchConfig,
+        launchContext,
+        options?.purpose ? { purpose: options.purpose } : undefined,
+      ),
     );
     return this.registerSession(session, storedConfig, resolvedAgentId, options);
   }
@@ -2595,12 +2600,15 @@ export class AgentManager {
     );
     const launchContext = await this.buildLaunchContext(resolvedAgentId, client, storedConfig.cwd);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
-    const imported = await client.importSession(
-      {
-        providerHandleId: input.providerHandleId,
-        cwd: input.cwd,
-      },
-      { config: providerLaunchConfig, storedConfig, launchContext },
+    const importSession = client.importSession.bind(client);
+    const imported = await this.withLaunchingAgentCwd(resolvedAgentId, storedConfig.cwd, () =>
+      importSession(
+        {
+          providerHandleId: input.providerHandleId,
+          cwd: input.cwd,
+        },
+        { config: providerLaunchConfig, storedConfig, launchContext },
+      ),
     );
     let handedToRegistration = false;
     try {
@@ -2702,9 +2710,11 @@ export class AgentManager {
       await this.persistSnapshot(closedExisting);
       this.assertAcceptingAgentRegistrations();
 
-      session = handle
-        ? await client.resumeSession(handle, providerLaunchConfig, launchContext)
-        : await client.createSession(providerLaunchConfig, launchContext);
+      session = await this.withLaunchingAgentCwd(agentId, storedConfig.cwd, () =>
+        handle
+          ? client.resumeSession(handle, providerLaunchConfig, launchContext)
+          : client.createSession(providerLaunchConfig, launchContext),
+      );
 
       if (rehydrateFromDisk) {
         // Wipe the in-memory timeline so registerSession mints a new epoch and
@@ -8358,9 +8368,30 @@ export class AgentManager {
       client.capabilities.supportsNativeOttoTools &&
       this.ottoToolCatalogFactory
     ) {
-      context.ottoTools = await this.ottoToolCatalogFactory({ callerAgentId: agentId });
+      context.ottoTools = await this.ottoToolCatalogFactory({
+        callerAgentId: agentId,
+        callerCwd: cwd,
+      });
     }
     return context;
+  }
+
+  /** MCP initialization may run inside create/resume, before registerSession. */
+  getAgentToolCwd(agentId: string): string | undefined {
+    return this.launchingAgentCwds.get(agentId) ?? this.getAgent(agentId)?.config.cwd;
+  }
+
+  private async withLaunchingAgentCwd<T>(
+    agentId: string,
+    cwd: string,
+    launch: () => Promise<T>,
+  ): Promise<T> {
+    this.launchingAgentCwds.set(agentId, cwd);
+    try {
+      return await launch();
+    } finally {
+      this.launchingAgentCwds.delete(agentId);
+    }
   }
 
   private resolveProviderLaunchConfig(

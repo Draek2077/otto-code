@@ -151,6 +151,7 @@ export function resolveEnabledConnectors(
 }
 
 export interface OpenAICompatMcpManagerOptions {
+  additionalSecrets?: () => string[];
   servers: Record<string, McpServerConfig>;
   providerId: string;
   cwd: string;
@@ -174,6 +175,7 @@ export interface OpenAICompatMcpManagerOptions {
 }
 
 export class OpenAICompatMcpManager {
+  private readonly additionalSecrets: (() => string[]) | undefined;
   private readonly servers: Record<string, McpServerConfig>;
   private readonly providerId: string;
   private readonly cwd: string;
@@ -194,6 +196,7 @@ export class OpenAICompatMcpManager {
   private closed = false;
 
   constructor(options: OpenAICompatMcpManagerOptions) {
+    this.additionalSecrets = options.additionalSecrets;
     this.servers = options.servers;
     this.providerId = options.providerId;
     this.cwd = options.cwd;
@@ -243,10 +246,17 @@ export class OpenAICompatMcpManager {
         this.recordConnectionFailure(name, result.reason);
         continue;
       }
+      if (this.closed) {
+        await this.releaseConnection(result.value);
+        continue;
+      }
       this.connected.push(result.value);
       try {
         await this.snapshotTools(result.value, usedNames);
       } catch (error) {
+        for (const [toolName, binding] of this.toolBindings) {
+          if (binding.serverName === name) this.toolBindings.delete(toolName);
+        }
         this.recordConnectionFailure(name, error);
       }
     }
@@ -331,26 +341,37 @@ export class OpenAICompatMcpManager {
   }
 
   private async snapshotTools(server: ConnectedServer, usedNames: Set<string>): Promise<void> {
-    const listing = await server.client.listTools(undefined, { timeout: LIST_TIMEOUT_MS });
     const disabled = this.disabledTools[server.name];
-    for (const tool of listing.tools) {
-      // A per-connector disabled tool never enters the binding map, so it is
-      // never advertised to the model and cannot be invoked.
-      if (disabled?.has(tool.name)) continue;
-      const prefix = `mcp_${sanitizeNamePart(server.name)}_${sanitizeNamePart(tool.name)}`;
-      const modelName = buildNamespacedName(prefix, usedNames);
-      this.toolBindings.set(modelName, {
-        modelName,
-        serverName: server.name,
-        toolName: tool.name,
-        description: tool.description ?? "",
-        parameters: (tool.inputSchema as Record<string, unknown> | undefined) ?? {
-          type: "object",
-          properties: {},
-        },
-        readOnlyHint: tool.annotations?.readOnlyHint === true,
+    let cursor: string | undefined;
+    const seenCursors = new Set<string>();
+    do {
+      const listing = await server.client.listTools(cursor ? { cursor } : undefined, {
+        timeout: LIST_TIMEOUT_MS,
       });
-    }
+      for (const tool of listing.tools) {
+        // A per-connector disabled tool never enters the binding map, so it is
+        // never advertised to the model and cannot be invoked.
+        if (disabled?.has(tool.name)) continue;
+        const prefix = `mcp_${sanitizeNamePart(server.name)}_${sanitizeNamePart(tool.name)}`;
+        const modelName = buildNamespacedName(prefix, usedNames);
+        this.toolBindings.set(modelName, {
+          modelName,
+          serverName: server.name,
+          toolName: tool.name,
+          description: tool.description ?? "",
+          parameters: (tool.inputSchema as Record<string, unknown> | undefined) ?? {
+            type: "object",
+            properties: {},
+          },
+          readOnlyHint: tool.annotations?.readOnlyHint === true,
+        });
+      }
+      cursor = listing.nextCursor;
+      if (cursor && seenCursors.has(cursor))
+        throw new Error("Connector returned a repeated tool-list cursor.");
+      if (cursor) seenCursors.add(cursor);
+      if (seenCursors.size > 100) throw new Error("Connector tool list exceeded 100 pages.");
+    } while (cursor);
   }
 
   /** Pids of spawned stdio servers (diagnostics and lifecycle tests). */
@@ -385,7 +406,9 @@ export class OpenAICompatMcpManager {
         undefined,
         { timeout: CALL_TOOL_TIMEOUT_MS, ...(options.signal ? { signal: options.signal } : {}) },
       );
-      const text = flattenContentText(result.content);
+      const text =
+        flattenContentText(result.content) ||
+        (result.structuredContent ? JSON.stringify(result.structuredContent) : "");
       const fallback = result.isError ? "Tool failed" : "Done.";
       return {
         output: capToolOutput(this.redact(text || fallback)),
@@ -465,20 +488,21 @@ export class OpenAICompatMcpManager {
     this.connected = [];
     this.toolBindings = new Map();
     for (const server of servers) {
-      await server.client.close().catch(() => undefined);
-      if (server.stdioPid !== null) {
-        await killPidTree(server.stdioPid);
-      }
-      if (server.managedRecordId && this.managedProcesses) {
-        await this.managedProcesses.remove(server.managedRecordId).catch(() => undefined);
-      }
+      await this.releaseConnection(server);
     }
+  }
+
+  private async releaseConnection(server: ConnectedServer): Promise<void> {
+    await server.client.close().catch(() => undefined);
+    if (server.stdioPid !== null) await killPidTree(server.stdioPid);
+    if (server.managedRecordId && this.managedProcesses)
+      await this.managedProcesses.remove(server.managedRecordId).catch(() => undefined);
   }
 
   /** Replace configured header/env secret values in outgoing text with ***. */
   redact(text: string): string {
     let result = text;
-    for (const secret of this.secrets) {
+    for (const secret of [...this.secrets, ...(this.additionalSecrets?.() ?? [])]) {
       result = result.split(secret).join(REDACTED);
     }
     return result;

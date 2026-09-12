@@ -1,9 +1,11 @@
 import type { Logger } from "pino";
+import { z } from "zod";
 import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
 import type { ManagedProcessRegistry } from "../managed-processes/managed-processes.js";
 import { OpenAICompatMcpManager } from "../agent/providers/openai-compat-mcp.js";
 import { createConnectorAuthProvider, type ConnectorAuthStore } from "./connector-oauth.js";
 import { getConnectorAuthStore } from "./connector-auth-store.js";
+import type { GoogleConnectorService } from "./google-connector-service.js";
 
 export interface ConnectorToolInfo {
   name: string;
@@ -22,6 +24,7 @@ export interface ListConnectorToolsDeps {
   managedProcesses?: ManagedProcessRegistry | null;
   /** Overrides the daemon-installed store; tests pass a memory store here. */
   authStore?: ConnectorAuthStore;
+  googleConnectors?: GoogleConnectorService | null;
 }
 
 /**
@@ -38,6 +41,11 @@ export async function listConnectorTools(
   connector: ConnectorConfig,
   deps: ListConnectorToolsDeps,
 ): Promise<ListConnectorToolsResult> {
+  if (connector.builtin) {
+    return deps.googleConnectors
+      ? deps.googleConnectors.listTools(connector)
+      : { tools: [], error: "Update the host to connect Google services." };
+  }
   // A signed-in connector must be enumerated WITH its token, or verification
   // reports 401 for a connector that actually works.
   const store = deps.authStore ?? getConnectorAuthStore();
@@ -48,6 +56,14 @@ export async function listConnectorTools(
     cwd: deps.cwd,
     logger: deps.logger,
     managedProcesses: deps.managedProcesses ?? null,
+    additionalSecrets: () => {
+      const auth = store?.read(connector.id);
+      return [
+        auth?.tokens?.accessToken,
+        auth?.tokens?.refreshToken,
+        auth?.client?.clientSecret,
+      ].filter((value): value is string => !!value);
+    },
     ...(authProvider ? { authProviders: { [connector.id]: authProvider } } : {}),
     // No disabledTools here: enumeration must surface the whole surface so the
     // UI can toggle each tool, disabled ones included.
@@ -56,7 +72,18 @@ export async function listConnectorTools(
     await manager.ensureConnected();
     const failure = manager.failures[0];
     const disabled = new Set(connector.disabledTools ?? []);
-    const tools = manager.getToolBindings().map((binding) => ({
+    const bindings = manager.getToolBindings();
+    for (const binding of bindings) {
+      try {
+        z.fromJSONSchema(binding.parameters);
+      } catch {
+        return {
+          tools: [],
+          error: `The tool '${binding.toolName}' has an input schema Otto cannot expose. Update the host or contact the connector provider.`,
+        };
+      }
+    }
+    const tools = bindings.map((binding) => ({
       name: binding.toolName,
       description: binding.description.length > 0 ? binding.description : null,
       disabled: disabled.has(binding.toolName),
