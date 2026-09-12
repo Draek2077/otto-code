@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.8 - 2026-09-12
+
+### Changed
+
+- Find text in the built-in browser with Ctrl+F or Cmd+F
+- Revisit pages from project browsing history in the address bar
+- Import selected provider chats from across projects in one batch
+- Stop or archive provider subagents from their chat tracks
+- Reveal files in the desktop file manager from binary previews and load errors
+- Generate chat metadata with Codex without configuring another provider
+
+### Fixed
+
+- Keep Claude and Codex permission modes consistent when starting or resuming chats
+- Avoid unnecessary approval prompts for Otto read tools in Claude, Codex, OpenCode, and local providers
+- Show OpenCode Auto Accept as off when an explicit tool policy prevents it
+
 ## 0.9.7 - 2026-09-11
 
 ### Changed
