@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createAppUpdateService,
@@ -145,7 +145,12 @@ class FakeAppUpdateRuntime implements AppUpdateRuntime {
     }
   }
 
-  quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void {
+  async quitAndInstall(
+    isSilent: boolean,
+    isForceRunAfter: boolean,
+    onBeforeQuit?: () => Promise<void>,
+  ): Promise<void> {
+    await onBeforeQuit?.();
     if (this.downloadedUpdate) {
       this.installedVersions.push(this.downloadedUpdate.version);
       this.installModes.push({ isSilent, isForceRunAfter });
@@ -498,6 +503,36 @@ describe("app update service", () => {
     // on the finish page with the app already quit.
     expect(runtime.installModes).toEqual([{ isSilent: true, isForceRunAfter: true }]);
   });
+
+  it.each([false, true])(
+    "returns installer failures whether already downloaded or not (downloaded=%s)",
+    async (alreadyDownloaded) => {
+      const { runtime, service } = createService({ bucket: async () => 0 });
+      runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+      await service.checkForAppUpdate({
+        currentVersion: "1.2.3",
+        releaseChannel: "stable",
+        intent: "manual",
+      });
+      if (alreadyDownloaded) runtime.finishUpdateDownload(rolledOutUpdate);
+      runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+      vi.spyOn(runtime, "quitAndInstall").mockImplementationOnce(() => {
+        throw new Error("Authorization was cancelled");
+      });
+
+      const result = await service.downloadAndInstallUpdate({
+        currentVersion: "1.2.3",
+        releaseChannel: "stable",
+      });
+
+      expect(result).toMatchObject({
+        installed: false,
+        outcome: "failed",
+        message: "Update failed: Authorization was cancelled",
+      });
+      expect(runtime.installedVersions).toEqual([]);
+    },
+  );
 
   it("waits for a stale active download before downloading and installing the rechecked version", async () => {
     const { runtime, service } = createService({ bucket: async () => 0 });

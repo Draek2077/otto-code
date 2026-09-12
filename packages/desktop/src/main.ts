@@ -139,7 +139,7 @@ import {
   markAppQuitting,
   isAppQuitting,
 } from "./daemon/quit-lifecycle.js";
-import { installAppUpdateOnQuit } from "./features/auto-updater.js";
+import { installAppUpdateOnQuit, isLinuxDebUpdateInstalling } from "./features/auto-updater.js";
 import {
   requestQuitConfirmation,
   markQuitPreConfirmed,
@@ -1817,6 +1817,7 @@ const quitLifecycle = createQuitLifecycle({
   },
   createUpdateDeadlineSignal: () => AbortSignal.timeout(UPDATE_QUIT_DEADLINE_MS),
   deferDaemonStopUntilUpdateHandoff: process.platform === "linux" && !process.env.APPIMAGE,
+  isUpdateInstalling: isLinuxDebUpdateInstalling,
   onStopError: (error) => {
     log.error("[desktop daemon] failed to stop managed daemon on quit", error);
   },

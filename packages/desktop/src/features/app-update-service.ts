@@ -60,7 +60,11 @@ export interface AppUpdateRuntime {
   configure(input: AppUpdateRuntimeConfiguration): void;
   checkForUpdates(): Promise<RuntimeUpdateCheckResult | null>;
   downloadUpdate(): Promise<unknown>;
-  quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void;
+  quitAndInstall(
+    isSilent: boolean,
+    isForceRunAfter: boolean,
+    onBeforeQuit?: () => Promise<void>,
+  ): void | Promise<void>;
 }
 
 export interface AppUpdateService {
@@ -123,7 +127,6 @@ async function performQuitAndInstall(
     restart: boolean;
   },
 ): Promise<void> {
-  if (onBeforeQuit) await onBeforeQuit();
   // Always silent, including the restart path. Otto ships an assisted NSIS
   // installer, and electron-builder's assisted template only relaunches the app
   // after a *silent* install: run it with its wizard UI and the --force-run flag
@@ -131,7 +134,7 @@ async function performQuitAndInstall(
   // on the finish page as the only way back in. Otto has already told the user
   // it will restart itself and quit by then, so nobody is there to click Finish
   // and the update lands with the app dead. See docs/fork-release-guide.md.
-  runtime.quitAndInstall(/* isSilent */ true, /* isForceRunAfter */ restart);
+  await runtime.quitAndInstall(/* isSilent */ true, /* isForceRunAfter */ restart, onBeforeQuit);
 }
 
 function getErrorMessage(error: unknown): string {
@@ -468,16 +471,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
     const readyVersion = cachedUpdateInfo.version;
     if (signal?.aborted) {
       return buildDeferredInstallResult(currentVersion);
-    }
-
-    if (isReadyToInstallVersion(readyVersion)) {
-      await performQuitAndInstall(deps.runtime, { onBeforeQuit, restart });
-      return {
-        installed: true,
-        outcome: "installed",
-        version: readyVersion,
-        message: "Update downloaded. The app will restart shortly.",
-      };
     }
 
     try {

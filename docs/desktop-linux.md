@@ -273,12 +273,28 @@ an error instead of exiting silently.
 
 ## Updates and elevation
 
-`.deb` and `.rpm` updates invoke the system package manager through polkit
-(`pkexec`, where available) or `sudo`. Its authorization step is synchronous,
-before Electron receives the updater quit handoff. Keep the managed daemon alive
-until that handoff: cancelling a password prompt must leave Otto usable. AppImage
-keeps its explicit replacement path and Windows keeps its NSIS pre-installer
-daemon shutdown.
+`.deb` updates use electron-updater for release discovery and verified downloads,
+then Otto's [`linux-deb-installer.ts`](../packages/desktop/src/features/linux-deb-installer.ts)
+for installation. It runs `/usr/bin/pkexec --disable-internal-agent /usr/bin/dpkg -i`
+as an asynchronous process with a literal argument array. There is no shell or
+terminal `sudo` prompt in this path. The Debian package declares `pkexec | policykit-1`
+as an additional dependency, preserving electron-builder's default dependencies.
+The desktop session supplies the native polkit password dialog.
+
+Electron and the managed daemon remain alive during authorization and installation.
+Otto reads the archive's package name and version with `dpkg-deb`, then verifies
+`install ok installed` and that version with `dpkg-query` before stopping the
+managed daemon and requesting a relaunch. A cancelled prompt or failed command
+returns an error and leaves the app available for retry. A concurrent quit waits
+for this attempt to finish. Debian updates start through **Update now**, not on
+ordinary quit, whose short deadline cannot safely own an authorization prompt.
+
+The upstream Debian install path uses synchronous shell commands and attempts
+`apt-get install -f` after any failed `dpkg` command. That repair command can
+succeed without installing the downloaded package. Otto's Debian path performs
+one explicit install and verifies its result instead. `.rpm` keeps the upstream
+installer, AppImage keeps its explicit replacement path, and Windows keeps its
+NSIS pre-installer daemon shutdown.
 
 The Electron main-process log records the updater's configuration, check and
 download state, installer handoff, and every package-manager/updater error. On
@@ -286,12 +302,25 @@ Linux that means a failed elevation path includes the updater's selected command
 and its error in `~/.config/Otto/logs/main.log`; use that log before inferring a
 package or permission regression.
 
+Installer errors return the failed stage, command output, and log path to the
+existing **Update failed** callout. The remaining electron-updater paths capture
+synchronously emitted installation errors too: `quitAndInstall()` returning
+normally is not evidence of success, because upstream emits errors and returns
+`void` when its internal install fails.
+
 Manual Electron/Linux verification:
 
-1. Install an older Otto `.deb` or `.rpm`, launch it, and confirm the managed daemon is running.
+1. Install an older Otto `.deb`, launch it, and confirm the managed daemon is running.
 2. Select **Update now**. Confirm the polkit/password prompt appears while the existing daemon remains reachable.
 3. Cancel once: Otto and its daemon must remain usable. Approve on the second attempt: Otto relaunches and the daemon reports the new version.
-4. Smoke the same update on Windows: the NSIS installer must still shut down and relaunch Otto normally.
+4. Test a cache path containing spaces and an apostrophe; the exact archive must reach `dpkg`.
+5. Confirm errors (missing file, denied authorization, busy package database) show the stage and command output, and that Retry remains available.
+6. Smoke `.rpm`, AppImage, and Windows separately; their installer paths are unchanged.
+
+Polkit's [pkexec contract](https://polkit.pages.freedesktop.org/polkit/pkexec.1.html)
+defines the session authentication agent and cancellation exit status.
+Debian's [dpkg-query contract](https://manpages.debian.org/trixie/dpkg/dpkg-query.1.en.html)
+defines the package status and version fields used for verification.
 
 ## Diagnostics
 

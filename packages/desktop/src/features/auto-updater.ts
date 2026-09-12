@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { app, shell } from "electron";
+import { app, autoUpdater as electronAutoUpdater, shell } from "electron";
 import log from "electron-log/main";
 import { UUID } from "builder-util-runtime";
-import { autoUpdater } from "electron-updater";
+import { autoUpdater, DebUpdater } from "electron-updater";
+import { installLinuxDeb } from "./linux-deb-installer.js";
 import {
   MANUAL_DOWNLOAD_URL,
   ManualDownloadUpdateRuntime,
@@ -37,6 +38,11 @@ export {
 };
 
 let cachedStagingUserIdPromise: Promise<string> | null = null;
+let installingLinuxDeb = false;
+
+export function isLinuxDebUpdateInstalling(): boolean {
+  return installingLinuxDeb;
+}
 
 const UPDATE_CHANNEL_NOT_PUBLISHED_CODE = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
 const loggedUpdaterErrors = new WeakSet<object>();
@@ -120,10 +126,13 @@ export function getStagingUserId(): Promise<string> {
 export function shouldInstallAppUpdateOnQuit(input: {
   platform: NodeJS.Platform;
   isAppImage: boolean;
+  isDeb?: boolean;
 }): boolean {
   // AppImage's no-relaunch install path blocks while launching the replacement
   // binary, which can hang after the running file has already been replaced.
-  return !(input.platform === "linux" && input.isAppImage);
+  // A Debian install needs an attended authorization prompt and may exceed the
+  // quit deadline. Start it only through Update now.
+  return !(input.platform === "linux" && (input.isAppImage || input.isDeb));
 }
 
 export function shouldStopDesktopManagedDaemonBeforeAppUpdate(input: {
@@ -137,6 +146,8 @@ export function shouldStopDesktopManagedDaemonBeforeAppUpdate(input: {
 
 class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   private configured = false;
+  private downloadedFile: string | null = null;
+  private installAttempt: { error?: unknown; diagnostics: string } | null = null;
 
   configure(input: AppUpdateRuntimeConfiguration): void {
     autoUpdater.autoDownload = true;
@@ -172,7 +183,17 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     // subsequently arrives through the updater event or promise path.
     autoUpdater.logger = {
       debug: (message) => log.debug("[auto-updater] electron-updater", message),
-      error: logElectronUpdaterError,
+      error: (error) => {
+        // Linux's command runner logs stderr separately, then emits only the
+        // command and exit code. Preserve both for the install result.
+        if (this.installAttempt) {
+          const message = error instanceof Error ? error.message : String(error ?? "");
+          this.installAttempt.diagnostics = `${this.installAttempt.diagnostics}\n${message}`
+            .trim()
+            .slice(-8192);
+        }
+        logElectronUpdaterError(error);
+      },
       info: (message) => log.info("[auto-updater] electron-updater", message),
       warn: (message) => log.warn("[auto-updater] electron-updater", message),
     };
@@ -182,6 +203,7 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
       input.onUpdateAvailable(info as RuntimeUpdateInfo);
     });
     autoUpdater.on("update-downloaded", (info) => {
+      this.downloadedFile = info.downloadedFile;
       log.info("[auto-updater] update downloaded", { version: info.version });
       input.onUpdateDownloaded(info as RuntimeUpdateInfo);
     });
@@ -190,6 +212,7 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
       input.onUpdateNotAvailable();
     });
     autoUpdater.on("error", (error) => {
+      if (this.installAttempt) this.installAttempt.error = error;
       if (isUpdateChannelNotPublished(error)) {
         logElectronUpdaterError(error);
         return;
@@ -219,15 +242,71 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     return autoUpdater.downloadUpdate();
   }
 
-  quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void {
+  async quitAndInstall(
+    isSilent: boolean,
+    isForceRunAfter: boolean,
+    onBeforeQuit?: () => Promise<void>,
+  ): Promise<void> {
+    if (process.platform === "linux" && autoUpdater instanceof DebUpdater) {
+      if (installingLinuxDeb) throw new Error("A Debian update installation is already running.");
+      if (!this.downloadedFile) throw new Error("The downloaded Debian package path is missing.");
+      installingLinuxDeb = true;
+      try {
+        await installLinuxDeb(this.downloadedFile, (message) =>
+          log.info("[auto-updater]", message),
+        );
+        // Only stop the daemon after authorization, installation, and version
+        // verification succeed. Cancellation leaves every running chat alive.
+        await onBeforeQuit?.();
+      } catch (error) {
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}\nUpdate log: ${log.transports.file.getFile().path}`,
+          { cause: error },
+        );
+      } finally {
+        installingLinuxDeb = false;
+      }
+      if (isForceRunAfter) app.relaunch();
+      electronAutoUpdater.emit("before-quit-for-update");
+      app.quit();
+      return;
+    }
+    if (
+      shouldStopDesktopManagedDaemonBeforeAppUpdate({
+        platform: process.platform,
+        isAppImage: Boolean(process.env.APPIMAGE),
+      })
+    )
+      await onBeforeQuit?.();
     autoUpdater.autoRunAppAfterInstall = isForceRunAfter;
     log.info("[auto-updater] handing downloaded update to installer", {
       isSilent,
       isForceRunAfter,
       platform: process.platform,
       isAppImage: Boolean(process.env.APPIMAGE),
+      isDeb: autoUpdater instanceof DebUpdater,
     });
-    autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
+    // BaseUpdater.quitAndInstall returns void even when doInstall returns false.
+    // deb/rpm failures are emitted synchronously instead of thrown. Returning
+    // normally in that case tells the service that the installer succeeded.
+    const attempt: NonNullable<ElectronAppUpdateRuntime["installAttempt"]> = {
+      diagnostics: "",
+    };
+    this.installAttempt = attempt;
+    try {
+      autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
+      if (attempt.error !== undefined) {
+        const message =
+          attempt.error instanceof Error ? attempt.error.message : String(attempt.error);
+        const details = attempt.diagnostics;
+        throw new Error(
+          `${message}${details && details !== message ? `\n${details}` : ""}\nUpdate log: ${log.transports.file.getFile().path}`,
+          { cause: attempt.error },
+        );
+      }
+    } finally {
+      this.installAttempt = null;
+    }
   }
 }
 
@@ -316,6 +395,7 @@ export async function installAppUpdateOnQuit({
     !shouldInstallAppUpdateOnQuit({
       platform: process.platform,
       isAppImage: Boolean(process.env.APPIMAGE),
+      isDeb: autoUpdater instanceof DebUpdater,
     })
   ) {
     return false;

@@ -29,6 +29,33 @@ const SETTINGS_STOP_ON_QUIT = {
 };
 
 describe("quit-lifecycle", () => {
+  it("keeps the app and transports alive while the Debian installer owns authorization", () => {
+    const app = { exit: vi.fn() };
+    const closeTransportSessions = vi.fn();
+    const preventDefault = vi.fn();
+    const stopDesktopManagedDaemonIfNeeded = vi.fn(async () => false);
+    const lifecycle = createQuitLifecycle({
+      ...NO_UPDATE,
+      app,
+      closeTransportSessions,
+      confirmQuitIfNeeded: vi.fn(async () => true),
+      stopDesktopManagedDaemonIfNeeded,
+      isUpdateInstalling: () => true,
+      onStopError: vi.fn(),
+    });
+    markAppQuitting();
+    lifecycle.handleBeforeQuit({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(isAppQuitting()).toBe(false);
+    expect(closeTransportSessions).not.toHaveBeenCalled();
+    expect(stopDesktopManagedDaemonIfNeeded).not.toHaveBeenCalled();
+    expect(app.exit).not.toHaveBeenCalled();
+
+    lifecycle.handleBeforeQuitForUpdate();
+    lifecycle.handleBeforeQuit({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(closeTransportSessions).toHaveBeenCalledOnce();
+  });
   it("turns external termination signals into one Electron quit", () => {
     const listeners = new Map<NodeJS.Signals, () => void>();
     const quits: string[] = [];

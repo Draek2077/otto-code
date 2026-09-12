@@ -120,6 +120,7 @@ export function createQuitLifecycle({
   installAppUpdateOnQuit,
   createUpdateDeadlineSignal,
   deferDaemonStopUntilUpdateHandoff = false,
+  isUpdateInstalling = () => false,
   onStopError,
   onShutdownError = () => undefined,
   onUpdateError,
@@ -140,6 +141,7 @@ export function createQuitLifecycle({
   installAppUpdateOnQuit: (signal: AbortSignal) => Promise<boolean>;
   createUpdateDeadlineSignal: () => AbortSignal;
   deferDaemonStopUntilUpdateHandoff?: boolean;
+  isUpdateInstalling?: () => boolean;
   onStopError: (error: unknown) => void;
   onShutdownError?: (error: unknown) => void;
   onUpdateError: (error: unknown) => void;
@@ -160,6 +162,13 @@ export function createQuitLifecycle({
   const updateQuit = createDeferredUpdateQuit();
 
   function handleBeforeQuit(event: BeforeQuitEvent): void {
+    // The asynchronous Debian installer owns the handoff. A concurrent user
+    // quit must not run the quit deadline or tear down its authorization session.
+    if (!quittingForUpdate && isUpdateInstalling()) {
+      event.preventDefault();
+      unmarkAppQuitting();
+      return;
+    }
     closeTransportSessions();
     if (quittingForUpdate) return;
     if (quitting) {
