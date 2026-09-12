@@ -2726,6 +2726,7 @@ function ActiveAgentComposer({
         ) : null}
         {subagentTrackPresentation === "panels" ? (
           <SubagentsTrack
+            serverId={serverId}
             rows={subagentRows}
             onOpenSubagent={handleOpenSubagent}
             onOpenProviderSubagent={handleOpenProviderSubagent}

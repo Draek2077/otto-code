@@ -2045,6 +2045,35 @@ describe("ClaudeAgentSession context window usage", () => {
     expect(persistedQueryFactory.mock.calls[0]?.[0].options.persistSession).toBe(true);
   });
 
+  test.each(["/init", "/init focus on test commands"])(
+    "lists init and passes %s unchanged to Claude",
+    async (prompt) => {
+      const { launches, queryFactory } = createPromptDrivenQueryFactory();
+      const client = new ClaudeAgentClient({
+        logger,
+        queryFactory,
+        resolveBinary: async () => "/test/claude/bin",
+      });
+      const session = await client.createSession({ provider: "claude", cwd: process.cwd() });
+      try {
+        expect(await session.listCommands()).toContainEqual({
+          name: "init",
+          description: "Initialize repository instructions in CLAUDE.md",
+          argumentHint: "",
+          kind: "command",
+        });
+        await session.run(prompt);
+        expect(launches[0]?.prompts).toEqual([
+          expect.objectContaining({
+            message: { role: "user", content: [{ type: "text", text: prompt }] },
+          }),
+        ]);
+      } finally {
+        await session.close();
+      }
+    },
+  );
+
   test("classifies Claude root-only commands separately from inline skills", async () => {
     const queryFactory = vi.fn(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
       void prompt;
@@ -2105,6 +2134,12 @@ describe("ClaudeAgentSession context window usage", () => {
       {
         name: "clear",
         description: "Start a new session with empty context",
+        argumentHint: "",
+        kind: "command",
+      },
+      {
+        name: "init",
+        description: "Initialize repository instructions in CLAUDE.md",
         argumentHint: "",
         kind: "command",
       },

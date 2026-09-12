@@ -86,6 +86,7 @@ interface LooseContentBlock {
 }
 
 interface RegisteredMcpTool {
+  annotations?: { readOnlyHint?: boolean };
   inputSchema: LooseInputSchema;
   callback?: (
     input: unknown,
@@ -1134,6 +1135,17 @@ describe("terminal MCP tools", () => {
 });
 
 describe("create_chat MCP tool", () => {
+  it("publishes shared read-only annotations without marking mutators as reads", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
+    expect(registeredTool(server, "list_workspaces").annotations).toEqual({ readOnlyHint: true });
+    expect(registeredTool(server, "archive_workspace").annotations).toEqual({
+      readOnlyHint: false,
+    });
+    expect(registeredTool(server, "create_terminal").annotations).toEqual({ readOnlyHint: false });
+    expect(registeredTool(server, "suggest_task").annotations).toEqual({ readOnlyHint: false });
+  });
+
   const logger = createTestLogger();
   const existingCwd = process.cwd();
   const detachedDirectoryWorkspace = (path = existingCwd) => ({

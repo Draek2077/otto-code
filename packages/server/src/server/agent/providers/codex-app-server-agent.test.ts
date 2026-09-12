@@ -663,6 +663,195 @@ process.stdin.on("data", (chunk) => {
 }
 
 describe("Codex app-server provider", () => {
+  test("Default mode preapproves internal Otto reads while mutators keep their native policy", async () => {
+    const session = createSession({
+      modeId: "auto",
+      mcpServers: { otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents" } },
+    });
+    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
+      if (method === "thread/loaded/list") return { data: ["test-thread"] };
+      if (method === "turn/start") return {};
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.client = createStub<CodexClientLike>({ request });
+    session.activeForegroundTurnId = null;
+    await session.startTurn("list workspaces");
+    const turnStart = request.mock.calls.find(([method]) => method === "turn/start")?.[1];
+    expect(turnStart).toMatchObject({
+      approvalPolicy: "on-request",
+      config: {
+        mcp_servers: {
+          otto: {
+            default_tools_approval_mode: "auto",
+            tools: { list_workspaces: { approval_mode: "approve" } },
+          },
+        },
+      },
+    });
+    expect(turnStart).not.toHaveProperty("config.mcp_servers.otto.tools.archive_workspace");
+    expect(turnStart).not.toHaveProperty("config.mcp_servers.otto.enabled_tools");
+  });
+
+  test("Full Access preserves workspace ceilings and exact Otto tool policies", async () => {
+    const session = createSession({
+      modeId: "full-access",
+      workspaceAccess: "read",
+      providerOptions: { sandbox_mode: "danger-full-access" },
+      mcpServers: {
+        otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents" },
+      },
+      toolPolicy: {
+        preapproved: [{ kind: "mcp", server: "otto", tool: "list_workspaces" }],
+      },
+    });
+    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
+      if (method === "thread/loaded/list") return { data: ["test-thread"] };
+      if (method === "turn/start") return {};
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.client = createStub<CodexClientLike>({ request });
+    session.activeForegroundTurnId = null;
+
+    await session.startTurn("list workspaces");
+
+    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
+      approvalPolicy: "never",
+      sandboxPolicy: { type: "readOnly" },
+      config: {
+        sandbox_mode: "read-only",
+        mcp_servers: {
+          otto: {
+            enabled_tools: ["list_workspaces"],
+            default_tools_approval_mode: "prompt",
+            tools: { list_workspaces: { approval_mode: "approve" } },
+          },
+        },
+      },
+    });
+  });
+
+  test("Full Access does not add a blanket Otto grant to an empty explicit tool policy", async () => {
+    const session = createSession({
+      modeId: "full-access",
+      mcpServers: {
+        otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents" },
+      },
+      toolPolicy: { preapproved: [] },
+    });
+    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
+      if (method === "thread/loaded/list") return { data: ["test-thread"] };
+      if (method === "turn/start") return {};
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.client = createStub<CodexClientLike>({ request });
+    session.activeForegroundTurnId = null;
+
+    await session.startTurn("continue");
+
+    const turn = request.mock.calls.find(([method]) => method === "turn/start")?.[1];
+    expect(turn).toHaveProperty("config.mcp_servers.otto.default_tools_approval_mode", "prompt");
+    expect(turn).not.toHaveProperty("config.mcp_servers.otto.tools");
+  });
+
+  test("switching to Full Access replaces saved permissions when resuming a thread", async () => {
+    const session = createSession({
+      modeId: "auto",
+      approvalPolicy: "on-request",
+      sandboxMode: "workspace-write",
+      providerOptions: { approval_policy: "on-request", sandbox_mode: "workspace-write" },
+    });
+    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
+      if (method === "thread/loaded/list") return { data: [] };
+      if (method === "thread/resume") return { sandbox: { type: "workspaceWrite" } };
+      if (method === "turn/start") return {};
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.client = createStub<CodexClientLike>({ request });
+    session.activeForegroundTurnId = null;
+    await session.setMode("full-access");
+
+    await session.startTurn("continue the requested changes");
+
+    expect(request.mock.calls.find(([method]) => method === "thread/resume")?.[1]).toMatchObject({
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+    });
+    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
+      approvalPolicy: "never",
+      sandboxPolicy: { type: "dangerFullAccess" },
+    });
+    await expect(session.getCurrentMode()).resolves.toBe("full-access");
+  });
+
+  test("Otto MCP tool approval follows Full Access and resets when the mode changes", async () => {
+    const session = createSession({
+      modeId: "full-access",
+      mcpServers: {
+        otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents?callerAgentId=test" },
+        external: { type: "http", url: "http://127.0.0.1:1234/mcp" },
+      },
+    });
+    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
+      if (method === "thread/loaded/list") return { data: ["test-thread"] };
+      if (method === "turn/start") return {};
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.client = createStub<CodexClientLike>({ request });
+    session.activeForegroundTurnId = null;
+
+    await session.startTurn("list workspaces");
+    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
+      config: {
+        mcp_servers: {
+          otto: { default_tools_approval_mode: "approve" },
+          external: { url: "http://127.0.0.1:1234/mcp" },
+        },
+      },
+    });
+    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).not.toHaveProperty(
+      "config.mcp_servers.external.default_tools_approval_mode",
+    );
+
+    session.activeForegroundTurnId = null;
+    await session.setMode("auto");
+    request.mockClear();
+    await session.startTurn("continue in Default mode");
+    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
+      approvalPolicy: "on-request",
+      sandboxPolicy: { type: "workspaceWrite" },
+      config: { mcp_servers: { otto: { default_tools_approval_mode: "auto" } } },
+    });
+  });
+
+  test("Full Access overrides conflicting native permission options on new threads and turns", async () => {
+    const session = createSession({
+      modeId: "full-access",
+      thinkingOptionId: "medium",
+      providerOptions: { approval_policy: "on-request", sandbox_mode: "workspace-write" },
+    });
+    session.currentThreadId = null;
+    session.activeForegroundTurnId = null;
+    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
+      if (method === "thread/start") return { thread: { id: "full-access-thread" } };
+      if (method === "turn/start") return {};
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.client = createStub<CodexClientLike>({ request });
+
+    await session.startTurn("rename the requested folder");
+
+    expect(request.mock.calls.find(([method]) => method === "thread/start")?.[1]).toMatchObject({
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+      config: { approval_policy: "never", sandbox_mode: "danger-full-access" },
+    });
+    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
+      approvalPolicy: "never",
+      sandboxPolicy: { type: "dangerFullAccess" },
+      config: { approval_policy: "never", sandbox_mode: "danger-full-access" },
+    });
+  });
+
   test("getAvailableModes includes auto-review when the Codex version supports it", async () => {
     const session = createSession({}, { autoReviewEnabled: true });
 
@@ -2039,6 +2228,37 @@ describe("Codex app-server provider", () => {
       }),
     );
   });
+
+  test.each(["/init", "/init focus on test commands"])(
+    "lists init and passes %s unchanged to Codex",
+    async (prompt) => {
+      const session = createSession();
+      const request = vi.fn(async (method: string) => {
+        if (method === "skills/list") return { data: [] };
+        if (method === "thread/loaded/list") return { data: ["test-thread"] };
+        if (method === "turn/start") return {};
+        throw new Error(`Unexpected request: ${method}`);
+      });
+      session.activeForegroundTurnId = null;
+      session.client = createStub<CodexClientLike>({ request });
+
+      expect(await session.listCommands()).toContainEqual({
+        name: "init",
+        description: "Initialize repository instructions in AGENTS.md",
+        argumentHint: "",
+        kind: "command",
+      });
+      await session.startTurn(prompt);
+
+      expect(request).toHaveBeenCalledWith(
+        "turn/start",
+        expect.objectContaining({
+          input: [{ type: "text", text: prompt, text_elements: [] }],
+        }),
+        expect.any(Number),
+      );
+    },
+  );
 
   test("resolves Codex skill slash commands into app-server skill input", async () => {
     const session = createSession();
@@ -4684,7 +4904,14 @@ describe("Codex app-server provider", () => {
     expect(session.currentThreadId).toBe("archived-thread-id");
     expect(requests).toEqual([
       { method: "thread/loaded/list", params: {} },
-      { method: "thread/resume", params: { threadId: "archived-thread-id" } },
+      {
+        method: "thread/resume",
+        params: {
+          threadId: "archived-thread-id",
+          approvalPolicy: "on-request",
+          sandbox: "workspace-write",
+        },
+      },
     ]);
   });
 

@@ -7,7 +7,7 @@ import {
   type ArchiveFinishedState,
   type ArchiveFinishedSubagents,
 } from "./archive-finished";
-import { useProviderSubagentStore } from "./provider-store";
+import { controlProviderSubagent } from "./provider-subagent-control";
 import type { SubagentRow } from "./select";
 
 export type { ArchiveFinishedStatus } from "./archive-finished";
@@ -34,9 +34,8 @@ export function useArchiveFinishedSubagents({
         parentAgentId,
         getManagedSubagent: (id) => useSessionStore.getState().sessions[serverId]?.agents.get(id),
         archiveManagedSubagent: (id) => archiveAgent({ serverId, agentId: id }),
-        dismissProviderSubagents: (ids) => {
-          useProviderSubagentStore.getState().hideFromTrack(serverId, parentAgentId, ids);
-        },
+        archiveProviderSubagent: (id) =>
+          controlProviderSubagent(serverId, parentAgentId, id, "archive"),
       }),
     [archiveAgent, parentAgentId, serverId],
   );

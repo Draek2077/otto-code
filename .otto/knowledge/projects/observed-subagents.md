@@ -3,12 +3,11 @@ id: "observed-subagents"
 kind: "project"
 title: "Observed Subagents"
 status: "confirmed"
-tags: ["project-charter", "legacy-projects-migration"]
+tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "partial"
 created_at: "2026-08-08T06:17:57.301Z"
-updated_at: "2026-08-08T06:19:49.275Z"
+updated_at: "2026-09-12T15:50:32.641Z"
 ---
-
 # Observed Subagents
 
 <!-- compiled_truth -->
@@ -311,3 +310,11 @@ Per the repo convention (CLAUDE.md → Docs), once this ships the durable facts 
 - time: "2026-08-08T06:19:49.275Z"
   kind: "note"
   summary: "Migrated from the repository's existing authoritative project or reference documentation at the user's request. New status: confirmed."
+- time: "2026-09-12T15:27:55.985Z"
+  kind: "evidence"
+  summary: "Source verification found both Panels and Pills excluded all row actions for provider-descriptor children (kind: provider), which have no managed-agent Stop/Archive RPC. Added an always-visible Dismiss action to both presentations, with confirmation explaining device-local hiding rather than stopping work. Dismissals persist by host/parent/child identity separately from provider stream state, preserving descriptors and timelines. Two focused tests passed for running-child dismissal across refresh/live updates, cross-host/parent isolation, and storage rehydration; app typecheck and targeted lint passed. Installed-app, relay-host, and rendered UI verification remain outstanding. This does not add provider lifecycle control or establish why the reported noop child was created."
+  source: "User report of an unremovable noop provider child; docs/chat-lifecycle.md; packages/app/src/subagents/dismissed-provider-subagents-store.test.ts"
+- time: "2026-09-12T15:50:32.641Z"
+  kind: "evidence"
+  summary: "The user rejected device-local dismissal as insufficient user control. Removed that workaround and replaced it with host-backed provider-subagent control, gated by providerSubagentControl. Codex uses child thread turn interruption; Claude resolves task IDs; OpenCode aborts the child session. Providers without targeted stop require explicit allowStopParent confirmation before closing the owning agent session. Archive writes a parent-label tombstone and broadcasts archivedAt; replay retains it, transcripts remain fetchable, and stop/storage failures do not silently archive the row. Both track presentations and bulk/automatic archive route provider rows through the host operation. Terminal provider rows now group correctly. Validation: 109 focused tests passed (6 manager lifecycle, 3 Codex targeting, 3 generated protocol, 97 app tests), server stack build passed before final refinements, final app/server/protocol typechecks and targeted lint passed. Installed desktop/remote relay and live-provider cancellation have not been verified. The earlier Dismiss evidence is historical and does not describe the final implementation."
+  source: "docs/chat-lifecycle.md; packages/server/src/server/agent/provider-subagent-control.test.ts; packages/server/src/server/agent/providers/codex/subagent-control.te"

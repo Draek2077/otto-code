@@ -19,6 +19,22 @@ function buildDeps(
 }
 
 describe("requestClearCompletedSubagents", () => {
+  it("preserves provider parent identity for the host archive operation", async () => {
+    const deps = buildDeps();
+    await clearCompletedSubagents(
+      {
+        serverId: "remote",
+        parentAgentId: "parent",
+        rows: [{ id: "noop", providerParentAgentId: "parent" }],
+      },
+      deps,
+    );
+    expect(deps.archiveAgent).toHaveBeenCalledWith({
+      serverId: "remote",
+      agentId: "noop",
+      providerParentAgentId: "parent",
+    });
+  });
   it("archives every row after a single confirm and records their tokens", async () => {
     const deps = buildDeps();
 

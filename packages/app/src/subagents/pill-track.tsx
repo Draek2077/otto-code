@@ -15,6 +15,7 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import type { ClearableSubagentRow } from "./clear-completed-subagents";
+import { useProviderSubagentControl } from "./use-provider-subagent-control";
 import type { SubagentRow } from "./select";
 import {
   buildSubagentRowPresentationData,
@@ -48,6 +49,7 @@ export function SubagentsPillTrack(props: SubagentsTrackProps): ReactElement | n
     () =>
       completed.map((row) => ({
         id: row.id,
+        providerParentAgentId: row.kind === "provider" ? row.parentAgentId : undefined,
         cumulativeTokens: row.kind === "otto" ? row.cumulativeTokens : undefined,
         cumulativeUsage: row.kind === "otto" ? row.cumulativeUsage : undefined,
       })),
@@ -103,6 +105,7 @@ export function SubagentsPillTrack(props: SubagentsTrackProps): ReactElement | n
 }
 
 function SubagentsPillRow({
+  serverId,
   row,
   onOpenSubagent,
   onOpenProviderSubagent,
@@ -135,14 +138,17 @@ function SubagentsPillRow({
       onOpenSubagent(row.id);
     }
   }, [onOpenProviderSubagent, onOpenSubagent, row]);
-  const archive = useCallback(() => onArchiveSubagent(row.id), [onArchiveSubagent, row.id]);
-  const stop = useCallback(() => onStopSubagent(row.id), [onStopSubagent, row.id]);
+  const controlProvider = useProviderSubagentControl(serverId);
+  const archive = useCallback(() => {
+    if (row.kind === "provider") controlProvider(row.parentAgentId, row.id, "archive");
+    else onArchiveSubagent(row.id);
+  }, [controlProvider, onArchiveSubagent, row]);
+  const stop = useCallback(() => {
+    if (row.kind === "provider") controlProvider(row.parentAgentId, row.id, "stop");
+    else onStopSubagent(row.id);
+  }, [controlProvider, onStopSubagent, row]);
   const detach = useCallback(() => onDetachSubagent?.(row.id), [onDetachSubagent, row.id]);
   const allowDetach = row.kind === "otto" && row.attend !== "observed" && onDetachSubagent;
-  // Provider descriptors intentionally remain read-only here. Their owner may
-  // offer a timeline/tab, but they are not independent Otto runtimes to stop,
-  // detach, or archive through the managed-agent APIs.
-  const allowManagedAction = row.kind === "otto";
   const managedAction = running
     ? {
         label: t("subagents.stopTooltip"),
@@ -190,10 +196,12 @@ function SubagentsPillRow({
               {currentTool}
             </Text>
           ) : null}
-          {allowDetach || allowManagedAction ? (
+          {
             <View
               style={styles.actions}
-              pointerEvents={active || isNative || isCompact ? "auto" : "none"}
+              pointerEvents={
+                row.kind === "provider" || active || isNative || isCompact ? "auto" : "none"
+              }
             >
               {allowDetach ? (
                 <PillAction
@@ -203,9 +211,9 @@ function SubagentsPillRow({
                   onPress={detach}
                 />
               ) : null}
-              {allowManagedAction ? <PillAction {...managedAction} /> : null}
+              <PillAction {...managedAction} />
             </View>
-          ) : null}
+          }
         </>
       )}
     </ComposerTrackRow>

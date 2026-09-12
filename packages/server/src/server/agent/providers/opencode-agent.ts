@@ -1,3 +1,4 @@
+import { internalOttoReadToolNames } from "../runtime-mcp-config.js";
 import {
   createOpencodeClient,
   type AssistantMessage as OpenCodeAssistantMessage,
@@ -230,7 +231,7 @@ const DEFAULT_MODES: AgentMode[] = [
 ];
 
 function isOpenCodeAutoAcceptEnabled(config: AgentSessionConfig): boolean {
-  return config.featureValues?.[OPENCODE_AUTO_ACCEPT_FEATURE_ID] === true;
+  return !config.toolPolicy && config.featureValues?.[OPENCODE_AUTO_ACCEPT_FEATURE_ID] === true;
 }
 
 function withOpenCodeAutoAcceptFeature(
@@ -3337,7 +3338,7 @@ class OpenCodeAgentSession implements AgentSession {
     this.logger = logger.child({ agentId: this.agentId });
     this.modelContextWindowsByModelKey = modelContextWindowsByModelKey;
     this.currentMode = normalizeOpenCodeModeId(config.modeId);
-    this.autoAcceptEnabled = !config.toolPolicy && isOpenCodeAutoAcceptEnabled(config);
+    this.autoAcceptEnabled = isOpenCodeAutoAcceptEnabled(config);
     this.releaseServer = releaseServer ?? null;
     this.persistSession = persistSession;
     this.selectedModelContextWindowMaxTokens = this.resolveConfiguredModelContextWindowMaxTokens(
@@ -3432,6 +3433,17 @@ class OpenCodeAgentSession implements AgentSession {
     }
   }
 
+  async stopProviderSubagent(subagentId: string): Promise<void> {
+    if (subagentId === this.sessionId || !this.knownChildSessionIds.has(subagentId)) {
+      throw new Error("OpenCode subagent does not belong to this session");
+    }
+    const response = await this.client.session.abort({
+      sessionID: subagentId,
+      directory: this.config.cwd,
+    });
+    if (response.error) throw new Error(toDiagnosticErrorMessage(response.error));
+  }
+
   async steerActiveTurn(
     prompt: AgentPromptInput,
     options: SteerActiveTurnOptions,
@@ -3462,6 +3474,7 @@ class OpenCodeAgentSession implements AgentSession {
     const permission = buildOpenCodePermissionRules(
       this.config.providerOptions,
       this.config.toolPolicy,
+      internalOttoReadToolNames(this.config),
     );
     const model = this.parseModel(this.config.model);
     const effectiveMode = resolveOpenCodeRuntimeAgentId(this.currentMode);
@@ -3803,6 +3816,7 @@ class OpenCodeAgentSession implements AgentSession {
           const permission = buildOpenCodePermissionRules(
             this.config.providerOptions,
             this.config.toolPolicy,
+            internalOttoReadToolNames(this.config),
           );
           const promptResponse = await this.client.session.promptAsync({
             sessionID: this.sessionId,
@@ -4797,6 +4811,9 @@ class OpenCodeAgentSession implements AgentSession {
     }
 
     const enabled = value === true;
+    if (enabled && this.config.toolPolicy) {
+      throw new Error("Auto Accept cannot be enabled while an explicit tool policy is active");
+    }
     this.autoAcceptEnabled = enabled;
     this.config.featureValues = {
       ...this.config.featureValues,

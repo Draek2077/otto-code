@@ -9,6 +9,7 @@ import type {
 import { addModelVisibleStructuredContent } from "./tools/otto-tool-serialization.js";
 import { createOttoToolCatalog, type OttoToolHostDependencies } from "./tools/otto-tools.js";
 import type { OttoToolResult } from "./tools/types.js";
+import { isOttoToolReadOnly } from "./tools/otto-tool-permissions.js";
 
 export type AgentMcpServerOptions = OttoToolHostDependencies;
 
@@ -44,6 +45,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         title: tool.title,
         description: tool.description,
         inputSchema: tool.inputSchema,
+        annotations: { readOnlyHint: isOttoToolReadOnly(tool.name) },
       },
       async (args: unknown, context?: McpToolContext) =>
         toMcpToolResult(await catalog.executeTool(tool.name, args, { signal: context?.signal })),

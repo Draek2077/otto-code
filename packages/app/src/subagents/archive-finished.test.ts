@@ -60,7 +60,24 @@ function deferred<T>() {
 }
 
 describe("createArchiveFinishedSubagents", () => {
-  it("dismisses provider rows before sequential managed archives and reports combined progress", async () => {
+  it("retains a failed provider archive for retry instead of reporting a local dismissal", async () => {
+    let attempts = 0;
+    const archive = createArchiveFinishedSubagents([provider("child")], {
+      parentAgentId: "parent",
+      getManagedSubagent: () => undefined,
+      archiveManagedSubagent: async () => undefined,
+      archiveProviderSubagent: async () => {
+        if (++attempts === 1) throw new Error("host unavailable");
+      },
+    });
+    const failed = await archive.archiveFinished();
+    expect(failed.archivedProviderIds).toEqual([]);
+    expect(failed.failures).toHaveLength(1);
+    expect(archive.getState().status.kind).toBe("failed");
+    const retried = await archive.archiveFinished();
+    expect(retried.archivedProviderIds).toEqual(["child"]);
+  });
+  it("archives provider rows before sequential managed archives and reports combined progress", async () => {
     const first = deferred<void>();
     const second = deferred<void>();
     const current = new Map([
@@ -78,7 +95,9 @@ describe("createArchiveFinishedSubagents", () => {
           events.push(`archive:${id}`);
           return id === "first" ? first.promise : second.promise;
         },
-        dismissProviderSubagents: (ids) => events.push(`dismiss:${ids.join(",")}`),
+        archiveProviderSubagent: async (id) => {
+          events.push(`dismiss:${id}`);
+        },
       },
     );
     const progress: string[] = [];
@@ -90,6 +109,7 @@ describe("createArchiveFinishedSubagents", () => {
     });
 
     const operation = archive.archiveFinished();
+    await Promise.resolve();
     expect(archive.getState()).toEqual({
       eligibleCount: 4,
       status: { kind: "archiving", completedCount: 1, totalCount: 4 },
@@ -107,7 +127,7 @@ describe("createArchiveFinishedSubagents", () => {
     second.resolve();
     await expect(operation).resolves.toEqual({
       archivedOttoIds: ["first", "second"],
-      dismissedProviderIds: ["native"],
+      archivedProviderIds: ["native"],
       skippedOttoIds: ["resumed"],
       failures: [],
     });
@@ -134,7 +154,7 @@ describe("createArchiveFinishedSubagents", () => {
         if (!response) throw new Error("Unexpected archive");
         return response;
       },
-      dismissProviderSubagents: () => undefined,
+      archiveProviderSubagent: async () => undefined,
     });
 
     const firstAttempt = archive.archiveFinished();
@@ -146,7 +166,7 @@ describe("createArchiveFinishedSubagents", () => {
     archive.setRows([]);
     await expect(firstAttempt).resolves.toEqual({
       archivedOttoIds: ["second"],
-      dismissedProviderIds: [],
+      archivedProviderIds: [],
       skippedOttoIds: [],
       failures: [{ id: "first", error: firstError }],
     });
@@ -179,7 +199,7 @@ describe("createArchiveFinishedSubagents", () => {
     retry.reject(retryError);
     await expect(retryAttempt).resolves.toEqual({
       archivedOttoIds: [],
-      dismissedProviderIds: [],
+      archivedProviderIds: [],
       skippedOttoIds: [],
       failures: [{ id: "first", error: retryError }],
     });
@@ -205,7 +225,7 @@ describe("createArchiveFinishedSubagents", () => {
       archiveManagedSubagent: async (id) => {
         throw id === "first" ? firstError : secondError;
       },
-      dismissProviderSubagents: () => undefined,
+      archiveProviderSubagent: async () => undefined,
     });
 
     const operation = archive.archiveFinished();
@@ -232,7 +252,7 @@ describe("createArchiveFinishedSubagents", () => {
         current.set("failed", managed("failed", "running"));
         throw new Error("archive failed");
       },
-      dismissProviderSubagents: () => undefined,
+      archiveProviderSubagent: async () => undefined,
     });
 
     const operation = archive.archiveFinished();
@@ -243,7 +263,7 @@ describe("createArchiveFinishedSubagents", () => {
     expect(archive.getState()).toEqual({ eligibleCount: 0, status: { kind: "idle" } });
     await expect(archive.archiveFinished()).resolves.toEqual({
       archivedOttoIds: [],
-      dismissedProviderIds: [],
+      archivedProviderIds: [],
       skippedOttoIds: [],
       failures: [],
     });
@@ -258,7 +278,7 @@ describe("createArchiveFinishedSubagents", () => {
         current.set("failed", managed("failed", "initializing"));
         throw new Error("archive failed");
       },
-      dismissProviderSubagents: () => undefined,
+      archiveProviderSubagent: async () => undefined,
     });
 
     const operation = archive.archiveFinished();
@@ -269,7 +289,7 @@ describe("createArchiveFinishedSubagents", () => {
     expect(archive.getState()).toEqual({ eligibleCount: 0, status: { kind: "idle" } });
     await expect(archive.archiveFinished()).resolves.toEqual({
       archivedOttoIds: [],
-      dismissedProviderIds: [],
+      archivedProviderIds: [],
       skippedOttoIds: [],
       failures: [],
     });
@@ -299,12 +319,12 @@ describe("createArchiveFinishedSubagents", () => {
           updateSnapshot(current);
           throw error;
         },
-        dismissProviderSubagents: () => undefined,
+        archiveProviderSubagent: async () => undefined,
       });
 
       await expect(archive.archiveFinished()).resolves.toEqual({
         archivedOttoIds: [],
-        dismissedProviderIds: [],
+        archivedProviderIds: [],
         skippedOttoIds: [],
         failures: [{ id: "failed", error }],
       });
@@ -331,14 +351,14 @@ describe("createArchiveFinishedSubagents", () => {
           throw secondError;
         }
       },
-      dismissProviderSubagents: () => undefined,
+      archiveProviderSubagent: async () => undefined,
     });
 
     const operation = archive.archiveFinished();
     archive.setRows([]);
     await expect(operation).resolves.toEqual({
       archivedOttoIds: [],
-      dismissedProviderIds: [],
+      archivedProviderIds: [],
       skippedOttoIds: [],
       failures: [
         { id: "first", error: firstError },
@@ -353,7 +373,7 @@ describe("createArchiveFinishedSubagents", () => {
     });
     await expect(archive.archiveFinished()).resolves.toEqual({
       archivedOttoIds: ["first"],
-      dismissedProviderIds: [],
+      archivedProviderIds: [],
       skippedOttoIds: [],
       failures: [],
     });
@@ -386,12 +406,12 @@ describe("createArchiveFinishedSubagents", () => {
         archived.push(id);
         current.set("resumed", managed("resumed", "running"));
       },
-      dismissProviderSubagents: () => undefined,
+      archiveProviderSubagent: async () => undefined,
     });
 
     await expect(archive.archiveFinished()).resolves.toEqual({
       archivedOttoIds: ["first"],
-      dismissedProviderIds: [],
+      archivedProviderIds: [],
       skippedOttoIds: ["resumed", "missing", "archived", "reparented", "running", "initializing"],
       failures: [],
     });
@@ -400,7 +420,7 @@ describe("createArchiveFinishedSubagents", () => {
     expect(archive.getState()).toEqual({ eligibleCount: 7, status: { kind: "idle" } });
   });
 
-  it("dismisses finished provider rows locally without removing their descriptors", async () => {
+  it("archives finished provider rows without removing their descriptors", async () => {
     const finished = provider("finished");
     const running = provider("running", "running");
     const descriptors = new Map([
@@ -412,12 +432,14 @@ describe("createArchiveFinishedSubagents", () => {
       parentAgentId: "parent",
       getManagedSubagent: () => undefined,
       archiveManagedSubagent: async () => undefined,
-      dismissProviderSubagents: (ids) => dismissed.push(ids),
+      archiveProviderSubagent: async (id) => {
+        dismissed.push([id]);
+      },
     });
 
     await expect(archive.archiveFinished()).resolves.toEqual({
       archivedOttoIds: [],
-      dismissedProviderIds: ["finished"],
+      archivedProviderIds: ["finished"],
       skippedOttoIds: [],
       failures: [],
     });

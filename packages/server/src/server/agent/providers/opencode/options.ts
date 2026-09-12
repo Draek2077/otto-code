@@ -51,13 +51,20 @@ export interface OpenCodePermissionRule {
 export function buildOpenCodePermissionRules(
   options: OpenCodeProviderOptions | undefined,
   toolPolicy: ToolPolicy | undefined,
+  ottoReadTools: readonly string[] = [],
 ): OpenCodePermissionRule[] | undefined {
-  const grants =
-    toolPolicy?.preapproved.map((grant) => ({
+  const grants = [
+    ...ottoReadTools.map((tool) => ({
+      permission: `otto_${tool}`,
+      pattern: "*",
+      action: "allow" as const,
+    })),
+    ...(toolPolicy?.preapproved.map((grant) => ({
       permission: `${grant.server}_${grant.tool}`,
       pattern: "*",
       action: "allow" as const,
-    })) ?? [];
+    })) ?? []),
+  ];
   const permission = options?.permission;
   if (typeof permission === "string") {
     return [...grants, { permission: "*", pattern: "*", action: permission }];

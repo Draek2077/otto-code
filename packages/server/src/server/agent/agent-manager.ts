@@ -153,10 +153,13 @@ import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { OttoToolCatalogFactory } from "./tools/types.js";
 import type { AgentOwner } from "./agent-owner.js";
 import {
-  ProviderSubagentStore,
   type ProviderSubagentDescriptor,
   type ProviderSubagentStoreEvent,
 } from "./provider-subagents/store.js";
+import {
+  ControlledProviderSubagentStore,
+  providerSubagentArchiveLabel,
+} from "./provider-subagent-control.js";
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
@@ -1413,7 +1416,12 @@ export class AgentManager {
   // retained transcript, so residency is bounded instead of released.
   private readonly retainedTimelines = new RetainedTimelineResidency();
   // Otto's provider-subagent projection, keyed by parent agent id.
-  private readonly providerSubagents = new ProviderSubagentStore();
+  private readonly providerSubagents = new ControlledProviderSubagentStore((parentId) => {
+    const parent = this.agents.get(parentId);
+    return parent
+      ? { labels: parent.labels, session: "session" in parent ? parent.session : undefined }
+      : undefined;
+  });
   private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
   // A timed-out session close can still complete later. Retain its promise so
   // a retry waits for that same writer release rather than starting another.
@@ -2277,6 +2285,52 @@ export class AgentManager {
     return this.providerSubagents.list(parentAgentId);
   }
 
+  async controlProviderSubagent(
+    parentAgentId: string,
+    subagentId: string,
+    action: "stop" | "archive",
+    allowStopParent = false,
+  ): Promise<void> {
+    const parent = this.requirePublicAgent(parentAgentId);
+    const child = this.providerSubagents.get(parentAgentId, subagentId);
+    if (!child) throw new Error("Provider subagent not found");
+    if (child.archivedAt) return;
+    if (child.status === "running") {
+      const session = "session" in parent ? parent.session : undefined;
+      if (session?.stopProviderSubagent) {
+        await session.stopProviderSubagent(subagentId);
+      } else {
+        if (!allowStopParent)
+          throw new Error(
+            "Stopping this subagent requires closing its parent agent session. Confirm the wider stop first.",
+          );
+        await this.closeAgent(parentAgentId);
+      }
+      const event = this.providerSubagents.apply(parentAgentId, child.provider, {
+        type: "upsert",
+        id: subagentId,
+        status: "canceled",
+      });
+      this.dispatch({ type: "provider_subagent", event });
+    }
+    if (action === "archive") {
+      const label = providerSubagentArchiveLabel(subagentId);
+      const archivedAt = new Date().toISOString();
+      try {
+        await this.setLabels(parentAgentId, { [label]: archivedAt });
+      } catch (error) {
+        // setLabels updates the live record before persisting. A failed write
+        // must leave the child visible and retryable on subsequent snapshots.
+        const owner = this.agents.get(parentAgentId);
+        if (owner?.labels[label] === archivedAt) delete owner.labels[label];
+        throw error;
+      }
+      const archived = this.providerSubagents.get(parentAgentId, subagentId);
+      if (archived)
+        this.dispatch({ type: "provider_subagent", event: { type: "upsert", subagent: archived } });
+    }
+  }
+
   listProviderSubagentActivity(): ProviderSubagentDescriptor[] {
     const publicParentIds = new Set(
       Array.from(this.agents.values())
@@ -2285,7 +2339,7 @@ export class AgentManager {
     );
     return this.providerSubagents
       .listAll()
-      .filter((subagent) => publicParentIds.has(subagent.parentAgentId));
+      .filter((subagent) => publicParentIds.has(subagent.parentAgentId) && !subagent.archivedAt);
   }
 
   getProviderSubagent(

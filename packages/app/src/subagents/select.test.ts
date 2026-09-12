@@ -68,6 +68,31 @@ afterEach(() => {
 });
 
 describe("selectSubagentsForParent", () => {
+  it("hides host-archived provider rows even when a late update says running", () => {
+    useProviderSubagentStore.getState().applyUpdate(SERVER_ID, {
+      kind: "upsert",
+      subagent: {
+        id: "archived-provider-child",
+        parentAgentId: "parent",
+        provider: "codex",
+        title: "Noop",
+        description: null,
+        status: "running",
+        toolCallId: "call",
+        createdAt: "2026-09-12T10:00:00Z",
+        updatedAt: "2026-09-12T10:01:00Z",
+        archivedAt: "2026-09-12T10:00:30Z",
+        stopScope: "child",
+      },
+    });
+    expect(
+      selectProviderSubagentsForParent(
+        useProviderSubagentStore.getState(),
+        { serverId: SERVER_ID, parentAgentId: "parent" },
+        true,
+      ),
+    ).toEqual([]);
+  });
   it("hides cached provider children when the host does not support them", () => {
     useProviderSubagentStore.getState().applyUpdate(SERVER_ID, {
       kind: "upsert",

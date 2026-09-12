@@ -226,6 +226,46 @@ What this buys you, concretely:
   auto-restarts the dev server or waits for the user to click "Start" is the
   `previewAutoStartOnRestore` setting below.
 
+## Browser chrome and project history
+
+Back, Forward, Reload/Stop, the address bar, and device sizing stay visible.
+The **More browser tools** menu contains **Open in external browser**, **Find in
+page**, DevTools, element annotation, and element screenshots. External browsing
+opens the current HTTP(S) address using the desktop opener.
+
+Ctrl+F (Cmd+F on macOS) opens the tab's Find in page bar even while focus is inside
+its guest page. Electron reserves this browser shortcut and sends the browser ID
+to the renderer; it must never open search in a different tab. The blue bar uses
+the File Editor notice geometry and the `statusInfoSurface` tint. It provides a
+query, previous/next, a result count, Highlight All, Match Case, Match Diacritics,
+Whole Words, and Close. Enter and Shift+Enter move through matches; Escape closes
+the bar. Controls wrap in a narrow pane.
+
+Search runs against rendered HTML text in the existing guest, without rewriting
+page text. CSS highlights are removed on clear or close, and a new document
+restarts the active query. It can inspect same-origin frames and open shadow text;
+cross-origin frames, closed shadow roots, form values, canvas text, and the built-in
+PDF viewer are outside this text search. Searches are bounded to two million text
+characters per root and 10,000 results; a `+` on the count indicates truncation.
+
+Visited HTTP(S) URLs belong to the **project on its daemon**, shared by all of that
+project's workspaces. The daemon resolves the project from the registered workspace
+ID. The store is under `$OTTO_HOME/browser-history/`, keyed by a hash of the project
+ID, and retains the latest 1,000 distinct addresses. URL user-info is stripped.
+Reads, records, and clears share a queue across sessions and writes are atomic.
+This is separate from the app-local open-tab records and Chromium's per-tab Back
+and Forward history.
+
+The resident guest records successful document arrivals and main-frame in-page
+navigations, including background tabs. The address bar queries the daemon after
+a short typing pause, matching URLs or titles and offering at most ten results.
+No matches means no popup. No result is selected initially: Enter keeps the typed
+address unless the user selects a suggestion with Up/Down or clicks one. Escape
+dismisses suggestions. Project settings > Browser > **Clear browsing history**
+confirms the project and host scope, then clears saved URLs while preserving open
+tabs, cookies, and site data. New hosts advertise `server_info.features.browserHistory`;
+older hosts show an update hint in that settings section.
+
 ## Browser loading and navigation lifetime
 
 ### Automation and user focus

@@ -1,7 +1,24 @@
 import type { AgentSessionConfig, McpServerConfig } from "./agent-sdk-types.js";
+import { OTTO_READ_ONLY_TOOL_NAMES } from "./tools/otto-tool-permissions.js";
+import { isOttoToolAllowedForAccess, resolveWorkspaceAccess } from "./workspace-access.js";
 
 const OTTO_MCP_SERVER_NAME = "otto";
 const OTTO_MCP_PATHNAME = "/mcp/agents";
+
+/** Exact grants for the daemon's internal connection, never an arbitrary MCP server. */
+export function internalOttoReadToolNames(config: AgentSessionConfig): readonly string[] {
+  const server = config.mcpServers?.[OTTO_MCP_SERVER_NAME];
+  if (!server || !isInternalOttoMcpServer(server)) return [];
+  const access = resolveWorkspaceAccess(config.workspaceAccess);
+  return OTTO_READ_ONLY_TOOL_NAMES.filter(
+    (tool) =>
+      isOttoToolAllowedForAccess(tool, access) &&
+      (!config.toolPolicy ||
+        config.toolPolicy.preapproved.some(
+          (grant) => grant.server === OTTO_MCP_SERVER_NAME && grant.tool === tool,
+        )),
+  );
+}
 
 export function stripInternalOttoMcpServer(config: AgentSessionConfig): AgentSessionConfig {
   const mcpServers = config.mcpServers;
@@ -57,7 +74,7 @@ export function withRuntimeOttoMcpServer(params: {
   };
 }
 
-function isInternalOttoMcpServer(config: McpServerConfig): boolean {
+export function isInternalOttoMcpServer(config: McpServerConfig): boolean {
   if (config.type !== "http" && config.type !== "sse") {
     return false;
   }

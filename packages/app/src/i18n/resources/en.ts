@@ -705,9 +705,14 @@ export const en = {
   importSession: {
     title: "Import session",
     filters: {
+      allProjects: "Show chats from all projects",
       all: "All",
     },
     status: {
+      originalFolders: "Chats keep their original working folders on this host.",
+      limitReached:
+        "Showing up to {{count}} sessions per provider. Import these, then reopen to find older sessions.",
+      failedBatch: "Some sessions could not be imported. Retry the failed selections.",
       connectHost: "Connect to a host to import sessions",
       updateHost: "Update the host to import sessions.",
       noProviders: "No importable providers are enabled.",
@@ -717,6 +722,11 @@ export const en = {
       failedImport: "Could not import selected session.",
     },
     actions: {
+      selectAll: "Select all shown",
+      importSelected: "Import selected ({{count}})",
+      importingBatch: "Importing {{current}} of {{total}}",
+      loadMore: "Load more",
+
       refresh: "Refresh sessions",
     },
     preview: {
@@ -2773,6 +2783,11 @@ export const en = {
     backdrop: "Menu backdrop",
   },
   subagents: {
+    controlUnavailable: "Update the host to control subagents.",
+    stopParentTitle: "Stop the parent agent session?",
+    stopParentMessage:
+      "This provider cannot stop this child on its own. This will stop the owning agent session and all its work. Chat history is kept.",
+    stopParentConfirm: "Stop session",
     title: "Subagents",
     pillLabelOne: "1 subagent",
     pillLabelMany: "{{count}} subagents",

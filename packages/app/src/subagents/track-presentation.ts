@@ -144,6 +144,7 @@ export function isSubagentRowTidyEligible(row: SubagentRow): boolean {
   if (row.requiresAttention) {
     return false;
   }
+  if (row.kind === "provider") return row.status === "completed" || row.status === "canceled";
   if (row.status === "error" || row.status === "closed") {
     return true;
   }

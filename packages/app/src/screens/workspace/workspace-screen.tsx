@@ -261,6 +261,7 @@ import {
   resolveCompactHeaderActions,
 } from "@/screens/workspace/compact-header-actions";
 import {
+  buildHostAgentDetailRoute,
   buildHostRootRoute,
   buildSettingsHostRoute,
   buildSettingsHostSectionRoute,
@@ -3125,6 +3126,15 @@ function WorkspaceScreenContent({
       visibleUiTabs,
     ],
   );
+  const importRouter = useRouter();
+  const handleImportedOtherWorkspace = useCallback(
+    (agent: { id: string }) => {
+      importRequestTabIdRef.current = null;
+      importRouter.push(buildHostAgentDetailRoute(normalizedServerId, agent.id) as Href);
+    },
+    [normalizedServerId, importRouter],
+  );
+
   const handleImportedAgent = useCallback(
     (agentId: string) => {
       if (!persistenceKey) {
@@ -5397,6 +5407,7 @@ function WorkspaceScreenContent({
               workspaceId={normalizedWorkspaceId}
               onClose={closeImportSheet}
               onImportedAgent={handleImportedAgent}
+              onImportedOtherWorkspace={handleImportedOtherWorkspace}
             />
             <FileFinderOverlay
               serverId={normalizedServerId}

@@ -1,3 +1,4 @@
+import { observeBrowserHistory } from "./history";
 import {
   getDesktopHost,
   type DesktopAttachedBrowserRegistration,
@@ -398,9 +399,11 @@ export function prepareBrowserWebview(
     workspaceId: string;
     initialUrl?: string | null;
     profileHost?: BrowserWebviewProfileHost;
+    serverId?: string | null;
   },
 ): void {
   const browser = getBrowserBridge(input.profileHost);
+  observeBrowserHistory(webview, input);
   // These events belong to the guest, not the pane: automation can create a
   // background tab before any pane mounts, and loads can finish while parked.
   webview.addEventListener("dom-ready", () => {
@@ -435,6 +438,7 @@ export function ensureResidentBrowserWebview(input: {
   browserId: string;
   workspaceId: string;
   url: string;
+  serverId?: string | null;
   profileHost?: BrowserWebviewProfileHost;
 }): HTMLElement | null {
   const browserId = trimNonEmpty(input.browserId);
@@ -464,6 +468,7 @@ export function ensureResidentBrowserWebview(input: {
   prepareBrowserWebview(webview, {
     browserId,
     workspaceId: input.workspaceId,
+    serverId: input.serverId,
     initialUrl: input.url,
     profileHost: input.profileHost,
   });

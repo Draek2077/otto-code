@@ -710,9 +710,15 @@ export const ptBR: TranslationResources = {
   importSession: {
     title: "Importar sessão",
     filters: {
+      allProjects: "Mostrar conversas de todos os projetos",
       all: "Tudo",
     },
     status: {
+      originalFolders: "As conversas mantêm suas pastas de trabalho originais neste host.",
+      limitReached:
+        "Até {{count}} sessões por provedor. Importe-as e reabra para encontrar sessões anteriores.",
+      failedBatch:
+        "Algumas sessões não puderam ser importadas. Tente novamente as seleções com falha.",
       connectHost: "Conecte-se a um host para importar sessões",
       updateHost: "Atualize o host para importar sessões.",
       noProviders: "Nenhum provedor importável está ativado.",
@@ -722,6 +728,11 @@ export const ptBR: TranslationResources = {
       failedImport: "Não foi possível importar a sessão selecionada.",
     },
     actions: {
+      selectAll: "Selecionar todas as exibidas",
+      importSelected: "Importar seleção ({{count}})",
+      importingBatch: "Importando {{current}} de {{total}}",
+      loadMore: "Carregar mais",
+
       refresh: "Atualizar sessões",
     },
     preview: {
@@ -2795,6 +2806,11 @@ export const ptBR: TranslationResources = {
     backdrop: "Fundo do menu",
   },
   subagents: {
+    controlUnavailable: "Atualize o host para controlar subagentes.",
+    stopParentTitle: "Parar a sessão do agente principal?",
+    stopParentMessage:
+      "Este provedor não pode parar este subagente separadamente. Isso encerrará a sessão do agente principal e todo o seu trabalho. O histórico será mantido.",
+    stopParentConfirm: "Parar sessão",
     title: "Subagentes",
     pillLabelOne: "1 subagente",
     pillLabelMany: "{{count}} subagentes",

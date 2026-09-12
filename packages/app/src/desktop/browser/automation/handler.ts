@@ -460,7 +460,7 @@ async function openBrowserTabForRequest(params: {
   // that id does not exist until attach.
 
   if (browserHost?.executeAutomationCommand) {
-    ensureResidentBrowserWebview({ browserId, workspaceId, url: normalizedUrl });
+    ensureResidentBrowserWebview({ browserId, workspaceId, serverId, url: normalizedUrl });
     const registered = await waitForBrowserRegistration({
       request,
       browserId,

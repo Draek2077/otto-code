@@ -1,3 +1,4 @@
+import { RevealFileButton } from "@/components/reveal-file-button";
 import {
   useCallback,
   useEffect,
@@ -2232,6 +2233,7 @@ function EditorModeView({
         </View>
         <View style={styles.centerState}>
           <Text style={styles.errorText}>{buffer.error ?? t("editor.loadFailed")}</Text>
+          <RevealFileButton serverId={serverId} workspaceRoot={workspaceRoot} path={path} />
         </View>
       </View>
     );

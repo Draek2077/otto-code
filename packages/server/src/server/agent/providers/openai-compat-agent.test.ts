@@ -2919,10 +2919,14 @@ describe("OpenAICompatAgentSession Otto tool permission gating", () => {
       content: [{ type: "text" as const, text: "otto-tool-done" }],
     });
     const tools = new Map(
-      ["browser_snapshot", "browser_click", "create_terminal", "preview_start"].map((name) => [
-        name,
-        { name, description: `${name} test tool`, handler },
-      ]),
+      [
+        "browser_snapshot",
+        "browser_click",
+        "create_terminal",
+        "preview_start",
+        "list_workspaces",
+        "read_project_knowledge",
+      ].map((name) => [name, { name, description: `${name} test tool`, handler }]),
     );
     return {
       tools,
@@ -3015,6 +3019,15 @@ describe("OpenAICompatAgentSession Otto tool permission gating", () => {
     expect(outcome.permissionRequests).toEqual([]);
     expect(outcome.executed).toEqual(["browser_snapshot"]);
   });
+
+  test.each(["default", "acceptEdits", "dontAsk", "bypassPermissions"])(
+    "%s executes workspace listing without permission requests",
+    async (modeId) => {
+      const outcome = await runOttoGatingScenario({ toolName: "list_workspaces", modeId });
+      expect(outcome.permissionRequests).toEqual([]);
+      expect(outcome.executed).toEqual(["list_workspaces"]);
+    },
+  );
 
   test("interact-class Otto tools prompt in default mode", async () => {
     const outcome = await runOttoGatingScenario({

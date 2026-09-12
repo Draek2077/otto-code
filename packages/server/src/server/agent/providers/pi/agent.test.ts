@@ -306,6 +306,18 @@ class SessionEvents {
 }
 
 describe("PiRpcAgentSession", () => {
+  test("does not advertise or pretend to apply unsupported permission modes", async () => {
+    const { session } = await createSession();
+    const previousMode = await session.getCurrentMode();
+    await expect(session.getAvailableModes()).resolves.toEqual([]);
+    await expect(session.setMode("full-access")).rejects.toThrow(
+      "Pi does not expose selectable modes",
+    );
+    await expect(session.getCurrentMode()).resolves.toBe(previousMode);
+    expect(session.getPendingPermissions()).toEqual([]);
+    await session.close();
+  });
+
   test("bridges Pi RPC select extension UI requests through question permissions", async () => {
     const { pi, session, events } = await createSession();
     const fakeSession = pi.latestSession();

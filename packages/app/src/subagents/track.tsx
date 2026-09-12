@@ -23,6 +23,7 @@ import {
 } from "@/screens/workspace/workspace-tab-icon";
 import type { Theme } from "@/styles/theme";
 import type { ClearableSubagentRow } from "./clear-completed-subagents";
+import { useProviderSubagentControl } from "./use-provider-subagent-control";
 import type { SubagentRow } from "./select";
 import {
   buildSubagentRowPresentationData,
@@ -49,6 +50,7 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 });
 
 export interface SubagentsTrackProps {
+  serverId: string;
   rows: SubagentRow[];
   onOpenSubagent: (id: string) => void;
   /**
@@ -81,6 +83,7 @@ function buildRowPresentation(row: SubagentRow): WorkspaceTabPresentation {
 }
 
 export function SubagentsTrack({
+  serverId,
   rows,
   onOpenSubagent,
   onOpenProviderSubagent,
@@ -128,6 +131,7 @@ export function SubagentsTrack({
     () =>
       completed.map((row) => ({
         id: row.id,
+        providerParentAgentId: row.kind === "provider" ? row.parentAgentId : undefined,
         cumulativeTokens: row.kind === "otto" ? row.cumulativeTokens : undefined,
       })),
     [completed],
@@ -188,6 +192,7 @@ export function SubagentsTrack({
               >
                 {active.map((row) => (
                   <SubagentsTrackRow
+                    serverId={serverId}
                     key={row.id}
                     row={row}
                     onOpenSubagent={onOpenSubagent}
@@ -199,6 +204,7 @@ export function SubagentsTrack({
                 ))}
                 {completed.length > 0 ? (
                   <CompletedSubagentsGroup
+                    serverId={serverId}
                     rows={completed}
                     flushTop={active.length === 0}
                     expanded={completedExpanded}
@@ -222,6 +228,7 @@ export function SubagentsTrack({
 }
 
 interface CompletedSubagentsGroupProps {
+  serverId: string;
   rows: SubagentRow[];
   /** No active rows above - drop the separator gap so the group sits flush. */
   flushTop: boolean;
@@ -239,6 +246,7 @@ interface CompletedSubagentsGroupProps {
 // collapse into a "Completed (N)" group (collapsed by default) with a bulk
 // "Clear all completed". See docs/agent-lifecycle.md (Item 6).
 function CompletedSubagentsGroup({
+  serverId,
   rows,
   flushTop,
   expanded,
@@ -297,6 +305,7 @@ function CompletedSubagentsGroup({
       {expanded
         ? rows.map((row) => (
             <SubagentsTrackRow
+              serverId={serverId}
               key={row.id}
               row={row}
               onOpenSubagent={onOpenSubagent}
@@ -312,6 +321,7 @@ function CompletedSubagentsGroup({
 }
 
 interface SubagentsTrackRowProps {
+  serverId: string;
   row: SubagentRow;
   onOpenSubagent: (id: string) => void;
   onOpenProviderSubagent: (parentAgentId: string, subagentId: string) => void;
@@ -321,6 +331,7 @@ interface SubagentsTrackRowProps {
 }
 
 function SubagentsTrackRow({
+  serverId,
   row,
   onOpenSubagent,
   onOpenProviderSubagent,
@@ -355,12 +366,15 @@ function SubagentsTrackRow({
     }
     onOpenSubagent(row.id);
   }, [onOpenProviderSubagent, onOpenSubagent, row]);
+  const controlProvider = useProviderSubagentControl(serverId);
   const handleArchivePress = useCallback(() => {
-    onArchiveSubagent(row.id);
-  }, [onArchiveSubagent, row.id]);
+    if (row.kind === "provider") controlProvider(row.parentAgentId, row.id, "archive");
+    else onArchiveSubagent(row.id);
+  }, [controlProvider, onArchiveSubagent, row]);
   const handleStopPress = useCallback(() => {
-    onStopSubagent(row.id);
-  }, [onStopSubagent, row.id]);
+    if (row.kind === "provider") controlProvider(row.parentAgentId, row.id, "stop");
+    else onStopSubagent(row.id);
+  }, [controlProvider, onStopSubagent, row]);
   const handleDetachPress = useCallback(() => {
     onDetachSubagent?.(row.id);
   }, [onDetachSubagent, row.id]);
@@ -422,17 +436,15 @@ function SubagentsTrackRow({
                 {currentToolLabel}
               </Text>
             ) : null}
-            {row.kind === "otto" ? (
-              <SubagentRowActions
-                rowId={row.id}
-                displayLabel={displayLabel}
-                visible={actionsVisible}
-                rowAction={rowAction}
-                onDetachPress={detachHandler ? handleDetachPress : undefined}
-                onArchivePress={handleArchivePress}
-                onStopPress={handleStopPress}
-              />
-            ) : null}
+            <SubagentRowActions
+              rowId={row.id}
+              displayLabel={displayLabel}
+              visible={row.kind === "provider" || actionsVisible}
+              rowAction={rowAction}
+              onDetachPress={detachHandler ? handleDetachPress : undefined}
+              onArchivePress={handleArchivePress}
+              onStopPress={handleStopPress}
+            />
           </View>
         )}
       </Pressable>

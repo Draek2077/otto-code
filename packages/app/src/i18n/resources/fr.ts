@@ -711,9 +711,15 @@ export const fr: TranslationResources = {
   importSession: {
     title: "Session d'importation",
     filters: {
+      allProjects: "Afficher les discussions de tous les projets",
       all: "Tous",
     },
     status: {
+      originalFolders: "Les discussions conservent leur dossier de travail sur cet hôte.",
+      limitReached:
+        "Jusqu’à {{count}} sessions par fournisseur. Importez-les, puis rouvrez pour trouver les sessions plus anciennes.",
+      failedBatch:
+        "Certaines sessions n’ont pas pu être importées. Réessayez les sélections en échec.",
       connectHost: "Connectez-vous à un hôte pour importer des sessions",
       updateHost: "Mettez à jour l'hôte pour importer des sessions.",
       noProviders: "Aucun fournisseur importable n'est activé.",
@@ -723,6 +729,11 @@ export const fr: TranslationResources = {
       failedImport: "Impossible d'importer la session sélectionnée.",
     },
     actions: {
+      selectAll: "Tout sélectionner dans la liste",
+      importSelected: "Importer la sélection ({{count}})",
+      importingBatch: "Importation {{current}} sur {{total}}",
+      loadMore: "Afficher plus",
+
       refresh: "Sessions de rafraîchissement",
     },
     preview: {
@@ -2824,6 +2835,11 @@ export const fr: TranslationResources = {
     backdrop: "Toile de fond du menu",
   },
   subagents: {
+    controlUnavailable: "Mettez à jour l’hôte pour contrôler les sous-agents.",
+    stopParentTitle: "Arrêter la session de l’agent parent ?",
+    stopParentMessage:
+      "Ce fournisseur ne peut pas arrêter ce sous-agent seul. Cette action arrêtera la session de l’agent parent et tout son travail. L’historique est conservé.",
+    stopParentConfirm: "Arrêter la session",
     title: "Sous-agents",
     pillLabelOne: "1 sous-agent",
     pillLabelMany: "{{count}} sous-agents",

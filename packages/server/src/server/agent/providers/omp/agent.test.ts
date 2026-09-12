@@ -107,6 +107,19 @@ function createToolCatalog(): OttoToolCatalog {
 }
 
 describe("OMP agent client and session", () => {
+  test("Full Access launches yolo approval with native Otto tools still registered", async () => {
+    const omp = new OmpHarness();
+    await omp.start({ modeId: "full" }, createToolCatalog());
+    expect(omp.launchConfiguration().argv).toEqual([
+      "omp",
+      "--mode",
+      "rpc-ui",
+      "--approval-mode",
+      "yolo",
+    ]);
+    expect(omp.registeredHostTools()).toEqual([[expect.objectContaining({ name: "create_chat" })]]);
+  });
+
   test("owns launch configuration and registers native host tools", async () => {
     const omp = new OmpHarness();
     await omp.start({ modeId: "ask" }, createToolCatalog());

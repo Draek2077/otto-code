@@ -203,6 +203,7 @@ export class BrowserKeyboard {
           guest.contents.reload();
         }
         return;
+      case "find":
       case "focus-url":
         event.preventDefault();
         if (!guest.hostContents.isDestroyed()) {

@@ -712,9 +712,15 @@ export const ja: TranslationResources = {
   importSession: {
     title: "セッションをインポート",
     filters: {
+      allProjects: "すべてのプロジェクトのチャットを表示",
       all: "すべて",
     },
     status: {
+      originalFolders: "チャットはこのホストの元の作業フォルダーを保持します。",
+      limitReached:
+        "プロバイダーごとに最大{{count}}件表示しています。インポート後に開き直すと、古いセッションを確認できます。",
+      failedBatch:
+        "一部のセッションをインポートできませんでした。失敗した項目を再試行してください。",
       connectHost: "セッションをインポートするにはホストに接続してください",
       updateHost: "セッションをインポートするにはホストを更新してください。",
       noProviders: "インポート可能なプロバイダーが有効になっていません。",
@@ -724,6 +730,11 @@ export const ja: TranslationResources = {
       failedImport: "選択したセッションをインポートできませんでした。",
     },
     actions: {
+      selectAll: "表示中のすべてを選択",
+      importSelected: "選択項目をインポート ({{count}})",
+      importingBatch: "{{total}}件中{{current}}件をインポート中",
+      loadMore: "さらに読み込む",
+
       refresh: "セッションを更新",
     },
     preview: {
@@ -2786,6 +2797,11 @@ export const ja: TranslationResources = {
     backdrop: "メニューの背景",
   },
   subagents: {
+    controlUnavailable: "サブエージェントを操作するにはホストを更新してください。",
+    stopParentTitle: "親エージェントのセッションを停止しますか？",
+    stopParentMessage:
+      "このプロバイダーはこの子だけを停止できません。親エージェントのセッションとそのすべての作業を停止します。チャット履歴は保持されます。",
+    stopParentConfirm: "セッションを停止",
     title: "サブエージェント",
     pillLabelOne: "サブエージェント 1 件",
     pillLabelMany: "サブエージェント {{count}} 件",

@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import { internalOttoReadToolNames } from "../../runtime-mcp-config.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { promises } from "node:fs";
@@ -2861,6 +2862,16 @@ class ClaudeAgentSession implements AgentSession {
     await activeQuery.stopTask(taskId);
   }
 
+  async stopProviderSubagent(subagentId: string): Promise<void> {
+    for (const [taskId, key] of this.observedKeyByTaskId) {
+      if (key === subagentId || taskId === subagentId) {
+        await this.stopTask(taskId);
+        return;
+      }
+    }
+    throw new Error("Claude has not supplied a task id for this subagent");
+  }
+
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
     if (
       !this.historyPending ||
@@ -3392,6 +3403,14 @@ class ClaudeAgentSession implements AgentSession {
           kind: classifyClaudeSlashCommand(cmd.name),
         });
       }
+    }
+    if (!commandMap.has("init")) {
+      commandMap.set("init", {
+        name: "init",
+        description: "Initialize repository instructions in CLAUDE.md",
+        argumentHint: "",
+        kind: "command",
+      });
     }
     if (!commandMap.has(REWIND_COMMAND_NAME)) {
       commandMap.set(REWIND_COMMAND_NAME, REWIND_COMMAND);
@@ -3999,11 +4018,6 @@ class ClaudeAgentSession implements AgentSession {
       // Generation is gated by the daemon behavior toggle (default on) and the
       // CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLI kill-switch.
       promptSuggestions: this.resolvePromptSuggestionsEnabled(),
-      permissionMode: this.currentMode,
-      // Dynamic mode switching can recreate the underlying Claude query. Keep the
-      // bypass launch capability available so later setPermissionMode("bypassPermissions")
-      // calls do not fail after a model/thinking/rewind-driven restart.
-      allowDangerouslySkipPermissions: true,
       agents: this.defaults?.agents,
       canUseTool: this.handlePermissionRequest,
       pathToClaudeCodeExecutable: claudeBinary,
@@ -4029,6 +4043,10 @@ class ClaudeAgentSession implements AgentSession {
       ...extraClaudeOptions,
       ...settingsOptions,
       ...(this.persistSession === undefined ? {} : { persistSession: this.persistSession }),
+      // The selected mode must survive stale legacy SDK settings and query
+      // recreation. Keep bypass available for later setPermissionMode calls.
+      permissionMode: this.currentMode,
+      allowDangerouslySkipPermissions: true,
       env: sdkEnv,
     };
 
@@ -4049,9 +4067,17 @@ class ClaudeAgentSession implements AgentSession {
         ...this.runtimeSettings.disallowedTools,
       ];
     }
+    this.applyOttoReadAllowlist(base);
     this.applyDontAskAllowlist(base);
     this.applyWorkspaceAccess(base);
     return base;
+  }
+
+  private applyOttoReadAllowlist(base: ClaudeOptions): void {
+    const reads = internalOttoReadToolNames(this.config).map((tool) => `mcp__otto__${tool}`);
+    if (reads.length > 0) {
+      base.allowedTools = [...new Set([...(base.allowedTools ?? []), ...reads])];
+    }
   }
 
   /**

@@ -2817,6 +2817,15 @@ export const ProviderSubagentListRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const ProviderSubagentControlRequestMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.control.request"),
+  requestId: z.string(),
+  parentAgentId: z.string(),
+  subagentId: z.string(),
+  action: z.enum(["stop", "archive"]),
+  allowStopParent: z.boolean().optional(),
+});
+
 export const ProviderSubagentTimelineRequestMessageSchema = z.object({
   type: z.literal("agent.provider_subagents.timeline.get.request"),
   parentAgentId: z.string(),
@@ -4122,6 +4131,48 @@ export const ProjectIconRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const BrowserHistoryEntrySchema = z.object({
+  url: z.string().max(8192),
+  title: z.string().max(512),
+  visitedAt: z.string(),
+});
+export type BrowserHistoryEntry = z.infer<typeof BrowserHistoryEntrySchema>;
+
+export const BrowserHistorySearchRequestSchema = z.object({
+  type: z.literal("browser.history.search.request"),
+  workspaceId: z.string(),
+  query: z.string().max(8192),
+  requestId: z.string(),
+});
+export const BrowserHistoryRecordRequestSchema = z.object({
+  type: z.literal("browser.history.record.request"),
+  workspaceId: z.string(),
+  url: z.string().max(8192),
+  title: z.string().max(512),
+  requestId: z.string(),
+});
+export const BrowserHistoryClearRequestSchema = z.object({
+  type: z.literal("browser.history.clear.request"),
+  projectId: z.string(),
+  requestId: z.string(),
+});
+export const BrowserHistorySearchResponseSchema = z.object({
+  type: z.literal("browser.history.search.response"),
+  payload: z.object({
+    entries: z.array(BrowserHistoryEntrySchema),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+export const BrowserHistoryRecordResponseSchema = z.object({
+  type: z.literal("browser.history.record.response"),
+  payload: z.object({ error: z.string().nullable(), requestId: z.string() }),
+});
+export const BrowserHistoryClearResponseSchema = z.object({
+  type: z.literal("browser.history.clear.response"),
+  payload: z.object({ error: z.string().nullable(), requestId: z.string() }),
+});
+
 export const ProjectIconGetRequestSchema = z.object({
   type: z.literal("project.icon.get.request"),
   projectId: z.string(),
@@ -4646,6 +4697,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentTimelineRequestMessageSchema,
   AgentTimelineListPromptsRequestMessageSchema,
   ProviderSubagentListRequestMessageSchema,
+  ProviderSubagentControlRequestMessageSchema,
   ProviderSubagentTimelineRequestMessageSchema,
   SetAgentTimelineSubscriptionRequestMessageSchema,
   AgentForkContextRequestMessageSchema,
@@ -4775,6 +4827,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FileEntryDeleteRequestSchema,
   ProjectIconRequestSchema,
   ProjectIconGetRequestSchema,
+  BrowserHistorySearchRequestSchema,
+  BrowserHistoryRecordRequestSchema,
+  BrowserHistoryClearRequestSchema,
   FileDownloadTokenRequestSchema,
   FileUploadRequestSchema,
   FileWriteRequestSchema,
@@ -5210,6 +5265,7 @@ export const ServerInfoStatusPayloadSchema = z
         brainLogWatch: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
+        browserHistory: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
         providerRemove: z.boolean().optional(),
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
@@ -5640,6 +5696,7 @@ export const ServerInfoStatusPayloadSchema = z
         agentForkContextCursor: z.boolean().optional(),
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: z.boolean().optional(),
+        providerSubagentControl: z.boolean().optional(),
         // COMPAT(workspacePinning): added in v0.1.107, remove gate after 2027-01-12.
         workspacePinning: z.boolean().optional(),
         // COMPAT(hubRelationship): added in v0.1.X, drop the gate when floor >= v0.1.X.
@@ -6776,6 +6833,8 @@ export const ProviderSubagentDescriptorPayloadSchema = z.object({
   // Compact provider-owned context for the shared track. Providers choose what belongs here and
   // format it for display; clients must not parse provider-specific facts out of this string.
   subtitle: z.string().nullable().optional(),
+  archivedAt: z.string().optional(),
+  stopScope: z.enum(["child", "parent"]).optional(),
 });
 
 export type ProviderSubagentDescriptorPayload = z.infer<
@@ -6788,6 +6847,16 @@ export const ProviderSubagentListResponseMessageSchema = z.object({
     requestId: z.string(),
     parentAgentId: z.string(),
     subagents: z.array(ProviderSubagentDescriptorPayloadSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const ProviderSubagentControlResponseMessageSchema = z.object({
+  type: z.literal("agent.provider_subagents.control.response"),
+  payload: z.object({
+    requestId: z.string(),
+    parentAgentId: z.string(),
+    subagentId: z.string(),
     error: z.string().nullable(),
   }),
 });
@@ -8960,6 +9029,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentTimelineResponseMessageSchema,
   AgentTimelineListPromptsResponseMessageSchema,
   ProviderSubagentListResponseMessageSchema,
+  ProviderSubagentControlResponseMessageSchema,
   ProviderSubagentTimelineResponseMessageSchema,
   ProviderSubagentUpdateMessageSchema,
   SetAgentTimelineSubscriptionResponseMessageSchema,
@@ -9193,6 +9263,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FileUpdateSchema,
   ProjectIconResponseSchema,
   ProjectIconGetResponseSchema,
+  BrowserHistorySearchResponseSchema,
+  BrowserHistoryRecordResponseSchema,
+  BrowserHistoryClearResponseSchema,
   FileDownloadTokenResponseSchema,
   FileUploadResponseSchema,
   FileWriteResponseSchema,

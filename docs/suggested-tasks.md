@@ -32,7 +32,7 @@ Two runtime facts also gate the feature independent of the code: the **daemon mu
 
 `suggest_task`/`dismiss_task` **bypass the permission prompt in every mode, including Always-ask.** The rationale: they only draw or withdraw a card - nothing starts until the user clicks Start, so the **Start button is the gate**, not the act of suggesting. The tool call still shows in the transcript, so "see everything" visibility is preserved.
 
-Implemented at one chokepoint per provider: an `AUTO_APPROVED_OTTO_TOOL_NAMES` early-return in `handlePermissionRequest` (`claude/agent.ts`), plus the bare names in `READ_ONLY_TOOLS` in `openai-compat-otto-tool-permissions.ts`.
+Implemented at one chokepoint per provider: an `AUTO_APPROVED_OTTO_TOOL_NAMES` early-return in `handlePermissionRequest` (`claude/agent.ts`), plus the bare names in `UNPROMPTED_UI_TOOLS` in `tools/otto-tool-permissions.ts`. These UI-only exemptions do not advertise a read-only MCP hint.
 
 ## The four start modes
 

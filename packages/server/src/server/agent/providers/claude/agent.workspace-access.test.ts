@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import * as spawnUtils from "../../../../utils/spawn.js";
-import type { McpServerConfig } from "../../agent-sdk-types.js";
+import type { AgentSessionConfig, McpServerConfig } from "../../agent-sdk-types.js";
 import { ClaudeAgentClient } from "./agent.js";
 import type { ClaudeQueryInput } from "./query.js";
 
@@ -54,6 +54,7 @@ function createQueryMock(): Query {
 
 /** Run one turn and hand back the options Claude was actually launched with. */
 async function captureOptions(config: {
+  extra?: AgentSessionConfig["extra"];
   workspaceAccess?: string;
   modeId?: string;
   mcpServers?: Record<string, McpServerConfig>;
@@ -88,6 +89,34 @@ async function captureOptions(config: {
 }
 
 describe("Claude workspace access", () => {
+  test("the selected Claude mode wins over stale legacy SDK permission settings", async () => {
+    const options = await captureOptions({
+      modeId: "bypassPermissions",
+      extra: { claude: { permissionMode: "default", allowDangerouslySkipPermissions: false } },
+    });
+    expect(options.permissionMode).toBe("bypassPermissions");
+    expect(options.allowDangerouslySkipPermissions).toBe(true);
+  });
+
+  test.each(["default", "acceptEdits", "auto", "bypassPermissions"])(
+    "%s preapproves internal Otto reads without approving mutators",
+    async (modeId) => {
+      const options = await captureOptions({
+        modeId,
+        mcpServers: {
+          otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents" },
+          external: { type: "http", url: "http://127.0.0.1:1234/mcp" },
+        },
+      });
+      expect(options.permissionMode).toBe(modeId);
+      expect(options.allowedTools).toContain("mcp__otto__list_workspaces");
+      expect(options.allowedTools).toContain("mcp__otto__read_project_knowledge");
+      expect(options.allowedTools).not.toContain("mcp__otto__archive_workspace");
+      expect(options.allowedTools).not.toContain("mcp__otto__create_terminal");
+      expect(options.allowedTools).not.toContain("mcp__external__list_workspaces");
+    },
+  );
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

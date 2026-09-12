@@ -708,9 +708,14 @@ export const ko: TranslationResources = {
   importSession: {
     title: "세션 가져오기",
     filters: {
+      allProjects: "모든 프로젝트의 채팅 표시",
       all: "전체",
     },
     status: {
+      originalFolders: "채팅은 이 호스트의 원래 작업 폴더를 유지합니다.",
+      limitReached:
+        "공급자당 최대 {{count}}개 세션을 표시합니다. 가져온 후 다시 열면 이전 세션을 찾을 수 있습니다.",
+      failedBatch: "일부 세션을 가져오지 못했습니다. 실패한 항목을 다시 시도하세요.",
       connectHost: "세션을 가져오려면 호스트에 연결하세요",
       updateHost: "세션을 가져오려면 호스트를 업데이트하세요.",
       noProviders: "가져올 수 있는 프로바이더가 활성화되어 있지 않습니다.",
@@ -720,6 +725,11 @@ export const ko: TranslationResources = {
       failedImport: "선택한 세션을 가져올 수 없습니다.",
     },
     actions: {
+      selectAll: "표시된 항목 모두 선택",
+      importSelected: "선택 항목 가져오기 ({{count}})",
+      importingBatch: "{{total}}개 중 {{current}}개 가져오는 중",
+      loadMore: "더 불러오기",
+
       refresh: "세션 새로고침",
     },
     preview: {
@@ -2772,6 +2782,11 @@ export const ko: TranslationResources = {
     backdrop: "메뉴 배경",
   },
   subagents: {
+    controlUnavailable: "하위 에이전트를 제어하려면 호스트를 업데이트하세요.",
+    stopParentTitle: "상위 에이전트 세션을 중지할까요?",
+    stopParentMessage:
+      "이 제공자는 이 하위 에이전트만 중지할 수 없습니다. 상위 에이전트 세션과 모든 작업이 중지됩니다. 대화 기록은 유지됩니다.",
+    stopParentConfirm: "세션 중지",
     title: "하위 에이전트",
     pillLabelOne: "하위 에이전트 1개",
     pillLabelMany: "하위 에이전트 {{count}}개",

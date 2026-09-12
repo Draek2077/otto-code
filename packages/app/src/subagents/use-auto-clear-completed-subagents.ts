@@ -1,3 +1,4 @@
+import { controlProviderSubagent } from "./provider-subagent-control";
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/contexts/toast-context";
 import { useArchiveAgent, usePendingArchiveAgentIds } from "@/hooks/use-archive-agent";
@@ -71,11 +72,15 @@ export function useAutoClearCompletedSubagents(input: UseAutoClearCompletedSubag
           parentAgentId,
           rows: due.map((row) => ({
             id: row.id,
+            providerParentAgentId: row.kind === "provider" ? row.parentAgentId : undefined,
             cumulativeTokens: row.kind === "otto" ? row.cumulativeTokens : undefined,
           })),
         },
         {
-          archiveAgent,
+          archiveAgent: ({ serverId: targetServerId, agentId, providerParentAgentId }) =>
+            providerParentAgentId
+              ? controlProviderSubagent(targetServerId, providerParentAgentId, agentId, "archive")
+              : archiveAgent({ serverId: targetServerId, agentId }),
           recordCleared,
           reportError: (error) => toast.error(toErrorMessage(error)),
         },

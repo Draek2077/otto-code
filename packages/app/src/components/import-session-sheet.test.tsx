@@ -56,9 +56,25 @@ vi.mock("react-native-unistyles", () => ({
     },
 }));
 
-vi.mock("@/constants/layout", () => ({
-  useIsCompactFormFactor: () => false,
+vi.mock("@/components/ui/button", () => ({
+  Button: ({
+    children,
+    onPress,
+    disabled,
+    testID,
+  }: {
+    children: ReactNode;
+    onPress: () => void;
+    disabled?: boolean;
+    testID?: string;
+  }) => (
+    <button type="button" onClick={onPress} disabled={disabled} data-testid={testID}>
+      {children}
+    </button>
+  ),
 }));
+
+vi.mock("@/runtime/host-features", () => ({ useHostFeature: () => true }));
 
 vi.mock("@/components/provider-icons", () => ({
   getProviderIcon: () => () => null,
@@ -71,6 +87,7 @@ vi.mock("@/components/icons/material-icons", () => {
     return Icon;
   };
   return {
+    Check: icon("Check"),
     ChevronDown: icon("ChevronDown"),
     Inbox: icon("Inbox"),
     Layers: icon("Layers"),
@@ -174,6 +191,7 @@ interface RenderOptions {
   onImportedAgent?: (agentId: string) => void;
   onImported?: (agent: Awaited<ReturnType<DaemonClient["importAgent"]>>) => void;
   cwd?: string | null;
+  workspaceId?: string | null;
   snapshot?: {
     entries?: ProviderSnapshotEntry[];
     supportsSnapshot?: boolean;
@@ -205,6 +223,7 @@ function renderSheet(
         client={client}
         serverId="server-1"
         cwd={cwd}
+        workspaceId={options?.workspaceId}
         onClose={options?.onClose ?? vi.fn()}
         onImportedAgent={options?.onImportedAgent ?? vi.fn()}
         onImported={options?.onImported}
@@ -510,6 +529,7 @@ describe("ImportSessionSheet", () => {
     );
 
     fireEvent.click(await screen.findByTestId("import-session-session-claude-provider-thread-1"));
+    fireEvent.click(screen.getByTestId("import-session-import-selected"));
 
     await waitFor(() => {
       expect(importAgent).toHaveBeenCalledWith({
@@ -546,8 +566,9 @@ describe("ImportSessionSheet", () => {
     );
 
     fireEvent.click(await screen.findByTestId("import-session-session-claude-provider-thread-1"));
+    fireEvent.click(screen.getByTestId("import-session-import-selected"));
 
-    await screen.findByText("Could not import selected session.");
+    await screen.findByText("Some sessions could not be imported. Retry the failed selections.");
     expect(importAgent).toHaveBeenCalledWith({
       providerId: "claude",
       providerHandleId: "provider-thread-1",
@@ -831,6 +852,7 @@ describe("ImportSessionSheet", () => {
     );
 
     fireEvent.click(await screen.findByTestId("import-session-session-claude-provider-thread-1"));
+    fireEvent.click(screen.getByTestId("import-session-import-selected"));
 
     await waitFor(() => {
       expect(importAgent).toHaveBeenCalledWith({
@@ -875,6 +897,172 @@ describe("ImportSessionSheet", () => {
 
     await waitFor(() => {
       expect(fetchRecentProviderSessions).toHaveBeenCalledTimes(2);
+    });
+  });
+  it("discovers foreign folders on the same host and imports without the current workspace target", async () => {
+    const local = createProviderSessionEntry({
+      providerId: "codex",
+      providerHandleId: "local",
+      cwd: "/repo/otto",
+      title: "Local chat",
+    });
+    const foreign = createProviderSessionEntry({
+      providerId: "codex",
+      providerHandleId: "foreign",
+      cwd: "/documents/codex/test",
+      title: "Review test response",
+    });
+    const fetchRecentProviderSessions = vi.fn(async (options?: { cwd?: string }) => ({
+      requestId: "recent",
+      entries: options?.cwd ? [local] : [local, foreign],
+    }));
+    const importAgent = vi.fn(async () => ({
+      ...createImportedAgentSnapshot("imported-foreign"),
+      cwd: foreign.cwd,
+      workspaceId: "foreign-workspace",
+    }));
+    const onImportedAgent = vi.fn();
+    renderSheet(createRecentSessionsClient(fetchRecentProviderSessions, importAgent), {
+      workspaceId: "current-workspace",
+      onImportedAgent,
+      snapshot: { supportsSnapshot: true, entries: [createSnapshotEntry("codex")] },
+    });
+    fireEvent.click(await screen.findByTestId("import-session-session-codex-local"));
+    expect(importAgent).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("import-session-all-projects"));
+    await screen.findByText("Review test response");
+    expect(fetchRecentProviderSessions).toHaveBeenLastCalledWith({
+      providers: ["codex"],
+      limit: 15,
+    });
+    expect(
+      screen.getByTestId("import-session-session-codex-local").getAttribute("aria-checked"),
+    ).toBe("false");
+    screen.getByText(foreign.cwd);
+    fireEvent.click(screen.getByTestId("import-session-session-codex-foreign"));
+    fireEvent.click(screen.getByTestId("import-session-import-selected"));
+    await waitFor(() =>
+      expect(importAgent).toHaveBeenCalledWith({
+        providerId: "codex",
+        providerHandleId: "foreign",
+        cwd: foreign.cwd,
+      }),
+    );
+    expect(onImportedAgent).not.toHaveBeenCalled();
+  });
+
+  it("imports selected sessions sequentially, keeps failures selected, and does not retry successes", async () => {
+    const entries = ["one", "two", "three"].map((id) =>
+      createProviderSessionEntry({ providerId: "codex", providerHandleId: id, title: id }),
+    );
+    const fetchRecentProviderSessions = vi.fn(async () => ({ requestId: "recent", entries }));
+    let resolveFirst!: () => void;
+    const first = new Promise<void>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let failSecond = true;
+    const importAgent = vi.fn(async (input: Parameters<DaemonClient["importAgent"]>[0]) => {
+      const providerHandleId =
+        "providerHandleId" in input ? input.providerHandleId : input.sessionId;
+      if (providerHandleId === "one") await first;
+      if (providerHandleId === "two" && failSecond) throw new Error("Session is busy");
+      return createImportedAgentSnapshot(providerHandleId);
+    });
+    const onClose = vi.fn();
+    renderSheet(createRecentSessionsClient(fetchRecentProviderSessions, importAgent), {
+      onClose,
+      snapshot: { supportsSnapshot: true, entries: [createSnapshotEntry("codex")] },
+    });
+    fireEvent.click(await screen.findByTestId("import-session-select-all"));
+    fireEvent.click(screen.getByTestId("import-session-import-selected"));
+    await waitFor(() => expect(importAgent).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("import-session-import-selected").hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    resolveFirst();
+    await screen.findByText("Session is busy");
+    expect(
+      importAgent.mock.calls.map(([input]) =>
+        "providerHandleId" in input ? input.providerHandleId : input.sessionId,
+      ),
+    ).toEqual(["one", "two", "three"]);
+    expect(screen.queryByTestId("import-session-session-codex-one")).toBeNull();
+    expect(screen.queryByTestId("import-session-session-codex-three")).toBeNull();
+    expect(
+      screen.getByTestId("import-session-session-codex-two").getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(onClose).not.toHaveBeenCalled();
+    failSecond = false;
+    fireEvent.click(screen.getByTestId("import-session-import-selected"));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(
+      importAgent.mock.calls.map(([input]) =>
+        "providerHandleId" in input ? input.providerHandleId : input.sessionId,
+      ),
+    ).toEqual(["one", "two", "three", "two"]);
+  });
+
+  it("selects only the visible provider and keeps scoped imports in the requesting workspace", async () => {
+    const fetchRecentProviderSessions = vi.fn(async (options?: { providers?: string[] }) => ({
+      requestId: "recent",
+      entries: [
+        createProviderSessionEntry({
+          providerId: options?.providers?.[0] ?? "codex",
+          title: options?.providers?.[0],
+        }),
+      ],
+    }));
+    const importAgent = vi.fn(async () => ({
+      ...createImportedAgentSnapshot("imported"),
+      workspaceId: "current-workspace",
+    }));
+    renderSheet(createRecentSessionsClient(fetchRecentProviderSessions, importAgent), {
+      workspaceId: "current-workspace",
+      snapshot: {
+        supportsSnapshot: true,
+        entries: [createSnapshotEntry("codex"), createSnapshotEntry("claude")],
+      },
+    });
+    await screen.findByTestId("import-session-session-codex-provider-thread-1");
+    fireEvent.click(screen.getByTestId("import-session-select-all"));
+    fireEvent.click(screen.getByTestId("import-session-filter-trigger"));
+    fireEvent.click(screen.getByTestId("import-session-filter-codex"));
+    expect(screen.getByTestId("import-session-import-selected").hasAttribute("disabled")).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByTestId("import-session-select-all"));
+    fireEvent.click(screen.getByTestId("import-session-import-selected"));
+    await waitFor(() => expect(importAgent).toHaveBeenCalledTimes(1));
+    expect(importAgent).toHaveBeenCalledWith({
+      providerId: "codex",
+      providerHandleId: "provider-thread-1",
+      cwd: "/repo/otto",
+      workspaceId: "current-workspace",
+    });
+  });
+
+  it("can load older sessions beyond the initial list", async () => {
+    const entries = Array.from({ length: 30 }, (_, index) =>
+      createProviderSessionEntry({
+        providerId: "codex",
+        providerHandleId: String(index),
+        title: `Chat ${index}`,
+      }),
+    );
+    const fetchRecentProviderSessions = vi.fn(async (options?: { limit?: number }) => ({
+      requestId: "recent",
+      entries: entries.slice(0, options?.limit ?? 15),
+    }));
+    renderSheet(createRecentSessionsClient(fetchRecentProviderSessions, vi.fn()), {
+      snapshot: { supportsSnapshot: true, entries: [createSnapshotEntry("codex")] },
+    });
+    fireEvent.click(await screen.findByTestId("import-session-load-more"));
+    await screen.findByText("Chat 29");
+    expect(fetchRecentProviderSessions).toHaveBeenLastCalledWith({
+      providers: ["codex"],
+      cwd: "/repo/otto",
+      limit: 30,
     });
   });
 });

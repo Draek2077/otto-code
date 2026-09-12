@@ -96,6 +96,7 @@ import {
   type ProviderImageOutput,
 } from "./provider-image-output.js";
 import { normalizeProviderReplayTimestamp } from "../provider-history-timestamps.js";
+import { internalOttoReadToolNames, isInternalOttoMcpServer } from "../runtime-mcp-config.js";
 import {
   formatProviderDiagnostic,
   formatProviderDiagnosticError,
@@ -875,6 +876,8 @@ function expandCodexCustomPrompt(template: string, args: string | undefined): st
 }
 
 interface CodexMcpServerConfig {
+  default_tools_approval_mode?: "auto" | "approve" | "prompt";
+  tools?: Record<string, { approval_mode: "approve" }>;
   url?: string;
   http_headers?: Record<string, string>;
   command?: string;
@@ -3979,6 +3982,11 @@ export class CodexAppServerAgentSession implements AgentSession {
   ): Promise<void> {
     if (!this.client || !this.currentThreadId) return;
     const params: Record<string, unknown> = { threadId: this.currentThreadId };
+    const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
+    const { approvalPolicy, sandbox } = this.resolveWorkflowPolicy(preset);
+    if (approvalPolicy) params.approvalPolicy = approvalPolicy;
+    if (sandbox) params.sandbox = sandbox;
+    if (this.hasWorkflowModeOverride) applyApprovalsReviewerParam(params, preset);
     const developerInstructions = composeSystemPromptParts(
       this.config.systemPrompt,
       this.config.daemonAppendSystemPrompt,
@@ -4172,19 +4180,8 @@ export class CodexAppServerAgentSession implements AgentSession {
     params: Record<string, unknown>,
     preset: CodexModePreset,
   ): { approvalPolicy?: string; sandboxPolicyType?: string } {
-    const approvalPolicy =
-      this.config.approvalPolicy ??
-      (this.hasWorkflowModeOverride ? preset.approvalPolicy : undefined);
-    const configuredSandbox =
-      this.config.sandboxMode ??
-      this.providerOptions.sandbox_mode ??
-      (this.hasWorkflowModeOverride ? preset.sandbox : undefined);
-    const sandboxPolicyType = this.resolveSandboxPolicyType(configuredSandbox);
-    if (
-      approvalPolicy &&
-      (this.config.approvalPolicy !== undefined ||
-        this.providerOptions.approval_policy === undefined)
-    ) {
+    const { approvalPolicy, sandbox: sandboxPolicyType } = this.resolveWorkflowPolicy(preset);
+    if (approvalPolicy) {
       params.approvalPolicy = approvalPolicy;
     }
     if (sandboxPolicyType) {
@@ -4296,9 +4293,11 @@ export class CodexAppServerAgentSession implements AgentSession {
       }
 
       const slashCommand = await this.resolveSlashCommandInvocation(prompt);
-      const effectivePrompt = slashCommand
-        ? await this.buildCommandPromptInput(slashCommand.commandName, slashCommand.args)
-        : prompt;
+      // /init is passed through as text, never rewritten as a $skill invocation.
+      const effectivePrompt =
+        slashCommand && slashCommand.commandName !== "init"
+          ? await this.buildCommandPromptInput(slashCommand.commandName, slashCommand.args)
+          : prompt;
 
       if (this.currentThreadId) {
         await this.ensureThreadLoaded();
@@ -4877,6 +4876,34 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
   }
 
+  async stopProviderSubagent(subagentId: string): Promise<void> {
+    if (
+      !this.client ||
+      !this.subAgentCallIdByChildThreadId.has(subagentId) ||
+      subagentId === this.currentThreadId
+    ) {
+      throw new Error("Codex subagent does not belong to this session");
+    }
+    const response = await requestCodexThreadHistory(
+      (threadId) => readCodexThread(this.client!, threadId),
+      subagentId,
+    );
+    for (const turn of response.thread.turns) {
+      if (turn.status !== "inProgress") continue;
+      if (typeof turn.id !== "string")
+        throw new Error("Codex did not identify the subagent's active turn");
+      try {
+        await this.client.request(
+          "turn/interrupt",
+          { threadId: subagentId, turnId: turn.id },
+          INTERRUPT_TIMEOUT_MS,
+        );
+      } catch (error) {
+        if (!isCodexAlreadyIdleInterrupt(error)) throw error;
+      }
+    }
+  }
+
   /**
    * Codex answered the interrupt with "no active turn": the turn we were
    * tracking is already over and no `turn/completed` will follow for it.
@@ -4959,6 +4986,12 @@ export class CodexAppServerAgentSession implements AgentSession {
         ? await listCodexSkills(this.config.cwd, this.deps.workspaceGitService)
         : [];
     const builtin: AgentSlashCommand[] = [
+      {
+        name: "init",
+        description: "Initialize repository instructions in AGENTS.md",
+        argumentHint: "",
+        kind: "command",
+      },
       {
         name: "compact",
         description: "Summarize conversation to prevent hitting the context limit",
@@ -5204,20 +5237,28 @@ export class CodexAppServerAgentSession implements AgentSession {
     return ceiling ?? configured;
   }
 
+  private resolveWorkflowPolicy(preset: CodexModePreset): {
+    approvalPolicy?: string;
+    sandbox?: string;
+  } {
+    // An explicit picker mode owns these settings. Native options remain the
+    // source only when no mode was selected; workspace access still narrows it.
+    const approvalPolicy = this.hasWorkflowModeOverride
+      ? preset.approvalPolicy
+      : this.config.approvalPolicy;
+    const configuredSandbox = this.hasWorkflowModeOverride
+      ? preset.sandbox
+      : (this.config.sandboxMode ?? this.providerOptions.sandbox_mode);
+    return { approvalPolicy, sandbox: this.resolveSandboxPolicyType(configuredSandbox) };
+  }
+
   private buildThreadStartRequest(model: string): {
     params: Record<string, unknown>;
     approvalPolicy?: string;
     sandbox?: string;
   } {
     const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
-    const approvalPolicy =
-      this.config.approvalPolicy ??
-      (this.hasWorkflowModeOverride ? preset.approvalPolicy : undefined);
-    const configuredSandbox =
-      this.config.sandboxMode ??
-      this.providerOptions.sandbox_mode ??
-      (this.hasWorkflowModeOverride ? preset.sandbox : undefined);
-    const sandbox = this.resolveSandboxPolicyType(configuredSandbox);
+    const { approvalPolicy, sandbox } = this.resolveWorkflowPolicy(preset);
     const innerConfig = this.buildCodexInnerConfig();
     const developerInstructions = composeSystemPromptParts(
       this.config.systemPrompt,
@@ -5226,17 +5267,8 @@ export class CodexAppServerAgentSession implements AgentSession {
     const params: Record<string, unknown> = {
       model,
       cwd: this.config.cwd ?? null,
-      ...(approvalPolicy &&
-      (this.config.approvalPolicy !== undefined ||
-        this.providerOptions.approval_policy === undefined)
-        ? { approvalPolicy }
-        : {}),
-      ...(sandbox &&
-      (this.config.workspaceAccess !== undefined ||
-        this.config.sandboxMode !== undefined ||
-        this.providerOptions.sandbox_mode === undefined)
-        ? { sandbox }
-        : {}),
+      ...(approvalPolicy ? { approvalPolicy } : {}),
+      ...(sandbox ? { sandbox } : {}),
       ...(developerInstructions ? { developerInstructions } : {}),
       ...(innerConfig ? { config: innerConfig } : {}),
       ...(this.ephemeral ? { ephemeral: true } : {}),
@@ -5253,10 +5285,38 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (this.deps.customCodexConfig) {
       Object.assign(innerConfig, this.deps.customCodexConfig);
     }
+    if (this.hasWorkflowModeOverride) {
+      const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
+      const { approvalPolicy, sandbox } = this.resolveWorkflowPolicy(preset);
+      if (innerConfig.approval_policy !== undefined) innerConfig.approval_policy = approvalPolicy;
+      if (innerConfig.sandbox_mode !== undefined) innerConfig.sandbox_mode = sandbox;
+    }
     if (this.config.mcpServers) {
       const mcpServers: Record<string, CodexMcpServerConfig> = {};
       for (const [name, serverConfig] of Object.entries(this.config.mcpServers)) {
         mcpServers[name] = toCodexMcpConfig(serverConfig);
+        if (name === "otto") {
+          const readTools = internalOttoReadToolNames(this.config);
+          if (readTools.length > 0) {
+            mcpServers[name].tools = Object.fromEntries(
+              readTools.map((tool) => [tool, { approval_mode: "approve" as const }]),
+            );
+          }
+        }
+        if (
+          this.hasWorkflowModeOverride &&
+          name === "otto" &&
+          isInternalOttoMcpServer(serverConfig)
+        ) {
+          // Codex MCP tool approvals are independent of shell approval_policy.
+          // Send the normal policy again when leaving Full Access so the grant
+          // cannot survive a mode switch. Exact tool policies are applied below.
+          mcpServers[name].default_tools_approval_mode =
+            this.currentMode === "full-access" ? "approve" : "auto";
+          if (this.config.toolPolicy) {
+            mcpServers[name].default_tools_approval_mode = "prompt";
+          }
+        }
       }
       innerConfig.mcp_servers = mcpServers;
     }

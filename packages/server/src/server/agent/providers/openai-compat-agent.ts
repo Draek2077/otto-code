@@ -83,7 +83,7 @@ import {
 } from "./openai-compat-mcp.js";
 import { getConnectorAuthStore } from "../../connectors/connector-auth-store.js";
 import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
-import { ottoToolPermissionKind } from "./openai-compat-otto-tool-permissions.js";
+import { ottoToolPermissionKind } from "../tools/otto-tool-permissions.js";
 import { PreviewStartGate, type PreviewStartCheck } from "./openai-compat-preview-start-gate.js";
 import type { McpServerConfig } from "../agent-sdk-types.js";
 import type { ManagedProcessRegistry } from "../../managed-processes/managed-processes.js";
@@ -4017,7 +4017,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
    * instead of prompting). CLI providers get this gating from their own
    * permission system in front of the MCP client - here the daemon is the
    * runtime, so it prompts itself.
-   * See openai-compat-otto-tool-permissions.ts.
+   * See tools/otto-tool-permissions.ts.
    */
   private ottoToolNeedsApproval(name: string): boolean {
     const kind = ottoToolPermissionKind(name);

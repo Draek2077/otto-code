@@ -700,9 +700,14 @@ export const ar: TranslationResources = {
   importSession: {
     title: "جلسة الاستيراد",
     filters: {
+      allProjects: "إظهار محادثات جميع المشاريع",
       all: "الجميع",
     },
     status: {
+      originalFolders: "تحتفظ المحادثات بمجلدات العمل الأصلية على هذا المضيف.",
+      limitReached:
+        "يتم عرض ما يصل إلى {{count}} جلسة لكل مزود. استوردها ثم أعد الفتح للعثور على جلسات أقدم.",
+      failedBatch: "تعذر استيراد بعض الجلسات. أعد المحاولة.",
       connectHost: "اتصل بمضيف لاستيراد الجلسات",
       updateHost: "قم بتحديث المضيف لاستيراد الجلسات.",
       noProviders: "لم يتم تمكين أي موفري خدمات قابلين للاستيراد.",
@@ -712,6 +717,11 @@ export const ar: TranslationResources = {
       failedImport: "تعذر استيراد الجلسة المحددة.",
     },
     actions: {
+      selectAll: "تحديد كل المعروض",
+      importSelected: "استيراد المحدد ({{count}})",
+      importingBatch: "جارٍ استيراد {{current}} من {{total}}",
+      loadMore: "تحميل المزيد",
+
       refresh: "تحديث الجلسات",
     },
     preview: {
@@ -2744,6 +2754,11 @@ export const ar: TranslationResources = {
     backdrop: "خلفية القائمة",
   },
   subagents: {
+    controlUnavailable: "حدّث المضيف للتحكم في الوكلاء الفرعيين.",
+    stopParentTitle: "إيقاف جلسة الوكيل الرئيسي؟",
+    stopParentMessage:
+      "لا يمكن لهذا المزود إيقاف هذا الوكيل الفرعي بمفرده. سيؤدي هذا إلى إيقاف جلسة الوكيل الرئيسي وكل أعمالها. سيُحتفظ بسجل المحادثة.",
+    stopParentConfirm: "إيقاف الجلسة",
     title: "الوكلاء الفرعيون",
     pillLabelOne: "وكيل فرعي واحد",
     pillLabelMany: "{{count}} وكلاء فرعيين",

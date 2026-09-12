@@ -1,3 +1,4 @@
+import { controlProviderSubagent } from "./provider-subagent-control";
 import { useCallback } from "react";
 import { useToast } from "@/contexts/toast-context";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
@@ -37,7 +38,10 @@ export function useClearCompletedSubagents(
         { serverId, parentAgentId, rows },
         {
           confirm: confirmDialog,
-          archiveAgent,
+          archiveAgent: ({ serverId: targetServerId, agentId, providerParentAgentId }) =>
+            providerParentAgentId
+              ? controlProviderSubagent(targetServerId, providerParentAgentId, agentId, "archive")
+              : archiveAgent({ serverId: targetServerId, agentId }),
           recordCleared,
           reportError: (error) => {
             toast.error(toErrorMessage(error));

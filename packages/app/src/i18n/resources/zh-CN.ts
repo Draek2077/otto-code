@@ -696,9 +696,13 @@ export const zhCN: TranslationResources = {
   importSession: {
     title: "导入会话",
     filters: {
+      allProjects: "显示所有项目的聊天",
       all: "全部",
     },
     status: {
+      originalFolders: "聊天保留在此主机上的原始工作文件夹中。",
+      limitReached: "每个提供商最多显示 {{count}} 个会话。导入后重新打开可查找更早的会话。",
+      failedBatch: "部分会话无法导入。请重试失败的选项。",
       connectHost: "连接到 Host 以导入会话",
       updateHost: "更新 Host 以导入会话。",
       noProviders: "没有已启用的可导入 Provider。",
@@ -708,6 +712,11 @@ export const zhCN: TranslationResources = {
       failedImport: "无法导入所选会话。",
     },
     actions: {
+      selectAll: "选择所有显示的会话",
+      importSelected: "导入所选 ({{count}})",
+      importingBatch: "正在导入 {{current}} / {{total}}",
+      loadMore: "加载更多",
+
       refresh: "刷新会话",
     },
     preview: {
@@ -2714,6 +2723,11 @@ export const zhCN: TranslationResources = {
     backdrop: "菜单背景",
   },
   subagents: {
+    controlUnavailable: "更新主机以控制子代理。",
+    stopParentTitle: "停止父代理会话？",
+    stopParentMessage:
+      "此提供商无法单独停止此子代理。这将停止父代理会话及其所有工作。聊天记录会保留。",
+    stopParentConfirm: "停止会话",
     title: "Subagent",
     pillLabelOne: "1 个 subagent",
     pillLabelMany: "{{count}} 个 subagent",

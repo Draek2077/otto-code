@@ -42,6 +42,26 @@ function row(overrides: Partial<OttoSubagentRow> & Pick<OttoSubagentRow, "id">):
 }
 
 describe("buildSubagentPillPresentation", () => {
+  it("tidies completed and canceled provider children without hiding running or failed work", () => {
+    const child: ProviderSubagentRow = {
+      kind: "provider",
+      id: "child",
+      parentAgentId: "parent",
+      provider: "codex",
+      title: "Noop",
+      description: null,
+      subtitle: null,
+      status: "completed",
+      requiresAttention: false,
+      createdAt: new Date(),
+    };
+    expect(isSubagentRowTidyEligible(child)).toBe(true);
+    expect(isSubagentRowTidyEligible({ ...child, status: "canceled" })).toBe(true);
+    expect(isSubagentRowTidyEligible({ ...child, status: "running" })).toBe(false);
+    expect(isSubagentRowTidyEligible({ ...child, status: "failed", requiresAttention: true })).toBe(
+      false,
+    );
+  });
   beforeAll(async () => {
     if (!i18n.isInitialized) {
       await i18n.init();

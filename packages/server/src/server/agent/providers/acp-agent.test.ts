@@ -1287,37 +1287,40 @@ describe("ACPAgentSession Zed parity", () => {
     });
   });
 
-  test("auto-accepts ACP permission requests when the shared feature is enabled", async () => {
-    const session = createSessionWithConfig({
-      provider: "cursor-acp",
-      featureValues: { auto_accept: true },
-    });
-    const events: Array<{ type: string }> = [];
+  test.each(["Edit file", "mcp__otto__list_workspaces", "mcp__otto__archive_workspace"])(
+    "auto-accepts ACP permission requests for %s when the shared feature is enabled",
+    async (title) => {
+      const session = createSessionWithConfig({
+        provider: "cursor-acp",
+        featureValues: { auto_accept: true },
+      });
+      const events: Array<{ type: string }> = [];
 
-    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
-    session.subscribe((event) => events.push(event as { type: string }));
+      asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+      session.subscribe((event) => events.push(event as { type: string }));
 
-    await expect(
-      session.requestPermission({
-        sessionId: "session-1",
-        toolCall: {
-          toolCallId: "tool-1",
-          title: "Edit file",
-          kind: "edit",
-          status: "pending",
-        },
-        options: [
-          { optionId: "allow-once", name: "Allow", kind: "allow_once" },
-          { optionId: "allow-always", name: "Always allow", kind: "allow_always" },
-          { optionId: "reject-once", name: "Reject", kind: "reject_once" },
-        ],
-      } satisfies RequestPermissionRequest),
-    ).resolves.toEqual({
-      outcome: { outcome: "selected", optionId: "allow-once" },
-    });
-    expect(events).not.toContainEqual(expect.objectContaining({ type: "permission_requested" }));
-    expect(session.getPendingPermissions()).toEqual([]);
-  });
+      await expect(
+        session.requestPermission({
+          sessionId: "session-1",
+          toolCall: {
+            toolCallId: "tool-1",
+            title,
+            kind: "edit",
+            status: "pending",
+          },
+          options: [
+            { optionId: "allow-once", name: "Allow", kind: "allow_once" },
+            { optionId: "allow-always", name: "Always allow", kind: "allow_always" },
+            { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+          ],
+        } satisfies RequestPermissionRequest),
+      ).resolves.toEqual({
+        outcome: { outcome: "selected", optionId: "allow-once" },
+      });
+      expect(events).not.toContainEqual(expect.objectContaining({ type: "permission_requested" }));
+      expect(session.getPendingPermissions()).toEqual([]);
+    },
+  );
 
   test("does not auto-accept ACP chooser requests", async () => {
     const session = createSessionWithConfig({
@@ -1515,6 +1518,9 @@ describe("ACPAgentSession Zed parity", () => {
       sessionId: "session-1",
       modeId: "https://agentclientprotocol.com/protocol/session-modes#agent",
     });
+    expect(setSessionConfigOption.mock.invocationCallOrder[0]).toBeLessThan(
+      setSessionMode.mock.invocationCallOrder[0],
+    );
   });
 
   test("trusts Copilot allow_all config updates as the current mode source", async () => {

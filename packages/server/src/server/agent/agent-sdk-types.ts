@@ -1042,6 +1042,8 @@ export interface AgentSession {
    * subagents. See projects/observed-subagents/observed-subagents.md.
    */
   stopTask?(taskId: string): Promise<void>;
+  /** Stop one provider-descriptor child without interrupting its parent. */
+  stopProviderSubagent?(subagentId: string): Promise<void>;
   close(): Promise<void>;
   listCommands?(): Promise<AgentSlashCommand[]>;
   /**

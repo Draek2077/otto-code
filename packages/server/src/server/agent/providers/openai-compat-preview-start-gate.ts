@@ -10,7 +10,7 @@ import {
 
 /**
  * Session-scoped guard behind preview_start's "interact" classification
- * (openai-compat-otto-tool-permissions.ts).
+ * (tools/otto-tool-permissions.ts).
  *
  * "Dev servers run pre-authored launch.json commands" justifies auto-approving
  * preview_start in acceptEdits only while the config actually is pre-authored.

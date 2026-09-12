@@ -283,6 +283,22 @@ describe("BrowserKeyboard", () => {
     ]);
   });
 
+  test("routes Find from the focused guest to its own browser tab", () => {
+    const { attach } = createBrowserKeyboard();
+    const guest = new FakeBrowserContents(181);
+    const host = new FakeBrowserContents(182);
+    attach({ browserId: "find-browser", contents: guest, hostContents: host });
+    const command = process.platform === "darwin" ? { meta: true } : { control: true };
+    expect(guest.input(electronInput({ ...command, code: "KeyF", key: "f" }))).toBe(true);
+    expect(host.sent).toEqual([
+      {
+        channel: "otto:event:browser-shortcut",
+        payload: { action: "find", browserId: "find-browser" },
+      },
+    ]);
+    expect(guest.input(electronInput({ code: "KeyF", key: "f" }))).toBe(false);
+  });
+
   test("owns browser chrome shortcuts and leaves customizable shortcuts to policy", () => {
     const { attach } = createBrowserKeyboard();
     const guest = new FakeBrowserContents(81);

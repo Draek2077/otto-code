@@ -37,6 +37,58 @@ Each provider definition owns its option schema and exact MCP preapproval mappin
 must fail closed for Hub unattended execution until it can approve one exact injected MCP server
 and tool identity without approving native tools.
 
+For Codex, an explicitly selected permission mode takes precedence over native `approval_policy`
+and `sandbox_mode` options and saved session overrides. The adapter applies the same policy at
+thread start, thread resume, and turn start. With no selected mode, Codex's native configuration
+remains authoritative. A declared workspace-access ceiling can still narrow the selected sandbox.
+Full Access also sets `default_tools_approval_mode: "approve"` on the internal Otto MCP server;
+Codex controls MCP tool approvals separately from command approvals. Leaving Full Access restores
+the internal server's `auto` policy. External MCP servers and explicit tool allowlists keep their
+own policies. Switching modes during an active turn takes effect on the next turn, as the mode
+change notice states; it does not approve requests already pending in that turn.
+
+## Otto tool permissions across providers
+
+Tool availability and approval are separate controls. The shared catalog withholds tools outside
+the chat's tool groups, orchestration policy, or workspace access. A permission mode never restores
+a withheld tool. `tools/otto-tool-permissions.ts` owns the classification of Otto tools; unknown
+tools require execution approval. Observation tools include workspace listing, Knowledge reads,
+chat status, and browser observation. UI-only exemptions such as suggested-task cards are kept
+separate from the MCP read-only annotation.
+
+The MCP adapter publishes the shared `readOnlyHint`. Claude, Codex, and OpenCode also receive exact
+read-tool grants for the internal `otto` connection, filtered by workspace access and any explicit
+tool policy. These are approval rules, not a replacement tool allowlist: other enabled Otto tools
+remain available and follow the selected mode. Grants are rebuilt at provider launch or turn
+construction and never applied to unrelated MCP servers. Provider deny rules, explicit policy
+restrictions, and genuine user-input requests remain independent. Claude applies its selected
+permission mode after legacy SDK option overlays, so stale `extra.claude.permissionMode` or bypass
+launch settings cannot silently replace the mode shown in Otto.
+
+An explicit tool policy disables OpenCode Auto Accept. Its reported feature state reflects that
+restriction, and attempts to enable it return an error instead of bypassing the policy.
+
+| Provider                  | Internal Otto read approval                                  | No ordinary approval prompts                                                            |
+| ------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Claude                    | Exact SDK `allowedTools` grants, including in Auto           | Bypass uses `bypassPermissions`; Auto still reviews unapproved actions                  |
+| Codex                     | Exact `tools.<name>.approval_mode` grants                    | Full Access sets command/sandbox policy and the internal MCP server policy              |
+| OpenCode                  | Exact native permission rules; authored rules follow them    | Auto Accept answers tool approval requests, not questions                               |
+| OpenAI-compatible / Brain | Shared classification in the daemon-owned tool loop          | Bypass skips the loop's tool approval prompts                                           |
+| Copilot                   | MCP read-only metadata; fine-grained decisions remain native | Allow All sets native ACP `allow_all`; leaving the mode turns it off first              |
+| Other ACP providers       | MCP read-only metadata; no portable exact-tool approval API  | The shared Auto Accept feature answers ordinary approval options, not chooser questions |
+| Pi                        | MCP read-only metadata; extension-owned approval behavior    | Pi exposes no selectable permission modes; Otto rejects attempts to set one             |
+| OMP                       | Native host-tool runtime owns approval                       | Full Access launches `--approval-mode yolo`; changing mode requires a new session       |
+
+Read-only metadata is advisory. For providers without exact-tool preapproval, it does not prove
+that every runtime or extension will omit a read approval prompt. Do not infer trusted tool
+identity from an ACP tool title to work around that limitation. Likewise, `isUnattended` does not
+mean unrestricted access: Don't Ask denies unapproved work, whereas Bypass executes it. See
+[safe-unattended.md](safe-unattended.md) for the existing unattended policies.
+
+Provider adapter tests verify these mappings and the shared tool classifications without invoking
+paid models. They do not establish behavior in every installed provider version; live provider
+verification must distinguish adapter configuration from actual runtime execution.
+
 ## Two Integration Patterns
 
 ### ACP (Agent Client Protocol) -- recommended
@@ -60,6 +112,12 @@ Claude first-party model metadata lives in `packages/server/src/server/agent/pro
 Otto tools are not implemented as MCP tools internally. They live in a shared tool catalog under `packages/server/src/server/agent/tools/`; MCP is only the fallback adapter. A provider that can register runtime tools directly should set `supportsNativeOttoTools: true` and consume `launchContext.ottoTools` in `createSession`/`resumeSession`. When native tools are present, `AgentManager` strips the internal Otto MCP server from the provider launch config so the provider does not receive the same tools twice. Providers that only know MCP should keep `supportsMcpServers: true` and let the daemon inject `/mcp/agents`.
 
 ## Instruction files: `ownsContextPayload`
+
+Claude and Codex chats list `/init` as a command and pass the submitted text and arguments
+unchanged to their provider. Claude receives it through the SDK input stream; Codex receives it as
+text in `turn/start`, without the `$skill` rewrite used for skill commands. Otto does not substitute
+its own initialization prompt or write the instruction file. Codex app-server text submission does
+not establish that the Codex TUI's command handler ran; the provider owns the resulting behavior.
 
 Set `ownsContextPayload: true` only when Otto composes the whole request in-process, as the OpenAI-compatible family does. It means two things, and both are wrong if you set the flag without the behaviour behind it.
 
@@ -102,6 +160,20 @@ Provider adapters must terminalize every transient timeline row before emitting 
 Draft metadata lookups should avoid creating provider sessions when the upstream provider has top-level APIs for that metadata. Prefer `AgentClient.fetchCatalog`, `listCommands`, or `listFeatures` over creating a scratch `AgentSession`; scratch sessions can show up as empty native sessions in provider import/history UIs. `fetchCatalog` is the single discovery API for models and modes: provider implementations may use one process, separate upstream calls, or static data internally, but callers outside the provider do not get separate runtime model/mode probes. Draft command listing and scratch-session feature listing require an explicit draft model. Do not resolve a default model through catalog discovery. A client-level `listFeatures` implementation may return features from an incomplete, model-less draft and owns which features are valid in that state.
 
 Provider session import has its own contract. The picker calls `listImportableSessions` and receives rows only: provider handle, cwd, title, prompt previews, and last activity. Import calls `importSession({ providerHandleId, cwd })` for the selected row and must not call listing again. The provider returns the resumed session, storage config, persistence handle, and hydrated timeline for that one native session; `AgentManager.importProviderSession` seeds the daemon timeline and publishes the Otto agent only after it is ready.
+
+The Import session picker defaults to the current workspace. **Show chats from all projects**
+removes that working-directory filter on the selected host; the home-screen picker already uses
+that scope. Rows show original working folders when browsing across projects. Selection is
+explicit: rows toggle checkmarks, **Select all shown** selects the visible provider-filtered list,
+and **Import selected** imports that selection sequentially. Scope and provider changes clear the
+selection. **Load more** expands the recent list, up to 200 entries per provider in one view.
+
+A session from another working folder is imported into a workspace for that folder. Import
+registers the existing provider session and reads its history; it does not relocate provider
+transcript files or copy project files. Same-workspace imports preserve the requesting workspace.
+The picker shows batch progress, prevents duplicate submissions, hides successful rows, and keeps
+failed selections with their error messages for retry. It closes and opens the last imported chat
+only after all selected imports succeed.
 
 ### Otto Brain (the daemon's own local host)
 

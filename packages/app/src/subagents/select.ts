@@ -210,6 +210,7 @@ export function selectProviderSubagentsForParent(
   for (const [key, subagent] of state.descriptors) {
     if (
       !key.startsWith(prefix) ||
+      subagent.archivedAt ||
       state.hiddenFromTrack.has(key) ||
       shadowedIds.has(subagent.id) ||
       (subagent.toolCallId !== null && shadowedIds.has(subagent.toolCallId))

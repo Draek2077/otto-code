@@ -29,13 +29,18 @@ export function resolveClearCompletedDialog(count: number): ConfirmDialogInput {
  * tally can preserve both the token total and the real cost.
  */
 export interface ClearableSubagentRow {
+  providerParentAgentId?: string;
   id: string;
   cumulativeTokens?: number;
   cumulativeUsage?: { costUsd?: number };
 }
 
 export interface ClearCompletedSubagentsDeps {
-  archiveAgent: (input: { serverId: string; agentId: string }) => Promise<void>;
+  archiveAgent: (input: {
+    serverId: string;
+    agentId: string;
+    providerParentAgentId?: string;
+  }) => Promise<void>;
   // Rolls a cleared row's tokens into the parent tally so the track header total
   // survives the archive. See cleared-subagent-tokens-store.ts.
   recordCleared: (input: RecordClearedInput) => void;
@@ -62,7 +67,13 @@ export async function clearCompletedSubagents(
   await Promise.all(
     input.rows.map(async (row) => {
       try {
-        await deps.archiveAgent({ serverId: input.serverId, agentId: row.id });
+        await deps.archiveAgent({
+          serverId: input.serverId,
+          agentId: row.id,
+          ...(row.providerParentAgentId
+            ? { providerParentAgentId: row.providerParentAgentId }
+            : {}),
+        });
         deps.recordCleared({
           serverId: input.serverId,
           parentAgentId: input.parentAgentId,

@@ -17,12 +17,28 @@ import {
 
 Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
 
+const browserTest = vi.hoisted(() => ({
+  shortcut: null as null | ((payload: unknown) => void),
+  search: vi.fn(async () => [] as { url: string; title: string; visitedAt: string }[]),
+  record: vi.fn(async () => {}),
+  external: vi.fn(async () => {}),
+}));
+
 // Only the surrounding app services and Electron methods are substituted.
 // The pane, resident lifecycle, store, descriptor, toolbar and tab icon are real.
 vi.mock("@/desktop/host", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/desktop/host")>()),
   isElectronRuntime: () => true,
   getDesktopHost: () => ({
+    events: {
+      on: (_event: string, handler: (payload: unknown) => void) => {
+        browserTest.shortcut = handler;
+        return () => {
+          browserTest.shortcut = null;
+        };
+      },
+    },
+    opener: { openUrl: browserTest.external },
     browser: {
       profilePartition: "persist:otto-browser-test",
       registerAttachedBrowser: async () => {},
@@ -33,7 +49,19 @@ vi.mock("@/hooks/use-settings", () => ({ useAppSettings: () => ({ settings: {} }
 vi.mock("@/components/retained-panel", () => ({ useRetainedPanelActive: () => true }));
 vi.mock("@/contexts/toast-context", () => ({ useToast: () => ({ toast: () => {} }) }));
 vi.mock("@/stores/session-store", () => ({
-  useSessionStore: { getState: () => ({ sessions: {} }) },
+  useSessionStore: {
+    getState: () => ({
+      sessions: {
+        host: {
+          serverInfo: { features: { browserHistory: true } },
+          client: {
+            searchBrowserHistory: browserTest.search,
+            recordBrowserHistory: browserTest.record,
+          },
+        },
+      },
+    }),
+  },
 }));
 vi.mock("@/stores/session-store-hooks", () => ({ useWorkspaceDirectory: () => null }));
 vi.mock("@/attachments/workspace-attachments-store", () => {
@@ -63,7 +91,13 @@ let guest: Guest;
 const reloadLabel = "workspace.browser.controls.refresh";
 const stopLabel = "workspace.browser.controls.stopLoading";
 
-function BrowserTab({ pane = true }: { pane?: boolean }) {
+function BrowserTab({
+  pane = true,
+  interactive = false,
+}: {
+  pane?: boolean;
+  interactive?: boolean;
+}) {
   const descriptor = browserPanelRegistration.useDescriptor(
     { kind: "browser", browserId },
     { serverId: "host", workspaceId: "workspace", tabId: "tab" },
@@ -84,7 +118,13 @@ function BrowserTab({ pane = true }: { pane?: boolean }) {
         <WorkspaceTabIcon presentation={presentation} />
       </div>
       {pane && (
-        <BrowserPane browserId={browserId} serverId="host" workspaceId="workspace" cwd={null} />
+        <BrowserPane
+          isInteractive={interactive}
+          browserId={browserId}
+          serverId="host"
+          workspaceId="workspace"
+          cwd={null}
+        />
       )}
     </>
   );
@@ -118,6 +158,9 @@ function navigateTo(url: string) {
 }
 
 beforeEach(async () => {
+  browserTest.search.mockReset();
+  browserTest.search.mockResolvedValue([]);
+  browserTest.external.mockClear();
   await useBrowserStore.persist.rehydrate();
   useBrowserStore.setState({ browsersById: {} });
   browserId = useBrowserStore.getState().createBrowser({ initialUrl: "https://example.com" });
@@ -346,4 +389,154 @@ describe("browser loading controls", () => {
     expectLoading(true);
     expect(guest.reload).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("browser usability", () => {
+  it("opens find from a guest shortcut only for the addressed tab and restores input focus", async () => {
+    act(() => root.render(<BrowserTab />));
+    act(() => browserTest.shortcut?.({ action: "find", browserId: "another-tab" }));
+    expect(container.querySelector('[data-testid="browser-find-bar"]')).toBeNull();
+    act(() => browserTest.shortcut?.({ action: "find", browserId }));
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Find in page"]')!;
+    expect(document.activeElement).toBe(input);
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(container.querySelector('[data-testid="browser-find-bar"]')).toBeNull();
+  });
+
+  it("opens find with Ctrl+F from the browser chrome", () => {
+    act(() => root.render(<BrowserTab interactive />));
+    act(() =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "f", code: "KeyF", ctrlKey: true, bubbles: true }),
+      ),
+    );
+    expect(container.querySelector('[data-testid="browser-find-bar"]')).not.toBeNull();
+  });
+
+  it("puts external browsing and find in More", async () => {
+    act(() => root.render(<BrowserTab />));
+    expect(button("workspace.browser.controls.openDevTools")).toBeNull();
+    act(() => container.querySelector<HTMLElement>('[aria-label="More browser tools"]')!.click());
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-menu-item="true"]')).not.toBeNull(),
+    );
+    const external = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-menu-item="true"]'),
+    ).find((item) => item.textContent?.includes("Open in external browser"))!;
+    act(() => external.click());
+    await vi.waitFor(() =>
+      expect(browserTest.external).toHaveBeenCalledWith("https://example.com"),
+    );
+  });
+
+  it("offers history without selecting it until arrows are used", async () => {
+    browserTest.search.mockResolvedValue([
+      { url: "https://example.com/docs", title: "Docs", visitedAt: "today" },
+    ]);
+    guest.dispatchEvent(new Event("dom-ready"));
+    act(() => root.render(<BrowserTab />));
+    const input = container.querySelector<HTMLInputElement>(
+      'input[aria-label="workspace.browser.controls.browserUrl"]',
+    )!;
+    act(() => input.focus());
+    await vi.waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull());
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+    act(() =>
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),
+    );
+    expect(input.getAttribute("aria-activedescendant")).not.toBeNull();
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(guest.loadURL).toHaveBeenCalledWith("https://example.com/docs");
+    expect(document.querySelector('[role="option"]')).toBeNull();
+  });
+});
+
+it("keeps typed navigation optional, dismisses suggestions, and leaves no empty popup", async () => {
+  browserTest.search.mockResolvedValue([
+    { url: "https://example.com/suggested", title: "Suggestion", visitedAt: "today" },
+  ]);
+  guest.dispatchEvent(new Event("dom-ready"));
+  act(() => root.render(<BrowserTab />));
+  const input = container.querySelector<HTMLInputElement>(
+    'input[aria-label="workspace.browser.controls.browserUrl"]',
+  )!;
+  act(() => input.focus());
+  await vi.waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull());
+  act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  expect(guest.loadURL).toHaveBeenCalledWith("https://example.com");
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  act(() => {
+    input.blur();
+    input.focus();
+  });
+  await vi.waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull());
+  act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  browserTest.search.mockResolvedValue([]);
+  act(() => {
+    input.blur();
+    input.focus();
+  });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+});
+
+it("keeps search focused after selecting it from More", async () => {
+  act(() => root.render(<BrowserTab />));
+  act(() => container.querySelector<HTMLElement>('[aria-label="More browser tools"]')!.click());
+  await vi.waitFor(() => expect(document.querySelector('[data-menu-item="true"]')).not.toBeNull());
+  const find = Array.from(document.querySelectorAll<HTMLElement>('[data-menu-item="true"]')).find(
+    (item) => item.textContent?.includes("Find in page"),
+  )!;
+  act(() => find.click());
+  await vi.waitFor(() =>
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Find in page"),
+  );
+});
+
+it("records completed background visits on their host with the document title", async () => {
+  browserTest.record.mockClear();
+  const backgroundId = useBrowserStore
+    .getState()
+    .createBrowser({ initialUrl: "https://example.com" });
+  const background = ensureResidentBrowserWebview({
+    browserId: backgroundId,
+    workspaceId: "workspace",
+    serverId: "host",
+    url: "https://example.com",
+  })!;
+  Object.assign(background, { getTitle: () => "Loaded documentation" });
+  background.dispatchEvent(
+    Object.assign(new Event("did-navigate"), { url: "https://example.com/docs" }),
+  );
+  expect(browserTest.record).not.toHaveBeenCalled();
+  background.dispatchEvent(new Event("dom-ready"));
+  expect(browserTest.record).toHaveBeenCalledWith(
+    "workspace",
+    "https://example.com/docs",
+    "Loaded documentation",
+  );
+  background.dispatchEvent(
+    Object.assign(new Event("did-navigate-in-page"), {
+      url: "https://example.com/iframe",
+      isMainFrame: false,
+    }),
+  );
+  expect(browserTest.record).toHaveBeenCalledTimes(1);
+});
+
+it("keeps the blue find bar within a narrow pane and closes from its controls", async () => {
+  container.style.cssText =
+    "position:fixed;left:0;top:0;width:360px;height:400px;display:flex;flex-direction:column";
+  act(() => root.render(<BrowserTab />));
+  act(() => browserTest.shortcut?.({ action: "find", browserId }));
+  const bar = container.querySelector<HTMLElement>('[data-testid="browser-find-bar"]')!;
+  const close = container.querySelector<HTMLElement>('[aria-label="Close find in page"]')!;
+  await vi.waitFor(() => expect(bar.getBoundingClientRect().width).toBeGreaterThan(0));
+  expect(bar.scrollWidth).toBeLessThanOrEqual(360);
+  expect(close.getBoundingClientRect().right).toBeLessThanOrEqual(360);
+  expect(getComputedStyle(bar).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+  act(() => close.focus());
+  act(() => close.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(container.querySelector('[data-testid="browser-find-bar"]')).toBeNull();
 });

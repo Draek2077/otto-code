@@ -1,3 +1,5 @@
+import { BrowserFindBar } from "./find-bar.electron";
+import { BrowserHistorySuggestions } from "./history-suggestions.electron";
 import {
   useCallback,
   useEffect,
@@ -24,10 +26,13 @@ import {
   Square,
   Tablet,
   Wrench,
+  MoreHorizontal,
+  Search,
+  ExternalLink,
   X,
   type IconComponent,
 } from "@/components/icons/material-icons";
-import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import * as Clipboard from "expo-clipboard";
 import { Button } from "@/components/ui/button";
@@ -466,7 +471,7 @@ function getTextInputNativeElement(current: WebTextInput | null): HTMLInputEleme
   return native instanceof HTMLInputElement ? native : null;
 }
 
-function isBrowserShortcutKey(event: KeyboardEvent, key: "l" | "r"): boolean {
+function isBrowserShortcutKey(event: KeyboardEvent, key: "l" | "r" | "f"): boolean {
   if (event.altKey || event.shiftKey) {
     return false;
   }
@@ -482,7 +487,7 @@ function isDesktopBrowserShortcutEvent(payload: unknown): payload is DesktopBrow
     return false;
   }
   const event = payload as Partial<DesktopBrowserShortcutEvent>;
-  return event.action === "focus-url";
+  return event.action === "focus-url" || event.action === "find";
 }
 
 function startSelectorResultPolling(input: {
@@ -559,6 +564,20 @@ function ToolbarButton({
 
 // Lucide icons themed via withUnistyles so their color stays theme-reactive
 // without a banned useUnistyles() call.
+const ThemedArrowLeft = withUnistyles(ArrowLeft);
+const ThemedArrowRight = withUnistyles(ArrowRight);
+const ThemedSquare = withUnistyles(Square);
+const ThemedRotateCw = withUnistyles(RotateCw);
+const ThemedMoreHorizontal = withUnistyles(MoreHorizontal);
+const ThemedExternalLink = withUnistyles(ExternalLink);
+const ThemedSearch = withUnistyles(Search);
+const ThemedWrench = withUnistyles(Wrench);
+const ThemedMousePointer2 = withUnistyles(MousePointer2);
+const ThemedCamera = withUnistyles(Camera);
+const ThemedAlertTriangle = withUnistyles(AlertTriangle);
+const dangerIconMapping = (theme: { colors: { statusDanger: string } }) => ({
+  color: theme.colors.statusDanger,
+});
 const ThemedDevices = withUnistyles(Devices);
 const ThemedSmartphone = withUnistyles(Smartphone);
 const ThemedTablet = withUnistyles(Tablet);
@@ -698,7 +717,6 @@ function BrowserPaneContents({
   isInteractive,
   onFocusPane,
 }: BrowserPaneProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const browser = useBrowserStore((state) => state.browsersById[browserId] ?? null);
   const updateBrowser = useBrowserStore((state) => state.updateBrowser);
@@ -713,6 +731,16 @@ function BrowserPaneContents({
   const webviewHostRef = useRef<HTMLDivElement | null>(null);
   const webviewClipRef = useRef<HTMLElement | null>(null);
   const urlInputRef = useRef<WebTextInput | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findFocusRequest, setFindFocusRequest] = useState(0);
+  const openFind = useCallback(() => {
+    setFindOpen(true);
+    setFindFocusRequest((value) => value + 1);
+  }, []);
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    webviewRef.current?.focus?.();
+  }, []);
   // A preview tab that isn't confirmed "ready" has no real page to show yet -
   // point the webview at about:blank rather than navigating to a stale/default
   // URL, so no ERR_CONNECTION_REFUSED can surface before the server is known-up.
@@ -748,36 +776,6 @@ function BrowserPaneContents({
   const workspaceAttachments = useWorkspaceAttachments(workspaceAttachmentScopeKey ?? "");
   const setWorkspaceAttachments = useWorkspaceAttachmentsStore(
     (state) => state.setWorkspaceAttachments,
-  );
-  const titleStyle = useMemo(
-    () => [styles.unavailableTitle, { color: theme.colors.foreground }],
-    [theme.colors.foreground],
-  );
-  const subtitleStyle = useMemo(
-    () => [styles.unavailableSubtitle, { color: theme.colors.foregroundMuted }],
-    [theme.colors.foregroundMuted],
-  );
-  const urlInputStyle = useMemo(
-    () => [
-      styles.urlInput,
-      {
-        color: theme.colors.foreground,
-        outlineStyle: "none",
-      } as object,
-    ],
-    [theme.colors.foreground],
-  );
-  const previewOverlayTitleStyle = useMemo(
-    () => [styles.previewOverlayTitle, { color: theme.colors.foreground }],
-    [theme.colors.foreground],
-  );
-  const previewOverlayHintStyle = useMemo(
-    () => [styles.previewOverlayHint, { color: theme.colors.foregroundMuted }],
-    [theme.colors.foregroundMuted],
-  );
-  const previewOverlayErrorStyle = useMemo(
-    () => [styles.previewOverlayHint, { color: theme.colors.palette.red[500] }],
-    [theme.colors.palette.red],
   );
   const browserErrorLabels = useMemo(
     () => ({
@@ -951,6 +949,7 @@ function BrowserPaneContents({
     webviewRef.current = webview;
     if (!residentWebview) {
       prepareBrowserWebview(webview, {
+        serverId,
         browserId,
         workspaceId,
         initialUrl: initialUnsafeNavigationMessage ? "about:blank" : initialUrlRef.current,
@@ -1250,6 +1249,12 @@ function BrowserPaneContents({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isBrowserShortcutKey(event, "f")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openFind();
+        return;
+      }
       if (isBrowserShortcutKey(event, "l")) {
         event.preventDefault();
         event.stopPropagation();
@@ -1269,7 +1274,7 @@ function BrowserPaneContents({
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [focusUrlBar, handleRefresh, isInteractive]);
+  }, [focusUrlBar, handleRefresh, isInteractive, openFind]);
 
   useEffect(() => {
     if (!isElectronRuntime()) {
@@ -1283,13 +1288,15 @@ function BrowserPaneContents({
         if (payload.browserId !== browserIdRef.current) {
           return;
         }
-        focusUrlBar();
+        if (payload.action === "find") openFind();
+        else focusUrlBar();
         return;
       }
       if (!isInteractive) {
         return;
       }
-      focusUrlBar();
+      if (payload.action === "find") openFind();
+      else focusUrlBar();
     });
 
     if (typeof unsubscribe === "function") {
@@ -1298,7 +1305,7 @@ function BrowserPaneContents({
     return () => {
       void unsubscribe?.then((dispose) => dispose());
     };
-  }, [focusUrlBar, isInteractive]);
+  }, [focusUrlBar, isInteractive, openFind]);
 
   const handleNavigateDraftUrl = useCallback(() => {
     navigate(draftUrl);
@@ -1785,6 +1792,27 @@ function BrowserPaneContents({
       });
   }, []);
 
+  const menuIcons = useMemo(
+    () => ({
+      external: <ThemedExternalLink size={16} uniProps={deviceMutedIconMapping} />,
+      search: <ThemedSearch size={16} uniProps={deviceMutedIconMapping} />,
+      devTools: <ThemedWrench size={16} uniProps={deviceMutedIconMapping} />,
+      annotate: <ThemedMousePointer2 size={16} uniProps={deviceMutedIconMapping} />,
+      screenshot: <ThemedCamera size={16} uniProps={deviceMutedIconMapping} />,
+    }),
+    [],
+  );
+  const openExternal = useCallback(async () => {
+    const url = useBrowserStore.getState().browsersById[browserId]?.url;
+    const open = getDesktopHost()?.opener?.openUrl;
+    if (!url || !/^https?:\/\//i.test(url) || !open) return;
+    try {
+      await open(url);
+    } catch {
+      toast.error("Could not open the external browser.");
+    }
+  }, [browserId, toast]);
+
   const baseIconButtonStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
       styles.iconButton,
@@ -1816,23 +1844,6 @@ function BrowserPaneContents({
     ],
     [browser?.canGoForward],
   );
-  const annotateIconButtonStyle = useCallback(
-    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      selectorMode === "annotate" && styles.selectorActiveButton,
-      (hovered || pressed) && styles.iconButtonHovered,
-    ],
-    [selectorMode],
-  );
-  const screenshotIconButtonStyle = useCallback(
-    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      selectorMode === "screenshot" && styles.selectorActiveButton,
-      (hovered || pressed) && styles.iconButtonHovered,
-    ],
-    [selectorMode],
-  );
-
   const selectedDeviceSizeId = useMemo(
     () => deviceSizeIdForViewport(browserViewport),
     [browserViewport],
@@ -1863,7 +1874,6 @@ function BrowserPaneContents({
             width: "100%",
             height: "100%",
             minHeight: 0,
-            background: theme.colors.surface0,
           }
         : {
             // Fixed-size device frame, centered within webviewWrap (see styles).
@@ -1871,10 +1881,9 @@ function BrowserPaneContents({
             width: browserViewport.width,
             height: browserViewport.height,
             minHeight: 0,
-            background: theme.colors.surface0,
             boxShadow: "0 2px 16px rgba(0,0,0,0.25)",
           },
-    [browserViewport, isResponsiveDevice, theme.colors.surface0],
+    [browserViewport, isResponsiveDevice],
   );
 
   const webviewWrapStyle = useMemo(
@@ -1893,8 +1902,10 @@ function BrowserPaneContents({
   if (!isElectronRuntime()) {
     return (
       <View style={styles.unavailableState}>
-        <Text style={titleStyle}>{t("workspace.browser.unavailable.title")}</Text>
-        <Text style={subtitleStyle}>{t("workspace.browser.unavailable.subtitle")}</Text>
+        <Text style={styles.unavailableTitle}>{t("workspace.browser.unavailable.title")}</Text>
+        <Text style={styles.unavailableSubtitle}>
+          {t("workspace.browser.unavailable.subtitle")}
+        </Text>
       </View>
     );
   }
@@ -1909,7 +1920,7 @@ function BrowserPaneContents({
             onPress={handleBack}
             style={backIconButtonStyle}
           >
-            <ArrowLeft size={16} color={theme.colors.foregroundMuted} />
+            <ThemedArrowLeft size={16} uniProps={deviceMutedIconMapping} />
           </ToolbarButton>
           <ToolbarButton
             label={t("workspace.browser.controls.forward")}
@@ -1917,7 +1928,7 @@ function BrowserPaneContents({
             onPress={handleForward}
             style={forwardIconButtonStyle}
           >
-            <ArrowRight size={16} color={theme.colors.foregroundMuted} />
+            <ThemedArrowRight size={16} uniProps={deviceMutedIconMapping} />
           </ToolbarButton>
           <ToolbarButton
             label={
@@ -1929,14 +1940,14 @@ function BrowserPaneContents({
             style={baseIconButtonStyle}
           >
             {browser?.isLoading ? (
-              <Square size={16} color={theme.colors.foregroundMuted} />
+              <ThemedSquare size={16} uniProps={deviceMutedIconMapping} />
             ) : (
-              <RotateCw size={16} color={theme.colors.foregroundMuted} />
+              <ThemedRotateCw size={16} uniProps={deviceMutedIconMapping} />
             )}
           </ToolbarButton>
         </View>
         <View style={styles.urlBarWrap}>
-          <TextInput
+          <ThemedAnnotationInput
             accessibilityLabel={t("workspace.browser.controls.browserUrl")}
             autoCapitalize="none"
             autoCorrect={false}
@@ -1944,9 +1955,9 @@ function BrowserPaneContents({
             onFocus={handleUrlBarFocus}
             onSubmitEditing={handleNavigateDraftUrl}
             placeholder={t("workspace.browser.controls.enterUrl")}
-            placeholderTextColor={theme.colors.foregroundMuted}
+            uniProps={annotationInputMapping}
             ref={urlInputRef}
-            style={urlInputStyle}
+            style={styles.urlInput}
             value={draftUrl}
           />
         </View>
@@ -1956,58 +1967,68 @@ function BrowserPaneContents({
             onSelect={handleSelectDeviceSize}
             triggerStyle={deviceSizeButtonStyle}
           />
-          <ToolbarButton
-            label={t("workspace.browser.controls.openDevTools")}
-            onPress={handleOpenDevTools}
-            style={baseIconButtonStyle}
-          >
-            <Wrench size={16} color={theme.colors.foregroundMuted} />
-          </ToolbarButton>
-          <ToolbarButton
-            label={
-              selectorMode === "annotate"
-                ? t("workspace.browser.controls.cancelSelector")
-                : t("workspace.browser.controls.annotateElement")
-            }
-            active={selectorMode === "annotate"}
-            onPress={handleToggleElementSelector}
-            style={annotateIconButtonStyle}
-          >
-            <MousePointer2
-              size={16}
-              color={
-                selectorMode === "annotate" ? theme.colors.accent : theme.colors.foregroundMuted
-              }
-            />
-          </ToolbarButton>
-          <ToolbarButton
-            label={
-              selectorMode === "screenshot"
-                ? t("workspace.browser.controls.cancelSelector")
-                : t("workspace.browser.controls.screenshotElement")
-            }
-            active={selectorMode === "screenshot"}
-            onPress={handleToggleScreenshot}
-            style={screenshotIconButtonStyle}
-          >
-            <Camera
-              size={16}
-              color={
-                selectorMode === "screenshot" ? theme.colors.accent : theme.colors.foregroundMuted
-              }
-            />
-          </ToolbarButton>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              accessibilityLabel="More browser tools"
+              style={baseIconButtonStyle}
+            >
+              <ThemedMoreHorizontal size={16} uniProps={deviceMutedIconMapping} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="bottom" align="end">
+              <DropdownMenuItem
+                onSelect={openExternal}
+                leading={menuIcons.external}
+                disabled={!/^https?:\/\//i.test(browser?.url ?? "")}
+              >
+                Open in external browser
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={openFind} leading={menuIcons.search}>
+                Find in page
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleOpenDevTools} leading={menuIcons.devTools}>
+                {t("workspace.browser.controls.openDevTools")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={handleToggleElementSelector}
+                selected={selectorMode === "annotate"}
+                showSelectedCheck
+                leading={menuIcons.annotate}
+              >
+                {t("workspace.browser.controls.annotateElement")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={handleToggleScreenshot}
+                selected={selectorMode === "screenshot"}
+                showSelectedCheck
+                leading={menuIcons.screenshot}
+              >
+                {t("workspace.browser.controls.screenshotElement")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </View>
       </View>
+      <BrowserHistorySuggestions
+        serverId={serverId}
+        workspaceId={workspaceId}
+        inputRef={urlInputRef}
+        query={draftUrl}
+        onNavigate={navigate}
+        active={isPresented}
+      />
+      {findOpen && (
+        <BrowserFindBar guestRef={webviewRef} focusRequest={findFocusRequest} onClose={closeFind} />
+      )}
       <View
         ref={setWebviewClipNode}
         style={webviewWrapStyle}
         testID={`browser-webview-clip-${browserId}`}
       >
-        {createElement("div", {
-          ref: setWebviewHostNode,
-          style: webviewHostStyle,
-        })}
+        <ThemedWebviewAnchor
+          hostRef={setWebviewHostNode}
+          style={webviewHostStyle}
+          uniProps={webviewAnchorMapping}
+        />
         {(browser?.isPreview && browser.previewStatus !== "ready") ||
         browser?.lastError ||
         pendingSelection ? (
@@ -2018,18 +2039,21 @@ function BrowserPaneContents({
                   {browser.previewStatus === "starting" ? (
                     <>
                       <LoadingSpinner size="small" />
-                      <Text style={previewOverlayTitleStyle}>
+                      <Text style={styles.previewOverlayTitle}>
                         {t("workspace.browser.preview.starting")}
                       </Text>
                     </>
                   ) : null}
                   {browser.previewStatus === "error" ? (
                     <>
-                      <Text style={previewOverlayTitleStyle}>
+                      <Text style={styles.previewOverlayTitle}>
                         {t("workspace.browser.preview.error.title")}
                       </Text>
                       {browser.lastError ? (
-                        <Text style={previewOverlayErrorStyle} numberOfLines={4}>
+                        <Text
+                          style={[styles.previewOverlayHint, styles.previewOverlayErrorHint]}
+                          numberOfLines={4}
+                        >
                           {browser.lastError}
                         </Text>
                       ) : null}
@@ -2040,10 +2064,10 @@ function BrowserPaneContents({
                   ) : null}
                   {browser.previewStatus === "needs-start" ? (
                     <>
-                      <Text style={previewOverlayTitleStyle}>
+                      <Text style={styles.previewOverlayTitle}>
                         {t("workspace.browser.preview.needsStart.title")}
                       </Text>
-                      <Text style={previewOverlayHintStyle}>
+                      <Text style={styles.previewOverlayHint}>
                         {t("workspace.browser.preview.needsStart.description")}
                       </Text>
                       <Button variant="default" size="sm" onPress={handleStartPreviewPress}>
@@ -2057,9 +2081,11 @@ function BrowserPaneContents({
             {browser?.lastError && !(browser.isPreview && browser.previewStatus === "error") ? (
               <View style={styles.browserErrorOverlay} pointerEvents="auto">
                 <View style={styles.browserErrorCard}>
-                  <AlertTriangle size={28} color={theme.colors.palette.red[500]} />
-                  <Text style={previewOverlayTitleStyle}>{browserErrorLabels.pageUnavailable}</Text>
-                  <Text style={previewOverlayHintStyle}>{browser.lastError}</Text>
+                  <ThemedAlertTriangle size={28} uniProps={dangerIconMapping} />
+                  <Text style={styles.previewOverlayTitle}>
+                    {browserErrorLabels.pageUnavailable}
+                  </Text>
+                  <Text style={styles.previewOverlayHint}>{browser.lastError}</Text>
                   <Button variant="default" size="sm" onPress={handleRefresh}>
                     {t("workspace.browser.controls.refresh")}
                   </Button>
@@ -2163,6 +2189,21 @@ function BrowserElementAnnotationCard({
   );
 }
 
+const ThemedWebviewAnchor = withUnistyles(function WebviewAnchor({
+  hostRef,
+  style,
+  backgroundColor,
+}: {
+  hostRef: (node: HTMLDivElement | null) => void;
+  style: CSSProperties;
+  backgroundColor?: string;
+}) {
+  return createElement("div", { ref: hostRef, style: { ...style, background: backgroundColor } });
+});
+const webviewAnchorMapping = (theme: { colors: { surface0: string } }) => ({
+  backgroundColor: theme.colors.surface0,
+});
+
 const ThemedCloseIcon = withUnistyles(X);
 const ThemedAnnotationInput = withUnistyles(TextInput);
 const iconForegroundMutedMapping = (theme: { colors: { foregroundMuted: string } }) => ({
@@ -2238,6 +2279,8 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
   },
   urlInput: {
+    outlineWidth: 0,
+    color: theme.colors.foreground,
     flex: 1,
     minWidth: 0,
     fontSize: theme.fontSize.sm,
@@ -2299,11 +2342,14 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   previewOverlayTitle: {
+    color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
     fontWeight: "600",
     textAlign: "center",
   },
+  previewOverlayErrorHint: { color: theme.colors.statusDanger },
   previewOverlayHint: {
+    color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     textAlign: "center",
   },
@@ -2379,10 +2425,12 @@ const styles = StyleSheet.create((theme) => ({
     gap: 8,
   },
   unavailableTitle: {
+    color: theme.colors.foreground,
     fontSize: 16,
     fontWeight: "600",
   },
   unavailableSubtitle: {
+    color: theme.colors.foregroundMuted,
     fontSize: 12,
   },
 }));

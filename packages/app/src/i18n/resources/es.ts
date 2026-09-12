@@ -710,9 +710,14 @@ export const es: TranslationResources = {
   importSession: {
     title: "Importar sesión",
     filters: {
+      allProjects: "Mostrar chats de todos los proyectos",
       all: "Todo",
     },
     status: {
+      originalFolders: "Los chats conservan sus carpetas de trabajo originales en este host.",
+      limitReached:
+        "Se muestran hasta {{count}} sesiones por proveedor. Impórtalas y vuelve a abrir para encontrar sesiones anteriores.",
+      failedBatch: "No se pudieron importar algunas sesiones. Reintenta las selecciones fallidas.",
       connectHost: "Conéctese a un host para importar sesiones",
       updateHost: "Actualice el host para importar sesiones.",
       noProviders: "No hay proveedores importables habilitados.",
@@ -722,6 +727,11 @@ export const es: TranslationResources = {
       failedImport: "No se pudo importar la sesión seleccionada.",
     },
     actions: {
+      selectAll: "Seleccionar todas las mostradas",
+      importSelected: "Importar selección ({{count}})",
+      importingBatch: "Importando {{current}} de {{total}}",
+      loadMore: "Cargar más",
+
       refresh: "Actualizar sesiones",
     },
     preview: {
@@ -2812,6 +2822,11 @@ export const es: TranslationResources = {
     backdrop: "Fondo del menú",
   },
   subagents: {
+    controlUnavailable: "Actualiza el host para controlar los subagentes.",
+    stopParentTitle: "¿Detener la sesión del agente principal?",
+    stopParentMessage:
+      "Este proveedor no puede detener este subagente por separado. Se detendrá la sesión del agente principal y todo su trabajo. El historial se conserva.",
+    stopParentConfirm: "Detener sesión",
     title: "Subagentes",
     pillLabelOne: "1 subagente",
     pillLabelMany: "{{count}} subagentes",

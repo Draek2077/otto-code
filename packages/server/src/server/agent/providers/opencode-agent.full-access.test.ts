@@ -69,6 +69,63 @@ function questionEvent(questionOverrides: Record<string, unknown> = {}): unknown
 }
 
 describe("OpenCode auto_accept feature", () => {
+  test("an explicit tool policy cannot silently disagree with Auto Accept or be bypassed by a toggle", async () => {
+    const { runtime } = mockOpenCodeClient();
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, {
+      serverManager: runtime,
+      createClient: runtime.createClient,
+    });
+    const session = await client.createSession({
+      provider: "opencode",
+      cwd: "/tmp/project",
+      featureValues: { auto_accept: true },
+      toolPolicy: { preapproved: [] },
+    });
+    try {
+      expect(session.features).toEqual([
+        expect.objectContaining({ id: "auto_accept", value: false }),
+      ]);
+      await expect(session.setFeature!("auto_accept", true)).rejects.toThrow(
+        "explicit tool policy",
+      );
+      expect(session.features).toEqual([
+        expect.objectContaining({ id: "auto_accept", value: false }),
+      ]);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("preapproves internal Otto reads without enabling auto accept for mutations", async () => {
+    const { openCodeClient, runtime } = mockOpenCodeClient();
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, {
+      serverManager: runtime,
+      createClient: runtime.createClient,
+    });
+    const session = await client.createSession({
+      provider: "opencode",
+      cwd: "/tmp/project",
+      mcpServers: { otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents" } },
+    });
+    try {
+      await session.run("list workspaces");
+      const sent = openCodeClient.calls.sessionPromptAsync[0];
+      expect(sent.permission).toContainEqual({
+        permission: "otto_list_workspaces",
+        pattern: "*",
+        action: "allow",
+      });
+      expect(sent.permission).not.toContainEqual(
+        expect.objectContaining({ permission: "otto_archive_workspace" }),
+      );
+      expect(session.features).toEqual([
+        expect.objectContaining({ id: "auto_accept", value: false }),
+      ]);
+    } finally {
+      await session.close();
+    }
+  });
+
   test("lists discovered OpenCode modes without injecting defaults", async () => {
     const { runtime } = mockOpenCodeClient({
       agents: [

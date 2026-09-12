@@ -28,6 +28,7 @@ import { headingAnchors } from "@/editor/markdown/markdown-link-completion";
 import { extractMarkdownHeadings } from "@otto-code/highlight";
 import { FileHtmlPreview } from "@/file-pane/html-preview";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { RevealFileButton } from "@/components/reveal-file-button";
 import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import {
@@ -190,6 +191,8 @@ export interface FilePreviewSyncHandle {
 }
 
 interface FilePreviewBodyProps {
+  serverId: string;
+  workspaceRoot: string;
   preview: ExplorerFile | null;
   state: FilePreviewState;
   showWebScrollbar: boolean;
@@ -433,6 +436,8 @@ function FilePreviewUnavailable({ state }: Pick<FilePreviewBodyProps, "state">) 
 
 // eslint-disable-next-line complexity -- the existing preview renderer owns its platform/content branches.
 function FilePreviewBody({
+  serverId,
+  workspaceRoot,
   preview,
   state,
   showWebScrollbar,
@@ -941,7 +946,7 @@ function FilePreviewBody({
     );
   }
 
-  return <BinaryPreview file={preview} />;
+  return <BinaryPreview file={preview} serverId={serverId} workspaceRoot={workspaceRoot} />;
 }
 
 /**
@@ -951,7 +956,15 @@ function FilePreviewBody({
  * almost nobody opening a file tab is asking, and the honest read here is
  * "there is nothing to see", said clearly.
  */
-function BinaryPreview({ file }: { file: ExplorerFile }) {
+function BinaryPreview({
+  file,
+  serverId,
+  workspaceRoot,
+}: {
+  file: ExplorerFile;
+  serverId: string;
+  workspaceRoot: string;
+}) {
   const { t } = useTranslation();
   const extension = useMemo(() => {
     // `getFileNameFromPath` returns null for a path that is empty or all
@@ -980,6 +993,7 @@ function BinaryPreview({ file }: { file: ExplorerFile }) {
     <View style={styles.centerState}>
       <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
       <Text style={styles.binaryMetaText}>{t("panels.file.binaryPreviewHint")}</Text>
+      <RevealFileButton serverId={serverId} workspaceRoot={workspaceRoot} path={file.path} />
       <Text style={styles.binaryMetaText}>{facts.join(" · ")}</Text>
       {modified ? (
         <Text style={styles.binaryMetaText}>
@@ -1212,6 +1226,8 @@ export function FilePreview({
       ) : null}
 
       <FilePreviewBody
+        serverId={serverId}
+        workspaceRoot={workspaceRoot}
         preview={query.data?.file ?? null}
         state={resolveFilePreviewState({
           hasReadTarget,

@@ -270,6 +270,7 @@ import { AgentConfigSession } from "./session/agent-config/agent-config-session.
 import { ArtifactSession } from "./session/artifact/artifact-session.js";
 import { ArchitecturalViewsSession } from "./session/architectural-views/architectural-views-session.js";
 import { ArtifactService } from "./artifact/artifact-service.js";
+import { BrowserHistoryStore } from "./browser-history/store.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
@@ -3290,6 +3291,8 @@ export class Session {
         return this.handleAgentTimelineListPromptsRequest(msg, source);
       case "agent.provider_subagents.list.request":
         return this.handleProviderSubagentListRequest(msg);
+      case "agent.provider_subagents.control.request":
+        return this.handleProviderSubagentControlRequest(msg);
       case "agent.provider_subagents.timeline.get.request":
         return this.handleProviderSubagentTimelineRequest(msg);
       case "agent.timeline.set_subscription.request": {
@@ -4541,6 +4544,10 @@ export class Session {
         return this.workspaceFilesSession.handleFileEntryDuplicateRequest(msg);
       case "fs.entry.delete.request":
         return this.workspaceFilesSession.handleFileEntryDeleteRequest(msg);
+      case "browser.history.search.request":
+      case "browser.history.record.request":
+      case "browser.history.clear.request":
+        return this.handleBrowserHistoryRequest(msg);
       case "project.icon.get.request":
         return this.handleProjectIconGetRequest(msg.projectId, msg.requestId);
       default:
@@ -6400,6 +6407,58 @@ export class Session {
           error: getErrorMessageOr(error, "Failed to update project icon"),
         },
       });
+    }
+  }
+
+  private async handleBrowserHistoryRequest(
+    request: Extract<
+      SessionInboundMessage,
+      {
+        type:
+          | "browser.history.search.request"
+          | "browser.history.record.request"
+          | "browser.history.clear.request";
+      }
+    >,
+  ): Promise<void> {
+    let error: string | null = null;
+    let entries: import("@otto-code/protocol/messages").BrowserHistoryEntry[] = [];
+    try {
+      const projectId =
+        request.type === "browser.history.clear.request"
+          ? request.projectId
+          : (await this.workspaceRegistry.get(request.workspaceId))?.projectId;
+      if (!projectId || !(await this.projectRegistry.get(projectId)))
+        throw new Error("Project not found");
+      const history = new BrowserHistoryStore(this.ottoHome);
+      switch (request.type) {
+        case "browser.history.search.request":
+          entries = await history.search(projectId, request.query);
+          break;
+        case "browser.history.record.request":
+          await history.record(projectId, request.url, request.title);
+          break;
+        case "browser.history.clear.request":
+          await history.clear(projectId);
+          break;
+      }
+    } catch (cause) {
+      error = getErrorMessage(cause);
+    }
+    const requestId = request.requestId;
+    switch (request.type) {
+      case "browser.history.search.request":
+        this.emit({
+          type: "browser.history.search.response",
+          payload: { requestId, error, entries },
+        });
+        break;
+      case "browser.history.record.request":
+        this.emit({ type: "browser.history.record.response", payload: { requestId, error } });
+        break;
+      case "browser.history.clear.request":
+        this.emit({ type: "browser.history.clear.response", payload: { requestId, error } });
+        break;
     }
   }
 
@@ -11561,6 +11620,36 @@ export class Session {
         },
       });
     }
+  }
+
+  private async handleProviderSubagentControlRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.provider_subagents.control.request" }>,
+  ): Promise<void> {
+    let error: string | null = null;
+    try {
+      await ensureUnarchivedAgentLoaded(msg.parentAgentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
+      await this.agentManager.controlProviderSubagent(
+        msg.parentAgentId,
+        msg.subagentId,
+        msg.action,
+        msg.allowStopParent,
+      );
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : String(caught);
+    }
+    this.emit({
+      type: "agent.provider_subagents.control.response",
+      payload: {
+        requestId: msg.requestId,
+        parentAgentId: msg.parentAgentId,
+        subagentId: msg.subagentId,
+        error,
+      },
+    });
   }
 
   private async handleProviderSubagentTimelineRequest(

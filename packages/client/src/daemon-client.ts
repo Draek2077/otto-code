@@ -4033,6 +4033,34 @@ export class DaemonClient {
     return payload;
   }
 
+  async controlProviderSubagent(
+    parentAgentId: string,
+    subagentId: string,
+    action: "stop" | "archive",
+    allowStopParent = false,
+  ): Promise<void> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.provider_subagents.control.request",
+      requestId,
+      parentAgentId,
+      subagentId,
+      action,
+      allowStopParent,
+    });
+    const payload = await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (response) =>
+        response.type === "agent.provider_subagents.control.response" &&
+        response.payload.requestId === requestId
+          ? response.payload
+          : null,
+    });
+    if (payload.error) throw new Error(payload.error);
+  }
+
   async fetchProviderSubagentTimeline(
     parentAgentId: string,
     subagentId: string,
@@ -8295,6 +8323,31 @@ export class DaemonClient {
     }
     return payload.status;
   }
+  async searchBrowserHistory(workspaceId: string, query: string) {
+    const result =
+      await this.sendNamespacedCorrelatedSessionRequest<"browser.history.search.response">({
+        message: { type: "browser.history.search.request", workspaceId, query },
+      });
+    if (result.error) throw new Error(result.error);
+    return result.entries;
+  }
+
+  async recordBrowserHistory(workspaceId: string, url: string, title: string) {
+    const result =
+      await this.sendNamespacedCorrelatedSessionRequest<"browser.history.record.response">({
+        message: { type: "browser.history.record.request", workspaceId, url, title },
+      });
+    if (result.error) throw new Error(result.error);
+  }
+
+  async clearBrowserHistory(projectId: string) {
+    const result =
+      await this.sendNamespacedCorrelatedSessionRequest<"browser.history.clear.response">({
+        message: { type: "browser.history.clear.request", projectId },
+      });
+    if (result.error) throw new Error(result.error);
+  }
+
   async getProjectIcon(
     projectId: string,
     requestId?: string,

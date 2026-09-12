@@ -708,9 +708,14 @@ export const ru: TranslationResources = {
   importSession: {
     title: "Импортировать сеанс",
     filters: {
+      allProjects: "Показать чаты всех проектов",
       all: "Все",
     },
     status: {
+      originalFolders: "Чаты сохраняют исходные рабочие папки на этом хосте.",
+      limitReached:
+        "До {{count}} сеансов на провайдера. Импортируйте их и откройте список снова для более старых сеансов.",
+      failedBatch: "Некоторые сеансы не удалось импортировать. Повторите импорт неудавшихся.",
       connectHost: "Подключитесь к хосту, чтобы импортировать сеансы",
       updateHost: "Обновите хост для импорта сеансов.",
       noProviders: "Импортируемые поставщики не включены.",
@@ -720,6 +725,11 @@ export const ru: TranslationResources = {
       failedImport: "Не удалось импортировать выбранный сеанс.",
     },
     actions: {
+      selectAll: "Выбрать все показанные",
+      importSelected: "Импортировать выбранные ({{count}})",
+      importingBatch: "Импорт {{current}} из {{total}}",
+      loadMore: "Загрузить ещё",
+
       refresh: "Обновить сеансы",
     },
     preview: {
@@ -2794,6 +2804,11 @@ export const ru: TranslationResources = {
     backdrop: "Фон меню",
   },
   subagents: {
+    controlUnavailable: "Обновите хост для управления субагентами.",
+    stopParentTitle: "Остановить сеанс родительского агента?",
+    stopParentMessage:
+      "Этот провайдер не может остановить только этого субагента. Сеанс родительского агента и вся его работа будут остановлены. История чата сохранится.",
+    stopParentConfirm: "Остановить сеанс",
     title: "Субагенты",
     pillLabelOne: "1 субагент",
     pillLabelMany: "Субагентов: {{count}}",

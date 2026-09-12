@@ -1,10 +1,10 @@
 /**
  * Permission classification for Otto catalog tools (browser_*, preview_*,
- * agent/terminal/schedule management) when the openai-compat provider is the
- * tool runtime.
+ * agent/terminal/schedule management). Shared by native tool loops, MCP
+ * annotations, and provider-native preapproval rules.
  *
- * CLI providers reach these tools through their own MCP client, so the CLI's
- * permission system prompts before running them. The openai-compat provider
+ * CLI providers receive exact read grants where supported and shared MCP
+ * read-only hints; their native policies review remaining calls. The openai-compat provider
  * has no CLI in front of it - the daemon executes the call directly - so the
  * daemon must supply the equivalent gating itself. Without it, an "Always Ask"
  * session could create a terminal and send keystrokes (shell execution),
@@ -27,10 +27,11 @@
 
 export type OttoToolPermissionKind = "read" | "interact" | "execute";
 
-const READ_ONLY_TOOLS = new Set([
+export const OTTO_READ_ONLY_TOOL_NAMES: readonly string[] = [
   // Browser pane observation.
   "browser_list_tabs",
   "browser_snapshot",
+  "browser_page_text",
   "browser_screenshot",
   "browser_logs",
   "browser_inspect",
@@ -40,7 +41,6 @@ const READ_ONLY_TOOLS = new Set([
   "preview_list",
   "preview_logs",
   // Agent/terminal/schedule/provider observation.
-  "speak",
   "get_chat_status",
   "get_chat_activity",
   "list_chats",
@@ -54,9 +54,23 @@ const READ_ONLY_TOOLS = new Set([
   "inspect_provider",
   "list_agent_profiles",
   "list_worktrees",
+  "list_workspaces",
+  "list_project_knowledge",
+  "read_project_knowledge",
+  "read_project_knowledge_root",
+  "query_project_knowledge",
+  "lint_project_knowledge_links",
+  "read_architectural_view_draft",
+  "get_workflow_status",
+  "wait_for_chats",
   "list_pending_permissions",
   "list_artifacts",
   "inspect_artifact",
+];
+
+const READ_ONLY_TOOLS = new Set(OTTO_READ_ONLY_TOOL_NAMES);
+const UNPROMPTED_UI_TOOLS = new Set([
+  "speak",
   // Suggesting/withdrawing a background task only draws or removes a card - the
   // work starts when the user clicks Start, which is where the real gate lives.
   "suggest_task",
@@ -105,7 +119,12 @@ const INTERACT_TOOLS = new Set([
 // - schedule mutation, worktree mutation, agent lifecycle (cancel/kill/archive).
 
 export function ottoToolPermissionKind(name: string): OttoToolPermissionKind {
-  if (READ_ONLY_TOOLS.has(name)) return "read";
+  if (READ_ONLY_TOOLS.has(name) || UNPROMPTED_UI_TOOLS.has(name)) return "read";
   if (INTERACT_TOOLS.has(name)) return "interact";
   return "execute";
+}
+
+/** UI-only exceptions may skip prompts, but must never claim to be read-only. */
+export function isOttoToolReadOnly(name: string): boolean {
+  return READ_ONLY_TOOLS.has(name);
 }

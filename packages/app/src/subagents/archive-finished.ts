@@ -13,7 +13,7 @@ export interface ArchiveFinishedState {
 
 export interface ArchiveFinishedOutcome {
   archivedOttoIds: string[];
-  dismissedProviderIds: string[];
+  archivedProviderIds: string[];
   skippedOttoIds: string[];
   failures: Array<{ id: string; error: unknown }>;
 }
@@ -24,7 +24,7 @@ export interface ArchiveFinishedSubagentsDeps {
   parentAgentId: string;
   getManagedSubagent: (id: string) => ManagedSubagentSnapshot | undefined;
   archiveManagedSubagent: (id: string) => Promise<void>;
-  dismissProviderSubagents: (ids: string[]) => void;
+  archiveProviderSubagent: (id: string) => Promise<void>;
 }
 
 export interface ArchiveFinishedSubagents {
@@ -74,7 +74,7 @@ function identitySignature(ids: ReadonlySet<string>): string {
 function emptyOutcome(): ArchiveFinishedOutcome {
   return {
     archivedOttoIds: [],
-    dismissedProviderIds: [],
+    archivedProviderIds: [],
     skippedOttoIds: [],
     failures: [],
   };
@@ -174,10 +174,15 @@ async function runArchiveFinished(
   const outcome = emptyOutcome();
   const retryableFailureIds = new Set<string>();
 
-  if (providerIds.length > 0) {
-    deps.dismissProviderSubagents(providerIds);
-    outcome.dismissedProviderIds.push(...providerIds);
-    completedCount += providerIds.length;
+  for (const id of providerIds) {
+    try {
+      await deps.archiveProviderSubagent(id);
+      outcome.archivedProviderIds.push(id);
+    } catch (error) {
+      outcome.failures.push({ id, error });
+      retryableFailureIds.add(`provider:${id}`);
+    }
+    completedCount += 1;
     reportProgress(completedCount);
   }
 
