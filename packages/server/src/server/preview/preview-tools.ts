@@ -256,6 +256,7 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
         "If .claude/launch.json doesn't exist, create it first with this format:\n" +
         LAUNCH_JSON_FORMAT +
         '\nSet "runtimeExecutable" to the command (e.g. "npm"), "runtimeArgs" to the arguments (e.g. ["run", "dev"]), and "port" to the server port. ' +
+        'Optional "url" sets the exact HTTP(S) browser address (e.g. "http://localhost:3002/"); otherwise it is http://127.0.0.1:<port>/. Readiness still probes the local port. ' +
         "Only include servers you actually need to preview.",
       inputSchema: {
         name: z.string().min(1).describe("Server name from .claude/launch.json"),

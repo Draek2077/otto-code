@@ -6784,6 +6784,7 @@ export class Session {
             config?.configurations.map((entry) => ({
               name: entry.name,
               port: entry.port,
+              url: entry.url,
             })) ?? [],
         });
         runningServers = reconciled.map((s) => ({

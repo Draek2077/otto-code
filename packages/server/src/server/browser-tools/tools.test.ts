@@ -1431,6 +1431,43 @@ describe("registerBrowserTools", () => {
       });
     });
 
+    test.each(["browser_new_tab", "browser_navigate"])(
+      "%s enforces the configured proxy origin independently of the process port",
+      async (tool) => {
+        const harness = harnessWith([previewServer({ url: "https://preview.example.test/app" })]);
+        const response = await harness.execute(tool, {
+          browserId: BROWSER_ID,
+          url: "https://preview.example.test/another-page",
+        });
+        expect(harness.broker.calls).toEqual([]);
+        expect(response.structuredContent).toMatchObject({
+          ok: false,
+          error: {
+            code: "browser_denied",
+            message: expect.stringContaining(`browserId=${PREVIEW_TAB_ID}`),
+          },
+        });
+      },
+    );
+
+    test("a custom destination still protects the local process port", async () => {
+      const harness = harnessWith([previewServer({ url: "https://preview.example.test/app" })]);
+      const response = await harness.execute("browser_new_tab", { url: "http://localhost:8202/" });
+      expect(harness.broker.calls).toEqual([]);
+      expect(response.structuredContent).toMatchObject({
+        ok: false,
+        error: { code: "browser_denied" },
+      });
+    });
+
+    test("another host on the configured URL's port opens normally", async () => {
+      const harness = harnessWith([previewServer({ url: "https://preview.example.test/app" })]);
+      harness.broker.setResponse(newTabPayload());
+      const response = await harness.execute("browser_new_tab", { url: "https://example.com/" });
+      expect(harness.broker.calls).toHaveLength(1);
+      expect(response.structuredContent).toMatchObject({ ok: true });
+    });
+
     test("new tab to a preview server without a bound tab points at preview_start", async () => {
       const harness = harnessWith([previewServer({ boundBrowserId: null })]);
 

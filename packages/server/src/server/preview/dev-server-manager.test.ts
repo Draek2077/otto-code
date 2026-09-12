@@ -47,7 +47,7 @@ const server = http.createServer((req, res) => res.end("ok"));
 server.listen(port, "127.0.0.1", () => console.log("listening on " + port));
 `;
 
-async function createProject(port: number): Promise<string> {
+async function createProject(port: number, url?: string): Promise<string> {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "otto-preview-"));
   await fs.writeFile(path.join(cwd, "server.js"), SERVER_SCRIPT, "utf8");
   await fs.mkdir(path.join(cwd, ".claude"), { recursive: true });
@@ -61,6 +61,7 @@ async function createProject(port: number): Promise<string> {
           runtimeExecutable: "node",
           runtimeArgs: ["server.js", String(port)],
           port,
+          url,
         },
       ],
     }),
@@ -71,7 +72,7 @@ async function createProject(port: number): Promise<string> {
 
 /** Workspace whose launch.json lists `port` under the name "external" - the
  * server itself is expected to be started by the test, not the manager. */
-async function createExternalProject(port: number): Promise<string> {
+async function createExternalProject(port: number, url?: string): Promise<string> {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "otto-preview-ext-"));
   await fs.mkdir(path.join(cwd, ".claude"), { recursive: true });
   await fs.writeFile(
@@ -79,7 +80,7 @@ async function createExternalProject(port: number): Promise<string> {
     JSON.stringify({
       version: "0.0.1",
       configurations: [
-        { name: "external", runtimeExecutable: "node", runtimeArgs: ["server.js"], port },
+        { name: "external", runtimeExecutable: "node", runtimeArgs: ["server.js"], port, url },
       ],
     }),
     "utf8",
@@ -111,6 +112,79 @@ async function waitForPortClosed(port: number, timeoutMs: number): Promise<boole
 }
 
 describe("DevServerManager", () => {
+  test("preserves a configured browser URL through start, reuse, listing, and stop", async () => {
+    const port = await findFreePort();
+    const url = `http://localhost:${port}/app?mode=preview#home`;
+    const cwd = await createProject(port, url);
+    const manager = createManager();
+
+    const started = await manager.start({ cwd, name: "sample" });
+    expect(started.server.url).toBe(url);
+    await expect((await fetch(url)).text()).resolves.toBe("ok");
+    const reused = await manager.start({ cwd, name: "sample" });
+    expect(reused.server.serverId).toBe(started.server.serverId);
+    expect(reused.server.url).toBe(url);
+    expect(manager.list(cwd)[0]?.url).toBe(url);
+    expect(manager.getServer(started.server.serverId)?.url).toBe(url);
+    expect((await manager.stop(started.server.serverId)).url).toBe(url);
+  });
+
+  test("preserves a proxy URL when adopting and reconciling a local server", async () => {
+    const listener = net.createServer();
+    await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+    try {
+      const port = (listener.address() as net.AddressInfo).port;
+      const url = "https://preview.example.test/app?mode=preview#home";
+      const cwd = await createExternalProject(port, url);
+      const manager = createManager();
+      const started = await manager.start({ cwd, name: "external" });
+      expect(started.reused).toBe(true);
+      expect(started.server.url).toBe(url);
+      manager.bindTab(started.server.serverId, "browser-custom");
+      const reconciled = await manager.reconcileRunning({
+        cwd,
+        configured: [{ name: "external", port, url }],
+      });
+      expect(reconciled[0]).toMatchObject({ url, boundBrowserId: "browser-custom" });
+      expect(manager.getServer(started.server.serverId)?.url).toBe(url);
+    } finally {
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
+
+  test("applies URL edits on reuse without restarting the process or losing its tab", async () => {
+    const port = await findFreePort();
+    const cwd = await createProject(port);
+    const manager = createManager();
+    const first = await manager.start({ cwd, name: "sample" });
+    manager.bindTab(first.server.serverId, "browser-existing");
+    const configPath = path.join(cwd, ".claude", "launch.json");
+    const config = JSON.parse(await fs.readFile(configPath, "utf8"));
+    const url = `http://localhost:${port}/app`;
+    config.configurations[0].url = url;
+    await fs.writeFile(configPath, JSON.stringify(config));
+
+    const reused = await manager.start({ cwd, name: "sample" });
+    expect(reused.reused).toBe(true);
+    expect(reused.server).toMatchObject({
+      serverId: first.server.serverId,
+      pid: first.server.pid,
+      url,
+      boundBrowserId: "browser-existing",
+    });
+    const pickerUrl = "https://preview.example.test/app";
+    const reconciled = await manager.reconcileRunning({
+      cwd,
+      configured: [{ name: "sample", port, url: pickerUrl }],
+    });
+    expect(reconciled[0]).toMatchObject({
+      serverId: first.server.serverId,
+      pid: first.server.pid,
+      url: pickerUrl,
+      boundBrowserId: "browser-existing",
+    });
+  });
+
   test("starts a configured server, waits for readiness, and serves traffic", async () => {
     const port = await findFreePort();
     const cwd = await createProject(port);

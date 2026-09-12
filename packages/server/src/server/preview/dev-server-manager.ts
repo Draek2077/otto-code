@@ -9,6 +9,7 @@ import {
   LAUNCH_CONFIG_RELATIVE_PATH,
   readLaunchConfig,
   resolveLaunchConfigPath,
+  resolvePreviewUrl,
   type LaunchConfiguration,
 } from "./launch-config.js";
 
@@ -98,6 +99,7 @@ interface PreviewServerRecord {
   name: string;
   cwd: string;
   port: number;
+  url: string;
   proc: ChildProcess;
   status: PreviewServerStatus;
   exitCode: number | null;
@@ -114,6 +116,7 @@ interface ExternalServerRecord {
   name: string;
   cwd: string;
   port: number;
+  url: string;
   boundBrowserId: string | null;
 }
 
@@ -169,16 +172,19 @@ export class DevServerManager {
   }
 
   async start(input: { cwd: string; name: string }): Promise<StartPreviewServerResult> {
+    const entry = await this.resolveConfiguration(input.cwd, input.name);
     const running = this.findRunning(input.cwd, input.name);
     if (running) {
+      // URL edits do not require restarting a shared development process.
+      running.url = resolvePreviewUrl({ port: running.port, url: entry.url });
       return { server: summarize(running), reused: true, logTail: tail(running.log, 20) };
     }
 
-    const entry = await this.resolveConfiguration(input.cwd, input.name);
     // Same server, different name in launch.json: reuse it rather than fight
     // over the port it already holds.
     const onPort = this.findRunningOnPort(input.cwd, entry.port);
     if (onPort) {
+      onPort.url = resolvePreviewUrl(entry);
       return { server: summarize(onPort), reused: true, logTail: tail(onPort.log, 20) };
     }
 
@@ -192,7 +198,7 @@ export class DevServerManager {
       // We can't supervise what we didn't spawn, so it comes back under an
       // `ext:<port>` id that says as much.
       return {
-        server: this.rememberExternal({ cwd: input.cwd, name: entry.name, port: entry.port }),
+        server: this.rememberExternal({ cwd: input.cwd, ...entry }),
         reused: true,
         logTail: [],
         note:
@@ -281,8 +287,15 @@ export class DevServerManager {
    */
   async reconcileRunning(input: {
     cwd: string;
-    configured: Array<{ name: string; port: number }>;
+    configured: Array<{ name: string; port: number; url?: string }>;
   }): Promise<PreviewServerSummary[]> {
+    // The Preview picker attaches directly from these summaries, without start().
+    for (const entry of input.configured) {
+      const running = this.findRunning(input.cwd, entry.name);
+      if (running?.port === entry.port) {
+        running.url = resolvePreviewUrl(entry);
+      }
+    }
     const managed = this.listManaged(input.cwd).filter((record) => record.status !== "exited");
     const ownedPorts = new Set(managed.map((record) => record.port));
     const ownedNames = new Set(managed.map((record) => record.name));
@@ -295,9 +308,7 @@ export class DevServerManager {
         continue;
       }
       if (await isPortOpen(entry.port)) {
-        external.push(
-          this.rememberExternal({ cwd: input.cwd, name: entry.name, port: entry.port }),
-        );
+        external.push(this.rememberExternal({ cwd: input.cwd, ...entry }));
       } else {
         // Nothing is listening anymore: drop the adoption so list() stops
         // reporting it and an `ext:` stop stops being authorized for the port.
@@ -315,11 +326,13 @@ export class DevServerManager {
     cwd: string;
     name: string;
     port: number;
+    url?: string;
   }): PreviewServerSummary {
     const record: ExternalServerRecord = {
       name: input.name,
       cwd: input.cwd,
       port: input.port,
+      url: resolvePreviewUrl(input),
       boundBrowserId: this.externalServers.get(input.port)?.boundBrowserId ?? null,
     };
     this.externalServers.set(input.port, record);
@@ -375,8 +388,9 @@ export class DevServerManager {
     // Only ports we ourselves observed as configured preview servers are
     // stoppable, and the launch config must still list the port at stop time -
     // otherwise this would be a primitive for killing arbitrary local services.
-    const cwd = this.externalServers.get(port)?.cwd;
-    if (!cwd) {
+    const record = this.externalServers.get(port);
+    const cwd = record?.cwd;
+    if (!record || !cwd) {
       throw new Error(
         `Refusing to stop "${serverId}": port ${port} is not a preview server this daemon ` +
           `has observed. Only servers reported by ${LAUNCH_CONFIG_RELATIVE_PATH} can be stopped.`,
@@ -427,7 +441,7 @@ export class DevServerManager {
       name: serverId,
       cwd: "",
       port,
-      url: `http://127.0.0.1:${port}/`,
+      url: record.url,
       status: "exited",
       pid: null,
       exitCode: null,
@@ -542,6 +556,7 @@ export class DevServerManager {
       name: entry.name,
       cwd,
       port: entry.port,
+      url: resolvePreviewUrl(entry),
       proc,
       status: "starting",
       exitCode: null,
@@ -712,7 +727,7 @@ function summarizeExternal(record: ExternalServerRecord): PreviewServerSummary {
     name: record.name,
     cwd: record.cwd,
     port: record.port,
-    url: `http://127.0.0.1:${record.port}/`,
+    url: record.url,
     status: "running",
     pid: null,
     exitCode: null,
@@ -726,7 +741,7 @@ function summarize(record: PreviewServerRecord): PreviewServerSummary {
     name: record.name,
     cwd: record.cwd,
     port: record.port,
-    url: `http://127.0.0.1:${record.port}/`,
+    url: record.url,
     status: record.status,
     pid: record.proc.pid ?? null,
     exitCode: record.exitCode,

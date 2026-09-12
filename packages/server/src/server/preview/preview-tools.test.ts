@@ -86,6 +86,7 @@ interface Harness {
 
 function createHarness(options: {
   boundBrowserId?: string | null;
+  serverUrl?: string;
   serverCwd?: string;
   respond: (input: BrowserToolsExecuteInput) => BrowserToolsResponsePayload;
 }): Harness {
@@ -98,7 +99,7 @@ function createHarness(options: {
 
   const manager: PreviewDevServerHost = {
     start: async () => ({
-      server: summary({ boundBrowserId: bound }),
+      server: summary({ boundBrowserId: bound, url: options.serverUrl ?? SERVER_URL }),
       reused: bound !== null,
       logTail: ["listening on 8202"],
     }),
@@ -151,6 +152,22 @@ function structuredResult(result: OttoToolResult): Record<string, unknown> {
 }
 
 describe("preview_start tab binding", () => {
+  test("opens the configured URL including its path, query, and fragment", async () => {
+    const url = "https://preview.example.test/app?mode=preview#home";
+    const harness = createHarness({
+      serverUrl: url,
+      respond: () => ({
+        requestId: "req-custom-tab",
+        ok: true,
+        result: { command: "new_tab", browserId: TAB_A, workspaceId: "wks_1", url },
+      }),
+    });
+    const result = structuredResult(await harness.callTool("preview_start", { name: "sample" }));
+    expect(harness.brokerCalls[0]?.command).toMatchObject({ command: "new_tab", args: { url } });
+    expect(result).toMatchObject({ url, browser: { browserId: TAB_A } });
+    expect(harness.bindings).toEqual([{ serverId: "srv_test", browserId: TAB_A }]);
+  });
+
   test("opens the designated Otto tab at the server URL and binds it", async () => {
     const harness = createHarness({
       respond: (input) =>

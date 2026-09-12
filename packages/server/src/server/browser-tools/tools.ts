@@ -101,8 +101,8 @@ function urlPort(url: URL): number {
 
 /**
  * Find the running preview server a URL points at, if any. Preview servers
- * always bind loopback, so a match means "loopback host + same port" - the
- * agent may write localhost where the server registered 127.0.0.1.
+ * match their configured browser origin or their local process port. Loopback
+ * aliases also match, since an agent may use localhost instead of 127.0.0.1.
  */
 function findPreviewServerForUrl(params: {
   previewServers: Pick<DevServerManager, "list"> | null | undefined;
@@ -119,12 +119,23 @@ function findPreviewServerForUrl(params: {
   } catch {
     return null;
   }
-  if (!LOOPBACK_HOSTS.has(target.hostname)) {
+  if (target.protocol !== "http:" && target.protocol !== "https:") {
     return null;
   }
   const port = urlPort(target);
   for (const server of previewServers.list(cwd)) {
-    if (server.status !== "exited" && server.port === port) {
+    if (server.status === "exited") {
+      continue;
+    }
+    const destination = new URL(server.url);
+    // Match the proxy origin without claiming unrelated hosts on its HTTP(S) port.
+    // The underlying local port still belongs to the same designated preview tab.
+    if (
+      destination.origin === target.origin ||
+      (LOOPBACK_HOSTS.has(target.hostname) &&
+        (server.port === port ||
+          (LOOPBACK_HOSTS.has(destination.hostname) && urlPort(destination) === port)))
+    ) {
       return server;
     }
   }

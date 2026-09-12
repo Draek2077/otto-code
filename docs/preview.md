@@ -175,7 +175,8 @@ What this buys you, concretely:
 - **One designated tab per server, enforced server-side, not just by
   convention.** `findPreviewServerForUrl` (`packages/server/src/server/browser-tools/tools.ts`)
   checks every `browser_new_tab` / `browser_navigate` call: if the target URL
-  is a loopback address matching a running preview server's port, and the
+  matches a running preview server's configured URL origin or is a loopback
+  address matching its local process port (including loopback aliases), and the
   call isn't targeting that server's `boundBrowserId`, it's rejected with an
   error naming the correct `browserId` (or telling the agent to call
   `preview_start` if no tab is bound yet). This closes the failure mode where
@@ -619,12 +620,23 @@ fallback path or alternate filename.
 
 - `runtimeExecutable` - the command (`"npm"`, `"pwsh"`, `"python"`, …)
 - `runtimeArgs` - argument array (`["run", "dev"]`)
-- `port` - used both for readiness polling and for resolving the preview
-  server's URL
+- `port` - the local process port used for readiness polling, adoption, and stopping
+- `url` - optional absolute HTTP(S) browser destination, including hostname, port,
+  path, query, and fragment. When omitted, Otto uses `http://127.0.0.1:<port>/`.
+  For example, add `"url": "http://localhost:3002/"` alongside `"port": 3002`
+  when the app requires `localhost`. HTTPS and reverse-proxy addresses may use
+  a different browser port from the local process port.
 - `env` - optional per-config environment overrides
 
-This is deliberately the same format used by other preview harnesses, so a
-project only needs one config file regardless of which agent is driving it.
+The base format is shared with other preview harnesses; `url` is an Otto extension.
+The URL selects where the browser navigates. It does not change the command's
+listen address, configure a proxy, or create a tunnel. The local `port` must still
+be reachable by the daemon, and the URL must be reachable by the browser device.
+Started and adopted servers both retain the configured URL. Existing files that
+omit it keep their current behavior.
+After editing `url`, the Preview picker refresh or another `preview_start` picks
+up the address without restarting a running server. An already-bound tab stays at its current page;
+use `browser_navigate` with the returned browser ID to visit the new address.
 
 ### launch.json is a shell-execution surface
 

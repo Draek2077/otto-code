@@ -16,6 +16,8 @@ export const LaunchConfigurationSchema = z.object({
   runtimeExecutable: z.string().min(1),
   runtimeArgs: z.array(z.string()).default([]),
   port: z.number().int().min(1).max(65_535),
+  // Browser address only: a proxy URL must not redirect local process supervision.
+  url: z.url({ protocol: /^https?$/ }).optional(),
   env: z.record(z.string(), z.string()).optional(),
 });
 
@@ -26,6 +28,11 @@ export const LaunchConfigSchema = z.object({
 
 export type LaunchConfiguration = z.infer<typeof LaunchConfigurationSchema>;
 export type LaunchConfig = z.infer<typeof LaunchConfigSchema>;
+
+/** Browser destination; the local process port remains independent of proxy URLs. */
+export function resolvePreviewUrl(entry: { port: number; url?: string }): string {
+  return entry.url ?? `http://127.0.0.1:${entry.port}/`;
+}
 
 export class LaunchConfigError extends Error {
   constructor(
