@@ -8,6 +8,15 @@ import {
 import { CodexAppServerClient } from "./app-server-transport.js";
 
 describe("Codex app-server transport", () => {
+  test("disposal rejects pending requests instead of leaving timeout timers alive", async () => {
+    const child = createCodexAppServerChildProcess();
+    const client = new CodexAppServerClient(child, createTestLogger());
+    const request = client.request("initialize", {});
+    const assertion = expect(request).rejects.toThrow("client is closed");
+    await client.dispose();
+    await assertion;
+  });
+
   test("ignores non-JSON stdout lines without dropping pending requests", async () => {
     const child = createCodexAppServerChildProcess();
     const client = new CodexAppServerClient(child, createTestLogger());

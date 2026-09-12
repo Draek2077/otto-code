@@ -112,6 +112,20 @@ also losing the ability to spawn a chat.
 All are additive protocol fields with `.default()` and a `COMPAT(...)` tag, per the back-compat
 contract in [`CLAUDE.md`](../CLAUDE.md).
 
+## Codex metadata completion
+
+Codex metadata generation uses a dedicated app-server connection and an ephemeral thread through
+`generateBareCompletion`. It reuses the configured Codex executable, environment, and login. The
+request replaces the coding instructions, suppresses project and skill instructions, and disables
+environment tools and host integrations. Some models retain intrinsic controls such as code-mode
+wrappers and skill discovery; Codex's model catalog selects those despite the feature overrides.
+Otto rejects tool activity instead of continuing a metadata request as a coding task. This path
+reduces the request's context but does not promise a completely empty native tool surface.
+It reports usage to the generation ledger and closes the connection
+after success, failure, cancellation, or a 90-second deadline. A Codex-only host can generate metadata
+without configuring another provider. The local integration test checks the actual model request
+using the installed Codex binary and an isolated Responses endpoint.
+
 ## Known open questions
 
 Tracked in the [projects ledger](../projects/README.md#providers--accounting):

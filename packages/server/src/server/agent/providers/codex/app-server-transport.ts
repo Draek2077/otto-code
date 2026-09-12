@@ -258,6 +258,11 @@ export class CodexAppServerClient {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error("Codex app-server client is closed"));
+    }
+    this.pending.clear();
     this.unexpectedTerminationHandler = null;
     this.rl.close();
     try {

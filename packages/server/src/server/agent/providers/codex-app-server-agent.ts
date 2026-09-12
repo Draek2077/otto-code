@@ -3,6 +3,8 @@ import {
   type AgentPermissionAction,
   type AgentCapabilityFlags,
   type AgentClient,
+  type AgentBareCompletionOptions,
+  type AgentBareCompletionResult,
   type AgentCreateSessionOptions,
   type AgentFeature,
   type AgentLaunchContext,
@@ -75,6 +77,7 @@ import { spawnProcess } from "../../../utils/spawn.js";
 import { extractCodexTerminalSessionId, nonEmptyString } from "./tool-call-mapper-utils.js";
 import { buildCodexFeatures, codexModelSupportsFastMode } from "./codex-feature-definitions.js";
 import { priceCodexUsageUsd } from "./codex-pricing.js";
+import { runCodexBareCompletion } from "./codex/bare-completion.js";
 import {
   CodexAppServerClient,
   CodexAppServerRpcError,
@@ -7258,6 +7261,30 @@ export class CodexAppServerAgentClient implements AgentClient {
     });
     assertChildWithPipes(child);
     return child;
+  }
+
+  async generateBareCompletion(
+    options: AgentBareCompletionOptions,
+  ): Promise<AgentBareCompletionResult> {
+    options.signal?.throwIfAborted();
+    const child = await this.spawnAppServer();
+    const client = new CodexAppServerClient(child, this.logger);
+    const result = await runCodexBareCompletion({
+      client,
+      options,
+      initializeParams: buildCodexAppServerInitializeParams(),
+      customConfig: this.sessionDeps().customCodexConfig,
+    });
+    const tokenUsage = toObjectRecord(result.tokenUsage);
+    // A fresh thread's cumulative total avoids counting duplicate usage events.
+    const usage = tokenUsage
+      ? toAgentUsage({ ...tokenUsage, last: tokenUsage.total ?? tokenUsage.last })
+      : undefined;
+    if (usage) {
+      const cost = priceCodexUsageUsd(usage, result.model);
+      if (cost !== undefined) usage.totalCostUsd = cost;
+    }
+    return { text: result.text, ...(usage ? { usage } : {}) };
   }
 
   async createSession(
