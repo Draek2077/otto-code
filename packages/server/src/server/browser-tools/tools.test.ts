@@ -114,7 +114,10 @@ function schemaFor(inputSchema: OttoToolConfig["inputSchema"]): z.ZodType {
   return z.object(inputSchema as z.ZodRawShape).passthrough();
 }
 
-function listTabsPayload(): Extract<BrowserToolsResponsePayload, { ok: true }> {
+function listTabsPayload(geometry?: {
+  viewportWidth: number;
+  viewportHeight: number;
+}): Extract<BrowserToolsResponsePayload, { ok: true }> {
   return {
     requestId: "req-list-tabs",
     ok: true,
@@ -127,6 +130,15 @@ function listTabsPayload(): Extract<BrowserToolsResponsePayload, { ok: true }> {
           title: "Example",
           isActive: true,
           isLoading: false,
+          ...(geometry
+            ? {
+                viewportMode: "fixed" as const,
+                viewportWidth: geometry.viewportWidth,
+                viewportHeight: geometry.viewportHeight,
+                paneWidth: 1280,
+                paneHeight: 800,
+              }
+            : {}),
         },
       ],
     },
@@ -670,6 +682,27 @@ describe("registerBrowserTools", () => {
         text: `Found 1 Otto browser tab. Use these browserId values for tab-scoped browser tools.\n- browserId=${BROWSER_ID} active title="Example" url=https://example.com`,
       },
     ]);
+  });
+
+  test("list tabs reports viewport and pane geometry when the host presents it", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(listTabsPayload({ viewportWidth: 1280, viewportHeight: 800 }));
+
+    const response = await harness.execute("browser_list_tabs", {});
+
+    expect(response.content[0]?.text).toContain("viewport=1280x800 fixed pane=1280x800");
+    expect(response.content[0]?.text).not.toContain("cropped");
+  });
+
+  test("list tabs warns when a fixed viewport is cropped by the pane", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(listTabsPayload({ viewportWidth: 1920, viewportHeight: 1080 }));
+
+    const response = await harness.execute("browser_list_tabs", {});
+
+    expect(response.content[0]?.text).toContain(
+      "viewport=1920x1080 fixed pane=1280x800 (cropped to the pane - the user sees part of this page)",
+    );
   });
 
   test("new tab sends workspace in the request envelope", async () => {

@@ -10,6 +10,7 @@ import {
   markResidentBrowserWebviewReady,
   prepareBrowserWebview,
   presentBrowserWebview,
+  readResidentBrowserPresentation,
   rememberBrowserWebviewSize,
   releaseResidentBrowserWebview,
   removeResidentBrowserWebview,
@@ -214,6 +215,53 @@ describe("resident browser webviews", () => {
       mode: "responsive",
     });
     expect(webview.parentElement).toBe(permanentParent);
+  });
+
+  it("records viewport and pane geometry for a presented tab, and drops it when parked", () => {
+    const browserId = "browser-presented-geometry";
+    const webview = ensureTestBrowser({
+      browserId,
+      workspaceId: "workspace-presented-geometry",
+      url: "https://example.com",
+    });
+    const anchor = document.createElement("div");
+    const clip = document.createElement("div");
+    Object.defineProperty(anchor, "getBoundingClientRect", {
+      value: () => ({ left: 0, top: 0, width: 960, height: 700 }),
+    });
+    Object.defineProperty(clip, "getBoundingClientRect", {
+      value: () => ({ left: 0, top: 0, width: 960, height: 700 }),
+    });
+    if (!webview) {
+      throw new Error("Expected resident browser webview");
+    }
+
+    presentBrowserWebview(browserId, webview, anchor, clip, { mode: "responsive" });
+    expect(readResidentBrowserPresentation(browserId)).toEqual({
+      mode: "responsive",
+      viewportWidth: 960,
+      viewportHeight: 700,
+      paneWidth: 960,
+      paneHeight: 700,
+    });
+
+    // A fixed viewport wider than its pane is cropped, never scaled: both
+    // numbers have to survive so callers can tell the user sees a slice.
+    presentBrowserWebview(browserId, webview, anchor, clip, {
+      mode: "fixed",
+      width: 1920,
+      height: 1080,
+    });
+    expect(readResidentBrowserPresentation(browserId)).toEqual({
+      mode: "fixed",
+      viewportWidth: 1920,
+      viewportHeight: 1080,
+      paneWidth: 960,
+      paneHeight: 700,
+    });
+
+    releaseResidentBrowserWebview(browserId, webview);
+    expect(readResidentBrowserPresentation(browserId)).toBeNull();
   });
 
   it("retains guest readiness while a browser pane is parked and presented again", () => {

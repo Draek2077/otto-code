@@ -2,6 +2,7 @@ import type { SessionInboundMessage, SessionOutboundMessage } from "@otto-code/p
 import { getDesktopHost, type DesktopHostBridge } from "@/desktop/host";
 import {
   ensureResidentBrowserWebview as ensureResidentBrowserWebviewDefault,
+  readResidentBrowserPresentation,
   removeResidentBrowserWebview,
   resizeResidentBrowserWebview,
 } from "@/desktop/browser/resident-webviews";
@@ -185,7 +186,7 @@ async function handleBrowserAutomationRequest(params: {
         : await executeAutomationCommand(request);
     client.sendBrowserAutomationExecuteResponse({
       type: "browser.automation.execute.response",
-      payload: normalizeBridgePayload(request.requestId, payload),
+      payload: withPresentedTabGeometry(normalizeBridgePayload(request.requestId, payload)),
     });
   } catch (error) {
     client.sendBrowserAutomationExecuteResponse({
@@ -531,6 +532,40 @@ function normalizeBridgePayload(
   payload: BrowserAutomationResponsePayload,
 ): BrowserAutomationResponsePayload {
   return { ...payload, requestId } as BrowserAutomationResponsePayload;
+}
+
+/**
+ * The main process owns the tab list but not the layout, so a listed tab says
+ * nothing about the size of the pane it is presented in. Only this renderer
+ * knows that, and the two numbers only mean something together: a fixed
+ * viewport wider than its pane is cropped, so the page an agent screenshots is
+ * not the page the user is looking at.
+ */
+function withPresentedTabGeometry(
+  payload: BrowserAutomationResponsePayload,
+): BrowserAutomationResponsePayload {
+  if (!payload.ok || payload.result.command !== "list_tabs") {
+    return payload;
+  }
+  return {
+    ...payload,
+    result: {
+      ...payload.result,
+      tabs: payload.result.tabs.map((tab) => {
+        const presentation = readResidentBrowserPresentation(tab.browserId);
+        return presentation
+          ? {
+              ...tab,
+              viewportMode: presentation.mode,
+              viewportWidth: presentation.viewportWidth,
+              viewportHeight: presentation.viewportHeight,
+              paneWidth: presentation.paneWidth,
+              paneHeight: presentation.paneHeight,
+            }
+          : tab;
+      }),
+    },
+  };
 }
 
 function normalizeThrownBridgeError(

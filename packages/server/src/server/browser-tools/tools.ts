@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { BrowserAutomationBrowserIdSchema } from "@otto-code/protocol/browser-automation/rpc-schemas";
+import {
+  BrowserAutomationBrowserIdSchema,
+  type BrowserAutomationTabInfo,
+} from "@otto-code/protocol/browser-automation/rpc-schemas";
 import type { BrowserToolsBroker } from "./broker.js";
 import type { BrowserToolsResponsePayload } from "./errors.js";
 import type { DevServerManager, PreviewServerSummary } from "../preview/dev-server-manager.js";
@@ -588,8 +591,9 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Capture browser screenshot",
       description:
-        "Capture a PNG screenshot of an Otto browser tab, normalized to vision-model-legible dimensions. " +
-        "Default captures the viewport; fullPage captures the whole page (tall pages scale down, small text may blur - the result reports the scale). " +
+        "Capture a PNG screenshot of an Otto browser tab. " +
+        "Reported width and height are after downscaling to vision-model-legible dimensions: aspect ratio is always preserved, so a scale below 1 means softer text, not a distorted layout. " +
+        "Default captures the viewport; fullPage captures the whole page, which scales tall pages down hardest. " +
         "Pass ref (from the latest browser_snapshot) to capture just that element at up to 3x zoom - best for reading small text, charts, or a component closely. " +
         "For exact colors, fonts, and spacing prefer browser_inspect. Needs a tab browserId.",
       inputSchema: {
@@ -1002,7 +1006,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Resize browser viewport",
       description:
-        "Resize an Otto browser tab's resident webview viewport and/or emulate the page's preferred color scheme. " +
+        "Resize an Otto browser tab's viewport and/or emulate the page's preferred color scheme. " +
+        "The user sees this: the tab becomes a fixed frame in its pane, cropped rather than scaled when it exceeds the pane size reported by browser_list_tabs. Match that pane size unless you need a wider layout, and say so when you deviate. " +
         "Pass preset mobile (375x812), tablet (768x1024), or desktop (1280x800), or an explicit width and height. " +
         "Pass colorScheme to verify dark or light mode without changing OS settings; 'auto' returns the page to the real OS preference. " +
         "Needs a tab browserId.",
@@ -1406,7 +1411,7 @@ function summarizeBrowserSuccess(
     }
     const tabLines = payload.result.tabs.map((tab) => {
       const active = tab.isActive ? " active" : "";
-      return `- browserId=${tab.browserId}${active} title=${JSON.stringify(tab.title || "Untitled")} url=${tab.url}`;
+      return `- browserId=${tab.browserId}${active} title=${JSON.stringify(tab.title || "Untitled")} url=${tab.url}${formatTabGeometry(tab)}`;
     });
     return withDialogs(
       [
@@ -1463,6 +1468,24 @@ function appendDialogSummary(
   return `${summary}\nHandled browser dialog${dialogs.length === 1 ? "" : "s"}: ${dialogs
     .map((dialog) => `${dialog.action} ${dialog.type} ${JSON.stringify(dialog.message)}`)
     .join("; ")}.`;
+}
+
+/**
+ * Viewport and pane size of a presented tab. Printed together because the
+ * comparison is the point: a fixed viewport wider than its pane is cropped to
+ * the pane, so the caller's screenshots show a layout the user cannot see.
+ * Omitted for tabs the host never presented, or hosts that predate the fields.
+ */
+function formatTabGeometry(tab: BrowserAutomationTabInfo): string {
+  if (!tab.viewportWidth || !tab.viewportHeight || !tab.paneWidth || !tab.paneHeight) {
+    return "";
+  }
+  const mode = tab.viewportMode === "fixed" ? " fixed" : "";
+  const cropped =
+    tab.viewportWidth > tab.paneWidth || tab.viewportHeight > tab.paneHeight
+      ? " (cropped to the pane - the user sees part of this page)"
+      : "";
+  return ` viewport=${tab.viewportWidth}x${tab.viewportHeight}${mode} pane=${tab.paneWidth}x${tab.paneHeight}${cropped}`;
 }
 
 const SCREENSHOT_LEGIBILITY_WARN_SCALE = 0.6;

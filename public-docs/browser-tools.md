@@ -20,12 +20,20 @@ Arguments marked `?` are optional.
 
 ## Tabs
 
-| Tool                | Arguments                  | Purpose                                                                  |
-| ------------------- | -------------------------- | ------------------------------------------------------------------------ |
-| `browser_list_tabs` | none                       | List open tabs in the agent's workspace across connected hosts.          |
-| `browser_new_tab`   | `url?`                     | Open a tab in the background and return its `browserId`.                 |
-| `browser_close_tab` | `browserId`                | Close a tab and clean up its webview.                                    |
-| `browser_resize`    | `browserId, width, height` | Resize the tab's viewport: check a layout at phone or tablet dimensions. |
+| Tool                | Arguments                  | Purpose                                                                          |
+| ------------------- | -------------------------- | -------------------------------------------------------------------------------- |
+| `browser_list_tabs` | none                       | List open tabs in the agent's workspace, with each tab's viewport and pane size. |
+| `browser_new_tab`   | `url?`                     | Open a tab in the background and return its `browserId`.                         |
+| `browser_close_tab` | `browserId`                | Close a tab and clean up its webview.                                            |
+| `browser_resize`    | `browserId, width, height` | Resize the tab's viewport: check a layout at phone or tablet dimensions.         |
+
+A tab's viewport is the size the page lays out and screenshots at. Setting a fixed
+viewport is the same control as the device picker in the browser pane toolbar, so
+you see the change too: the page becomes a fixed frame inside the pane. A frame
+larger than the pane is cropped to it rather than scaled down to fit, so an agent
+working at 1920x1080 in a narrower pane is verifying a layout you can only see
+part of. `browser_list_tabs` reports both sizes, and agents are told to match the
+pane unless they say why they need something wider.
 
 ## Reading the page
 

@@ -358,6 +358,20 @@ export const BrowserAutomationTabInfoSchema = z.object({
   // COMPAT(browserTabStatus): added in v0.7.5; absent ⇒ "ready", which is how
   // every pre-0.7.5 host behaved. Drop the gate when floor >= v0.7.5.
   status: z.enum(["starting", "ready", "detached"]).optional(),
+  // Geometry of the presented tab, in CSS pixels. `viewport*` is the size the
+  // page lays out and screenshots at; `pane*` is the region the user's browser
+  // pane gives it. They diverge whenever a fixed device size is selected (by
+  // the pane's device picker or by browser_resize): the frame is cropped to the
+  // pane, never scaled to fit, so a caller that cannot see both numbers cannot
+  // tell that the user is looking at a slice of the page.
+  // COMPAT(browserTabGeometry): added in v0.9.8; absent ⇒ the tab has never
+  // been presented, or the host predates the field. Drop the gate when floor
+  // >= v0.9.8.
+  viewportMode: z.enum(["responsive", "fixed"]).optional(),
+  viewportWidth: z.number().int().positive().optional(),
+  viewportHeight: z.number().int().positive().optional(),
+  paneWidth: z.number().int().positive().optional(),
+  paneHeight: z.number().int().positive().optional(),
 });
 
 export const BrowserAutomationListTabsResultSchema = z.object({

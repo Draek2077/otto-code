@@ -15,6 +15,7 @@ const RESIDENT_VIEWPORT_HEIGHT = 800;
 const residentWebviewsByBrowserId = new Map<string, HTMLElement>();
 const residentSurfacesByBrowserId = new Map<string, HTMLElement>();
 const residentWebviewSizesByBrowserId = new Map<string, { width: number; height: number }>();
+const residentPresentationsByBrowserId = new Map<string, ResidentBrowserPresentation>();
 // Electron webviews live in a permanent top-level surface so their guest
 // contents survive pane changes. While a workspace tab is being dragged that
 // surface must yield hit-testing to the split canvas beneath it: otherwise a
@@ -261,6 +262,47 @@ export function rememberBrowserWebviewSize(input: {
   return dimensions;
 }
 
+/**
+ * Geometry of a tab as it is currently presented, in CSS pixels. `viewport` is
+ * what the page lays out and screenshots at; `pane` is the region the user's
+ * browser pane gives it. A fixed device size is cropped to the pane rather than
+ * scaled to fit, so these two diverging is the difference between what an agent
+ * captures and what the user can see. Only the pane knows both numbers, which
+ * is why they are recorded here and reported through browser_list_tabs.
+ */
+export interface ResidentBrowserPresentation {
+  mode: BrowserViewport["mode"];
+  viewportWidth: number;
+  viewportHeight: number;
+  paneWidth: number;
+  paneHeight: number;
+}
+
+export function readResidentBrowserPresentation(
+  browserId: string,
+): ResidentBrowserPresentation | null {
+  const normalizedBrowserId = trimNonEmpty(browserId);
+  if (!normalizedBrowserId) {
+    return null;
+  }
+  return residentPresentationsByBrowserId.get(normalizedBrowserId) ?? null;
+}
+
+function rememberResidentBrowserPresentation(
+  browserId: string,
+  presentation: ResidentBrowserPresentation,
+): void {
+  if (
+    presentation.viewportWidth <= 0 ||
+    presentation.viewportHeight <= 0 ||
+    presentation.paneWidth <= 0 ||
+    presentation.paneHeight <= 0
+  ) {
+    return;
+  }
+  residentPresentationsByBrowserId.set(browserId, presentation);
+}
+
 function applyBrowserWebviewDimensions(
   webview: HTMLElement,
   dimensions: { width: number; height: number },
@@ -332,12 +374,18 @@ export function presentBrowserWebview(
   surface.style.display = "flex";
   surface.style.visibility = "visible";
   clearResidentWebviewParkingStyle(webview);
-  applyBrowserWebviewDimensions(
-    webview,
+  const webviewDimensions =
     viewport.mode === "responsive"
       ? { width: anchorBounds.width, height: anchorBounds.height }
-      : viewport,
-  );
+      : { width: viewport.width, height: viewport.height };
+  applyBrowserWebviewDimensions(webview, webviewDimensions);
+  rememberResidentBrowserPresentation(normalizedBrowserId, {
+    mode: viewport.mode,
+    viewportWidth: Math.round(webviewDimensions.width),
+    viewportHeight: Math.round(webviewDimensions.height),
+    paneWidth: Math.round(clipBounds.width),
+    paneHeight: Math.round(clipBounds.height),
+  });
   webview.style.position = "absolute";
   webview.style.left = `${Math.round(anchorBounds.left - surfaceLeft)}px`;
   webview.style.top = `${Math.round(anchorBounds.top - surfaceTop)}px`;
@@ -463,6 +511,8 @@ export function releaseResidentBrowserWebview(browserId: string, webview: HTMLEl
   }
 
   residentWebviewsByBrowserId.set(normalizedBrowserId, webview);
+  // A parked tab has no pane, and a stale pane size would read as a live one.
+  residentPresentationsByBrowserId.delete(normalizedBrowserId);
   applyResidentWebviewStyle(webview, normalizedBrowserId);
   const surface = getBrowserSurface(normalizedBrowserId, ownerDocument);
   applyParkedBrowserSurfaceStyle(surface);
@@ -505,6 +555,7 @@ export function removeResidentBrowserWebview(browserId: string): void {
   residentWebviewsByBrowserId.delete(normalizedBrowserId);
   residentSurfacesByBrowserId.delete(normalizedBrowserId);
   residentWebviewSizesByBrowserId.delete(normalizedBrowserId);
+  residentPresentationsByBrowserId.delete(normalizedBrowserId);
   if (resident) {
     readyResidentWebviews.delete(resident);
   }
@@ -520,6 +571,7 @@ export function clearResidentBrowserWebviewsForTests(): void {
   residentWebviewsByBrowserId.clear();
   residentSurfacesByBrowserId.clear();
   residentWebviewSizesByBrowserId.clear();
+  residentPresentationsByBrowserId.clear();
   residentBrowserSurfaceInputEnabled = true;
   residentBrowserInputSuspensions.clear();
   readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID)?.remove();
