@@ -60,19 +60,31 @@ Three setup shapes, in order of preference:
 A `token` entry must carry `credential.issueUrl`. Asking for a credential without
 saying where to get it is the failure this catalog was rebuilt to remove.
 
+### Shared hosted authentication
+
+Box uses Otto's shared confidential-client authentication service. Its authorization
+server does not offer dynamic client registration. The publisher secret stays in
+the service; per-user credentials stay in the host vault. The implementation is
+capability-gated and requires a verified publisher deployment before ordinary users
+can sign in. See [shared authentication](connector-auth-service.md) for ownership,
+security disclosures, lifecycle behavior and deployment instructions. Existing direct
+OAuth connectors keep their current authentication paths.
+
 ### The four shapes real vendors actually need
 
-The generic broker supports fixed URLs with dynamic client registration. Google
+The generic broker supports fixed URLs with dynamic client registration and
+publisher-owned public registrations for remote MCP servers such as Slack. Google
 uses Otto's publisher-owned Desktop OAuth registration and ordinary APIs. The
 remaining shapes below describe vendor requirements, not implemented support:
 
-| Shape                          | What the user supplies                  | Vendors                                                                                                                                                                                                        |
-| ------------------------------ | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fixed URL + DCR                | nothing                                 | Slack, Notion, Linear, Atlassian, monday.com, Box, Airtable, Dropbox, ClickUp, Trello, HubSpot, Stripe, GitHub, Sentry, Supabase, Cloudflare, Vercel, Square, Intercom, Canva, Figma, Webflow, Ahrefs, Netlify |
-| Publisher-owned Desktop OAuth  | nothing beyond account sign-in          | Google Drive, Gmail and Calendar                                                                                                                                                                               |
-| **Templated URL** + a variable | tenant, host, store, region, or org URL | Microsoft 365, GitLab, Shopify, Datadog, AWS, Salesforce, Microsoft Ads                                                                                                                                        |
-| **Client credentials** grant   | client ID and secret, no browser        | PayPal                                                                                                                                                                                                         |
-| Static API token, no OAuth     | one token                               | Bitbucket tools on the Atlassian endpoint                                                                                                                                                                      |
+| Shape                          | What the user supplies                  | Vendors                                                                                                                                                                            |
+| ------------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fixed URL + DCR                | nothing                                 | Notion, Linear, Atlassian, monday.com, Airtable, ClickUp, Trello, HubSpot, Stripe, GitHub, Sentry, Supabase, Cloudflare, Vercel, Square, Intercom, Canva, Webflow, Ahrefs, Netlify |
+| Registered public client + MCP | account sign-in                         | Slack (internal workspace verified; Marketplace distribution pending)                                                                                                              |
+| Publisher-owned Desktop OAuth  | nothing beyond account sign-in          | Google Drive, Gmail and Calendar                                                                                                                                                   |
+| **Templated URL** + a variable | tenant, host, store, region, or org URL | Microsoft 365, GitLab, Shopify, Datadog, AWS, Salesforce, Microsoft Ads                                                                                                            |
+| **Client credentials** grant   | client ID and secret, no browser        | PayPal                                                                                                                                                                             |
+| Static API token, no OAuth     | one token                               | Bitbucket tools on the Atlassian endpoint                                                                                                                                          |
 
 The lesson is that "sign in and you're done" is the goal, not a universal
 property of the ecosystem. A connector that needs a tenant ID still beats one
@@ -82,6 +94,25 @@ that needs a hand-typed command, so the shapes exist to keep every vendor on the
 Two vendors (Vercel and Square) gate their endpoint to MCP clients they have
 reviewed, so they can refuse Otto for reasons unrelated to the user's account.
 The verification gate surfaces what they actually said.
+
+Figma is excluded from the catalog until Otto can connect as an approved client.
+Its registration endpoint rejects Otto with HTTP 403, and Figma has paused new
+client approvals. Restore the entry only after approval and successful sign-in
+and tool enumeration. See [Figma's access policy](https://developers.figma.com/docs/figma-mcp-server/rate-limits-access/).
+
+Dropbox uses Otto's publisher-owned public app registration with PKCE, bypassing
+its trusted-client-only dynamic registration endpoint. Its registered callback is
+`http://127.0.0.1:6872/connectors/oauth/callback`; it uses a separate port from
+Slack's callback. The registration requests Dropbox's eight published MCP scopes
+and `token_access_type=offline` for refresh tokens. No app secret is distributed.
+End users sign in to Otto's app rather than registering their own.
+
+The September 2026 live source check completed consent, enumerated 25 tools,
+refreshed the grant, and called `who_am_i` successfully. The portal app remains
+in Development with access limited to its owner. This proves owner-account MCP
+access, not public distribution. Installed hosts need the registered-client code
+before their normal Sign in action uses this path. See
+[Dropbox's supported clients and app setup](https://help.dropbox.com/integrations/connect-dropbox-mcp-server).
 
 ### Everything configures from the Connectors UI
 
@@ -179,6 +210,51 @@ stable redirect URI lets a second login reuse the first login's registration; a
 registration bound to a different URI is discarded rather than reused, because
 the authorization server rejects the mismatch at the authorize step.
 
+The callback exchanges its code once, using the discovery result and client
+registration that started consent. It uses the SDK's token exchange directly:
+the SDK's full authorization helper retries rejected clients after deleting their
+registration, which hides the original rejection behind a missing-client error.
+Otto reports the original OAuth error with credentials redacted. If the client
+was rejected, the next Connect or Reconnect starts fresh consent, dynamically
+registering again where applicable. Otto never retries the old code against a
+new client.
+
+### Slack's registered public client
+
+Slack does not support dynamic client registration. The broker selects Otto's
+publisher-owned public client from `connector-oauth-registration.ts` by the exact
+HTTP endpoint `https://mcp.slack.com/mcp`, never by the connector's editable name
+or id. The existing MCP SDK still owns discovery, PKCE, exchange and refresh.
+No client secret is packaged or requested from the user.
+
+The registration and scope bundle compile into `connector-oauth-registration.js`
+beside `connector-oauth.js` in the server package's existing `dist/server` payload.
+Slack needs no separate JSON asset, environment variable, or copy step. Desktop
+`afterPack` checks both files inside the actual `app.asar` and compares their bytes
+with the freshly built daemon output, failing packaging if either is missing,
+empty, or stale.
+
+The registered callback is `http://127.0.0.1:6871/connectors/oauth/callback`.
+If that port is busy, Slack sign-in fails with an actionable message instead of
+selecting an unregistered port. The provider validates discovered authorization
+and token endpoints against the registration. Saved credentials bind to that
+endpoint, client id and callback; credentials from a different app are not reused.
+OAuth requests use the explicit portal-approved user scope bundle in code, so a
+vendor metadata change cannot silently expand the next consent request.
+
+Publisher setup in Slack's app settings enables **Slack Model Context Protocol
+(MCP) Server** and **PKCE**, configures the callback, and installs the app in the
+workspace. Enabling MCP adds Slack's standard scope bundle. **Agent experience**
+is separate: it is for an assistant conversation inside Slack and is not needed
+for Otto's connector. End users only sign in through Otto.
+
+The September 2026 live check completed a fresh PKCE exchange and enumerated 27
+tools from Slack's official MCP server in the Otto: Code workspace. The app is
+internal; this does not prove general distribution. Slack permits internal or
+Marketplace-published MCP apps, and Marketplace publication remains a release
+prerequisite for other workspaces. See [Slack MCP app requirements](https://docs.slack.dev/ai/slack-mcp-server/)
+and [desktop PKCE](https://docs.slack.dev/authentication/using-pkce/).
+
 ### Interactive versus silent
 
 The same provider class serves both paths, distinguished by whether an
@@ -189,6 +265,18 @@ The same provider class serves both paths, distinguished by whether an
 - **Silent** (the agent path, at MCP connect time) refreshes an expired access
   token transparently, and **throws** if the server demands a full re-login. An
   agent mid-turn must never pop a browser nobody asked for.
+
+Opening the vendor site or creating an account does not complete authorization.
+The add panel distinguishes opening the browser from waiting for access approval,
+and offers **Open sign-in page** while waiting. This lets a user who landed in a
+new vendor workspace return to consent without removing the connector. Only the
+daemon callback followed by successful tool enumeration completes setup.
+
+Installed OAuth connectors expose **Connect**, **Reconnect**, and **Disconnect**
+using the same sign-in helper as the add panel. A saved catalog OAuth entry with
+no token presence is labelled **Sign-in incomplete**. Closing its install panel
+cancels the local wait and runs the existing incomplete-install cleanup; browser
+opening failures and authorization timeouts also release the status subscription.
 
 ### Browser authorization lifecycle
 
@@ -293,11 +381,20 @@ Google's token exchange requires that registration's generated client secret.
 A desktop registration is distributed application identity, not a confidential
 server credential. End-user tokens remain separate in the vault.
 
-Builds copy the publisher registration from `OTTO_GOOGLE_OAUTH_CLIENT_FILE` into
-the daemon package with `scripts/copy-google-oauth-client.mjs`. That variable is a
-publisher build input, never an end-user setting. A build without registration
-does not advertise `server_info.features.connectorNativeGoogle`; the client asks
-to update the host. The old caller-supplied registration RPC shape remains
+Builds copy the publisher registration from `OTTO_GOOGLE_OAUTH_CLIENT_FILE` or
+`OTTO_GOOGLE_OAUTH_CLIENT_JSON` into the daemon package with
+`scripts/copy-google-oauth-client.mjs`. These are publisher build inputs, never
+end-user settings. Desktop release jobs supply JSON through the repository secret
+`OTTO_GOOGLE_OAUTH_CLIENT_JSON`; publishing builds set
+`OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT=1` and fail if registration is missing. Only the
+desktop client ID and client secret enter the package. Incremental builds remove
+stale registration assets before processing the current input.
+
+A development build without registration does not advertise
+`server_info.features.connectorNativeGoogle`; the client explains that Google
+sign-in is unavailable in this host build. This capability reflects registration
+availability as well as implementation support, so a missing capability does not
+by itself prove the host version is old. The old caller-supplied registration RPC shape remains
 parseable for compatibility but is rejected.
 
 Public release requires publisher registration packaging and Google's required
@@ -354,6 +451,13 @@ refresh on subsequent construction after five minutes, with a shorter retry
 for failed connections. Existing chats must reload to discover newly added
 tools. Unsupported input schemas fail verification instead of silently dropping
 part of a connector's catalog.
+
+Verification and agent exposure share the same input-schema conversion. Local
+JSON Pointer references into nested properties or array items are relocated to
+root definitions before conversion, preserving shared and recursive schemas.
+This supports schemas such as monday.com's `create_form_submission`, whose
+signature answer reuses its file-answer schema. Unresolved and external
+references still fail verification.
 
 Local tests cover Google consent parameters, loopback callbacks, refresh,
 endpoint binding, paginated MCP discovery, native/MCP schema parity, reconnects

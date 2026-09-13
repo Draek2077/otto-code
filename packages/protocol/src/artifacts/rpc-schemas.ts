@@ -16,6 +16,24 @@ export const ArtifactListRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const ArtifactWorkspaceAttachRequestSchema = z.object({
+  type: z.literal("artifact.workspace.attach.request"),
+  workspaceId: z.string().min(1),
+  artifactId: z.string().min(1),
+  requestId: z.string(),
+});
+
+export const ArtifactWorkspaceAttachResponseSchema = z.object({
+  type: z.literal("artifact.workspace.attach.response"),
+  payload: z.object({
+    workspaceId: z.string(),
+    artifactId: z.string(),
+    success: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
 export const ArtifactCreateRequestSchema = z.object({
   type: z.literal("artifact.create.request"),
   name: z.string(),
@@ -282,6 +300,9 @@ export const ArtifactDeletedNotificationSchema = z.object({
 // Type exports
 // ============================================================================
 
+export type ArtifactWorkspaceAttachRequest = z.infer<typeof ArtifactWorkspaceAttachRequestSchema>;
+export type ArtifactWorkspaceAttachResponse = z.infer<typeof ArtifactWorkspaceAttachResponseSchema>;
+
 export type ArtifactListRequest = z.infer<typeof ArtifactListRequestSchema>;
 export type ArtifactCreateRequest = z.infer<typeof ArtifactCreateRequestSchema>;
 export type ArtifactUpdateRequest = z.infer<typeof ArtifactUpdateRequestSchema>;
@@ -313,6 +334,7 @@ export type ArtifactUpdatedNotification = z.infer<typeof ArtifactUpdatedNotifica
 export type ArtifactDeletedNotification = z.infer<typeof ArtifactDeletedNotificationSchema>;
 
 export type ArtifactRequest =
+  | ArtifactWorkspaceAttachRequest
   | ArtifactListRequest
   | ArtifactCreateRequest
   | ArtifactUpdateRequest
@@ -327,6 +349,7 @@ export type ArtifactRequest =
   | ArtifactStoreMoveRequest;
 
 export type ArtifactResponse =
+  | ArtifactWorkspaceAttachResponse
   | ArtifactListResponse
   | ArtifactCreateResponse
   | ArtifactUpdateResponse

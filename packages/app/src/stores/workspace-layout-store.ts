@@ -1,3 +1,4 @@
+import { reconcileWorkspaceArtifacts } from "@/artifacts/reconcile-workspace-artifacts";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
@@ -105,6 +106,11 @@ export interface OpenWorkspaceTabInput {
 }
 
 export interface WorkspaceLayoutStore {
+  reconcileArtifacts: (
+    workspaceKey: string,
+    artifactIds: readonly string[],
+    acknowledgedIds: readonly string[],
+  ) => void;
   layoutByWorkspace: Record<string, WorkspaceLayout>;
   splitSizesByWorkspace: Record<string, Record<string, number[]>>;
   explorerSidebarWidthByWorkspace: Record<string, number>;
@@ -944,6 +950,26 @@ export function createWorkspaceLayoutStore(
         pinnedAgentIdsByWorkspace: {},
         pendingAgentIdsByWorkspace: {},
         hiddenAgentIdsByWorkspace: {},
+        reconcileArtifacts: (workspaceKey, artifactIds, previous) => {
+          const key = trimNonEmpty(workspaceKey);
+          if (!key) return;
+          set((state) => {
+            if (
+              previous.length === artifactIds.length &&
+              previous.every((id, i) => id === artifactIds[i])
+            )
+              return state;
+            const result = reconcileWorkspaceArtifacts({
+              layout: getWorkspaceLayout(state.layoutByWorkspace, key),
+              artifactIds,
+              acknowledgedIds: previous,
+              explorerSidebarPaneId: state.explorerSidebarPaneIdByWorkspace[key] ?? null,
+            });
+            return {
+              layoutByWorkspace: { ...state.layoutByWorkspace, [key]: result.layout },
+            };
+          });
+        },
         focusRestorationByWorkspace: {},
         explorerSidebarPaneIdByWorkspace: {},
         sidePaneIdByWorkspace: {},

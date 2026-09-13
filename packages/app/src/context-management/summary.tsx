@@ -27,8 +27,7 @@ interface ContextSummaryProps {
   report: ContextReport | null;
   /** No numbers yet and a scan is running. */
   isLoading: boolean;
-  /** A scan is running behind numbers already on screen. */
-  isRefreshing: boolean;
+  refreshAction: ReactNode;
   /** Why the last scan failed, if it did. Shown rather than silently blanking. */
   error: string | null;
   windowTokens: number;
@@ -50,7 +49,7 @@ interface ContextSummaryProps {
 export function ContextSummary({
   report,
   isLoading,
-  isRefreshing,
+  refreshAction,
   error,
   windowTokens,
   onWindowTokensChange,
@@ -105,17 +104,13 @@ export function ContextSummary({
           testID="context-window-select"
         />
         {personalitySlot}
+        {refreshAction}
       </View>
 
       {report ? (
         <>
-          {/* The cached numbers stay put while a re-scan runs behind them; the
-              spinner is the only thing that says the answer may still move. */}
           <View style={styles.titleRow}>
             <Text style={styles.title}>{t("contextManagement.summary.title")}</Text>
-            {isRefreshing ? (
-              <LoadingSpinner size="small" testID="context-summary-refreshing" />
-            ) : null}
           </View>
           <View style={styles.headlineRow}>
             <Text style={severityTextStyle(report.aggregateSeverity)}>

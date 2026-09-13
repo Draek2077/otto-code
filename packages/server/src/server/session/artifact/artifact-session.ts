@@ -2,14 +2,19 @@ import type { Logger } from "pino";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import type { ArtifactMetadata, CreateArtifactInput } from "@otto-code/protocol/artifacts/types";
 import { ArtifactService } from "../../artifact/artifact-service.js";
+import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
+import { areEquivalentPaths } from "../../../utils/path.js";
 
 export interface ArtifactSessionHost {
   emit(msg: SessionOutboundMessage): void;
+  broadcast(msg: SessionOutboundMessage): void;
 }
 
 export interface ArtifactSessionOptions {
   host: ArtifactSessionHost;
   artifactService: ArtifactService;
+  workspaceRegistry: WorkspaceRegistry;
+  projectRegistry: ProjectRegistry;
   /**
    * Whether this session created the service and must stop it on close. The
    * daemon-wide service (which owns every ready-file watcher and outlives any
@@ -22,15 +27,70 @@ export interface ArtifactSessionOptions {
 
 export class ArtifactSession {
   private readonly host: ArtifactSessionHost;
+  private readonly workspaceRegistry: WorkspaceRegistry;
+  private readonly projectRegistry: ProjectRegistry;
   private readonly artifactService: ArtifactService;
   private readonly ownsArtifactService: boolean;
   private readonly logger: Logger;
 
   constructor(options: ArtifactSessionOptions) {
     this.host = options.host;
+    this.workspaceRegistry = options.workspaceRegistry;
+    this.projectRegistry = options.projectRegistry;
     this.artifactService = options.artifactService;
     this.ownsArtifactService = options.ownsArtifactService;
     this.logger = options.logger.child({ module: "artifact-session" });
+  }
+
+  async handleArtifactWorkspaceAttachRequest(
+    msg: Extract<SessionInboundMessage, { type: "artifact.workspace.attach.request" }>,
+  ): Promise<void> {
+    try {
+      const workspace = await this.workspaceRegistry.get(msg.workspaceId);
+      if (!workspace || workspace.archivedAt || workspace.hidden) {
+        throw new Error("Workspace is unavailable");
+      }
+      const artifact = await this.artifactService.inspect(msg.artifactId);
+      const project = await this.projectRegistry.get(workspace.projectId);
+      if (
+        artifact.projectId !== workspace.projectId &&
+        (!project || !areEquivalentPaths(artifact.projectId, project.rootPath))
+      ) {
+        throw new Error("Artifact belongs to a different project");
+      }
+      const updated = await this.workspaceRegistry.update(msg.workspaceId, (record) => {
+        if (record.archivedAt || record.hidden) throw new Error("Workspace is unavailable");
+        if (record.artifactIds?.includes(msg.artifactId)) return record;
+        return {
+          ...record,
+          artifactIds: [...(record.artifactIds ?? []), msg.artifactId],
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      if (!updated) throw new Error("Workspace is unavailable");
+      // Registry mutations publish the normal sequenced workspace update to
+      // every session, including reconnect/catch-up and relay clients.
+      this.host.emit({
+        type: "artifact.workspace.attach.response",
+        payload: {
+          workspaceId: msg.workspaceId,
+          artifactId: msg.artifactId,
+          success: true,
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "artifact.workspace.attach.response",
+        payload: {
+          workspaceId: msg.workspaceId,
+          artifactId: msg.artifactId,
+          success: false,
+          requestId: msg.requestId,
+          error: error instanceof Error ? error.message : "Failed to add artifact",
+        },
+      });
+    }
   }
 
   async handleArtifactListRequest(
@@ -84,7 +144,7 @@ export class ArtifactSession {
           requestId: msg.requestId,
         },
       });
-      this.host.emit({
+      this.host.broadcast({
         type: "artifact.created.notification",
         payload: {
           artifact,
@@ -125,7 +185,7 @@ export class ArtifactSession {
           requestId: msg.requestId,
         },
       });
-      this.host.emit({
+      this.host.broadcast({
         type: "artifact.updated.notification",
         payload: {
           artifact,
@@ -158,7 +218,7 @@ export class ArtifactSession {
           requestId: msg.requestId,
         },
       });
-      this.host.emit({
+      this.host.broadcast({
         type: "artifact.updated.notification",
         payload: {
           artifact,
@@ -191,7 +251,7 @@ export class ArtifactSession {
           requestId: msg.requestId,
         },
       });
-      this.host.emit({
+      this.host.broadcast({
         type: "artifact.updated.notification",
         payload: {
           artifact,
@@ -219,6 +279,14 @@ export class ArtifactSession {
   ): Promise<void> {
     try {
       await this.artifactService.delete(msg.artifactId);
+      for (const workspace of await this.workspaceRegistry.list()) {
+        if (!workspace.artifactIds?.includes(msg.artifactId)) continue;
+        await this.workspaceRegistry.update(workspace.workspaceId, (record) => ({
+          ...record,
+          artifactIds: (record.artifactIds ?? []).filter((id) => id !== msg.artifactId),
+          updatedAt: new Date().toISOString(),
+        }));
+      }
       this.host.emit({
         type: "artifact.delete.response",
         payload: {
@@ -226,7 +294,7 @@ export class ArtifactSession {
           requestId: msg.requestId,
         },
       });
-      this.host.emit({
+      this.host.broadcast({
         type: "artifact.deleted.notification",
         payload: {
           artifactId: msg.artifactId,
@@ -258,7 +326,7 @@ export class ArtifactSession {
           requestId: msg.requestId,
         },
       });
-      this.host.emit({
+      this.host.broadcast({
         type: "artifact.updated.notification",
         payload: {
           artifact,

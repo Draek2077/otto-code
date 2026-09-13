@@ -230,7 +230,8 @@ function applyResidentWebviewStyle(webview: HTMLElement, browserId: string | nul
   webview.style.width = `${dimensions.width}px`;
   webview.style.height = `${dimensions.height}px`;
   webview.style.border = "0";
-  webview.style.background = "transparent";
+  // Pages with transparent canvases need a browser-white backing in every app theme.
+  webview.style.background = "#ffffff";
   webview.style.position = "absolute";
   webview.style.left = "0";
   webview.style.top = "0";
@@ -310,7 +311,7 @@ function applyBrowserWebviewDimensions(
 ): void {
   webview.style.display = "flex";
   webview.style.border = "0";
-  webview.style.background = "transparent";
+  webview.style.background = "#ffffff";
   webview.style.flex = "0 0 auto";
   webview.style.width = `${Math.max(1, Math.round(dimensions.width))}px`;
   webview.style.height = `${Math.max(1, Math.round(dimensions.height))}px`;

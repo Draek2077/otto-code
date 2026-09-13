@@ -4,7 +4,6 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { createServer } from "node:http";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
@@ -12,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { experimental_createMCPClient } from "ai";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { chromium } from "playwright";
+import { verifyComposerFocus } from "../e2e/browser-composer-focus.e2e.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(scriptDir, "..");
@@ -143,6 +143,7 @@ function spawnLogged(name, command, args, options, logDir) {
   const log = fs.createWriteStream(logPath, { flags: "a" });
   const child = spawn(command, args, {
     ...options,
+    windowsHide: true,
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -209,7 +210,10 @@ async function startTargetPage() {
       <html>
         <head><title>Tab bridge target</title></head>
         <body>
-          <button id="bridge-target" onclick="this.textContent = 'Clicked'">Bridge target</button>
+          <input aria-label="Automation field">
+          <button id="bridge-target" onclick="document.querySelector('#status').textContent = 'Clicked'">Bridge target</button>
+          <p id="status"></p>
+          <a href="/?opened=1" target="_blank">Open another tab</a>
         </body>
       </html>`);
   });
@@ -415,23 +419,31 @@ async function runRegression({ page, client, serverId, targetUrl }) {
 }
 
 async function main() {
+  const scratchDir = path.join(rootDir, ".tmp");
+  fs.mkdirSync(scratchDir, { recursive: true });
   const artifactDir =
     process.env.OTTO_TAB_BRIDGE_E2E_ARTIFACT_DIR ??
-    fs.mkdtempSync(path.join(os.tmpdir(), "otto-tab-bridge-e2e-artifacts-"));
-  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "otto-tab-bridge-e2e-"));
+    fs.mkdtempSync(path.join(scratchDir, "otto-tab-bridge-e2e-artifacts-"));
+  const runtimeDir = fs.mkdtempSync(path.join(scratchDir, "otto-tab-bridge-e2e-"));
   fs.mkdirSync(artifactDir, { recursive: true });
   const ottoHome = path.join(runtimeDir, "otto-home");
   const userData = path.join(runtimeDir, "electron-user-data");
   const workspaceRoot = path.join(runtimeDir, "workspaces");
   fs.mkdirSync(ottoHome, { recursive: true });
 
-  const [daemonPort, expoPort, cdpPort] = await Promise.all([
+  const [daemonPort, expoPort, cdpPort, inspectorPort] = await Promise.all([
+    reservePort(),
     reservePort(),
     reservePort(),
     reservePort(),
   ]);
   const listen = `127.0.0.1:${daemonPort}`;
   seedOttoHome(ottoHome, listen, workspaceRoot);
+  writeJson(path.join(userData, "desktop-settings.json"), {
+    version: 1,
+    settings: { tray: { showIcon: true, startMinimized: true, minimizeOnClose: true } },
+    migrations: { legacyRendererSettingsImported: true, daemonStopOnQuitDefaultApplied: true },
+  });
   const target = await startTargetPage();
   const children = [];
   let browser = null;
@@ -463,6 +475,7 @@ async function main() {
     const desktopArgs = [
       process.execPath,
       devRunner,
+      `--inspect=127.0.0.1:${inspectorPort}`,
       ...(process.platform === "linux" ? ["--no-sandbox"] : []),
     ];
     const desktopCommand = process.platform === "linux" ? "xvfb-run" : desktopArgs.shift();
@@ -506,15 +519,27 @@ async function main() {
       ),
     );
     client = await experimental_createMCPClient({ transport });
+    const composerFocus = await verifyComposerFocus({
+      page,
+      client,
+      serverId: status.serverId,
+      targetUrl: target.url,
+      callerAgentId,
+      inspectorPort,
+      expoPort,
+      workspaceId: workspaceIds[0],
+      startupTimeoutMs,
+      callBrowserTool,
+    });
     const report = await runRegression({
       page,
       client,
       serverId: status.serverId,
       targetUrl: target.url,
     });
-    writeJson(path.join(artifactDir, "result.json"), report);
+    writeJson(path.join(artifactDir, "result.json"), { ...report, composerFocus });
     console.log(
-      `Browser tab bridge E2E passed: WebContents ${report.originalWebContentsId} -> ${report.parkedWebContentsId}; list, snapshot, click passed.`,
+      `Browser tab bridge E2E passed: WebContents ${report.originalWebContentsId} -> ${report.parkedWebContentsId}; list, snapshot, click and native composer typing passed.`,
     );
   } catch (error) {
     console.error(`Browser tab bridge E2E failed. Artifacts: ${artifactDir}`);

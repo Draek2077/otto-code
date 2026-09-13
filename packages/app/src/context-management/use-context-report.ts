@@ -128,6 +128,7 @@ function fetchReport(params: {
   const request = client
     .requestContextReport({
       workspaceId,
+      ...(force ? { forceRefresh: true } : {}),
       ...(provider ? { provider } : {}),
       ...(typeof windowTokens === "number" ? { windowTokens } : {}),
       ...(personalityId ? { personalityId } : {}),

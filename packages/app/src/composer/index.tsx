@@ -2186,11 +2186,11 @@ export function Composer({
   );
 
   /**
-   * Run the whole queue now, as ONE turn: the same thing the drain does when
-   * the turn in flight ends, just without the wait. Text is joined with a blank
-   * line and attachments are concatenated in queue order, matching the daemon's
-   * `mergeSteerQueueBatch`, so "Send all" and a natural drain produce the same
-   * prompt. Entries the drain beat us to simply come back empty and are skipped.
+   * Explicitly deliver the queue now as one submission, including system
+   * notifications with their full envelopes. Text is joined with a blank line
+   * and attachments are concatenated in queue order. Unlike this user action,
+   * the daemon's automatic drain keeps system entries separate. Entries the
+   * drain beat us to simply come back empty and are skipped.
    */
   const handleSendAllQueued = useCallback(async () => {
     if (isCompacting) return;

@@ -1,5 +1,6 @@
 import type { PluginLifecycle } from "../../plugins/lifecycle/index.js";
 import { describeHookWorkspace } from "../../plugins/lifecycle/index.js";
+import { assertProjectOnline, assertProjectPathOnline } from "../../project-availability.js";
 import { basename, resolve } from "node:path";
 import type { Logger } from "pino";
 import {
@@ -182,6 +183,7 @@ export function createWorkspaceProvisioningService(deps: {
   }
 
   async function findOrCreateProjectForDirectory(cwd: string): Promise<PersistedProjectRecord> {
+    await assertProjectPathOnline(projectRegistry, cwd);
     const rootPath = resolve(cwd);
     const checkout = await workspaceGitService.getCheckout(rootPath);
     const timestamp = new Date().toISOString();
@@ -237,6 +239,7 @@ export function createWorkspaceProvisioningService(deps: {
     const project = await projectRegistry.get(projectId);
     if (!project) throw new WorkspaceProvisioningError("unknown_project", projectId);
     if (project.archivedAt) throw new WorkspaceProvisioningError("archived_project", projectId);
+    assertProjectOnline(project);
     return project;
   }
 
@@ -389,6 +392,7 @@ export function createWorkspaceProvisioningService(deps: {
   }
 
   async function findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord> {
+    await assertProjectPathOnline(projectRegistry, cwd);
     const normalizedCwd = resolve(cwd);
     const workspaces = await workspaceRegistry.list();
     const active = workspaces
@@ -457,6 +461,7 @@ export function createWorkspaceProvisioningService(deps: {
   ): Promise<PersistedWorkspaceRecord> {
     const project = await projectRegistry.get(workspace.projectId);
     if (!project) throw new Error(`Unknown project: ${workspace.projectId}`);
+    assertProjectOnline(project);
     const timestamp = new Date().toISOString();
     const checkout =
       workspace.archivedAt || project.archivedAt
@@ -508,8 +513,9 @@ export function createWorkspaceProvisioningService(deps: {
   async function refreshWorkspaceRecord(
     workspace: PersistedWorkspaceRecord,
   ): Promise<PersistedWorkspaceRecord> {
-    const checkout = await workspaceGitService.getCheckout(workspace.cwd);
     const project = await projectRegistry.get(workspace.projectId);
+    if (project) assertProjectOnline(project);
+    const checkout = await workspaceGitService.getCheckout(workspace.cwd);
     if (project && !project.archivedAt) {
       await refreshProjectKind(project, workspace.cwd, checkout);
     }

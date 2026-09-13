@@ -7,6 +7,10 @@ import {
   PendingBrowserWindowOpenRequests,
 } from "./window-open.js";
 import { OttoBrowserWebviewRegistry } from "./registry.js";
+import {
+  observeBrowserUserActivation,
+  type BrowserInputOwnershipGuest,
+} from "../browser-automation/input-ownership.js";
 
 export {
   BROWSER_NEW_TAB_REQUEST_EVENT,
@@ -21,8 +25,11 @@ interface BrowserWebContentsIdentity {
   isDestroyed(): boolean;
 }
 
-interface RegisteredBrowserWebContents extends BrowserWebContentsIdentity {
-  readonly hostWebContents: BrowserWebContentsIdentity | null;
+interface RegisteredBrowserWebContents
+  extends BrowserWebContentsIdentity, BrowserInputOwnershipGuest {
+  readonly hostWebContents:
+    | (BrowserWebContentsIdentity & NonNullable<BrowserInputOwnershipGuest["hostWebContents"]>)
+    | null;
   readonly session: object;
   setBackgroundThrottling(allowed: boolean): void;
   once(event: "destroyed", listener: () => void): void;
@@ -58,6 +65,7 @@ export function getOttoBrowserWebviewRegistry(): OttoBrowserWebviewRegistry {
 export function prepareOttoBrowserWebContents(contents: RegisteredBrowserWebContents): void {
   const webContentsId = contents.id;
   contents.setBackgroundThrottling(false);
+  observeBrowserUserActivation(contents);
   contents.once("destroyed", () => {
     browserRegistry.unregisterWebContents(webContentsId);
   });

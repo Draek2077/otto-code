@@ -90,6 +90,8 @@ export function createWorkspaceGitObserverService(deps: {
       return WORKSPACE_GIT_WATCH_REMOVED_STATE_KEY;
     }
     return JSON.stringify([
+      workspace.projectOffline,
+      workspace.workspaceDirectory,
       workspace.name,
       workspace.diffStat ? [workspace.diffStat.additions, workspace.diffStat.deletions] : null,
     ]);
@@ -206,6 +208,11 @@ export function createWorkspaceGitObserverService(deps: {
 
   function syncObservers(workspaces: Iterable<WorkspaceDescriptorPayload>): void {
     for (const workspace of workspaces) {
+      if (workspace.projectOffline) {
+        removeForWorkspaceId(workspace.id);
+        rememberDescriptorState(workspace.id, workspace);
+        continue;
+      }
       syncObserver(workspace.workspaceDirectory, {
         isGit: workspace.workspaceKind !== "directory",
         workspaceId: workspace.id,

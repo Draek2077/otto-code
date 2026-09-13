@@ -9,6 +9,7 @@ import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { createOttoDaemon, type OttoDaemonConfig } from "./bootstrap.js";
 import { ArtifactStore } from "./artifact/artifact-store.js";
+import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { createTestAgentClients } from "./test-utils/fake-agent-client.js";
 
 const TEST_TIMEOUT_MS = 15_000;
@@ -35,7 +36,23 @@ test(
       await daemon.start();
       first = await connectClient(port, "artifact-first-client");
       second = await connectClient(port, "artifact-second-client");
-      await Promise.all([first.openProject(projectRoot), second.openProject(projectRoot)]);
+      const opened = await first.openProject(projectRoot);
+      await second.openProject(projectRoot);
+      expect(opened.workspace?.id).toEqual(expect.any(String));
+      const workspaceId = opened.workspace!.id;
+      await second.fetchWorkspaces({ subscribe: { subscriptionId: "artifact-peer" } });
+      const workspaceUpdates: Array<
+        Extract<SessionOutboundMessage, { type: "workspace_update" }>["payload"]
+      > = [];
+      second.on("workspace_update", (message) => workspaceUpdates.push(message.payload));
+      const created: string[] = [];
+      const deleted: string[] = [];
+      second.on("artifact.created.notification", (message) =>
+        created.push(message.payload.artifact.id),
+      );
+      second.on("artifact.deleted.notification", (message) =>
+        deleted.push(message.payload.artifactId),
+      );
 
       const store = new ArtifactStore(path.join(projectRoot, ".otto", "artifacts"));
       const artifact = readyArtifact(store, projectRoot);
@@ -46,6 +63,102 @@ test(
       // second session mutates it. A per-session service would not share that
       // state or its watcher with the next request.
       await first.artifactList({ projectId: projectRoot });
+      const attached = await first.artifactAttachWorkspace({
+        workspaceId,
+        artifactId: ARTIFACT_ID,
+      });
+      expect(attached.success).toBe(true);
+      await expect
+        .poll(() =>
+          workspaceUpdates.some(
+            (update) =>
+              update.kind === "upsert" &&
+              update.workspace.id === workspaceId &&
+              update.workspace.artifactIds?.includes(ARTIFACT_ID),
+          ),
+        )
+        .toBe(true);
+      // The shared membership survives another client attaching the same item.
+      expect(
+        (await second.artifactAttachWorkspace({ workspaceId, artifactId: ARTIFACT_ID })).success,
+      ).toBe(true);
+      expect(
+        (await second.fetchWorkspaces()).entries.find((workspace) => workspace.id === workspaceId)
+          ?.artifactIds,
+      ).toEqual([ARTIFACT_ID]);
+      const siblingPath = path.join(projectRoot, "sibling");
+      await mkdir(siblingPath);
+      const sibling = await first.createWorkspace({
+        source: { kind: "directory", path: siblingPath, projectId: opened.workspace!.projectId },
+      });
+      expect(sibling.error).toBeNull();
+      expect(sibling.workspace?.id).not.toBe(workspaceId);
+      expect(
+        (await second.fetchWorkspaces()).entries.find((entry) => entry.id === sibling.workspace!.id)
+          ?.artifactIds,
+      ).toEqual([]);
+      const otherProject = path.join(root, "other-project");
+      await mkdir(otherProject);
+      const other = await first.openProject(otherProject);
+      expect(
+        (
+          await first.artifactAttachWorkspace({
+            workspaceId: other.workspace!.id,
+            artifactId: ARTIFACT_ID,
+          })
+        ).success,
+      ).toBe(false);
+      const secondArtifact = {
+        ...artifact,
+        id: "concurrent-artifact",
+        filePath: store.htmlPath("concurrent-artifact"),
+      };
+      await store.create(secondArtifact);
+      await writeFile(secondArtifact.filePath, artifactHtml(1, "Another report"), "utf8");
+      const attachedTogether = await Promise.all([
+        first.artifactAttachWorkspace({ workspaceId, artifactId: ARTIFACT_ID }),
+        second.artifactAttachWorkspace({ workspaceId, artifactId: secondArtifact.id }),
+      ]);
+      expect(attachedTogether.map((result) => result.success)).toEqual([true, true]);
+      expect(
+        (await second.fetchWorkspaces()).entries.find((entry) => entry.id === workspaceId)
+          ?.artifactIds,
+      ).toEqual([ARTIFACT_ID, secondArtifact.id]);
+      expect((await first.artifactDelete({ artifactId: secondArtifact.id })).success).toBe(true);
+      await expect
+        .poll(() =>
+          workspaceUpdates.findLast(
+            (update) => update.kind === "upsert" && update.workspace.id === workspaceId,
+          ),
+        )
+        .toMatchObject({ kind: "upsert", workspace: { artifactIds: [ARTIFACT_ID] } });
+      expect(
+        (
+          await first.artifactAttachWorkspace({
+            workspaceId: "missing-workspace",
+            artifactId: ARTIFACT_ID,
+          })
+        ).success,
+      ).toBe(false);
+      expect(
+        (await first.artifactAttachWorkspace({ workspaceId, artifactId: "missing-artifact" }))
+          .success,
+      ).toBe(false);
+
+      // UI creation announces the object immediately, even before generation settles.
+      const generated = await first.artifactCreate({
+        name: "Peer-created",
+        description: "A test",
+        projectId: projectRoot,
+        provider: "mock",
+      });
+      expect(generated.success).toBe(true);
+      await expect.poll(() => created).toContain(generated.artifact.id);
+      expect((await first.artifactDelete({ artifactId: generated.artifact.id })).success).toBe(
+        true,
+      );
+      await expect.poll(() => deleted).toContain(generated.artifact.id);
+
       await second.artifactUpdateData({ artifactId: ARTIFACT_ID, data: { revision: 2 } });
       await expect
         .poll(async () => (await store.get(ARTIFACT_ID))?.status, { timeout: TEST_TIMEOUT_MS })
@@ -71,6 +184,12 @@ test(
         errorMessage: null,
       });
 
+      await second.close();
+      second = await connectClient(port, "artifact-reconnected-client");
+      expect(
+        (await second.fetchWorkspaces()).entries.find((workspace) => workspace.id === workspaceId)
+          ?.artifactIds,
+      ).toEqual([ARTIFACT_ID]);
       await second.close();
       second = null;
       await writeFile(artifact.filePath, "not an HTML artifact", "utf-8");

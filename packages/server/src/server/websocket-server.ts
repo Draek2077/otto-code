@@ -1,6 +1,7 @@
 import { isSessionRpcAllowed } from "./session/otto-rpc-scopes.js";
 import type { GoogleConnectorService } from "./connectors/google-connector-service.js";
 import { AgentRequests } from "./agent/requests/index.js";
+import { getHostedConnectorAuthorization } from "./connectors/hosted-connector-authorization.js";
 import { WebSocket, WebSocketServer } from "ws";
 import type { IncomingMessage, Server as HTTPServer } from "http";
 import { join } from "path";
@@ -2236,6 +2237,7 @@ export class VoiceAssistantWebSocketServer {
         worktreeArchiveBranchCleanup: true,
         // COMPAT(worktreeReattach): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         worktreeReattach: true,
+        projectRelocation: true,
         // COMPAT(worktreeDiffBase): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         worktreeDiffBase: true,
         // COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4, drop the gate when daemon floor >= v0.7.4.
@@ -2320,6 +2322,7 @@ export class VoiceAssistantWebSocketServer {
         artifactDataUpdate: true,
         // COMPAT(artifactStoreMove): added in v0.9.0, remove after 2027-02-28.
         artifactStoreMove: true,
+        artifactWorkspaceDiscovery: true,
         // COMPAT(artifactProvenance): added in v0.9.0, remove after 2027-02-28.
         artifactProvenance: true,
         // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
@@ -2346,6 +2349,7 @@ export class VoiceAssistantWebSocketServer {
         connectorOauth: true,
         connectorGoogleOauth: false,
         connectorNativeGoogle: this.googleConnectors?.configured === true,
+        connectorHostedOauth: getHostedConnectorAuthorization()?.configured === true,
         // COMPAT(communications): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
         communications: true,
         // COMPAT(communicationsChatHome): added in v0.8.11, remove gate after 2027-02-14.

@@ -1,8 +1,6 @@
 import { GitActionsSplitButton } from "@/git/actions-split-button";
 import { GIT_ACTION_ICONS } from "@/git/action-icons";
 import { useGitActions } from "@/git/use-actions";
-import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
-import { WorkspaceBackups } from "./workspace-backups";
 
 interface WorkspaceActionsProps {
   serverId: string;
@@ -23,26 +21,11 @@ export function WorkspaceActions({
   onAvailabilityChange,
   tooltipSide,
 }: WorkspaceActionsProps) {
-  const isDeveloperMode = useIsDeveloperMode();
-  const { gitActions, backupWorkspaceMessage } = useGitActions({
+  const { gitActions } = useGitActions({
     serverId,
     cwd,
     icons: GIT_ACTION_ICONS,
   });
-
-  if (!isDeveloperMode) {
-    return (
-      <WorkspaceBackups
-        serverId={serverId}
-        cwd={cwd}
-        gitActions={gitActions}
-        workspaceMessage={backupWorkspaceMessage}
-        hideLabels={hideLabels}
-        fill={fill}
-        onAvailabilityChange={onAvailabilityChange}
-      />
-    );
-  }
 
   return (
     <GitActionsSplitButton

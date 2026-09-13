@@ -73,7 +73,7 @@ function GitActionMenuItem({
         }
         leading={action.icon}
         trailing={trailing}
-        description={action.description}
+        description={action.unavailableMessage ?? action.description}
         disabled={action.disabled}
         muted={Boolean(action.unavailableMessage)}
         status={action.status}
@@ -195,7 +195,9 @@ export function GitActionsSplitButton({
               </SplitButtonPrimary>
             </TooltipTrigger>
             <TooltipContent side={tooltipSide} align="center" offset={8}>
-              <Text style={styles.tooltipText}>{getActionDisplayLabel(gitActions.primary)}</Text>
+              <Text style={styles.tooltipText}>
+                {gitActions.primary.unavailableMessage ?? getActionDisplayLabel(gitActions.primary)}
+              </Text>
             </TooltipContent>
           </Tooltip>
           {gitActions.secondary.length > 0 ? (

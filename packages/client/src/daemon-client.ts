@@ -1354,6 +1354,7 @@ type CorrelatedResponsePayload<TType extends CorrelatedResponseType> = Extract<
 >["payload"];
 
 class DaemonRpcError extends Error {
+  readonly detail: string;
   readonly requestId: string;
   readonly requestType?: string;
   readonly code?: string;
@@ -1364,6 +1365,7 @@ class DaemonRpcError extends Error {
     if (params.code) parts.push(`code=${params.code}`);
     super(parts.join(" "));
     this.name = "DaemonRpcError";
+    this.detail = params.error;
     this.requestId = params.requestId;
     this.requestType = params.requestType;
     this.code = params.code;
@@ -3783,6 +3785,22 @@ export class DaemonClient {
     });
     if (!payload.accepted) {
       throw new Error(payload.error ?? "updateAgent rejected");
+    }
+  }
+
+  async relocateProject(
+    projectId: string,
+    expectedRootPath: string,
+    rootPath: string,
+  ): Promise<void> {
+    try {
+      await this.sendCorrelatedSessionRequest({
+        message: { type: "project.root.relocate.request", projectId, expectedRootPath, rootPath },
+        responseType: "project.root.relocate.response",
+      });
+    } catch (error) {
+      if (error instanceof DaemonRpcError) throw new Error(error.detail, { cause: error });
+      throw error;
     }
   }
 
@@ -6936,6 +6954,7 @@ export class DaemonClient {
   async requestContextReport(
     input: {
       workspaceId: string;
+      forceRefresh?: boolean;
       provider?: string;
       windowTokens?: number;
       personalityId?: string;
@@ -6947,6 +6966,7 @@ export class DaemonClient {
       message: {
         type: "context.report.get.request",
         workspaceId: input.workspaceId,
+        ...(input.forceRefresh ? { forceRefresh: true } : {}),
         ...(input.provider ? { provider: input.provider } : {}),
         ...(typeof input.windowTokens === "number" ? { windowTokens: input.windowTokens } : {}),
         ...(input.personalityId ? { personalityId: input.personalityId } : {}),
@@ -9689,6 +9709,22 @@ export class DaemonClient {
         data: options.data,
       },
       responseType: "artifact.data.update.response",
+    });
+  }
+
+  async artifactAttachWorkspace(options: {
+    workspaceId: string;
+    artifactId: string;
+    requestId?: string;
+  }) {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.workspace.attach.request",
+        workspaceId: options.workspaceId,
+        artifactId: options.artifactId,
+      },
+      responseType: "artifact.workspace.attach.response",
     });
   }
 

@@ -7,26 +7,25 @@ export const BACKUP_ACTION_LABELS = {
     label: "Save version",
     pendingLabel: "Saving version…",
     successLabel: "Version saved",
-    description:
-      "Save all changed files in a local version. Upload separately to keep a remote backup.",
+    description: "Save changed files as a local version.",
   },
   fetch: {
     label: "Check for updates",
     pendingLabel: "Checking…",
     successLabel: "Checked for updates",
-    description: "Check the remote backup for new versions without changing your files.",
+    description: "Look for newer versions in the remote backup.",
   },
   pull: {
     label: "Download updates",
     pendingLabel: "Downloading…",
     successLabel: "Updates downloaded",
-    description: "Apply newer versions from the remote backup to your files.",
+    description: "Apply newer versions from the remote backup.",
   },
   push: {
-    label: "Upload backup",
+    label: "Upload changes",
     pendingLabel: "Uploading…",
-    successLabel: "Backup uploaded",
-    description: "Upload locally saved versions to the connected remote backup, such as GitHub.",
+    successLabel: "Changes uploaded",
+    description: "Upload saved changes to the remote backup.",
   },
 } as const;
 
@@ -37,10 +36,9 @@ export function getBackupWorkspaceMessage(input: {
   currentBranch: string | null | undefined;
   isWorktree: boolean;
 }): string | null {
-  if (!input.isGit)
-    return "Backups are not set up for this project yet. Ask an agent to help set them up.";
+  if (!input.isGit) return "Ask an agent to set up backups for this project.";
   if (input.isWorktree || (input.currentBranch !== "main" && input.currentBranch !== "master")) {
-    return "Backups are available from this project's main workspace. Your current files stay available here.";
+    return "Use this project's main workspace for backups.";
   }
   return null;
 }
@@ -70,16 +68,16 @@ export function buildBackupActions(
 
 function unavailable(id: GitActionId, input: BuildGitActionsInput): string | undefined {
   if (id === "commit") {
-    return input.hasUncommittedChanges ? undefined : "Your files have no changes to save.";
+    return input.hasUncommittedChanges ? undefined : "No changes to save.";
   }
   if (!input.hasRemote) {
-    return "This project has local version history only. Ask an agent to help connect a remote backup, such as GitHub, to upload and download versions.";
+    return "This project has local version history only. Ask an agent to connect a remote backup.";
   }
   if (id === "pull" && input.hasUncommittedChanges) {
-    return "Save a version of your changes before downloading updates.";
+    return "Save a version before downloading.";
   }
   if (id === "push" && (input.behindOfOrigin ?? 0) > 0) {
-    return "Download the newer versions before uploading your backup.";
+    return "Download the newer versions before uploading.";
   }
   return undefined;
 }

@@ -433,6 +433,7 @@ export interface CreateAgentOptions {
 
 export interface AgentManagerOptions {
   pluginLifecycle?: PluginLifecycle;
+  assertDirectoryAvailable?: (cwd: string) => Promise<void>;
   clients?: ProviderClientMap;
   providerDefinitions?: ProviderEnabledMap;
   idFactory?: () => string;
@@ -1608,8 +1609,12 @@ export class AgentManager {
   private readonly beforeSteerUnavailableFallback?: AgentManagerOptions["beforeSteerUnavailableFallback"];
   private acceptingAgentRegistrations = true;
 
+  private readonly assertDirectoryAvailable?: (cwd: string) => Promise<void>;
+  private readonly preservedTimelinesForResume = new Set<string>();
+
   constructor(options: AgentManagerOptions) {
     this.pluginLifecycle = options.pluginLifecycle;
+    this.assertDirectoryAvailable = options.assertDirectoryAvailable;
     this.idFactory = options.idFactory ?? (() => randomUUID());
     this.registry = options.registry;
     this.durableTimelineStore = options.durableTimelineStore;
@@ -3023,7 +3028,10 @@ export class AgentManager {
     }
   }
 
-  closeAgent(agentId: string): Promise<void> {
+  closeAgent(agentId: string, options?: { preserveTimeline?: boolean }): Promise<void> {
+    // Relocation changes the launch directory, not the conversation. Some
+    // providers cannot reconstruct a transcript after their session closes.
+    if (options?.preserveTimeline) this.preservedTimelinesForResume.add(agentId);
     const existing = this.inFlightAgentCloses.get(agentId);
     if (existing) {
       return existing;
@@ -3104,7 +3112,7 @@ export class AgentManager {
         "Provider session close failed; closing the agent anyway",
       );
     }
-    this.timelineStore.delete(agentId);
+    if (!this.preservedTimelinesForResume.has(agentId)) this.timelineStore.delete(agentId);
     await this.persistSnapshot(closedAgent);
     this.emitClosedAgent(closedAgent, { persist: false });
     this.logger.trace(
@@ -4324,6 +4332,7 @@ export class AgentManager {
   }): Promise<string> {
     const { agent, agentId, pendingRun, prompt, options } = params;
     try {
+      await this.assertDirectoryAvailable?.(agent.config.cwd);
       const result = await agent.session.startTurn(prompt, options);
       if (pendingRun.settled) {
         throw new Error(`Agent ${agentId} run was canceled before its turn started`);
@@ -6080,7 +6089,8 @@ export class AgentManager {
     if (options?.timelineRows?.length) {
       this.enqueueDurableTimelineBulkInsert(agentId, options.timelineRows);
     }
-    return { durableTimelineHasRows };
+    const preservedTimeline = this.preservedTimelinesForResume.delete(agentId);
+    return { durableTimelineHasRows: durableTimelineHasRows || preservedTimeline };
   }
 
   private buildManagedAgentForRegister(params: {
@@ -8588,6 +8598,7 @@ export class AgentManager {
     // can answer with the mode this particular launch will actually run under.
     env?: Record<string, string>,
   ): Promise<PreparedSessionConfig> {
+    if (config.cwd) await this.assertDirectoryAvailable?.(config.cwd);
     const storedConfig = await this.normalizeConfig(
       stripInternalOttoMcpServer(config),
       env ? { env } : {},

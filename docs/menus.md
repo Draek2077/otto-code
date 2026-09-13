@@ -220,9 +220,11 @@ right-click and touch long-press while a regular press keeps the normal toggle b
 
 ## Gotchas
 
-- **Released height.** Reanimated's web entering animation leaves an inline height snapshot on
-  the surface. `AnchoredSurface` clears it, and a `revision` prop re-clears it when content
-  identity changes — a pushed page taller than the one it replaced is clipped without that.
+- **Animation never owns web geometry.** Web menus use Web Animations for opacity and scale,
+  starting once the anchor is positioned. Reanimated's custom web keyframe cleanup restores a
+  captured position and size after the animation; that can restore the initial `(-9999, -9999)`
+  measurement box and make an open menu disappear. Clearing height at the animation duration
+  does not prevent the later position rewrite. Native menus retain Reanimated entering animations.
 - **Sheets size to content.** `enableDynamicSizing`, not fixed snap points. A pushed page is
   rarely the height of the page before it.
 - **The sheet's content is teleported out of the menu's subtree**, so `MenuSheetSurface` rebuilds

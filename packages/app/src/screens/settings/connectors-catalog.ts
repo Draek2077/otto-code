@@ -142,10 +142,11 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     label: "Dropbox",
     category: "Docs & knowledge",
     audience: "user",
-    // Open beta since March 2026. Ships 23 file-centric tools.
+    // Live owner-account consent and enumeration verified: 25 tools. The daemon
+    // supplies Otto's registered public client; Dropbox's generic DCR is restricted.
     description: "Files, shared folders, and revision history in Dropbox.",
     setup: { kind: "oauth", transport: "http", url: "https://mcp.dropbox.com/mcp" },
-    verifiedOn: VERIFIED,
+    verifiedOn: "2026-09-13",
     source: "https://help.dropbox.com/integrations/connect-dropbox-mcp-server",
     homepage: "https://www.dropbox.com",
   },
@@ -229,17 +230,6 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     verifiedOn: VERIFIED,
     source: "https://www.canva.dev/docs/connect/mcp-server/",
     homepage: "https://www.canva.com",
-  },
-  {
-    id: "figma",
-    label: "Figma",
-    category: "Design & content",
-    audience: "user",
-    description: "Design files, frames, components, and design tokens in Figma.",
-    setup: { kind: "oauth", transport: "http", url: "https://mcp.figma.com/mcp" },
-    verifiedOn: VERIFIED,
-    source: "https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/",
-    homepage: "https://www.figma.com",
   },
   {
     id: "webflow",

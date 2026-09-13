@@ -1,11 +1,12 @@
 import type { Logger } from "pino";
-import { z } from "zod";
 import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
 import type { ManagedProcessRegistry } from "../managed-processes/managed-processes.js";
 import { OpenAICompatMcpManager } from "../agent/providers/openai-compat-mcp.js";
 import { createConnectorAuthProvider, type ConnectorAuthStore } from "./connector-oauth.js";
 import { getConnectorAuthStore } from "./connector-auth-store.js";
 import type { GoogleConnectorService } from "./google-connector-service.js";
+import { connectorInputSchema } from "./connector-input-schema.js";
+import { getHostedConnectorAuthorization } from "./hosted-connector-authorization.js";
 
 export interface ConnectorToolInfo {
   name: string;
@@ -59,6 +60,7 @@ export async function listConnectorTools(
     additionalSecrets: () => {
       const auth = store?.read(connector.id);
       return [
+        ...(getHostedConnectorAuthorization()?.additionalSecrets(connector.id) ?? []),
         auth?.tokens?.accessToken,
         auth?.tokens?.refreshToken,
         auth?.client?.clientSecret,
@@ -75,7 +77,7 @@ export async function listConnectorTools(
     const bindings = manager.getToolBindings();
     for (const binding of bindings) {
       try {
-        z.fromJSONSchema(binding.parameters);
+        connectorInputSchema(binding.parameters);
       } catch {
         return {
           tools: [],

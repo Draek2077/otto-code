@@ -468,6 +468,7 @@ import {
   ProjectArtifactStoreLocationValueSchema,
 } from "./artifacts/types.js";
 import {
+  ArtifactWorkspaceAttachRequestSchema,
   ArtifactListRequestSchema,
   ArtifactCreateRequestSchema,
   ArtifactUpdateRequestSchema,
@@ -481,6 +482,7 @@ import {
   ArtifactDataUpdateRequestSchema,
   ArtifactStoreMoveRequestSchema,
   ProjectArtifactStoreSetRequestSchema,
+  ArtifactWorkspaceAttachResponseSchema,
   ArtifactListResponseSchema,
   ArtifactCreateResponseSchema,
   ArtifactUpdateResponseSchema,
@@ -1931,6 +1933,18 @@ export const ProjectIconSourceSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("automatic") }),
   z.object({ type: z.literal("upload"), data: z.string() }),
 ]);
+
+export const ProjectRelocateRequestSchema = z.object({
+  type: z.literal("project.root.relocate.request"),
+  projectId: z.string(),
+  expectedRootPath: z.string(),
+  rootPath: z.string(),
+  requestId: z.string(),
+});
+export const ProjectRelocateResponseSchema = z.object({
+  type: z.literal("project.root.relocate.response"),
+  payload: z.object({ requestId: z.string(), projectId: z.string() }),
+});
 
 export const ProjectRenameRequestSchema = z.object({
   type: z.literal("project.rename.request"),
@@ -4702,6 +4716,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrainLogsTailRequestSchema,
   BrainLogsWatchRequestSchema,
   UpdateAgentRequestMessageSchema,
+  ProjectRelocateRequestSchema,
   ProjectRenameRequestSchema,
   KanbanProjectTargetSetRequestSchema,
   ProjectIconSetRequestSchema,
@@ -5044,6 +5059,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
   // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
+  ArtifactWorkspaceAttachRequestSchema,
   ArtifactListRequestSchema,
   ArtifactCreateRequestSchema,
   ArtifactUpdateRequestSchema,
@@ -5538,6 +5554,8 @@ export const ServerInfoStatusPayloadSchema = z
         // The host can explicitly transfer a settled artifact between its
         // repository and host-local stores without changing write preferences.
         artifactStoreMove: z.boolean().optional(),
+        // COMPAT(artifactWorkspaceDiscovery): added in v0.9.11, remove after 2027-03-12.
+        artifactWorkspaceDiscovery: z.boolean().optional(),
         // COMPAT(artifactProvenance): added in v0.9.0, remove after 2027-02-28.
         // The host persists and exposes an Artifact's latest durable source.
         artifactProvenance: z.boolean().optional(),
@@ -5632,6 +5650,7 @@ export const ServerInfoStatusPayloadSchema = z
         worktreeArchiveBranchCleanup: z.boolean().optional(),
         // COMPAT(worktreeReattach): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         worktreeReattach: z.boolean().optional(),
+        projectRelocation: z.boolean().optional(),
         // Set when the daemon can repoint a worktree's stored base branch
         // (worktree.baseRef.set.*). Without it the client renders the base as a
         // read-only "vs <base>" label - there is no client-side override, since only
@@ -5745,6 +5764,7 @@ export const ServerInfoStatusPayloadSchema = z
         connectorOauth: z.boolean().optional(),
         connectorGoogleOauth: z.boolean().optional(),
         connectorNativeGoogle: z.boolean().optional(),
+        connectorHostedOauth: z.boolean().optional(),
         // COMPAT(communications): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
         // The daemon owns the provider-neutral communications overview. An old
         // host must not receive a communications RPC from a newer frontend.
@@ -6247,6 +6267,8 @@ export const WorkspaceGitHubRuntimePayloadSchema = z
 export const WorkspaceDescriptorPayloadSchema = z
   .object({
     id: z.string(),
+    // COMPAT(artifactWorkspaceDiscovery): added in v0.9.11, remove after 2027-03-12.
+    artifactIds: z.array(z.string()).optional(),
     projectId: z.string(),
     projectDisplayName: z.string(),
     // COMPAT(projectCustomName): added in v0.1.76, drop the optional gate when floor >= v0.1.76.
@@ -6262,6 +6284,7 @@ export const WorkspaceDescriptorPayloadSchema = z
     // Identifies the project's stored custom icon; null means automatic.
     // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
     projectCustomIconRevision: z.string().nullable().optional(),
+    projectOffline: z.boolean().optional(),
     projectRootPath: z.string(),
     workspaceDirectory: z.string().optional(),
     // COMPAT(worktreeSlug): added in v0.2.6, remove optional after 2027-01-31.
@@ -6466,6 +6489,7 @@ export const FetchRecentProviderSessionsResponseMessageSchema = z.object({
 // project row with a new-workspace child so projects persist after their last
 // workspace is archived.
 export const WorkspaceProjectDescriptorPayloadSchema = z.object({
+  projectOffline: z.boolean().optional(),
   projectId: z.string(),
   // COMPAT(projectKey): added in v0.2.4 on 2026-07-28; remove optional after 2027-01-28.
   projectKey: z.string().optional(),
@@ -9435,6 +9459,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentProfileSetResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
+  ProjectRelocateResponseSchema,
   ProjectRenameResponseSchema,
   KanbanProjectTargetSetResponseSchema,
   ProjectUpdatedNotificationSchema,
@@ -9694,6 +9719,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,
   // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
+  ArtifactWorkspaceAttachResponseSchema,
   ArtifactListResponseSchema,
   ArtifactCreateResponseSchema,
   ArtifactUpdateResponseSchema,

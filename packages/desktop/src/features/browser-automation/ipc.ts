@@ -7,6 +7,7 @@ import type {
 } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import type { TabContents, BrowserRegistry, TabImage, CapturedNetworkRequest } from "./service.js";
 import { CdpSessionQueue } from "./cdp-session-queue.js";
+import { withBrowserAutomationInput } from "./input-ownership.js";
 import {
   dialogAcceptValue,
   handledDialogEvent,
@@ -154,7 +155,11 @@ export function adaptWebContents(contents: BrowserAutomationWebContents): TabCon
         if (!contents.debugger.isAttached()) {
           contents.debugger.attach("1.3");
         }
-        return contents.debugger.sendCommand(command, params ?? {});
+        return command.startsWith("Input.")
+          ? withBrowserAutomationInput(contentsId, () =>
+              contents.debugger.sendCommand(command, params ?? {}),
+            )
+          : contents.debugger.sendCommand(command, params ?? {});
       }),
     startNetworkCapture: async () => {
       observeNetworkEvents(contents);

@@ -19,6 +19,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { PageLoading } from "@/components/ui/page-loading";
+import { RefreshButton } from "@/components/ui/refresh-button";
 import type { ContextCategory, ContextNode } from "@otto-code/protocol/messages";
 import { FileTabPane } from "@/components/file-tab-pane";
 import { AlertTriangle, ChevronLeft, X } from "@/components/icons/material-icons";
@@ -152,6 +153,16 @@ export function ContextManagementPanel(): ReactElement {
     ...(selectedProfileId ? { personalityId: selectedProfileId } : {}),
     ...(selectedCategory ? { category: selectedCategory } : {}),
   });
+  const reloadMemory = memory.reload;
+  const refreshPrompt = promptPreview.refresh;
+  const handleRefresh = useCallback(() => {
+    refresh();
+    reloadMemory();
+  }, [refresh, reloadMemory]);
+  // Rebuild the selected prompt only after the report's fresh scan has landed.
+  useEffect(() => {
+    refreshPrompt();
+  }, [report, refreshPrompt]);
 
   // The compact layout puts the whole page in one scroll, so the page itself
   // needs the overlay bar too - not just the lists inside it.
@@ -493,6 +504,18 @@ export function ContextManagementPanel(): ReactElement {
     workspaceId,
   ]);
 
+  const refreshAction = useMemo(
+    () => (
+      <RefreshButton
+        onPress={handleRefresh}
+        loading={isRefreshing || memory.isLoading || promptPreview.isLoading}
+        disabled={!client || !workspaceId}
+        testID="context-management-refresh"
+      />
+    ),
+    [handleRefresh, isRefreshing, memory.isLoading, promptPreview.isLoading, client, workspaceId],
+  );
+
   return renderAfterInitialLoad(isLoading, () => {
     if (isCompact) {
       if (compactShowsPane && hasSelection) {
@@ -507,6 +530,7 @@ export function ContextManagementPanel(): ReactElement {
               category={selectedCategory}
               iconSize={backIconSize.chromeMd}
               onBack={handleCompactBack}
+              refreshAction={refreshAction}
             />
             <View style={styles.fill}>{filePane}</View>
           </Animated.View>
@@ -530,7 +554,7 @@ export function ContextManagementPanel(): ReactElement {
             <ContextSummary
               report={report}
               isLoading={isLoading}
-              isRefreshing={isRefreshing}
+              refreshAction={refreshAction}
               error={scanError}
               windowTokens={windowTokens}
               onWindowTokensChange={handleWindowTokensChange}
@@ -561,7 +585,7 @@ export function ContextManagementPanel(): ReactElement {
             <ContextSummary
               report={report}
               isLoading={isLoading}
-              isRefreshing={isRefreshing}
+              refreshAction={refreshAction}
               error={scanError}
               windowTokens={windowTokens}
               onWindowTokensChange={handleWindowTokensChange}
@@ -707,11 +731,13 @@ function CompactPaneHeader({
   category,
   iconSize,
   onBack,
+  refreshAction,
 }: {
   node: ContextNode | null;
   category: ContextCategory | null;
   iconSize: IconSizeProp;
   onBack: () => void;
+  refreshAction: ReactNode;
 }): ReactElement {
   const { t } = useTranslation();
   return (
@@ -729,6 +755,7 @@ function CompactPaneHeader({
           {category ? t(CATEGORY_LABEL_KEYS[category]) : (node?.relPath ?? "")}
         </Text>
       </Pressable>
+      {refreshAction}
     </View>
   );
 }

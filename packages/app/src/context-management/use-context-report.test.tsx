@@ -75,6 +75,40 @@ afterEach(() => {
 });
 
 describe("useContextReportQuery", () => {
+  it("forces a fresh scan without blanking cached data or accepting the replaced request", async () => {
+    useContextManagementStore.getState().setReport(SERVER_ID, WORKSPACE_ID, makeReport(1500));
+    let resolveOld!: (value: { report: ContextReport }) => void;
+    let resolveFresh!: (value: { report: ContextReport }) => void;
+    requestContextReport
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFresh = resolve;
+        }),
+      );
+    const { result } = renderQuery();
+    await waitFor(() => expect(requestContextReport).toHaveBeenCalledTimes(1));
+    act(() => result.current.refresh());
+    await waitFor(() => expect(requestContextReport).toHaveBeenCalledTimes(2));
+    expect(requestContextReport).toHaveBeenLastCalledWith({
+      workspaceId: WORKSPACE_ID,
+      windowTokens: WINDOW_TOKENS,
+      forceRefresh: true,
+    });
+    expect(result.current.report?.fixedTotal).toBe(1500);
+    expect(result.current.isRefreshing).toBe(true);
+    expect(result.current.isLoading).toBe(false);
+    await act(async () => resolveFresh({ report: makeReport(2000) }));
+    expect(result.current.report?.fixedTotal).toBe(2000);
+    await act(async () => resolveOld({ report: makeReport(1000) }));
+    expect(result.current.report?.fixedTotal).toBe(2000);
+    expect(result.current.isRefreshing).toBe(false);
+  });
+
   it("reports loading, not empty, while the first scan runs", async () => {
     let resolve!: (value: { report: ContextReport }) => void;
     requestContextReport.mockReturnValue(

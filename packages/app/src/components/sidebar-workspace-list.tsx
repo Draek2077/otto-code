@@ -1,3 +1,4 @@
+import { StatusBadge } from "@/components/ui/status-badge";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   View,
@@ -932,6 +933,13 @@ function ProjectHeaderRow({
   const [isHovered, setIsHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const projectOffline = useSessionStore(
+    (state) =>
+      project.hosts.length > 0 &&
+      project.hosts.every(
+        (host) => state.sessions[host.serverId]?.projects.get(host.projectId)?.projectOffline,
+      ),
+  );
   const projectAnchorRef = useSidebarRowAnchor(projectRowKey(project.viewKey));
   const isMobileBreakpoint = useIsCompactFormFactor();
   const localDaemonServerId = useLocalDaemonServerId();
@@ -967,8 +975,15 @@ function ProjectHeaderRow({
       interaction.didLongPressRef.current = false;
       return;
     }
+    if (projectOffline && settingsTarget) {
+      onWorkspacePress?.();
+      router.navigate(
+        buildProjectSettingsRoute(settingsTarget.serverId, settingsTarget.projectId) as Href,
+      );
+      return;
+    }
     onPress();
-  }, [interaction.didLongPressRef, onPress]);
+  }, [interaction.didLongPressRef, onPress, projectOffline, settingsTarget, onWorkspacePress]);
 
   const handlePointerEnter = useCallback(() => {
     if (!contextMenuOpen) setIsHovered(true);
@@ -1001,6 +1016,9 @@ function ProjectHeaderRow({
     [isDragging, selected, isHovered],
   );
 
+  const availableActions = projectOffline
+    ? { worktreeTarget: null, onRemoveProject: undefined }
+    : { worktreeTarget, onRemoveProject };
   const rowChildren = (
     <>
       <View style={styles.projectRowLeft}>
@@ -1019,19 +1037,20 @@ function ProjectHeaderRow({
           <Text style={styles.projectTitle} numberOfLines={1}>
             {displayName}
           </Text>
+          {projectOffline ? <StatusBadge label="Offline" variant="warning" /> : null}
         </View>
       </View>
       <ProjectRowTrailingActions
         projectViewKey={project.viewKey}
         displayName={displayName}
-        worktreeTarget={worktreeTarget}
+        worktreeTarget={availableActions.worktreeTarget}
         settingsTarget={settingsTarget}
         projectPath={projectPath}
         isHovered={isHovered}
         isMobileBreakpoint={isMobileBreakpoint}
         isProjectActive={isProjectActive}
         onBeginWorkspaceSetup={handleBeginWorkspaceSetup}
-        onRemoveProject={onRemoveProject}
+        onRemoveProject={availableActions.onRemoveProject}
         removeProjectStatus={removeProjectStatus}
       />
       {showShortcutBadge && shortcutNumber !== null ? (
@@ -1042,7 +1061,7 @@ function ProjectHeaderRow({
     </>
   );
 
-  if (!onRemoveProject) {
+  if (!availableActions.onRemoveProject) {
     return (
       <View
         {...dragAttributes}
@@ -1106,7 +1125,7 @@ function ProjectHeaderRow({
           projectViewKey={project.viewKey}
           settingsTarget={settingsTarget}
           projectPath={projectPath}
-          onRemoveProject={onRemoveProject}
+          onRemoveProject={availableActions.onRemoveProject}
           removeProjectStatus={removeProjectStatus}
         />
       </ContextMenuContent>
@@ -1712,6 +1731,13 @@ function ProjectBlock({
     canToggle: canToggleWorkspaces,
     toggleExpanded: toggleWorkspacesExpanded,
   } = useLimitedSidebarGroup(project.workspaces);
+  const projectOffline = useSessionStore(
+    (state) =>
+      project.hosts.length > 0 &&
+      project.hosts.every(
+        (host) => state.sessions[host.serverId]?.projects.get(host.projectId)?.projectOffline,
+      ),
+  );
   const rowModel = useMemo(
     () =>
       buildSidebarProjectRowModel({
@@ -1863,7 +1889,7 @@ function ProjectBlock({
   }, [onToggleCollapsed, project.viewKey]);
 
   let projectChildren = null;
-  if (!collapsed) {
+  if (!collapsed && !projectOffline) {
     if (project.workspaces.length > 0) {
       projectChildren = (
         <>

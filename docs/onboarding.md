@@ -20,11 +20,13 @@ workspace script. Pane splitting and maximize/restore remain available wherever 
 supports them. Files, Search, Scripts, and Open remain available. Compact layouts keep workspace
 tools in the sidebar even when the desktop preference places them in the header.
 
-The workspace Git control becomes **Backups** in User mode. The Otto-owned backup presentation
-uses the existing Git action handlers and their confirmations. It offers **Save version** (commit
-all changed files locally), **Check for updates** (fetch, subject to the host setting), **Download
-updates** (pull), **Upload backup** (push), and the ten most recent saved versions. A local save
-never claims to be a remote backup. Remote actions use an already configured remote, including
+The workspace Git control keeps its split button and anchored menu in User mode. The Otto-owned
+backup presentation uses the existing Git action handlers and their confirmations. **Save version**
+is the primary button (commit all changed files locally). The dropdown offers **Check for updates**
+(fetch, subject to the host setting), **Download updates** (pull), and **Upload changes** (push).
+Explanations use the existing menu descriptions and tooltips. User mode adds no dialog or
+version-history surface. A local save never claims to be a remote backup.
+Remote actions use an already configured remote, including
 GitHub; this UI does not provision a remote or initialize a non-Git folder.
 
 Backup writes are offered only on main/master outside Otto-owned worktrees. Switching interface
@@ -36,7 +38,7 @@ User mode never hides it. The in-workspace branch switcher, branch meta, and PR 
 of User mode.
 
 The implementation stays in Otto's presentation modules (`git/backup-policy.ts`,
-`git/use-action-copy.ts`, and `git/workspace-backups.tsx`) with small composition-site changes.
+`git/use-action-copy.ts`) and uses the same `git/actions-split-button.tsx` control in both modes.
 Git execution, authentication, protocol messages, editor behavior, and layout persistence retain
 their existing owners. Interface mode remains device-local and provider-neutral.
 

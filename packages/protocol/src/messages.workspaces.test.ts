@@ -1290,3 +1290,45 @@ describe("workspace message schemas", () => {
     expect(newDirectory.source.kind).toBe("directory");
   });
 });
+
+test("artifact membership is additive on workspace snapshots", () => {
+  const legacy = {
+    id: "workspace-1",
+    projectId: "project-1",
+    projectDisplayName: "Project",
+    projectRootPath: "/project",
+    workspaceDirectory: "/project",
+    projectKind: "git",
+    workspaceKind: "local_checkout",
+    name: "Main",
+    status: "done",
+    activityAt: null,
+  };
+  expect(WorkspaceDescriptorPayloadSchema.parse(legacy).artifactIds).toBeUndefined();
+  const current = { ...legacy, artifactIds: ["artifact-1", "artifact-2"] };
+  expect(WorkspaceDescriptorPayloadSchema.parse(current).artifactIds).toEqual([
+    "artifact-1",
+    "artifact-2",
+  ]);
+  const legacyParser = WorkspaceDescriptorPayloadSchema.in.omit({ artifactIds: true });
+  expect(legacyParser.parse(current)).toEqual(legacyParser.parse(legacy));
+  expect(
+    SessionInboundMessageSchema.parse({
+      type: "artifact.workspace.attach.request",
+      workspaceId: "workspace-1",
+      artifactId: "artifact-1",
+      requestId: "attach-1",
+    }).type,
+  ).toBe("artifact.workspace.attach.request");
+  expect(
+    SessionOutboundMessageSchema.parse({
+      type: "artifact.workspace.attach.response",
+      payload: {
+        workspaceId: "workspace-1",
+        artifactId: "artifact-1",
+        requestId: "attach-1",
+        success: true,
+      },
+    }).type,
+  ).toBe("artifact.workspace.attach.response");
+});

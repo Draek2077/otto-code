@@ -1,5 +1,8 @@
 import { isSessionRpcAllowed } from "./session/otto-rpc-scopes.js";
 export { isSessionRpcAllowed } from "./session/otto-rpc-scopes.js";
+import { isProjectOffline } from "./project-availability.js";
+import { assertOnlineProjectRequest } from "./project-offline-request.js";
+import { ProjectRelocationService } from "./project-relocation-service.js";
 import type { GoogleConnectorService } from "./connectors/google-connector-service.js";
 import {
   LEGACY_PROVIDER_IDS,
@@ -1420,7 +1423,10 @@ export class Session {
     this.artifactSession = new ArtifactSession({
       host: {
         emit: (msg) => this.emit(msg),
+        broadcast: (msg) => this.broadcastToAllSessions(msg),
       },
+      workspaceRegistry: this.workspaceRegistry,
+      projectRegistry: this.projectRegistry,
       artifactService,
       ownsArtifactService: !sharedArtifactService,
       logger: this.sessionLogger,
@@ -2350,7 +2356,11 @@ export class Session {
         return;
       }
 
-      if (mutation.kind === "archive" || mutation.project?.archivedAt) {
+      if (
+        mutation.kind === "archive" ||
+        mutation.project?.archivedAt ||
+        (mutation.project && isProjectOffline(mutation.project))
+      ) {
         for (const workspaceId of projectWorkspaceIds) {
           this.workspaceGitObserver.removeForWorkspaceId(workspaceId);
         }
@@ -2675,6 +2685,12 @@ export class Session {
         return;
       }
       try {
+        await assertOnlineProjectRequest(
+          msg,
+          this.projectRegistry,
+          this.workspaceRegistry,
+          this.agentStorage,
+        );
         await this.dispatchInboundMessage(msg, source);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
@@ -3562,6 +3578,8 @@ export class Session {
         return this.handleHistoryAgentsClearArchivedRequest(msg);
       case "update_agent_request":
         return this.handleUpdateAgentRequest(msg.agentId, msg.name, msg.labels, msg.requestId);
+      case "project.root.relocate.request":
+        return this.handleProjectRelocateRequest(msg);
       case "project.rename.request":
         return this.handleProjectRenameRequest(msg.projectId, msg.customName, msg.requestId);
       case "project.icon.set.request":
@@ -3731,7 +3749,7 @@ export class Session {
       if (!this.googleConnectors) throw new Error("Update the host to manage this connector.");
       await this.googleConnectors.disconnect(connectorId);
     } else {
-      this.connectorOAuthBroker?.disconnect(connectorId);
+      await this.connectorOAuthBroker?.disconnect(connectorId);
     }
     this.emit({
       type: "connectors.oauth.disconnect.response",
@@ -5067,6 +5085,7 @@ export class Session {
     try {
       const report = await this.contextManagement.getReport({
         workspaceId: msg.workspaceId,
+        forceRefresh: msg.forceRefresh,
         ...(msg.provider ? { provider: msg.provider } : {}),
         ...(typeof msg.windowTokens === "number" ? { windowTokens: msg.windowTokens } : {}),
         ...(msg.personalityId ? { personalityId: msg.personalityId } : {}),
@@ -5354,6 +5373,8 @@ export class Session {
         return this.artifactSession.handleArtifactDataGetRequest(msg);
       case "artifact.data.update.request":
         return this.artifactSession.handleArtifactDataUpdateRequest(msg);
+      case "artifact.workspace.attach.request":
+        return this.artifactSession.handleArtifactWorkspaceAttachRequest(msg);
       case "artifact.store.move.request":
         return this.artifactSession.handleArtifactStoreMoveRequest(msg);
       case "project.artifact.store.set.request":
@@ -6403,6 +6424,37 @@ export class Session {
         },
       });
     }
+  }
+
+  private async handleProjectRelocateRequest(
+    msg: Extract<SessionInboundMessage, { type: "project.root.relocate.request" }>,
+  ): Promise<void> {
+    const relocation = new ProjectRelocationService({
+      ottoHome: this.ottoHome,
+      projectRegistry: this.projectRegistry,
+      workspaceRegistry: this.workspaceRegistry,
+      agentStorage: this.agentStorage,
+      prepareAgents: async (ids) => {
+        for (const id of ids) {
+          const agent = this.agentManager.getAgent(id);
+          if (agent && (agent.lifecycle === "running" || agent.lifecycle === "initializing")) {
+            throw new Error(
+              "Stop active chats in this project before reconnecting its base folder.",
+            );
+          }
+        }
+        for (const id of ids) {
+          if (this.agentManager.getAgent(id))
+            await this.agentManager.closeAgent(id, { preserveTimeline: true });
+        }
+      },
+    });
+    await relocation.relocate(msg.projectId, msg.expectedRootPath, msg.rootPath);
+    await this.announceProjectUpdate(msg.projectId);
+    this.emit({
+      type: "project.root.relocate.response",
+      payload: { requestId: msg.requestId, projectId: msg.projectId },
+    });
   }
 
   private async handleProjectRenameRequest(
@@ -9002,6 +9054,7 @@ export class Session {
     | "projectDisplayName"
     | "projectCustomName"
     | "projectCustomIconRevision"
+    | "projectOffline"
     | "projectRootPath"
     | "projectKind"
   > {
@@ -9011,6 +9064,7 @@ export class Session {
         : workspace.projectId,
       projectCustomName: projectRecord?.customName ?? null,
       projectCustomIconRevision: projectRecord?.customIconRevision ?? null,
+      projectOffline: projectRecord ? isProjectOffline(projectRecord) : false,
       projectRootPath: projectRecord?.rootPath ?? workspace.cwd,
       projectKind: (projectRecord?.kind ?? "directory") === "git" ? "git" : "non_git",
     };
@@ -9043,6 +9097,7 @@ export class Session {
       workspaceKind: workspace.kind,
       name: resolveWorkspaceDisplayName(workspace),
       title: workspace.title,
+      artifactIds: workspace.artifactIds ?? [],
       pinnedAt: workspace.pinnedAt,
       ...(workspace.labels && workspace.labels.length > 0 ? { labels: workspace.labels } : {}),
       archivingAt: null,
@@ -9051,8 +9106,11 @@ export class Session {
       activityAt: null,
       diffStat,
       workingTreeDiffStat: snapshot?.git.workingTreeDiffStat ?? null,
-      scripts: this.buildWorkspaceScriptPayloadSnapshot(workspace, resolvedProjectRecord),
-      ...(resolvedProjectRecord
+      scripts:
+        resolvedProjectRecord && isProjectOffline(resolvedProjectRecord)
+          ? []
+          : this.buildWorkspaceScriptPayloadSnapshot(workspace, resolvedProjectRecord),
+      ...(resolvedProjectRecord && !isProjectOffline(resolvedProjectRecord)
         ? {
             project: await this.buildProjectPlacementForWorkspace(workspace, resolvedProjectRecord),
           }
@@ -9151,6 +9209,7 @@ export class Session {
     projectRecord?: PersistedProjectRecord | null,
   ): Promise<WorkspaceDescriptorPayload> {
     const base = await this.describeWorkspaceRecord(workspace, projectRecord);
+    if (base.projectOffline) return base;
     const snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
     if (!snapshot) {
       return base;
@@ -9195,6 +9254,7 @@ export class Session {
         derivedDisplayName: result.worktree.branchName || result.workspace.displayName,
       }),
       title: result.workspace.title,
+      artifactIds: result.workspace.artifactIds ?? [],
       pinnedAt: result.workspace.pinnedAt,
       ...(result.workspace.labels && result.workspace.labels.length > 0
         ? { labels: result.workspace.labels }
@@ -9380,7 +9440,9 @@ export class Session {
   private async buildProjectDescriptor(
     project: PersistedProjectRecord,
   ): Promise<WorkspaceProjectDescriptorPayload> {
-    const icon = await this.projectIcons.snapshot(project);
+    const icon = isProjectOffline(project)
+      ? { revision: project.customIconRevision ?? null }
+      : await this.projectIcons.snapshot(project);
     return {
       projectId: project.projectId,
       ...(project.projectKey ? { projectKey: project.projectKey } : {}),
@@ -9391,7 +9453,8 @@ export class Session {
       projectArtifactLocation: project.artifactLocation ?? null,
       projectWorkflowLocation: project.workflowLocation ?? null,
       projectCustomIconRevision: project.customIconRevision ?? null,
-      projectIconRevision: icon.revision,
+      projectIconRevision: icon.revision ?? undefined,
+      projectOffline: isProjectOffline(project),
       projectRootPath: project.rootPath,
       projectKind: project.kind,
     };

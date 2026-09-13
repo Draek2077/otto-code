@@ -31,6 +31,7 @@
     "packages/app",
     "packages/relay",
     "packages/website",
+    "packages/auth-service",
     "packages/desktop",
     "packages/brain",
     "packages/cli"

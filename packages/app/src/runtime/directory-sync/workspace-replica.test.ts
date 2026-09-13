@@ -35,6 +35,63 @@ function workspace(id: string, projectId = "project"): WorkspaceDescriptorPayloa
   };
 }
 
+it("projects Offline and explicit reconnection through live workspace and cache updates", () => {
+  const serverId = "offline-project-reconnection";
+  const store = useSessionStore.getState();
+  store.initializeSession(serverId, null as unknown as DaemonClient);
+  const replica = new WorkspaceDirectoryReplica(serverId);
+  const original = normalizeWorkspaceDescriptor(workspace("kept"));
+  const unrelated = normalizeWorkspaceDescriptor(workspace("other", "other-project"));
+  replica.commitSnapshot(
+    {
+      workspaces: new Map([
+        [original.id, original],
+        [unrelated.id, unrelated],
+      ]),
+      projects: new Map(),
+    },
+    [],
+  );
+  const project = {
+    projectId: "project",
+    projectDisplayName: "Project",
+    projectRootPath: "/repo/project",
+    projectKind: "git" as const,
+  };
+  const offline = replica.applyDelta({
+    kind: "upsert",
+    project: { ...project, projectOffline: true },
+  });
+  expect(useSessionStore.getState().sessions[serverId]?.workspaces.get(original.id)).toMatchObject({
+    id: original.id,
+    projectOffline: true,
+    workspaceDirectory: original.workspaceDirectory,
+  });
+  expect(offline).toContainEqual({
+    kind: "workspace",
+    type: "upsert",
+    id: original.id,
+    value: expect.objectContaining({ projectOffline: true }),
+  });
+  const reconnected = replica.applyDelta({
+    kind: "upsert",
+    project: { ...project, projectOffline: false, projectRootPath: "/moved/project" },
+  });
+  expect(useSessionStore.getState().sessions[serverId]?.workspaces.get(original.id)).toMatchObject({
+    id: original.id,
+    projectOffline: false,
+    projectRootPath: "/moved/project",
+  });
+  expect(reconnected).toContainEqual({
+    kind: "workspace",
+    type: "upsert",
+    id: original.id,
+    value: expect.objectContaining({ projectOffline: false }),
+  });
+  expect(replica.snapshot().workspaces.get(unrelated.id)).toBe(unrelated);
+  store.clearSession(serverId);
+});
+
 it("projects script updates into the matching workspace and cache mutation", () => {
   const serverId = "workspace-scripts";
   const store = useSessionStore.getState();

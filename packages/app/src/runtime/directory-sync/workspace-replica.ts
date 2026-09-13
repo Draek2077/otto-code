@@ -153,6 +153,7 @@ export class WorkspaceDirectoryReplica {
         projectDisplayName: project.projectDisplayName,
         projectCustomName: project.projectCustomName,
         projectCustomIconRevision: project.projectCustomIconRevision,
+        projectOffline: project.projectOffline ?? false,
         projectRootPath: project.projectRootPath,
         projectKind: project.projectKind,
       };

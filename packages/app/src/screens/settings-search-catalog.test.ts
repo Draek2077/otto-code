@@ -304,7 +304,11 @@ describe("Settings search catalog", () => {
         defaultValue: "Host default",
       });
     }
-    const credentials = SETTINGS_SEARCH_ITEMS.filter((item) => item.title === "API token");
+    const credentialIds = new Set([
+      "host-workspaces-git-connections-api-token",
+      "host-projects-project-settings-git-connections-api-token",
+    ]);
+    const credentials = SETTINGS_SEARCH_ITEMS.filter((item) => credentialIds.has(item.id));
     expect(credentials).toHaveLength(2);
     expect(new Set(credentials.map((item) => item.scope))).toEqual(new Set(["Host", "Project"]));
     expect(credentials.every((item) => item.defaultValue === "Empty")).toBe(true);

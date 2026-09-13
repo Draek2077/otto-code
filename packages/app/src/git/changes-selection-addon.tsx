@@ -23,12 +23,14 @@ const accentForegroundIconColorMapping = (theme: Theme) => ({
 export interface ChangesSelectionAddon {
   enabled: boolean;
   selectedPaths: string[];
+  toggleAll: () => void;
+  clearSelection: () => void;
   renderSelectionControl: (path: string) => ReactNode;
   bulkRollbackMenuItem: ReactNode;
 }
 
 /**
- * Otto-owned selection and bulk rollback layer for Paseo's Changes headers.
+ * Otto-owned selection for manual commits and bulk rollback in Paseo's Changes headers.
  * Paseo retains row layout, opening, and per-file actions; this layer merely
  * supplies an additive leading control and a second destructive menu action.
  */
@@ -37,11 +39,13 @@ export function useChangesSelectionAddon({
   cwd,
   files,
   enabled,
+  rollbackSupported,
 }: {
   serverId: string;
   cwd: string;
   files: ParsedDiffFile[];
   enabled: boolean;
+  rollbackSupported: boolean;
 }): ChangesSelectionAddon {
   const { t } = useTranslation();
   const toast = useToast();
@@ -64,6 +68,14 @@ export function useChangesSelectionAddon({
       return next;
     });
   }, []);
+  const toggleAll = useCallback(() => {
+    setDeselectedPaths((previous) =>
+      files.every((file) => !previous.has(file.path))
+        ? new Set(files.map((file) => file.path))
+        : EMPTY_DESELECTED_PATHS,
+    );
+  }, [files]);
+  const clearSelection = useCallback(() => setDeselectedPaths(EMPTY_DESELECTED_PATHS), []);
   const runBulkRollback = useCallback(async () => {
     const count = selectedPaths.length;
     if (count < 2) return;
@@ -127,10 +139,17 @@ export function useChangesSelectionAddon({
     [selectedPaths, t, togglePath],
   );
   const bulkRollbackMenuItem =
-    enabled && selectedPaths.length > 1 ? (
+    enabled && rollbackSupported && selectedPaths.length > 1 ? (
       <BulkRollbackMenuItem count={selectedPaths.length} onRollback={runBulkRollback} />
     ) : null;
-  return { enabled, selectedPaths, renderSelectionControl, bulkRollbackMenuItem };
+  return {
+    enabled,
+    selectedPaths,
+    toggleAll,
+    clearSelection,
+    renderSelectionControl,
+    bulkRollbackMenuItem,
+  };
 }
 
 function ChangesSelectionControl({

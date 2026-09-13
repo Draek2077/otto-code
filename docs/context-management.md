@@ -387,10 +387,15 @@ Three rules, enforced in `use-context-report.ts`:
    workspace, so when it was evaluated against the same window the tab starts from it.
 3. **Identical scans coalesce.** A module-level in-flight map collapses two panes on one workspace
    - and the throwaway request the tab fires before persisted settings hydrate - into a single
-     walk. Only `refresh()` (which follows a write) bypasses it.
+     walk. An explicit `refresh()` bypasses both this in-flight map and the daemon's
+     report TTL through `forceRefresh` on the report request.
 
 A stored `null` is a real answer and must not be papered over with the previous report, and a
 failed scan says so. An unexplained empty panel is the one outcome this section exists to prevent.
+
+The **Refresh** toolbar control re-scans the report and reloads the selected personality's
+lessons. The selected prompt section is rebuilt after the new report arrives. The control shows
+a spinner while refreshing and is also available in the compact detail header.
 
 ### The graph is a DAG, not a tree
 

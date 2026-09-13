@@ -1,0 +1,42 @@
+name = "otto-auth"
+main = "src/worker.ts"
+compatibility_date = "2026-05-01"
+workers_dev = false
+preview_urls = false
+
+# Auth callbacks and token requests must never enter request/console logs.
+[observability]
+enabled = false
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AuthGrant"]
+
+[env.staging]
+name = "otto-auth-staging"
+routes = [{ pattern = "auth-staging.otto-code.me", custom_domain = true }]
+[env.staging.vars]
+PUBLIC_ORIGIN = "https://auth-staging.otto-code.me"
+[[env.staging.durable_objects.bindings]]
+name = "GRANTS"
+class_name = "AuthGrant"
+[[env.staging.ratelimits]]
+name = "REQUEST_LIMITER"
+namespace_id = "1001"
+simple = { limit = 120, period = 60 }
+
+[env.production]
+name = "otto-auth"
+routes = [{ pattern = "auth.otto-code.me", custom_domain = true }]
+[env.production.vars]
+PUBLIC_ORIGIN = "https://auth.otto-code.me"
+[[env.production.durable_objects.bindings]]
+name = "GRANTS"
+class_name = "AuthGrant"
+[[env.production.ratelimits]]
+name = "REQUEST_LIMITER"
+namespace_id = "1002"
+simple = { limit = 120, period = 60 }
+
+# BOX_CLIENT_ID and BOX_CLIENT_SECRET are runtime secret bindings, independently
+# provisioned for each environment. No vendor secret belongs in this file or CI.

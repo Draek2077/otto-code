@@ -1,4 +1,5 @@
-import { writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
@@ -49,10 +50,70 @@ test("Changes options open a single Git Commit log tab", async ({ page }) => {
   await expect(gitCommitTab).toHaveCount(1);
 });
 
+test("Manual commits apply the selected type and include only checked files alongside Commits", async ({
+  page,
+}) => {
+  const workspace = await createWorkspaceWithTwoChanges();
+  await writeFile(path.join(workspace.repoPath, "src/beta.ts"), "export const beta = 1;\n");
+  await openWorkspaceChanges(page, workspace);
+  const form = page.getByTestId("changes-commit-section").filter({ visible: true });
+  await expect(form).toBeVisible();
+  await expect(page.getByTestId("commits-section-header").filter({ visible: true })).toBeVisible();
+  await form.getByTestId("changes-commit-select-all").click();
+  await form.getByTestId("changes-commit-message").fill("handle null cursor");
+  await expect(form.getByTestId("changes-commit-button")).toBeDisabled();
+  await page.getByTestId("changes-selection-src/alpha.ts").filter({ visible: true }).click();
+  await form.getByTestId("changes-commit-type-selector").click();
+  await page.getByTestId("changes-commit-type-option-fix").click();
+  await expect(form.getByTestId("changes-commit-message")).toHaveValue("handle null cursor");
+  await form.getByTestId("changes-commit-button").click();
+  await expect
+    .poll(() => git(workspace, ["log", "-1", "--format=%s"]))
+    .toBe("fix: handle null cursor");
+  expect(git(workspace, ["show", "--format=", "--name-only", "HEAD"])).toBe("src/alpha.ts");
+  expect(git(workspace, ["status", "--porcelain"])).toBe("?? src/beta.ts");
+  await expect(form.getByTestId("changes-commit-message")).toHaveValue("");
+  await expect(form.getByTestId("changes-commit-type-selector")).toContainText("fix");
+  await page.getByTestId("commits-section-header").filter({ visible: true }).click();
+  await expect(
+    page.getByText("fix: handle null cursor", { exact: true }).filter({ visible: true }),
+  ).toBeVisible();
+});
+
+test("Manual commit hook failure preserves the draft for retry", async ({ page }) => {
+  const workspace = await createWorkspaceWithTwoChanges();
+  const hookPath = path.join(workspace.repoPath, ".git/hooks/pre-commit");
+  await writeFile(hookPath, "#!/bin/sh\necho 'fixture hook rejects commit' >&2\nexit 1\n", {
+    mode: 0o755,
+  });
+  await openWorkspaceChanges(page, workspace);
+  const form = page.getByTestId("changes-commit-section").filter({ visible: true });
+  await form.getByTestId("changes-commit-type-selector").click();
+  await page.getByTestId("changes-commit-type-option-feat").click();
+  await form.getByTestId("changes-commit-message").fill("fix(api): preserve explicit scope");
+  await form.getByTestId("changes-commit-button").click();
+  await expect(form.getByTestId("changes-commit-error")).toBeVisible();
+  await expect(form.getByTestId("changes-commit-message")).toHaveValue(
+    "fix(api): preserve explicit scope",
+  );
+  await expect(form.getByTestId("changes-commit-button")).toBeEnabled();
+  await rm(hookPath);
+  await form.getByTestId("changes-commit-button").click();
+  await expect
+    .poll(() => git(workspace, ["log", "-1", "--format=%s"]))
+    .toBe("fix(api): preserve explicit scope");
+  await expect(form).toBeHidden();
+});
+
+function git(workspace: CommitWorkspace, args: string[]): string {
+  return execFileSync("git", args, { cwd: workspace.repoPath, encoding: "utf8" }).trim();
+}
+
 async function createWorkspaceWithTwoChanges(): Promise<CommitWorkspace> {
   const repo = await createTempGitRepo("changes-commit-", {
     files: [{ path: "src/alpha.ts", content: ALPHA_BEFORE }],
   });
+  execFileSync("git", ["checkout", "-b", "manual-commit"], { cwd: repo.path, stdio: "ignore" });
   const client = await connectSeedClient();
   cleanupTasks.push({
     run: async () => {

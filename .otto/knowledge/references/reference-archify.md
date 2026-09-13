@@ -2,12 +2,12 @@
 id: "reference-archify"
 kind: "reference"
 title: "Archify"
-status: "proposed"
+status: "confirmed"
 tags: ["architecture","diagrams","documentation","vendor"]
 reference_disposition: "dependency"
 source_url: "https://github.com/tt-a1i/archify"
 created_at: "2026-08-27T19:15:48.882Z"
-updated_at: "2026-08-29T20:01:18.474Z"
+updated_at: "2026-09-13T04:53:37.018Z"
 ---
 # Archify
 
@@ -40,3 +40,6 @@ The current upstream version is a development build. Vendor a pinned subtree com
   kind: "note"
   summary: "The pinned MIT upstream renderer is now vendored and invoked only through Otto's daemon-owned Architectural Views adapter; upstream remains an implementation dependency, not the product-facing name."
   affects: ["reference-archify"]
+- time: "2026-09-13T04:53:37.018Z"
+  kind: "note"
+  summary: "Status changed through Otto project knowledge review. New status: confirmed."

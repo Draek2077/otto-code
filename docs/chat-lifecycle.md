@@ -138,7 +138,7 @@ Both flipped paths already carried `source: "system"`, so each injected message 
 
 Consecutive **user** messages in the queue are delivered as a **single** turn, joined in FIFO order with a blank line between them; images and attachments concatenate in the same order and the head entry's `runOptions` (including `messageId`) win.
 
-Three notes dropped while an agent grinds through a refactor are one instruction set, not three turns. Delivering them separately makes the agent act on note 1 before it has seen the constraint in note 3, and pays a full context re-send per turn. System-injected entries (`source: "system"` - mentions, schedule fires, notify-on-finish, agent-to-agent sends) never merge: each carries its own envelope and means something on its own.
+Three notes dropped while an agent grinds through a refactor are one instruction set, not three turns. Delivering them separately makes the agent act on note 1 before it has seen the constraint in note 3, and pays a full context re-send per turn. The automatic drain never merges system-injected entries (`source: "system"` - mentions, schedule fires, notify-on-finish, agent-to-agent sends): each carries its own envelope and means something on its own.
 
 ### Editing the queue
 
@@ -148,7 +148,7 @@ Re-order is exposed as per-row **move earlier / move later** controls rather tha
 
 The two arrows are stacked in a half-height column rather than sitting side by side as full-size round buttons: the pair then reads as one order control instead of two actions competing with edit and send-now, and the column stacks to the same height as the round buttons beside it so the row does not grow. Rows at the ends of the queue keep the arrow they cannot use, rendered disabled, so every row's controls stay on the same grid.
 
-**Send all** rides on the **head row only**, and only when more than one message waits. It runs the whole queue now, as one turn, which is exactly what the drain would do when the turn in flight ends; the client takes every entry back in order and joins them the same way `mergeSteerQueueBatch` does, so "Send all" and a natural drain produce the identical prompt. It confirms the interrupt first when the agent is running, like send-now does, and entries the drain beat it to are simply skipped. A single queued message needs no such button because its own send-now already is one.
+**Send all** rides on the **head row only**, and only when more than one message waits. It explicitly delivers the queue now as one submission, including system notifications. The client takes entries back in queue order, joins their full text with blank lines, and concatenates attachments in the same order. Each system notification retains its complete text envelope; the automatic drain still keeps those entries separate. Entries with daemon-held attachments unavailable to this client remain queued so their files are not lost. Send all uses Steer or Interrupt according to the active send behavior and confirms only an interrupt; entries the drain beat it to are simply skipped. A single queued message needs no such button because its own send-now already is one.
 
 The daemon re-resolves the entry by id and **clamps** the destination rather than rejecting it, because the client is rendering a snapshot that may already be one drain stale; a move that lands at the end of a shorter queue is what the user meant. `moved: false` (already drained, or already there) is not an error - the authoritative order arrives on the agent snapshot regardless.
 

@@ -28,6 +28,7 @@ export {
 } from "./state";
 
 interface BrowserStoreState extends BrowserIndexState {
+  ensureBrowser: (browserId: string) => void;
   createBrowser: (input?: {
     initialUrl?: string;
     isPreview?: boolean;
@@ -56,6 +57,20 @@ export const useBrowserStore = create<BrowserStoreState>()(
   persist(
     (set) => ({
       browsersById: {},
+      ensureBrowser: (browserId) => {
+        const id = BrowserAutomationBrowserIdSchema.parse(browserId);
+        set((state) => {
+          if (state.browsersById[id]) return state;
+          // Layouts retain tab IDs even when an older save lost the record.
+          // Recreate it on pane restore so future navigation can be persisted.
+          return {
+            browsersById: {
+              ...state.browsersById,
+              [id]: createBrowserRecord({ browserId: id, initialUrl: undefined, now: Date.now() }),
+            },
+          };
+        });
+      },
       createBrowser: (input) => {
         const browserId = createBrowserId();
         const record = createBrowserRecord({

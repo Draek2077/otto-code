@@ -356,6 +356,7 @@ describe("mountBrowserAutomationHandler", () => {
     expect(browser.resident.ensuredWebviews).toEqual([
       {
         browserId: result.browserId,
+        serverId: "server-1",
         workspaceId: "wks_workspace_a",
         url: "https://example.com",
       },
@@ -394,6 +395,8 @@ describe("mountBrowserAutomationHandler", () => {
     const openedTabs = workspaceBrowserTabs(workspaceKey, result.browserId);
     expect(openedTabs).toHaveLength(1);
     expect(openedTabs[0]?.tabId).not.toBe(previousFocusedTabId);
+    const focusedPane = findPaneById(layout!.root, layout!.focusedPaneId);
+    expect(focusedPane?.focusedTabId).toBe(previousFocusedTabId);
   });
 
   test("preview new_tab with split-right layout skips the split when the focused pane was empty", async () => {

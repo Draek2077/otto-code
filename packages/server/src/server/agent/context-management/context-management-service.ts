@@ -100,6 +100,8 @@ export interface ContextManagementServiceDeps {
 
 export interface GetContextReportInput {
   workspaceId: string;
+  /** An explicit refresh re-scans even while the cached report is still fresh. */
+  forceRefresh?: boolean;
   /** What-if override; omitted means the workspace's active provider. */
   provider?: string;
   /** What-if override; omitted means the active model's window. */
@@ -159,7 +161,7 @@ export class ContextManagementService {
     // carry different memory, and so are genuinely different reports.
     const cacheKey = `${input.workspaceId}\0${provider}\0${windowTokens}\0${input.personalityId ?? ""}`;
     const cached = this.cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) return cached.report;
+    if (!input.forceRefresh && cached && cached.expiresAt > Date.now()) return cached.report;
 
     const report = await this.buildReport({
       workspaceId: input.workspaceId,

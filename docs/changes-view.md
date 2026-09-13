@@ -182,6 +182,20 @@ since only the daemon can write the stored base.
 
 ## UI
 
+The Uncommitted view includes a manual commit form in both Inline diff and tree presentations,
+above the Commits history section where it is shown. Files start selected; unchecking excludes
+them, and collapsing a file or folder does not change selection. The form shows the selected/total
+count and a select-all control. Its type
+picker uses git-cz-style Conventional Commits types, remembers the last choice, and offers None
+for an unprefixed message. A message that already has a conventional header keeps its prefix and
+scope. The form commits only checked files through the daemon's existing `checkoutGitCommit`
+operation; it does not launch the git-cz CLI or generate a message with AI. Failed commits retain
+the draft and selection for retry, with errors inline and full output in the Git Commit log.
+
+The form lives in `packages/app/src/git/changes-commit-section.tsx` and shares the Changes selection
+add-on with bulk rollback. The toolbar's AI Commit action and the Commits history section remain
+independent. Hosts without `checkoutGitCommit` show the update-host message in place of the form.
+
 `packages/app/src/git/diff-base-switcher.tsx` renders the `vs <base>` chip beside the diff-mode
 dropdown in the Changes toolbar, visible only in Committed mode. Naming the base is half the
 value on its own: before this existed, the view never said what it was comparing against.

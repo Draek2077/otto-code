@@ -63,7 +63,9 @@ export function GoogleConnectorAuth(props: {
   const disconnect = useCallback(() => mutation.mutate("disconnect"), [mutation]);
   if (!native) return null;
   if (!supported)
-    return <Text style={settingsStyles.rowHint}>Update the host to connect Google services.</Text>;
+    return (
+      <Text style={settingsStyles.rowHint}>Google sign-in is unavailable in this host build.</Text>
+    );
   const signedIn = connection?.state === "connected";
   let connectLabel = signedIn ? "Reconnect" : "Connect";
   if (mutation.isPending || connection?.state === "authorizing") connectLabel = "Start again";

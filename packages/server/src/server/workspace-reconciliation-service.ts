@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { isProjectOffline, observeOfflineProjects } from "./project-availability.js";
 import { watchDirectory } from "../utils/watch-directory.js";
 import type { ProjectCheckoutLitePayload } from "@otto-code/protocol/messages";
 import type pino from "pino";
@@ -130,6 +131,7 @@ export class WorkspaceReconciliationService {
   private readonly watchers: Array<{ rootPath: string; watcher: ProjectRootWatcher }> = [];
   private unsubscribeRegistry: (() => void) | null = null;
   private rescanTimer: ReconciliationTimer | null = null;
+  private availabilityTimer: ReconciliationTimer | null = null;
   private debounceTimer: ReconciliationTimer | null = null;
   private disposed = false;
   private started = false;
@@ -177,6 +179,14 @@ export class WorkspaceReconciliationService {
       this.rescanIntervalMs,
     );
     this.rescanTimer.unref?.();
+    this.availabilityTimer = this.clock.setInterval(
+      () =>
+        observeOfflineProjects(this.projectRegistry).catch((error) => {
+          this.logger.warn({ err: error }, "Project availability probe failed");
+        }),
+      2000,
+    );
+    this.availabilityTimer.unref?.();
   }
 
   dispose(): void {
@@ -184,6 +194,7 @@ export class WorkspaceReconciliationService {
     this.unsubscribeRegistry?.();
     this.unsubscribeRegistry = null;
     if (this.rescanTimer) this.clock.clearInterval(this.rescanTimer);
+    if (this.availabilityTimer) this.clock.clearInterval(this.availabilityTimer);
     if (this.debounceTimer) this.clock.clearTimeout(this.debounceTimer);
     for (const { watcher } of this.watchers) watcher.close();
     this.watchers.length = 0;
@@ -197,17 +208,23 @@ export class WorkspaceReconciliationService {
       this.projectRegistry.list(),
       this.workspaceRegistry.list(),
     ]);
+    const offlineIds = new Set(
+      projects.filter(isProjectOffline).map((project) => project.projectId),
+    );
     const workspacesByProject = new Map<string, PersistedWorkspaceRecord[]>();
     for (const workspace of workspaces) {
-      if (workspace.archivedAt || this.inspectDirectory(workspace.cwd) !== "directory") continue;
+      if (
+        workspace.archivedAt ||
+        offlineIds.has(workspace.projectId) ||
+        this.inspectDirectory(workspace.cwd) !== "directory"
+      )
+        continue;
       const siblings = workspacesByProject.get(workspace.projectId) ?? [];
       siblings.push(workspace);
       workspacesByProject.set(workspace.projectId, siblings);
     }
     await this.reconcileGitMetadataForProjects(
-      projects.filter(
-        (project) => !project.archivedAt && this.inspectDirectory(project.rootPath) === "directory",
-      ),
+      projects.filter((project) => !project.archivedAt && !isProjectOffline(project)),
       workspacesByProject,
       changes,
     );
@@ -216,6 +233,7 @@ export class WorkspaceReconciliationService {
   }
 
   async runOnce(): Promise<ReconciliationResult> {
+    await observeOfflineProjects(this.projectRegistry);
     const start = Date.now();
     const changes: ReconciliationChange[] = [];
 
@@ -223,7 +241,10 @@ export class WorkspaceReconciliationService {
     const allWorkspaces = await this.workspaceRegistry.list();
 
     const activeProjects = allProjects.filter((p) => !p.archivedAt);
-    const activeWorkspaces = allWorkspaces.filter((w) => !w.archivedAt);
+    const offlineProjectIds = new Set(allProjects.filter(isProjectOffline).map((p) => p.projectId));
+    const activeWorkspaces = allWorkspaces.filter(
+      (w) => !w.archivedAt && !offlineProjectIds.has(w.projectId),
+    );
     const workspaceDirectoryStates = activeWorkspaces.map((workspace) => ({
       workspace,
       state: this.inspectDirectory(workspace.cwd),
@@ -266,7 +287,7 @@ export class WorkspaceReconciliationService {
     //    Projects persist until explicitly removed, even when they currently have
     //    zero active workspaces, so they still reconcile their own metadata.
     await this.reconcileGitMetadataForProjects(
-      activeProjects.filter((project) => this.inspectDirectory(project.rootPath) === "directory"),
+      activeProjects.filter((project) => !isProjectOffline(project)),
       workspacesByProject,
       changes,
     );
@@ -417,7 +438,9 @@ export class WorkspaceReconciliationService {
     if (this.disposed) return;
     const projects = await this.projectRegistry.list();
     if (this.disposed) return;
-    const activeProjects = projects.filter((project) => !project.archivedAt);
+    const activeProjects = projects.filter(
+      (project) => !project.archivedAt && !isProjectOffline(project),
+    );
 
     for (let index = this.watchers.length - 1; index >= 0; index -= 1) {
       const target = this.watchers[index]!;
