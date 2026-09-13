@@ -16,6 +16,8 @@ class FakeRenderer {
   public isDestroyed(): boolean {
     return false;
   }
+
+  public send(): void {}
 }
 
 class FakeBrowserGuest {
@@ -36,6 +38,8 @@ class FakeBrowserGuest {
   public setBackgroundThrottling(allowed: boolean): void {
     this.backgroundThrottlingCalls.push(allowed);
   }
+
+  public on(): void {}
 
   public once(event: "destroyed", listener: () => void): void {
     expect(event).toBe("destroyed");

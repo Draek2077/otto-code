@@ -21,7 +21,11 @@ import {
 } from "@/stores/workspace-layout-store";
 import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
-import { withBrowserAutomationFocus } from "./focus-guard";
+import {
+  isBrowserAutomationEditorFocused,
+  mountBrowserAutomationFocusGuard,
+  withBrowserAutomationFocus,
+} from "./focus-guard";
 
 type BrowserAutomationExecuteRequest = Extract<
   SessionOutboundMessage,
@@ -56,6 +60,12 @@ export function mountBrowserAutomationHandler(
   options: BrowserAutomationHandlerOptions,
 ): () => void {
   const getHost = options.getHost ?? getDesktopHost;
+  const subscribeToDesktopEvent = getHost()?.events?.on;
+  const releaseFocusGuard = mountBrowserAutomationFocusGuard(
+    subscribeToDesktopEvent
+      ? (handler) => Promise.resolve(subscribeToDesktopEvent("browser-user-activation", handler))
+      : undefined,
+  );
   const unsubscribe = options.client.on("browser.automation.execute.request", (request) => {
     void handleBrowserAutomationRequest({
       client: options.client,
@@ -74,6 +84,7 @@ export function mountBrowserAutomationHandler(
   });
   return () => {
     unsubscribe();
+    releaseFocusGuard();
   };
 }
 
@@ -278,6 +289,16 @@ function focusBrowserTabForRequest(params: {
     });
   }
 
+  if (isBrowserAutomationEditorFocused()) {
+    // Layout focus can hide the editor entirely, beyond what the native guest
+    // focus guard can restore. Browser commands already work by browserId.
+    return browserAutomationFailure({
+      requestId: request.requestId,
+      code: "browser_unsupported",
+      message:
+        "The user is editing in Otto. Keep this tab in the background and continue browser actions using its browserId.",
+    });
+  }
   useWorkspaceLayoutStore.getState().focusTab(workspaceTab.workspaceKey, workspaceTab.tabId);
 
   return {
@@ -453,6 +474,9 @@ async function openBrowserTabForRequest(params: {
       targetPaneId: splitTarget,
       position: "right",
     });
+    // Otto automation can reveal the preview without moving keyboard ownership
+    // to the new pane. Reuse the layout store's public focus operation.
+    useWorkspaceLayoutStore.getState().focusPane(workspaceKey, splitTarget);
   }
 
   // Registration happens when the webview actually attaches, in

@@ -154,10 +154,19 @@ input is dispatched separately after checking the host's hit target.
 Electron guest test without a daemon or visible window. It reproduces the native
 focus transfer from trusted automation input, then verifies the production focus
 guard preserves host chat typing and menu focus while guest text input still works.
+It types continuously across command completion, checks every character in the
+draft, and verifies that native user clicks can reclaim the guest without treating
+automation clicks as user input. The previous per-command guard fails this case.
 The Chromium component test in `pane/loading.browser.test.tsx` separately exercises
 the real browser device-size menu; the native fixture is not a full app journey.
 
 The desktop browser E2E launches an isolated real daemon, Metro, and Electron app. It visits six workspaces to force LRU eviction, verifies that the original browser keeps its guest `WebContents` in the permanent browser surface, then makes one MCP call each for tab listing, snapshot, and click against that original browser id. A final MCP wait proves the real target page received the click. Initial renderer startup allows five minutes for cold Metro compilation; subsequent bridge actions retain their 90-second timeout.
+
+Before eviction, the same harness types native characters into the real chat
+composer while MCP clicks, fills, and keypresses run in a split browser. It checks
+the complete draft, rejects an agent focus request during editing, and verifies
+that a page-created tab stays in the background and registers for browser tools.
+Input comes from Electron's main process without refocusing the editor per key.
 
 Run it locally with the same command owned by the Ubuntu `desktop-tests` required check:
 

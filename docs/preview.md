@@ -272,20 +272,36 @@ older hosts show an update hint in that settings section.
 
 Tab-scoped browser automation preserves the user's current app control. Electron's
 trusted guest clicks can transfer focus into the webview without an explicit focus
-call. The renderer guards those transfers while a command runs, restores the current
-control without scrolling, and prevents guest focus notifications from activating
-the browser pane. A control the user focuses during the command becomes the new
-restoration target. Overlapping commands share the guard until the last finishes,
-including failures.
+call. The renderer retains the user's control for the lifetime of the browser
+automation connection, including gaps between commands, delayed guest focus events,
+and newly attached tabs. It restores the control without scrolling and prevents
+guest focus notifications from activating the browser pane. A control the user
+focuses becomes the new restoration target. Connections share the guard; unmounting
+one connection cannot remove another connection's protection.
 
-This keeps the browser device-size menu usable during automation too. The explicit
-`browser_focus_tab` action still brings a tab forward. The guard does not arbitrate a
-user and an agent interacting with the same web page.
+This keeps the browser device-size menu usable during automation too. Opening a
+split preview preserves the original pane's focus. `browser_focus_tab` returns an
+error while an app editor is focused; agents can continue operating the background
+tab by `browserId`. Otherwise it brings the tab forward. Page-created workspace
+tabs also stay in the background while an app editor owns focus, and register
+immediately so tools can use them without revealing them.
+
+User pointer and Tab-key navigation release ownership. Native guest pointer events
+do not bubble through the host document, so the desktop browser module forwards
+user presses through `browser-user-activation`. CDP input remains marked as
+automation until its acknowledgement and does not produce that user signal. The
+guard does not arbitrate a user and an agent interacting with the same web page.
+This is an Otto browser integration policy; the shared composer is unchanged.
 
 Coverage lives in `automation/focus-guard.browser.test.ts` and
 `pane/loading.browser.test.tsx`. The isolated native regression is
 `npm run test:e2e:browser-focus --workspace=@otto-code/desktop`; it checks real guest
-clicks and text input against host chat and menu focus without starting a daemon.
+clicks and text input against host chat and menu focus without starting a daemon,
+including continuous host typing after command completion and native user clicks
+that return ownership to the guest. `handler-focus.browser.test.ts` checks editor
+selection and workspace focus through the renderer's tab-creation and focus handlers.
+The full desktop `test:e2e:browser-tab-bridge` harness verifies native typing in the
+real composer concurrently with MCP input, including page-created background tabs.
 
 ### Resident state
 

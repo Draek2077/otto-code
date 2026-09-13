@@ -3,6 +3,8 @@ import { getDesktopHost, type DesktopBrowserNewTabRequestEvent } from "@/desktop
 import { collectAllTabs, type WorkspaceLayout } from "@/stores/workspace-layout-store";
 import { getIsElectron } from "@/constants/platform";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { isBrowserAutomationEditorFocused } from "../automation/focus-guard";
+import { openBrowserRequestInBackground } from "./open-in-background";
 
 export type BrowserNewTabRequest = DesktopBrowserNewTabRequestEvent;
 
@@ -67,6 +69,8 @@ export function resolveBrowserNewTabRequest(input: {
 
 export function useDesktopBrowserNewTabRequests(input: {
   enabled: boolean;
+  serverId: string;
+  workspaceId: string;
   workspaceLayout: WorkspaceLayout | null | undefined;
   openUrl: (url: string) => void;
 }): void {
@@ -78,7 +82,15 @@ export function useDesktopBrowserNewTabRequests(input: {
     if (!request) {
       return;
     }
-    input.openUrl(request.url);
+    if (isBrowserAutomationEditorFocused()) {
+      openBrowserRequestInBackground({
+        serverId: input.serverId,
+        workspaceId: input.workspaceId,
+        url: request.url,
+      });
+    } else {
+      input.openUrl(request.url);
+    }
   });
 
   useEffect(() => {

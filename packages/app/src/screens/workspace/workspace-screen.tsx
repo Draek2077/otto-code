@@ -3666,6 +3666,8 @@ function WorkspaceScreenContent({
 
   useDesktopBrowserNewTabRequests({
     enabled: Boolean(persistenceKey),
+    serverId: normalizedServerId,
+    workspaceId: normalizedWorkspaceId,
     workspaceLayout,
     openUrl: handleOpenUrlInBrowserTab,
   });

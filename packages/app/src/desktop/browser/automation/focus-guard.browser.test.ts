@@ -1,15 +1,21 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { withBrowserAutomationFocus } from "./focus-guard.web";
+import { userEvent } from "vitest/browser";
+import {
+  isBrowserAutomationEditorFocused,
+  mountBrowserAutomationFocusGuard,
+  withBrowserAutomationFocus,
+} from "./focus-guard.web";
 
 let host: HTMLDivElement;
 let chat: HTMLTextAreaElement;
 let menuItem: HTMLButtonElement;
 let guest: HTMLElement;
+const releaseGuards: (() => void)[] = [];
 
 beforeEach(() => {
   host = document.createElement("div");
   host.innerHTML = `<textarea>keep typing</textarea><button>Responsive</button>
-    <div tabindex="0" data-otto-browser-id="browser"></div>`;
+    <div tabindex="0" data-otto-browser-id="browser">Browser</div>`;
   document.body.appendChild(host);
   chat = host.querySelector("textarea")!;
   menuItem = host.querySelector("button")!;
@@ -17,7 +23,10 @@ beforeEach(() => {
   chat.focus();
 });
 
-afterEach(() => host.remove());
+afterEach(() => {
+  releaseGuards.splice(0).forEach((release) => release());
+  host.remove();
+});
 
 it("keeps chat focus and selection and does not activate the browser pane", async () => {
   const activatePane = vi.fn();
@@ -77,4 +86,65 @@ it("allows automation of the browser that already owns focus", async () => {
     guest.dispatchEvent(new Event("focus"));
     expect(document.activeElement).toBe(guest);
   });
+});
+
+it("retains editor ownership between commands and for newly attached guests", async () => {
+  releaseGuards.push(mountBrowserAutomationFocusGuard());
+  chat.setSelectionRange(2, 7);
+  await withBrowserAutomationFocus("browser", async () => {});
+  // A reply is not a fence for Electron focus IPC or a page's delayed autofocus.
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  guest.focus();
+  expect(document.activeElement).toBe(chat);
+  const newGuest = guest.cloneNode() as HTMLElement;
+  newGuest.setAttribute("data-otto-browser-id", "new-browser");
+  host.appendChild(newGuest);
+  newGuest.focus();
+  expect(document.activeElement).toBe(chat);
+  expect([chat.selectionStart, chat.selectionEnd]).toEqual([2, 7]);
+  expect(isBrowserAutomationEditorFocused()).toBe(true);
+});
+
+it("lets a real user click take ownership while automation remains connected", async () => {
+  releaseGuards.push(mountBrowserAutomationFocusGuard());
+  await userEvent.click(guest);
+  expect(document.activeElement).toBe(guest);
+  expect(isBrowserAutomationEditorFocused()).toBe(false);
+  await userEvent.click(chat);
+  guest.focus();
+  expect(document.activeElement).toBe(chat);
+});
+
+it("lets keyboard navigation enter the browser and resumes protection on returning", async () => {
+  releaseGuards.push(mountBrowserAutomationFocusGuard());
+  await userEvent.keyboard("{Tab}{Tab}");
+  expect(document.activeElement).toBe(guest);
+  await userEvent.keyboard("{Shift>}{Tab}{Tab}{/Shift}");
+  expect(document.activeElement).toBe(chat);
+  guest.focus();
+  expect(document.activeElement).toBe(chat);
+});
+
+it("allows keyboard activation of a browser control without releasing ordinary typing", async () => {
+  releaseGuards.push(mountBrowserAutomationFocusGuard());
+  await userEvent.keyboard("x");
+  guest.focus();
+  expect(document.activeElement).toBe(chat);
+  menuItem.addEventListener("click", () => guest.focus());
+  menuItem.focus();
+  await userEvent.keyboard("{Enter}");
+  expect(document.activeElement).toBe(guest);
+});
+
+it("retains ownership until every connection unmounts and cleans up idempotently", () => {
+  const first = mountBrowserAutomationFocusGuard();
+  const second = mountBrowserAutomationFocusGuard();
+  releaseGuards.push(first, second);
+  first();
+  first();
+  guest.focus();
+  expect(document.activeElement).toBe(chat);
+  second();
+  guest.focus();
+  expect(document.activeElement).toBe(guest);
 });
