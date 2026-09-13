@@ -2,6 +2,24 @@ import { describe, expect, it } from "vitest";
 import { ContextManagementService } from "./context-management-service.js";
 
 describe("ContextManagementService project knowledge", () => {
+  it("bypasses a fresh cached report on explicit refresh and caches the new answer", async () => {
+    let catalogTokens = 14;
+    const service = new ContextManagementService({
+      logger: { warn: () => undefined } as never,
+      resolveLocation: async () => ({ cwd: "/project", projectRoot: "/project" }),
+      resolveRuntime: async () => ({ provider: "unknown" }),
+      resolveProjectKnowledgeBrief: async () => ({ text: "Catalog", estTokens: catalogTokens }),
+    });
+    const input = { workspaceId: "workspace-1" };
+    const original = await service.getReport(input);
+    expect(original?.projectKnowledgeTokens).toBe(14);
+    catalogTokens = 28;
+    expect(await service.getReport(input)).toBe(original);
+    const refreshed = await service.getReport({ ...input, forceRefresh: true });
+    expect(refreshed?.projectKnowledgeTokens).toBe(28);
+    expect(await service.getReport(input)).toBe(refreshed);
+  });
+
   it("counts and previews the same catalog injected at chat start", async () => {
     const service = new ContextManagementService({
       logger: { warn: () => undefined } as never,

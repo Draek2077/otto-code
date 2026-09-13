@@ -187,6 +187,7 @@ export const ContextReportGetRequestMessageSchema = z.object({
   type: z.literal("context.report.get.request"),
   requestId: z.string(),
   workspaceId: z.string(),
+  forceRefresh: z.boolean().optional(),
   provider: z.string().optional(),
   windowTokens: z.number().optional(),
   // "Evaluate as if this personality were running here": folds that

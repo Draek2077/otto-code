@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
 
@@ -25,6 +25,7 @@ export function useArchitecturalViews(
   loading: boolean;
   error: string | null;
   selectView: (viewId: string) => void;
+  reload: () => void;
 } {
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const supported = useSessionStore(
@@ -35,6 +36,8 @@ export function useArchitecturalViews(
   const [html, setHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const reload = useCallback(() => setRevision((value) => value + 1), []);
   const selectedView = views.find((view) => view.id === selectedViewId) ?? null;
   const knowledgeReferenceKind = knowledgeReference?.kind;
   const knowledgeReferenceId = knowledgeReference?.id;
@@ -78,7 +81,7 @@ export function useArchitecturalViews(
     return () => {
       cancelled = true;
     };
-  }, [client, knowledgeReferenceId, knowledgeReferenceKind, supported, workspaceId]);
+  }, [client, knowledgeReferenceId, knowledgeReferenceKind, supported, workspaceId, revision]);
 
   useEffect(() => {
     if (!client || !supported || !selectedViewId || !loadSelectedContent) {
@@ -110,9 +113,9 @@ export function useArchitecturalViews(
     return () => {
       cancelled = true;
     };
-  }, [client, loadSelectedContent, selectedViewId, supported, workspaceId]);
+  }, [client, loadSelectedContent, selectedViewId, supported, workspaceId, revision]);
 
-  return { supported, views, selectedView, html, loading, error, selectView };
+  return { supported, views, selectedView, html, loading, error, selectView, reload };
 }
 
 function retainAvailableView(

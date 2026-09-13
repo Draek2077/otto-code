@@ -95,7 +95,13 @@ This is the practical distinction between discovery and context injection: disco
 
 **Manage knowledge** is a capability-gated workspace tab with Knowledge, Projects, and References modes. Knowledge shows the six project-map roots and factual pages, including findings. Projects creates and reviews charters, displays status and completion metrics, and updates delivery with a reason. References records source URLs and adoption or rejection. All modes render the canonical Markdown page and its complete timeline, support explicit review status, and require a reason to change current truth. Existing records expose **Edit tags**, with scoped suggestions and an atomic metadata save that leaves the article's current truth and review status untouched. This action requires host capability `projectKnowledgeTagEditing` (v0.8.21), so an older daemon simply omits it. Current truth and new record bodies use the same live-formatted Markdown editor as the File Editor, with a one-click raw-source view.
 
+The **Knowledge map** section starts collapsed and expands to show the six root-page buttons, which wrap within the sidebar. Search uses the same compact control height as the filters. **Types** and **Tags** share one row, with selected tag chips wrapping across the full width underneath. The Tags popup pins a search field above its scrollable list. Search matches tag names without case sensitivity, preserves selected tags, and resets when the popup closes. Its clear control restores the full list.
+
 Opening a canonical Knowledge root or record Markdown file from File Explorer focuses **Manage knowledge** with that article selected, whether the store is repository-backed or host-local. The optional `KNOWLEDGE.md` guidance file and generated `knowledge/index.md` remain ordinary File Editor documents because neither is a managed Knowledge article.
+
+The **Refresh** control beside **New entry** reloads the catalog, the selected article, and its
+Interactive Views from the host. It keeps the current scope, filters, and selection, shows a
+spinner while loading, and is also available in the compact detail header.
 
 When a record is opened this way, the reader fetches that one record directly and renders it while the broader Knowledge index loads in the background. A retained Manage knowledge tab keeps its loaded view and only changes selection for a later file open; it does not reload the project catalog.
 
