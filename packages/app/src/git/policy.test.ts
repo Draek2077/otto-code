@@ -1,3 +1,4 @@
+import { buildBackupActions, getBackupWorkspaceMessage } from "./backup-policy";
 import { afterEach, describe, expect, it } from "vitest";
 import { CheckoutPrStatusSchema } from "@otto-code/protocol/messages";
 import { i18n } from "@/i18n/i18next";
@@ -1133,5 +1134,65 @@ describe("git-actions-policy", () => {
       "merge-pr-merge",
       "merge-pr-rebase",
     ]);
+  });
+});
+
+describe("User mode backups", () => {
+  it.each(["main", "master"])("allows the main workspace on %s", (currentBranch) => {
+    expect(getBackupWorkspaceMessage({ isGit: true, currentBranch, isWorktree: false })).toBeNull();
+  });
+  it.each(["feature/report", "HEAD", null])(
+    "blocks writes outside main/master (%s)",
+    (currentBranch) => {
+      const message = getBackupWorkspaceMessage({ isGit: true, currentBranch, isWorktree: false });
+      const actions = buildBackupActions(
+        createInput({ hasRemote: true, gitFetchEnabled: true }),
+        message,
+      );
+      expect(message).toContain("main workspace");
+      expect([actions.primary, ...actions.secondary].every((action) => action?.disabled)).toBe(
+        true,
+      );
+    },
+  );
+  it("blocks a worktree even if its branch is named main", () => {
+    expect(
+      getBackupWorkspaceMessage({ isGit: true, currentBranch: "main", isWorktree: true }),
+    ).toContain("main workspace");
+  });
+  it("keeps save and remote backup outcomes separate and omits all development actions", () => {
+    const input = createInput({
+      hasRemote: true,
+      gitFetchEnabled: true,
+      hasUncommittedChanges: true,
+      hasPullRequest: true,
+      shouldPromoteArchive: true,
+    });
+    const actions = buildBackupActions(input, null);
+    expect(actions.primary?.label).toBe("Save version");
+    expect(actions.primary?.handler).toBe(input.runtime.commit.handler);
+    expect(actions.primary?.description).toContain("local version");
+    expect(actions.secondary.map((action) => action.id)).toEqual(["fetch", "pull", "push"]);
+    expect(actions.menu).toEqual([]);
+    expect(actions.secondary.find((action) => action.id === "pull")?.unavailableMessage).toContain(
+      "Save a version",
+    );
+  });
+  it("explains local-only backups and respects disabled fetching", () => {
+    const actions = buildBackupActions(createInput({ hasRemote: false }), null);
+    expect(actions.secondary.map((action) => action.id)).toEqual(["pull", "push"]);
+    expect(actions.secondary[0]?.unavailableMessage).toContain("local version history only");
+  });
+  it("prevents uploading over newer remote versions", () => {
+    const actions = buildBackupActions(createInput({ hasRemote: true, behindOfOrigin: 2 }), null);
+    expect(actions.secondary.find((action) => action.id === "push")?.unavailableMessage).toContain(
+      "Download the newer versions",
+    );
+  });
+  it("locks every backup action while another operation is pending", () => {
+    const input = createInput({ hasRemote: true, gitFetchEnabled: true });
+    input.runtime.push.status = "pending";
+    const actions = buildBackupActions(input, null);
+    expect([actions.primary, ...actions.secondary].every((action) => action?.disabled)).toBe(true);
   });
 });

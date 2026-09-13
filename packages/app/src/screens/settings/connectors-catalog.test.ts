@@ -7,6 +7,8 @@
 // to reintroduce quietly: no placeholder syntax, a real endpoint, and a citation
 // for every entry.
 import { describe, expect, it } from "vitest";
+import { getConnectorIconSvg } from "@/components/connector-icons";
+import { MATERIAL_SYMBOL_SVGS } from "@/assets/material-symbol-icons";
 import {
   CONNECTOR_CATALOG,
   catalogForAudience,
@@ -40,6 +42,22 @@ function endpointText(entry: ConnectorCatalogEntry): string {
 }
 
 describe("connector catalog integrity", () => {
+  it("gives every catalog connector a bundled, themeable vector identity", () => {
+    for (const entry of CONNECTOR_CATALOG) {
+      const svg = getConnectorIconSvg(entry.id);
+      expect(svg, entry.id).not.toBe(MATERIAL_SYMBOL_SVGS.Plug);
+      expect(svg, entry.id).toMatch(/(?:fill|stroke)="currentColor"/);
+      expect(svg, entry.id).toMatch(/viewBox="[^"]+"/);
+      expect(svg, entry.id).not.toMatch(/<(?:image|text|script|foreignObject)\b|(?:href|onload)=/);
+    }
+  });
+
+  it("uses the neutral connector glyph for custom ids, including object property names", () => {
+    for (const id of ["my-custom-connector", "__proto__", "constructor"]) {
+      expect(getConnectorIconSvg(id)).toBe(MATERIAL_SYMBOL_SVGS.Plug);
+    }
+  });
+
   it("ships at least one connector", () => {
     expect(CONNECTOR_CATALOG.length).toBeGreaterThan(0);
   });

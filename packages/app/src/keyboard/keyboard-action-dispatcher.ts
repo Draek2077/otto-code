@@ -120,18 +120,14 @@ export type KeyboardActionDefinition =
   | { id: "workspace.archive"; scope: KeyboardActionScope }
   | { id: "workspace.pin"; scope: KeyboardActionScope };
 
-// Actions that reach developer-only surfaces (the Git explorer tabs, new
-// terminals, pane splits). In User interface mode they are swallowed at dispatch
-// so a stray keybinding can't resurrect a surface the UI hides - one gate for
-// every listener, per interface-modes.md surface inventory (#8).
+// New terminals and the Git explorer remain Developer entry points. Opening
+// files, viewing script output and arranging panes work in either interface mode.
 //
 // Files and Otto's workspace Search remain available in User mode; Git surfaces
 // remain gated so a stray shortcut cannot resurrect a hidden tab.
 const DEVELOPER_ONLY_ACTIONS: ReadonlySet<KeyboardActionId> = new Set([
   "sidebar.open.changes",
   "workspace.terminal.new",
-  "workspace.pane.split.right",
-  "workspace.pane.split.down",
 ]);
 
 export interface KeyboardActionHandler {

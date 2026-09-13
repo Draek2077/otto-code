@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Exercise the real layout algorithms without booting the persisted store's
+// React Native storage dependencies in this pure pane-state suite.
+vi.mock("@/stores/workspace-layout-store", () => import("@/stores/workspace-layout-actions"));
 import {
   deriveWorkspacePaneState,
   getWorkspacePaneDescriptors,
@@ -17,6 +21,22 @@ function createTab(tabId: string, target: WorkspaceTab["target"]): WorkspaceTab 
 }
 
 describe("workspace-pane-state", () => {
+  it.each([
+    { kind: "file", path: "/repo/report.md" } as const,
+    { kind: "terminal", terminalId: "script-output" } as const,
+  ])("keeps an explicitly opened $kind tab visible and focused", (target) => {
+    const fileOrOutput = createTab("opened-content", target);
+    const chat = createTab("chat", { kind: "agent", agentId: "agent-a" });
+    const pane = {
+      id: "main",
+      tabIds: [chat.tabId, fileOrOutput.tabId],
+      focusedTabId: fileOrOutput.tabId,
+    };
+    const state = deriveWorkspacePaneState({ pane, tabs: [chat, fileOrOutput] });
+    expect(state.activeTabId).toBe(fileOrOutput.tabId);
+    expect(state.tabs.map((tab) => tab.descriptor.tabId)).toEqual([chat.tabId, fileOrOutput.tabId]);
+  });
+
   it("selects the focused pane and keeps its tab order", () => {
     const tabs: WorkspaceTab[] = [
       createTab("agent_agent-a", { kind: "agent", agentId: "agent-a" }),

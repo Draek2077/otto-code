@@ -1,3 +1,4 @@
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -824,13 +825,15 @@ function useWorkspaceIsolation(input: {
   worktreeSupport: "supported" | "unsupported" | "unknown";
 }): WorkspaceIsolationState {
   const { supportsMultiplicity, worktreeSupport } = input;
+  const isDeveloperMode = useIsDeveloperMode();
   // The last isolation choice is remembered alongside the other New Workspace
   // form preferences (provider, model, mode). A manual in-screen pick overrides
   // the remembered default until the screen remounts.
   const { preferences, updatePreferences } = useFormPreferences();
   const [manualIsolation, setManualIsolation] = useState<"local" | "worktree" | null>(null);
   const isolation = manualIsolation ?? preferences.isolation ?? "local";
-  const canCreateWorktree = supportsMultiplicity && worktreeSupport !== "unsupported";
+  const canCreateWorktree =
+    isDeveloperMode && supportsMultiplicity && worktreeSupport !== "unsupported";
   const isWorktree = isolation === "worktree" && canCreateWorktree;
 
   const setIsolation = useCallback(
@@ -846,7 +849,7 @@ function useWorkspaceIsolation(input: {
     setIsolation,
     effectiveIsolation: isWorktree ? "worktree" : "local",
     canCreateWorktree,
-    showRefPicker: !supportsMultiplicity || isWorktree,
+    showRefPicker: isDeveloperMode && (!supportsMultiplicity || isWorktree),
   };
 }
 
@@ -1879,7 +1882,11 @@ export function NewWorkspaceScreen({
   const [dismissedCheckoutHintPrNumbers, setDismissedCheckoutHintPrNumbers] =
     useCheckoutHintDismissals(chatDraft.attachments);
 
-  const selectedItem = getSelectedPickerItem(manualPickerSelection);
+  const isDeveloperMode = useIsDeveloperMode();
+  const selectedItem = useMemo(
+    () => (isDeveloperMode ? getSelectedPickerItem(manualPickerSelection) : null),
+    [isDeveloperMode, manualPickerSelection],
+  );
 
   const withConnectedClient = useCallback(() => {
     if (!client || !isConnected) {
@@ -1891,7 +1898,10 @@ export function NewWorkspaceScreen({
   const clientReady = isConnected && Boolean(client);
   const hasSelectedSourceDirectory = selectedSourceDirectory !== null;
   const clientAndDirectoryReady = clientReady && hasSelectedSourceDirectory;
-  const pickerQueryEnabled = pickerOpen && clientAndDirectoryReady;
+  const pickerQueryEnabled = useMemo(
+    () => isDeveloperMode && pickerOpen && clientAndDirectoryReady,
+    [isDeveloperMode, pickerOpen, clientAndDirectoryReady],
+  );
 
   const { status: checkoutStatus } = useCheckoutStatusQuery({
     serverId: selectedServerId,
@@ -2181,6 +2191,9 @@ export function NewWorkspaceScreen({
         throw new Error("Choose a host for this project");
       }
       const connectedClient = withConnectedClient();
+      if (!isDeveloperMode && !supportsWorkspaceMultiplicity) {
+        throw new Error("Update the host to create a workspace in User mode.");
+      }
       const createsWorktree =
         !supportsWorkspaceMultiplicity ||
         input.isolationOverride === "worktree" ||
@@ -2221,6 +2234,7 @@ export function NewWorkspaceScreen({
       return normalizedWorkspace;
     },
     [
+      isDeveloperMode,
       buildCreateWorktreeInput,
       createdWorkspace,
       effectiveIsolation,
@@ -2312,6 +2326,7 @@ export function NewWorkspaceScreen({
           setErrorMessage(null);
           await runOccupiedDirectorySteer({
             error,
+            allowWorktree: isDeveloperMode,
             labels: {
               title: t("newWorkspace.occupiedDirectory.title"),
               openExisting: t("newWorkspace.occupiedDirectory.openExisting"),
@@ -2348,7 +2363,7 @@ export function NewWorkspaceScreen({
         throw error;
       }
     },
-    [runSubmitNewWorkspace, selectedServerId, t, toast],
+    [isDeveloperMode, runSubmitNewWorkspace, selectedServerId, t, toast],
   );
 
   const handleViewDocumentation = useCallback(
@@ -2589,7 +2604,7 @@ export function NewWorkspaceScreen({
 
   const composerFooter = useMemo(
     () =>
-      checkoutHintPrAttachment ? (
+      isDeveloperMode && checkoutHintPrAttachment ? (
         <CheckoutHintBadge
           label={t("newWorkspace.refPicker.checkoutHint", {
             number: checkoutHintPrAttachment.item.number,
@@ -2608,6 +2623,7 @@ export function NewWorkspaceScreen({
       ) : undefined,
     [
       acceptCheckoutHint,
+      isDeveloperMode,
       checkoutHintPrAttachment,
       dismissCheckoutHint,
       t,

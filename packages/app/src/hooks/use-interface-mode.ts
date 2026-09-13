@@ -4,9 +4,9 @@ import { APP_SETTINGS_QUERY_KEY } from "@/hooks/use-settings/storage";
 
 // The single gate for User vs Developer interface depth. Interface mode is
 // presentation only - it changes what the client renders, never what the daemon
-// does, what agents can do, or what rides the wire (see
-// projects/first-time-wizard/interface-modes.md). Every consumer of these hooks
-// must map to a row in the surface inventory; a stray import elsewhere is a defect.
+// does, what agents can do, or what rides the wire. See docs/onboarding.md for
+// the capability-preserving boundary: User mode simplifies entry points and
+// vocabulary, never hides an open file or a script's output tab.
 //
 // Resolution rule: a `null` stored value (unchosen / legacy device) resolves to
 // "developer" so existing and undecided devices behave exactly like today's app.

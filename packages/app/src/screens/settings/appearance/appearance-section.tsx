@@ -1295,19 +1295,17 @@ export function AppearanceSection() {
               onValueChange={handleCompactSidebarTopSpacingChange}
               testID="settings-compact-sidebar-top-spacing-switch"
             />
-            {isDeveloperMode ? (
-              <LayoutToggleRow
-                title={t("settings.appearance.layout.workspaceToolsInList.title")}
-                hint={t("settings.appearance.layout.workspaceToolsInList.hint")}
-                accessibilityLabel={t(
-                  "settings.appearance.layout.workspaceToolsInList.accessibilityLabel",
-                )}
-                value={settings.workspaceToolsPlacement === "workspaceList"}
-                withBorder
-                onValueChange={handleWorkspaceToolsPlacementChange}
-                testID="settings-workspace-tools-placement-switch"
-              />
-            ) : null}
+            <LayoutToggleRow
+              title={t("settings.appearance.layout.workspaceToolsInList.title")}
+              hint={t("settings.appearance.layout.workspaceToolsInList.hint")}
+              accessibilityLabel={t(
+                "settings.appearance.layout.workspaceToolsInList.accessibilityLabel",
+              )}
+              value={settings.workspaceToolsPlacement === "workspaceList"}
+              withBorder
+              onValueChange={handleWorkspaceToolsPlacementChange}
+              testID="settings-workspace-tools-placement-switch"
+            />
             {isDeveloperMode ? (
               <WorkspaceChangeIndicatorRow
                 value={settings.workspaceChangeIndicator}

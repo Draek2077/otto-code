@@ -4,11 +4,11 @@ import { StyleSheet } from "react-native-unistyles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { getIsElectron } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { useContainerWidth } from "@/hooks/use-container-width";
 import { useSidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
-import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import {
   buildTerminalsQueryKey,
@@ -42,9 +42,7 @@ const WORKSPACE_TOOL_ORDER: readonly WorkspaceTool[] = ["scripts", "git", "openI
 export function SidebarActiveWorkspaceTools() {
   const { t } = useTranslation();
   const { settings } = useAppSettings();
-  // These are all developer tools (scripts, open-in-editor, git commit/pull/push);
-  // User mode hides the cluster entirely.
-  const isDeveloperMode = useIsDeveloperMode();
+  const isCompact = useIsCompactFormFactor();
   const { onLayout: onContainerLayout, width: containerWidth } = useContainerWidth();
   const [availableTools, setAvailableTools] = useState<readonly WorkspaceTool[]>([]);
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
@@ -173,8 +171,7 @@ export function SidebarActiveWorkspaceTools() {
   );
 
   if (
-    !isDeveloperMode ||
-    settings.workspaceToolsPlacement !== "workspaceList" ||
+    (settings.workspaceToolsPlacement !== "workspaceList" && !isCompact) ||
     !workspaceEntry ||
     !workspaceDirectory
   ) {

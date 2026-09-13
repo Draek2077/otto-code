@@ -1,3 +1,4 @@
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import {
   useCallback,
   useMemo,
@@ -180,6 +181,11 @@ function SidebarWorkspaceMenuItems({
   openInFileManagerPath,
 }: SidebarWorkspaceMenuItemsProps & { surface: MenuSurface }): ReactNode {
   const { t } = useTranslation();
+  const isDeveloperMode = useIsDeveloperMode();
+  const copyBranchName = useMemo(
+    () => (isDeveloperMode ? onCopyBranchName : undefined),
+    [isDeveloperMode, onCopyBranchName],
+  );
   const archiveTrailing = useMemo(
     () => (archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null),
     [archiveShortcutKeys],
@@ -192,7 +198,7 @@ function SidebarWorkspaceMenuItems({
     if (!serverId || !workspaceId) return;
     openProjectKnowledgeTab({ serverId, workspaceId, navigate: true });
   }, [serverId, workspaceId]);
-  const hasIdentityActions = [onCopyPath, onCopyBranchName, onRename, onMarkAsRead].some(Boolean);
+  const hasIdentityActions = [onCopyPath, copyBranchName, onRename, onMarkAsRead].some(Boolean);
   const hasManagementActions = Boolean(serverId && workspaceId);
   const hasLocationActions = [onOpenBaseCheckout, onTogglePin, openInFileManagerPath].some(Boolean);
 
@@ -208,12 +214,12 @@ function SidebarWorkspaceMenuItems({
           {t("sidebar.workspace.actions.copyPath")}
         </WorkspaceMenuItem>
       ) : null}
-      {onCopyBranchName ? (
+      {copyBranchName ? (
         <WorkspaceMenuItem
           surface={surface}
           testID={`sidebar-workspace-menu-copy-branch-name-${workspaceKey}`}
           leading={copyLeadingIcon}
-          onSelect={onCopyBranchName}
+          onSelect={copyBranchName}
         >
           {t("sidebar.workspace.actions.copyBranchName")}
         </WorkspaceMenuItem>

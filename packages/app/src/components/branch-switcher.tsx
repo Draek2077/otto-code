@@ -11,6 +11,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";
 import { useBranchSwitcher } from "@/hooks/use-branch-switcher";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 
 interface BranchSwitcherProps {
   currentBranchName: string | null;
@@ -36,6 +37,7 @@ export function BranchSwitcher({
   isGitCheckout,
   testID = "workspace-header-branch-switcher",
 }: BranchSwitcherProps) {
+  const isDeveloperMode = useIsDeveloperMode();
   const { t } = useTranslation();
   const anchorRef = useRef<View>(null);
   const client = useHostRuntimeClient(serverId);
@@ -86,7 +88,7 @@ export function BranchSwitcher({
     [branchLeadingSlot],
   );
 
-  if (!currentBranchName) {
+  if (!isDeveloperMode || !currentBranchName) {
     return null;
   }
 

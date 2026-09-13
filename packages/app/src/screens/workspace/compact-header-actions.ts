@@ -77,7 +77,7 @@ export interface CompactHeaderActionsInput {
 }
 
 export interface CompactHeaderActionsFit {
-  /** Developer-mode Play button, in the title cluster. */
+  /** Scripts button, in the title cluster in either interface mode. */
   showPlay: boolean;
   /** Visualizer button, in the title cluster. */
   showVisualizer: boolean;
@@ -120,7 +120,7 @@ export function resolveCompactHeaderActions(
   input: CompactHeaderActionsInput,
 ): CompactHeaderActionsFit {
   const requested = new Set<CompactHeaderAction>();
-  if (input.isDeveloperMode && input.hasWorkspaceScripts) {
+  if (input.hasWorkspaceScripts) {
     requested.add("play");
   }
   if (input.isDeveloperMode && input.visualizerEnabled) {

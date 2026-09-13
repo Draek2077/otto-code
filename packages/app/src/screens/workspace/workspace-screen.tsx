@@ -148,7 +148,6 @@ import {
   useOpenBrowserToolsSettings,
 } from "@/utils/browser-tools-warning";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
-import { hideDeveloperTabs } from "@/screens/workspace/interface-mode-tabs";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import {
@@ -2725,14 +2724,8 @@ function WorkspaceScreenContent({
     () => (workspaceLayout ? collectAllTabs(workspaceLayout.root) : EMPTY_UI_TABS),
     [workspaceLayout],
   );
-  // What actually renders (tab strip + pane content). In User mode the
-  // developer-only tab kinds (terminal, file) are filtered out; the unfiltered
-  // `uiTabs` still drives store reconciliation and file-open, so nothing is
-  // closed or mutated - switching back to Developer restores everything.
-  const visibleUiTabs = useMemo(
-    () => hideDeveloperTabs(uiTabs, isDeveloperMode),
-    [uiTabs, isDeveloperMode],
-  );
+  // Open tabs remain visible in both interface modes, including script output.
+  const visibleUiTabs = uiTabs;
   const focusedPaneTabState = useMemo(
     () =>
       deriveWorkspacePaneState({
@@ -4789,6 +4782,11 @@ function WorkspaceScreenContent({
     workspaceKey: persistenceKey,
   });
 
+  const showDeveloperGitExplorer = isDeveloperMode && isGitCheckout;
+  const showDeveloperPlainExplorer = isDeveloperMode && !isMobile && !isGitCheckout;
+  const showDeveloperCompactExplorer = isDeveloperMode && headerActionFit.showCompactExplorer;
+  const showUserExplorer = !isDeveloperMode && headerActionFit.showPlainExplorer;
+
   const headerRight = useMemo(
     () => (
       <View style={styles.headerRight}>
@@ -4796,9 +4794,7 @@ function WorkspaceScreenContent({
             cluster, before every other tool (renders null unless the setting
             moved it here). */}
         {!isMobile ? <HeaderActiveTeamSwitchers /> : null}
-        {/* Everything below is developer-only; User mode keeps just the team
-            switcher above. Presentation only (see interface-modes.md). */}
-        {isDeveloperMode ? (
+        {workspaceDirectory ? (
           <>
             {!isMobile &&
             workspaceDescriptor &&
@@ -4838,7 +4834,7 @@ function WorkspaceScreenContent({
                     hideLabels={showCompactButtonLabels}
                   />
                 ) : null}
-                {isGitCheckout ? (
+                {showDeveloperGitExplorer ? (
                   <GitCheckoutExplorerToggle
                     anchorRef={explorerToggleAnchorRef}
                     onPress={handleToggleExplorer}
@@ -4852,7 +4848,7 @@ function WorkspaceScreenContent({
                 ) : null}
               </>
             ) : null}
-            {!isMobile && !isGitCheckout ? (
+            {showDeveloperPlainExplorer ? (
               <HeaderToggleButton
                 anchorRef={explorerToggleAnchorRef}
                 testID="workspace-explorer-toggle"
@@ -4878,7 +4874,7 @@ function WorkspaceScreenContent({
                 }}
               </HeaderToggleButton>
             ) : null}
-            {headerActionFit.showCompactExplorer ? (
+            {showDeveloperCompactExplorer ? (
               <HeaderToggleButton
                 anchorRef={explorerToggleAnchorRef}
                 testID="workspace-explorer-toggle"
@@ -4912,12 +4908,9 @@ function WorkspaceScreenContent({
                 }}
               </HeaderToggleButton>
             ) : null}
-          </>
-        ) : (
-          <>
             {/* User interface mode: a plain explorer toggle for Files and Search
                 (no git-aware diff badge). Desktop + mobile. */}
-            {headerActionFit.showPlainExplorer ? (
+            {showUserExplorer ? (
               <PlainExplorerToggle
                 isMobile={isMobile}
                 anchorRef={explorerToggleAnchorRef}
@@ -4928,12 +4921,15 @@ function WorkspaceScreenContent({
               />
             ) : null}
           </>
-        )}
+        ) : null}
       </View>
     ),
     [
+      showDeveloperGitExplorer,
+      showDeveloperPlainExplorer,
+      showDeveloperCompactExplorer,
+      showUserExplorer,
       isMobile,
-      isDeveloperMode,
       workspaceDescriptor,
       visibleWorkspaceDiffStat,
       normalizedServerId,
@@ -4945,7 +4941,6 @@ function WorkspaceScreenContent({
       handleViewScriptTerminal,
       handleOpenUrlInBrowserTab,
       showCompactButtonLabels,
-      isGitCheckout,
       handleToggleExplorer,
       explorerToggleAnchorRef,
       explorerToggleKeys,
@@ -4954,8 +4949,6 @@ function WorkspaceScreenContent({
       explorerToggleAccessibilityState,
       explorerToggleStyle,
       showExplorerDiffStat,
-      headerActionFit.showCompactExplorer,
-      headerActionFit.showPlainExplorer,
       settings.workspaceToolsPlacement,
       headerActionIconSize.chromeLg,
       t,

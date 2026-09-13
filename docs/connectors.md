@@ -114,6 +114,14 @@ two or three connectors the user actually runs, so the thing they came to check 
 what is on - was the hardest thing on the page to find. Keep it: the section
 answers "what do I have and is it on", the sheet answers "what could I add".
 
+Both surfaces use `ConnectorIdentity` for a bundled monochrome SVG beside the name,
+with descriptions and status aligned beneath the name. Brand marks follow the theme's
+foreground and icon-size tokens; the icon keeps its size when text wraps. Local files
+uses the folder glyph, Persistent memory uses the database glyph, and custom connector
+ids use the plug glyph. Native Google connectors retain their service mark through their
+`builtin` identity. Artwork sources and licenses live beside the bundled assets in
+`packages/app/src/assets/connector-brand-icons.NOTICE.md`; no icon fetches occur at runtime.
+
 ## Otto-native connectors
 
 When a service we need has no official MCP server, we write one. "No official

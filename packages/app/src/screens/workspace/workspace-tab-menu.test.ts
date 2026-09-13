@@ -452,7 +452,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(onRenameTab).toHaveBeenCalledWith(terminalTab);
   });
 
-  it("includes filename, full path, and workspace-relative path for file tabs", () => {
+  it("includes filename, full path, and workspace-relative path for file tabs in User mode", () => {
     const onCopyFilePath = vi.fn();
     const fileTab: WorkspaceTabDescriptor = {
       key: "file_abc",
@@ -467,7 +467,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       index: 0,
       tabCount: 1,
       menuTestIDBase: "workspace-tab-context-file_abc",
-      isDeveloperMode: true,
+      isDeveloperMode: false,
       onCopyResumeCommand: vi.fn(),
       onCopyTerminalId: vi.fn(),
       onCopyAgentId: vi.fn(),

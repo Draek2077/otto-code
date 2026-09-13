@@ -21,6 +21,7 @@ import { CheckIndicator } from "./check-indicator";
 import type { CheckSummary, CheckSummaryState } from "./check-summary";
 import { selectMetaRowItems, type MetaRowItem } from "./meta-items";
 import { workspaceServiceLabelKey, type WorkspaceServiceSummary } from "./service-summary";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 
 export {
   selectWorkspaceServiceSummary,
@@ -77,11 +78,12 @@ export function WorkspaceMetaRow({
   labels?: readonly WorkspaceLabelDefinition[];
 }) {
   const { rowItems, checksDisplay } = useSidebarMetaPreferences();
+  const isDeveloperMode = useIsDeveloperMode();
   const items = selectMetaRowItems({
-    currentBranch,
+    currentBranch: isDeveloperMode ? currentBranch : null,
     projectName,
     hasHostBadge: hostBadge !== null,
-    prHint,
+    prHint: isDeveloperMode ? prHint : null,
     serviceSummary,
     labels,
     visible: rowItems,

@@ -170,14 +170,14 @@ describe("resolveCompactHeaderActions", () => {
     expect(fit.showCompactExplorer).toBe(false);
   });
 
-  it("keeps the user-mode explorer, which has no Play or Visualizer beside it", () => {
+  it("keeps User mode scripts reachable when the compact header drops their button", () => {
     const fit = resolveCompactHeaderActions({
       ...DEVELOPER_MOBILE,
       isDeveloperMode: false,
       rowWidth: 374,
     });
     expect(fit.showPlainExplorer).toBe(true);
-    expect(fit.showPlay).toBe(false);
+    expect(fit.showPlay || fit.menuPlay).toBe(true);
     expect(fit.showVisualizer).toBe(false);
   });
 

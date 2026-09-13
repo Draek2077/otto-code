@@ -19,6 +19,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
 import { Button } from "@/components/ui/button";
+import { ConnectorIdentity } from "@/components/connector-identity";
 import { Switch } from "@/components/ui/switch";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
@@ -173,15 +174,17 @@ function ConnectorCard(props: {
   return (
     <View style={settingsStyles.card} testID={`connectors-card-${connector.id}`}>
       <View style={settingsStyles.row}>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{connector.label ?? connector.id}</Text>
+        <ConnectorIdentity
+          id={connector.builtin ?? connector.id}
+          label={connector.label ?? connector.id}
+        >
           <Text style={settingsStyles.rowHint}>
             {enabled ? "On" : "Off"} · {transportSummary(connector)}
           </Text>
           {enableMutation.isError ? (
             <Text style={settingsStyles.rowError}>{toErrorMessage(enableMutation.error)}</Text>
           ) : null}
-        </View>
+        </ConnectorIdentity>
         <Switch
           value={enabled}
           onValueChange={onEnableChange}

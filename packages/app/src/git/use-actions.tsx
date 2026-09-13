@@ -5,7 +5,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getForgePresentation } from "@/git/forge";
 import { deriveMergeCapability } from "@/git/merge-capability";
 import { z } from "zod";
-import { useTranslation } from "react-i18next";
 import { type CheckoutGitActionStatus, useCheckoutGitActionsStore } from "@/git/actions-store";
 import { type CheckoutStatusPayload, useCheckoutStatusQuery } from "@/git/use-status-query";
 import { type CheckoutPrStatusPayload, useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
@@ -35,6 +34,8 @@ import { type WorktreeArchiveWarningLabels } from "@/git/worktree-archive-warnin
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 import { readValidatedString } from "@/storage/validated-storage";
+import { useGitActionCopy } from "./use-action-copy";
+import { buildBackupActions, getBackupWorkspaceMessage } from "./backup-policy";
 
 export type { GitActionId, GitAction, GitActions } from "@/git/policy";
 
@@ -221,6 +222,7 @@ interface UseGitActionsResult {
   gitActions: GitActions;
   branchLabel: string;
   isGit: boolean;
+  backupWorkspaceMessage: string | null;
 }
 
 interface UseWorkspaceScreenArchiveControllerInput {
@@ -329,7 +331,7 @@ function useWorkspaceScreenArchiveController({
 }
 
 export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): UseGitActionsResult {
-  const { t } = useTranslation();
+  const { t, isDeveloperMode } = useGitActionCopy();
   const toast = useToast();
   // Host-level PR-only workflow policy. Reads from the daemon config; absent on
   // old daemons parses to false, so the action stays visible by default.
@@ -347,6 +349,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
   const hasUncommittedChanges = Boolean(gitStatus?.isDirty);
 
+  const prQueryEnabled = useMemo(() => isGit && isDeveloperMode, [isGit, isDeveloperMode]);
   const {
     status: prStatus,
     githubFeaturesEnabled,
@@ -355,7 +358,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   } = useCheckoutPrStatusQuery({
     serverId,
     cwd,
-    enabled: isGit,
+    enabled: prQueryEnabled,
   });
   const baseRefLabel = useMemo(
     () => formatBaseRefLabel(baseRef, t("workspace.git.diff.base")),
@@ -942,18 +945,37 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     baseRef,
   ]);
 
+  const backupWorkspaceMessage = useMemo(() => {
+    if (isStatusLoading) return "Checking backups…";
+    if (status?.error) return "Could not check backups. Reconnect to the host and try again.";
+    return getBackupWorkspaceMessage({
+      isGit,
+      currentBranch: gitStatus?.currentBranch,
+      isWorktree: gitStatus?.isOttoOwnedWorktree === true,
+    });
+  }, [isStatusLoading, status, isGit, gitStatus]);
   const gitActions: GitActions = useMemo(
     () =>
-      translateGitActions(buildGitActions(gitActionsInput), {
-        baseRefLabel,
-        hasPullRequest,
-        forge,
-        t,
-      }),
-    [gitActionsInput, baseRefLabel, hasPullRequest, forge, t],
+      isDeveloperMode
+        ? translateGitActions(buildGitActions(gitActionsInput), {
+            baseRefLabel,
+            hasPullRequest,
+            forge,
+            t,
+          })
+        : buildBackupActions(gitActionsInput, backupWorkspaceMessage),
+    [
+      isDeveloperMode,
+      backupWorkspaceMessage,
+      gitActionsInput,
+      baseRefLabel,
+      hasPullRequest,
+      forge,
+      t,
+    ],
   );
 
-  return { gitActions, branchLabel, isGit };
+  return { gitActions, branchLabel, isGit, backupWorkspaceMessage };
 }
 
 interface TranslateGitActionsInput {

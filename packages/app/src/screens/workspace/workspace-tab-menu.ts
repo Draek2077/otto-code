@@ -497,7 +497,7 @@ export function buildWorkspaceTabMenuEntries(
     });
   }
 
-  if (isDeveloperMode && tab.target.kind === "file") {
+  if (tab.target.kind === "file") {
     const filePath = tab.target.path;
     const workspaceRelativePath = getWorkspaceRelativeFilePath(filePath, workspaceDirectory);
     entries.push({

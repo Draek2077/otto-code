@@ -21,7 +21,9 @@ Keep panel implementations independent of either shell. `WorkspacePanelHost` own
 retention, while each shell owns its tabs, focus, dragging, resizing, and shortcuts.
 
 User mode retains Files and Otto's Search when the connected host supports project search. Changes
-and pull requests remain Developer-mode Git surfaces.
+and pull requests remain Developer-mode Git surfaces. Opening a file still shows the complete File
+Editor in either mode; script output tabs also remain visible. User mode reaches saved versions
+and remote synchronization through the workspace Backups control; see [onboarding.md](onboarding.md).
 
 ## Explorer sidebar
 

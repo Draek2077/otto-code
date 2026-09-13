@@ -1,18 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { queryClient } from "@/data/query-client";
-import { APP_SETTINGS_QUERY_KEY } from "@/hooks/use-settings/storage";
 
 import {
   createKeyboardActionDispatcher,
   type KeyboardActionDefinition,
 } from "./keyboard-action-dispatcher";
 
+// Settings persistence has its own tests. Supply the display-mode boundary here
+// so these dispatcher tests do not boot React Native storage and its Flow loader.
+const mode = vi.hoisted(() => ({ developer: true }));
+vi.mock("@/hooks/use-interface-mode", () => ({
+  getIsDeveloperModeSnapshot: () => mode.developer,
+}));
+
 describe("keyboard-action-dispatcher", () => {
   let dispatcher: ReturnType<typeof createKeyboardActionDispatcher>;
 
   beforeEach(() => {
     dispatcher = createKeyboardActionDispatcher();
-    queryClient.removeQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
+    mode.developer = true;
   });
 
   it("dispatches to the highest-priority active handler", () => {
@@ -221,7 +226,7 @@ describe("keyboard-action-dispatcher", () => {
   });
 
   it("keeps Search available while User mode blocks the Git Explorer action", () => {
-    queryClient.setQueryData(APP_SETTINGS_QUERY_KEY, { interfaceMode: "user" });
+    mode.developer = false;
     const search = vi.fn(() => true);
     const changes = vi.fn(() => true);
     dispatcher.registerHandler({
@@ -244,4 +249,20 @@ describe("keyboard-action-dispatcher", () => {
     expect(search).toHaveBeenCalledOnce();
     expect(changes).not.toHaveBeenCalled();
   });
+  it.each(["workspace.pane.split.right", "workspace.pane.split.down"] as const)(
+    "allows %s in User mode",
+    (id) => {
+      mode.developer = false;
+      const handle = vi.fn(() => true);
+      dispatcher.registerHandler({
+        handlerId: "split",
+        actions: [id],
+        enabled: true,
+        priority: 100,
+        handle,
+      });
+      expect(dispatcher.dispatch({ id, scope: "workspace" })).toBe(true);
+      expect(handle).toHaveBeenCalledOnce();
+    },
+  );
 });

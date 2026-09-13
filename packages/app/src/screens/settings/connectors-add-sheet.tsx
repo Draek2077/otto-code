@@ -21,6 +21,7 @@ import {
   type SheetHeader,
 } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
+import { ConnectorIdentity } from "@/components/connector-identity";
 import { isWeb } from "@/constants/platform";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
@@ -137,10 +138,9 @@ function CatalogEntryRow(props: {
   const handlePress = useCallback(() => onSelect(entry), [onSelect, entry]);
   return (
     <View style={settingsStyles.row} testID={`connectors-catalog-entry-${entry.id}`}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{entry.label}</Text>
+      <ConnectorIdentity id={entry.id} label={entry.label}>
         <Text style={settingsStyles.rowHint}>{entry.description}</Text>
-      </View>
+      </ConnectorIdentity>
       <Button
         onPress={handlePress}
         variant={installed ? "secondary" : "default"}

@@ -134,7 +134,7 @@ An unlisted page is an invisible page.
 | [feature-flags.md](feature-flags.md)     | Gated features - turning a subsystem off so its code never loads; the Metro no-tree-shake constraint, the lazy-split pattern, Visualizer as the reference                                                   |
 | [feedback.md](feedback.md)               | In-app **Send feedback** - client posts straight to the otto-code.me intake (not via the daemon), anonymous by default, the closed context list, the Worker's spam bounds                                   |
 | [menus.md](menus.md)                     | The one menu engine - `dropdown-menu` and `context-menu` are wrappers that differ only in trigger, `MenuRoot` picks presentation from form factor never platform, and **do not add a third implementation** |
-| [onboarding.md](onboarding.md)           | The first-run setup wizard and tutorial - configure the least needed for proper function, everything else is discovered later                                                                               |
+| [onboarding.md](onboarding.md)           | The first-run setup wizard, tutorial, and capability-preserving User mode with simple backups                                                                                                               |
 
 ## Protocol, data and performance
 

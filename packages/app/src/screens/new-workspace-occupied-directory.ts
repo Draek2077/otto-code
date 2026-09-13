@@ -33,6 +33,7 @@ export interface OccupiedDirectorySteerLabels {
 }
 
 export interface RunOccupiedDirectorySteerInput {
+  allowWorktree?: boolean;
   error: WorkspaceDirectoryOccupiedClientError;
   labels: OccupiedDirectorySteerLabels;
   /** Resolves the visible workspace already backing `sourceDirectory`, if known. */
@@ -85,7 +86,7 @@ export async function runOccupiedDirectorySteer(
     title: input.labels.title,
     message: input.error.message,
     confirmLabel: input.labels.openExisting,
-    alternateLabel: input.labels.createWorktree,
+    alternateLabel: input.allowWorktree === false ? undefined : input.labels.createWorktree,
   });
 
   if (result.choice === "confirm") {
@@ -98,7 +99,7 @@ export async function runOccupiedDirectorySteer(
     }
   }
 
-  if (result.choice === "alternate") {
+  if (result.choice === "alternate" && input.allowWorktree !== false) {
     try {
       await input.createWorktreeInstead();
       return "created_worktree";

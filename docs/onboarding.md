@@ -12,6 +12,32 @@ Related: [agent-profiles.md](agent-profiles.md) · [agent-teams.md](agent-teams.
 [expo-router.md](expo-router.md) (route ownership and startup restore) ·
 [sidebar-reveal](../projects/README.md#active-charters) for the unbuilt tutorial workspace step.
 
+## Interface mode preserves useful capabilities
+
+User mode simplifies the workflow and vocabulary. It keeps the full File Editor when a file is
+opened, including editing and previews. Open tabs remain visible, including output opened by a
+workspace script. Pane splitting and maximize/restore remain available wherever the platform
+supports them. Files, Search, Scripts, and Open remain available. Compact layouts keep workspace
+tools in the sidebar even when the desktop preference places them in the header.
+
+The workspace Git control becomes **Backups** in User mode. The Otto-owned backup presentation
+uses the existing Git action handlers and their confirmations. It offers **Save version** (commit
+all changed files locally), **Check for updates** (fetch, subject to the host setting), **Download
+updates** (pull), **Upload backup** (push), and the ten most recent saved versions. A local save
+never claims to be a remote backup. Remote actions use an already configured remote, including
+GitHub; this UI does not provision a remote or initialize a non-Git folder.
+
+Backup writes are offered only on main/master outside Otto-owned worktrees. Switching interface
+mode never switches a branch, moves files, creates a worktree, or uploads anything. Existing
+advanced workspaces remain visible and explain the backup restriction. Branch selectors, worktree
+creation choices, and PR actions stay out of User mode. New workspaces use the existing local
+workspace path and retain the user's Developer worktree preference without applying it.
+
+The implementation stays in Otto's presentation modules (`git/backup-policy.ts`,
+`git/use-action-copy.ts`, and `git/workspace-backups.tsx`) with small composition-site changes.
+Git execution, authentication, protocol messages, editor behavior, and layout persistence retain
+their existing owners. Interface mode remains device-local and provider-neutral.
+
 ## The five steps
 
 Order is locked - **Mode first**, because the chosen depth reframes every screen that follows.

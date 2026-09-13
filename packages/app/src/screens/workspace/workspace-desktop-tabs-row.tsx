@@ -442,7 +442,7 @@ export function WorkspaceTabRowExtras({
               Add artifact
             </DropdownMenuItem>
           ) : null}
-          {showPaneSplitActions && isDeveloperMode ? (
+          {showPaneSplitActions ? (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
