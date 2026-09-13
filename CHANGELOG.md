@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.10 - 2026-09-12
+
+### Changed
+
+- Show brand icons beside connector names in the connector catalog and installed connectors
+- Keep opened files and script output visible in User mode
+- Split and maximize panes in User mode
+- Save versions of your project and upload or download backups from the Backups control in User mode
+- Browse your ten most recent saved versions from Backups
+- Hide the branch switcher and pull request details inside workspaces in User mode
+- Refresh the agent catalog to the latest published versions
+
+### Fixed
+
+- Publish the Android APK with each release again
+
 ## 0.9.9 - 2026-09-12
 
 ### Changed
