@@ -271,7 +271,9 @@ jobs:
       # step log streams as it goes, so the samples survive the runner dying.
       # First sampled run (android-v0.9.0, 2026-09-04): the Hermes pass alone
       # held ~15.6G RAM plus the entire 24G swapfile for eighteen minutes, with
-      # under 400M available. Standalone it survives; it will not share.
+      # under 400M available. That peak was hermesc compiling the zod-aot outbound
+      # validator as one giant function; protocol now generates one validator per
+      # message type (docs/android.md, docs/protocol-validation.md).
       - name: Bundle the JS and Hermes bytecode
         shell: bash
         working-directory: packages/app/android

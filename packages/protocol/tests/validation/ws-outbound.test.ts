@@ -4,7 +4,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
 import { describe, expect, it } from "vitest";
-import { WSOutboundMessageSchema as GeneratedWSOutboundMessageSchema } from "../../src/generated/validation/ws-outbound.aot.js";
+import { sessionOutboundValidators } from "../../src/generated/validation/ws-outbound-dispatch.aot.js";
+import { SessionOutboundMessageSchema } from "../../src/messages.js";
+import { validateWSOutboundMessage } from "../../src/validation/ws-outbound.js";
 
 interface GeneratedSchema {
   safeParse(input: unknown): { success: boolean; data?: unknown };
@@ -132,10 +134,8 @@ const SourceSchema = z.object({
   });
 
   it("accepts a minimal valid envelope and rejects a corrupted envelope", () => {
-    expect(GeneratedWSOutboundMessageSchema.safeParse({ type: "pong" }).success).toBe(true);
-    expect(GeneratedWSOutboundMessageSchema.safeParse({ type: "not_a_message" }).success).toBe(
-      false,
-    );
+    expect(validateWSOutboundMessage({ type: "pong" }).success).toBe(true);
+    expect(validateWSOutboundMessage({ type: "not_a_message" }).success).toBe(false);
   });
 
   it("accepts project config responses with and without setup commit status", () => {
@@ -158,11 +158,10 @@ const SourceSchema = z.object({
       },
     });
 
-    expect(GeneratedWSOutboundMessageSchema.safeParse(envelope(payload)).success).toBe(true);
+    expect(validateWSOutboundMessage(envelope(payload)).success).toBe(true);
     expect(
-      GeneratedWSOutboundMessageSchema.safeParse(
-        envelope({ ...payload, hasUncommittedWorktreeSetupChanges: true }),
-      ).success,
+      validateWSOutboundMessage(envelope({ ...payload, hasUncommittedWorktreeSetupChanges: true }))
+        .success,
     ).toBe(true);
   });
 
@@ -196,7 +195,7 @@ const SourceSchema = z.object({
       },
     };
 
-    expect(GeneratedWSOutboundMessageSchema.safeParse(envelope)).toEqual({
+    expect(validateWSOutboundMessage(envelope)).toEqual({
       success: true,
       data: envelope,
     });
@@ -255,7 +254,7 @@ const SourceSchema = z.object({
   ])("preserves workspaceId in a $name", ({ message }) => {
     const envelope = { type: "session", message };
 
-    expect(GeneratedWSOutboundMessageSchema.safeParse(envelope)).toEqual({
+    expect(validateWSOutboundMessage(envelope)).toEqual({
       success: true,
       data: envelope,
     });
@@ -263,11 +262,63 @@ const SourceSchema = z.object({
 
   it("emits runtime imports with .js extensions", async () => {
     const generated = await readFile(generatedWSOutboundPath, "utf8");
-    expect(generated).toContain('from "../../validation/ws-outbound-schema-metadata.js"');
+    expect(generated).toContain('from "./ws-outbound-metadata.aot.js"');
+  });
+
+  it("dispatches every session message type to exactly one generated validator", () => {
+    const declaredTypes = SessionOutboundMessageSchema.options.flatMap(
+      (option) => option.shape.type._zod.def.values,
+    );
+    expect(new Set(declaredTypes).size).toBe(declaredTypes.length);
+    expect([...sessionOutboundValidators.keys()].sort()).toEqual([...declaredTypes].sort());
+  });
+
+  it("keeps every generated validator small enough for Hermes to compile", async () => {
+    // A single whole-envelope validator (about 6.9 MB in one function) needed more than 12 GB
+    // for hermesc and killed the Android release build. Per type, the largest is under 400 KB.
+    const generated = await readFile(generatedWSOutboundPath, "utf8");
+    const validators = generated.split(/\n(?=export const )/).slice(1);
+    expect(validators).toHaveLength(SessionOutboundMessageSchema.options.length + 1);
+    expect(Math.max(...validators.map((validator) => validator.length))).toBeLessThan(1_000_000);
+  });
+
+  it("falls back to Zod errors for unknown and rejected session messages", () => {
+    expect(
+      validateWSOutboundMessage({ type: "session", message: { type: "not_a_message_type" } })
+        .success,
+    ).toBe(false);
+
+    const rejected = validateWSOutboundMessage({
+      type: "session",
+      message: { type: "read_project_config_response", payload: { requestId: 42 } },
+    });
+    expect(rejected.success).toBe(false);
+    if (!rejected.success) {
+      expect(rejected.error.issues.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps unknown envelope keys on a valid session message", () => {
+    const envelope = {
+      type: "session",
+      trace: "kept",
+      message: {
+        type: "read_project_config_response",
+        payload: {
+          requestId: "project-config-read",
+          repoRoot: "/repo",
+          ok: true,
+          config: null,
+          revision: null,
+        },
+      },
+    };
+
+    expect(validateWSOutboundMessage(envelope)).toEqual({ success: true, data: envelope });
   });
 
   it("accepts a forge.search.response envelope", () => {
-    const result = GeneratedWSOutboundMessageSchema.safeParse({
+    const result = validateWSOutboundMessage({
       type: "session",
       message: {
         type: "forge.search.response",
@@ -293,7 +344,7 @@ const SourceSchema = z.object({
   });
 
   it("accepts a legacy github_search_response envelope", () => {
-    const result = GeneratedWSOutboundMessageSchema.safeParse({
+    const result = validateWSOutboundMessage({
       type: "session",
       message: {
         type: "github_search_response",
