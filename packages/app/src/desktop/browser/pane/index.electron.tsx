@@ -696,8 +696,15 @@ interface BrowserPaneProps {
 
 export function BrowserPane(props: BrowserPaneProps) {
   const hasHydratedBrowserStore = useBrowserStoreHydrated();
+  const hasBrowserRecord = useBrowserStore((state) => !!state.browsersById[props.browserId]);
 
-  if (!hasHydratedBrowserStore) {
+  useEffect(() => {
+    if (hasHydratedBrowserStore && !hasBrowserRecord) {
+      useBrowserStore.getState().ensureBrowser(props.browserId);
+    }
+  }, [hasHydratedBrowserStore, hasBrowserRecord, props.browserId]);
+
+  if (!hasHydratedBrowserStore || !hasBrowserRecord) {
     return (
       <View style={styles.restoring}>
         <LoadingSpinner />
@@ -2024,15 +2031,18 @@ function BrowserPaneContents({
         style={webviewWrapStyle}
         testID={`browser-webview-clip-${browserId}`}
       >
-        <ThemedWebviewAnchor
-          hostRef={setWebviewHostNode}
-          style={webviewHostStyle}
-          uniProps={webviewAnchorMapping}
-        />
+        <WebviewAnchor hostRef={setWebviewHostNode} style={webviewHostStyle} />
         {(browser?.isPreview && browser.previewStatus !== "ready") ||
         browser?.lastError ||
         pendingSelection ? (
-          <PaneOverlay pointerEvents="none" clip>
+          <PaneOverlay
+            pointerEvents={
+              browser?.lastError || (browser?.isPreview && browser.previewStatus !== "ready")
+                ? "auto"
+                : "none"
+            }
+            clip
+          >
             {browser?.isPreview && browser.previewStatus !== "ready" ? (
               <View style={styles.previewOverlay} pointerEvents="box-none">
                 <View style={styles.previewOverlayCard}>
@@ -2189,20 +2199,15 @@ function BrowserElementAnnotationCard({
   );
 }
 
-const ThemedWebviewAnchor = withUnistyles(function WebviewAnchor({
+function WebviewAnchor({
   hostRef,
   style,
-  backgroundColor,
 }: {
   hostRef: (node: HTMLDivElement | null) => void;
   style: CSSProperties;
-  backgroundColor?: string;
 }) {
-  return createElement("div", { ref: hostRef, style: { ...style, background: backgroundColor } });
-});
-const webviewAnchorMapping = (theme: { colors: { surface0: string } }) => ({
-  backgroundColor: theme.colors.surface0,
-});
+  return createElement("div", { ref: hostRef, style: { ...style, background: "#ffffff" } });
+}
 
 const ThemedCloseIcon = withUnistyles(X);
 const ThemedAnnotationInput = withUnistyles(TextInput);

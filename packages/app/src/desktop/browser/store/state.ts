@@ -189,6 +189,7 @@ export function rehydrateBrowserRecord(
   const fallback = createBrowserRecord({
     browserId,
     initialUrl: raw?.url,
+    now: persisted.createdAt,
     ...persisted,
   });
   return {
@@ -202,7 +203,7 @@ export function rehydrateBrowserRecord(
 }
 
 function normalizePersistedBrowserFields(raw: Partial<BrowserRecord> | undefined): {
-  now: number;
+  createdAt: number;
   isPreview: boolean;
   previewServerId: string | null;
   previewServerName: string | null;
@@ -211,7 +212,7 @@ function normalizePersistedBrowserFields(raw: Partial<BrowserRecord> | undefined
 } {
   const isPreview = raw?.isPreview ?? false;
   return {
-    now: raw?.createdAt ?? Date.now(),
+    createdAt: raw?.createdAt ?? Date.now(),
     isPreview,
     previewServerId: raw?.previewServerId ?? null,
     previewServerName: raw?.previewServerName ?? null,

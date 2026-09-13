@@ -1,6 +1,7 @@
 import React, { act, useMemo } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { userEvent } from "vitest/browser";
 import { ReducedMotionConfig, ReduceMotion } from "react-native-reanimated";
 import { BrowserPane } from "./index.electron";
 import { browserPanelRegistration } from "../panel";
@@ -185,6 +186,33 @@ afterEach(() => {
 });
 
 describe("browser loading controls", () => {
+  it.each([false, true])(
+    "saves a restored tab's new address across another restart (missing record: %s)",
+    async (missingRecord) => {
+      clearResidentBrowserWebviewsForTests();
+      if (missingRecord) useBrowserStore.setState({ browsersById: {} });
+      await useBrowserStore.persist.rehydrate();
+      act(() => root.render(<BrowserTab />));
+      const destination = "https://otto-code.me/docs?section=browser#tabs";
+      navigateTo(destination);
+      expect(useBrowserStore.getState().browsersById[browserId]?.url).toBe(destination);
+
+      act(() => root.render(null));
+      clearResidentBrowserWebviewsForTests();
+      await useBrowserStore.persist.rehydrate();
+      act(() => root.render(<BrowserTab />));
+
+      expect(
+        container.querySelector<HTMLInputElement>(
+          'input[aria-label="workspace.browser.controls.browserUrl"]',
+        )?.value,
+      ).toBe(destination);
+      expect((document.querySelector("webview") as HTMLElement & { src: string }).src).toBe(
+        destination,
+      );
+    },
+  );
+
   it("keeps the device menu open while automation focuses the guest and updates loading", async () => {
     act(() =>
       root.render(
@@ -351,9 +379,15 @@ describe("browser loading controls", () => {
         );
       })
       .toBe(true);
-    act(() => retry.click());
+    // Use trusted pointer input on the button padding, not a synthetic DOM click
+    // or only its text, so the full button must be reachable above the guest.
+    await act(async () =>
+      userEvent.click(retry, { position: { x: 4, y: retry.getBoundingClientRect().height / 2 } }),
+    );
+    expect(guest.reload).toHaveBeenCalledTimes(2);
     expectLoading(true);
     expect(overlayRoot.textContent).not.toContain("workspace.browser.errors.connectionRefused");
+    expect(overlayRoot.childElementCount).toBe(0);
   });
 
   it("does not let a stopped request rejection clear progress for the next navigation", async () => {

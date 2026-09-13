@@ -318,6 +318,12 @@ never delete malformed saved bytes. Already-erased addresses cannot be reconstru
 from the workspace layout, which contains only the browser ID. The current missing
 record fallback is `example.com`; seeing it on formerly populated tabs indicates a
 missing or overwritten browser record, not successful restoration of those pages.
+After hydration, opening such a tab recreates its record under the existing browser
+ID so subsequent navigation can be saved. Restore normalization must produce only
+persistable record fields: constructor-only fields such as `now` cause strict save
+validation to reject the entire browser index, including newly opened tabs. Regression
+coverage includes restore, navigation, save, and a second restore through the storage
+boundary and rendered browser pane.
 
 The resident webview owns `did-start-loading`, `did-stop-loading`, and the first
 `dom-ready` observation. These listeners are installed before attachment and remain
