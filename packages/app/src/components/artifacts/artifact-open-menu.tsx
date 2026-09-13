@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { FileText, Robot, TriangleAlert } from "@/components/icons/material-icons";
@@ -24,6 +24,8 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArtifactCreateSheet } from "@/components/artifacts/artifact-create-sheet";
 import { useArtifacts, type AggregatedArtifact } from "@/artifacts/use-artifacts";
+import { alertDialog } from "@/utils/confirm-dialog";
+import { toErrorMessage } from "@/utils/error-messages";
 import { openArtifactTab } from "@/artifacts/open-artifact-tab";
 import { artifactMatchesWorkspace } from "@/artifacts/artifact-derivation";
 import { useHostFeature } from "@/runtime/host-features";
@@ -86,6 +88,9 @@ export function ArtifactOpenMenu({
   const { artifacts } = useArtifacts();
   const isCompact = useIsCompactFormFactor();
   const [createOpen, setCreateOpen] = useState(false);
+  const [addingArtifactId, setAddingArtifactId] = useState<string | null>(null);
+  const isAdding = addingArtifactId !== null;
+  const addingRef = useRef(false);
 
   const projectArtifacts = useMemo(
     () =>
@@ -102,8 +107,16 @@ export function ArtifactOpenMenu({
   );
 
   const handleOpen = useCallback(
-    (artifactId: string) => {
-      openArtifactTab({ serverId, workspaceId, artifactId });
+    async (artifactId: string) => {
+      if (addingRef.current) return;
+      addingRef.current = true;
+      setAddingArtifactId(artifactId);
+      try {
+        await openArtifactTab({ serverId, workspaceId, artifactId });
+      } finally {
+        addingRef.current = false;
+        setAddingArtifactId(null);
+      }
     },
     [serverId, workspaceId],
   );
@@ -113,7 +126,9 @@ export function ArtifactOpenMenu({
   // to the agent session (see ArtifactPanel) until content is ready.
   const handleCreated = useCallback(
     (input: { artifact: { id: string } }) => {
-      handleOpen(input.artifact.id);
+      void handleOpen(input.artifact.id).catch((error) => {
+        void alertDialog({ title: "Could not add artifact", message: toErrorMessage(error) });
+      });
     },
     [handleOpen],
   );
@@ -133,19 +148,26 @@ export function ArtifactOpenMenu({
     return (
       <>
         <ContextMenu open={open} onOpenChange={onOpenChange}>
-          {hideTrigger ? null : <ArtifactSheetTriggerButton />}
+          {hideTrigger ? null : <ArtifactSheetTriggerButton isAdding={isAdding} />}
           <ContextMenuContent testID="workspace-open-artifact-sheet">
             {projectArtifacts.length > 0 ? (
               <>
                 <ContextMenuLabel>Artifacts</ContextMenuLabel>
                 {projectArtifacts.map((artifact) => (
-                  <ArtifactSheetItem key={artifact.id} artifact={artifact} onOpen={handleOpen} />
+                  <ArtifactSheetItem
+                    key={artifact.id}
+                    artifact={artifact}
+                    onOpen={handleOpen}
+                    pending={addingArtifactId === artifact.id}
+                    disabled={isAdding}
+                  />
                 ))}
                 <ContextMenuSeparator />
               </>
             ) : null}
             <ContextMenuItem
               testID="workspace-open-artifact-create"
+              disabled={isAdding}
               leading={createLeading}
               onSelect={handleOpenCreate}
             >
@@ -179,10 +201,11 @@ export function ArtifactOpenMenu({
         <DropdownMenuTrigger
           testID="workspace-open-artifact-trigger"
           accessibilityRole="button"
-          accessibilityLabel="Add artifact"
+          accessibilityLabel={isAdding ? "Adding artifact" : "Add artifact"}
+          disabled={isAdding}
           style={triggerStyle}
         >
-          <FileText size="sm" color={styles.icon.color} />
+          {isAdding ? generatingLeading : <FileText size="sm" color={styles.icon.color} />}
         </DropdownMenuTrigger>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
@@ -200,13 +223,20 @@ export function ArtifactOpenMenu({
             <>
               <DropdownMenuLabel>Artifacts</DropdownMenuLabel>
               {projectArtifacts.map((artifact) => (
-                <ArtifactMenuItem key={artifact.id} artifact={artifact} onOpen={handleOpen} />
+                <ArtifactMenuItem
+                  key={artifact.id}
+                  artifact={artifact}
+                  onOpen={handleOpen}
+                  pending={addingArtifactId === artifact.id}
+                  disabled={isAdding}
+                />
               ))}
               <DropdownMenuSeparator />
             </>
           ) : null}
           <DropdownMenuItem
             testID="workspace-open-artifact-create"
+            disabled={isAdding}
             leading={createLeading}
             onSelect={handleOpenCreate}
           >
@@ -227,7 +257,7 @@ export function ArtifactOpenMenu({
 
 // Plain-press trigger for the compact sheet - ContextMenuTrigger only opens on
 // long-press/right-click, but this toolbar button should open on tap.
-function ArtifactSheetTriggerButton(): ReactElement {
+function ArtifactSheetTriggerButton({ isAdding }: { isAdding: boolean }): ReactElement {
   const { open, setOpen } = useContextMenu();
   const handlePress = useCallback(() => setOpen(true), [setOpen]);
   const pressableStyle = useCallback(
@@ -241,11 +271,12 @@ function ArtifactSheetTriggerButton(): ReactElement {
         <Pressable
           testID="workspace-open-artifact-trigger"
           accessibilityRole="button"
-          accessibilityLabel="Add artifact"
+          accessibilityLabel={isAdding ? "Adding artifact" : "Add artifact"}
+          disabled={isAdding}
           onPress={handlePress}
           style={pressableStyle}
         >
-          <FileText size="sm" color={styles.icon.color} />
+          {isAdding ? generatingLeading : <FileText size="sm" color={styles.icon.color} />}
         </Pressable>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
@@ -255,23 +286,42 @@ function ArtifactSheetTriggerButton(): ReactElement {
   );
 }
 
+function useArtifactMenuSelection(artifactId: string, onOpen: (id: string) => Promise<void>) {
+  const { selectItem } = useContextMenu();
+  return useCallback(() => {
+    void onOpen(artifactId).then(
+      () => selectItem(undefined, true),
+      (error) =>
+        selectItem(() => {
+          void alertDialog({ title: "Could not add artifact", message: toErrorMessage(error) });
+        }, true),
+    );
+  }, [artifactId, onOpen, selectItem]);
+}
+
 function ArtifactSheetItem({
   artifact,
   onOpen,
+  pending,
+  disabled,
 }: {
   artifact: AggregatedArtifact;
-  onOpen: (artifactId: string) => void;
+  onOpen: (artifactId: string) => Promise<void>;
+  pending: boolean;
+  disabled: boolean;
 }): ReactElement {
   // Every status is openable: generating shows a spinner and a link to the
   // generating agent session, and a failed generation shows the failure (or
   // falls back to the last successful content, if any) - see ArtifactPanel.
-  const handleSelect = useCallback(() => {
-    onOpen(artifact.id);
-  }, [artifact.id, onOpen]);
+  const handleSelect = useArtifactMenuSelection(artifact.id, onOpen);
   return (
     <ContextMenuItem
       testID={`workspace-open-artifact-${artifact.id}`}
       leading={menuItemLeading(artifact.status)}
+      closeOnSelect={false}
+      status={pending ? "pending" : "idle"}
+      pendingLabel="Adding artifact"
+      disabled={disabled}
       onSelect={handleSelect}
     >
       {artifact.name || artifact.id}
@@ -282,20 +332,26 @@ function ArtifactSheetItem({
 function ArtifactMenuItem({
   artifact,
   onOpen,
+  pending,
+  disabled,
 }: {
   artifact: AggregatedArtifact;
-  onOpen: (artifactId: string) => void;
+  onOpen: (artifactId: string) => Promise<void>;
+  pending: boolean;
+  disabled: boolean;
 }): ReactElement {
   // Every status is openable: generating shows a spinner and a link to the
   // generating agent session, and a failed generation shows the failure (or
   // falls back to the last successful content, if any) - see ArtifactPanel.
-  const handleSelect = useCallback(() => {
-    onOpen(artifact.id);
-  }, [artifact.id, onOpen]);
+  const handleSelect = useArtifactMenuSelection(artifact.id, onOpen);
   return (
     <DropdownMenuItem
       testID={`workspace-open-artifact-${artifact.id}`}
       leading={menuItemLeading(artifact.status)}
+      closeOnSelect={false}
+      status={pending ? "pending" : "idle"}
+      pendingLabel="Adding artifact"
+      disabled={disabled}
       onSelect={handleSelect}
     >
       {artifact.name || artifact.id}

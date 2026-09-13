@@ -9,7 +9,7 @@ progress_completed: 0
 progress_total: 5
 progress_unit: "0.9 delivery slices"
 created_at: "2026-08-27T00:35:26.705Z"
-updated_at: "2026-08-30T02:36:04.847Z"
+updated_at: "2026-09-13T04:48:02.492Z"
 ---
 # Artifacts
 
@@ -585,3 +585,7 @@ Artifacts can move from `in_build` to `complete` only after every ledger row has
 - time: "2026-08-30T02:36:04.847Z"
   kind: "evidence"
   summary: "2026-08-29: Reconciled the shared category-storage contract. Workflow's independently selected stores use the generic resolver and stable opaque store keys without adopting Artifact directory choices or changing Artifact behavior. No Artifact delivery status changed."
+- time: "2026-09-13T04:48:02.492Z"
+  kind: "evidence"
+  summary: "Workspace discovery now has a verified implementation in the working tree: Add artifact persists project-validated artifactIds on the daemon workspace record, and sequenced workspace updates/reconnect snapshots carry that membership to peer clients. Clients discover new members in background tabs; separate local discovery receipts preserve dismissal across reload, so shared membership does not share focus or force closed tabs back open. Client artifact lifecycle mutations broadcast to peer sessions. The additive artifactWorkspaceDiscovery capability gates attachment; pre-existing local tabs require Add artifact again to establish membership. Verified with artifact-service-session.e2e.test.ts (two daemon clients, project/workspace isolation, concurrent/idempotent attachment, deletion and reconnect), focused protocol/app/session tests, and artifact-workspace-discovery.spec.ts (two independent browser sessions, failed-add feedback, peer rendering, local dismissal after reload). docs/data-model.md records the contract. This is local implementation proof, not a released build or a live relay session; cross-host sharing and the remaining Artifacts charter gaps are unchanged."
+  source: "Local source and isolated regression tests, 2026-09-12"

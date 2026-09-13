@@ -2,6 +2,7 @@ import pino from "pino";
 import { describe, expect, test, vi } from "vitest";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import { ArtifactService } from "../../artifact/artifact-service.js";
+import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
 import { ArtifactSession } from "./artifact-session.js";
 
 function artifact(overrides: Partial<ArtifactMetadata> = {}): ArtifactMetadata {
@@ -25,10 +26,14 @@ function artifact(overrides: Partial<ArtifactMetadata> = {}): ArtifactMetadata {
 }
 
 function createSession(service: Partial<ArtifactService>, emit = vi.fn()) {
+  const broadcast = vi.fn();
   return {
     emit,
+    broadcast,
     session: new ArtifactSession({
-      host: { emit },
+      host: { emit, broadcast },
+      workspaceRegistry: { list: async () => [] } as unknown as WorkspaceRegistry,
+      projectRegistry: {} as ProjectRegistry,
       artifactService: service as ArtifactService,
       ownsArtifactService: true,
       logger: pino({ enabled: false }),
@@ -39,7 +44,7 @@ function createSession(service: Partial<ArtifactService>, emit = vi.fn()) {
 describe("ArtifactSession lifecycle RPCs", () => {
   test("delegates explicit regeneration and publishes the resulting artifact", async () => {
     const regenerate = vi.fn(async () => artifact({ status: "generating" }));
-    const { emit, session } = createSession({ regenerate });
+    const { emit, broadcast, session } = createSession({ regenerate });
 
     await session.handleArtifactRegenerateRequest({
       type: "artifact.regenerate.request",
@@ -56,7 +61,7 @@ describe("ArtifactSession lifecycle RPCs", () => {
         requestId: "request-1",
       },
     });
-    expect(emit).toHaveBeenNthCalledWith(2, {
+    expect(broadcast).toHaveBeenCalledWith({
       type: "artifact.updated.notification",
       payload: { artifact: expect.objectContaining({ id: "artifact-1", status: "generating" }) },
     });
@@ -64,7 +69,7 @@ describe("ArtifactSession lifecycle RPCs", () => {
 
   test("delegates cancellation and publishes the recoverable artifact state", async () => {
     const cancel = vi.fn(async () => artifact({ status: "error", errorMessage: "Cancelled" }));
-    const { emit, session } = createSession({ cancel });
+    const { emit, broadcast, session } = createSession({ cancel });
 
     await session.handleArtifactCancelRequest({
       type: "artifact.cancel.request",
@@ -81,7 +86,7 @@ describe("ArtifactSession lifecycle RPCs", () => {
         requestId: "request-1",
       },
     });
-    expect(emit).toHaveBeenNthCalledWith(2, {
+    expect(broadcast).toHaveBeenCalledWith({
       type: "artifact.updated.notification",
       payload: { artifact: expect.objectContaining({ id: "artifact-1", status: "error" }) },
     });
@@ -111,4 +116,32 @@ describe("ArtifactSession lifecycle RPCs", () => {
       payload: { artifact: expect.objectContaining({ id: "artifact-1" }) },
     });
   });
+});
+
+test("creation and deletion broadcast without leaking correlated responses to peers", async () => {
+  const { session, emit, broadcast } = createSession({
+    create: vi.fn(async () => artifact()),
+    delete: vi.fn(async () => undefined),
+  });
+  await session.handleArtifactCreateRequest({
+    type: "artifact.create.request",
+    name: "Report",
+    description: "Report",
+    projectId: "/project",
+    provider: "mock",
+    requestId: "create-request",
+  });
+  await session.handleArtifactDeleteRequest({
+    type: "artifact.delete.request",
+    artifactId: "artifact-1",
+    requestId: "delete-request",
+  });
+  expect(emit.mock.calls.map(([message]) => message.type)).toEqual([
+    "artifact.create.response",
+    "artifact.delete.response",
+  ]);
+  expect(broadcast.mock.calls.map(([message]) => message.type)).toEqual([
+    "artifact.created.notification",
+    "artifact.deleted.notification",
+  ]);
 });
